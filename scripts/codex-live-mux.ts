@@ -109,6 +109,9 @@ interface PaneSelectionDrag {
 
 interface ConversationState {
   readonly sessionId: string;
+  directoryId: string | null;
+  title: string;
+  agentType: string;
   turnId: string;
   scope: EventScope;
   oracle: TerminalSnapshotOracle;
@@ -126,6 +129,26 @@ interface ConversationState {
 interface ProcessUsageSample {
   readonly cpuPercent: number | null;
   readonly memoryMb: number | null;
+}
+
+interface ControlPlaneDirectoryRecord {
+  readonly directoryId: string;
+  readonly tenantId: string;
+  readonly userId: string;
+  readonly workspaceId: string;
+  readonly path: string;
+}
+
+interface ControlPlaneConversationRecord {
+  readonly conversationId: string;
+  readonly directoryId: string;
+  readonly tenantId: string;
+  readonly userId: string;
+  readonly workspaceId: string;
+  readonly title: string;
+  readonly agentType: string;
+  readonly runtimeStatus: ConversationRailSessionSummary['status'];
+  readonly runtimeLive: boolean;
 }
 
 interface GitSummary {
@@ -209,6 +232,88 @@ function appendDebugRecord(debugPath: string | null, record: Record<string, unkn
 
 function asString(value: unknown, fallback: string): string {
   return typeof value === 'string' ? value : fallback;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== 'object' || value === null) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function parseDirectoryRecord(value: unknown): ControlPlaneDirectoryRecord | null {
+  const record = asRecord(value);
+  if (record === null) {
+    return null;
+  }
+  const directoryId = record['directoryId'];
+  const tenantId = record['tenantId'];
+  const userId = record['userId'];
+  const workspaceId = record['workspaceId'];
+  const path = record['path'];
+  if (
+    typeof directoryId !== 'string' ||
+    typeof tenantId !== 'string' ||
+    typeof userId !== 'string' ||
+    typeof workspaceId !== 'string' ||
+    typeof path !== 'string'
+  ) {
+    return null;
+  }
+  return {
+    directoryId,
+    tenantId,
+    userId,
+    workspaceId,
+    path
+  };
+}
+
+function parseConversationRecord(value: unknown): ControlPlaneConversationRecord | null {
+  const record = asRecord(value);
+  if (record === null) {
+    return null;
+  }
+  const conversationId = record['conversationId'];
+  const directoryId = record['directoryId'];
+  const tenantId = record['tenantId'];
+  const userId = record['userId'];
+  const workspaceId = record['workspaceId'];
+  const title = record['title'];
+  const agentType = record['agentType'];
+  const runtimeStatus = record['runtimeStatus'];
+  const runtimeLive = record['runtimeLive'];
+  if (
+    typeof conversationId !== 'string' ||
+    typeof directoryId !== 'string' ||
+    typeof tenantId !== 'string' ||
+    typeof userId !== 'string' ||
+    typeof workspaceId !== 'string' ||
+    typeof title !== 'string' ||
+    typeof agentType !== 'string' ||
+    typeof runtimeLive !== 'boolean'
+  ) {
+    return null;
+  }
+  if (
+    runtimeStatus !== 'running' &&
+    runtimeStatus !== 'needs-input' &&
+    runtimeStatus !== 'completed' &&
+    runtimeStatus !== 'exited'
+  ) {
+    return null;
+  }
+  return {
+    conversationId,
+    directoryId,
+    tenantId,
+    userId,
+    workspaceId,
+    title,
+    agentType,
+    runtimeStatus,
+    runtimeLive
+  };
 }
 
 function normalizeExitCode(exit: PtyExit): number {
@@ -782,6 +887,9 @@ function createConversationScope(baseScope: EventScope, conversationId: string, 
 
 function createConversationState(
   sessionId: string,
+  directoryId: string | null,
+  title: string,
+  agentType: string,
   turnId: string,
   baseScope: EventScope,
   cols: number,
@@ -789,6 +897,9 @@ function createConversationState(
 ): ConversationState {
   return {
     sessionId,
+    directoryId,
+    title,
+    agentType,
     turnId,
     scope: createConversationScope(baseScope, sessionId, turnId),
     oracle: new TerminalSnapshotOracle(cols, rows),
@@ -815,6 +926,7 @@ function applySummaryToConversation(
   target.scope.userId = summary.userId;
   target.scope.workspaceId = summary.workspaceId;
   target.scope.worktreeId = summary.worktreeId;
+  target.directoryId = summary.directoryId;
   target.status = summary.status;
   target.attentionReason = summary.attentionReason;
   target.startedAt = summary.startedAt;
@@ -907,8 +1019,8 @@ function buildRailModel(
         return {
           ...conversationSummary(conversation),
           directoryKey,
-          title: `untitled task ${String(index + 1)}`,
-          agentLabel: 'codex',
+          title: conversation.title,
+          agentLabel: conversation.agentType,
           cpuPercent: processUsageBySessionId.get(conversation.sessionId)?.cpuPercent ?? null,
           memoryMb: processUsageBySessionId.get(conversation.sessionId)?.memoryMb ?? null
         };
@@ -1321,6 +1433,10 @@ async function main(): Promise<number> {
     {
     startEmbeddedServer: async () =>
       await startControlPlaneStreamServer({
+        stateStorePath: resolve(
+          options.invocationDirectory,
+          process.env.HARNESS_CONTROL_PLANE_DB_PATH ?? '.harness/control-plane.sqlite'
+        ),
         startSession: (input) =>
           startCodexLiveSession({
             args: input.args,
@@ -1333,6 +1449,19 @@ async function main(): Promise<number> {
       })
   });
   const streamClient = controlPlaneClient.client;
+  const directoryResult = await streamClient.sendCommand({
+    type: 'directory.upsert',
+    directoryId: `directory-${options.scope.workspaceId}`,
+    tenantId: options.scope.tenantId,
+    userId: options.scope.userId,
+    workspaceId: options.scope.workspaceId,
+    path: options.invocationDirectory
+  });
+  const persistedDirectory = parseDirectoryRecord(directoryResult['directory']);
+  if (persistedDirectory === null) {
+    throw new Error('control-plane directory.upsert returned malformed directory record');
+  }
+  const activeDirectoryId = persistedDirectory.directoryId;
 
   const sessionEnv = {
     ...sanitizeProcessEnv(),
@@ -1341,13 +1470,32 @@ async function main(): Promise<number> {
   const conversations = new Map<string, ConversationState>();
   let activeConversationId: string | null = null;
 
-  const ensureConversation = (sessionId: string): ConversationState => {
+  const ensureConversation = (
+    sessionId: string,
+    seed?: {
+      directoryId?: string | null;
+      title?: string;
+      agentType?: string;
+    }
+  ): ConversationState => {
     const existing = conversations.get(sessionId);
     if (existing !== undefined) {
+      if (seed?.directoryId !== undefined) {
+        existing.directoryId = seed.directoryId;
+      }
+      if (seed?.title !== undefined) {
+        existing.title = seed.title;
+      }
+      if (seed?.agentType !== undefined) {
+        existing.agentType = seed.agentType;
+      }
       return existing;
     }
     const state = createConversationState(
       sessionId,
+      seed?.directoryId ?? activeDirectoryId,
+      seed?.title ?? `untitled task ${String(conversations.size + 1)}`,
+      seed?.agentType ?? 'codex',
       `turn-${randomUUID()}`,
       options.scope,
       layout.rightCols,
@@ -1369,6 +1517,10 @@ async function main(): Promise<number> {
   };
 
   const startConversation = async (sessionId: string): Promise<ConversationState> => {
+    const existing = conversations.get(sessionId);
+    if (existing?.live === true) {
+      return existing;
+    }
     await streamClient.sendCommand({
       type: 'pty.start',
       sessionId,
@@ -1400,7 +1552,34 @@ async function main(): Promise<number> {
   };
 
   const hydrateConversationList = async (): Promise<void> => {
-    const listed = await streamClient.sendCommand({
+    const listedPersisted = await streamClient.sendCommand({
+      type: 'conversation.list',
+      directoryId: activeDirectoryId,
+      tenantId: options.scope.tenantId,
+      userId: options.scope.userId,
+      workspaceId: options.scope.workspaceId
+    });
+    const persistedRows = Array.isArray(listedPersisted['conversations'])
+      ? listedPersisted['conversations']
+      : [];
+    for (const row of persistedRows) {
+      const record = parseConversationRecord(row);
+      if (record === null) {
+        continue;
+      }
+      const conversation = ensureConversation(record.conversationId, {
+        directoryId: record.directoryId,
+        title: record.title,
+        agentType: record.agentType
+      });
+      conversation.scope.tenantId = record.tenantId;
+      conversation.scope.userId = record.userId;
+      conversation.scope.workspaceId = record.workspaceId;
+      conversation.status = record.runtimeStatus;
+      conversation.live = record.runtimeLive;
+    }
+
+    const listedLive = await streamClient.sendCommand({
       type: 'session.list',
       tenantId: options.scope.tenantId,
       userId: options.scope.userId,
@@ -1408,7 +1587,7 @@ async function main(): Promise<number> {
       worktreeId: options.scope.worktreeId,
       sort: 'started-asc'
     });
-    const summaries = parseSessionSummaryList(listed['sessions']);
+    const summaries = parseSessionSummaryList(listedLive['sessions']);
     for (const summary of summaries) {
       const conversation = ensureConversation(summary.sessionId);
       applySummaryToConversation(conversation, summary);
@@ -1421,10 +1600,23 @@ async function main(): Promise<number> {
 
   await hydrateConversationList();
   if (!conversations.has(options.initialConversationId)) {
-    await startConversation(options.initialConversationId);
+    const initialTitle = `untitled task ${String(conversations.size + 1)}`;
+    await streamClient.sendCommand({
+      type: 'conversation.create',
+      conversationId: options.initialConversationId,
+      directoryId: activeDirectoryId,
+      title: initialTitle,
+      agentType: 'codex'
+    });
+    ensureConversation(options.initialConversationId, {
+      directoryId: activeDirectoryId,
+      title: initialTitle,
+      agentType: 'codex'
+    });
   }
   if (activeConversationId === null) {
-    activeConversationId = options.initialConversationId;
+    const ordered = conversationOrder(conversations);
+    activeConversationId = ordered[0] ?? options.initialConversationId;
   }
 
   let gitSummary = readGitSummary(process.cwd());
@@ -1720,6 +1912,10 @@ async function main(): Promise<number> {
     forceFullClear = true;
     previousRows = [];
     currentPtySize = null;
+    const targetConversation = conversations.get(sessionId);
+    if (targetConversation !== undefined && !targetConversation.live) {
+      await startConversation(sessionId);
+    }
     await attachConversation(sessionId);
     schedulePtyResize(
       {
@@ -1733,6 +1929,19 @@ async function main(): Promise<number> {
 
   const createAndActivateConversation = async (): Promise<void> => {
     const sessionId = `conversation-${randomUUID()}`;
+    const title = `untitled task ${String(conversations.size + 1)}`;
+    await streamClient.sendCommand({
+      type: 'conversation.create',
+      conversationId: sessionId,
+      directoryId: activeDirectoryId,
+      title,
+      agentType: 'codex'
+    });
+    ensureConversation(sessionId, {
+      directoryId: activeDirectoryId,
+      title,
+      agentType: 'codex'
+    });
     await startConversation(sessionId);
     await activateConversation(sessionId);
   };

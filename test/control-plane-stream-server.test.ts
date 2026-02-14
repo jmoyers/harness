@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { connect, type Socket } from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { tmpdir } from 'node:os';
 import {
   ControlPlaneStreamServer,
   startControlPlaneStreamServer,
@@ -18,6 +21,7 @@ import {
 import type { CodexLiveEvent } from '../src/codex/live-session.ts';
 import type { PtyExit } from '../src/pty/pty_host.ts';
 import { TerminalSnapshotOracle } from '../src/terminal/snapshot-oracle.ts';
+import { SqliteControlPlaneStore } from '../src/store/control-plane-store.ts';
 
 interface SessionDataEvent {
   cursor: number;
@@ -171,6 +175,11 @@ async function writeRaw(address: { host: string; port: number }, lines: string):
     socket.once('close', () => resolve());
     socket.once('error', reject);
   });
+}
+
+function makeTempStateStorePath(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'harness-stream-server-'));
+  return join(dir, 'control-plane.sqlite');
 }
 
 void test('stream server supports start/attach/io/events/cleanup over one protocol path', async () => {
@@ -461,6 +470,7 @@ void test('stream server supports session.list, session.status, and session.snap
       workspaceId: 'workspace-a',
       worktreeId: 'worktree-a'
     });
+    await delay(2);
 
     await client.sendCommand({
       type: 'pty.start',
@@ -473,6 +483,7 @@ void test('stream server supports session.list, session.status, and session.snap
       workspaceId: 'workspace-a',
       worktreeId: 'worktree-b'
     });
+    await delay(2);
 
     await client.sendCommand({
       type: 'pty.start',
@@ -566,6 +577,184 @@ void test('stream server supports session.list, session.status, and session.snap
   }
 });
 
+void test('stream server persists directories and conversations and replays scoped stream subscriptions', async () => {
+  const stateStorePath = makeTempStateStorePath();
+  const sessions: FakeLiveSession[] = [];
+  const server = await startControlPlaneStreamServer({
+    stateStorePath,
+    startSession: (input) => {
+      const session = new FakeLiveSession(input);
+      sessions.push(session);
+      return session;
+    }
+  });
+  const address = server.address();
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port
+  });
+  const observed = collectEnvelopes(client);
+
+  try {
+    const upsertDirectory = await client.sendCommand({
+      type: 'directory.upsert',
+      directoryId: 'directory-1',
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      path: '/tmp/workspace-1'
+    });
+    const directory = upsertDirectory['directory'] as Record<string, unknown>;
+    assert.equal(directory['directoryId'], 'directory-1');
+
+    const createdConversation = await client.sendCommand({
+      type: 'conversation.create',
+      conversationId: 'conversation-1',
+      directoryId: 'directory-1',
+      title: 'untitled task 1',
+      agentType: 'codex'
+    });
+    const conversation = createdConversation['conversation'] as Record<string, unknown>;
+    assert.equal(conversation['conversationId'], 'conversation-1');
+
+    const subscribedWithoutOutput = await client.sendCommand({
+      type: 'stream.subscribe',
+      conversationId: 'conversation-1',
+      includeOutput: false,
+      afterCursor: 0
+    });
+    const subscriptionWithoutOutput = subscribedWithoutOutput['subscriptionId'];
+    assert.equal(typeof subscriptionWithoutOutput, 'string');
+
+    await client.sendCommand({
+      type: 'pty.start',
+      sessionId: 'conversation-1',
+      args: [],
+      initialCols: 80,
+      initialRows: 24,
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      worktreeId: 'worktree-1'
+    });
+    await client.sendCommand({
+      type: 'pty.attach',
+      sessionId: 'conversation-1',
+      sinceCursor: 2
+    });
+    client.sendInput('conversation-1', Buffer.from('hello-stream', 'utf8'));
+    await delay(20);
+
+    assert.equal(
+      observed.some(
+        (envelope) =>
+          envelope.kind === 'stream.event' &&
+          envelope.subscriptionId === subscriptionWithoutOutput &&
+          envelope.event.type === 'session-output'
+      ),
+      false
+    );
+    assert.equal(
+      observed.some(
+        (envelope) =>
+          envelope.kind === 'stream.event' &&
+          envelope.subscriptionId === subscriptionWithoutOutput &&
+          envelope.event.type === 'session-status'
+      ),
+      true
+    );
+
+    const subscribedWithOutput = await client.sendCommand({
+      type: 'stream.subscribe',
+      conversationId: 'conversation-1',
+      includeOutput: true,
+      afterCursor: 0
+    });
+    const subscriptionWithOutput = subscribedWithOutput['subscriptionId'];
+    assert.equal(typeof subscriptionWithOutput, 'string');
+    await delay(20);
+    assert.equal(
+      observed.some(
+        (envelope) =>
+          envelope.kind === 'stream.event' &&
+          envelope.subscriptionId === subscriptionWithOutput &&
+          envelope.event.type === 'session-output'
+      ),
+      true
+    );
+
+    await client.sendCommand({
+      type: 'stream.unsubscribe',
+      subscriptionId: subscriptionWithOutput as string
+    });
+    const previousObservedCount = observed.length;
+    client.sendInput('conversation-1', Buffer.from('after-unsubscribe', 'utf8'));
+    await delay(20);
+    assert.equal(
+      observed
+        .slice(previousObservedCount)
+        .some(
+          (envelope) =>
+            envelope.kind === 'stream.event' &&
+            envelope.subscriptionId === subscriptionWithOutput
+        ),
+      false
+    );
+
+    await client.sendCommand({
+      type: 'conversation.archive',
+      conversationId: 'conversation-1'
+    });
+    const listedArchived = await client.sendCommand({
+      type: 'conversation.list',
+      directoryId: 'directory-1',
+      includeArchived: true
+    });
+    const archivedRows = listedArchived['conversations'] as Array<Record<string, unknown>>;
+    assert.equal(archivedRows.length, 1);
+    assert.notEqual(archivedRows[0]?.['archivedAt'], null);
+  } finally {
+    client.close();
+    await server.close();
+  }
+
+  const reopened = await startControlPlaneStreamServer({
+    stateStorePath,
+    startSession: (input) => new FakeLiveSession(input)
+  });
+  const reopenedAddress = reopened.address();
+  const reopenedClient = await connectControlPlaneStreamClient({
+    host: reopenedAddress.address,
+    port: reopenedAddress.port
+  });
+  try {
+    const directories = await reopenedClient.sendCommand({
+      type: 'directory.list',
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      includeArchived: true
+    });
+    const directoryRows = directories['directories'] as Array<Record<string, unknown>>;
+    assert.equal(directoryRows.length, 1);
+    assert.equal(directoryRows[0]?.['directoryId'], 'directory-1');
+
+    const conversations = await reopenedClient.sendCommand({
+      type: 'conversation.list',
+      directoryId: 'directory-1',
+      includeArchived: true
+    });
+    const conversationRows = conversations['conversations'] as Array<Record<string, unknown>>;
+    assert.equal(conversationRows.length, 1);
+    assert.equal(conversationRows[0]?.['conversationId'], 'conversation-1');
+  } finally {
+    reopenedClient.close();
+    await reopened.close();
+    rmSync(stateStorePath, { force: true });
+    rmSync(dirname(stateStorePath), { recursive: true, force: true });
+  }
+});
+
 void test('stream server attention-first sorting prioritizes needs-input sessions', async () => {
   const sessions: FakeLiveSession[] = [];
   const server = await startControlPlaneStreamServer({
@@ -631,6 +820,7 @@ void test('stream server internal sort helper covers tie-break branches', async 
   try {
     interface InternalSessionState {
       id: string;
+      directoryId: string | null;
       tenantId: string;
       userId: string;
       workspaceId: string;
@@ -647,6 +837,7 @@ void test('stream server internal sort helper covers tie-break branches', async 
       startedAt: string;
       exitedAt: string | null;
       tombstoneTimer: NodeJS.Timeout | null;
+      lastObservedOutputCursor: number;
     }
 
     const internals = server as unknown as {
@@ -657,6 +848,7 @@ void test('stream server internal sort helper covers tie-break branches', async 
     };
 
     const base: Omit<InternalSessionState, 'id' | 'status' | 'startedAt' | 'lastEventAt'> = {
+      directoryId: null,
       tenantId: 'tenant-local',
       userId: 'user-local',
       workspaceId: 'workspace-local',
@@ -669,7 +861,8 @@ void test('stream server internal sort helper covers tie-break branches', async 
       lastExit: null,
       lastSnapshot: null,
       exitedAt: null,
-      tombstoneTimer: null
+      tombstoneTimer: null,
+      lastObservedOutputCursor: 0
     };
 
     const rows: readonly InternalSessionState[] = [
@@ -1328,6 +1521,7 @@ void test('stream server internal guard branches remain safe for missing ids', a
   try {
     interface InternalSessionState {
       id: string;
+      directoryId: string | null;
       tenantId: string;
       userId: string;
       workspaceId: string;
@@ -1344,6 +1538,7 @@ void test('stream server internal guard branches remain safe for missing ids', a
       startedAt: string;
       exitedAt: string | null;
       tombstoneTimer: NodeJS.Timeout | null;
+      lastObservedOutputCursor: number;
     }
 
     const internals = server as unknown as {
@@ -1356,17 +1551,20 @@ void test('stream server internal guard branches remain safe for missing ids', a
           authenticated: boolean;
           attachedSessionIds: Set<string>;
           eventSessionIds: Set<string>;
+          streamSubscriptionIds: Set<string>;
           queuedPayloads: string[];
           queuedPayloadBytes: number;
           writeBlocked: boolean;
         }
       >;
       sessions: Map<string, InternalSessionState>;
+      streamSubscriptions: Map<string, { id: string }>;
       handleSessionEvent: (sessionId: string, event: CodexLiveEvent) => void;
       detachConnectionFromSession: (connectionId: string, sessionId: string) => void;
       deactivateSession: (sessionId: string, closeSession: boolean) => void;
       scheduleTombstoneRemoval: (sessionId: string) => void;
       destroySession: (sessionId: string, closeSession: boolean) => void;
+      cleanupConnection: (connectionId: string) => void;
       sendToConnection: (connectionId: string, envelope: StreamServerEnvelope) => void;
       flushConnectionWrites: (connectionId: string) => void;
     };
@@ -1386,6 +1584,7 @@ void test('stream server internal guard branches remain safe for missing ids', a
       authenticated: true,
       attachedSessionIds: new Set<string>(),
       eventSessionIds: new Set<string>(),
+      streamSubscriptionIds: new Set<string>(),
       queuedPayloads: [],
       queuedPayloadBytes: 0,
       writeBlocked: false
@@ -1413,6 +1612,7 @@ void test('stream server internal guard branches remain safe for missing ids', a
 
     internals.sessions.set('fake-session', {
       id: 'fake-session',
+      directoryId: null,
       tenantId: 'tenant-local',
       userId: 'user-local',
       workspaceId: 'workspace-local',
@@ -1428,9 +1628,34 @@ void test('stream server internal guard branches remain safe for missing ids', a
       lastSnapshot: null,
       startedAt: new Date(0).toISOString(),
       exitedAt: new Date(0).toISOString(),
-      tombstoneTimer: null
+      tombstoneTimer: null,
+      lastObservedOutputCursor: 0
     } as unknown as (typeof internals.sessions extends Map<string, infer T> ? T : never));
     internals.detachConnectionFromSession('fake-connection', 'fake-session');
+
+    const cleanupSocket = {
+      writableLength: 0,
+      write: () => true,
+      destroy: () => undefined
+    } as unknown as Socket;
+    internals.connections.set('cleanup-connection', {
+      id: 'cleanup-connection',
+      socket: cleanupSocket,
+      remainder: '',
+      authenticated: true,
+      attachedSessionIds: new Set<string>(),
+      eventSessionIds: new Set<string>(),
+      streamSubscriptionIds: new Set<string>(['subscription-cleanup']),
+      queuedPayloads: [],
+      queuedPayloadBytes: 0,
+      writeBlocked: false
+    });
+    internals.streamSubscriptions.set(
+      'subscription-cleanup',
+      { id: 'subscription-cleanup' } as unknown as { id: string }
+    );
+    internals.cleanupConnection('cleanup-connection');
+    assert.equal(internals.streamSubscriptions.has('subscription-cleanup'), false);
 
     internals.deactivateSession('missing-session', true);
     internals.deactivateSession('fake-session', true);
@@ -1445,6 +1670,7 @@ void test('stream server internal guard branches remain safe for missing ids', a
 
     internals.sessions.set('timer-guard-session', {
       id: 'timer-guard-session',
+      directoryId: null,
       tenantId: 'tenant-local',
       userId: 'user-local',
       workspaceId: 'workspace-local',
@@ -1460,7 +1686,8 @@ void test('stream server internal guard branches remain safe for missing ids', a
       lastSnapshot: null,
       startedAt: new Date(0).toISOString(),
       exitedAt: new Date(0).toISOString(),
-      tombstoneTimer: null
+      tombstoneTimer: null,
+      lastObservedOutputCursor: 0
     });
     internals.scheduleTombstoneRemoval('timer-guard-session');
     const timerGuardState = internals.sessions.get('timer-guard-session');
@@ -1472,4 +1699,140 @@ void test('stream server internal guard branches remain safe for missing ids', a
   } finally {
     await server.close();
   }
+});
+
+void test('stream server supports injected state store and observed filter/journal guards', async () => {
+  const injectedStore = new SqliteControlPlaneStore(':memory:');
+  const server = new ControlPlaneStreamServer({
+    maxStreamJournalEntries: 1,
+    stateStore: injectedStore,
+    startSession: (input) => new FakeLiveSession(input)
+  });
+  try {
+    const internals = server as unknown as {
+      streamJournal: Array<{ cursor: number }>;
+      matchesObservedFilter: (
+        scope: {
+          tenantId: string;
+          userId: string;
+          workspaceId: string;
+          directoryId: string | null;
+          conversationId: string;
+        },
+        event: Record<string, unknown>,
+        filter: {
+          includeOutput: boolean;
+          tenantId?: string;
+          userId?: string;
+          workspaceId?: string;
+          directoryId?: string;
+          conversationId?: string;
+        }
+      ) => boolean;
+      publishObservedEvent: (
+        scope: {
+          tenantId: string;
+          userId: string;
+          workspaceId: string;
+          directoryId: string | null;
+          conversationId: string;
+        },
+        event: Record<string, unknown>
+      ) => void;
+    };
+
+    const baseScope = {
+      tenantId: 'tenant-a',
+      userId: 'user-a',
+      workspaceId: 'workspace-a',
+      directoryId: 'directory-a',
+      conversationId: 'conversation-a'
+    };
+    const statusEvent = {
+      type: 'session-status',
+      sessionId: 'conversation-a',
+      status: 'running',
+      attentionReason: null,
+      live: true,
+      ts: new Date(0).toISOString(),
+      directoryId: 'directory-a',
+      conversationId: 'conversation-a'
+    };
+    const outputEvent = {
+      type: 'session-output',
+      sessionId: 'conversation-a',
+      outputCursor: 1,
+      chunkBase64: Buffer.from('x').toString('base64'),
+      ts: new Date(0).toISOString(),
+      directoryId: 'directory-a',
+      conversationId: 'conversation-a'
+    };
+
+    assert.equal(
+      internals.matchesObservedFilter(baseScope, outputEvent, { includeOutput: false }),
+      false
+    );
+    assert.equal(
+      internals.matchesObservedFilter(baseScope, statusEvent, {
+        includeOutput: true,
+        tenantId: 'tenant-b'
+      }),
+      false
+    );
+    assert.equal(
+      internals.matchesObservedFilter(baseScope, statusEvent, {
+        includeOutput: true,
+        userId: 'user-b'
+      }),
+      false
+    );
+    assert.equal(
+      internals.matchesObservedFilter(baseScope, statusEvent, {
+        includeOutput: true,
+        workspaceId: 'workspace-b'
+      }),
+      false
+    );
+    assert.equal(
+      internals.matchesObservedFilter(baseScope, statusEvent, {
+        includeOutput: true,
+        directoryId: 'directory-b'
+      }),
+      false
+    );
+    assert.equal(
+      internals.matchesObservedFilter(baseScope, statusEvent, {
+        includeOutput: true,
+        conversationId: 'conversation-b'
+      }),
+      false
+    );
+    assert.equal(
+      internals.matchesObservedFilter(baseScope, statusEvent, {
+        includeOutput: true,
+        tenantId: 'tenant-a',
+        userId: 'user-a',
+        workspaceId: 'workspace-a',
+        directoryId: 'directory-a',
+        conversationId: 'conversation-a'
+      }),
+      true
+    );
+
+    internals.publishObservedEvent(baseScope, statusEvent);
+    internals.publishObservedEvent(baseScope, statusEvent);
+    assert.equal(internals.streamJournal.length, 1);
+    assert.equal(internals.streamJournal[0]?.cursor, 2);
+  } finally {
+    await server.close();
+  }
+
+  injectedStore.upsertDirectory({
+    directoryId: 'after-close-directory',
+    tenantId: 'tenant-after',
+    userId: 'user-after',
+    workspaceId: 'workspace-after',
+    path: '/tmp/after-close'
+  });
+  injectedStore.close();
 });

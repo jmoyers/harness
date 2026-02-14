@@ -36,6 +36,84 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
     },
     {
       kind: 'command',
+      commandId: 'c0a',
+      command: {
+        type: 'directory.upsert',
+        directoryId: 'directory-1',
+        tenantId: 'tenant-local',
+        userId: 'user-local',
+        workspaceId: 'workspace-local',
+        path: '/tmp/project'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c0b',
+      command: {
+        type: 'directory.list',
+        tenantId: 'tenant-local',
+        userId: 'user-local',
+        workspaceId: 'workspace-local',
+        includeArchived: true,
+        limit: 10
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c0c',
+      command: {
+        type: 'conversation.create',
+        conversationId: 'conversation-1',
+        directoryId: 'directory-1',
+        title: 'untitled task 1',
+        agentType: 'codex'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c0d',
+      command: {
+        type: 'conversation.list',
+        directoryId: 'directory-1',
+        tenantId: 'tenant-local',
+        userId: 'user-local',
+        workspaceId: 'workspace-local',
+        includeArchived: false,
+        limit: 20
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c0e',
+      command: {
+        type: 'conversation.archive',
+        conversationId: 'conversation-1'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c0f',
+      command: {
+        type: 'stream.subscribe',
+        tenantId: 'tenant-local',
+        userId: 'user-local',
+        workspaceId: 'workspace-local',
+        directoryId: 'directory-1',
+        conversationId: 'conversation-1',
+        includeOutput: true,
+        afterCursor: 5
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c0g',
+      command: {
+        type: 'stream.unsubscribe',
+        subscriptionId: 'subscription-1'
+      }
+    },
+    {
+      kind: 'command',
       commandId: 'c1x',
       command: {
         type: 'session.list',
@@ -225,6 +303,103 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
       command: {
         type: 'session.list',
         status: 'bad-status'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2directory',
+      command: {
+        type: 'directory.upsert'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2directoryb',
+      command: {
+        type: 'directory.upsert',
+        path: 3
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2directoryc',
+      command: {
+        type: 'directory.upsert',
+        path: '/tmp/project',
+        tenantId: 3
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2directoryd',
+      command: {
+        type: 'directory.list',
+        includeArchived: 'yes'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2directorye',
+      command: {
+        type: 'directory.list',
+        limit: 0
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2conversation',
+      command: {
+        type: 'conversation.create',
+        directoryId: 'directory-1',
+        title: 'title'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2conversationb',
+      command: {
+        type: 'conversation.create',
+        directoryId: 'directory-1',
+        title: 'title',
+        agentType: 9
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2conversationc',
+      command: {
+        type: 'conversation.list',
+        limit: 0
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2conversationd',
+      command: {
+        type: 'conversation.archive'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2stream',
+      command: {
+        type: 'stream.subscribe',
+        includeOutput: 'yes'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2streamb',
+      command: {
+        type: 'stream.subscribe',
+        afterCursor: -1
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2streamc',
+      command: {
+        type: 'stream.unsubscribe'
       }
     },
     {
@@ -527,6 +702,133 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
           signal: 'SIGTERM'
         }
       }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 12,
+      event: {
+        type: 'session-status',
+        sessionId: 's1',
+        status: 'running',
+        attentionReason: null,
+        live: true,
+        ts: new Date(0).toISOString(),
+        directoryId: 'directory-1',
+        conversationId: 'conversation-1'
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 12.1,
+      event: {
+        type: 'session-status',
+        sessionId: 's1',
+        status: 'needs-input',
+        attentionReason: 'approval',
+        live: true,
+        ts: new Date(0).toISOString(),
+        directoryId: 'directory-1',
+        conversationId: 'conversation-1'
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 12.2,
+      event: {
+        type: 'session-status',
+        sessionId: 's1',
+        status: 'completed',
+        attentionReason: null,
+        live: false,
+        ts: new Date(0).toISOString(),
+        directoryId: null,
+        conversationId: null
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 12.3,
+      event: {
+        type: 'session-status',
+        sessionId: 's1',
+        status: 'exited',
+        attentionReason: null,
+        live: false,
+        ts: new Date(0).toISOString(),
+        directoryId: null,
+        conversationId: null
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 13,
+      event: {
+        type: 'session-output',
+        sessionId: 's1',
+        outputCursor: 4,
+        chunkBase64: Buffer.from('x', 'utf8').toString('base64'),
+        ts: new Date(0).toISOString(),
+        directoryId: null,
+        conversationId: null
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 14,
+      event: {
+        type: 'directory-upserted',
+        directory: {
+          directoryId: 'directory-1'
+        }
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 15,
+      event: {
+        type: 'conversation-created',
+        conversation: {
+          conversationId: 'conversation-1'
+        }
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 16,
+      event: {
+        type: 'conversation-archived',
+        conversationId: 'conversation-1',
+        ts: new Date(0).toISOString()
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 17,
+      event: {
+        type: 'session-event',
+        sessionId: 's1',
+        event: {
+          type: 'notify',
+          record: {
+            ts: new Date(0).toISOString(),
+            payload: {
+              type: 'notify-test'
+            }
+          }
+        },
+        ts: new Date(0).toISOString(),
+        directoryId: null,
+        conversationId: null
+      }
     }
   ];
 
@@ -602,6 +904,222 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
           code: null,
           signal: '9'
         }
+      }
+    },
+    {
+      kind: 'pty.event',
+      sessionId: 's1',
+      event: {
+        type: 'session-exit',
+        exit: {
+          code: 'x',
+          signal: null
+        }
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 'x',
+      event: {
+        type: 'directory-upserted',
+        directory: {}
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: null
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {}
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 99
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'session-status',
+        sessionId: 's1',
+        status: 'running',
+        attentionReason: 7,
+        live: true,
+        ts: new Date(0).toISOString(),
+        directoryId: null,
+        conversationId: null
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'session-status',
+        sessionId: 's1',
+        status: 'running',
+        attentionReason: null,
+        live: true,
+        ts: new Date(0).toISOString()
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'session-status',
+        sessionId: 's1',
+        status: 'running',
+        live: true,
+        ts: new Date(0).toISOString(),
+        directoryId: null,
+        conversationId: null
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'session-output',
+        sessionId: 's1',
+        outputCursor: 1,
+        chunkBase64: 'x',
+        ts: new Date(0).toISOString(),
+        directoryId: 4,
+        conversationId: null
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'conversation-created',
+        conversation: null
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'conversation-created'
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'conversation-archived',
+        conversationId: null,
+        ts: new Date(0).toISOString()
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'conversation-archived',
+        conversationId: 'conversation-1',
+        ts: null
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'session-status',
+        sessionId: 's1',
+        status: 'bad',
+        attentionReason: null,
+        live: true,
+        ts: new Date(0).toISOString(),
+        directoryId: null,
+        conversationId: null
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'session-event',
+        sessionId: 's1',
+        event: {
+          type: 'notify',
+          record: {
+            ts: new Date(0).toISOString(),
+            payload: {
+              type: 'notify'
+            }
+          }
+        },
+        ts: new Date(0).toISOString()
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'session-output',
+        sessionId: 's1',
+        outputCursor: 1,
+        chunkBase64: 'x',
+        ts: new Date(0).toISOString()
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'unknown-observed-event'
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'session-output',
+        sessionId: 's1',
+        outputCursor: 'x',
+        chunkBase64: 'x',
+        ts: new Date(0).toISOString(),
+        directoryId: null,
+        conversationId: null
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'session-event',
+        sessionId: 's1',
+        event: {
+          type: 'unknown'
+        },
+        ts: new Date(0).toISOString(),
+        directoryId: null,
+        conversationId: null
       }
     },
     {

@@ -950,6 +950,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
   - `src/control-plane/stream-protocol.ts` defines typed newline-delimited TCP stream envelopes for command lifecycle, PTY pass-through signals, and async event delivery.
     - protocol now includes `auth`, `auth.ok`, `auth.error` envelopes and session query commands (`session.list`, `session.status`, `session.snapshot`).
     - `session.list` now supports deterministic sort (`attention-first`, `started-desc`, `started-asc`) and scope/status/live filters for multi-conversation clients.
+    - protocol now includes persisted directory/conversation operations (`directory.upsert`, `directory.list`, `conversation.create`, `conversation.list`, `conversation.archive`) and scoped live subscriptions (`stream.subscribe`, `stream.unsubscribe`, `stream.event`).
   - `src/control-plane/stream-server.ts` provides a session-aware control-plane server that executes PTY/session operations and broadcasts output/events to subscribed clients.
     - optional shared-token auth is enforced before non-auth commands when configured.
     - per-connection output buffering is bounded; slow consumers are disconnected once buffered output exceeds configured limits.
@@ -957,11 +958,14 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - session summaries now include PTY `processId` for per-session telemetry in operator clients.
     - exited sessions are tombstoned with TTL-based cleanup to avoid unbounded daemon memory growth while preserving short-lived post-exit status/snapshot queries.
     - control-plane wrappers now include `attention.list`, `session.respond`, `session.interrupt`, and `session.remove` to provide parity-safe steering and explicit tombstone cleanup.
+    - stream subscriptions support scope filters (`tenant/user/workspace/directory/conversation`), optional output inclusion, and cursor replay backed by an in-memory bounded journal.
+    - session runtime changes and directory/conversation mutations are persisted in `src/store/control-plane-store.ts` (tenanted SQLite state store) and published through the same stream.
   - `src/control-plane/stream-client.ts` provides a typed client used by operators and automation to issue the same control-plane operations.
     - command ids are UUID-based and auth handshake is supported in `connectControlPlaneStreamClient`.
   - `src/control-plane/codex-session-stream.ts` extracts mux/session control-plane wiring into reusable infrastructure (embedded or remote transport).
   - `scripts/control-plane-daemon.ts` provides a standalone control-plane process (`npm run control-plane:daemon`) for split client/server operation.
     - non-loopback bind now requires an auth token (`--auth-token` or `HARNESS_CONTROL_PLANE_AUTH_TOKEN`).
+    - daemon state persistence path is configurable (`--state-db-path` / `HARNESS_CONTROL_PLANE_DB_PATH`).
   - `scripts/codex-live-mux-launch.ts` provides a one-command launcher (`npm run codex:live:mux:launch -- ...`) that boots a dedicated daemon and connects the remote mux client for client/server parity without manual multi-terminal setup.
     - launcher mode sets local-exit policy so `Ctrl+C` cleanly tears down both mux client and daemon.
   - `scripts/codex-live-mux.ts` provides the first-party split UI (left: workspace rail, right: live steerable Codex session rendered via shared snapshot oracle) with:

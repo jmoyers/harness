@@ -1,0 +1,534 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { tmpdir } from 'node:os';
+import {
+  SqliteControlPlaneStore,
+  normalizeStoredConversationRow,
+  normalizeStoredDirectoryRow
+} from '../src/store/control-plane-store.ts';
+
+function tempStorePath(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'harness-control-plane-store-'));
+  return join(dir, 'control-plane.sqlite');
+}
+
+void test('control-plane store upserts directories and persists conversations/runtime', () => {
+  const storePath = tempStorePath();
+  const store = new SqliteControlPlaneStore(storePath);
+  try {
+    const directory = store.upsertDirectory({
+      directoryId: 'dir-1',
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      path: '/tmp/workspace-1'
+    });
+    assert.equal(directory.directoryId, 'dir-1');
+    assert.equal(directory.archivedAt, null);
+
+    const sameDirectory = store.upsertDirectory({
+      directoryId: 'dir-ignored',
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      path: '/tmp/workspace-1'
+    });
+    assert.equal(sameDirectory.directoryId, 'dir-1');
+
+    const conversation = store.createConversation({
+      conversationId: 'conversation-1',
+      directoryId: 'dir-1',
+      title: 'untitled task 1',
+      agentType: 'codex'
+    });
+    assert.equal(conversation.conversationId, 'conversation-1');
+    assert.equal(conversation.runtimeStatus, 'completed');
+    assert.equal(conversation.runtimeLive, false);
+
+    const runtimeUpdated = store.updateConversationRuntime('conversation-1', {
+      status: 'needs-input',
+      live: true,
+      attentionReason: 'approval',
+      processId: 73001,
+      lastEventAt: '2026-02-14T00:00:00.000Z',
+      lastExit: null
+    });
+    assert.equal(runtimeUpdated?.runtimeStatus, 'needs-input');
+    assert.equal(runtimeUpdated?.runtimeLive, true);
+    assert.equal(runtimeUpdated?.runtimeAttentionReason, 'approval');
+    assert.equal(runtimeUpdated?.runtimeProcessId, 73001);
+
+    const runtimeExited = store.updateConversationRuntime('conversation-1', {
+      status: 'exited',
+      live: false,
+      attentionReason: null,
+      processId: null,
+      lastEventAt: '2026-02-14T00:01:00.000Z',
+      lastExit: {
+        code: 130,
+        signal: 'SIGINT'
+      }
+    });
+    assert.equal(runtimeExited?.runtimeLastExit?.signal, 'SIGINT');
+    assert.equal(runtimeExited?.runtimeLastExit?.code, 130);
+
+    const listedDirectories = store.listDirectories({
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      limit: 10
+    });
+    assert.equal(listedDirectories.length, 1);
+    assert.equal(store.listDirectories({}).length, 1);
+    assert.equal(store.listDirectories({ includeArchived: true }).length, 1);
+
+    const listedConversations = store.listConversations({
+      directoryId: 'dir-1',
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      limit: 10
+    });
+    assert.equal(listedConversations.length, 1);
+    assert.equal(listedConversations[0]?.conversationId, 'conversation-1');
+    assert.equal(store.listConversations({ includeArchived: true }).length, 1);
+
+    const archived = store.archiveConversation('conversation-1');
+    assert.notEqual(archived.archivedAt, null);
+    assert.equal(store.listConversations({ directoryId: 'dir-1' }).length, 0);
+    assert.equal(
+      store.listConversations({
+        directoryId: 'dir-1',
+        includeArchived: true
+      }).length,
+      1
+    );
+  } finally {
+    store.close();
+  }
+
+  const reopened = new SqliteControlPlaneStore(storePath);
+  try {
+    const persistedDirectory = reopened.getDirectory('dir-1');
+    const persistedConversation = reopened.getConversation('conversation-1');
+    assert.equal(persistedDirectory?.path, '/tmp/workspace-1');
+    assert.equal(persistedConversation?.runtimeStatus, 'exited');
+    assert.equal(persistedConversation?.runtimeLastExit?.signal, 'SIGINT');
+  } finally {
+    reopened.close();
+    rmSync(storePath, { force: true });
+    rmSync(dirname(storePath), { recursive: true, force: true });
+  }
+});
+
+void test('control-plane store restores archived directory and validates errors', () => {
+  const store = new SqliteControlPlaneStore(':memory:');
+  try {
+    const dir = store.upsertDirectory({
+      directoryId: 'dir-a',
+      tenantId: 'tenant-a',
+      userId: 'user-a',
+      workspaceId: 'workspace-a',
+      path: '/tmp/dir-a'
+    });
+    assert.equal(dir.directoryId, 'dir-a');
+
+    const conversation = store.createConversation({
+      conversationId: 'conversation-a',
+      directoryId: 'dir-a',
+      title: 'untitled task a',
+      agentType: 'codex'
+    });
+    assert.equal(conversation.runtimeLive, false);
+
+    store.archiveConversation('conversation-a');
+    assert.throws(
+      () =>
+        store.createConversation({
+          conversationId: 'conversation-a',
+          directoryId: 'dir-a',
+          title: 'dup',
+          agentType: 'codex'
+        }),
+      /conversation already exists/
+    );
+    assert.throws(
+      () =>
+        store.archiveConversation('missing-conversation'),
+      /conversation not found/
+    );
+    assert.equal(store.updateConversationRuntime('missing-conversation', {
+      status: 'running',
+      live: true,
+      attentionReason: null,
+      processId: null,
+      lastEventAt: null,
+      lastExit: null
+    }), null);
+
+    const internals = store as unknown as {
+      db: {
+        prepare: (sql: string) => { run: (...args: Array<number | string | null>) => void };
+      };
+    };
+    internals.db.prepare('UPDATE directories SET archived_at = ? WHERE directory_id = ?').run(
+      '2026-02-14T00:00:00.000Z',
+      'dir-a'
+    );
+
+    const restored = store.upsertDirectory({
+      directoryId: 'dir-new',
+      tenantId: 'tenant-a',
+      userId: 'user-a',
+      workspaceId: 'workspace-a',
+      path: '/tmp/dir-a'
+    });
+    assert.equal(restored.directoryId, 'dir-a');
+    assert.equal(restored.archivedAt, null);
+
+    internals.db.prepare('UPDATE directories SET archived_at = ? WHERE directory_id = ?').run(
+      '2026-02-14T00:02:00.000Z',
+      'dir-a'
+    );
+    assert.throws(
+      () =>
+        store.createConversation({
+          conversationId: 'conversation-archived-directory',
+          directoryId: 'dir-a',
+          title: 't',
+          agentType: 'codex'
+        }),
+      /directory not found/
+    );
+
+    assert.throws(
+      () =>
+        store.createConversation({
+          conversationId: 'conversation-b',
+          directoryId: 'missing-directory',
+          title: 't',
+          agentType: 'codex'
+        }),
+      /directory not found/
+    );
+  } finally {
+    store.close();
+  }
+});
+
+void test('control-plane store normalization helpers validate row shapes and fields', () => {
+  assert.throws(() => normalizeStoredDirectoryRow(null), /expected object row/);
+  assert.throws(
+    () =>
+      normalizeStoredDirectoryRow({
+        directory_id: 1
+      }),
+    /expected string for directory_id/
+  );
+
+  assert.throws(() => normalizeStoredConversationRow(null), /expected object row/);
+  assert.throws(
+    () =>
+      normalizeStoredConversationRow({
+        conversation_id: 'c',
+        directory_id: 'd',
+        tenant_id: 't',
+        user_id: 'u',
+        workspace_id: 'w',
+        title: 'title',
+        agent_type: 'codex',
+        created_at: '2026-02-14T00:00:00.000Z',
+        archived_at: null,
+        runtime_status: 'invalid-status',
+        runtime_live: 0,
+        runtime_attention_reason: null,
+        runtime_process_id: null,
+        runtime_last_event_at: null,
+        runtime_last_exit_code: null,
+        runtime_last_exit_signal: null
+      }),
+    /runtime_status enum/
+  );
+  assert.throws(
+    () =>
+      normalizeStoredConversationRow({
+        conversation_id: 'c',
+        directory_id: 'd',
+        tenant_id: 't',
+        user_id: 'u',
+        workspace_id: 'w',
+        title: 'title',
+        agent_type: 'codex',
+        created_at: '2026-02-14T00:00:00.000Z',
+        archived_at: null,
+        runtime_status: 'running',
+        runtime_live: 2,
+        runtime_attention_reason: null,
+        runtime_process_id: null,
+        runtime_last_event_at: null,
+        runtime_last_exit_code: null,
+        runtime_last_exit_signal: null
+      }),
+    /unexpected flag value/
+  );
+  assert.throws(
+    () =>
+      normalizeStoredConversationRow({
+        conversation_id: 'c',
+        directory_id: 'd',
+        tenant_id: 't',
+        user_id: 'u',
+        workspace_id: 'w',
+        title: 'title',
+        agent_type: 'codex',
+        created_at: '2026-02-14T00:00:00.000Z',
+        archived_at: null,
+        runtime_status: 'running',
+        runtime_live: 'true',
+        runtime_attention_reason: null,
+        runtime_process_id: null,
+        runtime_last_event_at: null,
+        runtime_last_exit_code: null,
+        runtime_last_exit_signal: null
+      }),
+    /integer flag/
+  );
+  assert.throws(
+    () =>
+      normalizeStoredConversationRow({
+        conversation_id: 'c',
+        directory_id: 'd',
+        tenant_id: 't',
+        user_id: 'u',
+        workspace_id: 'w',
+        title: 'title',
+        agent_type: 'codex',
+        created_at: '2026-02-14T00:00:00.000Z',
+        archived_at: null,
+        runtime_status: 'running',
+        runtime_live: 1.5,
+        runtime_attention_reason: null,
+        runtime_process_id: null,
+        runtime_last_event_at: null,
+        runtime_last_exit_code: null,
+        runtime_last_exit_signal: null
+      }),
+    /integer flag/
+  );
+  assert.throws(
+    () =>
+      normalizeStoredConversationRow({
+        conversation_id: 'c',
+        directory_id: 'd',
+        tenant_id: 't',
+        user_id: 'u',
+        workspace_id: 'w',
+        title: 'title',
+        agent_type: 'codex',
+        created_at: '2026-02-14T00:00:00.000Z',
+        archived_at: null,
+        runtime_status: 'running',
+        runtime_live: 1,
+        runtime_attention_reason: null,
+        runtime_process_id: 'x',
+        runtime_last_event_at: null,
+        runtime_last_exit_code: null,
+        runtime_last_exit_signal: null
+      }),
+    /finite number/
+  );
+  assert.throws(
+    () =>
+      normalizeStoredConversationRow({
+        conversation_id: 'c',
+        directory_id: 'd',
+        tenant_id: 't',
+        user_id: 'u',
+        workspace_id: 'w',
+        title: 'title',
+        agent_type: 'codex',
+        created_at: '2026-02-14T00:00:00.000Z',
+        archived_at: null,
+        runtime_status: 'running',
+        runtime_live: 1,
+        runtime_attention_reason: null,
+        runtime_process_id: Infinity,
+        runtime_last_event_at: null,
+        runtime_last_exit_code: null,
+        runtime_last_exit_signal: null
+      }),
+    /finite number/
+  );
+  assert.throws(
+    () =>
+      normalizeStoredConversationRow({
+        conversation_id: 'c',
+        directory_id: 'd',
+        tenant_id: 't',
+        user_id: 'u',
+        workspace_id: 'w',
+        title: 'title',
+        agent_type: 'codex',
+        created_at: '2026-02-14T00:00:00.000Z',
+        archived_at: null,
+        runtime_status: 'running',
+        runtime_live: 1,
+        runtime_attention_reason: null,
+        runtime_process_id: null,
+        runtime_last_event_at: null,
+        runtime_last_exit_code: null,
+        runtime_last_exit_signal: 'BROKEN'
+      }),
+    /signal name/
+  );
+  const normalizedSignalOnly = normalizeStoredConversationRow({
+    conversation_id: 'c-signal',
+    directory_id: 'd',
+    tenant_id: 't',
+    user_id: 'u',
+    workspace_id: 'w',
+    title: 'title',
+    agent_type: 'codex',
+    created_at: '2026-02-14T00:00:00.000Z',
+    archived_at: null,
+    runtime_status: 'running',
+    runtime_live: 1,
+    runtime_attention_reason: null,
+    runtime_process_id: null,
+    runtime_last_event_at: null,
+    runtime_last_exit_code: null,
+    runtime_last_exit_signal: 'SIGTERM'
+  });
+  assert.equal(normalizedSignalOnly.runtimeLastExit?.code, null);
+  assert.equal(normalizedSignalOnly.runtimeLastExit?.signal, 'SIGTERM');
+
+  const normalizedCodeOnly = normalizeStoredConversationRow({
+    conversation_id: 'c-code',
+    directory_id: 'd',
+    tenant_id: 't',
+    user_id: 'u',
+    workspace_id: 'w',
+    title: 'title',
+    agent_type: 'codex',
+    created_at: '2026-02-14T00:00:00.000Z',
+    archived_at: null,
+    runtime_status: 'running',
+    runtime_live: 1,
+    runtime_attention_reason: null,
+    runtime_process_id: null,
+    runtime_last_event_at: null,
+    runtime_last_exit_code: 130,
+    runtime_last_exit_signal: null
+  });
+  assert.equal(normalizedCodeOnly.runtimeLastExit?.code, 130);
+  assert.equal(normalizedCodeOnly.runtimeLastExit?.signal, null);
+});
+
+void test('control-plane store rollback guards cover impossible post-write null checks', () => {
+  const store = new SqliteControlPlaneStore(':memory:');
+  try {
+    const originalGetDirectory = store.getDirectory.bind(store);
+    const originalGetConversation = store.getConversation.bind(store);
+    const internals = store as unknown as {
+      db: {
+        prepare: (sql: string) => { run: (...args: Array<number | string | null>) => void };
+      };
+    };
+
+    store.getDirectory = (() => null) as typeof store.getDirectory;
+    assert.throws(
+      () =>
+        store.upsertDirectory({
+          directoryId: 'dir-rollback',
+          tenantId: 'tenant-rollback',
+          userId: 'user-rollback',
+          workspaceId: 'workspace-rollback',
+          path: '/tmp/rollback-directory'
+        }),
+      /directory insert failed/
+    );
+
+    store.getDirectory = originalGetDirectory;
+    store.upsertDirectory({
+      directoryId: 'dir-restore-fail',
+      tenantId: 'tenant-live',
+      userId: 'user-live',
+      workspaceId: 'workspace-live',
+      path: '/tmp/restore-fail'
+    });
+    internals.db.prepare('UPDATE directories SET archived_at = ? WHERE directory_id = ?').run(
+      '2026-02-14T00:03:00.000Z',
+      'dir-restore-fail'
+    );
+    store.getDirectory = ((directoryId: string) => {
+      if (directoryId === 'dir-restore-fail') {
+        return null;
+      }
+      return originalGetDirectory(directoryId);
+    }) as typeof store.getDirectory;
+    assert.throws(
+      () =>
+        store.upsertDirectory({
+          directoryId: 'dir-restore-fail-new',
+          tenantId: 'tenant-live',
+          userId: 'user-live',
+          workspaceId: 'workspace-live',
+          path: '/tmp/restore-fail'
+        }),
+      /directory missing after restore/
+    );
+
+    store.getDirectory = originalGetDirectory;
+    store.upsertDirectory({
+      directoryId: 'dir-live',
+      tenantId: 'tenant-live',
+      userId: 'user-live',
+      workspaceId: 'workspace-live',
+      path: '/tmp/live-directory'
+    });
+
+    store.getConversation = (() => null) as typeof store.getConversation;
+    assert.throws(
+      () =>
+        store.createConversation({
+          conversationId: 'conversation-rollback',
+          directoryId: 'dir-live',
+          title: 'rollback conversation',
+          agentType: 'codex'
+        }),
+      /conversation insert failed/
+    );
+    assert.equal(store.listConversations({ directoryId: 'dir-live' }).length, 0);
+    store.getConversation = originalGetConversation;
+
+    const created = store.createConversation({
+      conversationId: 'conversation-live',
+      directoryId: 'dir-live',
+      title: 'live conversation',
+      agentType: 'codex'
+    });
+    assert.equal(created.conversationId, 'conversation-live');
+
+    let getConversationCallCount = 0;
+    store.getConversation = ((conversationId: string) => {
+      getConversationCallCount += 1;
+      if (getConversationCallCount >= 2) {
+        return null;
+      }
+      return originalGetConversation(conversationId);
+    }) as typeof store.getConversation;
+    assert.throws(
+      () => store.archiveConversation('conversation-live'),
+      /conversation missing after archive/
+    );
+
+    store.getConversation = originalGetConversation;
+    const stillPresent = store.getConversation('conversation-live');
+    assert.notEqual(stillPresent, null);
+    assert.equal(stillPresent?.archivedAt, null);
+  } finally {
+    store.close();
+  }
+});

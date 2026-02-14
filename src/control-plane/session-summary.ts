@@ -3,6 +3,7 @@ import type { StreamSessionRuntimeStatus } from './stream-protocol.ts';
 
 interface StreamSessionSummary {
   readonly sessionId: string;
+  readonly directoryId: string | null;
   readonly tenantId: string;
   readonly userId: string;
   readonly workspaceId: string;
@@ -105,6 +106,7 @@ export function parseSessionSummaryRecord(value: unknown): StreamSessionSummary 
     return null;
   }
   const sessionId = readString(record['sessionId']);
+  const directoryId = readNullableString(record['directoryId']);
   const tenantId = readString(record['tenantId']);
   const userId = readString(record['userId']);
   const workspaceId = readString(record['workspaceId']);
@@ -112,6 +114,7 @@ export function parseSessionSummaryRecord(value: unknown): StreamSessionSummary 
   const status = readString(record['status']);
   if (
     sessionId === null ||
+    directoryId === undefined ||
     tenantId === null ||
     userId === null ||
     workspaceId === null ||
@@ -163,6 +166,7 @@ export function parseSessionSummaryRecord(value: unknown): StreamSessionSummary 
   }
   return {
     sessionId,
+    directoryId,
     tenantId,
     userId,
     workspaceId,

@@ -23,10 +23,12 @@ This recording shows three separate Codex sessions running in parallel, with liv
 
 - Host real agent CLIs inside first-party PTY sessions with live human steering.
 - Run multiple conversations concurrently and switch active control instantly.
+- Persist directory/conversation metadata across reconnects via the control-plane SQLite state store.
 - Show a directory-scoped left rail with conversation status, git summary, and per-session telemetry.
 - Normalize actionable session states for operators (`working`, `needs action`, `idle`, `complete`, `exited`).
 - Support keyboard and mouse-driven conversation selection in the mux.
 - Keep one protocol path for both human UI and API clients through the control-plane stream.
+- Expose stream subscriptions with scoped replay for automation clients monitoring live session state/output.
 - Record terminal frames and export deterministic GIF artifacts.
 
 ## Technical Strategy

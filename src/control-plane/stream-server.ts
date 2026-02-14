@@ -10,6 +10,7 @@ import {
   consumeJsonLines,
   encodeStreamEnvelope,
   parseClientEnvelope,
+  type StreamObservedEvent,
   type StreamSessionListSort,
   type StreamSessionRuntimeStatus,
   type StreamClientEnvelope,
@@ -18,6 +19,11 @@ import {
   type StreamSessionEvent,
   type StreamSignal
 } from './stream-protocol.ts';
+import {
+  SqliteControlPlaneStore,
+  type ControlPlaneConversationRecord,
+  type ControlPlaneDirectoryRecord
+} from '../store/control-plane-store.ts';
 
 interface SessionDataEvent {
   cursor: number;
@@ -59,6 +65,9 @@ interface StartControlPlaneStreamServerOptions {
   authToken?: string;
   maxConnectionBufferedBytes?: number;
   sessionExitTombstoneTtlMs?: number;
+  maxStreamJournalEntries?: number;
+  stateStorePath?: string;
+  stateStore?: SqliteControlPlaneStore;
 }
 
 interface ConnectionState {
@@ -68,6 +77,7 @@ interface ConnectionState {
   authenticated: boolean;
   attachedSessionIds: Set<string>;
   eventSessionIds: Set<string>;
+  streamSubscriptionIds: Set<string>;
   queuedPayloads: string[];
   queuedPayloadBytes: number;
   writeBlocked: boolean;
@@ -75,6 +85,7 @@ interface ConnectionState {
 
 interface SessionState {
   id: string;
+  directoryId: string | null;
   tenantId: string;
   userId: string;
   workspaceId: string;
@@ -91,10 +102,41 @@ interface SessionState {
   startedAt: string;
   exitedAt: string | null;
   tombstoneTimer: NodeJS.Timeout | null;
+  lastObservedOutputCursor: number;
+}
+
+interface StreamSubscriptionFilter {
+  tenantId?: string;
+  userId?: string;
+  workspaceId?: string;
+  directoryId?: string;
+  conversationId?: string;
+  includeOutput: boolean;
+}
+
+interface StreamSubscriptionState {
+  id: string;
+  connectionId: string;
+  filter: StreamSubscriptionFilter;
+}
+
+interface StreamObservedScope {
+  tenantId: string;
+  userId: string;
+  workspaceId: string;
+  directoryId: string | null;
+  conversationId: string | null;
+}
+
+interface StreamJournalEntry {
+  cursor: number;
+  scope: StreamObservedScope;
+  event: StreamObservedEvent;
 }
 
 const DEFAULT_MAX_CONNECTION_BUFFERED_BYTES = 4 * 1024 * 1024;
 const DEFAULT_SESSION_EXIT_TOMBSTONE_TTL_MS = 5 * 60 * 1000;
+const DEFAULT_MAX_STREAM_JOURNAL_ENTRIES = 10000;
 const DEFAULT_TENANT_ID = 'tenant-local';
 const DEFAULT_USER_ID = 'user-local';
 const DEFAULT_WORKSPACE_ID = 'workspace-local';
@@ -175,11 +217,18 @@ export class ControlPlaneStreamServer {
   private readonly authToken: string | null;
   private readonly maxConnectionBufferedBytes: number;
   private readonly sessionExitTombstoneTtlMs: number;
+  private readonly maxStreamJournalEntries: number;
   private readonly startSession: StartControlPlaneSession;
+  private readonly stateStore: SqliteControlPlaneStore;
+  private readonly ownsStateStore: boolean;
   private readonly server: Server;
   private readonly connections = new Map<string, ConnectionState>();
   private readonly sessions = new Map<string, SessionState>();
+  private readonly streamSubscriptions = new Map<string, StreamSubscriptionState>();
+  private readonly streamJournal: StreamJournalEntry[] = [];
+  private streamCursor = 0;
   private listening = false;
+  private stateStoreClosed = false;
 
   constructor(options: StartControlPlaneStreamServerOptions = {}) {
     this.host = options.host ?? '127.0.0.1';
@@ -189,10 +238,19 @@ export class ControlPlaneStreamServer {
       options.maxConnectionBufferedBytes ?? DEFAULT_MAX_CONNECTION_BUFFERED_BYTES;
     this.sessionExitTombstoneTtlMs =
       options.sessionExitTombstoneTtlMs ?? DEFAULT_SESSION_EXIT_TOMBSTONE_TTL_MS;
+    this.maxStreamJournalEntries =
+      options.maxStreamJournalEntries ?? DEFAULT_MAX_STREAM_JOURNAL_ENTRIES;
     if (options.startSession === undefined) {
       throw new Error('startSession is required');
     }
     this.startSession = options.startSession;
+    if (options.stateStore !== undefined) {
+      this.stateStore = options.stateStore;
+      this.ownsStateStore = false;
+    } else {
+      this.stateStore = new SqliteControlPlaneStore(options.stateStorePath ?? ':memory:');
+      this.ownsStateStore = true;
+    }
     this.server = createServer((socket) => {
       this.handleConnection(socket);
     });
@@ -237,17 +295,29 @@ export class ControlPlaneStreamServer {
       connection.socket.destroy();
     }
     this.connections.clear();
+    this.streamSubscriptions.clear();
+    this.streamJournal.length = 0;
 
     if (!this.listening) {
+      this.closeOwnedStateStore();
       return;
     }
 
     await new Promise<void>((resolve) => {
       this.server.close(() => {
         this.listening = false;
+        this.closeOwnedStateStore();
         resolve();
       });
     });
+  }
+
+  private closeOwnedStateStore(): void {
+    if (!this.ownsStateStore || this.stateStoreClosed) {
+      return;
+    }
+    this.stateStore.close();
+    this.stateStoreClosed = true;
   }
 
   private handleConnection(socket: Socket): void {
@@ -259,6 +329,7 @@ export class ControlPlaneStreamServer {
       authenticated: this.authToken === null,
       attachedSessionIds: new Set<string>(),
       eventSessionIds: new Set<string>(),
+      streamSubscriptionIds: new Set<string>(),
       queuedPayloads: [],
       queuedPayloadBytes: 0,
       writeBlocked: false
@@ -378,6 +449,208 @@ export class ControlPlaneStreamServer {
   }
 
   private executeCommand(connection: ConnectionState, command: StreamCommand): Record<string, unknown> {
+    if (command.type === 'directory.upsert') {
+      const directory = this.stateStore.upsertDirectory({
+        directoryId: command.directoryId ?? `directory-${randomUUID()}`,
+        tenantId: command.tenantId ?? DEFAULT_TENANT_ID,
+        userId: command.userId ?? DEFAULT_USER_ID,
+        workspaceId: command.workspaceId ?? DEFAULT_WORKSPACE_ID,
+        path: command.path
+      });
+      const record = this.directoryRecord(directory);
+      this.publishObservedEvent(
+        {
+          tenantId: directory.tenantId,
+          userId: directory.userId,
+          workspaceId: directory.workspaceId,
+          directoryId: directory.directoryId,
+          conversationId: null
+        },
+        {
+          type: 'directory-upserted',
+          directory: record
+        }
+      );
+      return {
+        directory: record
+      };
+    }
+
+    if (command.type === 'directory.list') {
+      const query: {
+        tenantId?: string;
+        userId?: string;
+        workspaceId?: string;
+        includeArchived?: boolean;
+        limit?: number;
+      } = {};
+      if (command.tenantId !== undefined) {
+        query.tenantId = command.tenantId;
+      }
+      if (command.userId !== undefined) {
+        query.userId = command.userId;
+      }
+      if (command.workspaceId !== undefined) {
+        query.workspaceId = command.workspaceId;
+      }
+      if (command.includeArchived !== undefined) {
+        query.includeArchived = command.includeArchived;
+      }
+      if (command.limit !== undefined) {
+        query.limit = command.limit;
+      }
+      const directories = this.stateStore
+        .listDirectories(query)
+        .map((directory) => this.directoryRecord(directory));
+      return {
+        directories
+      };
+    }
+
+    if (command.type === 'conversation.create') {
+      const conversation = this.stateStore.createConversation({
+        conversationId: command.conversationId ?? `conversation-${randomUUID()}`,
+        directoryId: command.directoryId,
+        title: command.title,
+        agentType: command.agentType
+      });
+      const record = this.conversationRecord(conversation);
+      this.publishObservedEvent(
+        {
+          tenantId: conversation.tenantId,
+          userId: conversation.userId,
+          workspaceId: conversation.workspaceId,
+          directoryId: conversation.directoryId,
+          conversationId: conversation.conversationId
+        },
+        {
+          type: 'conversation-created',
+          conversation: record
+        }
+      );
+      return {
+        conversation: record
+      };
+    }
+
+    if (command.type === 'conversation.list') {
+      const query: {
+        directoryId?: string;
+        tenantId?: string;
+        userId?: string;
+        workspaceId?: string;
+        includeArchived?: boolean;
+        limit?: number;
+      } = {};
+      if (command.directoryId !== undefined) {
+        query.directoryId = command.directoryId;
+      }
+      if (command.tenantId !== undefined) {
+        query.tenantId = command.tenantId;
+      }
+      if (command.userId !== undefined) {
+        query.userId = command.userId;
+      }
+      if (command.workspaceId !== undefined) {
+        query.workspaceId = command.workspaceId;
+      }
+      if (command.includeArchived !== undefined) {
+        query.includeArchived = command.includeArchived;
+      }
+      if (command.limit !== undefined) {
+        query.limit = command.limit;
+      }
+      const conversations = this.stateStore
+        .listConversations(query)
+        .map((conversation) => this.conversationRecord(conversation));
+      return {
+        conversations
+      };
+    }
+
+    if (command.type === 'conversation.archive') {
+      const archived = this.stateStore.archiveConversation(command.conversationId);
+      this.publishObservedEvent(
+        {
+          tenantId: archived.tenantId,
+          userId: archived.userId,
+          workspaceId: archived.workspaceId,
+          directoryId: archived.directoryId,
+          conversationId: archived.conversationId
+        },
+        {
+          type: 'conversation-archived',
+          conversationId: archived.conversationId,
+          ts: archived.archivedAt ?? new Date().toISOString()
+        }
+      );
+      return {
+        conversation: this.conversationRecord(archived)
+      };
+    }
+
+    if (command.type === 'stream.subscribe') {
+      const subscriptionId = `subscription-${randomUUID()}`;
+      const filter: StreamSubscriptionFilter = {
+        includeOutput: command.includeOutput ?? false
+      };
+      if (command.tenantId !== undefined) {
+        filter.tenantId = command.tenantId;
+      }
+      if (command.userId !== undefined) {
+        filter.userId = command.userId;
+      }
+      if (command.workspaceId !== undefined) {
+        filter.workspaceId = command.workspaceId;
+      }
+      if (command.directoryId !== undefined) {
+        filter.directoryId = command.directoryId;
+      }
+      if (command.conversationId !== undefined) {
+        filter.conversationId = command.conversationId;
+      }
+
+      this.streamSubscriptions.set(subscriptionId, {
+        id: subscriptionId,
+        connectionId: connection.id,
+        filter
+      });
+      connection.streamSubscriptionIds.add(subscriptionId);
+
+      const afterCursor = command.afterCursor ?? 0;
+      for (const entry of this.streamJournal) {
+        if (entry.cursor <= afterCursor) {
+          continue;
+        }
+        if (!this.matchesObservedFilter(entry.scope, entry.event, filter)) {
+          continue;
+        }
+        this.sendToConnection(connection.id, {
+          kind: 'stream.event',
+          subscriptionId,
+          cursor: entry.cursor,
+          event: entry.event
+        });
+      }
+
+      return {
+        subscriptionId,
+        cursor: this.streamCursor
+      };
+    }
+
+    if (command.type === 'stream.unsubscribe') {
+      const subscription = this.streamSubscriptions.get(command.subscriptionId);
+      if (subscription !== undefined) {
+        const subscriptionConnection = this.connections.get(subscription.connectionId);
+        subscriptionConnection?.streamSubscriptionIds.delete(command.subscriptionId);
+        this.streamSubscriptions.delete(command.subscriptionId);
+      }
+      return {
+        unsubscribed: true
+      };
+    }
+
     if (command.type === 'session.list') {
       const sort = command.sort ?? 'attention-first';
       const filtered = [...this.sessions.values()].filter((state) => {
@@ -446,8 +719,7 @@ export class ControlPlaneStreamServer {
     if (command.type === 'session.respond') {
       const state = this.requireLiveSession(command.sessionId);
       state.session.write(command.text);
-      state.status = 'running';
-      state.attentionReason = null;
+      this.setSessionStatus(state, 'running', null, null);
       return {
         responded: true,
         sentBytes: Buffer.byteLength(command.text)
@@ -457,8 +729,7 @@ export class ControlPlaneStreamServer {
     if (command.type === 'session.interrupt') {
       const state = this.requireLiveSession(command.sessionId);
       state.session.write('\u0003');
-      state.status = 'running';
-      state.attentionReason = null;
+      this.setSessionStatus(state, 'running', null, null);
       return {
         interrupted: true
       };
@@ -502,11 +773,13 @@ export class ControlPlaneStreamServer {
         this.handleSessionEvent(command.sessionId, event);
       });
 
+      const persistedConversation = this.stateStore.getConversation(command.sessionId);
       this.sessions.set(command.sessionId, {
         id: command.sessionId,
-        tenantId: command.tenantId ?? DEFAULT_TENANT_ID,
-        userId: command.userId ?? DEFAULT_USER_ID,
-        workspaceId: command.workspaceId ?? DEFAULT_WORKSPACE_ID,
+        directoryId: persistedConversation?.directoryId ?? null,
+        tenantId: persistedConversation?.tenantId ?? command.tenantId ?? DEFAULT_TENANT_ID,
+        userId: persistedConversation?.userId ?? command.userId ?? DEFAULT_USER_ID,
+        workspaceId: persistedConversation?.workspaceId ?? command.workspaceId ?? DEFAULT_WORKSPACE_ID,
         worktreeId: command.worktreeId ?? DEFAULT_WORKTREE_ID,
         session,
         eventSubscriberConnectionIds: new Set<string>(),
@@ -519,8 +792,15 @@ export class ControlPlaneStreamServer {
         lastSnapshot: null,
         startedAt: new Date().toISOString(),
         exitedAt: null,
-        tombstoneTimer: null
+        tombstoneTimer: null,
+        lastObservedOutputCursor: session.latestCursorValue()
       });
+
+      const state = this.sessions.get(command.sessionId);
+      if (state !== undefined) {
+        this.persistConversationRuntime(state);
+        this.publishStatusObservedEvent(state);
+      }
 
       return {
         sessionId: command.sessionId
@@ -543,6 +823,25 @@ export class ControlPlaneStreamServer {
               cursor: event.cursor,
               chunkBase64: Buffer.from(event.chunk).toString('base64')
             });
+            const sessionState = this.sessions.get(command.sessionId);
+            if (sessionState !== undefined) {
+              if (event.cursor <= sessionState.lastObservedOutputCursor) {
+                return;
+              }
+              sessionState.lastObservedOutputCursor = event.cursor;
+              this.publishObservedEvent(
+                this.sessionScope(sessionState),
+                {
+                  type: 'session-output',
+                  sessionId: command.sessionId,
+                  outputCursor: event.cursor,
+                  chunkBase64: Buffer.from(event.chunk).toString('base64'),
+                  ts: new Date().toISOString(),
+                  directoryId: sessionState.directoryId,
+                  conversationId: sessionState.id
+                }
+              );
+            }
           },
           onExit: (exit) => {
             this.sendToConnection(connection.id, {
@@ -610,8 +909,7 @@ export class ControlPlaneStreamServer {
       return;
     }
     state.session.write(data);
-    state.status = 'running';
-    state.attentionReason = null;
+    this.setSessionStatus(state, 'running', null, null);
   }
 
   private handleResize(sessionId: string, cols: number, rows: number): void {
@@ -636,15 +934,13 @@ export class ControlPlaneStreamServer {
 
     if (signal === 'interrupt') {
       state.session.write('\u0003');
-      state.status = 'running';
-      state.attentionReason = null;
+      this.setSessionStatus(state, 'running', null, null);
       return;
     }
 
     if (signal === 'eof') {
       state.session.write('\u0004');
-      state.status = 'running';
-      state.attentionReason = null;
+      this.setSessionStatus(state, 'running', null, null);
       return;
     }
 
@@ -666,36 +962,176 @@ export class ControlPlaneStreamServer {
           event: mapped
         });
       }
+      this.publishObservedEvent(
+        this.sessionScope(sessionState),
+        {
+          type: 'session-event',
+          sessionId,
+          event: mapped,
+          ts: new Date().toISOString(),
+          directoryId: sessionState.directoryId,
+          conversationId: sessionState.id
+        }
+      );
     }
 
     if (event.type === 'attention-required') {
-      sessionState.status = 'needs-input';
-      sessionState.attentionReason = event.reason;
-      sessionState.lastEventAt = event.record.ts;
+      this.setSessionStatus(sessionState, 'needs-input', event.reason, event.record.ts);
       return;
     }
 
     if (event.type === 'turn-completed') {
-      sessionState.status = 'completed';
-      sessionState.attentionReason = null;
-      sessionState.lastEventAt = event.record.ts;
+      this.setSessionStatus(sessionState, 'completed', null, event.record.ts);
       return;
     }
 
     if (event.type === 'notify') {
-      sessionState.lastEventAt = event.record.ts;
+      this.setSessionStatus(sessionState, sessionState.status, sessionState.attentionReason, event.record.ts);
       return;
     }
 
     if (event.type === 'session-exit') {
-      sessionState.status = 'exited';
-      sessionState.attentionReason = null;
       sessionState.lastExit = event.exit;
       const exitedAt = new Date().toISOString();
-      sessionState.lastEventAt = exitedAt;
       sessionState.exitedAt = exitedAt;
+      this.setSessionStatus(sessionState, 'exited', null, exitedAt);
       this.deactivateSession(sessionState.id, true);
     }
+  }
+
+  private setSessionStatus(
+    state: SessionState,
+    status: StreamSessionRuntimeStatus,
+    attentionReason: string | null,
+    lastEventAt: string | null
+  ): void {
+    state.status = status;
+    state.attentionReason = attentionReason;
+    if (lastEventAt !== null) {
+      state.lastEventAt = lastEventAt;
+    }
+    this.persistConversationRuntime(state);
+    this.publishStatusObservedEvent(state);
+  }
+
+  private persistConversationRuntime(state: SessionState): void {
+    this.stateStore.updateConversationRuntime(state.id, {
+      status: state.status,
+      live: state.session !== null,
+      attentionReason: state.attentionReason,
+      processId: state.session?.processId() ?? null,
+      lastEventAt: state.lastEventAt,
+      lastExit: state.lastExit
+    });
+  }
+
+  private publishStatusObservedEvent(state: SessionState): void {
+    this.publishObservedEvent(
+      this.sessionScope(state),
+      {
+        type: 'session-status',
+        sessionId: state.id,
+        status: state.status,
+        attentionReason: state.attentionReason,
+        live: state.session !== null,
+        ts: new Date().toISOString(),
+        directoryId: state.directoryId,
+        conversationId: state.id
+      }
+    );
+  }
+
+  private sessionScope(state: SessionState): StreamObservedScope {
+    return {
+      tenantId: state.tenantId,
+      userId: state.userId,
+      workspaceId: state.workspaceId,
+      directoryId: state.directoryId,
+      conversationId: state.id
+    };
+  }
+
+  private matchesObservedFilter(
+    scope: StreamObservedScope,
+    event: StreamObservedEvent,
+    filter: StreamSubscriptionFilter
+  ): boolean {
+    if (!filter.includeOutput && event.type === 'session-output') {
+      return false;
+    }
+    if (filter.tenantId !== undefined && scope.tenantId !== filter.tenantId) {
+      return false;
+    }
+    if (filter.userId !== undefined && scope.userId !== filter.userId) {
+      return false;
+    }
+    if (filter.workspaceId !== undefined && scope.workspaceId !== filter.workspaceId) {
+      return false;
+    }
+    if (filter.directoryId !== undefined && scope.directoryId !== filter.directoryId) {
+      return false;
+    }
+    if (filter.conversationId !== undefined && scope.conversationId !== filter.conversationId) {
+      return false;
+    }
+    return true;
+  }
+
+  private publishObservedEvent(scope: StreamObservedScope, event: StreamObservedEvent): void {
+    this.streamCursor += 1;
+    const entry: StreamJournalEntry = {
+      cursor: this.streamCursor,
+      scope,
+      event
+    };
+    this.streamJournal.push(entry);
+    if (this.streamJournal.length > this.maxStreamJournalEntries) {
+      this.streamJournal.shift();
+    }
+
+    for (const subscription of this.streamSubscriptions.values()) {
+      if (!this.matchesObservedFilter(scope, event, subscription.filter)) {
+        continue;
+      }
+      this.sendToConnection(subscription.connectionId, {
+        kind: 'stream.event',
+        subscriptionId: subscription.id,
+        cursor: entry.cursor,
+        event: entry.event
+      });
+    }
+  }
+
+  private directoryRecord(directory: ControlPlaneDirectoryRecord): Record<string, unknown> {
+    return {
+      directoryId: directory.directoryId,
+      tenantId: directory.tenantId,
+      userId: directory.userId,
+      workspaceId: directory.workspaceId,
+      path: directory.path,
+      createdAt: directory.createdAt,
+      archivedAt: directory.archivedAt
+    };
+  }
+
+  private conversationRecord(conversation: ControlPlaneConversationRecord): Record<string, unknown> {
+    return {
+      conversationId: conversation.conversationId,
+      directoryId: conversation.directoryId,
+      tenantId: conversation.tenantId,
+      userId: conversation.userId,
+      workspaceId: conversation.workspaceId,
+      title: conversation.title,
+      agentType: conversation.agentType,
+      createdAt: conversation.createdAt,
+      archivedAt: conversation.archivedAt,
+      runtimeStatus: conversation.runtimeStatus,
+      runtimeLive: conversation.runtimeLive,
+      runtimeAttentionReason: conversation.runtimeAttentionReason,
+      runtimeProcessId: conversation.runtimeProcessId,
+      runtimeLastEventAt: conversation.runtimeLastEventAt,
+      runtimeLastExit: conversation.runtimeLastExit
+    };
   }
 
   private requireSession(sessionId: string): SessionState {
@@ -748,6 +1184,10 @@ export class ControlPlaneStreamServer {
       state?.eventSubscriberConnectionIds.delete(connectionId);
     }
 
+    for (const subscriptionId of connection.streamSubscriptionIds) {
+      this.streamSubscriptions.delete(subscriptionId);
+    }
+
     this.connections.delete(connectionId);
   }
 
@@ -787,6 +1227,9 @@ export class ControlPlaneStreamServer {
       }
     }
     state.eventSubscriberConnectionIds.clear();
+
+    this.persistConversationRuntime(state);
+    this.publishStatusObservedEvent(state);
 
     if (state.status === 'exited') {
       this.scheduleTombstoneRemoval(state.id);
@@ -880,6 +1323,7 @@ export class ControlPlaneStreamServer {
   private sessionSummaryRecord(state: SessionState): Record<string, unknown> {
     return {
       sessionId: state.id,
+      directoryId: state.directoryId,
       tenantId: state.tenantId,
       userId: state.userId,
       workspaceId: state.workspaceId,

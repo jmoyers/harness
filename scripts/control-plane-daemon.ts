@@ -5,16 +5,19 @@ interface DaemonOptions {
   host: string;
   port: number;
   authToken: string | null;
+  stateDbPath: string;
 }
 
 function parseArgs(argv: string[]): DaemonOptions {
   const defaultHost = process.env.HARNESS_CONTROL_PLANE_HOST ?? '127.0.0.1';
   const defaultPortRaw = process.env.HARNESS_CONTROL_PLANE_PORT ?? '7777';
   const defaultAuthToken = process.env.HARNESS_CONTROL_PLANE_AUTH_TOKEN ?? null;
+  const defaultStateDbPath = process.env.HARNESS_CONTROL_PLANE_DB_PATH ?? '.harness/control-plane.sqlite';
 
   let host = defaultHost;
   let portRaw = defaultPortRaw;
   let authToken = defaultAuthToken;
+  let stateDbPath = defaultStateDbPath;
 
   for (let idx = 0; idx < argv.length; idx += 1) {
     const arg = argv[idx]!;
@@ -47,6 +50,16 @@ function parseArgs(argv: string[]): DaemonOptions {
       idx += 1;
       continue;
     }
+
+    if (arg === '--state-db-path') {
+      const value = argv[idx + 1];
+      if (value === undefined) {
+        throw new Error('missing value for --state-db-path');
+      }
+      stateDbPath = value;
+      idx += 1;
+      continue;
+    }
   }
 
   const port = Number.parseInt(portRaw, 10);
@@ -62,7 +75,8 @@ function parseArgs(argv: string[]): DaemonOptions {
   return {
     host,
     port,
-    authToken
+    authToken,
+    stateDbPath
   };
 }
 
@@ -73,6 +87,7 @@ async function main(): Promise<number> {
     host: options.host,
     port: options.port,
     authToken: options.authToken ?? undefined,
+    stateStorePath: options.stateDbPath,
     startSession: (input) =>
       startCodexLiveSession({
         args: input.args,
@@ -86,7 +101,7 @@ async function main(): Promise<number> {
 
   const address = server.address();
   process.stdout.write(
-    `[control-plane] listening host=${address.address} port=${String(address.port)} auth=${options.authToken === null ? 'off' : 'on'}\n`
+    `[control-plane] listening host=${address.address} port=${String(address.port)} auth=${options.authToken === null ? 'off' : 'on'} db=${options.stateDbPath}\n`
   );
 
   let stopRequested = false;

@@ -7,6 +7,7 @@ import {
 
 const validSummary = {
   sessionId: 'conversation-1',
+  directoryId: 'directory-1',
   tenantId: 'tenant-local',
   userId: 'user-local',
   workspaceId: 'workspace-local',
@@ -28,11 +29,13 @@ void test('parseSessionSummaryRecord accepts valid summary and nullable fields',
   const parsed = parseSessionSummaryRecord(validSummary);
   assert.notEqual(parsed, null);
   assert.equal(parsed?.sessionId, 'conversation-1');
+  assert.equal(parsed?.directoryId, 'directory-1');
   assert.equal(parsed?.live, true);
   assert.equal(parsed?.processId, 51000);
 
   const exited = parseSessionSummaryRecord({
     ...validSummary,
+    directoryId: null,
     status: 'exited',
     live: false,
     attentionReason: 'approval',
@@ -135,6 +138,13 @@ void test('parseSessionSummaryRecord rejects malformed summaries', () => {
 });
 
 void test('parseSessionSummaryRecord rejects missing nullable fields when absent', () => {
+  assert.equal(
+    parseSessionSummaryRecord({
+      ...validSummary,
+      directoryId: undefined
+    }),
+    null
+  );
   assert.equal(
     parseSessionSummaryRecord({
       ...validSummary,
