@@ -4,6 +4,7 @@ import {
   buildConversationRailLines,
   compareIsoDesc,
   cycleConversationId,
+  renderConversationRailAnsiRows,
   sortConversationRailSessions,
   type ConversationRailSessionSummary
 } from '../src/mux/conversation-rail.ts';
@@ -304,4 +305,21 @@ void test('compareIsoDesc handles null and lexicographic ordering', () => {
     compareIsoDesc('2026-01-01T00:05:00.000Z', '2026-01-01T00:04:00.000Z'),
     -1
   );
+});
+
+void test('renderConversationRailAnsiRows paints header, badges, and active-row highlight', () => {
+  const ansiRows = renderConversationRailAnsiRows(
+    sessions,
+    'conversation-bbbbbbbb-0000',
+    48,
+    6,
+    'input-order'
+  );
+  assert.equal(ansiRows.length, 6);
+  assert.equal(ansiRows[0]?.includes('\u001b[0;38;5;250;48;5;236m'), true);
+  assert.equal(ansiRows[2]?.includes('\u001b[0;1;38;5;231;48;5;166m'), true);
+  assert.equal(ansiRows[3]?.includes('\u001b[0;38;5;255;48;5;238m'), true);
+  assert.equal(ansiRows[3]?.includes('\u001b[0;1;38;5;231;48;5;238m'), true);
+  assert.equal(ansiRows[4]?.includes('\u001b[0;38;5;245;49m'), true);
+  assert.equal(ansiRows[4]?.includes('external-session… (dead)'), true);
 });

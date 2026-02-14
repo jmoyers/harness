@@ -33,8 +33,8 @@ import {
 } from '../src/mux/dual-pane-core.ts';
 import { detectMuxGlobalShortcut } from '../src/mux/input-shortcuts.ts';
 import {
-  buildConversationRailLines,
   cycleConversationId,
+  renderConversationRailAnsiRows,
   type ConversationRailSessionSummary
 } from '../src/mux/conversation-rail.ts';
 
@@ -636,7 +636,7 @@ function buildRenderRows(
   ctrlCExits: boolean
 ): string[] {
   const railRows = Math.max(3, Math.min(8, Math.floor(layout.paneRows / 3)));
-  const railLines = buildConversationRailLines(
+  const railLines = renderConversationRailAnsiRows(
     conversations,
     activeConversationId,
     layout.rightCols,

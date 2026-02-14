@@ -48,6 +48,7 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
 - Mux wheel routing now scrolls by single-row steps to better match native terminal feel.
 - Mux consumes focus-in/out events and reasserts input modes after focus return.
 - Mux now supports multiple concurrent conversations in one session: conversation rail + active-session switching (`Ctrl+N`/`Ctrl+P`) + new conversation (`Ctrl+T`) with attach/detach continuity.
+- Right rail now uses a first-party low-level UI surface with styled rows/badges/active selection highlight (`src/ui/surface.ts`), not a framework renderer.
 - Optional mux debug trace: set `HARNESS_MUX_DEBUG_PATH=/tmp/harness-mux-debug.jsonl` to capture input/routing/render cursor records.
 - Mux core is now deterministic and directly tested (`test/mux-dual-pane-core.test.ts`).
 - Footer background persistence parity scene added for Codex-like pinned input/status rows.
@@ -66,6 +67,7 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
 - `npm run codex:live:tail -- --conversation-id <id> [--from-now] [--only-notify] [--include-text-deltas]`
 - `npm run codex:live:snapshot -- --conversation-id <id> [--follow] [--from-now] [--json]`
 - `npm run terminal:parity [-- --json]`
+- `npm run loc [-- --json]`
 
 ## Human Breakpoints
 - Mux paint correctness:
