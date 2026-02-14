@@ -1371,7 +1371,12 @@ export function renderSnapshotAnsiRow(
   let previousStyle: TerminalCellStyle | null = null;
 
   for (let col = 0; col < cols; col += 1) {
-    const cell = line.cells[col]!;
+    const cell = line.cells[col] ?? {
+      glyph: ' ',
+      width: 1,
+      continued: false,
+      style: defaultStyle
+    };
     if (cell.continued) {
       continue;
     }

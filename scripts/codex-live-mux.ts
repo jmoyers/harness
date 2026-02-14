@@ -46,6 +46,27 @@ interface RenderCursorStyle {
 const ENABLE_INPUT_MODES = '\u001b[>1u\u001b[?1000h\u001b[?1002h\u001b[?1004h\u001b[?1006h';
 const DISABLE_INPUT_MODES = '\u001b[?1006l\u001b[?1004l\u001b[?1002l\u001b[?1000l\u001b[<u';
 
+function restoreTerminalState(newline: boolean): void {
+  try {
+    process.stdout.write(`${DISABLE_INPUT_MODES}\u001b[?25h\u001b[0m${newline ? '\n' : ''}`);
+  } catch {
+    // Best-effort restore only.
+  }
+
+  if (process.stdin.isTTY) {
+    try {
+      process.stdin.setRawMode(false);
+    } catch {
+      // Best-effort restore only.
+    }
+    try {
+      process.stdin.pause();
+    } catch {
+      // Best-effort restore only.
+    }
+  }
+}
+
 function extractFocusEvents(chunk: Buffer): FocusEventExtraction {
   const text = chunk.toString('utf8');
   const focusInMatches = text.match(/\u001b\[I/g);
@@ -672,11 +693,9 @@ async function main(): Promise<number> {
   } finally {
     process.stdin.off('data', onInput);
     process.stdout.off('resize', onResize);
-    process.stdin.pause();
-    process.stdin.setRawMode(false);
     liveSession.close();
     store.close();
-    process.stdout.write(`${DISABLE_INPUT_MODES}\u001b[?25h\u001b[0m\n`);
+    restoreTerminalState(true);
   }
 
   if (exit === null) {
@@ -685,5 +704,13 @@ async function main(): Promise<number> {
   return normalizeExitCode(exit);
 }
 
-const code = await main();
-process.exitCode = code;
+try {
+  const code = await main();
+  process.exitCode = code;
+} catch (error: unknown) {
+  restoreTerminalState(true);
+  process.stderr.write(
+    `codex:live:mux fatal error: ${error instanceof Error ? error.stack ?? error.message : String(error)}\n`
+  );
+  process.exitCode = 1;
+}

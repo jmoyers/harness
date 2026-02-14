@@ -29,6 +29,8 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
 - Right pane supports independent scrollback (`live`/`scroll`) with mouse wheel routing.
 - Left pane scrollback now works with Codex-style pinned footer scroll regions.
 - Mux cursor rendering is VTE-driven (style + visibility + position), including DECSCUSR style parity.
+- Mux renderer tolerates transient frame/resize mismatches without crashing.
+- Fatal mux errors now force terminal state restore (raw mode off, cursor visible, input modes disabled).
 - Mux probes host terminal OSC `10/11` colors to better match local theme brightness.
 - Mux enables CSI-u keyboard mode (`CSI > 1 u`) so modified keys like `Shift+Enter` can be forwarded.
 - Mux wheel routing now scrolls by single-row steps to better match native terminal feel.

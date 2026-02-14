@@ -66,6 +66,26 @@ void test('snapshot row renderer handles wide glyph continuation cells', () => {
   assert.equal(ansi.includes('a'), true);
 });
 
+void test('snapshot row renderer tolerates transient missing cells during resize races', () => {
+  const oracle = new TerminalSnapshotOracle(4, 1);
+  oracle.ingest('ab');
+  const frame = oracle.snapshot();
+  const racedFrame: TerminalSnapshotFrame = {
+    ...frame,
+    richLines: frame.richLines.map((line, index) => {
+      if (index !== 0) {
+        return line;
+      }
+      return {
+        ...line,
+        cells: line.cells.slice(0, 1)
+      };
+    })
+  };
+  const ansi = renderSnapshotAnsiRow(racedFrame, 0, 4);
+  assert.equal(ansi.endsWith('\u001b[0m'), true);
+});
+
 void test('snapshot trimming handles trailing continuation cells', () => {
   const oracle = new TerminalSnapshotOracle(2, 2);
   oracle.ingest('界');
