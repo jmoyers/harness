@@ -986,6 +986,8 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - optional terminal-frame recording to JSONL (`--record-path`, `--record-fps`) sourced from canonical full-frame mux snapshots (not incremental repaint diffs) for replay/debug artifact generation
     - one-step recording + export path (`--record-output <path.gif>`) writes JSONL sidecar + GIF at mux shutdown
     - startup performance spans/events for startup and conversation launch (`mux.startup.*`, `mux.conversation.start`) through `perf-core`
+    - explicit startup trace points for active-session process startup, first PTY output, and first visible paint (`mux.startup.active-start-command`, `mux.startup.active-first-output`, `mux.startup.active-first-visible-paint`)
+    - eager background start of persisted non-active conversations on boot to remove first-select cold-start behavior
     - archive/delete controls wired through the same control-plane path used by human and automation clients
   - recording timestamps are monotonic relative wall-clock samples with footer close-time; GIF frame delays are quantized with drift compensation to preserve elapsed timing semantics.
   - `scripts/terminal-recording-gif-lib.ts` + `scripts/terminal-recording-to-gif.ts` provide offline recording-to-GIF export, enabling visual regression artifacts from mux render captures.

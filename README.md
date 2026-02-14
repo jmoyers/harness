@@ -25,6 +25,7 @@ This recording shows three separate Codex sessions running in parallel, with liv
 - Run multiple conversations concurrently and switch active control instantly.
 - Persist directory/conversation metadata across reconnects via the control-plane SQLite state store.
 - Persist adapter state required for provider-native thread continuity (Codex resume path).
+- Eager-start persisted conversations at mux boot so switching is fast without first-select cold starts.
 - Show a directory-scoped left rail with conversation status, git summary, and per-session telemetry.
 - Normalize actionable session states for operators (`working`, `needs action`, `idle`, `complete`, `exited`).
 - Support keyboard and mouse-driven conversation selection in the mux.

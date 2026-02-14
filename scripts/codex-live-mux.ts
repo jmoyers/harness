@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { startCodexLiveSession } from '../src/codex/live-session.ts';
 import { openCodexControlPlaneClient } from '../src/control-plane/codex-session-stream.ts';
 import { startControlPlaneStreamServer } from '../src/control-plane/stream-server.ts';
-import type { StreamSessionEvent } from '../src/control-plane/stream-protocol.ts';
+import type { StreamServerEnvelope, StreamSessionEvent } from '../src/control-plane/stream-protocol.ts';
 import {
   parseSessionSummaryRecord,
   parseSessionSummaryList
@@ -1513,8 +1513,39 @@ async function main(): Promise<number> {
     TERM: process.env.TERM ?? 'xterm-256color'
   };
   const conversations = new Map<string, ConversationState>();
+  const conversationStartInFlight = new Map<string, Promise<ConversationState>>();
   const removedConversationIds = new Set<string>();
   let activeConversationId: string | null = null;
+  let startupFirstPaintTargetSessionId: string | null = null;
+  let startupActiveStartCommandSpan: ReturnType<typeof startPerfSpan> | null = null;
+  let startupActiveFirstOutputSpan: ReturnType<typeof startPerfSpan> | null = null;
+  let startupActiveFirstPaintSpan: ReturnType<typeof startPerfSpan> | null = null;
+  let startupActiveFirstOutputObserved = false;
+  let startupActiveFirstPaintObserved = false;
+
+  const endStartupActiveStartCommandSpan = (attrs: Record<string, boolean | number | string>): void => {
+    if (startupActiveStartCommandSpan === null) {
+      return;
+    }
+    startupActiveStartCommandSpan.end(attrs);
+    startupActiveStartCommandSpan = null;
+  };
+
+  const endStartupActiveFirstOutputSpan = (attrs: Record<string, boolean | number | string>): void => {
+    if (startupActiveFirstOutputSpan === null) {
+      return;
+    }
+    startupActiveFirstOutputSpan.end(attrs);
+    startupActiveFirstOutputSpan = null;
+  };
+
+  const endStartupActiveFirstPaintSpan = (attrs: Record<string, boolean | number | string>): void => {
+    if (startupActiveFirstPaintSpan === null) {
+      return;
+    }
+    startupActiveFirstPaintSpan.end(attrs);
+    startupActiveFirstPaintSpan = null;
+  };
 
   const ensureConversation = (
     sessionId: string,
@@ -1569,55 +1600,98 @@ async function main(): Promise<number> {
   };
 
   const startConversation = async (sessionId: string): Promise<ConversationState> => {
-    const existing = conversations.get(sessionId);
-    if (existing?.live === true) {
-      return existing;
+    const inFlight = conversationStartInFlight.get(sessionId);
+    if (inFlight !== undefined) {
+      return await inFlight;
     }
-    const startSpan = startPerfSpan('mux.conversation.start', {
-      sessionId
-    });
-    const targetConversation = ensureConversation(sessionId);
-    const launchArgs = buildAgentStartArgs(
-      targetConversation.agentType,
-      options.codexArgs,
-      targetConversation.adapterState
-    );
-    await streamClient.sendCommand({
-      type: 'pty.start',
-      sessionId,
-      args: launchArgs,
-      env: sessionEnv,
-      initialCols: layout.rightCols,
-      initialRows: layout.paneRows,
-      terminalForegroundHex: process.env.HARNESS_TERM_FG ?? probedPalette.foregroundHex,
-      terminalBackgroundHex: process.env.HARNESS_TERM_BG ?? probedPalette.backgroundHex,
-      tenantId: options.scope.tenantId,
-      userId: options.scope.userId,
-      workspaceId: options.scope.workspaceId,
-      worktreeId: options.scope.worktreeId
-    });
-    const state = ensureConversation(sessionId);
-    recordPerfEvent('mux.conversation.start.command', {
-      sessionId,
-      argCount: launchArgs.length,
-      resumed: launchArgs[0] === 'resume'
-    });
-    const statusRecord = await streamClient.sendCommand({
-      type: 'session.status',
-      sessionId
-    });
-    const statusSummary = parseSessionSummaryRecord(statusRecord);
-    if (statusSummary !== null) {
-      applySummaryToConversation(state, statusSummary);
+
+    const task = (async (): Promise<ConversationState> => {
+      const existing = conversations.get(sessionId);
+      if (existing?.live === true) {
+        if (startupFirstPaintTargetSessionId === sessionId) {
+          endStartupActiveStartCommandSpan({
+            alreadyLive: true
+          });
+        }
+        return existing;
+      }
+      const startSpan = startPerfSpan('mux.conversation.start', {
+        sessionId
+      });
+      const targetConversation = ensureConversation(sessionId);
+      const launchArgs = buildAgentStartArgs(
+        targetConversation.agentType,
+        options.codexArgs,
+        targetConversation.adapterState
+      );
+      await streamClient.sendCommand({
+        type: 'pty.start',
+        sessionId,
+        args: launchArgs,
+        env: sessionEnv,
+        initialCols: layout.rightCols,
+        initialRows: layout.paneRows,
+        terminalForegroundHex: process.env.HARNESS_TERM_FG ?? probedPalette.foregroundHex,
+        terminalBackgroundHex: process.env.HARNESS_TERM_BG ?? probedPalette.backgroundHex,
+        tenantId: options.scope.tenantId,
+        userId: options.scope.userId,
+        workspaceId: options.scope.workspaceId,
+        worktreeId: options.scope.worktreeId
+      });
+      if (startupFirstPaintTargetSessionId === sessionId) {
+        endStartupActiveStartCommandSpan({
+          alreadyLive: false,
+          argCount: launchArgs.length,
+          resumed: launchArgs[0] === 'resume'
+        });
+      }
+      const state = ensureConversation(sessionId);
+      recordPerfEvent('mux.conversation.start.command', {
+        sessionId,
+        argCount: launchArgs.length,
+        resumed: launchArgs[0] === 'resume'
+      });
+      const statusRecord = await streamClient.sendCommand({
+        type: 'session.status',
+        sessionId
+      });
+      const statusSummary = parseSessionSummaryRecord(statusRecord);
+      if (statusSummary !== null) {
+        applySummaryToConversation(state, statusSummary);
+      }
+      await streamClient.sendCommand({
+        type: 'pty.subscribe-events',
+        sessionId
+      });
+      startSpan.end({
+        live: state.live
+      });
+      return state;
+    })();
+
+    conversationStartInFlight.set(sessionId, task);
+    try {
+      return await task;
+    } finally {
+      conversationStartInFlight.delete(sessionId);
     }
-    await streamClient.sendCommand({
-      type: 'pty.subscribe-events',
-      sessionId
-    });
-    startSpan.end({
-      live: state.live
-    });
-    return state;
+  };
+
+  const startPersistedConversationsInBackground = async (
+    activeSessionId: string | null
+  ): Promise<void> => {
+    const ordered = conversationOrder(conversations);
+    for (const sessionId of ordered) {
+      if (activeSessionId !== null && sessionId === activeSessionId) {
+        continue;
+      }
+      const conversation = conversations.get(sessionId);
+      if (conversation === undefined || conversation.live) {
+        continue;
+      }
+      await startConversation(sessionId);
+    }
+    markDirty();
   };
 
   const hydrateConversationList = async (): Promise<void> => {
@@ -2122,6 +2196,10 @@ async function main(): Promise<number> {
     if (shuttingDown || !dirty) {
       return;
     }
+    if (activeConversationId === null) {
+      dirty = false;
+      return;
+    }
 
     const active = activeConversation();
     const rightFrame = active.oracle.snapshot();
@@ -2223,6 +2301,22 @@ async function main(): Promise<number> {
 
     if (output.length > 0) {
       process.stdout.write(output);
+      if (
+        startupFirstPaintTargetSessionId !== null &&
+        activeConversationId === startupFirstPaintTargetSessionId &&
+        startupActiveFirstOutputObserved &&
+        !startupActiveFirstPaintObserved
+      ) {
+        startupActiveFirstPaintObserved = true;
+        recordPerfEvent('mux.startup.active-first-visible-paint', {
+          sessionId: startupFirstPaintTargetSessionId,
+          changedRows: diff.changedRows.length
+        });
+        endStartupActiveFirstPaintSpan({
+          observed: true,
+          changedRows: diff.changedRows.length
+        });
+      }
       if (muxRecordingWriter !== null && muxRecordingOracle !== null) {
         const canonicalFrame = renderCanonicalFrameAnsi(
           rows,
@@ -2257,29 +2351,28 @@ async function main(): Promise<number> {
     dirty = false;
   };
 
-  const initialActiveId = activeConversationId;
-  activeConversationId = null;
-  if (initialActiveId !== null) {
-    const initialActivateSpan = startPerfSpan('mux.startup.activate-initial', {
-      initialActiveId
-    });
-    await activateConversation(initialActiveId);
-    initialActivateSpan.end();
-  }
-  startupSpan.end({
-    conversations: conversations.size
-  });
-  recordPerfEvent('mux.startup.ready', {
-    conversations: conversations.size
-  });
-
-  const removeEnvelopeListener = streamClient.onEnvelope((envelope) => {
+  const handleEnvelope = (envelope: StreamServerEnvelope): void => {
     if (envelope.kind === 'pty.output') {
       if (removedConversationIds.has(envelope.sessionId)) {
         return;
       }
       const conversation = ensureConversation(envelope.sessionId);
       const chunk = Buffer.from(envelope.chunkBase64, 'base64');
+      if (
+        startupFirstPaintTargetSessionId !== null &&
+        envelope.sessionId === startupFirstPaintTargetSessionId &&
+        !startupActiveFirstOutputObserved
+      ) {
+        startupActiveFirstOutputObserved = true;
+        recordPerfEvent('mux.startup.active-first-output', {
+          sessionId: envelope.sessionId,
+          bytes: chunk.length
+        });
+        endStartupActiveFirstOutputSpan({
+          observed: true,
+          bytes: chunk.length
+        });
+      }
       conversation.oracle.ingest(chunk);
 
       const normalized = mapTerminalOutputToNormalizedEvent(chunk, conversation.scope, idFactory);
@@ -2369,6 +2462,37 @@ async function main(): Promise<number> {
       }
       markDirty();
     }
+  };
+
+  const removeEnvelopeListener = streamClient.onEnvelope(handleEnvelope);
+
+  const initialActiveId = activeConversationId;
+  activeConversationId = null;
+  if (initialActiveId !== null) {
+    startupFirstPaintTargetSessionId = initialActiveId;
+    startupActiveStartCommandSpan = startPerfSpan('mux.startup.active-start-command', {
+      sessionId: initialActiveId
+    });
+    startupActiveFirstOutputSpan = startPerfSpan('mux.startup.active-first-output', {
+      sessionId: initialActiveId
+    });
+    startupActiveFirstPaintSpan = startPerfSpan('mux.startup.active-first-visible-paint', {
+      sessionId: initialActiveId
+    });
+    const initialActivateSpan = startPerfSpan('mux.startup.activate-initial', {
+      initialActiveId
+    });
+    await activateConversation(initialActiveId);
+    initialActivateSpan.end();
+  }
+  startupSpan.end({
+    conversations: conversations.size
+  });
+  recordPerfEvent('mux.startup.ready', {
+    conversations: conversations.size
+  });
+  queueControlPlaneOp(async () => {
+    await startPersistedConversationsInBackground(initialActiveId);
   });
 
   const onInput = (chunk: Buffer): void => {
@@ -2749,6 +2873,15 @@ async function main(): Promise<number> {
         }\n`
       );
     }
+    endStartupActiveStartCommandSpan({
+      observed: false
+    });
+    endStartupActiveFirstOutputSpan({
+      observed: startupActiveFirstOutputObserved
+    });
+    endStartupActiveFirstPaintSpan({
+      observed: startupActiveFirstPaintObserved
+    });
     shutdownPerfCore();
   }
 
