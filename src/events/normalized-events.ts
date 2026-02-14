@@ -17,6 +17,7 @@ type MetaEventType =
   | 'meta-attention-raised'
   | 'meta-attention-cleared'
   | 'meta-queue-updated'
+  | 'meta-notify-observed'
   | 'meta-conversation-handoff';
 
 type EventType = ProviderEventType | MetaEventType;
@@ -80,9 +81,16 @@ interface QueuePayload extends BaseEventPayload {
   queueSize: number;
 }
 
+interface NotifyObservedPayload extends BaseEventPayload {
+  kind: 'notify';
+  notifyType: string;
+  raw: Record<string, unknown>;
+}
+
 type EventPayload =
   | AttentionPayload
   | DiffUpdatedPayload
+  | NotifyObservedPayload
   | QueuePayload
   | TextDeltaPayload
   | ThreadEventPayload

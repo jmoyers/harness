@@ -89,14 +89,15 @@ function mapToNormalizedEvent(
   }
 
   if (event.type === 'notify') {
+    const payloadObject = event.record.payload;
     return createNormalizedEvent(
       'meta',
-      'meta-scheduler-assignment-changed',
+      'meta-notify-observed',
       scope,
       {
-        kind: 'scheduler-state',
-        state: 'running',
-        reason: 'codex-notify'
+        kind: 'notify',
+        notifyType: asString(payloadObject.type, 'unknown'),
+        raw: payloadObject
       },
       () => new Date(),
       idFactory

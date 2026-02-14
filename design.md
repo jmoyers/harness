@@ -34,7 +34,7 @@ Build a high-performance, terminal-first harness that manages many concurrent AI
 - `coder/mux`: performant workspace/session abstraction and server/client split.
 - `vibetunnel`: remote terminal proxy and notification-style activity routing.
 - Claude Code hooks: explicit lifecycle/tool notification model.
-- Codex notify/app-server surfaces: notification hooks and structured thread/turn APIs that can enrich a live PTY session.
+- Codex notify surfaces: notification hooks that can enrich a live PTY session.
 
 ## Core Architecture
 
@@ -61,8 +61,7 @@ Build a high-performance, terminal-first harness that manages many concurrent AI
                      |                 +--> [tmux/pty-host sessions for raw passthrough]
                      |
                      +--> [Codex Live Adapter -> pty-hosted codex CLI]
-                     |      +--> [Codex Notify Tap (attention/lifecycle hints)]
-                     |      +--> [Codex App-Server Sidecar (optional structured enrichment)]
+                     |      +--> [Codex Notify Tap (raw + classified lifecycle hints)]
                      +--> [Claude Adapter -> hooks + CLI]
                      +--> [Generic Adapter -> PTY parser fallback]
 ```
@@ -237,38 +236,18 @@ Use a PTY-hosted interactive `codex` session as the primary integration path. Hu
 
 Layer optional enrichment channels on top of the same live session:
 - `codex notify`-style hook/event surfaces for attention and lifecycle hints.
-- `codex app-server` sidecar for structured thread/turn events and tool fidelity where needed.
 
 This ordering ensures terminal reality is authoritative while still allowing high-fidelity instrumentation.
 
 Primary live-session capabilities:
 - launch/attach/detach/re-attach a running `codex` terminal session with no privileged bypass
 - human steering in-session (`prompt`, interrupt, continue, context edits) with PTY parity
-- event stream derived from live session + notify hook emissions + optional structured sidecar
+- event stream derived from live session + notify hook emissions
 - pseudo-screenshot capture from PTY-derived output for integration/e2e assertions (text-rendered terminal snapshot, machine-readable output option)
+- raw notify discovery stream (`meta-notify-observed`) to inventory provider notify types in real sessions
 
 Notify hook payload shape validated locally:
 - Codex invokes notify command with a JSON payload argument (for example `agent-turn-complete` including `thread-id`, `turn-id`, `cwd`, and message fields).
-
-Structured sidecar capabilities validated locally:
-- transport: `stdio://` and `ws://`
-- required handshake: `initialize` -> client `initialized`
-- thread/turn APIs and notifications for enrichment and correlation
-
-Representative sidecar request methods:
-- `initialize`
-- `thread/start`
-- `thread/resume`
-- `turn/start`
-- `turn/interrupt`
-
-Representative sidecar notifications:
-- `thread/started`
-- `turn/started`
-- `turn/completed`
-- `turn/diff/updated`
-- `item/agentMessage/delta`
-- `item/commandExecution/terminalInteraction`
 
 ## Model-Agnostic Strategy
 
@@ -276,8 +255,7 @@ Integration tiers:
 
 1. Live PTY adapter (primary): human-steerable terminal session with attach/detach and low-latency control.
 2. Hook/notify enrichment: provider-native notification channels for attention and lifecycle hints.
-3. Structured sidecar enrichment: official APIs/hook streams for typed event fidelity and correlation.
-4. Heuristic parser fallback: parse terminal output only when no richer signal exists.
+3. Heuristic parser fallback: parse terminal output only when no richer signal exists.
 
 This keeps live steering universal across agents while still taking advantage of structured provider signals when available.
 
@@ -523,13 +501,14 @@ Output 3: Codex Live-Steering Session + Event Stream
   - observe normalized stream events emitted from live session activity
   - verify event persistence and replay for the steered session
 
-Output 4: Codex Notify + Structured Enrichment
+Output 4: Codex Notify Discovery + Classification
 - Adds provider-native notification surfaces on top of the same live session.
 - Demonstration:
-  - wire `codex notify` signals into attention/lifecycle event mapping
+  - persist raw `codex notify` payloads as `meta-notify-observed` events
+  - produce notify-type inventory directly from captured sessions
+  - wire known notify types into attention/lifecycle event mapping
   - correlate notify signals with terminal and normalized event stream ids
-  - optionally attach `codex app-server` sidecar and enrich with structured thread/turn events
-  - verify no loss of live-session authority when sidecar is unavailable
+  - verify unknown notify types are preserved losslessly as raw discovery events
 
 Output 5: Programmatic Steering on Live Session
 - Uses the same control-plane commands as human steering against the same live session.
@@ -732,19 +711,15 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
   - terminal control-sequence pass-through test coverage (alternate screen, cursor, bracketed paste, mouse mode, color sequences)
 - Single-session attach/detach/reconnect baseline is implemented via `src/pty/session-broker.ts` with cursor-based replay for reattached clients.
 - Latency benchmark gate is implemented and runnable via `npm run benchmark:latency`, reporting direct-framed vs harness overhead at p50/p95/p99 with configurable thresholds.
-- Codex structured sidecar baseline is implemented with:
-  - stdio transport in `src/adapters/codex-stdio-transport.ts` with required `initialize`/`initialized` handshake and JSON-RPC request/notification handling
-  - v2-compatible thread/turn request shaping in `src/adapters/codex-adapter.ts` with backward-compatible response parsing
-  - provider/meta normalized mapping in `src/adapters/codex-event-mapper.ts`
-  - canonical event envelope in `src/events/normalized-events.ts`
-  - transactional append-only SQLite `events` persistence in `src/store/event-store.ts` (tenant/user scoped reads)
-  - runnable Codex event smoke path (`npm run codex:events -- "<prompt>"`) that emits normalized JSONL and persists event history
-- Primary Milestone 2 work (live-steered PTY-hosted Codex session with notify-driven event enrichment) is intentionally next and not yet complete.
-- Milestone 2 first checkpoint is implemented:
+- Canonical event envelope in `src/events/normalized-events.ts`.
+- Transactional append-only SQLite `events` persistence in `src/store/event-store.ts` (tenant/user scoped reads).
+- Milestone 2 live-steered checkpoint is implemented:
   - `src/codex/live-session.ts` hosts a PTY-backed live Codex session with attach/detach, steering writes/resizes, and event emission.
   - `scripts/codex-notify-relay.ts` captures Codex notify hook payloads into a local JSONL stream.
-  - `scripts/codex-live.ts` provides a direct live entrypoint (`npm run codex:live -- ...`) with persisted normalized events.
-  - `scripts/codex-live-tail.ts` tails persisted live events by conversation in real time.
+  - `scripts/codex-live.ts` provides a direct live entrypoint (`npm run codex:live -- ...`) with persisted normalized events, including raw `meta-notify-observed`.
+  - `scripts/codex-live-tail.ts` tails persisted live events by conversation in real time, including notify-discovery mode (`--only-notify`).
+  - `scripts/codex-live-snapshot.ts` renders PTY deltas into textual snapshot frames for deterministic integration/e2e assertions (`--json`).
+  - `scripts/codex-live-mux.ts` provides a first-party split UI (left: live steerable Codex session, right: event feed) to replace tmux split dependency.
   - `scripts/codex-live-dual.ts` launches a tmux split view (live Codex pane + event tail pane).
 
 ## Sources
