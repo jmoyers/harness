@@ -1658,6 +1658,7 @@ async function main(): Promise<number> {
     }
     activeConversationId = sessionId;
     forceFullClear = true;
+    previousRows = [];
     currentPtySize = null;
     await attachConversation(sessionId);
     schedulePtyResize(
@@ -1738,7 +1739,9 @@ async function main(): Promise<number> {
         process.stderr.write(`[mux] ansi-integrity-failed ${issues.join(' | ')}\n`);
       }
     }
-    const diff = diffRenderedRows(rows, previousRows);
+    const diff = forceFullClear
+      ? diffRenderedRows(rows, [])
+      : diffRenderedRows(rows, previousRows);
     const overlayResetRows = mergeUniqueRows(previousSelectionRows, selectionRows);
 
     let output = '';
