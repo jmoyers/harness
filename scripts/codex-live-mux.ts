@@ -54,6 +54,12 @@ interface PaneSelection {
   readonly focus: SelectionPoint;
 }
 
+interface PaneSelectionDrag {
+  readonly anchor: SelectionPoint;
+  readonly focus: SelectionPoint;
+  readonly hasDragged: boolean;
+}
+
 const ENABLE_INPUT_MODES = '\u001b[>1u\u001b[?1000h\u001b[?1002h\u001b[?1004h\u001b[?1006h';
 const DISABLE_INPUT_MODES = '\u001b[?2004l\u001b[?1006l\u001b[?1004l\u001b[?1002l\u001b[?1000l\u001b[<u';
 const DEFAULT_RESIZE_MIN_INTERVAL_MS = 33;
@@ -491,6 +497,10 @@ function compareSelectionPoints(left: SelectionPoint, right: SelectionPoint): nu
   return left.col - right.col;
 }
 
+function selectionPointsEqual(left: SelectionPoint, right: SelectionPoint): boolean {
+  return left.row === right.row && left.col === right.col;
+}
+
 function normalizeSelection(selection: PaneSelection): { start: SelectionPoint; end: SelectionPoint } {
   if (compareSelectionPoints(selection.anchor, selection.focus) <= 0) {
     return {
@@ -619,6 +629,15 @@ function selectionText(frame: TerminalSnapshotFrame, selection: PaneSelection | 
   return rows.join('\n');
 }
 
+function isCopyShortcutInput(input: Buffer): boolean {
+  if (input.length === 1 && input[0] === 0x03) {
+    return true;
+  }
+
+  const text = input.toString('utf8');
+  return /\u001b\[(99|67);(\d+)u/.test(text);
+}
+
 function writeTextToClipboard(value: string): boolean {
   if (value.length === 0) {
     return false;
@@ -684,6 +703,7 @@ async function main(): Promise<number> {
   let renderedBracketedPaste: boolean | null = null;
   let renderScheduled = false;
   let selection: PaneSelection | null = null;
+  let selectionDrag: PaneSelectionDrag | null = null;
   let resizeTimer: NodeJS.Timeout | null = null;
   let pendingSize: { cols: number; rows: number } | null = null;
   let lastResizeApplyAtMs = 0;
@@ -842,7 +862,14 @@ async function main(): Promise<number> {
     }
 
     const leftFrame = liveSession.snapshot();
-    const rows = buildRenderRows(layout, leftFrame, events, options.conversationId, selection !== null);
+    const renderSelection =
+      selectionDrag !== null && selectionDrag.hasDragged
+        ? {
+            anchor: selectionDrag.anchor,
+            focus: selectionDrag.focus
+          }
+        : selection;
+    const rows = buildRenderRows(layout, leftFrame, events, options.conversationId, renderSelection !== null);
     const diff = diffRenderedRows(rows, previousRows);
 
     let output = '';
@@ -866,7 +893,7 @@ async function main(): Promise<number> {
       renderedCursorStyle = leftFrame.cursor.style;
     }
 
-    output += renderSelectionOverlay(leftFrame, selection);
+    output += renderSelectionOverlay(leftFrame, renderSelection);
 
     const shouldShowCursor =
       leftFrame.viewport.followOutput &&
@@ -935,8 +962,9 @@ async function main(): Promise<number> {
       return;
     }
 
-    if (selection !== null && chunk.length === 1 && chunk[0] === 0x1b) {
+    if ((selection !== null || selectionDrag !== null) && chunk.length === 1 && chunk[0] === 0x1b) {
       selection = null;
+      selectionDrag = null;
       appendDebugRecord(debugPath, {
         kind: 'selection-clear-escape'
       });
@@ -963,6 +991,22 @@ async function main(): Promise<number> {
       return;
     }
 
+    if (selection !== null && isCopyShortcutInput(focusExtraction.sanitized)) {
+      const selectedFrame = liveSession.snapshot();
+      const copied = writeTextToClipboard(selectionText(selectedFrame, selection));
+      appendEventLine(`${new Date().toISOString()} selection ${copied ? 'copied' : 'copy-failed'}`);
+      appendDebugRecord(debugPath, {
+        kind: 'selection-copy-shortcut',
+        copied,
+        rawBytesHex: chunk.toString('hex'),
+        sanitizedBytesHex: focusExtraction.sanitized.toString('hex')
+      });
+      if (copied) {
+        markDirty();
+      }
+      return;
+    }
+
     const parsed = parseMuxInputChunk(inputRemainder, focusExtraction.sanitized);
     inputRemainder = parsed.remainder;
 
@@ -978,16 +1022,18 @@ async function main(): Promise<number> {
       const point = pointFromMouseEvent(layout, token.event);
       const startSelection = isLeftTarget && isLeftButtonPress(token.event.code, token.event.final) && !hasAltModifier(token.event.code);
       const updateSelection =
-        selection !== null &&
+        selectionDrag !== null &&
         isLeftTarget &&
         isSelectionDrag(token.event.code, token.event.final) &&
         !hasAltModifier(token.event.code);
-      const releaseSelection = selection !== null && isMouseRelease(token.event.final);
+      const releaseSelection = selectionDrag !== null && isMouseRelease(token.event.final);
 
       if (startSelection) {
-        selection = {
+        selection = null;
+        selectionDrag = {
           anchor: point,
-          focus: point
+          focus: point,
+          hasDragged: false
         };
         appendDebugRecord(debugPath, {
           kind: 'selection-start',
@@ -998,30 +1044,35 @@ async function main(): Promise<number> {
         continue;
       }
 
-      if (updateSelection && selection !== null) {
-        selection = {
-          anchor: selection.anchor,
-          focus: point
+      if (updateSelection && selectionDrag !== null) {
+        selectionDrag = {
+          anchor: selectionDrag.anchor,
+          focus: point,
+          hasDragged: selectionDrag.hasDragged || !selectionPointsEqual(selectionDrag.anchor, point)
         };
         markDirty();
         continue;
       }
 
-      if (releaseSelection && selection !== null) {
-        selection = {
-          anchor: selection.anchor,
-          focus: point
+      if (releaseSelection && selectionDrag !== null) {
+        const finalized = {
+          anchor: selectionDrag.anchor,
+          focus: point,
+          hasDragged: selectionDrag.hasDragged || !selectionPointsEqual(selectionDrag.anchor, point)
         };
-        const selectedFrame = liveSession.snapshot();
-        const copied = writeTextToClipboard(selectionText(selectedFrame, selection));
-        appendEventLine(`${new Date().toISOString()} selection ${copied ? 'copied' : 'copy-failed'}`);
+        selection = finalized.hasDragged
+          ? {
+              anchor: finalized.anchor,
+              focus: finalized.focus
+            }
+          : null;
         appendDebugRecord(debugPath, {
           kind: 'selection-release',
           row: point.row,
           col: point.col,
-          copied
+          hasDragged: finalized.hasDragged
         });
-        selection = null;
+        selectionDrag = null;
         markDirty();
         continue;
       }

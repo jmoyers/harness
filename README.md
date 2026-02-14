@@ -32,7 +32,7 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
 - Mux renderer tolerates transient frame/resize mismatches without crashing.
 - Fatal mux errors now force terminal state restore (raw mode off, cursor visible, input modes disabled).
 - Mux resize handling is coalesced/throttled for UI repaint and debounced for PTY resize to reduce resize-induced input lag and startup squish (`HARNESS_MUX_RESIZE_MIN_INTERVAL_MS`, default `33`; `HARNESS_MUX_PTY_RESIZE_SETTLE_MS`, default `75`).
-- Mux supports first-party in-pane selection with visual highlight and clipboard copy via plain drag in the left pane.
+- Mux supports first-party in-pane selection with visual highlight via plain drag in the left pane.
 - Mux tracks and mirrors bracketed paste mode (`DECSET/DECRST ?2004`) from the VTE model to host terminal mode.
 - Mux probes host terminal OSC `10/11` colors to better match local theme brightness.
 - Mux enables CSI-u keyboard mode (`CSI > 1 u`) so modified keys like `Shift+Enter` can be forwarded.
@@ -60,7 +60,8 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
   - scroll wheel in left pane should switch status from `pty=live` to `pty=scroll(...)`
   - confirm right pane scroll wheel enters `events=scroll(...)` mode in status and does not type into Codex
   - scroll back to bottom and confirm status returns to `pty=live` and `events=live`
-  - drag in left pane to select and copy on mouse release (OSC52)
+  - drag in left pane to select; selection shrinks/expands with drag movement and click-without-drag clears
+  - use `Cmd+C`/`Ctrl+C` to copy the current selection (OSC52)
   - hold `Alt` while using mouse in left pane to pass mouse events through to the app
 - Footer/background parity:
   - run `npm run terminal:parity`
