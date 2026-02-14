@@ -685,6 +685,7 @@ Milestone 5: Agent Operator Parity (Wake, Query, Interact)
 
 ## Initial Success Criteria
 
+- Strict TypeScript + lint gates pass with zero warnings/errors.
 - Dependency boundary policy is enforced: no third-party imports in declared hot-path modules.
 - Single-session terminal pass-through meets direct-terminal parity thresholds (p50 <= 1 ms, p95 <= 3 ms, p99 <= 5 ms overhead) and passes blind A/B perception test.
 - Provider-fidelity and meta event streams are both available, correlated by ids, and lossless across tool-heavy/compaction turns.

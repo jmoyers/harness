@@ -14,6 +14,7 @@ This project has two core documents:
 - 100% code coverage is required across the project.
 - Coverage compliance must be continuously verified (local + CI), not assumed.
 - Unit tests, integration tests, and end-to-end tests are all required.
+- Linting must pass at 100% (zero warnings, zero errors) before completion.
 - No artificial test skipping: no `skip`, `only`, quarantined suites, or silent exclusions.
 - Failures or coverage regressions block completion until fixed.
 
@@ -23,6 +24,7 @@ This project has two core documents:
 - Do not batch unrelated changes into a single commit.
 
 ## Architecture Laws
+- Code is strict, actually typed TypeScript. Avoid `any`; type safety is required.
 - All client actions must go through the Control Plane Stream API (TCP/WS). No privileged client path.
 - Human and agent clients must have parity for all supported operations.
 - Stream transport is primary; request/response wrappers are optional layers over the stream protocol.
