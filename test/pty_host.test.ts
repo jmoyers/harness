@@ -12,6 +12,9 @@ function createCollector() {
     onData: (chunk: Buffer): void => {
       chunks.push(chunk);
     },
+    readBuffer: (): Buffer => {
+      return Buffer.concat(chunks);
+    },
     read: (): string => {
       return Buffer.concat(chunks).toString('utf8');
     }
@@ -265,6 +268,39 @@ void test('pty-host supports interactive vim editing flow', { timeout: 20000 }, 
     assert.match(readFileSync(notePath, 'utf8'), /harness-vim-checkpoint/);
   } finally {
     rmSync(tempPath, { recursive: true, force: true });
+  }
+});
+
+void test('pty-host preserves terminal control sequences in output stream', async () => {
+  const expectedSequences = [
+    '\u001b[?1049h',
+    '\u001b[?25l',
+    '\u001b[?2004h',
+    '\u001b[?1000h',
+    '\u001b[38;2;1;2;3m',
+    '\u001b[0m',
+    '\u001b[?1000l',
+    '\u001b[?2004l',
+    '\u001b[?25h',
+    '\u001b[?1049l'
+  ];
+
+  const session = startPtySession({
+    command: '/bin/sh',
+    commandArgs: [
+      '-c',
+      'printf "\\033[?1049h\\033[?25l\\033[?2004h\\033[?1000h\\033[38;2;1;2;3mX\\033[0m\\033[?1000l\\033[?2004l\\033[?25h\\033[?1049l\\n"'
+    ]
+  });
+  const collector = createCollector();
+  session.on('data', collector.onData);
+
+  const exit = await waitForExit(session);
+  assert.equal(exit.code, 0);
+
+  const output = collector.readBuffer();
+  for (const sequence of expectedSequences) {
+    assert.equal(output.includes(Buffer.from(sequence, 'utf8')), true);
   }
 });
 

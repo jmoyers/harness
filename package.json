@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "build:ptyd": "export PATH=\"$HOME/.cargo/bin:$PATH\" && cargo build --manifest-path native/ptyd/Cargo.toml --release && mkdir -p bin && cp native/ptyd/target/release/ptyd bin/ptyd",
+    "prebenchmark:latency": "npm run build:ptyd",
+    "benchmark:latency": "node --experimental-strip-types scripts/benchmark-pty-latency.ts",
     "deadcode": "node --experimental-strip-types scripts/check-dead-code.ts",
     "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\" --max-warnings 0",
     "typecheck": "tsc --noEmit",

@@ -700,6 +700,15 @@ Milestone 5: Agent Operator Parity (Wake, Query, Interact)
 - Diff view is available for every active turn (adapter-native or git fallback).
 - Session recovery after daemon restart without losing thread mappings.
 
+## Implemented Baseline (Verified)
+
+- Native PTY sidecar is Rust-based (`native/ptyd`) with typed TypeScript host integration (`src/pty/pty_host.ts`).
+- Milestone 1 parity checks now include:
+  - interactive `vim` self-hosting e2e
+  - terminal control-sequence pass-through test coverage (alternate screen, cursor, bracketed paste, mouse mode, color sequences)
+- Single-session attach/detach/reconnect baseline is implemented via `src/pty/session-broker.ts` with cursor-based replay for reattached clients.
+- Latency benchmark gate is implemented and runnable via `npm run benchmark:latency`, reporting direct-framed vs harness overhead at p50/p95/p99 with configurable thresholds.
+
 ## Sources
 - https://openai.com/index/unlocking-codex-in-your-agent-harness/
 - https://docs.anthropic.com/en/docs/claude-code/hooks
