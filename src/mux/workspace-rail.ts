@@ -7,21 +7,6 @@ import {
   renderUiSurfaceAnsiRows
 } from '../ui/surface.ts';
 
-interface WorkspaceRailDirectorySummary {
-  readonly key: string;
-  readonly workspaceId: string;
-  readonly worktreeId: string;
-  readonly active: boolean;
-}
-
-interface WorkspaceRailProcessSummary {
-  readonly key: string;
-  readonly label: string;
-  readonly cpuPercent: number | null;
-  readonly memoryMb: number | null;
-  readonly status: 'running' | 'exited';
-}
-
 interface WorkspaceRailGitSummary {
   readonly branch: string;
   readonly changedFiles: number;
@@ -29,34 +14,93 @@ interface WorkspaceRailGitSummary {
   readonly deletions: number;
 }
 
-interface WorkspaceRailModel {
-  readonly directories: readonly WorkspaceRailDirectorySummary[];
-  readonly conversations: readonly ConversationRailSessionSummary[];
-  readonly activeConversationId: string | null;
-  readonly processes: readonly WorkspaceRailProcessSummary[];
+interface WorkspaceRailDirectorySummary {
+  readonly key: string;
+  readonly workspaceId: string;
+  readonly worktreeId: string;
+  readonly active: boolean;
   readonly git: WorkspaceRailGitSummary;
 }
 
+interface WorkspaceRailConversationSummary {
+  readonly sessionId: string;
+  readonly directoryKey: string;
+  readonly agentLabel: string;
+  readonly worktreeLabel: string | null;
+  readonly cpuPercent: number | null;
+  readonly memoryMb: number | null;
+  readonly status: ConversationRailSessionSummary['status'];
+  readonly attentionReason: string | null;
+  readonly startedAt: string;
+}
+
+interface WorkspaceRailProcessSummary {
+  readonly key: string;
+  readonly directoryKey: string;
+  readonly label: string;
+  readonly cpuPercent: number | null;
+  readonly memoryMb: number | null;
+  readonly status: 'running' | 'exited';
+}
+
+interface WorkspaceRailModel {
+  readonly directories: readonly WorkspaceRailDirectorySummary[];
+  readonly conversations: readonly WorkspaceRailConversationSummary[];
+  readonly processes: readonly WorkspaceRailProcessSummary[];
+  readonly activeConversationId: string | null;
+  readonly nowMs?: number;
+}
+
 interface RailRow {
-  readonly kind: 'header' | 'item' | 'muted' | 'empty';
+  readonly kind:
+    | 'dir-header'
+    | 'dir-meta'
+    | 'conversation-title'
+    | 'conversation-meta'
+    | 'process-title'
+    | 'process-meta'
+    | 'shortcut-header'
+    | 'shortcut-body'
+    | 'muted'
+    | 'empty';
   readonly text: string;
   readonly active: boolean;
 }
 
+const NORMAL_STYLE = DEFAULT_UI_STYLE;
 const HEADER_STYLE = {
-  fg: { kind: 'indexed', index: 252 },
-  bg: { kind: 'indexed', index: 236 },
+  fg: { kind: 'indexed', index: 255 },
+  bg: { kind: 'indexed', index: 237 },
   bold: true
 } as const;
-const ACTIVE_ROW_STYLE = {
-  fg: { kind: 'indexed', index: 255 },
-  bg: { kind: 'indexed', index: 238 },
+const META_STYLE = {
+  fg: { kind: 'indexed', index: 151 },
+  bg: { kind: 'default' },
   bold: false
 } as const;
-const NORMAL_ROW_STYLE = DEFAULT_UI_STYLE;
-const MUTED_ROW_STYLE = {
+const ACTIVE_TITLE_STYLE = {
+  fg: { kind: 'indexed', index: 255 },
+  bg: { kind: 'indexed', index: 24 },
+  bold: false
+} as const;
+const ACTIVE_META_STYLE = {
+  fg: { kind: 'indexed', index: 195 },
+  bg: { kind: 'indexed', index: 24 },
+  bold: false
+} as const;
+const PROCESS_STYLE = {
+  fg: { kind: 'indexed', index: 223 },
+  bg: { kind: 'default' },
+  bold: false
+} as const;
+const MUTED_STYLE = {
   fg: { kind: 'indexed', index: 245 },
   bg: { kind: 'default' },
+  bold: false
+} as const;
+const SHORTCUT_STYLE = {
+  fg: { kind: 'indexed', index: 251 },
+  bg: { kind: 'indexed', index: 236 },
   bold: false
 } as const;
 
@@ -65,10 +109,10 @@ function compactSessionId(sessionId: string): string {
     const suffix = sessionId.slice('conversation-'.length);
     return suffix.length > 8 ? suffix.slice(0, 8) : suffix;
   }
-  return sessionId.length > 16 ? `${sessionId.slice(0, 16)}...` : sessionId;
+  return sessionId.length > 12 ? sessionId.slice(0, 12) : sessionId;
 }
 
-function conversationBadge(status: ConversationRailSessionSummary['status']): string {
+function conversationStatusBadge(status: ConversationRailSessionSummary['status']): string {
   if (status === 'needs-input') {
     return 'NEED';
   }
@@ -81,101 +125,133 @@ function conversationBadge(status: ConversationRailSessionSummary['status']): st
   return 'EXIT';
 }
 
-function processBadge(status: WorkspaceRailProcessSummary['status']): string {
-  return status === 'running' ? 'RUN' : 'EXIT';
+function conversationStatusGlyph(status: ConversationRailSessionSummary['status']): string {
+  if (status === 'needs-input') {
+    return '◐';
+  }
+  if (status === 'running') {
+    return '●';
+  }
+  if (status === 'completed') {
+    return '○';
+  }
+  return '◌';
+}
+
+function processStatusBadge(status: WorkspaceRailProcessSummary['status']): string {
+  return status === 'running' ? 'RUN ' : 'EXIT';
 }
 
 function formatCpu(value: number | null): string {
   if (value === null || !Number.isFinite(value)) {
-    return '--.-%';
+    return '·';
   }
-  return `${value.toFixed(1).padStart(4, ' ')}%`;
+  return `${value.toFixed(1)}%`;
 }
 
-function formatMemMb(value: number | null): string {
+function formatMem(value: number | null): string {
   if (value === null || !Number.isFinite(value)) {
-    return '---MB';
+    return '·';
   }
-  const rounded = Math.round(value);
-  return `${String(rounded).padStart(3, ' ')}MB`;
+  return `${String(Math.max(0, Math.round(value)))}MB`;
+}
+
+function formatDuration(startedAt: string, nowMs: number): string {
+  const startedAtMs = Date.parse(startedAt);
+  if (!Number.isFinite(startedAtMs)) {
+    return '·';
+  }
+  const elapsedMs = Math.max(0, nowMs - startedAtMs);
+  const totalSeconds = Math.floor(elapsedMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes > 0) {
+    return `${String(minutes)}m`;
+  }
+  return `${String(seconds)}s`;
 }
 
 function buildRows(model: WorkspaceRailModel, maxRows: number): readonly RailRow[] {
   const rows: RailRow[] = [];
-  const pushHeader = (text: string): void => {
-    rows.push({
-      kind: 'header',
-      text,
-      active: false
-    });
-  };
-  const pushItem = (text: string, active = false): void => {
-    rows.push({
-      kind: 'item',
-      text,
-      active
-    });
-  };
-  const pushMuted = (text: string): void => {
-    rows.push({
-      kind: 'muted',
-      text,
-      active: false
-    });
+  const nowMs = model.nowMs ?? Date.now();
+  const push = (kind: RailRow['kind'], text: string, active = false): void => {
+    rows.push({ kind, text, active });
   };
 
-  pushHeader(' DIR');
   if (model.directories.length === 0) {
-    pushMuted('  (none)');
+    push('dir-header', '┌─ 📁 no directories');
+    push('muted', '│  create one with ^t');
   } else {
-    for (const directory of model.directories) {
-      const prefix = directory.active ? '>' : ' ';
-      pushItem(`${prefix} ${directory.workspaceId}/${directory.worktreeId}`, directory.active);
-    }
-  }
-
-  pushHeader(' CONV');
-  if (model.conversations.length === 0) {
-    pushMuted('  (none)');
-  } else {
-    for (const session of model.conversations) {
-      const active = session.sessionId === model.activeConversationId;
-      const prefix = active ? '>' : ' ';
-      const reason =
-        session.attentionReason !== null && session.attentionReason.length > 0
-          ? ` ${session.attentionReason}`
-          : '';
-      pushItem(
-        `${prefix} ${conversationBadge(session.status)} ${compactSessionId(session.sessionId)}${reason}`,
-        active
+    for (let directoryIndex = 0; directoryIndex < model.directories.length; directoryIndex += 1) {
+      const directory = model.directories[directoryIndex]!;
+      const connector = directoryIndex === 0 ? '┌' : '├';
+      const directoryLabel = `${directory.workspaceId}/${directory.worktreeId}`;
+      push(
+        'dir-header',
+        `${connector}─ 📁 ${directoryLabel} ─ ${directory.git.branch}`,
+        directory.active
       );
-    }
-  }
-
-  pushHeader(' PROC');
-  if (model.processes.length === 0) {
-    pushMuted('  (none)');
-  } else {
-    for (const process of model.processes) {
-      pushItem(
-        `  ${processBadge(process.status)} ${process.label} ${formatCpu(process.cpuPercent)} ${formatMemMb(process.memoryMb)}`
+      push(
+        'dir-meta',
+        `│  +${String(directory.git.additions)} -${String(directory.git.deletions)} │ ${String(directory.git.changedFiles)} files`,
+        directory.active
       );
+      push('muted', '│');
+
+      const conversations = model.conversations.filter(
+        (conversation) => conversation.directoryKey === directory.key
+      );
+      if (conversations.length === 0) {
+        push('muted', '│  (no conversations)');
+      } else {
+        for (const conversation of conversations) {
+          const active = conversation.sessionId === model.activeConversationId;
+          const reason =
+            conversation.attentionReason !== null && conversation.attentionReason.trim().length > 0
+              ? ` ${conversation.attentionReason.trim()}`
+              : '';
+          push(
+            'conversation-title',
+            `│  ${active ? '▸' : ' '} ${conversationStatusGlyph(conversation.status)} ${compactSessionId(conversation.sessionId)}${reason}`,
+            active
+          );
+          push(
+            'conversation-meta',
+            `│    🤖 ${conversation.agentLabel} ${conversationStatusBadge(conversation.status)} ${formatCpu(conversation.cpuPercent)} ${formatMem(conversation.memoryMb)} ${formatDuration(conversation.startedAt, nowMs)}`,
+            active
+          );
+          if (conversation.worktreeLabel !== null && conversation.worktreeLabel.length > 0) {
+            push(
+              'muted',
+              `│    └─ 🌿 ${conversation.worktreeLabel}`,
+              active
+            );
+          }
+        }
+      }
+
+      const processes = model.processes.filter((process) => process.directoryKey === directory.key);
+      if (processes.length > 0) {
+        push('muted', '│');
+        for (const process of processes) {
+          push('process-title', `│  ┄ ${process.label}`);
+          push(
+            'process-meta',
+            `│    ⚙ ${processStatusBadge(process.status)} ${formatCpu(process.cpuPercent)} ${formatMem(process.memoryMb)}`
+          );
+        }
+      }
     }
   }
 
-  pushHeader(' GIT');
-  pushItem(`  ${model.git.branch}`);
-  pushItem(`  +${model.git.additions} -${model.git.deletions} | ${model.git.changedFiles} files`);
+  push('shortcut-header', '├─ ⌨ shortcuts');
+  push('shortcut-body', '│  ^t new  ^n/^p switch  ^] quit');
 
   if (rows.length > maxRows) {
     return rows.slice(0, maxRows);
   }
   while (rows.length < maxRows) {
-    rows.push({
-      kind: 'empty',
-      text: '',
-      active: false
-    });
+    push('empty', '');
   }
   return rows;
 }
@@ -189,29 +265,55 @@ export function renderWorkspaceRailAnsiRows(
   const safeRows = Math.max(1, maxRows);
   const rows = buildRows(model, safeRows);
   const surface = createUiSurface(safeWidth, safeRows, DEFAULT_UI_STYLE);
+
   for (let rowIndex = 0; rowIndex < safeRows; rowIndex += 1) {
     const row = rows[rowIndex]!;
-
-    if (row.kind === 'header') {
-      fillUiRow(surface, rowIndex, HEADER_STYLE);
-      drawUiText(surface, 0, rowIndex, row.text, HEADER_STYLE);
-      continue;
-    }
-
-    if (row.kind === 'item') {
-      const style = row.active ? ACTIVE_ROW_STYLE : NORMAL_ROW_STYLE;
+    if (row.kind === 'dir-header') {
+      const style = row.active ? ACTIVE_TITLE_STYLE : HEADER_STYLE;
       fillUiRow(surface, rowIndex, style);
       drawUiText(surface, 0, rowIndex, row.text, style);
       continue;
     }
-
-    if (row.kind === 'muted') {
-      fillUiRow(surface, rowIndex, NORMAL_ROW_STYLE);
-      drawUiText(surface, 0, rowIndex, row.text, MUTED_ROW_STYLE);
+    if (row.kind === 'dir-meta') {
+      const style = row.active ? ACTIVE_META_STYLE : META_STYLE;
+      fillUiRow(surface, rowIndex, style);
+      drawUiText(surface, 0, rowIndex, row.text, style);
       continue;
     }
-
-    fillUiRow(surface, rowIndex, NORMAL_ROW_STYLE);
+    if (row.kind === 'conversation-title') {
+      const style = row.active ? ACTIVE_TITLE_STYLE : NORMAL_STYLE;
+      fillUiRow(surface, rowIndex, style);
+      drawUiText(surface, 0, rowIndex, row.text, style);
+      continue;
+    }
+    if (row.kind === 'conversation-meta') {
+      const style = row.active ? ACTIVE_META_STYLE : META_STYLE;
+      fillUiRow(surface, rowIndex, style);
+      drawUiText(surface, 0, rowIndex, row.text, style);
+      continue;
+    }
+    if (row.kind === 'process-title' || row.kind === 'process-meta') {
+      fillUiRow(surface, rowIndex, NORMAL_STYLE);
+      drawUiText(surface, 0, rowIndex, row.text, PROCESS_STYLE);
+      continue;
+    }
+    if (row.kind === 'shortcut-header') {
+      fillUiRow(surface, rowIndex, HEADER_STYLE);
+      drawUiText(surface, 0, rowIndex, row.text, HEADER_STYLE);
+      continue;
+    }
+    if (row.kind === 'shortcut-body') {
+      fillUiRow(surface, rowIndex, SHORTCUT_STYLE);
+      drawUiText(surface, 0, rowIndex, row.text, SHORTCUT_STYLE);
+      continue;
+    }
+    if (row.kind === 'muted') {
+      const style = row.active ? ACTIVE_META_STYLE : MUTED_STYLE;
+      fillUiRow(surface, rowIndex, NORMAL_STYLE);
+      drawUiText(surface, 0, rowIndex, row.text, style);
+      continue;
+    }
+    fillUiRow(surface, rowIndex, NORMAL_STYLE);
   }
 
   return renderUiSurfaceAnsiRows(surface);

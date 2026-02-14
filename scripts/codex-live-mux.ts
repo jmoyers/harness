@@ -119,14 +119,6 @@ interface GitSummary {
   readonly deletions: number;
 }
 
-interface RailProcessSummary {
-  readonly key: string;
-  readonly label: string;
-  readonly cpuPercent: number | null;
-  readonly memoryMb: number | null;
-  readonly status: 'running' | 'exited';
-}
-
 const ENABLE_INPUT_MODES = '\u001b[>1u\u001b[?1000h\u001b[?1002h\u001b[?1004h\u001b[?1006h';
 const DISABLE_INPUT_MODES = '\u001b[?2004l\u001b[?1006l\u001b[?1004l\u001b[?1002l\u001b[?1000l\u001b[<u';
 const DEFAULT_RESIZE_MIN_INTERVAL_MS = 33;
@@ -796,6 +788,10 @@ function applySummaryToConversation(
   if (summary === null) {
     return;
   }
+  target.scope.tenantId = summary.tenantId;
+  target.scope.userId = summary.userId;
+  target.scope.workspaceId = summary.workspaceId;
+  target.scope.worktreeId = summary.worktreeId;
   target.status = summary.status;
   target.attentionReason = summary.attentionReason;
   target.startedAt = summary.startedAt;
@@ -819,31 +815,6 @@ function conversationSummary(conversation: ConversationState): ConversationRailS
 
 function conversationOrder(conversations: ReadonlyMap<string, ConversationState>): readonly string[] {
   return [...conversations.keys()];
-}
-
-function buildRailProcessRows(
-  conversations: ReadonlyMap<string, ConversationState>,
-  orderedIds: readonly string[],
-  processUsageBySessionId: ReadonlyMap<string, ProcessUsageSample>
-): readonly RailProcessSummary[] {
-  const rows: RailProcessSummary[] = [];
-  for (const sessionId of orderedIds) {
-    const conversation = conversations.get(sessionId);
-    if (conversation === undefined) {
-      continue;
-    }
-    const shortId = sessionId.startsWith('conversation-')
-      ? sessionId.slice('conversation-'.length, 'conversation-'.length + 8)
-      : sessionId.slice(0, 8);
-    rows.push({
-      key: sessionId,
-      label: `codex ${shortId}`,
-      cpuPercent: processUsageBySessionId.get(sessionId)?.cpuPercent ?? null,
-      memoryMb: processUsageBySessionId.get(sessionId)?.memoryMb ?? null,
-      status: conversation.live ? 'running' : 'exited'
-    });
-  }
-  return rows;
 }
 
 function buildRailRows(
@@ -884,22 +855,36 @@ function buildRailRows(
     }
   }
 
-  const conversationsForRail = orderedIds
-    .map((sessionId) => conversations.get(sessionId))
-    .flatMap((conversation) => (conversation === undefined ? [] : [conversationSummary(conversation)]));
-
   return renderWorkspaceRailAnsiRows(
     {
       directories: [...directoriesByKey.entries()].map(([key, value]) => ({
         key,
         workspaceId: value.workspaceId,
         worktreeId: value.worktreeId,
-        active: value.active
+        active: value.active,
+        git: gitSummary
       })),
-      conversations: conversationsForRail,
+      conversations: orderedIds
+        .map((sessionId) => conversations.get(sessionId))
+        .flatMap((conversation) => {
+          if (conversation === undefined) {
+            return [];
+          }
+          const directoryKey = `${conversation.scope.workspaceId}:${conversation.scope.worktreeId}`;
+          return [
+            {
+              ...conversationSummary(conversation),
+              directoryKey,
+              agentLabel: 'codex',
+              worktreeLabel: conversation.scope.worktreeId,
+              cpuPercent: processUsageBySessionId.get(conversation.sessionId)?.cpuPercent ?? null,
+              memoryMb: processUsageBySessionId.get(conversation.sessionId)?.memoryMb ?? null
+            }
+          ];
+        }),
       activeConversationId,
-      processes: buildRailProcessRows(conversations, orderedIds, processUsageBySessionId),
-      git: gitSummary
+      processes: [],
+      nowMs: Date.now()
     },
     layout.leftCols,
     layout.paneRows

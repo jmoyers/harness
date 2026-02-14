@@ -970,7 +970,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - VTE-driven bracketed paste mode parity (`?2004`) mirrored to host terminal mode
     - first-party gesture-based in-pane selection with visual highlight and keyboard-triggered copy, with modifier-based passthrough for app mouse input
     - multi-conversation rail + active session switching (`Ctrl+N`/`Ctrl+P`) + new conversation creation (`Ctrl+T`) while preserving live PTY pass-through for the active session
-    - left rail composition includes directories, conversations, process telemetry (CPU/memory sampled from `ps` via `processId`), and git summary
+    - left rail composition uses directory-wrapped conversation blocks with inline git summary and per-conversation telemetry (CPU/memory sampled from `ps` via `processId`)
     - first-party styled rail rendering built from low-level terminal UI primitives rather than framework-driven VDOM
     - per-conversation notify sink isolation to keep status routing correct when multiple sessions run concurrently
     - optional terminal-frame recording to JSONL (`--record-path`, `--record-fps`) sourced from canonical full-frame mux snapshots (not incremental repaint diffs) for replay/debug artifact generation
@@ -979,7 +979,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
   - `scripts/terminal-recording-gif-lib.ts` + `scripts/terminal-recording-to-gif.ts` provide offline recording-to-GIF export, enabling visual regression artifacts from mux render captures.
   - `src/mux/dual-pane-core.ts` is the typed mux core for layout, SGR mouse parsing/routing, and row-diff rendering.
   - `src/mux/conversation-rail.ts` provides deterministic conversation ordering and rail rendering primitives for multi-session mux navigation.
-  - `src/mux/workspace-rail.ts` provides left-rail section rendering for directories, conversations, processes, and git telemetry.
+  - `src/mux/workspace-rail.ts` provides left-rail rendering for directory-scoped conversation stacks with inline git + process telemetry and compact unicode/emoji scanning cues.
   - `src/ui/surface.ts` provides reusable immediate-mode terminal UI primitives (cell surface, row fill, text draw, ANSI row render) to compose panes, selectors, and future modal/splitter widgets.
   - `test/mux-dual-pane-core.test.ts` deterministically verifies mux layout, mouse routing, viewport follow/pin transitions, and row-diff behavior.
   - terminal parity now includes footer background persistence checks via `codex-footer-background-persistence`.

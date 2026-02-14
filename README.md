@@ -47,8 +47,8 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
 - Mux wheel routing now scrolls by single-row steps to better match native terminal feel.
 - Mux consumes focus-in/out events and reasserts input modes after focus return.
 - Mux now supports multiple concurrent conversations in one session: left rail + active-session switching (`Ctrl+N`/`Ctrl+P`) + new conversation (`Ctrl+T`) with attach/detach continuity.
-- Left rail now uses a first-party low-level UI surface with sections for directories, conversations, processes, and git stats (`src/mux/workspace-rail.ts`, `src/ui/surface.ts`).
-- Session summaries now include PTY `processId`; mux samples per-session CPU/memory (`ps`) for process telemetry in the rail.
+- Left rail now uses a first-party low-level UI surface with directory-wrapped conversation blocks, inline git + telemetry metadata, unicode/emoji scannability, and integrated process rows (`src/mux/workspace-rail.ts`, `src/ui/surface.ts`).
+- Session summaries now include PTY `processId`; mux samples per-session CPU/memory (`ps`) and renders those metrics inline with each conversation.
 - Conversation status routing is now isolated per session (unique notify sink per live Codex session) to prevent cross-conversation `DONE`/`NEEDS` contamination.
 - Mux recording now supports one-step capture to GIF (`--record-output <path.gif>`) with optional JSONL sidecar.
 - Recording capture uses canonical full-frame snapshots (not incremental repaint diffs) to prevent interleaved/partial-frame artifacts.
@@ -88,8 +88,8 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
   - client/server mode:
     - terminal 1: `npm run control-plane:daemon -- --host 127.0.0.1 --port 7777`
     - terminal 2: `HARNESS_CONTROL_PLANE_AUTH_TOKEN=secret npm run codex:live:mux:client -- --harness-server-token secret <codex-args>`
-  - confirm left rail shows `DIR`, `CONV`, `PROC`, and `GIT` sections
-  - confirm right pane remains interactive Codex passthrough while left rail continuously updates status/process/git
+  - confirm left rail shows directory blocks that wrap conversations, with inline branch/diff summary and per-conversation status/telemetry
+  - confirm right pane remains interactive Codex passthrough while the left rail continuously updates conversation/process/git state
   - scroll wheel in right pane should switch status from `pty=live` to `pty=scroll(...)`
   - scroll back to bottom and confirm status returns to `pty=live`
   - drag in right pane to select; selection shrinks/expands with drag movement, and click-without-drag clears
@@ -111,7 +111,7 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
 
 ## Next UX Target
 - Add first-class directory/worktree management operations (`add/select/archive`) through control-plane commands.
-- Add explicit background process lifecycle in the control plane so rail `PROC` rows are not conversation-derived only.
+- Add explicit background process lifecycle in the control plane so directory blocks can host non-agent processes with the same inline telemetry UX.
 - Add rail interactions for directory switching with deterministic focus behavior across live sessions.
 
 ## Core Docs
