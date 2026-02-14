@@ -24,6 +24,10 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
 - Scroll-region/origin correctness for pinned UI areas (`DECSTBM`, `DECOM`, `IND`/`NEL`/`RI`, `IL`/`DL`).
 - OSC terminal color query replies (`OSC 10/11`) for better Codex visual parity.
 - Parity scene matrix for codex/vim/core profiles (`npm run terminal:parity`).
+- First-party split mux now uses dirty-row repaint (no full-screen redraw loop).
+- Right pane supports independent scrollback (`live`/`scroll`) with mouse wheel routing.
+- Mux core is now deterministic and directly tested (`test/mux-dual-pane-core.test.ts`).
+- Footer background persistence parity scene added for Codex-like pinned input/status rows.
 - Strict verification gate: lint + typecheck + deadcode + 100% unit/integration/e2e coverage.
 
 ## Try It
@@ -35,6 +39,16 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
 - `npm run codex:live:tail -- --conversation-id <id> [--from-now] [--only-notify] [--include-text-deltas]`
 - `npm run codex:live:snapshot -- --conversation-id <id> [--follow] [--from-now] [--json]`
 - `npm run terminal:parity [-- --json]`
+
+## Human Breakpoints
+- Mux paint correctness:
+  - run `npm run codex:live:mux --`
+  - confirm left pane remains interactive while right pane updates event feed
+  - confirm right pane scroll wheel enters `events=scroll(...)` mode in status and does not type into Codex
+  - scroll back to bottom and confirm status returns to `events=live`
+- Footer/background parity:
+  - run `npm run terminal:parity`
+  - verify `codex-footer-background-persistence` passes
 
 ## Core Docs
 - `design.md`: architecture, principles, milestones, and verified system behavior.

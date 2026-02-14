@@ -258,6 +258,51 @@ export const TERMINAL_PARITY_SCENES: readonly TerminalParityScene[] = [
     }
   },
   {
+    id: 'codex-footer-background-persistence',
+    profile: 'codex',
+    description: 'Footer prompt row keeps truecolor background while scroll region churns above.',
+    cols: 36,
+    rows: 8,
+    steps: [
+      { kind: 'output', chunk: '\u001b[1;6r' },
+      { kind: 'output', chunk: '\u001b[7;1H\u001b[48;2;25;30;36m> prompt\u001b[0m' },
+      { kind: 'output', chunk: '\u001b[8;1H\u001b[48;5;236mstatus\u001b[0m' },
+      { kind: 'output', chunk: '\u001b[6;1Hline-1\nline-2\nline-3\nline-4\nline-5\nline-6' }
+    ],
+    expectations: {
+      lines: [
+        { row: 6, includes: '> prompt' },
+        { row: 7, includes: 'status' }
+      ],
+      cells: [
+        {
+          row: 6,
+          col: 0,
+          glyph: '>',
+          style: {
+            bg: {
+              kind: 'rgb',
+              r: 25,
+              g: 30,
+              b: 36
+            }
+          }
+        },
+        {
+          row: 7,
+          col: 0,
+          glyph: 's',
+          style: {
+            bg: {
+              kind: 'indexed',
+              index: 236
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
     id: 'codex-origin-and-background',
     profile: 'codex',
     description: 'Origin mode addresses relative to scroll region and true background color is retained.',

@@ -2,13 +2,21 @@ import { basename } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { startCodexLiveSession, type CodexLiveEvent } from '../src/codex/live-session.ts';
 import { SqliteEventStore } from '../src/store/event-store.ts';
-import { measureDisplayWidth, renderSnapshotAnsiRow, wrapTextForColumns } from '../src/terminal/snapshot-oracle.ts';
+import { renderSnapshotAnsiRow } from '../src/terminal/snapshot-oracle.ts';
 import {
   createNormalizedEvent,
   type EventScope,
   type NormalizedEventEnvelope
 } from '../src/events/normalized-events.ts';
 import type { PtyExit } from '../src/pty/pty_host.ts';
+import {
+  EventPaneViewport,
+  computeDualPaneLayout,
+  diffRenderedRows,
+  padOrTrimDisplay,
+  parseMuxInputChunk,
+  routeMuxInputTokens
+} from '../src/mux/dual-pane-core.ts';
 
 interface MuxOptions {
   codexArgs: string[];
@@ -156,29 +164,6 @@ function terminalSize(): { cols: number; rows: number } {
   return { cols: 120, rows: 40 };
 }
 
-function padOrTrim(text: string, width: number): string {
-  if (width <= 0) {
-    return '';
-  }
-
-  let output = '';
-  let outputWidth = 0;
-  for (const char of text) {
-    const charWidth = Math.max(1, measureDisplayWidth(char));
-    if (outputWidth + charWidth > width) {
-      break;
-    }
-    output += char;
-    outputWidth += charWidth;
-  }
-
-  if (outputWidth < width) {
-    output += ' '.repeat(width - outputWidth);
-  }
-
-  return output;
-}
-
 function parseArgs(argv: string[]): MuxOptions {
   const conversationId = process.env.HARNESS_CONVERSATION_ID ?? `conversation-${randomUUID()}`;
   const turnId = process.env.HARNESS_TURN_ID ?? `turn-${randomUUID()}`;
@@ -199,6 +184,34 @@ function parseArgs(argv: string[]): MuxOptions {
   };
 }
 
+function buildRenderRows(
+  layout: ReturnType<typeof computeDualPaneLayout>,
+  liveSession: ReturnType<typeof startCodexLiveSession>,
+  events: EventPaneViewport,
+  conversationId: string
+): string[] {
+  const leftFrame = liveSession.snapshot();
+  const rightView = events.view(layout.rightCols, layout.paneRows);
+
+  const rows: string[] = [];
+  for (let row = 0; row < layout.paneRows; row += 1) {
+    const left = renderSnapshotAnsiRow(leftFrame, row, layout.leftCols);
+    const right = padOrTrimDisplay(rightView.lines[row] ?? '', layout.rightCols);
+    rows.push(`${left}\u001b[0m│${right}`);
+  }
+
+  const mode = rightView.followOutput
+    ? 'events=live'
+    : `events=scroll(${String(rightView.top + 1)}/${String(rightView.totalRows)})`;
+  const status = padOrTrimDisplay(
+    `[mux] conversation=${conversationId} ${mode} ctrl-] quit`,
+    layout.cols
+  );
+  rows.push(status);
+
+  return rows;
+}
+
 async function main(): Promise<number> {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     process.stderr.write('codex:live:mux requires a TTY stdin/stdout\n');
@@ -208,12 +221,11 @@ async function main(): Promise<number> {
   const options = parseArgs(process.argv.slice(2));
   const store = new SqliteEventStore(options.storePath);
 
-  let size = terminalSize();
-  let paneRows = Math.max(4, size.rows - 1);
-  let leftCols = Math.max(20, Math.floor(size.cols * 0.68));
-  let rightCols = Math.max(20, size.cols - leftCols - 1);
-  const eventLines: string[] = [];
   const maxEventLines = 1000;
+  const events = new EventPaneViewport(maxEventLines);
+
+  let size = terminalSize();
+  let layout = computeDualPaneLayout(size.cols, size.rows);
 
   const liveSession = startCodexLiveSession({
     args: options.codexArgs,
@@ -227,21 +239,21 @@ async function main(): Promise<number> {
   let exit: PtyExit | null = null;
   let dirty = true;
   let stop = false;
+  let inputRemainder = '';
+  let previousRows: readonly string[] = [];
+  let forceFullClear = true;
 
   const recalcLayout = (): void => {
     size = terminalSize();
-    paneRows = Math.max(4, size.rows - 1);
-    leftCols = Math.max(20, Math.floor(size.cols * 0.68));
-    rightCols = Math.max(20, size.cols - leftCols - 1);
-    liveSession.resize(leftCols, paneRows);
+    layout = computeDualPaneLayout(size.cols, size.rows);
+    liveSession.resize(layout.leftCols, layout.paneRows);
+    previousRows = [];
+    forceFullClear = true;
     dirty = true;
   };
 
   const appendEventLine = (line: string): void => {
-    eventLines.push(line);
-    while (eventLines.length > maxEventLines) {
-      eventLines.shift();
-    }
+    events.append(line);
     dirty = true;
   };
 
@@ -250,27 +262,21 @@ async function main(): Promise<number> {
       return;
     }
 
-    const leftFrame = liveSession.snapshot();
-    const wrappedRightLines = eventLines.flatMap((line) => {
-      return wrapTextForColumns(line, rightCols);
-    });
-    const rightStart = Math.max(0, wrappedRightLines.length - paneRows);
-    const rightRendered = wrappedRightLines.slice(rightStart);
+    const rows = buildRenderRows(layout, liveSession, events, options.conversationId);
+    const diff = diffRenderedRows(rows, previousRows);
 
-    const frame: string[] = ['\u001b[?25l', '\u001b[H\u001b[2J'];
-    for (let row = 0; row < paneRows; row += 1) {
-      const left = renderSnapshotAnsiRow(leftFrame, row, leftCols);
-      const right = padOrTrim(rightRendered[row] ?? '', rightCols);
-      frame.push(`\u001b[${String(row + 1)};1H${left}\u001b[0m│${right}`);
+    let output = '';
+    if (forceFullClear) {
+      output += '\u001b[?25l\u001b[H\u001b[2J';
+      forceFullClear = false;
+    }
+    output += diff.output;
+
+    if (output.length > 0) {
+      process.stdout.write(output);
     }
 
-    const status = padOrTrim(
-      `[mux] conversation=${options.conversationId} ctrl-] quit`,
-      size.cols
-    );
-    frame.push(`\u001b[${String(paneRows + 1)};1H${status}`);
-
-    process.stdout.write(frame.join(''));
+    previousRows = diff.nextRows;
     dirty = false;
   };
 
@@ -300,7 +306,19 @@ async function main(): Promise<number> {
       liveSession.close();
       return;
     }
-    liveSession.write(chunk);
+
+    const parsed = parseMuxInputChunk(inputRemainder, chunk);
+    inputRemainder = parsed.remainder;
+
+    const routed = routeMuxInputTokens(parsed.tokens, layout);
+    if (routed.rightPaneScrollRows !== 0) {
+      events.scrollBy(routed.rightPaneScrollRows, layout.rightCols, layout.paneRows);
+      dirty = true;
+    }
+
+    for (const forwardChunk of routed.forwardToSession) {
+      liveSession.write(forwardChunk);
+    }
   };
 
   const onResize = (): void => {
@@ -312,11 +330,12 @@ async function main(): Promise<number> {
   process.stdin.on('data', onInput);
   process.stdout.on('resize', onResize);
 
+  process.stdout.write('\u001b[?1000h\u001b[?1006h');
   recalcLayout();
 
   const renderTimer = setInterval(() => {
     render();
-  }, 33);
+  }, 16);
 
   try {
     while (!stop) {
@@ -332,7 +351,7 @@ async function main(): Promise<number> {
     process.stdin.setRawMode(false);
     liveSession.close();
     store.close();
-    process.stdout.write('\u001b[?25h\u001b[0m\n');
+    process.stdout.write('\u001b[?1000l\u001b[?1006l\u001b[?25h\u001b[0m\n');
   }
 
   if (exit === null) {

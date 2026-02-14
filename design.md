@@ -765,17 +765,17 @@ Terminal correctness backlog (Codex/Vim parity critical):
 
 Mux/runtime backlog (post-correctness, latency-focused):
 - Full-screen redraw elimination in mux:
-  - status: planned
+  - status: in progress
   - expected output: dirty-row/region repaint path replaces 33ms full-frame loop.
   - verification: perf traces demonstrate reduced render work and lower keystroke-to-paint variance under heavy output.
 
 Pane interaction backlog (human/operator UX):
 - Pane-aware mouse routing:
-  - status: planned
+  - status: in progress
   - expected output: mouse wheel/click is routed to pane under pointer.
   - verification: integration tests for pane hit-testing and scroll routing.
 - Per-pane scrollback navigation:
-  - status: planned
+  - status: in progress
   - expected output: each pane can scroll backward independently with pinned/live mode transitions.
   - verification: snapshot-oracle-backed integration tests asserting per-pane viewport state.
 - Selection/copy in pane:
@@ -884,7 +884,13 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
   - `scripts/codex-live.ts` enforces terminal stream isolation: PTY output remains on stdout while events persist to SQLite (no event JSON mixed into terminal output).
   - `scripts/codex-live-tail.ts` tails persisted live events by conversation in real time, including notify-discovery mode (`--only-notify`).
   - `scripts/codex-live-snapshot.ts` renders PTY deltas into textual snapshot frames for deterministic integration/e2e assertions (`--json`).
-  - `scripts/codex-live-mux.ts` provides the first-party split UI (left: live steerable Codex session rendered via shared snapshot oracle, right: event feed) with display-width-safe wrapping/padding.
+  - `scripts/codex-live-mux.ts` provides the first-party split UI (left: live steerable Codex session rendered via shared snapshot oracle, right: event feed) with:
+    - dirty-row diff rendering (no full-screen repaint loop)
+    - pane-local event viewport state (`live` vs `scroll`) with independent right-pane scrollback
+    - SGR mouse wheel routing for right-pane scrollback without leaking events into the live Codex PTY stream
+  - `src/mux/dual-pane-core.ts` is the typed mux core for layout, SGR mouse parsing/routing, event viewport state, and row-diff rendering.
+  - `test/mux-dual-pane-core.test.ts` deterministically verifies mux layout, mouse routing, viewport follow/pin transitions, and row-diff behavior.
+  - terminal parity now includes footer background persistence checks via `codex-footer-background-persistence`.
   - `scripts/terminal-parity.ts` exposes the parity matrix gate (`npm run terminal:parity`).
 
 ## Sources
