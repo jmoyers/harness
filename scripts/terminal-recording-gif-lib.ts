@@ -351,6 +351,8 @@ function renderFrameRgba(
   }
 
   const textYOffset = Math.max(0, Math.floor((cellHeightPx - fontSizePx) / 2));
+  ctx.textBaseline = 'top';
+  ctx.textAlign = 'left';
   for (const glyph of renderPlan.glyphs) {
     const x = glyph.col * cellWidthPx;
     const y = glyph.row * cellHeightPx;
@@ -414,22 +416,22 @@ function frameDelayMs(
   return Math.max(10, delta);
 }
 
-function buildFrameDelaysCentiseconds(
+function buildFrameDelaysMs(
   recording: TerminalRecording,
   defaultFrameDurationMs: number
 ): number[] {
   const delaysMs = recording.frames.map((_, idx) => frameDelayMs(recording, idx, defaultFrameDurationMs));
-  const delaysCentiseconds: number[] = [];
+  const normalizedDelaysMs: number[] = [];
   let remainderMs = 0;
 
   for (const delayMs of delaysMs) {
     const correctedMs = delayMs + remainderMs;
-    const centiseconds = Math.max(1, Math.round(correctedMs / 10));
-    delaysCentiseconds.push(centiseconds);
-    remainderMs = correctedMs - centiseconds * 10;
+    const roundedMs = Math.max(10, Math.round(correctedMs));
+    normalizedDelaysMs.push(roundedMs);
+    remainderMs = correctedMs - roundedMs;
   }
 
-  return delaysCentiseconds;
+  return normalizedDelaysMs;
 }
 
 function parseIndexedPalette(
@@ -477,7 +479,7 @@ export function renderTerminalRecordingToGif(
     },
     indexedPalette: parseIndexedPalette(recording, defaultForeground, defaultBackground)
   };
-  const delaysCentiseconds = buildFrameDelaysCentiseconds(recording, defaultFrameDurationMs);
+  const delaysMs = buildFrameDelaysMs(recording, defaultFrameDurationMs);
   const gif = gifenc.GIFEncoder();
 
   let width = 0;
@@ -506,7 +508,7 @@ export function renderTerminalRecordingToGif(
       repeat?: number;
     } = {
       palette,
-      delay: delaysCentiseconds[idx] ?? Math.max(1, Math.round(defaultFrameDurationMs / 10))
+      delay: delaysMs[idx] ?? Math.max(10, Math.round(defaultFrameDurationMs))
     };
     if (idx === 0) {
       frameOptions.repeat = 0;
@@ -533,7 +535,7 @@ export const __terminalGifInternals = {
   indexedColorWithPalette,
   parseHexColor,
   frameDelayMs,
-  buildFrameDelaysCentiseconds,
+  buildFrameDelaysMs,
   parseIndexedPalette,
   createRenderPlan,
   renderFrameRgba

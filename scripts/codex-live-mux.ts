@@ -1,4 +1,4 @@
-import { basename, dirname, extname, join } from 'node:path';
+import { basename, dirname, extname, join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { appendFileSync } from 'node:fs';
 import { startCodexLiveSession } from '../src/codex/live-session.ts';
@@ -542,6 +542,7 @@ function parseArgs(argv: string[]): MuxOptions {
   let recordingPath = process.env.HARNESS_RECORDING_PATH ?? null;
   let recordingOutputPath = process.env.HARNESS_RECORD_OUTPUT ?? null;
   let recordingFps = parsePositiveInt(process.env.HARNESS_RECORDING_FPS, 15);
+  const invocationDirectory = process.env.HARNESS_INVOKE_CWD ?? process.env.INIT_CWD ?? process.cwd();
 
   for (let idx = 0; idx < argv.length; idx += 1) {
     const arg = argv[idx]!;
@@ -619,6 +620,13 @@ function parseArgs(argv: string[]): MuxOptions {
 
   if ((controlPlaneHost === null) !== (controlPlanePort === null)) {
     throw new Error('both control-plane host and port must be set together');
+  }
+
+  if (recordingPath !== null && recordingPath.length > 0) {
+    recordingPath = resolve(invocationDirectory, recordingPath);
+  }
+  if (recordingOutputPath !== null && recordingOutputPath.length > 0) {
+    recordingOutputPath = resolve(invocationDirectory, recordingOutputPath);
   }
 
   let recordingGifOutputPath: string | null = null;

@@ -390,7 +390,7 @@ void test('terminal gif internals cover color mapping delay planning and render 
       26
     );
     assert.deepEqual(
-      __terminalGifInternals.buildFrameDelaysCentiseconds(
+      __terminalGifInternals.buildFrameDelaysMs(
         {
           header: singleFrameRecording.header,
           finishedAtMs: null,
@@ -411,7 +411,7 @@ void test('terminal gif internals cover color mapping delay planning and render 
         },
         50
       ),
-      [1, 2, 5]
+      [14, 14, 50]
     );
     assert.deepEqual(
       [...__terminalGifInternals.parseIndexedPalette(

@@ -20,13 +20,14 @@ void test('snapshot oracle captures SGR styles and renders ANSI rows', () => {
   oracle.ingest('\u001b[39;49mE');
   oracle.ingest('\u001b[90;100mF');
   oracle.ingest('\u001b[0mG');
+  oracle.ingest('\u001b[0;31;44mL');
   oracle.ingest('\u001b[mH');
   oracle.ingest('\u001b[59mI');
   oracle.ingest('\u001b[38;5mJ');
   oracle.ingest('\u001b[48;2;1;2mK');
 
   const frame = oracle.snapshot();
-  assert.equal(frame.lines[0], 'ABCDEFGHIJK');
+  assert.equal(frame.lines[0], 'ABCDEFGLHIJK');
 
   const first = frame.richLines[0]!.cells[0]!;
   assert.deepEqual(first.style.fg, { kind: 'indexed', index: 1 });
@@ -46,6 +47,10 @@ void test('snapshot oracle captures SGR styles and renders ANSI rows', () => {
   const sixth = frame.richLines[0]!.cells[5]!;
   assert.deepEqual(sixth.style.fg, { kind: 'indexed', index: 8 });
   assert.deepEqual(sixth.style.bg, { kind: 'indexed', index: 8 });
+
+  const eighth = frame.richLines[0]!.cells[7]!;
+  assert.deepEqual(eighth.style.fg, { kind: 'indexed', index: 1 });
+  assert.deepEqual(eighth.style.bg, { kind: 'indexed', index: 4 });
 
   const ansi = renderSnapshotAnsiRow(frame, 0, frame.cols);
   assert.equal(ansi.includes('\u001b[0;31;44m'), true);

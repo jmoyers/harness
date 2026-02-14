@@ -723,14 +723,15 @@ export function wrapTextForColumns(text: string, cols: number): string[] {
 }
 
 function applySgrParams(style: TerminalCellStyle, params: number[]): TerminalCellStyle {
-  const nextStyle = cloneStyle(style);
+  let nextStyle = cloneStyle(style);
   const queue = params.length === 0 ? [0] : [...params];
 
   for (let idx = 0; idx < queue.length; idx += 1) {
     const param = queue[idx]!;
 
     if (param === 0) {
-      return defaultCellStyle();
+      nextStyle = defaultCellStyle();
+      continue;
     }
     if (param === 1) {
       nextStyle.bold = true;

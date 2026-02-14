@@ -53,6 +53,7 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
 - Recording capture uses canonical full-frame snapshots (not incremental repaint diffs) to prevent interleaved/partial-frame artifacts.
 - Recording timing is wall-clock based from monotonic capture start/finish and quantized with drift compensation for GIF frame delays.
 - Recording color mapping now ingests host terminal OSC palette replies (`OSC 10/11` + `OSC 4;0..15`) for better Ghostty parity.
+- Recording file paths are resolved from the command invocation directory (`INIT_CWD` when launched via `npm run`), not the repo root.
 - GIF export toolchain remains available (`scripts/terminal-recording-gif-lib.ts`, `scripts/terminal-recording-to-gif.ts`) for offline conversion.
 - Optional mux debug trace: set `HARNESS_MUX_DEBUG_PATH=/tmp/harness-mux-debug.jsonl` to capture input/routing/render cursor records.
 - Mux core is now deterministic and directly tested (`test/mux-dual-pane-core.test.ts`).
