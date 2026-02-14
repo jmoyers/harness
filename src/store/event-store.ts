@@ -100,6 +100,7 @@ export class SqliteEventStore {
   constructor(filePath = ':memory:') {
     const dbPath = this.preparePath(filePath);
     this.db = new DatabaseSync(dbPath);
+    this.configureConnection();
     this.initializeSchema();
   }
 
@@ -237,6 +238,12 @@ export class SqliteEventStore {
       CREATE INDEX IF NOT EXISTS idx_events_scope_cursor
       ON events (tenant_id, user_id, conversation_id, row_id);
     `);
+  }
+
+  private configureConnection(): void {
+    this.db.exec('PRAGMA journal_mode = WAL;');
+    this.db.exec('PRAGMA synchronous = NORMAL;');
+    this.db.exec('PRAGMA busy_timeout = 2000;');
   }
 
   private preparePath(filePath: string): string {

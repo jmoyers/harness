@@ -165,6 +165,14 @@ function shouldEmitEvent(event: NormalizedEventEnvelope, options: TailOptions): 
   return event.type !== 'provider-text-delta';
 }
 
+function isSqliteBusyError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) {
+    return false;
+  }
+  const withCode = error as { code?: unknown };
+  return withCode.code === 'ERR_SQLITE_BUSY';
+}
+
 function isSessionExitEvent(event: NormalizedEventEnvelope): boolean {
   if (event.type !== 'meta-attention-cleared') {
     return false;
@@ -207,13 +215,24 @@ async function main(): Promise<number> {
     );
 
     while (!stop) {
-      const rows = store.listEvents({
-        tenantId: options.tenantId,
-        userId: options.userId,
-        conversationId: options.conversationId,
-        afterRowId: lastRowId,
-        limit: 500
-      });
+      let rows: ReturnType<SqliteEventStore['listEvents']>;
+      try {
+        rows = store.listEvents({
+          tenantId: options.tenantId,
+          userId: options.userId,
+          conversationId: options.conversationId,
+          afterRowId: lastRowId,
+          limit: 500
+        });
+      } catch (error) {
+        if (isSqliteBusyError(error)) {
+          await new Promise((resolve) => {
+            setTimeout(resolve, options.pollMs);
+          });
+          continue;
+        }
+        throw error;
+      }
 
       for (const row of rows) {
         lastRowId = row.rowId;

@@ -18,7 +18,7 @@ const DEFAULT_COMMAND = '/bin/sh';
 const DEFAULT_COMMAND_ARGS = ['-i'];
 const DEFAULT_HELPER_PATH = join(
   dirname(fileURLToPath(import.meta.url)),
-  '../../bin/ptyd'
+  '../../native/ptyd/target/release/ptyd'
 );
 
 interface StartPtySessionOptions {

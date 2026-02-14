@@ -8,6 +8,7 @@
     "codex:events": "node --experimental-strip-types scripts/codex-events.ts",
     "codex:live": "node --experimental-strip-types scripts/codex-live.ts",
     "codex:live:tail": "node --experimental-strip-types scripts/codex-live-tail.ts",
+    "codex:live:snapshot": "node --experimental-strip-types scripts/codex-live-snapshot.ts",
     "codex:live:dual": "node --experimental-strip-types scripts/codex-live-dual.ts",
     "previm:passthrough": "npm run build:ptyd",
     "vim:passthrough": "node --experimental-strip-types scripts/vim-passthrough.ts",

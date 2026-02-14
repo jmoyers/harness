@@ -245,6 +245,7 @@ Primary live-session capabilities:
 - launch/attach/detach/re-attach a running `codex` terminal session with no privileged bypass
 - human steering in-session (`prompt`, interrupt, continue, context edits) with PTY parity
 - event stream derived from live session + notify hook emissions + optional structured sidecar
+- pseudo-screenshot capture from PTY-derived output for integration/e2e assertions (text-rendered terminal snapshot, machine-readable output option)
 
 Notify hook payload shape validated locally:
 - Codex invokes notify command with a JSON payload argument (for example `agent-turn-complete` including `thread-id`, `turn-id`, `cwd`, and message fields).

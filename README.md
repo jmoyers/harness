@@ -24,6 +24,7 @@ Terminal-first multi-agent harness focused on low-latency human control, with ag
 - `npm run benchmark:latency`
 - `npm run codex:live -- <codex-args>`
 - `npm run codex:live:tail -- --conversation-id <id> [--from-now] [--include-text-deltas]`
+- `npm run codex:live:snapshot -- --conversation-id <id> [--follow] [--from-now] [--json]`
 - `npm run codex:live:dual -- <codex-args>` (tmux split: live session + tail)
 - `npm run codex:events -- "<prompt>"`
 
