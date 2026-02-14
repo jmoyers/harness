@@ -123,13 +123,17 @@ function mapToNormalizedEvent(
   return null;
 }
 
-function writeEvent(event: NormalizedEventEnvelope): void {
+function writeEvent(event: NormalizedEventEnvelope, mirrorToStderr: boolean): void {
+  if (!mirrorToStderr) {
+    return;
+  }
   process.stderr.write(`[event] ${JSON.stringify(event)}\n`);
 }
 
 async function main(): Promise<number> {
   const interactive = process.stdin.isTTY && process.stdout.isTTY;
   const extraArgs = process.argv.slice(2);
+  const mirrorEventsToStderr = process.env.HARNESS_LIVE_EVENT_STDERR === '1';
 
   const storePath = process.env.HARNESS_EVENTS_DB_PATH ?? '.harness/events.sqlite';
   const conversationId = process.env.HARNESS_CONVERSATION_ID ?? `conversation-${randomUUID()}`;
@@ -163,7 +167,7 @@ async function main(): Promise<number> {
       const normalized = mapToNormalizedEvent(event, scope, idFactory);
       if (normalized !== null) {
         store.appendEvents([normalized]);
-        writeEvent(normalized);
+        writeEvent(normalized, mirrorEventsToStderr);
       }
 
       if (event.type === 'session-exit') {
