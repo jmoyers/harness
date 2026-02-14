@@ -25,9 +25,10 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
 - OSC terminal color query replies (`OSC 10/11`) for better Codex visual parity.
 - Parity scene matrix for codex/vim/core profiles (`npm run terminal:parity`).
 - First-party split mux now uses dirty-row repaint (no full-screen redraw loop).
+- Mux render scheduling is event-driven (`setImmediate` on dirty) instead of fixed-interval polling.
 - Right pane supports independent scrollback (`live`/`scroll`) with mouse wheel routing.
 - Left pane scrollback now works with Codex-style pinned footer scroll regions.
-- Mux shows the live terminal cursor in follow mode and hides it while scrolled.
+- Mux cursor rendering is VTE-driven (style + visibility + position), including DECSCUSR style parity.
 - Mux probes host terminal OSC `10/11` colors to better match local theme brightness.
 - Mux enables CSI-u keyboard mode (`CSI > 1 u`) so modified keys like `Shift+Enter` can be forwarded.
 - Mux wheel routing now scrolls by single-row steps to better match native terminal feel.

@@ -886,8 +886,10 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
   - `scripts/codex-live-snapshot.ts` renders PTY deltas into textual snapshot frames for deterministic integration/e2e assertions (`--json`).
   - `scripts/codex-live-mux.ts` provides the first-party split UI (left: live steerable Codex session rendered via shared snapshot oracle, right: event feed) with:
     - dirty-row diff rendering (no full-screen repaint loop)
+    - event-driven render scheduling on dirty state (no fixed 60fps polling timer)
     - pane-local event viewport state (`live` vs `scroll`) with independent right-pane scrollback
     - SGR mouse wheel routing for right-pane scrollback without leaking events into the live Codex PTY stream
+    - VTE-driven cursor parity (position, visibility, and DECSCUSR shape/blink style)
   - `src/mux/dual-pane-core.ts` is the typed mux core for layout, SGR mouse parsing/routing, event viewport state, and row-diff rendering.
   - `test/mux-dual-pane-core.test.ts` deterministically verifies mux layout, mouse routing, viewport follow/pin transitions, and row-diff behavior.
   - terminal parity now includes footer background persistence checks via `codex-footer-background-persistence`.

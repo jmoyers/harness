@@ -38,6 +38,11 @@ interface FocusEventExtraction {
   readonly focusOutCount: number;
 }
 
+interface RenderCursorStyle {
+  readonly shape: 'block' | 'underline' | 'bar';
+  readonly blinking: boolean;
+}
+
 const ENABLE_INPUT_MODES = '\u001b[>1u\u001b[?1000h\u001b[?1002h\u001b[?1004h\u001b[?1006h';
 const DISABLE_INPUT_MODES = '\u001b[?1006l\u001b[?1004l\u001b[?1002l\u001b[?1000l\u001b[<u';
 
@@ -415,6 +420,23 @@ function buildRenderRows(
   return rows;
 }
 
+function cursorStyleToDecscusr(style: RenderCursorStyle): string {
+  if (style.shape === 'block') {
+    return style.blinking ? '\u001b[1 q' : '\u001b[2 q';
+  }
+  if (style.shape === 'underline') {
+    return style.blinking ? '\u001b[3 q' : '\u001b[4 q';
+  }
+  return style.blinking ? '\u001b[5 q' : '\u001b[6 q';
+}
+
+function cursorStyleEqual(left: RenderCursorStyle | null, right: RenderCursorStyle): boolean {
+  if (left === null) {
+    return false;
+  }
+  return left.shape === right.shape && left.blinking === right.blinking;
+}
+
 async function main(): Promise<number> {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     process.stderr.write('codex:live:mux requires a TTY stdin/stdout\n');
@@ -454,6 +476,27 @@ async function main(): Promise<number> {
   let previousRows: readonly string[] = [];
   let forceFullClear = true;
   let renderedCursorVisible: boolean | null = null;
+  let renderedCursorStyle: RenderCursorStyle | null = null;
+  let renderScheduled = false;
+
+  const scheduleRender = (): void => {
+    if (renderScheduled) {
+      return;
+    }
+    renderScheduled = true;
+    setImmediate(() => {
+      renderScheduled = false;
+      render();
+      if (dirty) {
+        scheduleRender();
+      }
+    });
+  };
+
+  const markDirty = (): void => {
+    dirty = true;
+    scheduleRender();
+  };
 
   const recalcLayout = (): void => {
     size = terminalSize();
@@ -461,12 +504,12 @@ async function main(): Promise<number> {
     liveSession.resize(layout.leftCols, layout.paneRows);
     previousRows = [];
     forceFullClear = true;
-    dirty = true;
+    markDirty();
   };
 
   const appendEventLine = (line: string): void => {
     events.append(line);
-    dirty = true;
+    markDirty();
   };
 
   const render = (): void => {
@@ -483,8 +526,14 @@ async function main(): Promise<number> {
       output += '\u001b[?25l\u001b[H\u001b[2J';
       forceFullClear = false;
       renderedCursorVisible = false;
+      renderedCursorStyle = null;
     }
     output += diff.output;
+
+    if (!cursorStyleEqual(renderedCursorStyle, leftFrame.cursor.style)) {
+      output += cursorStyleToDecscusr(leftFrame.cursor.style);
+      renderedCursorStyle = leftFrame.cursor.style;
+    }
 
     const shouldShowCursor =
       leftFrame.viewport.followOutput &&
@@ -536,13 +585,13 @@ async function main(): Promise<number> {
     }
 
     if (event.type === 'terminal-output') {
-      dirty = true;
+      markDirty();
     }
 
     if (event.type === 'session-exit') {
       exit = event.exit;
       stop = true;
-      dirty = true;
+      markDirty();
     }
   });
 
@@ -556,10 +605,10 @@ async function main(): Promise<number> {
     const focusExtraction = extractFocusEvents(chunk);
     if (focusExtraction.focusInCount > 0) {
       process.stdout.write(ENABLE_INPUT_MODES);
-      dirty = true;
+      markDirty();
     }
     if (focusExtraction.focusOutCount > 0) {
-      dirty = true;
+      markDirty();
     }
 
     if (focusExtraction.sanitized.length === 0) {
@@ -578,11 +627,11 @@ async function main(): Promise<number> {
     const routed = routeMuxInputTokens(parsed.tokens, layout);
     if (routed.leftPaneScrollRows !== 0) {
       liveSession.scrollViewport(routed.leftPaneScrollRows);
-      dirty = true;
+      markDirty();
     }
     if (routed.rightPaneScrollRows !== 0) {
       events.scrollBy(routed.rightPaneScrollRows, layout.rightCols, layout.paneRows);
-      dirty = true;
+      markDirty();
     }
 
     for (const forwardChunk of routed.forwardToSession) {
@@ -612,10 +661,7 @@ async function main(): Promise<number> {
 
   process.stdout.write(ENABLE_INPUT_MODES);
   recalcLayout();
-
-  const renderTimer = setInterval(() => {
-    render();
-  }, 16);
+  scheduleRender();
 
   try {
     while (!stop) {
@@ -624,7 +670,6 @@ async function main(): Promise<number> {
       });
     }
   } finally {
-    clearInterval(renderTimer);
     process.stdin.off('data', onInput);
     process.stdout.off('resize', onResize);
     process.stdin.pause();

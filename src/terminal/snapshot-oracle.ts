@@ -3,6 +3,12 @@ import { StringDecoder } from 'node:string_decoder';
 
 type ParserMode = 'normal' | 'esc' | 'csi' | 'osc' | 'osc-esc';
 type ActiveScreen = 'primary' | 'alternate';
+type TerminalCursorShape = 'block' | 'underline' | 'bar';
+
+interface TerminalCursorStyle {
+  shape: TerminalCursorShape;
+  blinking: boolean;
+}
 
 type TerminalColor =
   | { kind: 'default' }
@@ -40,6 +46,7 @@ export interface TerminalSnapshotFrame {
     row: number;
     col: number;
     visible: boolean;
+    style: TerminalCursorStyle;
   };
   viewport: {
     top: number;
@@ -62,6 +69,21 @@ interface InternalLine {
 }
 
 const DEFAULT_COLOR: TerminalColor = { kind: 'default' };
+const DEFAULT_CURSOR_STYLE: TerminalCursorStyle = {
+  shape: 'block',
+  blinking: true
+};
+
+function cloneCursorStyle(style: TerminalCursorStyle): TerminalCursorStyle {
+  return {
+    shape: style.shape,
+    blinking: style.blinking
+  };
+}
+
+function cursorStyleEqual(left: TerminalCursorStyle, right: TerminalCursorStyle): boolean {
+  return left.shape === right.shape && left.blinking === right.blinking;
+}
 
 function cloneColor(color: TerminalColor): TerminalColor {
   if (color.kind === 'default') {
@@ -490,7 +512,12 @@ class ScreenBuffer {
     }
   }
 
-  snapshot(cursor: ScreenCursor, cursorVisible: boolean, activeScreen: ActiveScreen): TerminalSnapshotFrame {
+  snapshot(
+    cursor: ScreenCursor,
+    cursorVisible: boolean,
+    cursorStyle: TerminalCursorStyle,
+    activeScreen: ActiveScreen
+  ): TerminalSnapshotFrame {
     const combined = [...this.scrollback, ...this.lines];
     const totalRows = combined.length;
     const viewportTop = Math.max(0, Math.min(this.viewportTop, Math.max(0, totalRows - this.rows)));
@@ -521,7 +548,8 @@ class ScreenBuffer {
       cursor: {
         row: cursor.row,
         col: cursor.col,
-        visible: cursorVisible
+        visible: cursorVisible,
+        style: cloneCursorStyle(cursorStyle)
       },
       viewport: {
         top: viewportTop,
@@ -823,6 +851,7 @@ export class TerminalSnapshotOracle {
   private mode: ParserMode = 'normal';
   private csiBuffer = '';
   private cursorVisible = true;
+  private cursorStyle: TerminalCursorStyle = cloneCursorStyle(DEFAULT_CURSOR_STYLE);
   private style: TerminalCellStyle = defaultCellStyle();
   private originMode = false;
   private pendingWrap = false;
@@ -864,7 +893,7 @@ export class TerminalSnapshotOracle {
   }
 
   snapshot(): TerminalSnapshotFrame {
-    return this.currentScreen().snapshot(this.cursor, this.cursorVisible, this.activeScreen);
+    return this.currentScreen().snapshot(this.cursor, this.cursorVisible, this.cursorStyle, this.activeScreen);
   }
 
   private currentScreen(): ScreenBuffer {
@@ -986,6 +1015,11 @@ export class TerminalSnapshotOracle {
       this.mode = 'normal';
       return;
     }
+    if (char === 'c') {
+      this.hardReset();
+      this.mode = 'normal';
+      return;
+    }
     this.mode = 'normal';
   }
 
@@ -1040,6 +1074,15 @@ export class TerminalSnapshotOracle {
         this.applyPrivateMode(params, false);
         return;
       }
+    }
+
+    if (finalByte === 'q' && rawParams.endsWith(' ')) {
+      const trimmed = rawParams.slice(0, -1).trim();
+      const value = trimmed.length === 0 ? 0 : Number(trimmed);
+      if (Number.isFinite(value)) {
+        this.applyCursorStyleParam(value);
+      }
+      return;
     }
 
     if (finalByte === 'm') {
@@ -1212,6 +1255,71 @@ export class TerminalSnapshotOracle {
     }
   }
 
+  private applyCursorStyleParam(value: number): void {
+    if (value === 0 || value === 1) {
+      this.cursorStyle = {
+        shape: 'block',
+        blinking: true
+      };
+      return;
+    }
+    if (value === 2) {
+      this.cursorStyle = {
+        shape: 'block',
+        blinking: false
+      };
+      return;
+    }
+    if (value === 3) {
+      this.cursorStyle = {
+        shape: 'underline',
+        blinking: true
+      };
+      return;
+    }
+    if (value === 4) {
+      this.cursorStyle = {
+        shape: 'underline',
+        blinking: false
+      };
+      return;
+    }
+    if (value === 5) {
+      this.cursorStyle = {
+        shape: 'bar',
+        blinking: true
+      };
+      return;
+    }
+    if (value === 6) {
+      this.cursorStyle = {
+        shape: 'bar',
+        blinking: false
+      };
+    }
+  }
+
+  private hardReset(): void {
+    const style = defaultCellStyle();
+    this.activeScreen = 'primary';
+    this.cursor = { row: 0, col: 0 };
+    this.savedCursor = null;
+    this.cursorVisible = true;
+    this.cursorStyle = cloneCursorStyle(DEFAULT_CURSOR_STYLE);
+    this.style = style;
+    this.originMode = false;
+    this.pendingWrap = false;
+
+    this.primary.clear(style);
+    this.primary.resetScrollRegion();
+    this.primary.setFollowOutput(true);
+    this.alternate.clear(style);
+    this.alternate.resetScrollRegion();
+    this.alternate.setFollowOutput(true);
+
+    this.resetTabStops(this.primary.cols);
+  }
+
   private activeRowBounds(): { top: number; bottom: number } {
     if (!this.originMode) {
       return {
@@ -1340,6 +1448,10 @@ export function diffTerminalFrames(expected: TerminalSnapshotFrame, actual: Term
 
   if (expected.cursor.visible !== actual.cursor.visible) {
     reasons.push('cursor-visibility-mismatch');
+  }
+
+  if (!cursorStyleEqual(expected.cursor.style, actual.cursor.style)) {
+    reasons.push('cursor-style-mismatch');
   }
 
   const rowCount = Math.max(expected.richLines.length, actual.richLines.length);

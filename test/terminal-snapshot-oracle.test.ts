@@ -208,7 +208,11 @@ void test('replay and frame diff provide deterministic conformance artifacts', (
     cursor: {
       ...last.cursor,
       col: last.cursor.col + 1,
-      visible: !last.cursor.visible
+      visible: !last.cursor.visible,
+      style: {
+        shape: last.cursor.style.shape === 'block' ? 'underline' : 'block',
+        blinking: !last.cursor.style.blinking
+      }
     },
     richLines: last.richLines.slice(0, 1),
     lines: last.lines.slice(0, 1)
@@ -220,6 +224,7 @@ void test('replay and frame diff provide deterministic conformance artifacts', (
   assert.equal(diff.reasons.includes('active-screen-mismatch'), true);
   assert.equal(diff.reasons.includes('cursor-position-mismatch'), true);
   assert.equal(diff.reasons.includes('cursor-visibility-mismatch'), true);
+  assert.equal(diff.reasons.includes('cursor-style-mismatch'), true);
   assert.equal(diff.reasons.some((reason) => reason.includes('-missing')), true);
 
   const changedText: TerminalSnapshotFrame = {
@@ -478,6 +483,54 @@ void test('snapshot oracle supports insert/delete character control sequences', 
   oracle.ingest('\u001b[1P');
   frame = oracle.snapshot();
   assert.equal(frame.lines[0], 'ab cdef');
+});
+
+void test('snapshot oracle applies cursor style controls and resets on RIS', () => {
+  const oracle = new TerminalSnapshotOracle(8, 2);
+  let frame = oracle.snapshot();
+  assert.deepEqual(frame.cursor.style, { shape: 'block', blinking: true });
+  assert.equal(frame.cursor.visible, true);
+
+  oracle.ingest('\u001b[ q');
+  frame = oracle.snapshot();
+  assert.deepEqual(frame.cursor.style, { shape: 'block', blinking: true });
+
+  oracle.ingest('\u001b[1 q');
+  frame = oracle.snapshot();
+  assert.deepEqual(frame.cursor.style, { shape: 'block', blinking: true });
+
+  oracle.ingest('\u001b[2 q');
+  frame = oracle.snapshot();
+  assert.deepEqual(frame.cursor.style, { shape: 'block', blinking: false });
+
+  oracle.ingest('\u001b[3 q');
+  frame = oracle.snapshot();
+  assert.deepEqual(frame.cursor.style, { shape: 'underline', blinking: true });
+
+  oracle.ingest('\u001b[4 q');
+  frame = oracle.snapshot();
+  assert.deepEqual(frame.cursor.style, { shape: 'underline', blinking: false });
+
+  oracle.ingest('\u001b[5 q');
+  frame = oracle.snapshot();
+  assert.deepEqual(frame.cursor.style, { shape: 'bar', blinking: true });
+
+  oracle.ingest('\u001b[6 q');
+  frame = oracle.snapshot();
+  assert.deepEqual(frame.cursor.style, { shape: 'bar', blinking: false });
+
+  oracle.ingest('\u001b[99 q');
+  frame = oracle.snapshot();
+  assert.deepEqual(frame.cursor.style, { shape: 'bar', blinking: false });
+
+  oracle.ingest('\u001b[?25l');
+  oracle.ingest('abc');
+  oracle.ingest('\u001bc');
+  frame = oracle.snapshot();
+  assert.deepEqual(frame.cursor.style, { shape: 'block', blinking: true });
+  assert.equal(frame.cursor.visible, true);
+  assert.equal(frame.activeScreen, 'primary');
+  assert.equal(frame.lines[0], '');
 });
 
 void test('snapshot oracle clears pending-wrap state when resized off right margin', () => {
