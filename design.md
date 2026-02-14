@@ -979,6 +979,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
   - `scripts/terminal-recording-gif-lib.ts` + `scripts/terminal-recording-to-gif.ts` provide offline recording-to-GIF export, enabling visual regression artifacts from mux render captures.
   - `src/mux/dual-pane-core.ts` is the typed mux core for layout, SGR mouse parsing/routing, and row-diff rendering.
   - `src/mux/conversation-rail.ts` provides deterministic conversation ordering and rail rendering primitives for multi-session mux navigation.
+  - `src/mux/workspace-rail-model.ts` separates left-rail data/view modeling from terminal rendering so future UI technologies can reuse the same model pipeline.
   - `src/mux/workspace-rail.ts` provides left-rail rendering for directory-scoped conversation stacks with inline git + process telemetry and compact unicode/emoji scanning cues.
   - `src/ui/surface.ts` provides reusable immediate-mode terminal UI primitives (cell surface, row fill, text draw, ANSI row render) to compose panes, selectors, and future modal/splitter widgets.
   - `test/mux-dual-pane-core.test.ts` deterministically verifies mux layout, mouse routing, viewport follow/pin transitions, and row-diff behavior.

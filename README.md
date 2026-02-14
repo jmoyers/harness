@@ -48,6 +48,7 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
 - Mux consumes focus-in/out events and reasserts input modes after focus return.
 - Mux now supports multiple concurrent conversations in one session: left rail + active-session switching (`Ctrl+N`/`Ctrl+P`) + new conversation (`Ctrl+T`) with attach/detach continuity.
 - Left rail now uses a first-party low-level UI surface with directory-wrapped conversation blocks, inline git + telemetry metadata, unicode/emoji scannability, and integrated process rows (`src/mux/workspace-rail.ts`, `src/ui/surface.ts`).
+- Conversation rows are title-first (`agent - title`) with low-key status/telemetry on a second line, subtle selection highlight scoped to conversation rows only, and bottom-pinned shortcuts.
 - Session summaries now include PTY `processId`; mux samples per-session CPU/memory (`ps`) and renders those metrics inline with each conversation.
 - Conversation status routing is now isolated per session (unique notify sink per live Codex session) to prevent cross-conversation `DONE`/`NEEDS` contamination.
 - Mux recording now supports one-step capture to GIF (`--record-output <path.gif>`) with optional JSONL sidecar.
@@ -89,6 +90,9 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
     - terminal 1: `npm run control-plane:daemon -- --host 127.0.0.1 --port 7777`
     - terminal 2: `HARNESS_CONTROL_PLANE_AUTH_TOKEN=secret npm run codex:live:mux:client -- --harness-server-token secret <codex-args>`
   - confirm left rail shows directory blocks that wrap conversations, with inline branch/diff summary and per-conversation status/telemetry
+  - confirm conversation rows show title (not session ID), with a muted second line for status/cpu/memory/duration and one blank spacer row between conversations in a directory
+  - confirm selected conversation highlight is subtle and does not color the left gutter guide
+  - confirm shortcuts stay pinned at the bottom of the left pane while content scrolls above
   - confirm right pane remains interactive Codex passthrough while the left rail continuously updates conversation/process/git state
   - scroll wheel in right pane should switch status from `pty=live` to `pty=scroll(...)`
   - scroll back to bottom and confirm status returns to `pty=live`

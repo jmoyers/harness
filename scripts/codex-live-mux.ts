@@ -855,37 +855,38 @@ function buildRailRows(
     }
   }
 
+  const railModel = {
+    directories: [...directoriesByKey.entries()].map(([key, value]) => ({
+      key,
+      workspaceId: value.workspaceId,
+      worktreeId: value.worktreeId,
+      active: value.active,
+      git: gitSummary
+    })),
+    conversations: orderedIds
+      .map((sessionId, index) => {
+        const conversation = conversations.get(sessionId);
+        if (conversation === undefined) {
+          return null;
+        }
+        const directoryKey = `${conversation.scope.workspaceId}:${conversation.scope.worktreeId}`;
+        return {
+          ...conversationSummary(conversation),
+          directoryKey,
+          title: `untitled task ${String(index + 1)}`,
+          agentLabel: 'codex',
+          cpuPercent: processUsageBySessionId.get(conversation.sessionId)?.cpuPercent ?? null,
+          memoryMb: processUsageBySessionId.get(conversation.sessionId)?.memoryMb ?? null
+        };
+      })
+      .flatMap((conversation) => (conversation === null ? [] : [conversation])),
+    activeConversationId,
+    processes: [],
+    nowMs: Date.now()
+  };
+
   return renderWorkspaceRailAnsiRows(
-    {
-      directories: [...directoriesByKey.entries()].map(([key, value]) => ({
-        key,
-        workspaceId: value.workspaceId,
-        worktreeId: value.worktreeId,
-        active: value.active,
-        git: gitSummary
-      })),
-      conversations: orderedIds
-        .map((sessionId) => conversations.get(sessionId))
-        .flatMap((conversation) => {
-          if (conversation === undefined) {
-            return [];
-          }
-          const directoryKey = `${conversation.scope.workspaceId}:${conversation.scope.worktreeId}`;
-          return [
-            {
-              ...conversationSummary(conversation),
-              directoryKey,
-              agentLabel: 'codex',
-              worktreeLabel: conversation.scope.worktreeId,
-              cpuPercent: processUsageBySessionId.get(conversation.sessionId)?.cpuPercent ?? null,
-              memoryMb: processUsageBySessionId.get(conversation.sessionId)?.memoryMb ?? null
-            }
-          ];
-        }),
-      activeConversationId,
-      processes: [],
-      nowMs: Date.now()
-    },
+    railModel,
     layout.leftCols,
     layout.paneRows
   );
