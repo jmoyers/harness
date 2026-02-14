@@ -31,6 +31,7 @@ import {
   routeMuxInputTokens,
   wheelDeltaRowsFromCode
 } from '../src/mux/dual-pane-core.ts';
+import { detectMuxGlobalShortcut } from '../src/mux/input-shortcuts.ts';
 import {
   buildConversationRailLines,
   cycleConversationId,
@@ -100,10 +101,6 @@ const ENABLE_INPUT_MODES = '\u001b[>1u\u001b[?1000h\u001b[?1002h\u001b[?1004h\u0
 const DISABLE_INPUT_MODES = '\u001b[?2004l\u001b[?1006l\u001b[?1004l\u001b[?1002l\u001b[?1000l\u001b[<u';
 const DEFAULT_RESIZE_MIN_INTERVAL_MS = 33;
 const DEFAULT_PTY_RESIZE_SETTLE_MS = 75;
-const CTRL_T = 0x14;
-const CTRL_N = 0x0e;
-const CTRL_P = 0x10;
-
 function restoreTerminalState(newline: boolean): void {
   try {
     process.stdout.write(`${DISABLE_INPUT_MODES}\u001b[?25h\u001b[0m${newline ? '\n' : ''}`);
@@ -1562,35 +1559,6 @@ async function main(): Promise<number> {
   });
 
   const onInput = (chunk: Buffer): void => {
-    if (ctrlCExits && selection === null && selectionDrag === null && chunk.length === 1 && chunk[0] === 0x03) {
-      requestStop();
-      return;
-    }
-
-    if (chunk.length === 1 && chunk[0] === 0x1d) {
-      requestStop();
-      return;
-    }
-
-    if (chunk.length === 1 && chunk[0] === CTRL_T) {
-      queueControlPlaneOp(async () => {
-        await createAndActivateConversation();
-      });
-      return;
-    }
-
-    if (chunk.length === 1 && (chunk[0] === CTRL_N || chunk[0] === CTRL_P)) {
-      const orderedIds = conversationOrder(conversations);
-      const direction = chunk[0] === CTRL_N ? 'next' : 'previous';
-      const targetId = cycleConversationId(orderedIds, activeConversationId, direction);
-      if (targetId !== null) {
-        queueControlPlaneOp(async () => {
-          await activateConversation(targetId);
-        });
-      }
-      return;
-    }
-
     if ((selection !== null || selectionDrag !== null) && chunk.length === 1 && chunk[0] === 0x1b) {
       selection = null;
       selectionDrag = null;
@@ -1618,6 +1586,40 @@ async function main(): Promise<number> {
         focusInCount: focusExtraction.focusInCount,
         focusOutCount: focusExtraction.focusOutCount
       });
+      return;
+    }
+
+    if (
+      ctrlCExits &&
+      selection === null &&
+      selectionDrag === null &&
+      focusExtraction.sanitized.length === 1 &&
+      focusExtraction.sanitized[0] === 0x03
+    ) {
+      requestStop();
+      return;
+    }
+
+    const globalShortcut = detectMuxGlobalShortcut(focusExtraction.sanitized);
+    if (globalShortcut === 'quit') {
+      requestStop();
+      return;
+    }
+    if (globalShortcut === 'new-conversation') {
+      queueControlPlaneOp(async () => {
+        await createAndActivateConversation();
+      });
+      return;
+    }
+    if (globalShortcut === 'next-conversation' || globalShortcut === 'previous-conversation') {
+      const orderedIds = conversationOrder(conversations);
+      const direction = globalShortcut === 'next-conversation' ? 'next' : 'previous';
+      const targetId = cycleConversationId(orderedIds, activeConversationId, direction);
+      if (targetId !== null) {
+        queueControlPlaneOp(async () => {
+          await activateConversation(targetId);
+        });
+      }
       return;
     }
 

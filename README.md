@@ -83,6 +83,7 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
   - use `Cmd+C`/`Ctrl+C` to copy the current selection (OSC52)
   - hold `Alt` while using mouse in left pane to pass mouse events through to the app
   - use `Ctrl+T` to create a new conversation, `Ctrl+N` / `Ctrl+P` to switch active conversation from the rail
+  - mux shortcuts are global and remain captured even when terminal keyboard protocols (`CSI u`, `modifyOtherKeys`) are active
 - Footer/background parity:
   - run `npm run terminal:parity`
   - verify `codex-footer-background-persistence` passes
