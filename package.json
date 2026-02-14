@@ -7,8 +7,10 @@
     "build:ptyd": "export PATH=\"$HOME/.cargo/bin:$PATH\" && cargo build --manifest-path native/ptyd/Cargo.toml --release && mkdir -p bin && cp native/ptyd/target/release/ptyd bin/ptyd",
     "codex:live": "node --experimental-strip-types scripts/codex-live.ts",
     "codex:live:mux": "node --experimental-strip-types scripts/codex-live-mux.ts",
+    "codex:live:mux:record": "node --experimental-strip-types scripts/codex-live-mux.ts --record-path .harness/mux-recording.jsonl",
     "codex:live:mux:client": "node --experimental-strip-types scripts/codex-live-mux.ts --harness-server-host 127.0.0.1 --harness-server-port 7777",
     "codex:live:mux:launch": "node --experimental-strip-types scripts/codex-live-mux-launch.ts",
+    "terminal:recording:gif": "node --experimental-strip-types scripts/terminal-recording-to-gif.ts",
     "codex:live:tail": "node --experimental-strip-types scripts/codex-live-tail.ts",
     "codex:live:snapshot": "node --experimental-strip-types scripts/codex-live-snapshot.ts",
     "control-plane:daemon": "node --experimental-strip-types scripts/control-plane-daemon.ts",
@@ -33,5 +35,9 @@
     "eslint": "^9.34.0",
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.41.0"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "^0.1.92",
+    "gifenc": "^1.0.3"
   }
 }

@@ -37,6 +37,9 @@ import {
   renderConversationRailAnsiRows,
   type ConversationRailSessionSummary
 } from '../src/mux/conversation-rail.ts';
+import {
+  createTerminalRecordingWriter
+} from '../src/recording/terminal-recording.ts';
 
 interface MuxOptions {
   codexArgs: string[];
@@ -45,6 +48,8 @@ interface MuxOptions {
   controlPlaneHost: string | null;
   controlPlanePort: number | null;
   controlPlaneAuthToken: string | null;
+  recordingPath: string | null;
+  recordingFps: number;
   scope: EventScope;
 }
 
@@ -490,6 +495,8 @@ function parseArgs(argv: string[]): MuxOptions {
   let controlPlaneHost = process.env.HARNESS_CONTROL_PLANE_HOST ?? null;
   let controlPlanePortRaw = process.env.HARNESS_CONTROL_PLANE_PORT ?? null;
   let controlPlaneAuthToken = process.env.HARNESS_CONTROL_PLANE_AUTH_TOKEN ?? null;
+  let recordingPath = process.env.HARNESS_RECORDING_PATH ?? null;
+  let recordingFps = parsePositiveInt(process.env.HARNESS_RECORDING_FPS, 15);
 
   for (let idx = 0; idx < argv.length; idx += 1) {
     const arg = argv[idx]!;
@@ -523,6 +530,26 @@ function parseArgs(argv: string[]): MuxOptions {
       continue;
     }
 
+    if (arg === '--record-path') {
+      const value = argv[idx + 1];
+      if (value === undefined) {
+        throw new Error('missing value for --record-path');
+      }
+      recordingPath = value;
+      idx += 1;
+      continue;
+    }
+
+    if (arg === '--record-fps') {
+      const value = argv[idx + 1];
+      if (value === undefined) {
+        throw new Error('missing value for --record-fps');
+      }
+      recordingFps = parsePositiveInt(value, recordingFps);
+      idx += 1;
+      continue;
+    }
+
     codexArgs.push(arg);
   }
 
@@ -549,6 +576,8 @@ function parseArgs(argv: string[]): MuxOptions {
     controlPlaneHost,
     controlPlanePort,
     controlPlaneAuthToken,
+    recordingPath,
+    recordingFps: Math.max(1, recordingFps),
     scope: {
       tenantId: process.env.HARNESS_TENANT_ID ?? 'tenant-local',
       userId: process.env.HARNESS_USER_ID ?? 'user-local',
@@ -948,6 +977,18 @@ async function main(): Promise<number> {
   process.stdin.resume();
 
   const probedPalette = await probeTerminalPalette();
+  let muxRecordingWriter: ReturnType<typeof createTerminalRecordingWriter> | null = null;
+  if (options.recordingPath !== null) {
+    const recordIntervalMs = Math.max(1, Math.floor(1000 / options.recordingFps));
+    muxRecordingWriter = createTerminalRecordingWriter({
+      filePath: options.recordingPath,
+      source: 'codex-live-mux',
+      defaultForegroundHex: process.env.HARNESS_TERM_FG ?? probedPalette.foregroundHex ?? 'd0d7de',
+      defaultBackgroundHex: process.env.HARNESS_TERM_BG ?? probedPalette.backgroundHex ?? '0f1419',
+      minFrameIntervalMs: recordIntervalMs
+    });
+  }
+  const muxFrameOracle = new TerminalSnapshotOracle(size.cols, size.rows);
   const controlPlaneClient = await openCodexControlPlaneClient(
     options.controlPlaneHost !== null && options.controlPlanePort !== null
       ? {
@@ -1212,6 +1253,7 @@ async function main(): Promise<number> {
     for (const conversation of conversations.values()) {
       conversation.oracle.resize(nextLayout.leftCols, nextLayout.paneRows);
     }
+    muxFrameOracle.resize(nextLayout.cols, nextLayout.rows);
     // Force a full clear on actual layout changes to avoid stale diagonal artifacts during drag.
     previousRows = [];
     forceFullClear = true;
@@ -1464,6 +1506,14 @@ async function main(): Promise<number> {
 
     if (output.length > 0) {
       process.stdout.write(output);
+      muxFrameOracle.ingest(output);
+      if (muxRecordingWriter !== null) {
+        try {
+          muxRecordingWriter.capture(muxFrameOracle.snapshot());
+        } catch {
+          // Recording failures must never break live interaction.
+        }
+      }
     }
     appendDebugRecord(debugPath, {
       kind: 'render',
@@ -1837,6 +1887,9 @@ async function main(): Promise<number> {
     try {
       await controlPlaneOps;
       await controlPlaneClient.close();
+      if (muxRecordingWriter !== null) {
+        await muxRecordingWriter.close();
+      }
     } catch {
       // Best-effort shutdown only.
     }
