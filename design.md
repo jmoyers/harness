@@ -266,6 +266,112 @@ This keeps live steering universal across agents while still taking advantage of
 - Layer structured control/event channels when adapter supports them.
 - Preserve attach/detach behavior so users can jump into any live conversation terminal instantly.
 - First-party terminal multiplexer UI is the active split-view path.
+- Never mix event/log output into the managed PTY byte stream. Event views are separate consumers of persisted/streamed data.
+
+## VTE Correctness Program (Codex + Vim)
+
+Correctness target:
+- Harness terminal behavior must be indistinguishable from a direct terminal for Codex and Vim workflows.
+- Correctness is defined as byte-accurate control handling plus equivalent visible terminal state and key semantics.
+
+Hot-path architecture (first-party):
+
+```txt
+[stdin bytes]
+   -> [input normalizer]
+   -> [pty write]
+   -> [pty read bytes]
+   -> [vt parser state machine]
+   -> [terminal action stream]
+   -> [terminal state model]
+   -> [renderer diff]
+   -> [screen flush]
+```
+
+Out-of-band paths:
+- Event stream, logs, and instrumentation do not write into PTY session output.
+- Parsed terminal actions can be mirrored to telemetry/events without mutating PTY bytes.
+
+Protocol scope required for Codex and Vim parity:
+- C0/C1 controls, ESC, CSI, OSC, DCS, ST/BEL terminators.
+- DEC private modes used by terminal TUIs:
+  - alternate screen and cursor save/restore (`?1047`, `?1048`, `?1049`)
+  - mouse and focus tracking (`?1000`, `?1002`, `?1003`, `?1004`, `?1006`)
+  - bracketed paste (`?2004`)
+- Keyboard negotiation flows:
+  - modifyOtherKeys and CSI-u negotiation/enable paths
+  - kitty keyboard protocol progressive enhancement when present
+- OSC handling needed by modern CLIs:
+  - title/icon updates (`OSC 0/1/2`)
+  - cwd hints (`OSC 7`)
+  - hyperlinks (`OSC 8`)
+  - dynamic color query/set (`OSC 10/11/12` and palette query/set families)
+- UTF-8 correctness with grapheme-aware cell accounting and configurable width policy.
+
+Terminal reply engine requirements:
+- Support query/response sequences required by Codex and Vim startup/runtime probes.
+- Minimum required replies include device/keyboard/color query paths observed in live sessions.
+- Unknown queries are logged as typed events (`terminal-query-unknown`) and safely ignored or passthrough-configured by policy.
+
+Capability profile model:
+- Each session advertises a deterministic terminal capability profile (`terminalProfile`), e.g. `xterm-256color-harness-v1`.
+- Profile governs enabled input protocols, reply behavior, and feature toggles.
+- Profile changes are versioned and replayable for deterministic bug reproduction.
+
+Required artifacts (code + tests, not separate authority docs):
+- `vte-action-schema`: typed action/event model emitted by parser.
+- `vte-state-model`: canonical in-memory screen/cursor/mode model with alt-screen and scrollback semantics.
+- `vte-reply-engine`: deterministic query handler for DA/DSR/OSC/keyboard negotiation paths.
+- `vte-corpus`:
+  - captured Codex transcripts (raw PTY bytes + expected state checkpoints)
+  - captured Vim transcripts (editing, split windows, mouse, paste, resize)
+  - targeted sequence fixtures for high-risk controls/modes
+- `snapshot-oracle`:
+  - textual pseudo-screenshot API (stable machine-readable and human-readable forms)
+  - canonical frame hash for deterministic equality in integration/e2e gates
+- `compat-matrix`:
+  - per-sequence support status: `implemented`, `passthrough`, `unsupported`
+  - explicit owner test for every `implemented` entry.
+
+Control Plane terminal API requirements:
+- `terminal.attach`: stream raw rendered frames + cursor/mode metadata.
+- `terminal.input`: send exact input bytes.
+- `terminal.resize`: apply rows/cols resize.
+- `terminal.signal`: interrupt, suspend, resume.
+- `terminal.snapshot.get`: return current pseudo-screenshot frame (text and JSON forms).
+- `terminal.capabilities.get`: return active `terminalProfile` and negotiated feature flags.
+- `terminal.stream.events`: optional structured stream of parsed terminal actions (out-of-band from PTY display).
+
+Pseudo-screenshot contract:
+- Frame payload includes at minimum:
+  - `rows`, `cols`
+  - `cursor` position/style/visibility
+  - `active_screen` (`primary` or `alternate`)
+  - `lines[]` (cell text + optional attributes)
+  - `frame_hash`
+- Snapshot API is mandatory for integration/e2e and replaces manual screenshot-only debugging.
+
+Verification ladder:
+1. Parser/action unit gates:
+   - full transition coverage across parser states and byte classes
+   - fixtures for CSI/OSC/DCS edge cases, malformed and interrupted sequences
+2. State-model integration gates:
+   - replay corpus bytes, assert terminal state and snapshot hashes at checkpoints
+   - assert reply-engine responses for known query probes
+3. App-level conformance gates:
+   - scripted Vim flows (insert/normal mode edits, splits, mouse, paste, resize)
+   - scripted Codex flows (startup, turns, notify-linked cycles, interrupt/continue)
+4. External compatibility gates:
+   - vttest-driven checks for supported VT100/VT220/xterm behaviors in scope
+5. Differential gates:
+   - run identical workloads in direct terminal and harness, compare checkpointed snapshots
+6. Performance gates:
+   - preserve parity latency budgets (p50/p95/p99) while conformance tests run
+   - verify no additional PTY output bytes are introduced by event/log plumbing
+
+Failure policy:
+- Any mismatch in snapshot hash, unsupported required sequence, or reply drift blocks milestone completion.
+- Unknown sequence growth is tracked and triaged; it cannot be silently dropped.
 
 ## Git and Editor Integration
 
@@ -476,6 +582,9 @@ Output 0: Dependency Boundary Baseline
 Output 1: Single-Session Terminal Pass-Through Parity
 - One harness-managed terminal session behaves like direct terminal usage with no perceptible added latency.
 - Demonstration:
+  - enforce PTY stream isolation (no event/log byte interleaving in terminal output)
+  - publish and verify Codex+Vim sequence compatibility matrix and query/reply matrix
+  - verify pseudo-screenshot API returns deterministic frames/hashes for replay checkpoints
   - benchmark direct terminal vs harness-managed terminal using identical command/input workloads
   - collect end-to-end input-to-echo timing for both paths
   - compute harness overhead (`harness_latency - direct_latency`) across p50/p95/p99
@@ -613,19 +722,25 @@ Milestone 1 execution plan:
 - Step 1: PTY substrate (`pty-host`) with raw attach/detach.
   - Deliverable: spawn shell in managed PTY, pass stdin/stdout/stderr transparently, handle resize.
   - Verification: deterministic PTY integration tests for echo, resize propagation, and session lifecycle.
-- Step 2: Terminal protocol correctness loop.
-  - Deliverable: render loop that correctly forwards ANSI/VT sequences, alternate screen, cursor state, bracketed paste, and mouse mode.
-  - Verification: golden transcript tests plus interactive checks against `vim`, `less`, and `fzf`.
-- Step 3: Single-session harness path.
+- Step 2: VTE parser/action/state core.
+  - Deliverable: first-party parser state machine + terminal state model + renderer diff path.
+  - Verification: parser transition coverage and state replay tests across targeted sequence fixtures.
+- Step 3: Terminal reply engine + capability profile.
+  - Deliverable: deterministic query/reply behavior for Codex and Vim required probes.
+  - Verification: query/reply conformance tests and unknown-query telemetry coverage.
+- Step 4: Snapshot oracle and deterministic replay.
+  - Deliverable: `terminal.snapshot.get` with text/JSON frame output and frame hashing.
+  - Verification: integration/e2e tests assert frame hashes on Codex and Vim scripted checkpoints.
+- Step 5: Single-session harness path.
   - Deliverable: one session managed end-to-end by daemon + stream client with attach/detach and reconnect.
-  - Verification: e2e test that restarts client while preserving live PTY session continuity.
-- Step 4: Latency instrumentation and budgets.
+  - Verification: e2e test that restarts client while preserving live PTY session continuity and snapshot parity.
+- Step 6: Latency instrumentation and budgets.
   - Deliverable: `perf-core` spans for `stdin -> scheduler -> PTY -> render` with per-keystroke timing.
   - Verification: benchmark harness comparing direct terminal vs managed session; enforce p50/p95/p99 thresholds.
-- Step 5: Human indistinguishability gate.
+- Step 7: Human indistinguishability gate.
   - Deliverable: repeatable blind A/B protocol and result capture.
   - Verification: documented test runs showing operators cannot reliably distinguish harness from direct terminal.
-- Step 6: Hardening and regression gate.
+- Step 8: Hardening and regression gate.
   - Deliverable: CI suite for protocol correctness + latency regression + reconnect stability.
   - Verification: Milestone 1 marked complete only when all gates pass and results are committed.
 
@@ -727,6 +842,14 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
 - https://github.com/ThePrimeagen/agent-of-empires
 - https://github.com/coder/mux
 - https://github.com/amacneil/vibetunnel
+- https://ecma-international.org/publications-and-standards/standards/ecma-48/
+- https://www.invisible-island.net/xterm/ctlseqs/ctlseqs.html
+- https://www.invisible-island.net/vttest/
+- https://vimhelp.org/term.txt.html
+- https://neo.vimhelp.org/term.txt.html
+- https://sw.kovidgoyal.net/kitty/keyboard-protocol/
+- https://unicode.org/reports/tr11/
+- https://unicode.org/reports/tr29/
 - https://github.com/microsoft/node-pty
 - https://github.com/creack/pty
 - https://github.com/wezterm/wezterm/tree/main/pty
