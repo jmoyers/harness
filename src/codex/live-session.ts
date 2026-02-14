@@ -384,6 +384,10 @@ class CodexLiveSession {
     this.snapshotOracle.scrollViewport(deltaRows);
   }
 
+  setFollowOutput(followOutput: boolean): void {
+    this.snapshotOracle.setFollowOutput(followOutput);
+  }
+
   snapshot(): TerminalSnapshotFrame {
     return this.snapshotOracle.snapshot();
   }

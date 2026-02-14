@@ -704,6 +704,7 @@ async function main(): Promise<number> {
   let renderScheduled = false;
   let selection: PaneSelection | null = null;
   let selectionDrag: PaneSelectionDrag | null = null;
+  let selectionPinnedFollowOutput: boolean | null = null;
   let resizeTimer: NodeJS.Timeout | null = null;
   let pendingSize: { cols: number; rows: number } | null = null;
   let lastResizeApplyAtMs = 0;
@@ -856,6 +857,28 @@ async function main(): Promise<number> {
     markDirty();
   };
 
+  const pinViewportForSelection = (): void => {
+    if (selectionPinnedFollowOutput !== null) {
+      return;
+    }
+    const follow = liveSession.snapshot().viewport.followOutput;
+    selectionPinnedFollowOutput = follow;
+    if (follow) {
+      liveSession.setFollowOutput(false);
+    }
+  };
+
+  const releaseViewportPinForSelection = (): void => {
+    if (selectionPinnedFollowOutput === null) {
+      return;
+    }
+    const shouldRepin = selectionPinnedFollowOutput;
+    selectionPinnedFollowOutput = null;
+    if (shouldRepin) {
+      liveSession.setFollowOutput(true);
+    }
+  };
+
   const render = (): void => {
     if (!dirty) {
       return;
@@ -965,6 +988,7 @@ async function main(): Promise<number> {
     if ((selection !== null || selectionDrag !== null) && chunk.length === 1 && chunk[0] === 0x1b) {
       selection = null;
       selectionDrag = null;
+      releaseViewportPinForSelection();
       appendDebugRecord(debugPath, {
         kind: 'selection-clear-escape'
       });
@@ -1013,6 +1037,15 @@ async function main(): Promise<number> {
     const routedTokens: Array<(typeof parsed.tokens)[number]> = [];
     for (const token of parsed.tokens) {
       if (token.kind !== 'mouse') {
+        if (selection !== null && token.text.length > 0) {
+          selection = null;
+          selectionDrag = null;
+          releaseViewportPinForSelection();
+          markDirty();
+          appendDebugRecord(debugPath, {
+            kind: 'selection-clear-typed-input'
+          });
+        }
         routedTokens.push(token);
         continue;
       }
@@ -1030,6 +1063,7 @@ async function main(): Promise<number> {
 
       if (startSelection) {
         selection = null;
+        pinViewportForSelection();
         selectionDrag = {
           anchor: point,
           focus: point,
@@ -1066,6 +1100,9 @@ async function main(): Promise<number> {
               focus: finalized.focus
             }
           : null;
+        if (!finalized.hasDragged) {
+          releaseViewportPinForSelection();
+        }
         appendDebugRecord(debugPath, {
           kind: 'selection-release',
           row: point.row,
@@ -1075,6 +1112,16 @@ async function main(): Promise<number> {
         selectionDrag = null;
         markDirty();
         continue;
+      }
+
+      if (selection !== null && !isWheelMouseCode(token.event.code)) {
+        selection = null;
+        selectionDrag = null;
+        releaseViewportPinForSelection();
+        markDirty();
+        appendDebugRecord(debugPath, {
+          kind: 'selection-clear-mouse'
+        });
       }
 
       routedTokens.push(token);

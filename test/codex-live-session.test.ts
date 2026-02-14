@@ -251,6 +251,12 @@ void test('codex live session emits terminal and notify-derived events', () => {
   session.write('abc');
   session.resize(100, 40);
   session.scrollViewport(-1);
+  session.setFollowOutput(false);
+  let followSnapshot = session.snapshot();
+  assert.equal(followSnapshot.viewport.followOutput, false);
+  session.setFollowOutput(true);
+  followSnapshot = session.snapshot();
+  assert.equal(followSnapshot.viewport.followOutput, true);
   const resizedSnapshot = session.snapshot();
   assert.equal(resizedSnapshot.cols, 100);
   assert.equal(resizedSnapshot.rows, 40);

@@ -60,7 +60,7 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
   - scroll wheel in left pane should switch status from `pty=live` to `pty=scroll(...)`
   - confirm right pane scroll wheel enters `events=scroll(...)` mode in status and does not type into Codex
   - scroll back to bottom and confirm status returns to `pty=live` and `events=live`
-  - drag in left pane to select; selection shrinks/expands with drag movement and click-without-drag clears
+  - drag in left pane to select; selection shrinks/expands with drag movement, and click-without-drag clears
   - use `Cmd+C`/`Ctrl+C` to copy the current selection (OSC52)
   - hold `Alt` while using mouse in left pane to pass mouse events through to the app
 - Footer/background parity:
