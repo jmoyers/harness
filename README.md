@@ -24,6 +24,7 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
 - Control-plane session discovery/state commands: `session.list`, `session.status`, `session.snapshot`.
 - Control-plane attention and steering wrappers: `attention.list`, `session.respond`, `session.interrupt`.
 - Exited session lifecycle now uses tombstones with TTL cleanup plus explicit `session.remove`.
+- `session.list` now supports deterministic ordering and scope/status/live filters (`attention-first`, started asc/desc, tenant/user/workspace/worktree filters).
 - Control-plane output fanout now enforces per-connection backpressure limits (bounded buffering).
 - Mux control path now runs through the same stream API primitives (`pty.start/attach/input/resize/signal/close`) used for programmatic clients.
 - Mux control-plane attach/start wiring is extracted into reusable `src/control-plane/codex-session-stream.ts` so local/remote transport is swappable.
@@ -46,6 +47,7 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
 - Mux enables CSI-u keyboard mode (`CSI > 1 u`) so modified keys like `Shift+Enter` can be forwarded.
 - Mux wheel routing now scrolls by single-row steps to better match native terminal feel.
 - Mux consumes focus-in/out events and reasserts input modes after focus return.
+- Mux now supports multiple concurrent conversations in one session: conversation rail + active-session switching (`Ctrl+N`/`Ctrl+P`) + new conversation (`Ctrl+T`) with attach/detach continuity.
 - Optional mux debug trace: set `HARNESS_MUX_DEBUG_PATH=/tmp/harness-mux-debug.jsonl` to capture input/routing/render cursor records.
 - Mux core is now deterministic and directly tested (`test/mux-dual-pane-core.test.ts`).
 - Footer background persistence parity scene added for Codex-like pinned input/status rows.
@@ -80,6 +82,7 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
   - drag in left pane to select; selection shrinks/expands with drag movement, and click-without-drag clears
   - use `Cmd+C`/`Ctrl+C` to copy the current selection (OSC52)
   - hold `Alt` while using mouse in left pane to pass mouse events through to the app
+  - use `Ctrl+T` to create a new conversation, `Ctrl+N` / `Ctrl+P` to switch active conversation from the rail
 - Footer/background parity:
   - run `npm run terminal:parity`
   - verify `codex-footer-background-persistence` passes

@@ -33,17 +33,22 @@ interface OpenCodexControlPlaneSessionResult {
   close: () => Promise<void>;
 }
 
+interface OpenCodexControlPlaneClientResult {
+  client: ControlPlaneStreamClient;
+  close: () => Promise<void>;
+}
+
 interface OpenCodexControlPlaneSessionDependencies {
   startEmbeddedServer?: () => Promise<ControlPlaneStreamServer>;
 }
 
-export async function openCodexControlPlaneSession(
-  options: OpenCodexControlPlaneSessionOptions,
+export async function openCodexControlPlaneClient(
+  controlPlane: CodexControlPlaneMode,
   dependencies: OpenCodexControlPlaneSessionDependencies = {}
-): Promise<OpenCodexControlPlaneSessionResult> {
+): Promise<OpenCodexControlPlaneClientResult> {
   let controlPlaneAddress: BaseControlPlaneAddress;
   let embeddedServer: ControlPlaneStreamServer | null = null;
-  if (options.controlPlane.mode === 'embedded') {
+  if (controlPlane.mode === 'embedded') {
     const startEmbeddedServer = dependencies.startEmbeddedServer;
     if (startEmbeddedServer === undefined) {
       throw new Error('embedded mode requires a startEmbeddedServer dependency');
@@ -55,7 +60,7 @@ export async function openCodexControlPlaneSession(
       port: embeddedAddress.port
     };
   } else {
-    controlPlaneAddress = options.controlPlane;
+    controlPlaneAddress = controlPlane;
   }
 
   const clientConnectOptions: {
@@ -70,6 +75,24 @@ export async function openCodexControlPlaneSession(
     clientConnectOptions.authToken = controlPlaneAddress.authToken;
   }
   const client = await connectControlPlaneStreamClient(clientConnectOptions);
+
+  return {
+    client,
+    close: async () => {
+      client.close();
+      if (embeddedServer !== null) {
+        await embeddedServer.close();
+      }
+    }
+  };
+}
+
+export async function openCodexControlPlaneSession(
+  options: OpenCodexControlPlaneSessionOptions,
+  dependencies: OpenCodexControlPlaneSessionDependencies = {}
+): Promise<OpenCodexControlPlaneSessionResult> {
+  const opened = await openCodexControlPlaneClient(options.controlPlane, dependencies);
+  const client = opened.client;
 
   try {
     const startCommand: {
@@ -111,10 +134,7 @@ export async function openCodexControlPlaneSession(
       sinceCursor: 0
     });
   } catch (error: unknown) {
-    client.close();
-    if (embeddedServer !== null) {
-      await embeddedServer.close();
-    }
+    await opened.close();
     throw error;
   }
 
@@ -129,10 +149,7 @@ export async function openCodexControlPlaneSession(
       } catch {
         // Best-effort close only.
       }
-      client.close();
-      if (embeddedServer !== null) {
-        await embeddedServer.close();
-      }
+      await opened.close();
     }
   };
 }

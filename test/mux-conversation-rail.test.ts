@@ -1,0 +1,294 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {
+  buildConversationRailLines,
+  compareIsoDesc,
+  cycleConversationId,
+  sortConversationRailSessions,
+  type ConversationRailSessionSummary
+} from '../src/mux/conversation-rail.ts';
+
+const sessions: readonly ConversationRailSessionSummary[] = [
+  {
+    sessionId: 'conversation-cccccccc-0000',
+    status: 'completed',
+    attentionReason: null,
+    live: true,
+    startedAt: '2026-01-01T00:00:00.000Z',
+    lastEventAt: '2026-01-01T00:03:00.000Z'
+  },
+  {
+    sessionId: 'conversation-aaaaaaaa-0000',
+    status: 'needs-input',
+    attentionReason: 'approval',
+    live: true,
+    startedAt: '2026-01-01T00:01:00.000Z',
+    lastEventAt: '2026-01-01T00:05:00.000Z'
+  },
+  {
+    sessionId: 'conversation-bbbbbbbb-0000',
+    status: 'running',
+    attentionReason: null,
+    live: true,
+    startedAt: '2026-01-01T00:02:00.000Z',
+    lastEventAt: '2026-01-01T00:04:00.000Z'
+  },
+  {
+    sessionId: 'external-session-with-very-long-id-123456',
+    status: 'exited',
+    attentionReason: null,
+    live: false,
+    startedAt: '2026-01-01T00:02:00.000Z',
+    lastEventAt: null
+  }
+];
+
+void test('sortConversationRailSessions honors attention-first and started sorts', () => {
+  const attentionSorted = sortConversationRailSessions(sessions, 'attention-first');
+  assert.deepEqual(
+    attentionSorted.map((session) => session.sessionId),
+    [
+      'conversation-aaaaaaaa-0000',
+      'conversation-bbbbbbbb-0000',
+      'conversation-cccccccc-0000',
+      'external-session-with-very-long-id-123456'
+    ]
+  );
+
+  const startedDesc = sortConversationRailSessions(sessions, 'started-desc');
+  assert.deepEqual(
+    startedDesc.map((session) => session.sessionId),
+    [
+      'conversation-bbbbbbbb-0000',
+      'external-session-with-very-long-id-123456',
+      'conversation-aaaaaaaa-0000',
+      'conversation-cccccccc-0000'
+    ]
+  );
+
+  const startedAsc = sortConversationRailSessions(sessions, 'started-asc');
+  assert.deepEqual(
+    startedAsc.map((session) => session.sessionId),
+    [
+      'conversation-cccccccc-0000',
+      'conversation-aaaaaaaa-0000',
+      'conversation-bbbbbbbb-0000',
+      'external-session-with-very-long-id-123456'
+    ]
+  );
+});
+
+void test('buildConversationRailLines renders header, active marker, and truncation', () => {
+  const lines = buildConversationRailLines(
+    sessions,
+    'conversation-bbbbbbbb-0000',
+    48,
+    3
+  );
+  assert.equal(lines.length, 3);
+  assert.equal(lines[0]?.includes('conversations(4)'), true);
+  assert.equal(lines[1]?.includes('need live conversation-aaaaaaaa approval'), true);
+  assert.equal(lines[2]?.startsWith('> run  live conversation-bbbbbbbb'), true);
+
+  const hiddenActive = buildConversationRailLines(
+    sessions,
+    'external-session-with-very-long-id-123456',
+    48,
+    3
+  );
+  assert.equal(hiddenActive.length, 3);
+  assert.equal(hiddenActive[2]?.includes('external-session-w…'), true);
+
+  const missingActive = buildConversationRailLines(sessions, 'missing-session', 48, 3);
+  assert.equal(missingActive.length, 3);
+  assert.equal(missingActive[2]?.includes('conversation-bbbbbbbb'), true);
+
+  const padded = buildConversationRailLines([], null, 8, 4);
+  assert.equal(padded.length, 4);
+  assert.equal(padded[3], '        ');
+
+  const oneRow = buildConversationRailLines(sessions, null, 10, 1);
+  assert.equal(oneRow.length, 1);
+  assert.equal(oneRow[0]?.length, 10);
+
+  const completedVisible = buildConversationRailLines(sessions, null, 60, 6);
+  assert.equal(completedVisible.some((line) => line.includes('done live conversation-cccccccc')), true);
+  assert.equal(completedVisible.some((line) => line.includes('exit dead external-session-w')), true);
+
+  const shortConversationId = buildConversationRailLines(
+    [
+      {
+        sessionId: 'conversation-12345678',
+        status: 'running',
+        attentionReason: null,
+        live: true,
+        startedAt: '2026-01-01T00:01:00.000Z',
+        lastEventAt: '2026-01-01T00:01:00.000Z'
+      }
+    ],
+    'conversation-12345678',
+    48,
+    3
+  );
+  assert.equal(shortConversationId[1]?.includes('conversation-12345678'), true);
+
+  const emptyAttentionReason = buildConversationRailLines(
+    [
+      {
+        sessionId: 'conversation-empty-reason',
+        status: 'needs-input',
+        attentionReason: '',
+        live: true,
+        startedAt: '2026-01-01T00:01:00.000Z',
+        lastEventAt: '2026-01-01T00:01:00.000Z'
+      }
+    ],
+    'conversation-empty-reason',
+    48,
+    2
+  );
+  assert.equal(emptyAttentionReason[1]?.includes('conversation-empty-re'), true);
+  assert.equal(emptyAttentionReason[1]?.trimEnd().endsWith('need live conversation-empty-re'), true);
+});
+
+void test('cycleConversationId wraps and handles missing active session', () => {
+  const ids = ['a', 'b', 'c'] as const;
+  assert.equal(cycleConversationId(ids, 'a', 'next'), 'b');
+  assert.equal(cycleConversationId(ids, 'a', 'previous'), 'c');
+  assert.equal(cycleConversationId(ids, null, 'next'), 'a');
+  assert.equal(cycleConversationId(ids, 'missing', 'next'), 'a');
+  assert.equal(cycleConversationId([], null, 'next'), null);
+});
+
+void test('attention-first sort handles last-event and started/id tie-breakers', () => {
+  const tieRows: readonly ConversationRailSessionSummary[] = [
+    {
+      sessionId: 'short-id',
+      status: 'running',
+      attentionReason: null,
+      live: true,
+      startedAt: '2026-01-01T00:01:00.000Z',
+      lastEventAt: null
+    },
+    {
+      sessionId: 'session-b',
+      status: 'running',
+      attentionReason: null,
+      live: true,
+      startedAt: '2026-01-01T00:03:00.000Z',
+      lastEventAt: '2026-01-01T00:05:00.000Z'
+    },
+    {
+      sessionId: 'session-a',
+      status: 'running',
+      attentionReason: null,
+      live: true,
+      startedAt: '2026-01-01T00:03:00.000Z',
+      lastEventAt: '2026-01-01T00:05:00.000Z'
+    }
+  ];
+
+  const sorted = sortConversationRailSessions(tieRows, 'attention-first');
+  assert.deepEqual(
+    sorted.map((row) => row.sessionId),
+    ['session-a', 'session-b', 'short-id']
+  );
+
+  const rendered = buildConversationRailLines(tieRows, 'short-id', 32, 5);
+  assert.equal(rendered[1]?.includes('session-a'), true);
+  assert.equal(rendered[2]?.includes('session-b'), true);
+  assert.equal(rendered[3]?.includes('short-id'), true);
+
+  const byStartedDescFallback = sortConversationRailSessions(
+    [
+      {
+        sessionId: 'id-2',
+        status: 'running',
+        attentionReason: null,
+        live: true,
+        startedAt: '2026-01-01T00:01:00.000Z',
+        lastEventAt: '2026-01-01T00:01:00.000Z'
+      },
+      {
+        sessionId: 'id-1',
+        status: 'running',
+        attentionReason: null,
+        live: true,
+        startedAt: '2026-01-01T00:02:00.000Z',
+        lastEventAt: '2026-01-01T00:01:00.000Z'
+      }
+    ],
+    'attention-first'
+  );
+  assert.deepEqual(
+    byStartedDescFallback.map((row) => row.sessionId),
+    ['id-1', 'id-2']
+  );
+});
+
+void test('attention-first sort covers null and non-null lastEvent comparator branches', () => {
+  const rows: readonly ConversationRailSessionSummary[] = [
+    {
+      sessionId: 'left-null',
+      status: 'running',
+      attentionReason: null,
+      live: true,
+      startedAt: '2026-01-01T00:01:00.000Z',
+      lastEventAt: null
+    },
+    {
+      sessionId: 'right-non-null',
+      status: 'running',
+      attentionReason: null,
+      live: true,
+      startedAt: '2026-01-01T00:01:00.000Z',
+      lastEventAt: '2026-01-01T00:05:00.000Z'
+    }
+  ];
+
+  const nullCompared = sortConversationRailSessions(rows, 'attention-first');
+  assert.deepEqual(
+    nullCompared.map((row) => row.sessionId),
+    ['right-non-null', 'left-null']
+  );
+
+  const localeCompared = sortConversationRailSessions(
+    [
+      {
+        sessionId: 'event-b',
+        status: 'running',
+        attentionReason: null,
+        live: true,
+        startedAt: '2026-01-01T00:01:00.000Z',
+        lastEventAt: '2026-01-01T00:05:00.000Z'
+      },
+      {
+        sessionId: 'event-a',
+        status: 'running',
+        attentionReason: null,
+        live: true,
+        startedAt: '2026-01-01T00:01:00.000Z',
+        lastEventAt: '2026-01-01T00:04:00.000Z'
+      }
+    ],
+    'attention-first'
+  );
+  assert.deepEqual(
+    localeCompared.map((row) => row.sessionId),
+    ['event-b', 'event-a']
+  );
+});
+
+void test('compareIsoDesc handles null and lexicographic ordering', () => {
+  assert.equal(compareIsoDesc(null, null), 0);
+  assert.equal(compareIsoDesc(null, '2026-01-01T00:00:00.000Z'), 1);
+  assert.equal(compareIsoDesc('2026-01-01T00:00:00.000Z', null), -1);
+  assert.equal(
+    compareIsoDesc('2026-01-01T00:04:00.000Z', '2026-01-01T00:05:00.000Z'),
+    1
+  );
+  assert.equal(
+    compareIsoDesc('2026-01-01T00:05:00.000Z', '2026-01-01T00:04:00.000Z'),
+    -1
+  );
+});

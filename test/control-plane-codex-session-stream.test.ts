@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { connect, createServer, type AddressInfo, type Socket } from 'node:net';
-import { openCodexControlPlaneSession } from '../src/control-plane/codex-session-stream.ts';
+import {
+  openCodexControlPlaneClient,
+  openCodexControlPlaneSession
+} from '../src/control-plane/codex-session-stream.ts';
 import {
   startControlPlaneStreamServer,
   type StartControlPlaneSessionInput
@@ -160,6 +163,30 @@ void test('openCodexControlPlaneSession opens and closes a remote session', asyn
       sessionId: 'remote-session'
     });
     assert.equal(status['sessionId'], 'remote-session');
+  } finally {
+    await opened.close();
+    await server.close();
+  }
+});
+
+void test('openCodexControlPlaneClient opens remote stream without starting a session', async () => {
+  const server = await startControlPlaneStreamServer({
+    authToken: 'client-only-secret',
+    startSession: (input) => new TestLiveSession(input)
+  });
+  const address = server.address();
+  const opened = await openCodexControlPlaneClient({
+    mode: 'remote',
+    host: address.address,
+    port: address.port,
+    authToken: 'client-only-secret'
+  });
+
+  try {
+    const listed = await opened.client.sendCommand({
+      type: 'session.list'
+    });
+    assert.deepEqual(listed['sessions'], []);
   } finally {
     await opened.close();
     await server.close();

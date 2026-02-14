@@ -447,17 +447,93 @@ void test('stream server supports session.list, session.status, and session.snap
       sessionId: 'session-list',
       args: [],
       initialCols: 80,
-      initialRows: 24
+      initialRows: 24,
+      tenantId: 'tenant-a',
+      userId: 'user-a',
+      workspaceId: 'workspace-a',
+      worktreeId: 'worktree-a'
+    });
+
+    await client.sendCommand({
+      type: 'pty.start',
+      sessionId: 'session-list-2',
+      args: [],
+      initialCols: 80,
+      initialRows: 24,
+      tenantId: 'tenant-a',
+      userId: 'user-a',
+      workspaceId: 'workspace-a',
+      worktreeId: 'worktree-b'
+    });
+
+    await client.sendCommand({
+      type: 'pty.start',
+      sessionId: 'session-list-3',
+      args: [],
+      initialCols: 80,
+      initialRows: 24,
+      tenantId: 'tenant-b',
+      userId: 'user-b',
+      workspaceId: 'workspace-b',
+      worktreeId: 'worktree-c'
     });
 
     const listed = await client.sendCommand({
-      type: 'session.list'
+      type: 'session.list',
+      tenantId: 'tenant-a',
+      userId: 'user-a',
+      workspaceId: 'workspace-a',
+      sort: 'started-asc'
     });
     assert.equal(Array.isArray(listed['sessions']), true);
     const sessionEntries = listed['sessions'] as Array<Record<string, unknown>>;
-    assert.equal(sessionEntries.length, 1);
+    assert.equal(sessionEntries.length, 2);
     assert.equal(sessionEntries[0]?.['sessionId'], 'session-list');
+    assert.equal(sessionEntries[0]?.['tenantId'], 'tenant-a');
+    assert.equal(sessionEntries[0]?.['workspaceId'], 'workspace-a');
     assert.equal(sessionEntries[0]?.['status'], 'running');
+    assert.equal(sessionEntries[1]?.['sessionId'], 'session-list-2');
+
+    const limited = await client.sendCommand({
+      type: 'session.list',
+      sort: 'started-desc',
+      limit: 1
+    });
+    const limitedEntries = limited['sessions'] as Array<Record<string, unknown>>;
+    assert.equal(limitedEntries.length, 1);
+    assert.equal(limitedEntries[0]?.['sessionId'], 'session-list-3');
+
+    const filteredByWorktree = await client.sendCommand({
+      type: 'session.list',
+      worktreeId: 'worktree-b'
+    });
+    const worktreeEntries = filteredByWorktree['sessions'] as Array<Record<string, unknown>>;
+    assert.equal(worktreeEntries.length, 1);
+    assert.equal(worktreeEntries[0]?.['sessionId'], 'session-list-2');
+
+    const filteredByUser = await client.sendCommand({
+      type: 'session.list',
+      userId: 'missing-user'
+    });
+    assert.deepEqual(filteredByUser['sessions'], []);
+
+    const filteredByWorkspace = await client.sendCommand({
+      type: 'session.list',
+      workspaceId: 'missing-workspace'
+    });
+    assert.deepEqual(filteredByWorkspace['sessions'], []);
+
+    const filteredByStatus = await client.sendCommand({
+      type: 'session.list',
+      status: 'exited'
+    });
+    assert.deepEqual(filteredByStatus['sessions'], []);
+
+    const filteredByLive = await client.sendCommand({
+      type: 'session.list',
+      live: false
+    });
+    assert.deepEqual(filteredByLive['sessions'], []);
 
     const status = await client.sendCommand({
       type: 'session.status',
@@ -476,6 +552,253 @@ void test('stream server supports session.list, session.status, and session.snap
     assert.equal(Array.isArray(snapshotRecord['lines']), true);
   } finally {
     client.close();
+    await server.close();
+  }
+});
+
+void test('stream server attention-first sorting prioritizes needs-input sessions', async () => {
+  const sessions: FakeLiveSession[] = [];
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => {
+      const session = new FakeLiveSession(input);
+      sessions.push(session);
+      return session;
+    }
+  });
+  const address = server.address();
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port
+  });
+
+  try {
+    await client.sendCommand({
+      type: 'pty.start',
+      sessionId: 'conversation-a',
+      args: [],
+      initialCols: 80,
+      initialRows: 24
+    });
+    await delay(2);
+    await client.sendCommand({
+      type: 'pty.start',
+      sessionId: 'conversation-b',
+      args: [],
+      initialCols: 80,
+      initialRows: 24
+    });
+
+    sessions[1]!.emitEvent({
+      type: 'attention-required',
+      reason: 'approval',
+      record: {
+        ts: new Date(0).toISOString(),
+        payload: {
+          type: 'approval-needed'
+        }
+      }
+    });
+
+    const listed = await client.sendCommand({
+      type: 'session.list',
+      sort: 'attention-first'
+    });
+    const entries = listed['sessions'] as Array<Record<string, unknown>>;
+    assert.equal(entries.length, 2);
+    assert.equal(entries[0]?.['sessionId'], 'conversation-b');
+    assert.equal(entries[0]?.['status'], 'needs-input');
+    assert.equal(entries[1]?.['sessionId'], 'conversation-a');
+  } finally {
+    client.close();
+    await server.close();
+  }
+});
+
+void test('stream server internal sort helper covers tie-break branches', async () => {
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input)
+  });
+  try {
+    interface InternalSessionState {
+      id: string;
+      tenantId: string;
+      userId: string;
+      workspaceId: string;
+      worktreeId: string;
+      session: FakeLiveSession | null;
+      eventSubscriberConnectionIds: Set<string>;
+      attachmentByConnectionId: Map<string, string>;
+      unsubscribe: (() => void) | null;
+      status: 'running' | 'needs-input' | 'completed' | 'exited';
+      attentionReason: string | null;
+      lastEventAt: string | null;
+      lastExit: PtyExit | null;
+      lastSnapshot: Record<string, unknown> | null;
+      startedAt: string;
+      exitedAt: string | null;
+      tombstoneTimer: NodeJS.Timeout | null;
+    }
+
+    const internals = server as unknown as {
+      sortSessionSummaries: (
+        sessions: readonly InternalSessionState[],
+        sort: 'attention-first' | 'started-desc' | 'started-asc'
+      ) => ReadonlyArray<Record<string, unknown>>;
+    };
+
+    const base: Omit<InternalSessionState, 'id' | 'status' | 'startedAt' | 'lastEventAt'> = {
+      tenantId: 'tenant-local',
+      userId: 'user-local',
+      workspaceId: 'workspace-local',
+      worktreeId: 'worktree-local',
+      session: null,
+      eventSubscriberConnectionIds: new Set<string>(),
+      attachmentByConnectionId: new Map<string, string>(),
+      unsubscribe: null,
+      attentionReason: null,
+      lastExit: null,
+      lastSnapshot: null,
+      exitedAt: null,
+      tombstoneTimer: null
+    };
+
+    const rows: readonly InternalSessionState[] = [
+      {
+        ...base,
+        id: 'session-c',
+        status: 'completed',
+        startedAt: '2026-01-01T00:00:00.000Z',
+        lastEventAt: null
+      },
+      {
+        ...base,
+        id: 'session-a',
+        status: 'completed',
+        startedAt: '2026-01-01T00:00:00.000Z',
+        lastEventAt: null
+      },
+      {
+        ...base,
+        id: 'session-b',
+        status: 'exited',
+        startedAt: '2026-01-02T00:00:00.000Z',
+        lastEventAt: '2026-01-02T00:00:00.000Z'
+      },
+      {
+        ...base,
+        id: 'session-d',
+        status: 'running',
+        startedAt: '2026-01-03T00:00:00.000Z',
+        lastEventAt: null
+      }
+    ];
+
+    const startedAsc = internals.sortSessionSummaries(rows, 'started-asc');
+    assert.deepEqual(
+      startedAsc.map((entry) => entry['sessionId']),
+      ['session-a', 'session-c', 'session-b', 'session-d']
+    );
+
+    const startedDesc = internals.sortSessionSummaries(rows, 'started-desc');
+    assert.deepEqual(
+      startedDesc.map((entry) => entry['sessionId']),
+      ['session-d', 'session-b', 'session-a', 'session-c']
+    );
+
+    const attentionFirst = internals.sortSessionSummaries(rows, 'attention-first');
+    assert.deepEqual(
+      attentionFirst.map((entry) => entry['sessionId']),
+      ['session-d', 'session-a', 'session-c', 'session-b']
+    );
+
+    const byLastEventRows: readonly InternalSessionState[] = [
+      {
+        ...base,
+        id: 'session-last-a',
+        status: 'completed',
+        startedAt: '2026-01-01T00:00:00.000Z',
+        lastEventAt: '2026-01-01T00:10:00.000Z'
+      },
+      {
+        ...base,
+        id: 'session-last-b',
+        status: 'completed',
+        startedAt: '2026-01-01T00:00:00.000Z',
+        lastEventAt: '2026-01-01T00:09:00.000Z'
+      }
+    ];
+    const byLastEvent = internals.sortSessionSummaries(byLastEventRows, 'attention-first');
+    assert.deepEqual(
+      byLastEvent.map((entry) => entry['sessionId']),
+      ['session-last-a', 'session-last-b']
+    );
+
+    const byStartedRows: readonly InternalSessionState[] = [
+      {
+        ...base,
+        id: 'session-start-a',
+        status: 'completed',
+        startedAt: '2026-01-01T00:10:00.000Z',
+        lastEventAt: '2026-01-01T00:10:00.000Z'
+      },
+      {
+        ...base,
+        id: 'session-start-b',
+        status: 'completed',
+        startedAt: '2026-01-01T00:09:00.000Z',
+        lastEventAt: '2026-01-01T00:10:00.000Z'
+      }
+    ];
+    const byStarted = internals.sortSessionSummaries(byStartedRows, 'attention-first');
+    assert.deepEqual(
+      byStarted.map((entry) => entry['sessionId']),
+      ['session-start-a', 'session-start-b']
+    );
+
+    const nullVsNonNullA: readonly InternalSessionState[] = [
+      {
+        ...base,
+        id: 'null-last-event',
+        status: 'running',
+        startedAt: '2026-01-01T00:00:00.000Z',
+        lastEventAt: null
+      },
+      {
+        ...base,
+        id: 'non-null-last-event',
+        status: 'running',
+        startedAt: '2026-01-01T00:00:00.000Z',
+        lastEventAt: '2026-01-01T00:00:01.000Z'
+      }
+    ];
+    const nullVsNonNullSortedA = internals.sortSessionSummaries(nullVsNonNullA, 'attention-first');
+    assert.deepEqual(
+      nullVsNonNullSortedA.map((entry) => entry['sessionId']),
+      ['non-null-last-event', 'null-last-event']
+    );
+
+    const nullVsNonNullB: readonly InternalSessionState[] = [
+      {
+        ...base,
+        id: 'non-null-last-event-2',
+        status: 'running',
+        startedAt: '2026-01-01T00:00:00.000Z',
+        lastEventAt: '2026-01-01T00:00:01.000Z'
+      },
+      {
+        ...base,
+        id: 'null-last-event-2',
+        status: 'running',
+        startedAt: '2026-01-01T00:00:00.000Z',
+        lastEventAt: null
+      }
+    ];
+    const nullVsNonNullSortedB = internals.sortSessionSummaries(nullVsNonNullB, 'attention-first');
+    assert.deepEqual(
+      nullVsNonNullSortedB.map((entry) => entry['sessionId']),
+      ['non-null-last-event-2', 'null-last-event-2']
+    );
+  } finally {
     await server.close();
   }
 });
@@ -995,6 +1318,10 @@ void test('stream server internal guard branches remain safe for missing ids', a
   try {
     interface InternalSessionState {
       id: string;
+      tenantId: string;
+      userId: string;
+      workspaceId: string;
+      worktreeId: string;
       session: FakeLiveSession | null;
       eventSubscriberConnectionIds: Set<string>;
       attachmentByConnectionId: Map<string, string>;
@@ -1076,6 +1403,10 @@ void test('stream server internal guard branches remain safe for missing ids', a
 
     internals.sessions.set('fake-session', {
       id: 'fake-session',
+      tenantId: 'tenant-local',
+      userId: 'user-local',
+      workspaceId: 'workspace-local',
+      worktreeId: 'worktree-local',
       session: null,
       eventSubscriberConnectionIds: new Set<string>(),
       attachmentByConnectionId: new Map<string, string>([['fake-connection', 'attachment-x']]),
@@ -1104,6 +1435,10 @@ void test('stream server internal guard branches remain safe for missing ids', a
 
     internals.sessions.set('timer-guard-session', {
       id: 'timer-guard-session',
+      tenantId: 'tenant-local',
+      userId: 'user-local',
+      workspaceId: 'workspace-local',
+      worktreeId: 'worktree-local',
       session: null,
       eventSubscriberConnectionIds: new Set<string>(),
       attachmentByConnectionId: new Map<string, string>(),

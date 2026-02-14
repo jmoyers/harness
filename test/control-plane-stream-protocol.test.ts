@@ -36,6 +36,21 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
     },
     {
       kind: 'command',
+      commandId: 'c1x',
+      command: {
+        type: 'session.list',
+        tenantId: 'tenant-local',
+        userId: 'user-local',
+        workspaceId: 'workspace-local',
+        worktreeId: 'worktree-local',
+        status: 'needs-input',
+        live: true,
+        sort: 'attention-first',
+        limit: 5
+      }
+    },
+    {
+      kind: 'command',
       commandId: 'c1a',
       command: {
         type: 'attention.list'
@@ -95,7 +110,11 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
         initialCols: 120,
         initialRows: 40,
         terminalForegroundHex: 'd0d7de',
-        terminalBackgroundHex: '0f1419'
+        terminalBackgroundHex: '0f1419',
+        tenantId: 'tenant-local',
+        userId: 'user-local',
+        workspaceId: 'workspace-local',
+        worktreeId: 'worktree-local'
       }
     },
     {
@@ -204,6 +223,94 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
       kind: 'command',
       commandId: 'c2',
       command: {
+        type: 'session.list',
+        status: 'bad-status'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2b',
+      command: {
+        type: 'session.list',
+        live: 'true'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2ba',
+      command: {
+        type: 'session.list',
+        tenantId: 1
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2bb',
+      command: {
+        type: 'session.list',
+        userId: 1
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2bc',
+      command: {
+        type: 'session.list',
+        workspaceId: 1
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2bd',
+      command: {
+        type: 'session.list',
+        worktreeId: 1
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2be',
+      command: {
+        type: 'session.list',
+        status: 1
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2c',
+      command: {
+        type: 'session.list',
+        sort: 'weird'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2ca',
+      command: {
+        type: 'session.list',
+        sort: 1
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2d',
+      command: {
+        type: 'session.list',
+        limit: 0
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2da',
+      command: {
+        type: 'session.list',
+        limit: '1'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2e',
+      command: {
         type: 'pty.start',
         sessionId: 's1',
         args: [],
@@ -212,6 +319,54 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
         },
         initialCols: 80,
         initialRows: 24
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2f',
+      command: {
+        type: 'pty.start',
+        sessionId: 's1',
+        args: [],
+        initialCols: 80,
+        initialRows: 24,
+        tenantId: 123
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2g',
+      command: {
+        type: 'pty.start',
+        sessionId: 's1',
+        args: [],
+        initialCols: 80,
+        initialRows: 24,
+        userId: 123
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2h',
+      command: {
+        type: 'pty.start',
+        sessionId: 's1',
+        args: [],
+        initialCols: 80,
+        initialRows: 24,
+        workspaceId: 123
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2i',
+      command: {
+        type: 'pty.start',
+        sessionId: 's1',
+        args: [],
+        initialCols: 80,
+        initialRows: 24,
+        worktreeId: 123
       }
     },
     {

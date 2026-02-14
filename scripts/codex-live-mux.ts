@@ -2,9 +2,13 @@ import { basename } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { appendFileSync } from 'node:fs';
 import { startCodexLiveSession } from '../src/codex/live-session.ts';
-import { openCodexControlPlaneSession } from '../src/control-plane/codex-session-stream.ts';
+import { openCodexControlPlaneClient } from '../src/control-plane/codex-session-stream.ts';
 import { startControlPlaneStreamServer } from '../src/control-plane/stream-server.ts';
 import type { StreamSessionEvent } from '../src/control-plane/stream-protocol.ts';
+import {
+  parseSessionSummaryRecord,
+  parseSessionSummaryList
+} from '../src/control-plane/session-summary.ts';
 import { SqliteEventStore } from '../src/store/event-store.ts';
 import {
   TerminalSnapshotOracle,
@@ -27,12 +31,16 @@ import {
   routeMuxInputTokens,
   wheelDeltaRowsFromCode
 } from '../src/mux/dual-pane-core.ts';
+import {
+  buildConversationRailLines,
+  cycleConversationId,
+  type ConversationRailSessionSummary
+} from '../src/mux/conversation-rail.ts';
 
 interface MuxOptions {
   codexArgs: string[];
   storePath: string;
-  conversationId: string;
-  turnId: string;
+  initialConversationId: string;
   controlPlaneHost: string | null;
   controlPlanePort: number | null;
   controlPlaneAuthToken: string | null;
@@ -72,10 +80,29 @@ interface PaneSelectionDrag {
   readonly hasDragged: boolean;
 }
 
+interface ConversationState {
+  readonly sessionId: string;
+  turnId: string;
+  scope: EventScope;
+  oracle: TerminalSnapshotOracle;
+  events: EventPaneViewport;
+  status: ConversationRailSessionSummary['status'];
+  attentionReason: string | null;
+  startedAt: string;
+  lastEventAt: string | null;
+  exitedAt: string | null;
+  lastExit: PtyExit | null;
+  live: boolean;
+  attached: boolean;
+}
+
 const ENABLE_INPUT_MODES = '\u001b[>1u\u001b[?1000h\u001b[?1002h\u001b[?1004h\u001b[?1006h';
 const DISABLE_INPUT_MODES = '\u001b[?2004l\u001b[?1006l\u001b[?1004l\u001b[?1002l\u001b[?1000l\u001b[<u';
 const DEFAULT_RESIZE_MIN_INTERVAL_MS = 33;
 const DEFAULT_PTY_RESIZE_SETTLE_MS = 75;
+const CTRL_T = 0x14;
+const CTRL_N = 0x0e;
+const CTRL_P = 0x10;
 
 function restoreTerminalState(newline: boolean): void {
   try {
@@ -515,14 +542,13 @@ function parseArgs(argv: string[]): MuxOptions {
     throw new Error('both control-plane host and port must be set together');
   }
 
-  const conversationId = process.env.HARNESS_CONVERSATION_ID ?? `conversation-${randomUUID()}`;
+  const initialConversationId = process.env.HARNESS_CONVERSATION_ID ?? `conversation-${randomUUID()}`;
   const turnId = process.env.HARNESS_TURN_ID ?? `turn-${randomUUID()}`;
 
   return {
     codexArgs,
     storePath: process.env.HARNESS_EVENTS_DB_PATH ?? '.harness/events.sqlite',
-    conversationId,
-    turnId,
+    initialConversationId,
     controlPlaneHost,
     controlPlanePort,
     controlPlaneAuthToken,
@@ -531,26 +557,111 @@ function parseArgs(argv: string[]): MuxOptions {
       userId: process.env.HARNESS_USER_ID ?? 'user-local',
       workspaceId: process.env.HARNESS_WORKSPACE_ID ?? basename(process.cwd()),
       worktreeId: process.env.HARNESS_WORKTREE_ID ?? 'worktree-local',
-      conversationId,
+      conversationId: initialConversationId,
       turnId
     }
   };
+}
+
+function createConversationScope(baseScope: EventScope, conversationId: string, turnId: string): EventScope {
+  return {
+    tenantId: baseScope.tenantId,
+    userId: baseScope.userId,
+    workspaceId: baseScope.workspaceId,
+    worktreeId: baseScope.worktreeId,
+    conversationId,
+    turnId
+  };
+}
+
+function createConversationState(
+  sessionId: string,
+  turnId: string,
+  baseScope: EventScope,
+  cols: number,
+  rows: number
+): ConversationState {
+  return {
+    sessionId,
+    turnId,
+    scope: createConversationScope(baseScope, sessionId, turnId),
+    oracle: new TerminalSnapshotOracle(cols, rows),
+    events: new EventPaneViewport(1000),
+    status: 'running',
+    attentionReason: null,
+    startedAt: new Date().toISOString(),
+    lastEventAt: null,
+    exitedAt: null,
+    lastExit: null,
+    live: true,
+    attached: false
+  };
+}
+
+function applySummaryToConversation(
+  target: ConversationState,
+  summary: ReturnType<typeof parseSessionSummaryRecord>
+): void {
+  if (summary === null) {
+    return;
+  }
+  target.status = summary.status;
+  target.attentionReason = summary.attentionReason;
+  target.startedAt = summary.startedAt;
+  target.lastEventAt = summary.lastEventAt;
+  target.exitedAt = summary.exitedAt;
+  target.lastExit = summary.lastExit;
+  target.live = summary.live;
+}
+
+function conversationSummary(conversation: ConversationState): ConversationRailSessionSummary {
+  return {
+    sessionId: conversation.sessionId,
+    status: conversation.status,
+    attentionReason: conversation.attentionReason,
+    live: conversation.live,
+    startedAt: conversation.startedAt,
+    lastEventAt: conversation.lastEventAt
+  };
+}
+
+function conversationOrder(conversations: ReadonlyMap<string, ConversationState>): readonly string[] {
+  return [...conversations.values()]
+    .sort((left, right) => {
+      if (left.startedAt !== right.startedAt) {
+        return left.startedAt.localeCompare(right.startedAt);
+      }
+      return left.sessionId.localeCompare(right.sessionId);
+    })
+    .map((session) => session.sessionId);
 }
 
 function buildRenderRows(
   layout: ReturnType<typeof computeDualPaneLayout>,
   leftFrame: TerminalSnapshotFrame,
   events: EventPaneViewport,
-  conversationId: string,
+  conversations: readonly ConversationRailSessionSummary[],
+  activeConversationId: string | null,
   selectionActive: boolean,
   ctrlCExits: boolean
 ): string[] {
-  const rightView = events.view(layout.rightCols, layout.paneRows);
+  const railRows = Math.max(3, Math.min(8, Math.floor(layout.paneRows / 3)));
+  const railLines = buildConversationRailLines(
+    conversations,
+    activeConversationId,
+    layout.rightCols,
+    railRows
+  );
+  const eventRows = Math.max(1, layout.paneRows - railLines.length);
+  const rightView = events.view(layout.rightCols, eventRows);
 
   const rows: string[] = [];
   for (let row = 0; row < layout.paneRows; row += 1) {
     const left = renderSnapshotAnsiRow(leftFrame, row, layout.leftCols);
-    const right = padOrTrimDisplay(rightView.lines[row] ?? '', layout.rightCols);
+    const right =
+      row < railLines.length
+        ? railLines[row]!
+        : padOrTrimDisplay(rightView.lines[row - railLines.length] ?? '', layout.rightCols);
     rows.push(`${left}\u001b[0m│${right}`);
   }
 
@@ -563,7 +674,7 @@ function buildRenderRows(
   const selection = selectionActive ? 'select=drag' : 'select=idle';
   const quitHint = ctrlCExits ? 'ctrl-c/ctrl-] quit' : 'ctrl-] quit';
   const status = padOrTrimDisplay(
-    `[mux] conversation=${conversationId} ${leftMode} ${mode} ${selection} drag copy alt-pass ${quitHint}`,
+    `[mux] conversation=${activeConversationId ?? '-'} ${leftMode} ${mode} ${selection} ctrl-t new ctrl-n/p switch drag copy alt-pass ${quitHint}`,
     layout.cols
   );
   rows.push(status);
@@ -830,9 +941,6 @@ async function main(): Promise<number> {
   const store = new SqliteEventStore(options.storePath);
   const debugPath = process.env.HARNESS_MUX_DEBUG_PATH ?? null;
 
-  const maxEventLines = 1000;
-  const events = new EventPaneViewport(maxEventLines);
-
   let size = terminalSize();
   let layout = computeDualPaneLayout(size.cols, size.rows);
   const resizeMinIntervalMs = parsePositiveInt(
@@ -849,30 +957,18 @@ async function main(): Promise<number> {
   process.stdin.resume();
 
   const probedPalette = await probeTerminalPalette();
-  const terminalSnapshotOracle = new TerminalSnapshotOracle(layout.leftCols, layout.paneRows);
-  const controlPlaneSession = await openCodexControlPlaneSession({
-    controlPlane:
-      options.controlPlaneHost !== null && options.controlPlanePort !== null
-        ? {
-            mode: 'remote',
-            host: options.controlPlaneHost,
-            port: options.controlPlanePort,
-            authToken: options.controlPlaneAuthToken ?? undefined
-          }
-        : {
-            mode: 'embedded'
-          },
-    sessionId: options.conversationId,
-    args: options.codexArgs,
-    env: {
-      ...sanitizeProcessEnv(),
-      TERM: process.env.TERM ?? 'xterm-256color'
-    },
-    initialCols: layout.leftCols,
-    initialRows: layout.paneRows,
-    terminalForegroundHex: process.env.HARNESS_TERM_FG ?? probedPalette.foregroundHex,
-    terminalBackgroundHex: process.env.HARNESS_TERM_BG ?? probedPalette.backgroundHex
-  }, {
+  const controlPlaneClient = await openCodexControlPlaneClient(
+    options.controlPlaneHost !== null && options.controlPlanePort !== null
+      ? {
+          mode: 'remote',
+          host: options.controlPlaneHost,
+          port: options.controlPlanePort,
+          authToken: options.controlPlaneAuthToken ?? undefined
+        }
+      : {
+          mode: 'embedded'
+        },
+    {
     startEmbeddedServer: async () =>
       await startControlPlaneStreamServer({
         startSession: (input) =>
@@ -882,11 +978,104 @@ async function main(): Promise<number> {
             initialCols: input.initialCols,
             initialRows: input.initialRows,
             terminalForegroundHex: input.terminalForegroundHex,
-            terminalBackgroundHex: input.terminalBackgroundHex
+              terminalBackgroundHex: input.terminalBackgroundHex
           })
       })
   });
-  const streamClient = controlPlaneSession.client;
+  const streamClient = controlPlaneClient.client;
+
+  const sessionEnv = {
+    ...sanitizeProcessEnv(),
+    TERM: process.env.TERM ?? 'xterm-256color'
+  };
+  const conversations = new Map<string, ConversationState>();
+  let activeConversationId: string | null = null;
+
+  const ensureConversation = (sessionId: string): ConversationState => {
+    const existing = conversations.get(sessionId);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const state = createConversationState(
+      sessionId,
+      `turn-${randomUUID()}`,
+      options.scope,
+      layout.leftCols,
+      layout.paneRows
+    );
+    conversations.set(sessionId, state);
+    return state;
+  };
+
+  const activeConversation = (): ConversationState => {
+    if (activeConversationId === null) {
+      throw new Error('active conversation is not set');
+    }
+    const state = conversations.get(activeConversationId);
+    if (state === undefined) {
+      throw new Error(`active conversation missing: ${activeConversationId}`);
+    }
+    return state;
+  };
+
+  const startConversation = async (sessionId: string): Promise<ConversationState> => {
+    await streamClient.sendCommand({
+      type: 'pty.start',
+      sessionId,
+      args: options.codexArgs,
+      env: sessionEnv,
+      initialCols: layout.leftCols,
+      initialRows: layout.paneRows,
+      terminalForegroundHex: process.env.HARNESS_TERM_FG ?? probedPalette.foregroundHex,
+      terminalBackgroundHex: process.env.HARNESS_TERM_BG ?? probedPalette.backgroundHex,
+      tenantId: options.scope.tenantId,
+      userId: options.scope.userId,
+      workspaceId: options.scope.workspaceId,
+      worktreeId: options.scope.worktreeId
+    });
+    const state = ensureConversation(sessionId);
+    const statusRecord = await streamClient.sendCommand({
+      type: 'session.status',
+      sessionId
+    });
+    const statusSummary = parseSessionSummaryRecord(statusRecord);
+    if (statusSummary !== null) {
+      applySummaryToConversation(state, statusSummary);
+    }
+    await streamClient.sendCommand({
+      type: 'pty.subscribe-events',
+      sessionId
+    });
+    return state;
+  };
+
+  const hydrateConversationList = async (): Promise<void> => {
+    const listed = await streamClient.sendCommand({
+      type: 'session.list',
+      tenantId: options.scope.tenantId,
+      userId: options.scope.userId,
+      workspaceId: options.scope.workspaceId,
+      worktreeId: options.scope.worktreeId,
+      sort: 'attention-first'
+    });
+    const summaries = parseSessionSummaryList(listed['sessions']);
+    for (const summary of summaries) {
+      const conversation = ensureConversation(summary.sessionId);
+      applySummaryToConversation(conversation, summary);
+      await streamClient.sendCommand({
+        type: 'pty.subscribe-events',
+        sessionId: summary.sessionId
+      });
+    }
+  };
+
+  await hydrateConversationList();
+  if (!conversations.has(options.initialConversationId)) {
+    await startConversation(options.initialConversationId);
+  }
+  if (activeConversationId === null) {
+    activeConversationId = options.initialConversationId;
+  }
 
   const idFactory = (): string => `event-${randomUUID()}`;
   let exit: PtyExit | null = null;
@@ -915,7 +1104,9 @@ async function main(): Promise<number> {
       return;
     }
     stop = true;
-    streamClient.sendSignal(options.conversationId, 'terminate');
+    if (activeConversationId !== null) {
+      streamClient.sendSignal(activeConversationId, 'terminate');
+    }
     markDirty();
   };
 
@@ -947,10 +1138,12 @@ async function main(): Promise<number> {
       return;
     }
     currentPtySize = ptySize;
-    terminalSnapshotOracle.resize(ptySize.cols, ptySize.rows);
-    streamClient.sendResize(options.conversationId, ptySize.cols, ptySize.rows);
+    const conversation = activeConversation();
+    conversation.oracle.resize(ptySize.cols, ptySize.rows);
+    streamClient.sendResize(conversation.sessionId, ptySize.cols, ptySize.rows);
     appendDebugRecord(debugPath, {
       kind: 'resize-pty-apply',
+      sessionId: conversation.sessionId,
       ptyCols: ptySize.cols,
       ptyRows: ptySize.rows
     });
@@ -1011,6 +1204,9 @@ async function main(): Promise<number> {
     }
     size = nextSize;
     layout = nextLayout;
+    for (const conversation of conversations.values()) {
+      conversation.oracle.resize(nextLayout.leftCols, nextLayout.paneRows);
+    }
     // Force a full clear on actual layout changes to avoid stale diagonal artifacts during drag.
     previousRows = [];
     forceFullClear = true;
@@ -1060,19 +1256,108 @@ async function main(): Promise<number> {
     resizeTimer = setTimeout(flushPendingResize, delayMs);
   };
 
-  const appendEventLine = (line: string): void => {
-    events.append(line);
+  const appendEventLine = (line: string, sessionId: string | null = activeConversationId): void => {
+    if (sessionId === null) {
+      return;
+    }
+    const conversation = conversations.get(sessionId);
+    if (conversation === undefined) {
+      return;
+    }
+    conversation.events.append(line);
     markDirty();
+  };
+
+  let controlPlaneOps = Promise.resolve();
+  const queueControlPlaneOp = (task: () => Promise<void>): void => {
+    controlPlaneOps = controlPlaneOps
+      .then(task)
+      .catch((error: unknown) => {
+        appendEventLine(
+          `${new Date().toISOString()} control-plane error ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      });
+  };
+
+  const attachConversation = async (sessionId: string): Promise<void> => {
+    const conversation = conversations.get(sessionId);
+    if (conversation === undefined) {
+      return;
+    }
+    if (!conversation.live) {
+      return;
+    }
+    if (!conversation.attached) {
+      await streamClient.sendCommand({
+        type: 'pty.attach',
+        sessionId,
+        sinceCursor: 0
+      });
+      conversation.attached = true;
+    }
+    await streamClient.sendCommand({
+      type: 'pty.subscribe-events',
+      sessionId
+    });
+  };
+
+  const detachConversation = async (sessionId: string): Promise<void> => {
+    const conversation = conversations.get(sessionId);
+    if (conversation === undefined) {
+      return;
+    }
+    if (!conversation.attached) {
+      return;
+    }
+    await streamClient.sendCommand({
+      type: 'pty.detach',
+      sessionId
+    });
+    conversation.attached = false;
+  };
+
+  const activateConversation = async (sessionId: string): Promise<void> => {
+    if (activeConversationId === sessionId) {
+      return;
+    }
+    const previousActiveId = activeConversationId;
+    selection = null;
+    selectionDrag = null;
+    releaseViewportPinForSelection();
+    if (previousActiveId !== null) {
+      await detachConversation(previousActiveId);
+    }
+    activeConversationId = sessionId;
+    forceFullClear = true;
+    currentPtySize = null;
+    await attachConversation(sessionId);
+    schedulePtyResize(
+      {
+        cols: layout.leftCols,
+        rows: layout.paneRows
+      },
+      true
+    );
+    appendEventLine(`${new Date().toISOString()} switched ${sessionId}`, sessionId);
+    markDirty();
+  };
+
+  const createAndActivateConversation = async (): Promise<void> => {
+    const sessionId = `conversation-${randomUUID()}`;
+    await startConversation(sessionId);
+    await activateConversation(sessionId);
   };
 
   const pinViewportForSelection = (): void => {
     if (selectionPinnedFollowOutput !== null) {
       return;
     }
-    const follow = terminalSnapshotOracle.snapshot().viewport.followOutput;
+    const follow = activeConversation().oracle.snapshot().viewport.followOutput;
     selectionPinnedFollowOutput = follow;
     if (follow) {
-      terminalSnapshotOracle.setFollowOutput(false);
+      activeConversation().oracle.setFollowOutput(false);
     }
   };
 
@@ -1083,7 +1368,7 @@ async function main(): Promise<number> {
     const shouldRepin = selectionPinnedFollowOutput;
     selectionPinnedFollowOutput = null;
     if (shouldRepin) {
-      terminalSnapshotOracle.setFollowOutput(true);
+      activeConversation().oracle.setFollowOutput(true);
     }
   };
 
@@ -1092,7 +1377,8 @@ async function main(): Promise<number> {
       return;
     }
 
-    const leftFrame = terminalSnapshotOracle.snapshot();
+    const active = activeConversation();
+    const leftFrame = active.oracle.snapshot();
     const renderSelection =
       selectionDrag !== null && selectionDrag.hasDragged
         ? {
@@ -1105,8 +1391,9 @@ async function main(): Promise<number> {
     const rows = buildRenderRows(
       layout,
       leftFrame,
-      events,
-      options.conversationId,
+      active.events,
+      [...conversations.values()].map((conversation) => conversationSummary(conversation)),
+      activeConversationId,
       renderSelection !== null,
       ctrlCExits
     );
@@ -1189,43 +1476,87 @@ async function main(): Promise<number> {
     dirty = false;
   };
 
+  const initialActiveId = activeConversationId;
+  activeConversationId = null;
+  if (initialActiveId !== null) {
+    await activateConversation(initialActiveId);
+  }
+
   const removeEnvelopeListener = streamClient.onEnvelope((envelope) => {
     if (envelope.kind === 'pty.output') {
-      if (envelope.sessionId !== options.conversationId) {
-        return;
-      }
+      const conversation = ensureConversation(envelope.sessionId);
       const chunk = Buffer.from(envelope.chunkBase64, 'base64');
-      terminalSnapshotOracle.ingest(chunk);
+      conversation.oracle.ingest(chunk);
 
-      const normalized = mapTerminalOutputToNormalizedEvent(chunk, options.scope, idFactory);
+      const normalized = mapTerminalOutputToNormalizedEvent(chunk, conversation.scope, idFactory);
       store.appendEvents([normalized]);
-      markDirty();
-      return;
-    }
-
-    if (envelope.kind === 'pty.event') {
-      if (envelope.sessionId !== options.conversationId) {
-        return;
-      }
-      const normalized = mapSessionEventToNormalizedEvent(envelope.event, options.scope, idFactory);
-      if (normalized !== null) {
-        store.appendEvents([normalized]);
-        appendEventLine(summarizeEvent(normalized));
-      }
-      if (envelope.event.type === 'session-exit') {
-        exit = envelope.event.exit;
-        stop = true;
+      conversation.lastEventAt = normalized.ts;
+      if (activeConversationId === envelope.sessionId) {
         markDirty();
       }
       return;
     }
 
-    if (envelope.kind === 'pty.exit') {
-      if (envelope.sessionId !== options.conversationId) {
-        return;
+    if (envelope.kind === 'pty.event') {
+      const conversation = ensureConversation(envelope.sessionId);
+      const normalized = mapSessionEventToNormalizedEvent(envelope.event, conversation.scope, idFactory);
+      if (normalized !== null) {
+        store.appendEvents([normalized]);
+        appendEventLine(summarizeEvent(normalized), envelope.sessionId);
       }
-      exit = envelope.exit;
-      stop = true;
+      if (envelope.event.type === 'attention-required') {
+        conversation.status = 'needs-input';
+        conversation.attentionReason = envelope.event.reason;
+      } else if (envelope.event.type === 'turn-completed') {
+        conversation.status = 'completed';
+        conversation.attentionReason = null;
+      } else if (envelope.event.type === 'notify') {
+        // no status change
+      }
+      if (envelope.event.type === 'session-exit') {
+        conversation.status = 'exited';
+        conversation.live = false;
+        conversation.attentionReason = null;
+        conversation.lastExit = envelope.event.exit;
+        conversation.exitedAt = new Date().toISOString();
+        conversation.attached = false;
+        if (activeConversationId === envelope.sessionId) {
+          const fallback = conversationOrder(conversations).find((sessionId) => {
+            const candidate = conversations.get(sessionId);
+            return candidate !== undefined && candidate.live;
+          });
+          if (fallback !== undefined) {
+            queueControlPlaneOp(async () => {
+              await activateConversation(fallback);
+            });
+          }
+        }
+      }
+      markDirty();
+      return;
+    }
+
+    if (envelope.kind === 'pty.exit') {
+      const conversation = conversations.get(envelope.sessionId);
+      if (conversation !== undefined) {
+        conversation.status = 'exited';
+        conversation.live = false;
+        conversation.attentionReason = null;
+        conversation.lastExit = envelope.exit;
+        conversation.exitedAt = new Date().toISOString();
+        conversation.attached = false;
+        if (activeConversationId === envelope.sessionId) {
+          const fallback = conversationOrder(conversations).find((sessionId) => {
+            const candidate = conversations.get(sessionId);
+            return candidate !== undefined && candidate.live;
+          });
+          if (fallback !== undefined) {
+            queueControlPlaneOp(async () => {
+              await activateConversation(fallback);
+            });
+          }
+        }
+      }
       markDirty();
     }
   });
@@ -1238,6 +1569,25 @@ async function main(): Promise<number> {
 
     if (chunk.length === 1 && chunk[0] === 0x1d) {
       requestStop();
+      return;
+    }
+
+    if (chunk.length === 1 && chunk[0] === CTRL_T) {
+      queueControlPlaneOp(async () => {
+        await createAndActivateConversation();
+      });
+      return;
+    }
+
+    if (chunk.length === 1 && (chunk[0] === CTRL_N || chunk[0] === CTRL_P)) {
+      const orderedIds = conversationOrder(conversations);
+      const direction = chunk[0] === CTRL_N ? 'next' : 'previous';
+      const targetId = cycleConversationId(orderedIds, activeConversationId, direction);
+      if (targetId !== null) {
+        queueControlPlaneOp(async () => {
+          await activateConversation(targetId);
+        });
+      }
       return;
     }
 
@@ -1272,7 +1622,7 @@ async function main(): Promise<number> {
     }
 
     if (selection !== null && isCopyShortcutInput(focusExtraction.sanitized)) {
-      const selectedFrame = terminalSnapshotOracle.snapshot();
+      const selectedFrame = activeConversation().oracle.snapshot();
       const copied = writeTextToClipboard(selectionText(selectedFrame, selection));
       appendEventLine(`${new Date().toISOString()} selection ${copied ? 'copied' : 'copy-failed'}`);
       appendDebugRecord(debugPath, {
@@ -1290,7 +1640,8 @@ async function main(): Promise<number> {
     const parsed = parseMuxInputChunk(inputRemainder, focusExtraction.sanitized);
     inputRemainder = parsed.remainder;
 
-    let snapshotForInput = terminalSnapshotOracle.snapshot();
+    const inputConversation = activeConversation();
+    let snapshotForInput = inputConversation.oracle.snapshot();
     const routedTokens: Array<(typeof parsed.tokens)[number]> = [];
     for (const token of parsed.tokens) {
       if (token.kind !== 'mouse') {
@@ -1312,13 +1663,13 @@ async function main(): Promise<number> {
       const wheelDelta = wheelDeltaRowsFromCode(token.event.code);
       if (wheelDelta !== null) {
         if (target === 'left') {
-          terminalSnapshotOracle.scrollViewport(wheelDelta);
-          snapshotForInput = terminalSnapshotOracle.snapshot();
+          inputConversation.oracle.scrollViewport(wheelDelta);
+          snapshotForInput = inputConversation.oracle.snapshot();
           markDirty();
           continue;
         }
         if (target === 'right') {
-          events.scrollBy(wheelDelta, layout.rightCols, layout.paneRows);
+          inputConversation.events.scrollBy(wheelDelta, layout.rightCols, layout.paneRows);
           markDirty();
           continue;
         }
@@ -1407,16 +1758,16 @@ async function main(): Promise<number> {
 
     const routed = routeMuxInputTokens(routedTokens, layout);
     if (routed.leftPaneScrollRows !== 0) {
-      terminalSnapshotOracle.scrollViewport(routed.leftPaneScrollRows);
+      inputConversation.oracle.scrollViewport(routed.leftPaneScrollRows);
       markDirty();
     }
     if (routed.rightPaneScrollRows !== 0) {
-      events.scrollBy(routed.rightPaneScrollRows, layout.rightCols, layout.paneRows);
+      inputConversation.events.scrollBy(routed.rightPaneScrollRows, layout.rightCols, layout.paneRows);
       markDirty();
     }
 
     for (const forwardChunk of routed.forwardToSession) {
-      streamClient.sendInput(options.conversationId, Buffer.from(forwardChunk));
+      streamClient.sendInput(inputConversation.sessionId, Buffer.from(forwardChunk));
     }
 
     appendDebugRecord(debugPath, {
@@ -1474,7 +1825,8 @@ async function main(): Promise<number> {
     process.off('SIGTERM', requestStop);
     removeEnvelopeListener();
     try {
-      await controlPlaneSession.close();
+      await controlPlaneOps;
+      await controlPlaneClient.close();
     } catch {
       // Best-effort shutdown only.
     }

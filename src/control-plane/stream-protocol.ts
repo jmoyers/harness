@@ -1,9 +1,19 @@
 import type { PtyExit } from '../pty/pty_host.ts';
 
 export type StreamSignal = 'interrupt' | 'eof' | 'terminate';
+export type StreamSessionRuntimeStatus = 'running' | 'needs-input' | 'completed' | 'exited';
+export type StreamSessionListSort = 'attention-first' | 'started-desc' | 'started-asc';
 
 interface SessionListCommand {
   type: 'session.list';
+  tenantId?: string;
+  userId?: string;
+  workspaceId?: string;
+  worktreeId?: string;
+  status?: StreamSessionRuntimeStatus;
+  live?: boolean;
+  sort?: StreamSessionListSort;
+  limit?: number;
 }
 
 interface AttentionListCommand {
@@ -45,6 +55,10 @@ interface PtyStartCommand {
   initialRows: number;
   terminalForegroundHex?: string;
   terminalBackgroundHex?: string;
+  tenantId?: string;
+  userId?: string;
+  workspaceId?: string;
+  worktreeId?: string;
 }
 
 interface PtyAttachCommand {
@@ -251,6 +265,10 @@ function readNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
+function readBoolean(value: unknown): boolean | null {
+  return typeof value === 'boolean' ? value : null;
+}
+
 function readSignalName(value: unknown): NodeJS.Signals | null {
   if (typeof value !== 'string') {
     return null;
@@ -294,9 +312,86 @@ function parseStreamCommand(value: unknown): StreamCommand | null {
   }
 
   if (type === 'session.list') {
-    return {
+    const command: SessionListCommand = {
       type
     };
+    const tenantId = readString(record['tenantId']);
+    if (record['tenantId'] !== undefined && tenantId === null) {
+      return null;
+    }
+    const userId = readString(record['userId']);
+    if (record['userId'] !== undefined && userId === null) {
+      return null;
+    }
+    const workspaceId = readString(record['workspaceId']);
+    if (record['workspaceId'] !== undefined && workspaceId === null) {
+      return null;
+    }
+    const worktreeId = readString(record['worktreeId']);
+    if (record['worktreeId'] !== undefined && worktreeId === null) {
+      return null;
+    }
+    const status = readString(record['status']);
+    if (
+      status !== null &&
+      status !== 'running' &&
+      status !== 'needs-input' &&
+      status !== 'completed' &&
+      status !== 'exited'
+    ) {
+      return null;
+    }
+    if (record['status'] !== undefined && status === null) {
+      return null;
+    }
+    const live = readBoolean(record['live']);
+    if (record['live'] !== undefined && live === null) {
+      return null;
+    }
+    const sort = readString(record['sort']);
+    if (
+      sort !== null &&
+      sort !== 'attention-first' &&
+      sort !== 'started-desc' &&
+      sort !== 'started-asc'
+    ) {
+      return null;
+    }
+    if (record['sort'] !== undefined && sort === null) {
+      return null;
+    }
+    const limit = readNumber(record['limit']);
+    if (record['limit'] !== undefined && limit === null) {
+      return null;
+    }
+    if (limit !== null && (!Number.isInteger(limit) || limit < 1)) {
+      return null;
+    }
+    if (tenantId !== null) {
+      command.tenantId = tenantId;
+    }
+    if (userId !== null) {
+      command.userId = userId;
+    }
+    if (workspaceId !== null) {
+      command.workspaceId = workspaceId;
+    }
+    if (worktreeId !== null) {
+      command.worktreeId = worktreeId;
+    }
+    if (status !== null) {
+      command.status = status;
+    }
+    if (live !== null) {
+      command.live = live;
+    }
+    if (sort !== null) {
+      command.sort = sort;
+    }
+    if (limit !== null) {
+      command.limit = limit;
+    }
+    return command;
   }
 
   if (type === 'attention.list') {
@@ -365,6 +460,22 @@ function parseStreamCommand(value: unknown): StreamCommand | null {
     if (terminalBackgroundHex !== undefined && typeof terminalBackgroundHex !== 'string') {
       return null;
     }
+    const tenantId = readString(record['tenantId']);
+    if (record['tenantId'] !== undefined && tenantId === null) {
+      return null;
+    }
+    const userId = readString(record['userId']);
+    if (record['userId'] !== undefined && userId === null) {
+      return null;
+    }
+    const workspaceId = readString(record['workspaceId']);
+    if (record['workspaceId'] !== undefined && workspaceId === null) {
+      return null;
+    }
+    const worktreeId = readString(record['worktreeId']);
+    if (record['worktreeId'] !== undefined && worktreeId === null) {
+      return null;
+    }
 
     const command: PtyStartCommand = {
       type,
@@ -381,6 +492,18 @@ function parseStreamCommand(value: unknown): StreamCommand | null {
     }
     if (terminalBackgroundHex !== undefined) {
       command.terminalBackgroundHex = terminalBackgroundHex;
+    }
+    if (tenantId !== null) {
+      command.tenantId = tenantId;
+    }
+    if (userId !== null) {
+      command.userId = userId;
+    }
+    if (workspaceId !== null) {
+      command.workspaceId = workspaceId;
+    }
+    if (worktreeId !== null) {
+      command.worktreeId = worktreeId;
     }
     return command;
   }

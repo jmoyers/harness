@@ -10,6 +10,8 @@ import {
   consumeJsonLines,
   encodeStreamEnvelope,
   parseClientEnvelope,
+  type StreamSessionListSort,
+  type StreamSessionRuntimeStatus,
   type StreamClientEnvelope,
   type StreamCommand,
   type StreamServerEnvelope,
@@ -70,15 +72,17 @@ interface ConnectionState {
   writeBlocked: boolean;
 }
 
-type SessionRuntimeStatus = 'running' | 'needs-input' | 'completed' | 'exited';
-
 interface SessionState {
   id: string;
+  tenantId: string;
+  userId: string;
+  workspaceId: string;
+  worktreeId: string;
   session: LiveSessionLike | null;
   eventSubscriberConnectionIds: Set<string>;
   attachmentByConnectionId: Map<string, string>;
   unsubscribe: (() => void) | null;
-  status: SessionRuntimeStatus;
+  status: StreamSessionRuntimeStatus;
   attentionReason: string | null;
   lastEventAt: string | null;
   lastExit: PtyExit | null;
@@ -90,6 +94,36 @@ interface SessionState {
 
 const DEFAULT_MAX_CONNECTION_BUFFERED_BYTES = 4 * 1024 * 1024;
 const DEFAULT_SESSION_EXIT_TOMBSTONE_TTL_MS = 5 * 60 * 1000;
+const DEFAULT_TENANT_ID = 'tenant-local';
+const DEFAULT_USER_ID = 'user-local';
+const DEFAULT_WORKSPACE_ID = 'workspace-local';
+const DEFAULT_WORKTREE_ID = 'worktree-local';
+
+function compareIsoDesc(left: string | null, right: string | null): number {
+  if (left === right) {
+    return 0;
+  }
+  if (left === null) {
+    return 1;
+  }
+  if (right === null) {
+    return -1;
+  }
+  return right.localeCompare(left);
+}
+
+function sessionPriority(status: StreamSessionRuntimeStatus): number {
+  if (status === 'needs-input') {
+    return 0;
+  }
+  if (status === 'running') {
+    return 1;
+  }
+  if (status === 'completed') {
+    return 2;
+  }
+  return 3;
+}
 
 function mapNotifyRecord(record: { ts: string; payload: NotifyPayload }): {
   ts: string;
@@ -344,16 +378,41 @@ export class ControlPlaneStreamServer {
 
   private executeCommand(connection: ConnectionState, command: StreamCommand): Record<string, unknown> {
     if (command.type === 'session.list') {
+      const sort = command.sort ?? 'attention-first';
+      const filtered = [...this.sessions.values()].filter((state) => {
+        if (command.tenantId !== undefined && state.tenantId !== command.tenantId) {
+          return false;
+        }
+        if (command.userId !== undefined && state.userId !== command.userId) {
+          return false;
+        }
+        if (command.workspaceId !== undefined && state.workspaceId !== command.workspaceId) {
+          return false;
+        }
+        if (command.worktreeId !== undefined && state.worktreeId !== command.worktreeId) {
+          return false;
+        }
+        if (command.status !== undefined && state.status !== command.status) {
+          return false;
+        }
+        if (command.live !== undefined && (state.session !== null) !== command.live) {
+          return false;
+        }
+        return true;
+      });
+      const sessions = this.sortSessionSummaries(filtered, sort);
+      const limited = command.limit === undefined ? sessions : sessions.slice(0, command.limit);
       return {
-        sessions: [...this.sessions.values()].map((state) => this.sessionSummaryRecord(state))
+        sessions: limited
       };
     }
 
     if (command.type === 'attention.list') {
       return {
-        sessions: [...this.sessions.values()]
-          .filter((state) => state.status === 'needs-input')
-          .map((state) => this.sessionSummaryRecord(state))
+        sessions: this.sortSessionSummaries(
+          [...this.sessions.values()].filter((state) => state.status === 'needs-input'),
+          'attention-first'
+        )
       };
     }
 
@@ -444,6 +503,10 @@ export class ControlPlaneStreamServer {
 
       this.sessions.set(command.sessionId, {
         id: command.sessionId,
+        tenantId: command.tenantId ?? DEFAULT_TENANT_ID,
+        userId: command.userId ?? DEFAULT_USER_ID,
+        workspaceId: command.workspaceId ?? DEFAULT_WORKSPACE_ID,
+        worktreeId: command.worktreeId ?? DEFAULT_WORKTREE_ID,
         session,
         eventSubscriberConnectionIds: new Set<string>(),
         attachmentByConnectionId: new Map<string, string>(),
@@ -773,9 +836,53 @@ export class ControlPlaneStreamServer {
     this.sessions.delete(sessionId);
   }
 
+  private sortSessionSummaries(
+    sessions: readonly SessionState[],
+    sort: StreamSessionListSort
+  ): readonly Record<string, unknown>[] {
+    const sorted = [...sessions];
+    sorted.sort((left, right) => {
+      if (sort === 'started-asc') {
+        const byStartedAsc = left.startedAt.localeCompare(right.startedAt);
+        if (byStartedAsc !== 0) {
+          return byStartedAsc;
+        }
+        return left.id.localeCompare(right.id);
+      }
+
+      if (sort === 'started-desc') {
+        const byStartedDesc = right.startedAt.localeCompare(left.startedAt);
+        if (byStartedDesc !== 0) {
+          return byStartedDesc;
+        }
+        return left.id.localeCompare(right.id);
+      }
+
+      const byPriority = sessionPriority(left.status) - sessionPriority(right.status);
+      if (byPriority !== 0) {
+        return byPriority;
+      }
+      const byLastEvent = compareIsoDesc(left.lastEventAt, right.lastEventAt);
+      if (byLastEvent !== 0) {
+        return byLastEvent;
+      }
+      const byStartedDesc = right.startedAt.localeCompare(left.startedAt);
+      if (byStartedDesc !== 0) {
+        return byStartedDesc;
+      }
+      return left.id.localeCompare(right.id);
+    });
+
+    return sorted.map((state) => this.sessionSummaryRecord(state));
+  }
+
   private sessionSummaryRecord(state: SessionState): Record<string, unknown> {
     return {
       sessionId: state.id,
+      tenantId: state.tenantId,
+      userId: state.userId,
+      workspaceId: state.workspaceId,
+      worktreeId: state.worktreeId,
       status: state.status,
       attentionReason: state.attentionReason,
       latestCursor: state.session?.latestCursorValue() ?? null,
