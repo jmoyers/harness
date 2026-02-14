@@ -30,6 +30,7 @@ export interface ControlPlaneConversationRecord {
   readonly runtimeProcessId: number | null;
   readonly runtimeLastEventAt: string | null;
   readonly runtimeLastExit: PtyExit | null;
+  readonly adapterState: Record<string, unknown>;
 }
 
 interface UpsertDirectoryInput {
@@ -45,6 +46,7 @@ interface CreateConversationInput {
   directoryId: string;
   title: string;
   agentType: string;
+  adapterState?: Record<string, unknown>;
 }
 
 interface ListDirectoryQuery {
@@ -117,6 +119,21 @@ function asBooleanFromInt(value: unknown, field: string): boolean {
   throw new Error(`unexpected flag value for ${field}`);
 }
 
+function normalizeAdapterState(value: unknown): Record<string, unknown> {
+  if (typeof value !== 'string') {
+    throw new Error('expected string for adapter_state_json');
+  }
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      return {};
+    }
+    return parsed as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
 function normalizeDirectoryRow(value: unknown): ControlPlaneDirectoryRecord {
   const row = asRecord(value);
   return {
@@ -174,7 +191,8 @@ function normalizeConversationRow(value: unknown): ControlPlaneConversationRecor
         : {
             code: asNumberOrNull(row.runtime_last_exit_code, 'runtime_last_exit_code'),
             signal: lastExitSignal as NodeJS.Signals | null
-          }
+          },
+    adapterState: normalizeAdapterState(row.adapter_state_json)
   };
 }
 
@@ -359,8 +377,9 @@ export class SqliteControlPlaneStore {
             runtime_process_id,
             runtime_last_event_at,
             runtime_last_exit_code,
-            runtime_last_exit_signal
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 'completed', 0, NULL, NULL, NULL, NULL, NULL)
+            runtime_last_exit_signal,
+            adapter_state_json
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 'completed', 0, NULL, NULL, NULL, NULL, NULL, ?)
         `
         )
         .run(
@@ -371,7 +390,8 @@ export class SqliteControlPlaneStore {
           directory.workspaceId,
           input.title,
           input.agentType,
-          createdAt
+          createdAt,
+          JSON.stringify(input.adapterState ?? {})
         );
       const created = this.getConversation(input.conversationId);
       if (created === null) {
@@ -405,7 +425,8 @@ export class SqliteControlPlaneStore {
           runtime_process_id,
           runtime_last_event_at,
           runtime_last_exit_code,
-          runtime_last_exit_signal
+          runtime_last_exit_signal,
+          adapter_state_json
         FROM conversations
         WHERE conversation_id = ?
       `
@@ -461,7 +482,8 @@ export class SqliteControlPlaneStore {
           runtime_process_id,
           runtime_last_event_at,
           runtime_last_exit_code,
-          runtime_last_exit_signal
+          runtime_last_exit_signal,
+          adapter_state_json
         FROM conversations
         ${where}
         ORDER BY created_at ASC, conversation_id ASC
@@ -499,6 +521,49 @@ export class SqliteControlPlaneStore {
       this.db.exec('ROLLBACK');
       throw error;
     }
+  }
+
+  deleteConversation(conversationId: string): boolean {
+    this.db.exec('BEGIN IMMEDIATE TRANSACTION');
+    try {
+      const existing = this.getConversation(conversationId);
+      if (existing === null) {
+        throw new Error(`conversation not found: ${conversationId}`);
+      }
+      this.db
+        .prepare(
+          `
+          DELETE FROM conversations
+          WHERE conversation_id = ?
+        `
+        )
+        .run(conversationId);
+      this.db.exec('COMMIT');
+      return true;
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  updateConversationAdapterState(
+    conversationId: string,
+    adapterState: Record<string, unknown>
+  ): ControlPlaneConversationRecord | null {
+    const existing = this.getConversation(conversationId);
+    if (existing === null) {
+      return null;
+    }
+    this.db
+      .prepare(
+        `
+        UPDATE conversations
+        SET adapter_state_json = ?
+        WHERE conversation_id = ?
+      `
+      )
+      .run(JSON.stringify(adapterState), conversationId);
+    return this.getConversation(conversationId);
   }
 
   updateConversationRuntime(
@@ -599,7 +664,8 @@ export class SqliteControlPlaneStore {
         runtime_process_id INTEGER,
         runtime_last_event_at TEXT,
         runtime_last_exit_code INTEGER,
-        runtime_last_exit_signal TEXT
+        runtime_last_exit_signal TEXT,
+        adapter_state_json TEXT NOT NULL DEFAULT '{}'
       );
     `);
     this.db.exec(`
@@ -610,12 +676,29 @@ export class SqliteControlPlaneStore {
       CREATE INDEX IF NOT EXISTS idx_conversations_scope
       ON conversations (tenant_id, user_id, workspace_id, created_at);
     `);
+    this.ensureColumnExists(
+      'conversations',
+      'adapter_state_json',
+      `adapter_state_json TEXT NOT NULL DEFAULT '{}'`
+    );
   }
 
   private configureConnection(): void {
     this.db.exec('PRAGMA journal_mode = WAL;');
     this.db.exec('PRAGMA synchronous = NORMAL;');
     this.db.exec('PRAGMA busy_timeout = 2000;');
+  }
+
+  private ensureColumnExists(table: string, column: string, definition: string): void {
+    const rows = this.db.prepare(`PRAGMA table_info(${table})`).all();
+    const exists = rows.some((row) => {
+      const asRow = row as Record<string, unknown>;
+      return asRow['name'] === column;
+    });
+    if (exists) {
+      return;
+    }
+    this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${definition};`);
   }
 
   private preparePath(filePath: string): string {

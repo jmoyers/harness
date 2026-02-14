@@ -122,7 +122,7 @@ This separation prevents UI-only behavior and enables reliable automation withou
 
 Required command categories:
 - Workspace/worktree: create, list, select, archive.
-- Conversation lifecycle: create, fork, resume, interrupt, archive, rename.
+- Conversation lifecycle: create, fork, resume, interrupt, archive, delete, rename.
 - Turn control: send user turn, steer active turn, cancel/interrupt active turn.
 - Queueing: enqueue turn, reorder queue, pause queue, resume queue, drop queued turn.
 - Approval/input: approve/decline command or file changes, answer tool input requests.
@@ -950,7 +950,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
   - `src/control-plane/stream-protocol.ts` defines typed newline-delimited TCP stream envelopes for command lifecycle, PTY pass-through signals, and async event delivery.
     - protocol now includes `auth`, `auth.ok`, `auth.error` envelopes and session query commands (`session.list`, `session.status`, `session.snapshot`).
     - `session.list` now supports deterministic sort (`attention-first`, `started-desc`, `started-asc`) and scope/status/live filters for multi-conversation clients.
-    - protocol now includes persisted directory/conversation operations (`directory.upsert`, `directory.list`, `conversation.create`, `conversation.list`, `conversation.archive`) and scoped live subscriptions (`stream.subscribe`, `stream.unsubscribe`, `stream.event`).
+    - protocol now includes persisted directory/conversation operations (`directory.upsert`, `directory.list`, `conversation.create`, `conversation.list`, `conversation.archive`, `conversation.delete`) and scoped live subscriptions (`stream.subscribe`, `stream.unsubscribe`, `stream.event`).
   - `src/control-plane/stream-server.ts` provides a session-aware control-plane server that executes PTY/session operations and broadcasts output/events to subscribed clients.
     - optional shared-token auth is enforced before non-auth commands when configured.
     - per-connection output buffering is bounded; slow consumers are disconnected once buffered output exceeds configured limits.
@@ -960,6 +960,8 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - control-plane wrappers now include `attention.list`, `session.respond`, `session.interrupt`, and `session.remove` to provide parity-safe steering and explicit tombstone cleanup.
     - stream subscriptions support scope filters (`tenant/user/workspace/directory/conversation`), optional output inclusion, and cursor replay backed by an in-memory bounded journal.
     - session runtime changes and directory/conversation mutations are persisted in `src/store/control-plane-store.ts` (tenanted SQLite state store) and published through the same stream.
+    - conversation persistence now includes adapter-scoped state (`adapter_state_json`) so provider-native resume identifiers can survive daemon/client restarts.
+    - per-session adapter state is updated from scoped provider events and reused on next launch, enabling conversation continuity (for Codex: `codex resume <session-id>`).
   - `src/control-plane/stream-client.ts` provides a typed client used by operators and automation to issue the same control-plane operations.
     - command ids are UUID-based and auth handshake is supported in `connectControlPlaneStreamClient`.
   - `src/control-plane/codex-session-stream.ts` extracts mux/session control-plane wiring into reusable infrastructure (embedded or remote transport).
@@ -983,8 +985,11 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - per-conversation notify sink isolation to keep status routing correct when multiple sessions run concurrently
     - optional terminal-frame recording to JSONL (`--record-path`, `--record-fps`) sourced from canonical full-frame mux snapshots (not incremental repaint diffs) for replay/debug artifact generation
     - one-step recording + export path (`--record-output <path.gif>`) writes JSONL sidecar + GIF at mux shutdown
+    - startup performance spans/events for startup and conversation launch (`mux.startup.*`, `mux.conversation.start`) through `perf-core`
+    - archive/delete controls wired through the same control-plane path used by human and automation clients
   - recording timestamps are monotonic relative wall-clock samples with footer close-time; GIF frame delays are quantized with drift compensation to preserve elapsed timing semantics.
   - `scripts/terminal-recording-gif-lib.ts` + `scripts/terminal-recording-to-gif.ts` provide offline recording-to-GIF export, enabling visual regression artifacts from mux render captures.
+  - `scripts/perf-mux-startup-report.ts` provides a deterministic startup timeline report over captured `perf-core` JSONL traces.
   - `src/mux/dual-pane-core.ts` is the typed mux core for layout, SGR mouse parsing/routing, and row-diff rendering.
   - `src/mux/conversation-rail.ts` provides deterministic conversation ordering and rail rendering primitives for multi-session mux navigation.
   - `src/mux/workspace-rail-model.ts` separates left-rail data/view modeling from terminal rendering so future UI technologies can reuse the same model pipeline.

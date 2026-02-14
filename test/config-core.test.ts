@@ -30,6 +30,8 @@ void test('parseHarnessConfigText supports jsonc comments and trailing commas', 
     'mux.conversation.previous': ['ctrl+k', 'ctrl+p'],
     'bad.value': ['alt+n']
   });
+  assert.equal(parsed.perf.enabled, false);
+  assert.equal(parsed.perf.filePath, '.harness/perf.jsonl');
 });
 
 void test('parseHarnessConfigText preserves escaped strings and ignores inline/block comment markers in strings', () => {
@@ -59,6 +61,8 @@ void test('parseHarnessConfigText preserves escaped strings and ignores inline/b
     'mux.app.interrupt-all': ['ctrl+"c"'],
     'mux.literal': ['text /* not a comment */ tail']
   });
+  assert.equal(parsed.perf.enabled, false);
+  assert.equal(parsed.perf.filePath, '.harness/perf.jsonl');
 });
 
 void test('parseHarnessConfigText falls back for invalid root shapes', () => {
@@ -67,6 +71,10 @@ void test('parseHarnessConfigText falls back for invalid root shapes', () => {
   assert.deepEqual(parseHarnessConfigText('{"mux":{"keybindings":"bad"}}'), {
     mux: {
       keybindings: {}
+    },
+    perf: {
+      enabled: false,
+      filePath: '.harness/perf.jsonl'
     }
   });
 });
@@ -109,6 +117,10 @@ void test('loadHarnessConfig reads valid config file', () => {
       keybindings: {
         'mux.app.quit': ['ctrl+]']
       }
+    },
+    perf: {
+      enabled: false,
+      filePath: '.harness/perf.jsonl'
     }
   });
   assert.equal(loaded.fromLastKnownGood, false);
@@ -127,6 +139,10 @@ void test('loadHarnessConfig falls back atomically on parse errors', () => {
         keybindings: {
           'mux.conversation.new': ['ctrl+t']
         }
+      },
+      perf: {
+        enabled: false,
+        filePath: '.harness/perf.jsonl'
       }
     }
   });
@@ -135,6 +151,10 @@ void test('loadHarnessConfig falls back atomically on parse errors', () => {
       keybindings: {
         'mux.conversation.new': ['ctrl+t']
       }
+    },
+    perf: {
+      enabled: false,
+      filePath: '.harness/perf.jsonl'
     }
   });
   assert.equal(loaded.fromLastKnownGood, true);
@@ -156,6 +176,10 @@ void test('loadHarnessConfig supports explicit file path override', () => {
       keybindings: {
         'mux.app.quit': ['ctrl+q']
       }
+    },
+    perf: {
+      enabled: false,
+      filePath: '.harness/perf.jsonl'
     }
   });
   assert.equal(loaded.fromLastKnownGood, false);
@@ -177,9 +201,53 @@ void test('loadHarnessConfig resolves defaults from process cwd when options are
         keybindings: {
           'mux.conversation.next': ['ctrl+j']
         }
+      },
+      perf: {
+        enabled: false,
+        filePath: '.harness/perf.jsonl'
       }
     });
   } finally {
     process.chdir(previousCwd);
   }
+});
+
+void test('parseHarnessConfigText parses perf toggles and file path', () => {
+  const parsed = parseHarnessConfigText(`
+    {
+      "perf": {
+        "enabled": true,
+        "filePath": " .harness/custom-perf.jsonl "
+      }
+    }
+  `);
+  assert.deepEqual(parsed.perf, {
+    enabled: true,
+    filePath: '.harness/custom-perf.jsonl'
+  });
+});
+
+void test('parseHarnessConfigText falls back for invalid perf shapes and values', () => {
+  const parsedFromArray = parseHarnessConfigText(`
+    {
+      "perf": []
+    }
+  `);
+  assert.deepEqual(parsedFromArray.perf, {
+    enabled: false,
+    filePath: '.harness/perf.jsonl'
+  });
+
+  const parsedFromInvalidValues = parseHarnessConfigText(`
+    {
+      "perf": {
+        "enabled": "yes",
+        "filePath": "   "
+      }
+    }
+  `);
+  assert.deepEqual(parsedFromInvalidValues.perf, {
+    enabled: false,
+    filePath: '.harness/perf.jsonl'
+  });
 });

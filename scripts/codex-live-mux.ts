@@ -56,6 +56,17 @@ import {
   createTerminalRecordingWriter
 } from '../src/recording/terminal-recording.ts';
 import { renderTerminalRecordingToGif } from './terminal-recording-gif-lib.ts';
+import {
+  buildAgentStartArgs,
+  mergeAdapterStateFromSessionEvent,
+  normalizeAdapterState
+} from '../src/adapters/agent-session-state.ts';
+import {
+  configurePerfCore,
+  recordPerfEvent,
+  shutdownPerfCore,
+  startPerfSpan
+} from '../src/perf/perf-core.ts';
 
 type ResolvedMuxShortcutBindings = ReturnType<typeof resolveMuxShortcutBindings>;
 
@@ -112,6 +123,7 @@ interface ConversationState {
   directoryId: string | null;
   title: string;
   agentType: string;
+  adapterState: Record<string, unknown>;
   turnId: string;
   scope: EventScope;
   oracle: TerminalSnapshotOracle;
@@ -147,6 +159,7 @@ interface ControlPlaneConversationRecord {
   readonly workspaceId: string;
   readonly title: string;
   readonly agentType: string;
+  readonly adapterState: Record<string, unknown>;
   readonly runtimeStatus: ConversationRailSessionSummary['status'];
   readonly runtimeLive: boolean;
 }
@@ -281,6 +294,7 @@ function parseConversationRecord(value: unknown): ControlPlaneConversationRecord
   const workspaceId = record['workspaceId'];
   const title = record['title'];
   const agentType = record['agentType'];
+  const adapterStateRaw = record['adapterState'];
   const runtimeStatus = record['runtimeStatus'];
   const runtimeLive = record['runtimeLive'];
   if (
@@ -291,6 +305,7 @@ function parseConversationRecord(value: unknown): ControlPlaneConversationRecord
     typeof workspaceId !== 'string' ||
     typeof title !== 'string' ||
     typeof agentType !== 'string' ||
+    (typeof adapterStateRaw !== 'object' || adapterStateRaw === null || Array.isArray(adapterStateRaw)) ||
     typeof runtimeLive !== 'boolean'
   ) {
     return null;
@@ -311,6 +326,7 @@ function parseConversationRecord(value: unknown): ControlPlaneConversationRecord
     workspaceId,
     title,
     agentType,
+    adapterState: adapterStateRaw as Record<string, unknown>,
     runtimeStatus,
     runtimeLive
   };
@@ -897,6 +913,7 @@ function createConversationState(
   directoryId: string | null,
   title: string,
   agentType: string,
+  adapterState: Record<string, unknown>,
   turnId: string,
   baseScope: EventScope,
   cols: number,
@@ -907,6 +924,7 @@ function createConversationState(
     directoryId,
     title,
     agentType,
+    adapterState,
     turnId,
     scope: createConversationScope(baseScope, sessionId, turnId),
     oracle: new TerminalSnapshotOracle(cols, rows),
@@ -1385,6 +1403,17 @@ async function main(): Promise<number> {
   const loadedConfig = loadHarnessConfig({
     cwd: options.invocationDirectory
   });
+  const perfEnabled = parseBooleanEnv(process.env.HARNESS_PERF_ENABLED, loadedConfig.config.perf.enabled);
+  const perfFilePath = process.env.HARNESS_PERF_FILE ?? loadedConfig.config.perf.filePath;
+  configurePerfCore({
+    enabled: perfEnabled,
+    filePath: resolve(options.invocationDirectory, perfFilePath)
+  });
+  const startupSpan = startPerfSpan('mux.startup.total', {
+    invocationDirectory: options.invocationDirectory,
+    codexArgs: options.codexArgs.length
+  });
+  recordPerfEvent('mux.startup.begin');
   if (loadedConfig.error !== null) {
     process.stderr.write(`[config] using last-known-good due to parse error: ${loadedConfig.error}\n`);
   }
@@ -1411,7 +1440,12 @@ async function main(): Promise<number> {
     process.stdout.write(sequence);
   });
 
+  const paletteProbeSpan = startPerfSpan('mux.startup.palette-probe');
   const probedPalette = await probeTerminalPalette();
+  paletteProbeSpan.end({
+    hasForeground: probedPalette.foregroundHex !== undefined,
+    hasBackground: probedPalette.backgroundHex !== undefined
+  });
   let muxRecordingWriter: ReturnType<typeof createTerminalRecordingWriter> | null = null;
   let muxRecordingOracle: TerminalSnapshotOracle | null = null;
   if (options.recordingPath !== null) {
@@ -1426,6 +1460,7 @@ async function main(): Promise<number> {
     });
     muxRecordingOracle = new TerminalSnapshotOracle(size.cols, size.rows);
   }
+  const controlPlaneOpenSpan = startPerfSpan('mux.startup.control-plane-open');
   const controlPlaneClient = await openCodexControlPlaneClient(
     options.controlPlaneHost !== null && options.controlPlanePort !== null
       ? {
@@ -1455,7 +1490,9 @@ async function main(): Promise<number> {
           })
       })
   });
+  controlPlaneOpenSpan.end();
   const streamClient = controlPlaneClient.client;
+  const directoryUpsertSpan = startPerfSpan('mux.startup.directory-upsert');
   const directoryResult = await streamClient.sendCommand({
     type: 'directory.upsert',
     directoryId: `directory-${options.scope.workspaceId}`,
@@ -1468,6 +1505,7 @@ async function main(): Promise<number> {
   if (persistedDirectory === null) {
     throw new Error('control-plane directory.upsert returned malformed directory record');
   }
+  directoryUpsertSpan.end();
   const activeDirectoryId = persistedDirectory.directoryId;
 
   const sessionEnv = {
@@ -1475,6 +1513,7 @@ async function main(): Promise<number> {
     TERM: process.env.TERM ?? 'xterm-256color'
   };
   const conversations = new Map<string, ConversationState>();
+  const removedConversationIds = new Set<string>();
   let activeConversationId: string | null = null;
 
   const ensureConversation = (
@@ -1483,6 +1522,7 @@ async function main(): Promise<number> {
       directoryId?: string | null;
       title?: string;
       agentType?: string;
+      adapterState?: Record<string, unknown>;
     }
   ): ConversationState => {
     const existing = conversations.get(sessionId);
@@ -1496,13 +1536,18 @@ async function main(): Promise<number> {
       if (seed?.agentType !== undefined) {
         existing.agentType = seed.agentType;
       }
+      if (seed?.adapterState !== undefined) {
+        existing.adapterState = normalizeAdapterState(seed.adapterState);
+      }
       return existing;
     }
+    removedConversationIds.delete(sessionId);
     const state = createConversationState(
       sessionId,
       seed?.directoryId ?? activeDirectoryId,
       seed?.title ?? `untitled task ${String(conversations.size + 1)}`,
       seed?.agentType ?? 'codex',
+      normalizeAdapterState(seed?.adapterState),
       `turn-${randomUUID()}`,
       options.scope,
       layout.rightCols,
@@ -1528,10 +1573,19 @@ async function main(): Promise<number> {
     if (existing?.live === true) {
       return existing;
     }
+    const startSpan = startPerfSpan('mux.conversation.start', {
+      sessionId
+    });
+    const targetConversation = ensureConversation(sessionId);
+    const launchArgs = buildAgentStartArgs(
+      targetConversation.agentType,
+      options.codexArgs,
+      targetConversation.adapterState
+    );
     await streamClient.sendCommand({
       type: 'pty.start',
       sessionId,
-      args: options.codexArgs,
+      args: launchArgs,
       env: sessionEnv,
       initialCols: layout.rightCols,
       initialRows: layout.paneRows,
@@ -1543,6 +1597,11 @@ async function main(): Promise<number> {
       worktreeId: options.scope.worktreeId
     });
     const state = ensureConversation(sessionId);
+    recordPerfEvent('mux.conversation.start.command', {
+      sessionId,
+      argCount: launchArgs.length,
+      resumed: launchArgs[0] === 'resume'
+    });
     const statusRecord = await streamClient.sendCommand({
       type: 'session.status',
       sessionId
@@ -1555,10 +1614,14 @@ async function main(): Promise<number> {
       type: 'pty.subscribe-events',
       sessionId
     });
+    startSpan.end({
+      live: state.live
+    });
     return state;
   };
 
   const hydrateConversationList = async (): Promise<void> => {
+    const hydrateSpan = startPerfSpan('mux.startup.hydrate-conversations');
     const listedPersisted = await streamClient.sendCommand({
       type: 'conversation.list',
       directoryId: activeDirectoryId,
@@ -1577,7 +1640,8 @@ async function main(): Promise<number> {
       const conversation = ensureConversation(record.conversationId, {
         directoryId: record.directoryId,
         title: record.title,
-        agentType: record.agentType
+        agentType: record.agentType,
+        adapterState: record.adapterState
       });
       conversation.scope.tenantId = record.tenantId;
       conversation.scope.userId = record.userId;
@@ -1608,6 +1672,10 @@ async function main(): Promise<number> {
         sessionId: summary.sessionId
       });
     }
+    hydrateSpan.end({
+      persisted: persistedRows.length,
+      live: summaries.length
+    });
   };
 
   await hydrateConversationList();
@@ -1618,12 +1686,14 @@ async function main(): Promise<number> {
       conversationId: options.initialConversationId,
       directoryId: activeDirectoryId,
       title: initialTitle,
-      agentType: 'codex'
+      agentType: 'codex',
+      adapterState: {}
     });
     ensureConversation(options.initialConversationId, {
       directoryId: activeDirectoryId,
       title: initialTitle,
-      agentType: 'codex'
+      agentType: 'codex',
+      adapterState: {}
     });
   }
   if (activeConversationId === null) {
@@ -1963,15 +2033,67 @@ async function main(): Promise<number> {
       conversationId: sessionId,
       directoryId: activeDirectoryId,
       title,
-      agentType: 'codex'
+      agentType: 'codex',
+      adapterState: {}
     });
     ensureConversation(sessionId, {
       directoryId: activeDirectoryId,
       title,
-      agentType: 'codex'
+      agentType: 'codex',
+      adapterState: {}
     });
     await startConversation(sessionId);
     await activateConversation(sessionId);
+  };
+
+  const archiveOrDeleteConversation = async (
+    sessionId: string,
+    mode: 'archive' | 'delete'
+  ): Promise<void> => {
+    const target = conversations.get(sessionId);
+    if (target === undefined) {
+      return;
+    }
+    if (target.live) {
+      try {
+        await streamClient.sendCommand({
+          type: 'pty.close',
+          sessionId
+        });
+      } catch {
+        // Best-effort close only.
+      }
+    }
+
+    if (mode === 'archive') {
+      await streamClient.sendCommand({
+        type: 'conversation.archive',
+        conversationId: sessionId
+      });
+    } else {
+      await streamClient.sendCommand({
+        type: 'conversation.delete',
+        conversationId: sessionId
+      });
+    }
+
+    removedConversationIds.add(sessionId);
+    conversations.delete(sessionId);
+    processUsageBySessionId.delete(sessionId);
+
+    if (activeConversationId === sessionId) {
+      const ordered = conversationOrder(conversations);
+      const nextConversationId = ordered[0] ?? null;
+      activeConversationId = null;
+      if (nextConversationId !== null) {
+        await activateConversation(nextConversationId);
+      } else {
+        await createAndActivateConversation();
+      }
+      return;
+    }
+
+    markDirty();
   };
 
   const pinViewportForSelection = (): void => {
@@ -2138,11 +2260,24 @@ async function main(): Promise<number> {
   const initialActiveId = activeConversationId;
   activeConversationId = null;
   if (initialActiveId !== null) {
+    const initialActivateSpan = startPerfSpan('mux.startup.activate-initial', {
+      initialActiveId
+    });
     await activateConversation(initialActiveId);
+    initialActivateSpan.end();
   }
+  startupSpan.end({
+    conversations: conversations.size
+  });
+  recordPerfEvent('mux.startup.ready', {
+    conversations: conversations.size
+  });
 
   const removeEnvelopeListener = streamClient.onEnvelope((envelope) => {
     if (envelope.kind === 'pty.output') {
+      if (removedConversationIds.has(envelope.sessionId)) {
+        return;
+      }
       const conversation = ensureConversation(envelope.sessionId);
       const chunk = Buffer.from(envelope.chunkBase64, 'base64');
       conversation.oracle.ingest(chunk);
@@ -2157,7 +2292,21 @@ async function main(): Promise<number> {
     }
 
     if (envelope.kind === 'pty.event') {
+      if (removedConversationIds.has(envelope.sessionId)) {
+        return;
+      }
       const conversation = ensureConversation(envelope.sessionId);
+      const observedAt =
+        envelope.event.type === 'session-exit' ? new Date().toISOString() : envelope.event.record.ts;
+      const updatedAdapterState = mergeAdapterStateFromSessionEvent(
+        conversation.agentType,
+        conversation.adapterState,
+        envelope.event,
+        observedAt
+      );
+      if (updatedAdapterState !== null) {
+        conversation.adapterState = updatedAdapterState;
+      }
       const normalized = mapSessionEventToNormalizedEvent(envelope.event, conversation.scope, idFactory);
       if (normalized !== null) {
         store.appendEvents([normalized]);
@@ -2195,6 +2344,9 @@ async function main(): Promise<number> {
     }
 
     if (envelope.kind === 'pty.exit') {
+      if (removedConversationIds.has(envelope.sessionId)) {
+        return;
+      }
       const conversation = conversations.get(envelope.sessionId);
       if (conversation !== undefined) {
         conversation.status = 'exited';
@@ -2272,6 +2424,24 @@ async function main(): Promise<number> {
       queueControlPlaneOp(async () => {
         await createAndActivateConversation();
       });
+      return;
+    }
+    if (globalShortcut === 'mux.conversation.archive') {
+      const targetConversationId = activeConversationId;
+      if (targetConversationId !== null) {
+        queueControlPlaneOp(async () => {
+          await archiveOrDeleteConversation(targetConversationId, 'archive');
+        });
+      }
+      return;
+    }
+    if (globalShortcut === 'mux.conversation.delete') {
+      const targetConversationId = activeConversationId;
+      if (targetConversationId !== null) {
+        queueControlPlaneOp(async () => {
+          await archiveOrDeleteConversation(targetConversationId, 'delete');
+        });
+      }
       return;
     }
     if (
@@ -2579,6 +2749,7 @@ async function main(): Promise<number> {
         }\n`
       );
     }
+    shutdownPerfCore();
   }
 
   if (exit === null) {
@@ -2591,6 +2762,7 @@ try {
   const code = await main();
   process.exitCode = code;
 } catch (error: unknown) {
+  shutdownPerfCore();
   restoreTerminalState(true);
   process.stderr.write(
     `codex:live:mux fatal error: ${error instanceof Error ? error.stack ?? error.message : String(error)}\n`

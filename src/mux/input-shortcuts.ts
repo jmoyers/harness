@@ -3,7 +3,9 @@ type MuxGlobalShortcutAction =
   | 'mux.app.interrupt-all'
   | 'mux.conversation.new'
   | 'mux.conversation.next'
-  | 'mux.conversation.previous';
+  | 'mux.conversation.previous'
+  | 'mux.conversation.archive'
+  | 'mux.conversation.delete';
 
 interface KeyStroke {
   readonly key: string;
@@ -28,7 +30,9 @@ const ACTION_ORDER: readonly MuxGlobalShortcutAction[] = [
   'mux.app.interrupt-all',
   'mux.conversation.new',
   'mux.conversation.next',
-  'mux.conversation.previous'
+  'mux.conversation.previous',
+  'mux.conversation.archive',
+  'mux.conversation.delete'
 ];
 
 const DEFAULT_MUX_SHORTCUT_BINDINGS_RAW: Readonly<Record<MuxGlobalShortcutAction, readonly string[]>> = {
@@ -36,7 +40,9 @@ const DEFAULT_MUX_SHORTCUT_BINDINGS_RAW: Readonly<Record<MuxGlobalShortcutAction
   'mux.app.interrupt-all': ['ctrl+c'],
   'mux.conversation.new': ['ctrl+t'],
   'mux.conversation.next': ['ctrl+j'],
-  'mux.conversation.previous': ['ctrl+k']
+  'mux.conversation.previous': ['ctrl+k'],
+  'mux.conversation.archive': [],
+  'mux.conversation.delete': []
 };
 
 const KEY_TOKEN_ALIASES = new Map<string, string>([
@@ -405,7 +411,11 @@ function withDefaultBindings(
     'mux.conversation.next':
       overrides?.['mux.conversation.next'] ?? DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.next'],
     'mux.conversation.previous':
-      overrides?.['mux.conversation.previous'] ?? DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.previous']
+      overrides?.['mux.conversation.previous'] ?? DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.previous'],
+    'mux.conversation.archive':
+      overrides?.['mux.conversation.archive'] ?? DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.archive'],
+    'mux.conversation.delete':
+      overrides?.['mux.conversation.delete'] ?? DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.delete']
   };
 }
 
@@ -420,7 +430,9 @@ export function resolveMuxShortcutBindings(
       'mux.app.interrupt-all': parseBindingsForAction(rawByAction['mux.app.interrupt-all']),
       'mux.conversation.new': parseBindingsForAction(rawByAction['mux.conversation.new']),
       'mux.conversation.next': parseBindingsForAction(rawByAction['mux.conversation.next']),
-      'mux.conversation.previous': parseBindingsForAction(rawByAction['mux.conversation.previous'])
+      'mux.conversation.previous': parseBindingsForAction(rawByAction['mux.conversation.previous']),
+      'mux.conversation.archive': parseBindingsForAction(rawByAction['mux.conversation.archive']),
+      'mux.conversation.delete': parseBindingsForAction(rawByAction['mux.conversation.delete'])
     }
   };
 }

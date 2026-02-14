@@ -8,6 +8,13 @@
       "mux.conversation.previous": ["ctrl+k"],
       "mux.app.interrupt-all": ["ctrl+c"],
       "mux.app.quit": ["ctrl+]"]
+      // Optional:
+      // "mux.conversation.archive": ["alt+a"],
+      // "mux.conversation.delete": ["alt+d"]
     }
+  },
+  "perf": {
+    "enabled": false,
+    "filePath": ".harness/perf.jsonl"
   }
 }

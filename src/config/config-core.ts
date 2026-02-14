@@ -7,8 +7,14 @@ interface HarnessMuxConfig {
   readonly keybindings: Readonly<Record<string, readonly string[]>>;
 }
 
+interface HarnessPerfConfig {
+  readonly enabled: boolean;
+  readonly filePath: string;
+}
+
 interface HarnessConfig {
   readonly mux: HarnessMuxConfig;
+  readonly perf: HarnessPerfConfig;
 }
 
 interface LoadedHarnessConfig {
@@ -21,6 +27,10 @@ interface LoadedHarnessConfig {
 export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
   mux: {
     keybindings: {}
+  },
+  perf: {
+    enabled: false,
+    filePath: '.harness/perf.jsonl'
   }
 };
 
@@ -181,6 +191,25 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
+function normalizePerfConfig(input: unknown): HarnessPerfConfig {
+  const record = asRecord(input);
+  if (record === null) {
+    return DEFAULT_HARNESS_CONFIG.perf;
+  }
+  const enabled =
+    typeof record['enabled'] === 'boolean'
+      ? record['enabled']
+      : DEFAULT_HARNESS_CONFIG.perf.enabled;
+  const filePath =
+    typeof record['filePath'] === 'string' && record['filePath'].trim().length > 0
+      ? record['filePath'].trim()
+      : DEFAULT_HARNESS_CONFIG.perf.filePath;
+  return {
+    enabled,
+    filePath
+  };
+}
+
 export function parseHarnessConfigText(text: string): HarnessConfig {
   const stripped = stripTrailingCommas(stripJsoncComments(text));
   const parsed = JSON.parse(stripped) as unknown;
@@ -190,14 +219,13 @@ export function parseHarnessConfigText(text: string): HarnessConfig {
   }
 
   const mux = asRecord(root['mux']);
-  if (mux === null) {
-    return DEFAULT_HARNESS_CONFIG;
-  }
+  const perf = normalizePerfConfig(root['perf']);
 
   return {
     mux: {
-      keybindings: normalizeKeybindings(mux['keybindings'])
-    }
+      keybindings: mux === null ? {} : normalizeKeybindings(mux['keybindings'])
+    },
+    perf
   };
 }
 

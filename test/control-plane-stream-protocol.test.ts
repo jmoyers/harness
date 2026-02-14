@@ -66,7 +66,12 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
         conversationId: 'conversation-1',
         directoryId: 'directory-1',
         title: 'untitled task 1',
-        agentType: 'codex'
+        agentType: 'codex',
+        adapterState: {
+          codex: {
+            resumeSessionId: 'thread-123'
+          }
+        }
       }
     },
     {
@@ -87,6 +92,14 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
       commandId: 'c0e',
       command: {
         type: 'conversation.archive',
+        conversationId: 'conversation-1'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c0ea',
+      command: {
+        type: 'conversation.delete',
         conversationId: 'conversation-1'
       }
     },
@@ -377,6 +390,24 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
       commandId: 'c2conversationd',
       command: {
         type: 'conversation.archive'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2conversatione',
+      command: {
+        type: 'conversation.delete'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2conversationf',
+      command: {
+        type: 'conversation.create',
+        directoryId: 'directory-1',
+        title: 'title',
+        agentType: 'codex',
+        adapterState: []
       }
     },
     {
@@ -812,6 +843,16 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
     {
       kind: 'stream.event',
       subscriptionId: 'subscription-1',
+      cursor: 16.5,
+      event: {
+        type: 'conversation-deleted',
+        conversationId: 'conversation-1',
+        ts: new Date(0).toISOString()
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
       cursor: 17,
       event: {
         type: 'session-event',
@@ -1035,6 +1076,26 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
       cursor: 1,
       event: {
         type: 'conversation-archived',
+        conversationId: 'conversation-1',
+        ts: null
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'conversation-deleted',
+        conversationId: null,
+        ts: new Date(0).toISOString()
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'conversation-deleted',
         conversationId: 'conversation-1',
         ts: null
       }

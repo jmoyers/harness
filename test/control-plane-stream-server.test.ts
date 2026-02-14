@@ -612,10 +612,20 @@ void test('stream server persists directories and conversations and replays scop
       conversationId: 'conversation-1',
       directoryId: 'directory-1',
       title: 'untitled task 1',
-      agentType: 'codex'
+      agentType: 'codex',
+      adapterState: {
+        codex: {
+          resumeSessionId: 'thread-seed'
+        }
+      }
     });
     const conversation = createdConversation['conversation'] as Record<string, unknown>;
     assert.equal(conversation['conversationId'], 'conversation-1');
+    assert.deepEqual(conversation['adapterState'], {
+      codex: {
+        resumeSessionId: 'thread-seed'
+      }
+    });
 
     const subscribedWithoutOutput = await client.sendCommand({
       type: 'stream.subscribe',
@@ -641,6 +651,16 @@ void test('stream server persists directories and conversations and replays scop
       type: 'pty.attach',
       sessionId: 'conversation-1',
       sinceCursor: 2
+    });
+    sessions[0]!.emitEvent({
+      type: 'notify',
+      record: {
+        ts: new Date(0).toISOString(),
+        payload: {
+          type: 'agent-turn-complete',
+          'thread-id': 'thread-updated'
+        }
+      }
     });
     client.sendInput('conversation-1', Buffer.from('hello-stream', 'utf8'));
     await delay(20);
@@ -705,14 +725,43 @@ void test('stream server persists directories and conversations and replays scop
       type: 'conversation.archive',
       conversationId: 'conversation-1'
     });
+    const listedAfterUpdate = await client.sendCommand({
+      type: 'conversation.list',
+      directoryId: 'directory-1',
+      includeArchived: true
+    });
+    const updatedRows = listedAfterUpdate['conversations'] as Array<Record<string, unknown>>;
+    assert.deepEqual(updatedRows[0]?.['adapterState'], {
+      codex: {
+        resumeSessionId: 'thread-updated',
+        lastObservedAt: new Date(0).toISOString()
+      }
+    });
+
+    await client.sendCommand({
+      type: 'conversation.delete',
+      conversationId: 'conversation-1'
+    });
+    await assert.rejects(
+      client.sendCommand({
+        type: 'conversation.delete',
+        conversationId: 'conversation-1'
+      }),
+      /conversation not found/
+    );
+    const listedAfterDelete = await client.sendCommand({
+      type: 'conversation.list',
+      directoryId: 'directory-1',
+      includeArchived: true
+    });
+    assert.deepEqual(listedAfterDelete['conversations'], []);
+
     const listedArchived = await client.sendCommand({
       type: 'conversation.list',
       directoryId: 'directory-1',
       includeArchived: true
     });
-    const archivedRows = listedArchived['conversations'] as Array<Record<string, unknown>>;
-    assert.equal(archivedRows.length, 1);
-    assert.notEqual(archivedRows[0]?.['archivedAt'], null);
+    assert.deepEqual(listedArchived['conversations'], []);
   } finally {
     client.close();
     await server.close();
@@ -745,8 +794,7 @@ void test('stream server persists directories and conversations and replays scop
       includeArchived: true
     });
     const conversationRows = conversations['conversations'] as Array<Record<string, unknown>>;
-    assert.equal(conversationRows.length, 1);
-    assert.equal(conversationRows[0]?.['conversationId'], 'conversation-1');
+    assert.equal(conversationRows.length, 0);
   } finally {
     reopenedClient.close();
     await reopened.close();

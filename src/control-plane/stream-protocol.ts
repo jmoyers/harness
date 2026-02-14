@@ -28,6 +28,7 @@ interface ConversationCreateCommand {
   directoryId: string;
   title: string;
   agentType: string;
+  adapterState?: Record<string, unknown>;
 }
 
 interface ConversationListCommand {
@@ -42,6 +43,11 @@ interface ConversationListCommand {
 
 interface ConversationArchiveCommand {
   type: 'conversation.archive';
+  conversationId: string;
+}
+
+interface ConversationDeleteCommand {
+  type: 'conversation.delete';
   conversationId: string;
 }
 
@@ -150,6 +156,7 @@ export type StreamCommand =
   | ConversationCreateCommand
   | ConversationListCommand
   | ConversationArchiveCommand
+  | ConversationDeleteCommand
   | StreamSubscribeCommand
   | StreamUnsubscribeCommand
   | SessionListCommand
@@ -238,6 +245,11 @@ export type StreamObservedEvent =
     }
   | {
       type: 'conversation-archived';
+      conversationId: string;
+      ts: string;
+    }
+  | {
+      type: 'conversation-deleted';
       conversationId: string;
       ts: string;
     }
@@ -365,7 +377,7 @@ export function consumeJsonLines(buffer: string): ConsumedJsonLines {
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
-  if (typeof value !== 'object' || value === null) {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return null;
   }
   return value as Record<string, unknown>;
@@ -527,6 +539,14 @@ function parseStreamCommand(value: unknown): StreamCommand | null {
       title,
       agentType
     };
+    const adapterState = record['adapterState'];
+    if (adapterState !== undefined) {
+      const parsedAdapterState = asRecord(adapterState);
+      if (parsedAdapterState === null) {
+        return null;
+      }
+      command.adapterState = parsedAdapterState;
+    }
     if (conversationId !== null) {
       command.conversationId = conversationId;
     }
@@ -586,6 +606,17 @@ function parseStreamCommand(value: unknown): StreamCommand | null {
   }
 
   if (type === 'conversation.archive') {
+    const conversationId = readString(record['conversationId']);
+    if (conversationId === null) {
+      return null;
+    }
+    return {
+      type,
+      conversationId
+    };
+  }
+
+  if (type === 'conversation.delete') {
     const conversationId = readString(record['conversationId']);
     if (conversationId === null) {
       return null;
@@ -1081,6 +1112,19 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
   }
 
   if (type === 'conversation-archived') {
+    const conversationId = readString(record['conversationId']);
+    const ts = readString(record['ts']);
+    if (conversationId === null || ts === null) {
+      return null;
+    }
+    return {
+      type,
+      conversationId,
+      ts
+    };
+  }
+
+  if (type === 'conversation-deleted') {
     const conversationId = readString(record['conversationId']);
     const ts = readString(record['ts']);
     if (conversationId === null || ts === null) {

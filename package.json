@@ -20,6 +20,7 @@
     "vim:passthrough": "node --experimental-strip-types scripts/vim-passthrough.ts",
     "prebenchmark:latency": "npm run build:ptyd",
     "benchmark:latency": "node --experimental-strip-types scripts/benchmark-pty-latency.ts",
+    "perf:mux:startup": "node --experimental-strip-types scripts/perf-mux-startup-report.ts",
     "loc": "node --experimental-strip-types scripts/loc-report.ts",
     "deadcode": "node --experimental-strip-types scripts/check-dead-code.ts",
     "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\" --max-warnings 0",

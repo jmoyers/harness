@@ -24,6 +24,10 @@ import {
   type ControlPlaneConversationRecord,
   type ControlPlaneDirectoryRecord
 } from '../store/control-plane-store.ts';
+import {
+  mergeAdapterStateFromSessionEvent,
+  normalizeAdapterState
+} from '../adapters/agent-session-state.ts';
 
 interface SessionDataEvent {
   cursor: number;
@@ -86,6 +90,8 @@ interface ConnectionState {
 interface SessionState {
   id: string;
   directoryId: string | null;
+  agentType: string;
+  adapterState: Record<string, unknown>;
   tenantId: string;
   userId: string;
   workspaceId: string;
@@ -512,7 +518,8 @@ export class ControlPlaneStreamServer {
         conversationId: command.conversationId ?? `conversation-${randomUUID()}`,
         directoryId: command.directoryId,
         title: command.title,
-        agentType: command.agentType
+        agentType: command.agentType,
+        adapterState: normalizeAdapterState(command.adapterState)
       });
       const record = this.conversationRecord(conversation);
       this.publishObservedEvent(
@@ -586,6 +593,32 @@ export class ControlPlaneStreamServer {
       );
       return {
         conversation: this.conversationRecord(archived)
+      };
+    }
+
+    if (command.type === 'conversation.delete') {
+      const existing = this.stateStore.getConversation(command.conversationId);
+      if (existing === null) {
+        throw new Error(`conversation not found: ${command.conversationId}`);
+      }
+      this.destroySession(command.conversationId, true);
+      this.stateStore.deleteConversation(command.conversationId);
+      this.publishObservedEvent(
+        {
+          tenantId: existing.tenantId,
+          userId: existing.userId,
+          workspaceId: existing.workspaceId,
+          directoryId: existing.directoryId,
+          conversationId: existing.conversationId
+        },
+        {
+          type: 'conversation-deleted',
+          conversationId: existing.conversationId,
+          ts: new Date().toISOString()
+        }
+      );
+      return {
+        deleted: true
       };
     }
 
@@ -777,6 +810,8 @@ export class ControlPlaneStreamServer {
       this.sessions.set(command.sessionId, {
         id: command.sessionId,
         directoryId: persistedConversation?.directoryId ?? null,
+        agentType: persistedConversation?.agentType ?? 'codex',
+        adapterState: normalizeAdapterState(persistedConversation?.adapterState ?? {}),
         tenantId: persistedConversation?.tenantId ?? command.tenantId ?? DEFAULT_TENANT_ID,
         userId: persistedConversation?.userId ?? command.userId ?? DEFAULT_USER_ID,
         workspaceId: persistedConversation?.workspaceId ?? command.workspaceId ?? DEFAULT_WORKSPACE_ID,
@@ -955,6 +990,18 @@ export class ControlPlaneStreamServer {
 
     const mapped = mapSessionEvent(event);
     if (mapped !== null && event.type !== 'terminal-output') {
+      const observedAt =
+        mapped.type === 'session-exit' ? new Date().toISOString() : mapped.record.ts;
+      const updatedAdapterState = mergeAdapterStateFromSessionEvent(
+        sessionState.agentType,
+        sessionState.adapterState,
+        mapped,
+        observedAt
+      );
+      if (updatedAdapterState !== null) {
+        sessionState.adapterState = updatedAdapterState;
+        this.stateStore.updateConversationAdapterState(sessionState.id, updatedAdapterState);
+      }
       for (const connectionId of sessionState.eventSubscriberConnectionIds) {
         this.sendToConnection(connectionId, {
           kind: 'pty.event',
@@ -1130,7 +1177,8 @@ export class ControlPlaneStreamServer {
       runtimeAttentionReason: conversation.runtimeAttentionReason,
       runtimeProcessId: conversation.runtimeProcessId,
       runtimeLastEventAt: conversation.runtimeLastEventAt,
-      runtimeLastExit: conversation.runtimeLastExit
+      runtimeLastExit: conversation.runtimeLastExit,
+      adapterState: conversation.adapterState
     };
   }
 
