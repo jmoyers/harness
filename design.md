@@ -743,6 +743,8 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
   - `src/codex/live-session.ts` hosts a PTY-backed live Codex session with attach/detach, steering writes/resizes, and event emission.
   - `scripts/codex-notify-relay.ts` captures Codex notify hook payloads into a local JSONL stream.
   - `scripts/codex-live.ts` provides a direct live entrypoint (`npm run codex:live -- ...`) with persisted normalized events.
+  - `scripts/codex-live-tail.ts` tails persisted live events by conversation in real time.
+  - `scripts/codex-live-dual.ts` launches a tmux split view (live Codex pane + event tail pane).
 
 ## Sources
 - https://openai.com/index/unlocking-codex-in-your-agent-harness/
