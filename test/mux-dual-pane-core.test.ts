@@ -135,6 +135,16 @@ void test('routeMuxInputTokens forwards left-pane input and consumes right-pane 
     {
       kind: 'mouse',
       event: {
+        sequence: '\u001b[<0;2;2M',
+        code: 0,
+        col: 2,
+        row: 2,
+        final: 'M'
+      }
+    },
+    {
+      kind: 'mouse',
+      event: {
         sequence: `\u001b[<0;${String(rightCol)};2M`,
         code: 0,
         col: rightCol,
@@ -155,10 +165,11 @@ void test('routeMuxInputTokens forwards left-pane input and consumes right-pane 
   ] as const;
 
   const routed = routeMuxInputTokens(tokens, layout);
+  assert.equal(routed.leftPaneScrollRows, 3);
   assert.equal(routed.rightPaneScrollRows, -3);
   assert.equal(routed.forwardToSession.length, 2);
   assert.equal(routed.forwardToSession[0]?.toString('utf8'), 'hello');
-  assert.equal(routed.forwardToSession[1]?.toString('utf8'), '\u001b[<65;2;2M');
+  assert.equal(routed.forwardToSession[1]?.toString('utf8'), '\u001b[<0;2;2M');
 });
 
 void test('EventPaneViewport supports follow mode, manual scroll, and trimming', () => {

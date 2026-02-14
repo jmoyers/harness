@@ -44,8 +44,9 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
 - Mux paint correctness:
   - run `npm run codex:live:mux --`
   - confirm left pane remains interactive while right pane updates event feed
+  - scroll wheel in left pane should switch status from `pty=live` to `pty=scroll(...)`
   - confirm right pane scroll wheel enters `events=scroll(...)` mode in status and does not type into Codex
-  - scroll back to bottom and confirm status returns to `events=live`
+  - scroll back to bottom and confirm status returns to `pty=live` and `events=live`
 - Footer/background parity:
   - run `npm run terminal:parity`
   - verify `codex-footer-background-persistence` passes

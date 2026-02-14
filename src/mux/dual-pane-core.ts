@@ -43,6 +43,7 @@ interface ParsedMuxInput {
 
 interface RoutedMuxInput {
   readonly forwardToSession: readonly Buffer[];
+  readonly leftPaneScrollRows: number;
   readonly rightPaneScrollRows: number;
 }
 
@@ -243,6 +244,7 @@ export function wheelDeltaRowsFromCode(code: number): number | null {
 
 export function routeMuxInputTokens(tokens: readonly MuxInputToken[], layout: DualPaneLayout): RoutedMuxInput {
   const forwardToSession: Buffer[] = [];
+  let leftPaneScrollRows = 0;
   let rightPaneScrollRows = 0;
 
   for (const token of tokens) {
@@ -263,12 +265,18 @@ export function routeMuxInputTokens(tokens: readonly MuxInputToken[], layout: Du
     }
 
     if (target === 'left') {
+      const deltaRows = wheelDeltaRowsFromCode(token.event.code);
+      if (deltaRows !== null) {
+        leftPaneScrollRows += deltaRows;
+        continue;
+      }
       forwardToSession.push(Buffer.from(token.event.sequence, 'utf8'));
     }
   }
 
   return {
     forwardToSession,
+    leftPaneScrollRows,
     rightPaneScrollRows
   };
 }

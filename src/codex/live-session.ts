@@ -380,6 +380,10 @@ class CodexLiveSession {
     this.snapshotOracle.resize(cols, rows);
   }
 
+  scrollViewport(deltaRows: number): void {
+    this.snapshotOracle.scrollViewport(deltaRows);
+  }
+
   snapshot(): TerminalSnapshotFrame {
     return this.snapshotOracle.snapshot();
   }

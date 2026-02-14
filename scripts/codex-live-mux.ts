@@ -203,8 +203,11 @@ function buildRenderRows(
   const mode = rightView.followOutput
     ? 'events=live'
     : `events=scroll(${String(rightView.top + 1)}/${String(rightView.totalRows)})`;
+  const leftMode = leftFrame.viewport.followOutput
+    ? 'pty=live'
+    : `pty=scroll(${String(leftFrame.viewport.top + 1)}/${String(leftFrame.viewport.totalRows)})`;
   const status = padOrTrimDisplay(
-    `[mux] conversation=${conversationId} ${mode} ctrl-] quit`,
+    `[mux] conversation=${conversationId} ${leftMode} ${mode} ctrl-] quit`,
     layout.cols
   );
   rows.push(status);
@@ -311,6 +314,10 @@ async function main(): Promise<number> {
     inputRemainder = parsed.remainder;
 
     const routed = routeMuxInputTokens(parsed.tokens, layout);
+    if (routed.leftPaneScrollRows !== 0) {
+      liveSession.scrollViewport(routed.leftPaneScrollRows);
+      dirty = true;
+    }
     if (routed.rightPaneScrollRows !== 0) {
       events.scrollBy(routed.rightPaneScrollRows, layout.rightCols, layout.paneRows);
       dirty = true;
@@ -330,7 +337,7 @@ async function main(): Promise<number> {
   process.stdin.on('data', onInput);
   process.stdout.on('resize', onResize);
 
-  process.stdout.write('\u001b[?1000h\u001b[?1006h');
+  process.stdout.write('\u001b[?1000h\u001b[?1002h\u001b[?1006h');
   recalcLayout();
 
   const renderTimer = setInterval(() => {
@@ -351,7 +358,7 @@ async function main(): Promise<number> {
     process.stdin.setRawMode(false);
     liveSession.close();
     store.close();
-    process.stdout.write('\u001b[?1000l\u001b[?1006l\u001b[?25h\u001b[0m\n');
+    process.stdout.write('\u001b[?1006l\u001b[?1002l\u001b[?1000l\u001b[?25h\u001b[0m\n');
   }
 
   if (exit === null) {
