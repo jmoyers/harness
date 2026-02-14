@@ -37,6 +37,10 @@ import {
   resolveMuxShortcutBindings
 } from '../src/mux/input-shortcuts.ts';
 import {
+  DISABLE_MUX_INPUT_MODES,
+  createMuxInputModeManager
+} from '../src/mux/terminal-input-modes.ts';
+import {
   cycleConversationId,
   type ConversationRailSessionSummary
 } from '../src/mux/conversation-rail.ts';
@@ -131,13 +135,19 @@ interface GitSummary {
   readonly deletions: number;
 }
 
-const ENABLE_INPUT_MODES = '\u001b[>1u\u001b[?1000h\u001b[?1002h\u001b[?1004h\u001b[?1006h';
-const DISABLE_INPUT_MODES = '\u001b[?2004l\u001b[?1006l\u001b[?1004l\u001b[?1002l\u001b[?1000l\u001b[<u';
 const DEFAULT_RESIZE_MIN_INTERVAL_MS = 33;
 const DEFAULT_PTY_RESIZE_SETTLE_MS = 75;
-function restoreTerminalState(newline: boolean): void {
+function restoreTerminalState(
+  newline: boolean,
+  restoreInputModes: (() => void) | null = null
+): void {
   try {
-    process.stdout.write(`${DISABLE_INPUT_MODES}\u001b[?25h\u001b[0m${newline ? '\n' : ''}`);
+    if (restoreInputModes === null) {
+      process.stdout.write(DISABLE_MUX_INPUT_MODES);
+    } else {
+      restoreInputModes();
+    }
+    process.stdout.write(`\u001b[?25h\u001b[0m${newline ? '\n' : ''}`);
   } catch {
     // Best-effort restore only.
   }
@@ -1278,6 +1288,9 @@ async function main(): Promise<number> {
 
   process.stdin.setRawMode(true);
   process.stdin.resume();
+  const inputModeManager = createMuxInputModeManager((sequence) => {
+    process.stdout.write(sequence);
+  });
 
   const probedPalette = await probeTerminalPalette();
   let muxRecordingWriter: ReturnType<typeof createTerminalRecordingWriter> | null = null;
@@ -1438,6 +1451,7 @@ async function main(): Promise<number> {
   let previousSelectionRows: readonly number[] = [];
   let latestRailViewRows: ReturnType<typeof buildWorkspaceRailViewRows> = [];
   let renderScheduled = false;
+  let shuttingDown = false;
   let selection: PaneSelection | null = null;
   let selectionDrag: PaneSelectionDrag | null = null;
   let selectionPinnedFollowOutput: boolean | null = null;
@@ -1475,7 +1489,7 @@ async function main(): Promise<number> {
   };
 
   const scheduleRender = (): void => {
-    if (renderScheduled) {
+    if (shuttingDown || renderScheduled) {
       return;
     }
     renderScheduled = true;
@@ -1489,6 +1503,9 @@ async function main(): Promise<number> {
   };
 
   const markDirty = (): void => {
+    if (shuttingDown) {
+      return;
+    }
     dirty = true;
     scheduleRender();
   };
@@ -1743,7 +1760,7 @@ async function main(): Promise<number> {
   };
 
   const render = (): void => {
-    if (!dirty) {
+    if (shuttingDown || !dirty) {
       return;
     }
 
@@ -1966,6 +1983,10 @@ async function main(): Promise<number> {
   });
 
   const onInput = (chunk: Buffer): void => {
+    if (shuttingDown) {
+      return;
+    }
+
     if ((selection !== null || selectionDrag !== null) && chunk.length === 1 && chunk[0] === 0x1b) {
       selection = null;
       selectionDrag = null;
@@ -1979,7 +2000,7 @@ async function main(): Promise<number> {
 
     const focusExtraction = extractFocusEvents(chunk);
     if (focusExtraction.focusInCount > 0) {
-      process.stdout.write(ENABLE_INPUT_MODES);
+      inputModeManager.enable();
       markDirty();
     }
     if (focusExtraction.focusOutCount > 0) {
@@ -2246,7 +2267,7 @@ async function main(): Promise<number> {
   process.once('SIGINT', requestStop);
   process.once('SIGTERM', requestStop);
 
-  process.stdout.write(ENABLE_INPUT_MODES);
+  inputModeManager.enable();
   applyLayout(size, true);
   scheduleRender();
 
@@ -2257,6 +2278,8 @@ async function main(): Promise<number> {
       });
     }
   } finally {
+    shuttingDown = true;
+    dirty = false;
     clearInterval(processUsageTimer);
     clearInterval(gitSummaryTimer);
     if (resizeTimer !== null) {
@@ -2266,6 +2289,9 @@ async function main(): Promise<number> {
     if (ptyResizeTimer !== null) {
       clearTimeout(ptyResizeTimer);
       ptyResizeTimer = null;
+    }
+    if (renderScheduled) {
+      renderScheduled = false;
     }
     process.stdin.off('data', onInput);
     process.stdout.off('resize', onResize);
@@ -2288,7 +2314,7 @@ async function main(): Promise<number> {
       }
     }
     store.close();
-    restoreTerminalState(true);
+    restoreTerminalState(true, inputModeManager.restore);
     if (
       options.recordingGifOutputPath !== null &&
       options.recordingPath !== null &&
