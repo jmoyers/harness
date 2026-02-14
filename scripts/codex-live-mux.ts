@@ -46,6 +46,7 @@ interface RenderCursorStyle {
 const ENABLE_INPUT_MODES = '\u001b[>1u\u001b[?1000h\u001b[?1002h\u001b[?1004h\u001b[?1006h';
 const DISABLE_INPUT_MODES = '\u001b[?1006l\u001b[?1004l\u001b[?1002l\u001b[?1000l\u001b[<u';
 const DEFAULT_RESIZE_MIN_INTERVAL_MS = 33;
+const DEFAULT_PTY_RESIZE_SETTLE_MS = 75;
 
 function restoreTerminalState(newline: boolean): void {
   try {
@@ -489,6 +490,10 @@ async function main(): Promise<number> {
     process.env.HARNESS_MUX_RESIZE_MIN_INTERVAL_MS,
     DEFAULT_RESIZE_MIN_INTERVAL_MS
   );
+  const ptyResizeSettleMs = parsePositiveInt(
+    process.env.HARNESS_MUX_PTY_RESIZE_SETTLE_MS,
+    DEFAULT_PTY_RESIZE_SETTLE_MS
+  );
 
   process.stdin.setRawMode(true);
   process.stdin.resume();
@@ -518,6 +523,9 @@ async function main(): Promise<number> {
   let resizeTimer: NodeJS.Timeout | null = null;
   let pendingSize: { cols: number; rows: number } | null = null;
   let lastResizeApplyAtMs = 0;
+  let ptyResizeTimer: NodeJS.Timeout | null = null;
+  let pendingPtySize: { cols: number; rows: number } | null = null;
+  let currentPtySize: { cols: number; rows: number } | null = null;
 
   const scheduleRender = (): void => {
     if (renderScheduled) {
@@ -538,8 +546,55 @@ async function main(): Promise<number> {
     scheduleRender();
   };
 
-  const applyLayout = (nextSize: { cols: number; rows: number }): void => {
+  const applyPtyResize = (ptySize: { cols: number; rows: number }): void => {
+    if (
+      currentPtySize !== null &&
+      currentPtySize.cols === ptySize.cols &&
+      currentPtySize.rows === ptySize.rows
+    ) {
+      return;
+    }
+    currentPtySize = ptySize;
+    liveSession.resize(ptySize.cols, ptySize.rows);
+    markDirty();
+  };
+
+  const flushPendingPtyResize = (): void => {
+    ptyResizeTimer = null;
+    const ptySize = pendingPtySize;
+    if (ptySize === null) {
+      return;
+    }
+    pendingPtySize = null;
+    applyPtyResize(ptySize);
+  };
+
+  const schedulePtyResize = (ptySize: { cols: number; rows: number }, immediate = false): void => {
+    pendingPtySize = ptySize;
+    if (immediate) {
+      if (ptyResizeTimer !== null) {
+        clearTimeout(ptyResizeTimer);
+        ptyResizeTimer = null;
+      }
+      flushPendingPtyResize();
+      return;
+    }
+
+    if (ptyResizeTimer !== null) {
+      clearTimeout(ptyResizeTimer);
+    }
+    ptyResizeTimer = setTimeout(flushPendingPtyResize, ptyResizeSettleMs);
+  };
+
+  const applyLayout = (nextSize: { cols: number; rows: number }, forceImmediatePtyResize = false): void => {
     const nextLayout = computeDualPaneLayout(nextSize.cols, nextSize.rows);
+    schedulePtyResize(
+      {
+        cols: nextLayout.leftCols,
+        rows: nextLayout.paneRows
+      },
+      forceImmediatePtyResize
+    );
     if (
       nextLayout.cols === layout.cols &&
       nextLayout.rows === layout.rows &&
@@ -551,7 +606,6 @@ async function main(): Promise<number> {
     }
     size = nextSize;
     layout = nextLayout;
-    liveSession.resize(layout.leftCols, layout.paneRows);
     // Keep previous rows and diff incrementally to avoid full-screen clear jank on rapid resize.
     markDirty();
   };
@@ -744,7 +798,7 @@ async function main(): Promise<number> {
   process.stdout.on('resize', onResize);
 
   process.stdout.write(ENABLE_INPUT_MODES);
-  applyLayout(size);
+  applyLayout(size, true);
   scheduleRender();
 
   try {
@@ -757,6 +811,10 @@ async function main(): Promise<number> {
     if (resizeTimer !== null) {
       clearTimeout(resizeTimer);
       resizeTimer = null;
+    }
+    if (ptyResizeTimer !== null) {
+      clearTimeout(ptyResizeTimer);
+      ptyResizeTimer = null;
     }
     process.stdin.off('data', onInput);
     process.stdout.off('resize', onResize);
