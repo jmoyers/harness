@@ -247,6 +247,11 @@ Notification policy:
 - Optionally focus/switch to target tab/session.
 - De-duplicate repeated alerts for same turn.
 
+Status routing invariants:
+- Status is scoped to `(tenant_id, user_id, workspace_id, worktree_id, conversation_id)` and must never be inferred from shared process-level artifacts.
+- Adapter enrichment channels (for example notify hooks) must use per-session isolation (unique sink/file/socket) to prevent cross-conversation status contamination.
+- UI status badges must be driven from conversation-scoped events/state only; no global fallback that can mark sibling conversations as `completed`.
+
 ## Codex Live-Steering Integration (v1)
 
 Use a PTY-hosted interactive `codex` session as the primary integration path. Human live steering is the first principle.
@@ -489,9 +494,12 @@ Design constraints:
 ## Client Surfaces
 
 ### TUI (v1)
-- Left pane: workspaces/worktrees.
-- Middle pane: conversations with status badges.
-- Right pane: current diff preview + actions.
+- Current verified implementation:
+  - left pane: live steerable PTY session
+  - right rail: conversation selector/status UI
+- Next target layout (Codex/Claude-inspired, ASCII-first, no raw event pane):
+  - left rail: directories -> conversations -> background processes (+ git/process stats)
+  - main pane: active live steerable PTY session
 - Global shortcuts:
   - switch workspace/worktree/conversation
   - attach terminal
@@ -500,6 +508,34 @@ Design constraints:
   - queue turn
   - interrupt
   - open file/project
+
+Target layout sketch:
+
+```txt
+┌───────────────────────────────┬──────────────────────────────────────────────────────┐
+│  📁 Directories               │                                                      │
+│  › harness (main)             │  Active Conversation PTY                             │
+│    api (feature/auth)         │  (Codex / Claude Code / shell / vim passthrough)    │
+│                               │                                                      │
+│  💬 Conversations             │                                                      │
+│  ● fix-mux-scroll     RUN     │                                                      │
+│  ○ docs-refresh       DONE    │                                                      │
+│  ○ parity-vim         NEEDS   │                                                      │
+│                               │                                                      │
+│  ⚙ Processes                 │                                                      │
+│  ● test-watch   3.1% 120MB    │                                                      │
+│  ○ dev-server   0.4%  82MB    │                                                      │
+│                               │                                                      │
+│  ⎇ git: feature/mux-left-rail │                                                      │
+│  Δ +12 ~3 -4  | 2 files       │                                                      │
+└───────────────────────────────┴──────────────────────────────────────────────────────┘
+```
+
+Left-rail rendering/style principles:
+- Visual hierarchy from typography and spacing first; color is secondary reinforcement.
+- Stable row order by default; selection changes highlight only.
+- Status badges are short and color-coded (`RUN`, `NEEDS`, `DONE`, `FAIL`) with icon assist.
+- Git and process stats remain visible at all times to reduce context switches.
 
 ### Optional Remote/Web Client
 - Connect to daemon over authenticated stream transport (WebSocket profile by default).
@@ -934,6 +970,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - first-party gesture-based in-pane selection with visual highlight and keyboard-triggered copy, with modifier-based passthrough for app mouse input
     - multi-conversation rail + active session switching (`Ctrl+N`/`Ctrl+P`) + new conversation creation (`Ctrl+T`) while preserving live PTY pass-through for the active session
     - first-party styled selector rendering (badges + active row highlight) built from low-level terminal UI primitives rather than framework-driven VDOM
+    - per-conversation notify sink isolation to keep status routing correct when multiple sessions run concurrently
     - optional terminal-frame recording to JSONL (`--record-path`, `--record-fps`) sourced from canonical full-frame mux snapshots (not incremental repaint diffs) for replay/debug artifact generation
     - one-step recording + export path (`--record-output <path.gif>`) writes JSONL sidecar + GIF at mux shutdown
   - recording timestamps are monotonic relative wall-clock samples with footer close-time; GIF frame delays are quantized with drift compensation to preserve elapsed timing semantics.

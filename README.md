@@ -49,6 +49,7 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
 - Mux consumes focus-in/out events and reasserts input modes after focus return.
 - Mux now supports multiple concurrent conversations in one session: conversation rail + active-session switching (`Ctrl+N`/`Ctrl+P`) + new conversation (`Ctrl+T`) with attach/detach continuity.
 - Right rail now uses a first-party low-level UI surface with styled rows/badges/active selection highlight (`src/ui/surface.ts`), not a framework renderer.
+- Conversation status routing is now isolated per session (unique notify sink per live Codex session) to prevent cross-conversation `DONE`/`NEEDS` contamination.
 - Mux recording now supports one-step capture to GIF (`--record-output <path.gif>`) with optional JSONL sidecar.
 - Recording capture uses canonical full-frame snapshots (not incremental repaint diffs) to prevent interleaved/partial-frame artifacts.
 - Recording timing is wall-clock based from monotonic capture start/finish and quantized with drift compensation for GIF frame delays.
@@ -105,6 +106,12 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
 - Footer/background parity:
   - run `npm run terminal:parity`
   - verify `codex-footer-background-persistence` passes
+
+## Next UX Target
+- Remove raw event-stream pane from the operator UI.
+- Move to a Codex-style left rail: `directory -> conversations -> background processes`.
+- Keep active PTY session as the primary large pane.
+- Surface always-visible git stats (`branch`, `+/-/~`, file count) and per-process `cpu/memory` in the left rail.
 
 ## Core Docs
 - `design.md`: architecture, principles, milestones, and verified system behavior.

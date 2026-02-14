@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import {
   startSingleSessionBroker,
   type BrokerAttachmentHandlers,
@@ -290,7 +291,9 @@ class CodexLiveSession {
     const command = options.command ?? DEFAULT_COMMAND;
     const useNotifyHook = options.useNotifyHook ?? true;
     const notifyPollMs = options.notifyPollMs ?? DEFAULT_NOTIFY_POLL_MS;
-    this.notifyFilePath = options.notifyFilePath ?? join(tmpdir(), `harness-codex-notify-${process.pid}.jsonl`);
+    this.notifyFilePath =
+      options.notifyFilePath ??
+      join(tmpdir(), `harness-codex-notify-${process.pid}-${randomUUID()}.jsonl`);
 
     const relayScriptPath = resolve(options.relayScriptPath ?? DEFAULT_RELAY_SCRIPT_PATH);
     const notifyCommand = [

@@ -480,3 +480,60 @@ void test('codex live session supports custom base args without notify hook', ()
   assert.equal(snapshot.rows, 35);
   session.close();
 });
+
+void test('codex live session uses unique default notify file per session', () => {
+  const brokerA = new FakeBroker();
+  const brokerB = new FakeBroker();
+  const startOptions: Array<{ command?: string; commandArgs?: string[]; env?: NodeJS.ProcessEnv }> = [];
+  const intervalCallbacks: Array<() => void> = [];
+  const intervalHandles: NodeJS.Timeout[] = [];
+
+  const startSession = (broker: FakeBroker) =>
+    startCodexLiveSession(
+      {},
+      {
+        startBroker: (options) => {
+          startOptions.push(options ?? {});
+          return broker;
+        },
+        readFile: () => '',
+        setIntervalFn: (callback) => {
+          intervalCallbacks.push(callback);
+          const handle = { hasRef: () => true } as unknown as NodeJS.Timeout;
+          intervalHandles.push(handle);
+          return handle;
+        },
+        clearIntervalFn: () => {
+          // no-op
+        }
+      }
+    );
+
+  const sessionA = startSession(brokerA);
+  const sessionB = startSession(brokerB);
+
+  const extractNotifyPath = (
+    args: readonly string[] | undefined
+  ): string | null => {
+    if (args === undefined) {
+      return null;
+    }
+    const configArg = args.find((value) => value.startsWith('notify=['));
+    if (configArg === undefined) {
+      return null;
+    }
+    const match = /"([^"]+\.jsonl)"/.exec(configArg);
+    return match?.[1] ?? null;
+  };
+
+  const notifyPathA = extractNotifyPath(startOptions[0]?.commandArgs);
+  const notifyPathB = extractNotifyPath(startOptions[1]?.commandArgs);
+  assert.notEqual(notifyPathA, null);
+  assert.notEqual(notifyPathB, null);
+  assert.notEqual(notifyPathA, notifyPathB);
+  assert.equal(intervalCallbacks.length, 2);
+  assert.equal(intervalHandles.length, 2);
+
+  sessionA.close();
+  sessionB.close();
+});
