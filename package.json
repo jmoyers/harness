@@ -8,6 +8,7 @@
     "codex:live": "node --experimental-strip-types scripts/codex-live.ts",
     "codex:live:mux": "node --experimental-strip-types scripts/codex-live-mux.ts",
     "codex:live:mux:client": "node --experimental-strip-types scripts/codex-live-mux.ts --harness-server-host 127.0.0.1 --harness-server-port 7777",
+    "codex:live:mux:launch": "node --experimental-strip-types scripts/codex-live-mux-launch.ts",
     "codex:live:tail": "node --experimental-strip-types scripts/codex-live-tail.ts",
     "codex:live:snapshot": "node --experimental-strip-types scripts/codex-live-snapshot.ts",
     "control-plane:daemon": "node --experimental-strip-types scripts/control-plane-daemon.ts",

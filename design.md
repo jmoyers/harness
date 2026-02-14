@@ -910,6 +910,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
   - `src/control-plane/stream-server.ts` provides a session-aware control-plane server that executes PTY/session operations and broadcasts output/events to subscribed clients.
   - `src/control-plane/stream-client.ts` provides a typed client used by operators and automation to issue the same control-plane operations.
   - `scripts/control-plane-daemon.ts` provides a standalone control-plane process (`npm run control-plane:daemon`) for split client/server operation.
+  - `scripts/codex-live-mux-launch.ts` provides a one-command launcher (`npm run codex:live:mux:launch -- ...`) that boots a dedicated daemon and connects the remote mux client for client/server parity without manual multi-terminal setup.
   - `scripts/codex-live-mux.ts` provides the first-party split UI (left: live steerable Codex session rendered via shared snapshot oracle, right: event feed) with:
     - control operations routed over the control-plane stream (`pty.start`, `pty.attach`, `pty.input`, `pty.resize`, `pty.signal`, `pty.close`) instead of direct in-process session calls
     - remote-server mode via `--harness-server-host` and `--harness-server-port` for exact two-pane behavior against an external daemon
