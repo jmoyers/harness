@@ -615,6 +615,26 @@ Milestone 1: Transparent PTY Self-Hosting (Vim-grade)
   - keystroke-to-echo overhead meets defined latency thresholds (p50 <= 1 ms, p95 <= 3 ms, p99 <= 5 ms)
   - blind A/B usage test does not reliably distinguish harness terminal from direct terminal
 
+Milestone 1 execution plan:
+- Step 1: PTY substrate (`pty-host`) with raw attach/detach.
+  - Deliverable: spawn shell in managed PTY, pass stdin/stdout/stderr transparently, handle resize.
+  - Verification: deterministic PTY integration tests for echo, resize propagation, and session lifecycle.
+- Step 2: Terminal protocol correctness loop.
+  - Deliverable: render loop that correctly forwards ANSI/VT sequences, alternate screen, cursor state, bracketed paste, and mouse mode.
+  - Verification: golden transcript tests plus interactive checks against `vim`, `less`, and `fzf`.
+- Step 3: Single-session harness path.
+  - Deliverable: one session managed end-to-end by daemon + stream client with attach/detach and reconnect.
+  - Verification: e2e test that restarts client while preserving live PTY session continuity.
+- Step 4: Latency instrumentation and budgets.
+  - Deliverable: `perf-core` spans for `stdin -> scheduler -> PTY -> render` with per-keystroke timing.
+  - Verification: benchmark harness comparing direct terminal vs managed session; enforce p50/p95/p99 thresholds.
+- Step 5: Human indistinguishability gate.
+  - Deliverable: repeatable blind A/B protocol and result capture.
+  - Verification: documented test runs showing operators cannot reliably distinguish harness from direct terminal.
+- Step 6: Hardening and regression gate.
+  - Deliverable: CI suite for protocol correctness + latency regression + reconnect stability.
+  - Verification: Milestone 1 marked complete only when all gates pass and results are committed.
+
 Milestone 2: Codex Self-Hosting with Full Event Instrumentation
 - Goal: self-host Codex with provider-fidelity and meta event emitters firing correctly across all core paths.
 - Exit criteria:

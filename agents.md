@@ -17,6 +17,11 @@ This project has two core documents:
 - No artificial test skipping: no `skip`, `only`, quarantined suites, or silent exclusions.
 - Failures or coverage regressions block completion until fixed.
 
+## Commit Discipline
+- Commit often, but only after verified output.
+- Every commit must correspond to a concrete, demonstrated checkpoint (tests, benchmark gate, or acceptance check).
+- Do not batch unrelated changes into a single commit.
+
 ## Architecture Laws
 - All client actions must go through the Control Plane Stream API (TCP/WS). No privileged client path.
 - Human and agent clients must have parity for all supported operations.
