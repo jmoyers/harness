@@ -1,4 +1,5 @@
 import { createWriteStream, readFileSync, type WriteStream } from 'node:fs';
+import { performance } from 'node:perf_hooks';
 import type { TerminalSnapshotFrame } from '../terminal/snapshot-oracle.ts';
 
 interface TerminalRecordingHeader {
@@ -7,6 +8,7 @@ interface TerminalRecordingHeader {
   createdAt: string;
   defaultForegroundHex: string;
   defaultBackgroundHex: string;
+  ansiPaletteIndexedHex?: Record<string, string>;
 }
 
 interface TerminalRecordingFrameSample {
@@ -17,6 +19,7 @@ interface TerminalRecordingFrameSample {
 interface TerminalRecording {
   header: TerminalRecordingHeader;
   frames: TerminalRecordingFrameSample[];
+  finishedAtMs: number | null;
 }
 
 interface HeaderLineRecord {
@@ -30,7 +33,12 @@ interface FrameLineRecord {
   frame: TerminalSnapshotFrame;
 }
 
-type RecordingLineRecord = HeaderLineRecord | FrameLineRecord;
+interface FooterLineRecord {
+  kind: 'footer';
+  finishedAtMs: number;
+}
+
+type RecordingLineRecord = HeaderLineRecord | FrameLineRecord | FooterLineRecord;
 
 interface RecordingWriteStream {
   write(chunk: string): boolean;
@@ -44,6 +52,7 @@ interface CreateTerminalRecordingWriterOptions {
   source: string;
   defaultForegroundHex: string;
   defaultBackgroundHex: string;
+  ansiPaletteIndexedHex?: Readonly<Record<number, string>>;
   minFrameIntervalMs?: number;
   nowMs?: () => number;
   nowIso?: () => string;
@@ -67,6 +76,33 @@ function normalizeHex6(value: string, fallback: string): string {
   return fallback;
 }
 
+function parseOptionalAnsiPaletteIndexedHex(value: unknown): Record<string, string> | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const normalized: Record<string, string> = {};
+  for (const [key, entryValue] of Object.entries(value)) {
+    const parsedKey = Number.parseInt(key, 10);
+    if (!Number.isInteger(parsedKey) || parsedKey < 0 || parsedKey > 255) {
+      continue;
+    }
+    if (typeof entryValue !== 'string') {
+      continue;
+    }
+    normalized[String(parsedKey)] = normalizeHex6(entryValue, '');
+  }
+
+  if (Object.keys(normalized).length === 0) {
+    return undefined;
+  }
+
+  return normalized;
+}
+
 function parseHeader(value: unknown): TerminalRecordingHeader {
   if (!isRecord(value)) {
     throw new Error('recording header is not an object');
@@ -80,6 +116,7 @@ function parseHeader(value: unknown): TerminalRecordingHeader {
   const createdAt = value['createdAt'];
   const defaultForegroundHex = value['defaultForegroundHex'];
   const defaultBackgroundHex = value['defaultBackgroundHex'];
+  const ansiPaletteIndexedHex = parseOptionalAnsiPaletteIndexedHex(value['ansiPaletteIndexedHex']);
   if (
     typeof source !== 'string' ||
     source.length === 0 ||
@@ -96,7 +133,12 @@ function parseHeader(value: unknown): TerminalRecordingHeader {
     source,
     createdAt,
     defaultForegroundHex: normalizeHex6(defaultForegroundHex, 'd0d7de'),
-    defaultBackgroundHex: normalizeHex6(defaultBackgroundHex, '0f1419')
+    defaultBackgroundHex: normalizeHex6(defaultBackgroundHex, '0f1419'),
+    ...(ansiPaletteIndexedHex !== undefined
+      ? {
+          ansiPaletteIndexedHex
+        }
+      : {})
   };
 }
 
@@ -148,6 +190,16 @@ function parseLineRecord(value: unknown): RecordingLineRecord {
       frame: parseFrame(value['frame'])
     };
   }
+  if (kind === 'footer') {
+    const finishedAtMs = value['finishedAtMs'];
+    if (typeof finishedAtMs !== 'number' || !Number.isFinite(finishedAtMs) || finishedAtMs < 0) {
+      throw new Error('recording footer finishedAtMs must be a non-negative number');
+    }
+    return {
+      kind: 'footer',
+      finishedAtMs
+    };
+  }
 
   throw new Error('recording line kind is invalid');
 }
@@ -164,26 +216,33 @@ export function readTerminalRecording(filePath: string): TerminalRecording {
     return parseLineRecord(parsedJson);
   });
 
-  const first = parsed[0];
-  if (first === undefined || first.kind !== 'header') {
+  const first = parsed[0]!;
+  if (first.kind !== 'header') {
     throw new Error('recording file must start with a header line');
   }
 
   const frames: TerminalRecordingFrameSample[] = [];
+  let finishedAtMs: number | null = null;
   for (let idx = 1; idx < parsed.length; idx += 1) {
-    const line = parsed[idx];
-    if (line?.kind !== 'frame') {
-      throw new Error('recording file contains a non-frame line after header');
+    const line = parsed[idx]!;
+    if (line.kind === 'frame') {
+      frames.push({
+        atMs: line.atMs,
+        frame: line.frame
+      });
+      continue;
     }
-    frames.push({
-      atMs: line.atMs,
-      frame: line.frame
-    });
+    if (line.kind === 'footer') {
+      finishedAtMs = line.finishedAtMs;
+      continue;
+    }
+    throw new Error('recording file contains a non-frame line after header');
   }
 
   return {
     header: first.header,
-    frames
+    frames,
+    finishedAtMs
   };
 }
 
@@ -195,17 +254,38 @@ export function createTerminalRecordingWriter(
   options: CreateTerminalRecordingWriterOptions
 ): TerminalRecordingWriter {
   const minFrameIntervalMs = Math.max(0, Math.floor(options.minFrameIntervalMs ?? 0));
-  const nowMs = options.nowMs ?? (() => Date.now());
+  const nowMs = options.nowMs ?? (() => performance.now());
   const nowIso = options.nowIso ?? (() => new Date().toISOString());
   const createStream = options.createStream ?? ((filePath: string): WriteStream => createWriteStream(filePath));
   const stream = createStream(options.filePath);
+  const startedAtMs = nowMs();
+  const ansiPaletteIndexedHex = (() => {
+    const sourcePalette = options.ansiPaletteIndexedHex;
+    if (sourcePalette === undefined) {
+      return undefined;
+    }
+    const normalized: Record<string, string> = {};
+    for (const [key, entryValue] of Object.entries(sourcePalette)) {
+      const parsedKey = Number.parseInt(key, 10);
+      if (!Number.isInteger(parsedKey) || parsedKey < 0 || parsedKey > 255) {
+        continue;
+      }
+      normalized[String(parsedKey)] = normalizeHex6(entryValue, '');
+    }
+    return Object.keys(normalized).length > 0 ? normalized : undefined;
+  })();
 
   const header: TerminalRecordingHeader = {
     schemaVersion: '1',
     source: options.source,
     createdAt: nowIso(),
     defaultForegroundHex: normalizeHex6(options.defaultForegroundHex, 'd0d7de'),
-    defaultBackgroundHex: normalizeHex6(options.defaultBackgroundHex, '0f1419')
+    defaultBackgroundHex: normalizeHex6(options.defaultBackgroundHex, '0f1419'),
+    ...(ansiPaletteIndexedHex !== undefined
+      ? {
+          ansiPaletteIndexedHex
+        }
+      : {})
   };
   writeLine(stream, {
     kind: 'header',
@@ -227,7 +307,7 @@ export function createTerminalRecordingWriter(
         return false;
       }
 
-      const atMs = nowMs();
+      const atMs = Math.max(0, nowMs() - startedAtMs);
       if (lastFrameHash === frame.frameHash) {
         return false;
       }
@@ -249,6 +329,10 @@ export function createTerminalRecordingWriter(
         return;
       }
       closed = true;
+      writeLine(stream, {
+        kind: 'footer',
+        finishedAtMs: Math.max(0, nowMs() - startedAtMs)
+      });
       await new Promise<void>((resolve, reject) => {
         stream.once('finish', resolve);
         stream.once('error', reject);

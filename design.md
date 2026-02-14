@@ -897,7 +897,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
 - Transactional append-only SQLite `events` persistence in `src/store/event-store.ts` (tenant/user scoped reads).
 - Milestone 2 live-steered checkpoint is implemented:
   - `src/codex/live-session.ts` hosts a PTY-backed live Codex session with attach/detach, steering writes/resizes, and event emission.
-  - Live session now includes terminal query reply support for `OSC 10/11` color probes to improve visual parity with direct terminal runs.
+  - Live session now includes terminal query reply support for `OSC 10/11` and indexed palette `OSC 4` probes (0..15) to improve visual parity with direct terminal runs.
   - `src/terminal/snapshot-oracle.ts` provides deterministic pseudo-snapshots (`rows`, `cols`, `activeScreen`, `cursor`, `lines`, `frameHash`) from live PTY output, including DEC scroll-region/origin handling required for pinned-footer UIs.
   - Supported terminal semantics now include `DECSTBM` (`CSI t;b r`), `DECOM` (`CSI ? 6 h/l`), `IND`/`NEL`/`RI`, and region-scoped `IL`/`DL` behavior.
   - `src/terminal/parity-suite.ts` defines codex/vim/core parity scenes and a deterministic matrix runner with scene-level failures and frame-hash output.
@@ -934,7 +934,9 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - first-party gesture-based in-pane selection with visual highlight and keyboard-triggered copy, with modifier-based passthrough for app mouse input
     - multi-conversation rail + active session switching (`Ctrl+N`/`Ctrl+P`) + new conversation creation (`Ctrl+T`) while preserving live PTY pass-through for the active session
     - first-party styled selector rendering (badges + active row highlight) built from low-level terminal UI primitives rather than framework-driven VDOM
-    - optional terminal-frame recording to JSONL (`--record-path`, `--record-fps`) sourced from rendered mux output snapshots for replay/debug artifact generation
+    - optional terminal-frame recording to JSONL (`--record-path`, `--record-fps`) sourced from canonical full-frame mux snapshots (not incremental repaint diffs) for replay/debug artifact generation
+    - one-step recording + export path (`--record-output <path.gif>`) writes JSONL sidecar + GIF at mux shutdown
+  - recording timestamps are monotonic relative wall-clock samples with footer close-time; GIF frame delays are quantized with drift compensation to preserve elapsed timing semantics.
   - `scripts/terminal-recording-gif-lib.ts` + `scripts/terminal-recording-to-gif.ts` provide offline recording-to-GIF export, enabling visual regression artifacts from mux render captures.
   - `src/mux/dual-pane-core.ts` is the typed mux core for layout, SGR mouse parsing/routing, event viewport state, and row-diff rendering.
   - `src/mux/conversation-rail.ts` provides deterministic conversation ordering and rail rendering primitives for multi-session mux navigation.

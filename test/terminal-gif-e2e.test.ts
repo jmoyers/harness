@@ -14,6 +14,16 @@ import {
   renderTerminalRecordingToGif
 } from '../scripts/terminal-recording-gif-lib.ts';
 
+function defaultColorLookup() {
+  return {
+    defaults: {
+      foreground: [208, 215, 222] as const,
+      background: [15, 20, 25] as const
+    },
+    indexedPalette: new Map<number, readonly [number, number, number]>()
+  };
+}
+
 function gifSize(buffer: Buffer): { width: number; height: number } {
   return {
     width: buffer.readUInt16LE(6),
@@ -89,6 +99,16 @@ void test('terminal gif internals cover color mapping delay planning and render 
     assert.deepEqual(__terminalGifInternals.indexedColor(2), [13, 188, 121]);
     assert.deepEqual(__terminalGifInternals.indexedColor(33), [0, 135, 255]);
     assert.deepEqual(__terminalGifInternals.indexedColor(245), [138, 138, 138]);
+    assert.deepEqual(
+      __terminalGifInternals.indexedColorWithPalette(9, {
+        defaults: {
+          foreground: [208, 215, 222],
+          background: [15, 20, 25]
+        },
+        indexedPalette: new Map([[9, [2, 3, 4] as const]])
+      }),
+      [2, 3, 4]
+    );
     assert.deepEqual(__terminalGifInternals.parseHexColor('bad', [1, 2, 3]), [1, 2, 3]);
     assert.deepEqual(__terminalGifInternals.parseHexColor('#112233', [1, 2, 3]), [17, 34, 51]);
 
@@ -105,16 +125,14 @@ void test('terminal gif internals cover color mapping delay planning and render 
 
     const planWithCursor = __terminalGifInternals.createRenderPlan(
       frame,
-      [208, 215, 222],
-      [15, 20, 25],
+      defaultColorLookup(),
       true
     );
     assert.equal(planWithCursor.cursor !== null, true);
 
     const planWithoutCursor = __terminalGifInternals.createRenderPlan(
       frame,
-      [208, 215, 222],
-      [15, 20, 25],
+      defaultColorLookup(),
       false
     );
     assert.equal(planWithoutCursor.cursor, null);
@@ -125,8 +143,7 @@ void test('terminal gif internals cover color mapping delay planning and render 
     };
     const sparsePlan = __terminalGifInternals.createRenderPlan(
       sparseFrame,
-      [208, 215, 222],
-      [15, 20, 25],
+      defaultColorLookup(),
       false
     );
     assert.equal(sparsePlan.glyphs.length, 0);
@@ -156,15 +173,13 @@ void test('terminal gif internals cover color mapping delay planning and render 
     };
     const emptyGlyphPlan = __terminalGifInternals.createRenderPlan(
       emptyGlyphFrame,
-      [208, 215, 222],
-      [15, 20, 25],
+      defaultColorLookup(),
       false
     );
     assert.equal(emptyGlyphPlan.glyphs.every((glyph) => glyph.glyph.length > 0 || glyph.style.underline), true);
     const sparseRendered = __terminalGifInternals.renderFrameRgba(
       sparseFrame,
-      [208, 215, 222],
-      [15, 20, 25],
+      defaultColorLookup(),
       7,
       15,
       11,
@@ -175,8 +190,7 @@ void test('terminal gif internals cover color mapping delay planning and render 
 
     const rendered = __terminalGifInternals.renderFrameRgba(
       frame,
-      [208, 215, 222],
-      [15, 20, 25],
+      defaultColorLookup(),
       7,
       15,
       11,
@@ -203,8 +217,7 @@ void test('terminal gif internals cover color mapping delay planning and render 
     };
     const barRendered = __terminalGifInternals.renderFrameRgba(
       wideFrame,
-      [208, 215, 222],
-      [15, 20, 25],
+      defaultColorLookup(),
       8,
       16,
       12,
@@ -229,8 +242,7 @@ void test('terminal gif internals cover color mapping delay planning and render 
     };
     const blockRendered = __terminalGifInternals.renderFrameRgba(
       italicBoldFrame,
-      [208, 215, 222],
-      [15, 20, 25],
+      defaultColorLookup(),
       8,
       16,
       12,
@@ -247,8 +259,7 @@ void test('terminal gif internals cover color mapping delay planning and render 
           visible: false
         }
       },
-      [208, 215, 222],
-      [15, 20, 25],
+      defaultColorLookup(),
       true
     );
     assert.equal(hiddenCursorPlan.cursor, null);
@@ -260,8 +271,7 @@ void test('terminal gif internals cover color mapping delay planning and render 
           row: -1
         }
       },
-      [208, 215, 222],
-      [15, 20, 25],
+      defaultColorLookup(),
       true
     );
     assert.equal(negativeRowCursorPlan.cursor, null);
@@ -273,8 +283,7 @@ void test('terminal gif internals cover color mapping delay planning and render 
           row: frame.rows
         }
       },
-      [208, 215, 222],
-      [15, 20, 25],
+      defaultColorLookup(),
       true
     );
     assert.equal(overflowRowCursorPlan.cursor, null);
@@ -286,8 +295,7 @@ void test('terminal gif internals cover color mapping delay planning and render 
           col: -1
         }
       },
-      [208, 215, 222],
-      [15, 20, 25],
+      defaultColorLookup(),
       true
     );
     assert.equal(negativeColCursorPlan.cursor, null);
@@ -299,8 +307,7 @@ void test('terminal gif internals cover color mapping delay planning and render 
           col: frame.cols
         }
       },
-      [208, 215, 222],
-      [15, 20, 25],
+      defaultColorLookup(),
       true
     );
     assert.equal(overflowColCursorPlan.cursor, null);
@@ -323,12 +330,14 @@ void test('terminal gif internals cover color mapping delay planning and render 
     await writer.close();
 
     const singleFrameRecording = readTerminalRecording(recordingPath);
-    assert.equal(__terminalGifInternals.frameDelayMs(singleFrameRecording, 0, 77), 77);
+    assert.equal(singleFrameRecording.finishedAtMs, 10);
+    assert.equal(__terminalGifInternals.frameDelayMs(singleFrameRecording, 0, 77), 10);
     assert.equal(__terminalGifInternals.frameDelayMs(singleFrameRecording, 99, 77), 77);
     assert.equal(
       __terminalGifInternals.frameDelayMs(
         {
           header: singleFrameRecording.header,
+          finishedAtMs: null,
           frames: [
             singleFrameRecording.frames[0]!,
             {
@@ -346,6 +355,7 @@ void test('terminal gif internals cover color mapping delay planning and render 
       __terminalGifInternals.frameDelayMs(
         {
           header: singleFrameRecording.header,
+          finishedAtMs: null,
           frames: [
             {
               atMs: 1,
@@ -361,6 +371,71 @@ void test('terminal gif internals cover color mapping delay planning and render 
         77
       ),
       10
+    );
+    assert.equal(
+      __terminalGifInternals.frameDelayMs(
+        {
+          header: singleFrameRecording.header,
+          finishedAtMs: 29,
+          frames: [
+            {
+              atMs: 3,
+              frame: singleFrameRecording.frames[0]!.frame
+            }
+          ]
+        },
+        0,
+        77
+      ),
+      26
+    );
+    assert.deepEqual(
+      __terminalGifInternals.buildFrameDelaysCentiseconds(
+        {
+          header: singleFrameRecording.header,
+          finishedAtMs: null,
+          frames: [
+            {
+              atMs: 0,
+              frame: singleFrameRecording.frames[0]!.frame
+            },
+            {
+              atMs: 14,
+              frame: singleFrameRecording.frames[0]!.frame
+            },
+            {
+              atMs: 28,
+              frame: singleFrameRecording.frames[0]!.frame
+            }
+          ]
+        },
+        50
+      ),
+      [1, 2, 5]
+    );
+    assert.deepEqual(
+      [...__terminalGifInternals.parseIndexedPalette(
+        {
+          header: {
+            ...singleFrameRecording.header,
+            ansiPaletteIndexedHex: {
+              0: '0f1419',
+              7: '#d0d7de',
+              999: 'ffffff',
+              2: 'invalid'
+            }
+          },
+          finishedAtMs: null,
+          frames: singleFrameRecording.frames
+        },
+        [208, 215, 222],
+        [15, 20, 25]
+      ).entries()],
+      [
+        [0, [15, 20, 25]],
+        [2, [208, 215, 222]],
+        [7, [208, 215, 222]]
+      ]
     );
 
     writeFileSync(

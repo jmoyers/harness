@@ -49,8 +49,11 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
 - Mux consumes focus-in/out events and reasserts input modes after focus return.
 - Mux now supports multiple concurrent conversations in one session: conversation rail + active-session switching (`Ctrl+N`/`Ctrl+P`) + new conversation (`Ctrl+T`) with attach/detach continuity.
 - Right rail now uses a first-party low-level UI surface with styled rows/badges/active selection highlight (`src/ui/surface.ts`), not a framework renderer.
-- Mux render output can be recorded to a terminal-frame JSONL artifact (`--record-path`, `--record-fps`) without changing pass-through interaction.
-- GIF export toolchain is implemented (`scripts/terminal-recording-gif-lib.ts`, `scripts/terminal-recording-to-gif.ts`) for recorded frame artifacts.
+- Mux recording now supports one-step capture to GIF (`--record-output <path.gif>`) with optional JSONL sidecar.
+- Recording capture uses canonical full-frame snapshots (not incremental repaint diffs) to prevent interleaved/partial-frame artifacts.
+- Recording timing is wall-clock based from monotonic capture start/finish and quantized with drift compensation for GIF frame delays.
+- Recording color mapping now ingests host terminal OSC palette replies (`OSC 10/11` + `OSC 4;0..15`) for better Ghostty parity.
+- GIF export toolchain remains available (`scripts/terminal-recording-gif-lib.ts`, `scripts/terminal-recording-to-gif.ts`) for offline conversion.
 - Optional mux debug trace: set `HARNESS_MUX_DEBUG_PATH=/tmp/harness-mux-debug.jsonl` to capture input/routing/render cursor records.
 - Mux core is now deterministic and directly tested (`test/mux-dual-pane-core.test.ts`).
 - Footer background persistence parity scene added for Codex-like pinned input/status rows.
@@ -63,6 +66,7 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
 - `npm run codex:live -- <codex-args>`
 - `npm run codex:live:mux -- <codex-args>`
 - `npm run codex:live:mux:record -- <codex-args>`
+- `npm run codex:live:mux:record:jsonl -- <codex-args>`
 - `npm run codex:live:mux:launch -- <codex-args>`
 - `npm run terminal:recording:gif -- --input .harness/mux-recording.jsonl --output .harness/mux-recording.gif`
 - `npm run control-plane:daemon -- --host 127.0.0.1 --port 7777`
@@ -93,9 +97,10 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
   - conversation rail order is stable (creation order); switching only changes selection, not row order
   - by default, `Ctrl+C` terminates all live mux conversations and exits the mux process (`HARNESS_MUX_CTRL_C_EXITS=0` disables this)
   - recording workflow:
-    - run `npm run codex:live:mux -- --record-path .harness/mux-recording.jsonl`
-    - reproduce a session, exit mux, then run `npm run terminal:recording:gif -- --input .harness/mux-recording.jsonl --output .harness/mux-recording.gif`
+    - run `npm run codex:live:mux -- --record-output .harness/mux-recording.gif`
+    - reproduce a session, then exit mux to finalize export
     - verify the GIF header is valid and dimensions match expected terminal cell geometry
+    - optional raw capture: `npm run codex:live:mux -- --record-path .harness/mux-recording.jsonl`
 - Footer/background parity:
   - run `npm run terminal:parity`
   - verify `codex-footer-background-persistence` passes

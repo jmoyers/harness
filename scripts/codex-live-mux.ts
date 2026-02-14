@@ -1,4 +1,4 @@
-import { basename } from 'node:path';
+import { basename, dirname, extname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { appendFileSync } from 'node:fs';
 import { startCodexLiveSession } from '../src/codex/live-session.ts';
@@ -40,6 +40,7 @@ import {
 import {
   createTerminalRecordingWriter
 } from '../src/recording/terminal-recording.ts';
+import { renderTerminalRecordingToGif } from './terminal-recording-gif-lib.ts';
 
 interface MuxOptions {
   codexArgs: string[];
@@ -49,6 +50,7 @@ interface MuxOptions {
   controlPlanePort: number | null;
   controlPlaneAuthToken: string | null;
   recordingPath: string | null;
+  recordingGifOutputPath: string | null;
   recordingFps: number;
   scope: EventScope;
 }
@@ -56,6 +58,7 @@ interface MuxOptions {
 interface TerminalPaletteProbe {
   foregroundHex?: string;
   backgroundHex?: string;
+  indexedHexByCode?: Record<number, string>;
 }
 
 interface FocusEventExtraction {
@@ -381,10 +384,12 @@ function extractOscColorReplies(buffer: string): {
   readonly remainder: string;
   readonly foregroundHex?: string;
   readonly backgroundHex?: string;
+  readonly indexedHexByCode: Record<number, string>;
 } {
   let remainder = buffer;
   let foregroundHex: string | undefined;
   let backgroundHex: string | undefined;
+  const indexedHexByCode: Record<number, string> = {};
 
   while (true) {
     const start = remainder.indexOf('\u001b]');
@@ -420,19 +425,38 @@ function extractOscColorReplies(buffer: string): {
     }
 
     const code = payload.slice(0, separator);
-    const value = payload.slice(separator + 1);
-    const hex = parseOscRgbHex(value);
-    if (hex === null) {
-      continue;
-    }
-
     if (code === '10') {
-      foregroundHex = hex;
+      const hex = parseOscRgbHex(payload.slice(separator + 1));
+      if (hex !== null) {
+        foregroundHex = hex;
+      }
       continue;
     }
 
     if (code === '11') {
-      backgroundHex = hex;
+      const hex = parseOscRgbHex(payload.slice(separator + 1));
+      if (hex !== null) {
+        backgroundHex = hex;
+      }
+      continue;
+    }
+
+    if (code === '4') {
+      const value = payload.slice(separator + 1);
+      const paletteSeparator = value.indexOf(';');
+      if (paletteSeparator < 0) {
+        continue;
+      }
+      const paletteIndexRaw = value.slice(0, paletteSeparator).trim();
+      const paletteValueRaw = value.slice(paletteSeparator + 1);
+      const parsedIndex = Number.parseInt(paletteIndexRaw, 10);
+      if (!Number.isInteger(parsedIndex) || parsedIndex < 0 || parsedIndex > 255) {
+        continue;
+      }
+      const hex = parseOscRgbHex(paletteValueRaw);
+      if (hex !== null) {
+        indexedHexByCode[parsedIndex] = hex;
+      }
     }
   }
 
@@ -443,7 +467,8 @@ function extractOscColorReplies(buffer: string): {
   return {
     remainder,
     foregroundHex,
-    backgroundHex
+    backgroundHex,
+    indexedHexByCode
   };
 }
 
@@ -453,6 +478,7 @@ async function probeTerminalPalette(timeoutMs = 80): Promise<TerminalPaletteProb
     let buffer = '';
     let foregroundHex: string | undefined;
     let backgroundHex: string | undefined;
+    const indexedHexByCode: Record<number, string> = {};
 
     const finish = (): void => {
       if (finished) {
@@ -461,7 +487,11 @@ async function probeTerminalPalette(timeoutMs = 80): Promise<TerminalPaletteProb
       finished = true;
       clearTimeout(timer);
       process.stdin.off('data', onData);
-      resolve({ foregroundHex, backgroundHex });
+      resolve({
+        foregroundHex,
+        backgroundHex,
+        indexedHexByCode: Object.keys(indexedHexByCode).length > 0 ? indexedHexByCode : undefined
+      });
     };
 
     const onData = (chunk: Buffer): void => {
@@ -475,8 +505,18 @@ async function probeTerminalPalette(timeoutMs = 80): Promise<TerminalPaletteProb
       if (extracted.backgroundHex !== undefined) {
         backgroundHex = extracted.backgroundHex;
       }
+      for (const [key, value] of Object.entries(extracted.indexedHexByCode)) {
+        const index = Number.parseInt(key, 10);
+        if (Number.isInteger(index)) {
+          indexedHexByCode[index] = value;
+        }
+      }
 
-      if (foregroundHex !== undefined && backgroundHex !== undefined) {
+      if (
+        foregroundHex !== undefined &&
+        backgroundHex !== undefined &&
+        Object.keys(indexedHexByCode).length >= 16
+      ) {
         finish();
       }
     };
@@ -486,7 +526,11 @@ async function probeTerminalPalette(timeoutMs = 80): Promise<TerminalPaletteProb
     }, timeoutMs);
 
     process.stdin.on('data', onData);
-    process.stdout.write('\u001b]10;?\u0007\u001b]11;?\u0007');
+    let probeSequence = '\u001b]10;?\u0007\u001b]11;?\u0007';
+    for (let idx = 0; idx < 16; idx += 1) {
+      probeSequence += `\u001b]4;${String(idx)};?\u0007`;
+    }
+    process.stdout.write(probeSequence);
   });
 }
 
@@ -496,6 +540,7 @@ function parseArgs(argv: string[]): MuxOptions {
   let controlPlanePortRaw = process.env.HARNESS_CONTROL_PLANE_PORT ?? null;
   let controlPlaneAuthToken = process.env.HARNESS_CONTROL_PLANE_AUTH_TOKEN ?? null;
   let recordingPath = process.env.HARNESS_RECORDING_PATH ?? null;
+  let recordingOutputPath = process.env.HARNESS_RECORD_OUTPUT ?? null;
   let recordingFps = parsePositiveInt(process.env.HARNESS_RECORDING_FPS, 15);
 
   for (let idx = 0; idx < argv.length; idx += 1) {
@@ -540,6 +585,16 @@ function parseArgs(argv: string[]): MuxOptions {
       continue;
     }
 
+    if (arg === '--record-output') {
+      const value = argv[idx + 1];
+      if (value === undefined) {
+        throw new Error('missing value for --record-output');
+      }
+      recordingOutputPath = value;
+      idx += 1;
+      continue;
+    }
+
     if (arg === '--record-fps') {
       const value = argv[idx + 1];
       if (value === undefined) {
@@ -566,6 +621,18 @@ function parseArgs(argv: string[]): MuxOptions {
     throw new Error('both control-plane host and port must be set together');
   }
 
+  let recordingGifOutputPath: string | null = null;
+  if (recordingOutputPath !== null && recordingOutputPath.length > 0) {
+    if (extname(recordingOutputPath).toLowerCase() === '.gif') {
+      recordingGifOutputPath = recordingOutputPath;
+      const fileName = basename(recordingOutputPath, '.gif');
+      const sidecarName = `${fileName}.jsonl`;
+      recordingPath = join(dirname(recordingOutputPath), sidecarName);
+    } else {
+      recordingPath = recordingOutputPath;
+    }
+  }
+
   const initialConversationId = process.env.HARNESS_CONVERSATION_ID ?? `conversation-${randomUUID()}`;
   const turnId = process.env.HARNESS_TURN_ID ?? `turn-${randomUUID()}`;
 
@@ -577,6 +644,7 @@ function parseArgs(argv: string[]): MuxOptions {
     controlPlanePort,
     controlPlaneAuthToken,
     recordingPath,
+    recordingGifOutputPath,
     recordingFps: Math.max(1, recordingFps),
     scope: {
       tenantId: process.env.HARNESS_TENANT_ID ?? 'tenant-local',
@@ -700,6 +768,27 @@ function buildRenderRows(
   rows.push(status);
 
   return rows;
+}
+
+function renderCanonicalFrameAnsi(
+  rows: readonly string[],
+  cursorStyle: RenderCursorStyle,
+  cursorVisible: boolean,
+  cursorRow: number,
+  cursorCol: number
+): string {
+  let output = '\u001b[?25l\u001b[H\u001b[2J';
+  output += cursorStyleToDecscusr(cursorStyle);
+  for (let row = 0; row < rows.length; row += 1) {
+    output += `\u001b[${String(row + 1)};1H\u001b[2K${rows[row] ?? ''}`;
+  }
+  if (cursorVisible) {
+    output += '\u001b[?25h';
+    output += `\u001b[${String(cursorRow + 1)};${String(cursorCol + 1)}H`;
+  } else {
+    output += '\u001b[?25l';
+  }
+  return output;
 }
 
 function cursorStyleToDecscusr(style: RenderCursorStyle): string {
@@ -978,6 +1067,7 @@ async function main(): Promise<number> {
 
   const probedPalette = await probeTerminalPalette();
   let muxRecordingWriter: ReturnType<typeof createTerminalRecordingWriter> | null = null;
+  let muxRecordingOracle: TerminalSnapshotOracle | null = null;
   if (options.recordingPath !== null) {
     const recordIntervalMs = Math.max(1, Math.floor(1000 / options.recordingFps));
     muxRecordingWriter = createTerminalRecordingWriter({
@@ -985,10 +1075,11 @@ async function main(): Promise<number> {
       source: 'codex-live-mux',
       defaultForegroundHex: process.env.HARNESS_TERM_FG ?? probedPalette.foregroundHex ?? 'd0d7de',
       defaultBackgroundHex: process.env.HARNESS_TERM_BG ?? probedPalette.backgroundHex ?? '0f1419',
+      ansiPaletteIndexedHex: probedPalette.indexedHexByCode,
       minFrameIntervalMs: recordIntervalMs
     });
+    muxRecordingOracle = new TerminalSnapshotOracle(size.cols, size.rows);
   }
-  const muxFrameOracle = new TerminalSnapshotOracle(size.cols, size.rows);
   const controlPlaneClient = await openCodexControlPlaneClient(
     options.controlPlaneHost !== null && options.controlPlanePort !== null
       ? {
@@ -1253,7 +1344,9 @@ async function main(): Promise<number> {
     for (const conversation of conversations.values()) {
       conversation.oracle.resize(nextLayout.leftCols, nextLayout.paneRows);
     }
-    muxFrameOracle.resize(nextLayout.cols, nextLayout.rows);
+    if (muxRecordingOracle !== null) {
+      muxRecordingOracle.resize(nextLayout.cols, nextLayout.rows);
+    }
     // Force a full clear on actual layout changes to avoid stale diagonal artifacts during drag.
     previousRows = [];
     forceFullClear = true;
@@ -1506,10 +1599,17 @@ async function main(): Promise<number> {
 
     if (output.length > 0) {
       process.stdout.write(output);
-      muxFrameOracle.ingest(output);
-      if (muxRecordingWriter !== null) {
+      if (muxRecordingWriter !== null && muxRecordingOracle !== null) {
+        const canonicalFrame = renderCanonicalFrameAnsi(
+          rows,
+          leftFrame.cursor.style,
+          shouldShowCursor,
+          leftFrame.cursor.row,
+          leftFrame.cursor.col
+        );
+        muxRecordingOracle.ingest(canonicalFrame);
         try {
-          muxRecordingWriter.capture(muxFrameOracle.snapshot());
+          muxRecordingWriter.capture(muxRecordingOracle.snapshot());
         } catch {
           // Recording failures must never break live interaction.
         }
@@ -1884,17 +1984,50 @@ async function main(): Promise<number> {
     process.off('SIGINT', requestStop);
     process.off('SIGTERM', requestStop);
     removeEnvelopeListener();
+
+    let recordingCloseError: unknown = null;
     try {
       await controlPlaneOps;
       await controlPlaneClient.close();
-      if (muxRecordingWriter !== null) {
-        await muxRecordingWriter.close();
-      }
     } catch {
       // Best-effort shutdown only.
     }
+    if (muxRecordingWriter !== null) {
+      try {
+        await muxRecordingWriter.close();
+      } catch (error: unknown) {
+        recordingCloseError = error;
+      }
+    }
     store.close();
     restoreTerminalState(true);
+    if (
+      options.recordingGifOutputPath !== null &&
+      options.recordingPath !== null &&
+      recordingCloseError === null
+    ) {
+      try {
+        await renderTerminalRecordingToGif({
+          recordingPath: options.recordingPath,
+          outputPath: options.recordingGifOutputPath
+        });
+        process.stderr.write(
+          `[mux-recording] jsonl=${options.recordingPath} gif=${options.recordingGifOutputPath}\n`
+        );
+      } catch (error: unknown) {
+        process.stderr.write(
+          `[mux-recording] gif-export-failed ${
+            error instanceof Error ? error.message : String(error)
+          }\n`
+        );
+      }
+    } else if (recordingCloseError !== null) {
+      process.stderr.write(
+        `[mux-recording] close-failed ${
+          recordingCloseError instanceof Error ? recordingCloseError.message : String(recordingCloseError)
+        }\n`
+      );
+    }
   }
 
   if (exit === null) {
