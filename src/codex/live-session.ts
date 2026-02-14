@@ -49,7 +49,7 @@ interface StartCodexLiveSessionOptions {
   terminalBackgroundHex?: string;
 }
 
-type CodexLiveEvent =
+export type CodexLiveEvent =
   | {
       type: 'terminal-output';
       cursor: number;

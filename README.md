@@ -19,6 +19,8 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
 - Single-session attach/detach/reconnect broker.
 - PTY passthrough verified with `vim` interaction tests.
 - Codex live session hosted through PTY with notify-hook ingestion.
+- Control-plane TCP stream baseline (`src/control-plane/*`) with typed command/event envelopes.
+- Mux control path now runs through the same stream API primitives (`pty.start/attach/input/resize/signal/close`) used for programmatic clients.
 - Stream isolation: PTY bytes never mixed with structured event output.
 - Deterministic terminal snapshot oracle (`rows`, `cols`, `activeScreen`, `cursor`, `lines`, `frameHash`).
 - Scroll-region/origin correctness for pinned UI areas (`DECSTBM`, `DECOM`, `IND`/`NEL`/`RI`, `IL`/`DL`).

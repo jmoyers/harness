@@ -130,6 +130,16 @@ Required command categories:
 - Terminal/session: attach PTY, detach PTY, list active sessions.
 - Configuration: read effective config, validate proposed config, reload config.
 
+Pass-through control primitives (required, first-class):
+- `pty.start`: start a session by executable + args + cwd + env + profile.
+- `pty.attach`: attach a client stream to an existing PTY session.
+- `pty.input`: send raw input bytes/chunks to PTY (`stdin`) with ordering guarantees.
+- `pty.resize`: send terminal size updates (`cols`, `rows`).
+- `pty.signal`: send control signals (`interrupt`, `eof`, `terminate`) through the PTY control path.
+- `pty.detach`: detach client without killing session.
+- `pty.close`: close session intentionally.
+- `pty.subscribe-events`: subscribe to normalized/provider/meta events for the same session.
+
 Required read/stream categories:
 - Conversation and turn status snapshots.
 - Attention queue and pending approvals.
@@ -139,6 +149,13 @@ Required read/stream categories:
 - Streaming orchestration/meta event feed for queueing, scheduling, and handoff behavior.
 - Query access to structured logs by workspace/worktree/conversation/turn/time range.
 - Query access to performance traces/latency measurements by component and time range.
+
+Pass-through stream invariants:
+- PTY byte stream is authoritative session reality and is never rewritten by adapters.
+- Provider/meta events are side-channel observability, never in-band PTY output.
+- Human and agent clients use the exact same PTY and event commands; no privileged human path.
+- High-level helper commands (for example `conversation.send-turn`) are optional wrappers that compile to the same PTY primitives.
+- Session replay/reattach uses persisted PTY/output + event cursor state; no synthetic state not derivable from authoritative streams.
 
 ## Control Plane Transport Principles
 
@@ -258,6 +275,11 @@ Integration tiers:
 3. Heuristic parser fallback: parse terminal output only when no richer signal exists.
 
 This keeps live steering universal across agents while still taking advantage of structured provider signals when available.
+
+Provider policy (Codex/Claude direct usage):
+- Prefer launching provider CLIs directly inside PTY (`codex`, `claude`) with no protocol translation in the hot path.
+- Adapter responsibilities are limited to launch config, optional hook ingestion, and event normalization.
+- If a provider offers richer APIs, they are optional enrichment channels and must not replace PTY-first steering for parity-critical flows.
 
 ## Terminal Compatibility Strategy
 
@@ -884,7 +906,11 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
   - `scripts/codex-live.ts` enforces terminal stream isolation: PTY output remains on stdout while events persist to SQLite (no event JSON mixed into terminal output).
   - `scripts/codex-live-tail.ts` tails persisted live events by conversation in real time, including notify-discovery mode (`--only-notify`).
   - `scripts/codex-live-snapshot.ts` renders PTY deltas into textual snapshot frames for deterministic integration/e2e assertions (`--json`).
+  - `src/control-plane/stream-protocol.ts` defines typed newline-delimited TCP stream envelopes for command lifecycle, PTY pass-through signals, and async event delivery.
+  - `src/control-plane/stream-server.ts` provides a session-aware control-plane server that executes PTY/session operations and broadcasts output/events to subscribed clients.
+  - `src/control-plane/stream-client.ts` provides a typed client used by operators and automation to issue the same control-plane operations.
   - `scripts/codex-live-mux.ts` provides the first-party split UI (left: live steerable Codex session rendered via shared snapshot oracle, right: event feed) with:
+    - control operations routed over the control-plane stream (`pty.start`, `pty.attach`, `pty.input`, `pty.resize`, `pty.signal`, `pty.close`) instead of direct in-process session calls
     - dirty-row diff rendering (no full-screen repaint loop)
     - event-driven render scheduling on dirty state (no fixed 60fps polling timer)
     - pane-local event viewport state (`live` vs `scroll`) with independent right-pane scrollback

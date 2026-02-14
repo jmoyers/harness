@@ -1,9 +1,16 @@
 import { basename } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { appendFileSync } from 'node:fs';
-import { startCodexLiveSession, type CodexLiveEvent } from '../src/codex/live-session.ts';
+import { startCodexLiveSession } from '../src/codex/live-session.ts';
+import { connectControlPlaneStreamClient } from '../src/control-plane/stream-client.ts';
+import { startControlPlaneStreamServer } from '../src/control-plane/stream-server.ts';
+import type { StreamSessionEvent } from '../src/control-plane/stream-protocol.ts';
 import { SqliteEventStore } from '../src/store/event-store.ts';
-import { renderSnapshotAnsiRow, type TerminalSnapshotFrame } from '../src/terminal/snapshot-oracle.ts';
+import {
+  TerminalSnapshotOracle,
+  renderSnapshotAnsiRow,
+  type TerminalSnapshotFrame
+} from '../src/terminal/snapshot-oracle.ts';
 import {
   createNormalizedEvent,
   type EventScope,
@@ -143,27 +150,31 @@ function normalizeExitCode(exit: PtyExit): number {
   return 1;
 }
 
-function mapToNormalizedEvent(
-  event: CodexLiveEvent,
+function mapTerminalOutputToNormalizedEvent(
+  chunk: Buffer,
+  scope: EventScope,
+  idFactory: () => string
+): NormalizedEventEnvelope {
+  return createNormalizedEvent(
+    'provider',
+    'provider-text-delta',
+    scope,
+    {
+      kind: 'text-delta',
+      threadId: scope.conversationId,
+      turnId: scope.turnId ?? 'turn-live',
+      delta: chunk.toString('utf8')
+    },
+    () => new Date(),
+    idFactory
+  );
+}
+
+function mapSessionEventToNormalizedEvent(
+  event: StreamSessionEvent,
   scope: EventScope,
   idFactory: () => string
 ): NormalizedEventEnvelope | null {
-  if (event.type === 'terminal-output') {
-    return createNormalizedEvent(
-      'provider',
-      'provider-text-delta',
-      scope,
-      {
-        kind: 'text-delta',
-        threadId: scope.conversationId,
-        turnId: scope.turnId ?? 'turn-live',
-        delta: event.chunk.toString('utf8')
-      },
-      () => new Date(),
-      idFactory
-    );
-  }
-
   if (event.type === 'turn-completed') {
     const payloadObject = event.record.payload;
     return createNormalizedEvent(
@@ -233,6 +244,16 @@ function mapToNormalizedEvent(
   }
 
   return null;
+}
+
+function sanitizeProcessEnv(): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (typeof value === 'string') {
+      env[key] = value;
+    }
+  }
+  return env;
 }
 
 function summarizeEvent(event: NormalizedEventEnvelope): string {
@@ -752,15 +773,47 @@ async function main(): Promise<number> {
   process.stdin.resume();
 
   const probedPalette = await probeTerminalPalette();
+  const streamServer = await startControlPlaneStreamServer({
+    startSession: (input) =>
+      startCodexLiveSession({
+        args: input.args,
+        env: input.env,
+        initialCols: input.initialCols,
+        initialRows: input.initialRows,
+        terminalForegroundHex: input.terminalForegroundHex,
+        terminalBackgroundHex: input.terminalBackgroundHex
+      })
+  });
+  const streamClient = await connectControlPlaneStreamClient({
+    host: '127.0.0.1',
+    port: streamServer.address().port
+  });
 
-  const liveSession = startCodexLiveSession({
+  const terminalSnapshotOracle = new TerminalSnapshotOracle(layout.leftCols, layout.paneRows);
+  const startResult = await streamClient.sendCommand({
+    type: 'pty.start',
+    sessionId: options.conversationId,
     args: options.codexArgs,
     env: {
-      ...process.env,
+      ...sanitizeProcessEnv(),
       TERM: process.env.TERM ?? 'xterm-256color'
     },
+    initialCols: layout.leftCols,
+    initialRows: layout.paneRows,
     terminalForegroundHex: process.env.HARNESS_TERM_FG ?? probedPalette.foregroundHex,
     terminalBackgroundHex: process.env.HARNESS_TERM_BG ?? probedPalette.backgroundHex
+  });
+  if (startResult['sessionId'] !== options.conversationId) {
+    throw new Error('control-plane pty.start returned unexpected session id');
+  }
+  await streamClient.sendCommand({
+    type: 'pty.subscribe-events',
+    sessionId: options.conversationId
+  });
+  await streamClient.sendCommand({
+    type: 'pty.attach',
+    sessionId: options.conversationId,
+    sinceCursor: 0
   });
 
   const idFactory = (): string => `event-${randomUUID()}`;
@@ -813,7 +866,8 @@ async function main(): Promise<number> {
       return;
     }
     currentPtySize = ptySize;
-    liveSession.resize(ptySize.cols, ptySize.rows);
+    terminalSnapshotOracle.resize(ptySize.cols, ptySize.rows);
+    streamClient.sendResize(options.conversationId, ptySize.cols, ptySize.rows);
     appendDebugRecord(debugPath, {
       kind: 'resize-pty-apply',
       ptyCols: ptySize.cols,
@@ -934,10 +988,10 @@ async function main(): Promise<number> {
     if (selectionPinnedFollowOutput !== null) {
       return;
     }
-    const follow = liveSession.snapshot().viewport.followOutput;
+    const follow = terminalSnapshotOracle.snapshot().viewport.followOutput;
     selectionPinnedFollowOutput = follow;
     if (follow) {
-      liveSession.setFollowOutput(false);
+      terminalSnapshotOracle.setFollowOutput(false);
     }
   };
 
@@ -948,7 +1002,7 @@ async function main(): Promise<number> {
     const shouldRepin = selectionPinnedFollowOutput;
     selectionPinnedFollowOutput = null;
     if (shouldRepin) {
-      liveSession.setFollowOutput(true);
+      terminalSnapshotOracle.setFollowOutput(true);
     }
   };
 
@@ -957,7 +1011,7 @@ async function main(): Promise<number> {
       return;
     }
 
-    const leftFrame = liveSession.snapshot();
+    const leftFrame = terminalSnapshotOracle.snapshot();
     const renderSelection =
       selectionDrag !== null && selectionDrag.hasDragged
         ? {
@@ -1047,21 +1101,42 @@ async function main(): Promise<number> {
     dirty = false;
   };
 
-  liveSession.onEvent((event) => {
-    const normalized = mapToNormalizedEvent(event, options.scope, idFactory);
-    if (normalized !== null) {
+  const removeEnvelopeListener = streamClient.onEnvelope((envelope) => {
+    if (envelope.kind === 'pty.output') {
+      if (envelope.sessionId !== options.conversationId) {
+        return;
+      }
+      const chunk = Buffer.from(envelope.chunkBase64, 'base64');
+      terminalSnapshotOracle.ingest(chunk);
+
+      const normalized = mapTerminalOutputToNormalizedEvent(chunk, options.scope, idFactory);
       store.appendEvents([normalized]);
-      if (normalized.type !== 'provider-text-delta') {
+      markDirty();
+      return;
+    }
+
+    if (envelope.kind === 'pty.event') {
+      if (envelope.sessionId !== options.conversationId) {
+        return;
+      }
+      const normalized = mapSessionEventToNormalizedEvent(envelope.event, options.scope, idFactory);
+      if (normalized !== null) {
+        store.appendEvents([normalized]);
         appendEventLine(summarizeEvent(normalized));
       }
+      if (envelope.event.type === 'session-exit') {
+        exit = envelope.event.exit;
+        stop = true;
+        markDirty();
+      }
+      return;
     }
 
-    if (event.type === 'terminal-output') {
-      markDirty();
-    }
-
-    if (event.type === 'session-exit') {
-      exit = event.exit;
+    if (envelope.kind === 'pty.exit') {
+      if (envelope.sessionId !== options.conversationId) {
+        return;
+      }
+      exit = envelope.exit;
       stop = true;
       markDirty();
     }
@@ -1070,7 +1145,7 @@ async function main(): Promise<number> {
   const onInput = (chunk: Buffer): void => {
     if (chunk.length === 1 && chunk[0] === 0x1d) {
       stop = true;
-      liveSession.close();
+      streamClient.sendSignal(options.conversationId, 'terminate');
       return;
     }
 
@@ -1105,7 +1180,7 @@ async function main(): Promise<number> {
     }
 
     if (selection !== null && isCopyShortcutInput(focusExtraction.sanitized)) {
-      const selectedFrame = liveSession.snapshot();
+      const selectedFrame = terminalSnapshotOracle.snapshot();
       const copied = writeTextToClipboard(selectionText(selectedFrame, selection));
       appendEventLine(`${new Date().toISOString()} selection ${copied ? 'copied' : 'copy-failed'}`);
       appendDebugRecord(debugPath, {
@@ -1123,7 +1198,7 @@ async function main(): Promise<number> {
     const parsed = parseMuxInputChunk(inputRemainder, focusExtraction.sanitized);
     inputRemainder = parsed.remainder;
 
-    let snapshotForInput = liveSession.snapshot();
+    let snapshotForInput = terminalSnapshotOracle.snapshot();
     const routedTokens: Array<(typeof parsed.tokens)[number]> = [];
     for (const token of parsed.tokens) {
       if (token.kind !== 'mouse') {
@@ -1145,8 +1220,8 @@ async function main(): Promise<number> {
       const wheelDelta = wheelDeltaRowsFromCode(token.event.code);
       if (wheelDelta !== null) {
         if (target === 'left') {
-          liveSession.scrollViewport(wheelDelta);
-          snapshotForInput = liveSession.snapshot();
+          terminalSnapshotOracle.scrollViewport(wheelDelta);
+          snapshotForInput = terminalSnapshotOracle.snapshot();
           markDirty();
           continue;
         }
@@ -1240,7 +1315,7 @@ async function main(): Promise<number> {
 
     const routed = routeMuxInputTokens(routedTokens, layout);
     if (routed.leftPaneScrollRows !== 0) {
-      liveSession.scrollViewport(routed.leftPaneScrollRows);
+      terminalSnapshotOracle.scrollViewport(routed.leftPaneScrollRows);
       markDirty();
     }
     if (routed.rightPaneScrollRows !== 0) {
@@ -1249,7 +1324,7 @@ async function main(): Promise<number> {
     }
 
     for (const forwardChunk of routed.forwardToSession) {
-      liveSession.write(forwardChunk);
+      streamClient.sendInput(options.conversationId, Buffer.from(forwardChunk));
     }
 
     appendDebugRecord(debugPath, {
@@ -1301,7 +1376,17 @@ async function main(): Promise<number> {
     }
     process.stdin.off('data', onInput);
     process.stdout.off('resize', onResize);
-    liveSession.close();
+    removeEnvelopeListener();
+    try {
+      await streamClient.sendCommand({
+        type: 'pty.close',
+        sessionId: options.conversationId
+      });
+    } catch {
+      // Best-effort shutdown only.
+    }
+    streamClient.close();
+    await streamServer.close();
     store.close();
     restoreTerminalState(true);
   }

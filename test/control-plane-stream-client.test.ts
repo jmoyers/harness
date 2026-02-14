@@ -1,0 +1,255 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { createServer, type AddressInfo, type Server, type Socket } from 'node:net';
+import { setTimeout as delay } from 'node:timers/promises';
+import { connectControlPlaneStreamClient } from '../src/control-plane/stream-client.ts';
+import {
+  consumeJsonLines,
+  encodeStreamEnvelope,
+  parseClientEnvelope,
+  type StreamClientEnvelope,
+  type StreamServerEnvelope
+} from '../src/control-plane/stream-protocol.ts';
+
+interface HarnessServer {
+  server: Server;
+  address: AddressInfo;
+  stop: () => Promise<void>;
+}
+
+interface WritableSocket {
+  write(value: string): boolean;
+  destroy(error?: Error): this;
+}
+
+async function startHarnessServer(
+  onMessage: (socket: Socket, envelope: StreamClientEnvelope) => void
+): Promise<HarnessServer> {
+  const server = createServer((socket) => {
+    let remainder = '';
+    socket.on('data', (chunk: Buffer) => {
+      const consumed = consumeJsonLines(`${remainder}${chunk.toString('utf8')}`);
+      remainder = consumed.remainder;
+      for (const message of consumed.messages) {
+        const parsed = parseClientEnvelope(message);
+        if (parsed === null) {
+          continue;
+        }
+        onMessage(socket, parsed);
+      }
+    });
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.listen(0, '127.0.0.1', () => resolve());
+    server.once('error', reject);
+  });
+
+  const address = server.address();
+  if (address === null || typeof address === 'string') {
+    throw new Error('expected tcp server address');
+  }
+
+  return {
+    server,
+    address,
+    stop: async () => {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error !== undefined && error !== null) {
+            reject(error);
+            return;
+          }
+          resolve();
+        });
+      });
+    }
+  };
+}
+
+void test('stream client handles command lifecycle, async envelopes, and shutdown', async () => {
+  let commandCount = 0;
+
+  const harness = await startHarnessServer((socket, envelope) => {
+    if (envelope.kind !== 'command') {
+      return;
+    }
+
+    commandCount += 1;
+    socket.write(
+      encodeStreamEnvelope({
+        kind: 'command.accepted',
+        commandId: envelope.commandId
+      })
+    );
+
+    if (commandCount === 1) {
+      socket.write(
+        encodeStreamEnvelope({
+          kind: 'command.completed',
+          commandId: envelope.commandId,
+          result: {
+            ok: true
+          }
+        })
+      );
+      socket.write(
+        encodeStreamEnvelope({
+          kind: 'command.completed',
+          commandId: 'unknown-command',
+          result: {
+            ignored: true
+          }
+        })
+      );
+      socket.write(
+        encodeStreamEnvelope({
+          kind: 'command.failed',
+          commandId: 'unknown-command',
+          error: 'ignored'
+        })
+      );
+      socket.write(
+        encodeStreamEnvelope({
+          kind: 'pty.event',
+          sessionId: 'session-1',
+          event: {
+            type: 'notify',
+            record: {
+              ts: new Date(0).toISOString(),
+              payload: {
+                type: 'notify'
+              }
+            }
+          }
+        })
+      );
+      return;
+    }
+
+    if (commandCount === 2) {
+      socket.write(
+        encodeStreamEnvelope({
+          kind: 'command.failed',
+          commandId: envelope.commandId,
+          error: 'boom'
+        })
+      );
+      return;
+    }
+
+    setTimeout(() => {
+      socket.end();
+    }, 5);
+  });
+
+  const client = await connectControlPlaneStreamClient({
+    host: harness.address.address,
+    port: harness.address.port
+  });
+
+  const observed: StreamServerEnvelope[] = [];
+  const stopListening = client.onEnvelope((envelope) => {
+    observed.push(envelope);
+  });
+
+  const firstResult = await client.sendCommand({
+    type: 'pty.start',
+    sessionId: 'session-1',
+    args: [],
+    initialCols: 80,
+    initialRows: 24
+  });
+  assert.deepEqual(firstResult, {
+    ok: true
+  });
+
+  await assert.rejects(
+    client.sendCommand({
+      type: 'pty.close',
+      sessionId: 'session-1'
+    }),
+    /boom/
+  );
+
+  const pending = client.sendCommand({
+    type: 'pty.attach',
+    sessionId: 'session-1',
+    sinceCursor: 0
+  });
+  await assert.rejects(pending, /closed/);
+
+  stopListening();
+  await delay(10);
+
+  assert.equal(
+    observed.some((envelope) => envelope.kind === 'pty.event' && envelope.event.type === 'notify'),
+    true
+  );
+  assert.equal(
+    observed.some((envelope) => envelope.kind === 'pty.event' && envelope.event.type === 'session-exit'),
+    false
+  );
+
+  await assert.rejects(
+    client.sendCommand({
+      type: 'pty.close',
+      sessionId: 'session-1'
+    }),
+    /closed/
+  );
+
+  client.sendInput('session-1', Buffer.from('hello', 'utf8'));
+  client.sendResize('session-1', 10, 10);
+  client.sendSignal('session-1', 'interrupt');
+
+  client.close();
+  client.close();
+
+  await harness.stop();
+});
+
+void test('stream client handles parse-ignore, socket error close, and connect failure', async () => {
+  let resolveSocket: ((socket: WritableSocket) => void) | null = null;
+  const socketReady = new Promise<WritableSocket>((resolve) => {
+    resolveSocket = resolve;
+  });
+  const harness = await startHarnessServer((socket, envelope) => {
+    const writableSocket = socket as WritableSocket;
+    resolveSocket?.(writableSocket);
+    if (envelope.kind !== 'command') {
+      return;
+    }
+    writableSocket.write('{"kind":"unsupported"}\n');
+    writableSocket.write(
+      encodeStreamEnvelope({
+        kind: 'command.accepted',
+        commandId: envelope.commandId
+      })
+    );
+  });
+
+  const client = await connectControlPlaneStreamClient({
+    host: harness.address.address,
+    port: harness.address.port
+  });
+
+  const pending = client.sendCommand({
+    type: 'pty.close',
+    sessionId: 'session-error'
+  });
+  const connectedSocket = await socketReady;
+  const internalSocket = (client as unknown as { socket: Socket }).socket;
+  internalSocket.emit('error', new Error('server-side-error'));
+  connectedSocket.destroy();
+  await assert.rejects(pending, /server-side-error|closed/);
+
+  await harness.stop();
+
+  await assert.rejects(
+    connectControlPlaneStreamClient({
+      host: '127.0.0.1',
+      port: harness.address.port
+    })
+  );
+});
