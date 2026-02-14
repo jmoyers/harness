@@ -942,7 +942,7 @@ async function main(): Promise<number> {
     process.env.HARNESS_MUX_PTY_RESIZE_SETTLE_MS,
     DEFAULT_PTY_RESIZE_SETTLE_MS
   );
-  const ctrlCExits = parseBooleanEnv(process.env.HARNESS_MUX_CTRL_C_EXITS, false);
+  const ctrlCExits = parseBooleanEnv(process.env.HARNESS_MUX_CTRL_C_EXITS, true);
 
   process.stdin.setRawMode(true);
   process.stdin.resume();
