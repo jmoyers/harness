@@ -623,14 +623,7 @@ function conversationSummary(conversation: ConversationState): ConversationRailS
 }
 
 function conversationOrder(conversations: ReadonlyMap<string, ConversationState>): readonly string[] {
-  return [...conversations.values()]
-    .sort((left, right) => {
-      if (left.startedAt !== right.startedAt) {
-        return left.startedAt.localeCompare(right.startedAt);
-      }
-      return left.sessionId.localeCompare(right.sessionId);
-    })
-    .map((session) => session.sessionId);
+  return [...conversations.keys()];
 }
 
 function buildRenderRows(
@@ -647,7 +640,8 @@ function buildRenderRows(
     conversations,
     activeConversationId,
     layout.rightCols,
-    railRows
+    railRows,
+    'input-order'
   );
   const eventRows = Math.max(1, layout.paneRows - railLines.length);
   const rightView = events.view(layout.rightCols, eventRows);
@@ -1053,7 +1047,7 @@ async function main(): Promise<number> {
       userId: options.scope.userId,
       workspaceId: options.scope.workspaceId,
       worktreeId: options.scope.worktreeId,
-      sort: 'attention-first'
+      sort: 'started-asc'
     });
     const summaries = parseSessionSummaryList(listed['sessions']);
     for (const summary of summaries) {
@@ -1101,9 +1095,23 @@ async function main(): Promise<number> {
       return;
     }
     stop = true;
-    if (activeConversationId !== null) {
-      streamClient.sendSignal(activeConversationId, 'terminate');
-    }
+    queueControlPlaneOp(async () => {
+      for (const sessionId of conversationOrder(conversations)) {
+        const conversation = conversations.get(sessionId);
+        if (conversation === undefined || !conversation.live) {
+          continue;
+        }
+        streamClient.sendSignal(sessionId, 'terminate');
+        try {
+          await streamClient.sendCommand({
+            type: 'pty.close',
+            sessionId
+          });
+        } catch {
+          // Best-effort shutdown only.
+        }
+      }
+    });
     markDirty();
   };
 
@@ -1389,7 +1397,9 @@ async function main(): Promise<number> {
       layout,
       leftFrame,
       active.events,
-      [...conversations.values()].map((conversation) => conversationSummary(conversation)),
+      conversationOrder(conversations)
+        .map((sessionId) => conversations.get(sessionId))
+        .flatMap((conversation) => (conversation === undefined ? [] : [conversationSummary(conversation)])),
       activeConversationId,
       renderSelection !== null,
       ctrlCExits
@@ -1589,18 +1599,16 @@ async function main(): Promise<number> {
       return;
     }
 
+    const globalShortcut = detectMuxGlobalShortcut(focusExtraction.sanitized);
     if (
+      globalShortcut === 'ctrl-c' &&
       ctrlCExits &&
       selection === null &&
-      selectionDrag === null &&
-      focusExtraction.sanitized.length === 1 &&
-      focusExtraction.sanitized[0] === 0x03
+      selectionDrag === null
     ) {
       requestStop();
       return;
     }
-
-    const globalShortcut = detectMuxGlobalShortcut(focusExtraction.sanitized);
     if (globalShortcut === 'quit') {
       requestStop();
       return;

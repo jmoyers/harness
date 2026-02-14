@@ -86,9 +86,9 @@ void test('buildConversationRailLines renders header, active marker, and truncat
     3
   );
   assert.equal(lines.length, 3);
-  assert.equal(lines[0]?.includes('conversations(4)'), true);
-  assert.equal(lines[1]?.includes('need live conversation-aaaaaaaa approval'), true);
-  assert.equal(lines[2]?.startsWith('> run  live conversation-bbbbbbbb'), true);
+  assert.equal(lines[0]?.includes('conversations (4)'), true);
+  assert.equal(lines[1]?.includes('[!] aaaaaaaa - approval'), true);
+  assert.equal(lines[2]?.startsWith('> [~] bbbbbbbb'), true);
 
   const hiddenActive = buildConversationRailLines(
     sessions,
@@ -97,11 +97,11 @@ void test('buildConversationRailLines renders header, active marker, and truncat
     3
   );
   assert.equal(hiddenActive.length, 3);
-  assert.equal(hiddenActive[2]?.includes('external-session-w…'), true);
+  assert.equal(hiddenActive[2]?.includes('external-session…'), true);
 
   const missingActive = buildConversationRailLines(sessions, 'missing-session', 48, 3);
   assert.equal(missingActive.length, 3);
-  assert.equal(missingActive[2]?.includes('conversation-bbbbbbbb'), true);
+  assert.equal(missingActive[2]?.includes('bbbbbbbb'), true);
 
   const padded = buildConversationRailLines([], null, 8, 4);
   assert.equal(padded.length, 4);
@@ -112,8 +112,8 @@ void test('buildConversationRailLines renders header, active marker, and truncat
   assert.equal(oneRow[0]?.length, 10);
 
   const completedVisible = buildConversationRailLines(sessions, null, 60, 6);
-  assert.equal(completedVisible.some((line) => line.includes('done live conversation-cccccccc')), true);
-  assert.equal(completedVisible.some((line) => line.includes('exit dead external-session-w')), true);
+  assert.equal(completedVisible.some((line) => line.includes('[+] cccccccc')), true);
+  assert.equal(completedVisible.some((line) => line.includes('[x] external-session…')), true);
 
   const shortConversationId = buildConversationRailLines(
     [
@@ -130,7 +130,7 @@ void test('buildConversationRailLines renders header, active marker, and truncat
     48,
     3
   );
-  assert.equal(shortConversationId[1]?.includes('conversation-12345678'), true);
+  assert.equal(shortConversationId[1]?.includes('[~] 12345678'), true);
 
   const emptyAttentionReason = buildConversationRailLines(
     [
@@ -147,8 +147,8 @@ void test('buildConversationRailLines renders header, active marker, and truncat
     48,
     2
   );
-  assert.equal(emptyAttentionReason[1]?.includes('conversation-empty-re'), true);
-  assert.equal(emptyAttentionReason[1]?.trimEnd().endsWith('need live conversation-empty-re'), true);
+  assert.equal(emptyAttentionReason[1]?.includes('empty-re'), true);
+  assert.equal(emptyAttentionReason[1]?.trimEnd().endsWith('[!] empty-re'), true);
 });
 
 void test('cycleConversationId wraps and handles missing active session', () => {
@@ -224,6 +224,19 @@ void test('attention-first sort handles last-event and started/id tie-breakers',
     byStartedDescFallback.map((row) => row.sessionId),
     ['id-1', 'id-2']
   );
+});
+
+void test('buildConversationRailLines supports stable input order mode', () => {
+  const inputOrdered = buildConversationRailLines(
+    sessions,
+    'conversation-cccccccc-0000',
+    48,
+    5,
+    'input-order'
+  );
+  assert.equal(inputOrdered[1]?.includes('cccccccc'), true);
+  assert.equal(inputOrdered[2]?.includes('aaaaaaaa'), true);
+  assert.equal(inputOrdered[3]?.includes('bbbbbbbb'), true);
 });
 
 void test('attention-first sort covers null and non-null lastEvent comparator branches', () => {

@@ -84,6 +84,8 @@ The goal is simple: keep the speed and feel of a real terminal, but add the oper
   - hold `Alt` while using mouse in left pane to pass mouse events through to the app
   - use `Ctrl+T` to create a new conversation, `Ctrl+N` / `Ctrl+P` to switch active conversation from the rail
   - mux shortcuts are global and remain captured even when terminal keyboard protocols (`CSI u`, `modifyOtherKeys`) are active
+  - conversation rail order is stable (creation order); switching only changes selection, not row order
+  - with `HARNESS_MUX_CTRL_C_EXITS=1`, `Ctrl+C` terminates all live mux conversations and exits the mux process
 - Footer/background parity:
   - run `npm run terminal:parity`
   - verify `codex-footer-background-persistence` passes

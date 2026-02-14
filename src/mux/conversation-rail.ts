@@ -13,6 +13,8 @@ export interface ConversationRailSessionSummary {
   readonly lastEventAt: string | null;
 }
 
+type ConversationRailOrder = StreamSessionListSort | 'input-order';
+
 export function compareIsoDesc(left: string | null, right: string | null): number {
   if (left === right) {
     return 0;
@@ -72,27 +74,27 @@ function compactSessionId(sessionId: string): string {
   if (sessionId.startsWith('conversation-')) {
     const suffix = sessionId.slice('conversation-'.length);
     if (suffix.length > 8) {
-      return `conversation-${suffix.slice(0, 8)}`;
+      return suffix.slice(0, 8);
     }
-    return sessionId;
+    return suffix;
   }
-  if (sessionId.length > 18) {
-    return `${sessionId.slice(0, 18)}…`;
+  if (sessionId.length > 16) {
+    return `${sessionId.slice(0, 16)}…`;
   }
   return sessionId;
 }
 
-function statusAbbrev(status: StreamSessionRuntimeStatus): string {
+function statusToken(status: StreamSessionRuntimeStatus): string {
   if (status === 'needs-input') {
-    return 'need';
+    return '!';
   }
   if (status === 'running') {
-    return 'run ';
+    return '~';
   }
   if (status === 'completed') {
-    return 'done';
+    return '+';
   }
-  return 'exit';
+  return 'x';
 }
 
 function renderConversationLine(
@@ -100,11 +102,12 @@ function renderConversationLine(
   activeSessionId: string | null
 ): string {
   const activePrefix = session.sessionId === activeSessionId ? '>' : ' ';
-  const liveToken = session.live ? 'live' : 'dead';
+  const token = statusToken(session.status);
   const shortId = compactSessionId(session.sessionId);
-  const base = `${activePrefix} ${statusAbbrev(session.status)} ${liveToken} ${shortId}`;
+  const liveState = session.live ? '' : ' (dead)';
+  const base = `${activePrefix} [${token}] ${shortId}${liveState}`;
   if (session.attentionReason !== null && session.attentionReason.length > 0) {
-    return `${base} ${session.attentionReason}`;
+    return `${base} - ${session.attentionReason}`;
   }
   return base;
 }
@@ -113,13 +116,15 @@ export function buildConversationRailLines(
   sessions: readonly ConversationRailSessionSummary[],
   activeSessionId: string | null,
   width: number,
-  maxRows: number
+  maxRows: number,
+  order: ConversationRailOrder = 'attention-first'
 ): readonly string[] {
   const safeWidth = Math.max(1, width);
   const safeMaxRows = Math.max(1, maxRows);
-  const sorted = sortConversationRailSessions(sessions, 'attention-first');
+  const sorted =
+    order === 'input-order' ? [...sessions] : sortConversationRailSessions(sessions, order);
   const header = padOrTrimDisplay(
-    `conversations(${String(sorted.length)}) ctrl-t new ctrl-n/p switch`,
+    `conversations (${String(sorted.length)}) [ctrl-t new] [ctrl-n/p switch]`,
     safeWidth
   );
 

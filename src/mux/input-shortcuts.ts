@@ -1,5 +1,6 @@
 type MuxGlobalShortcutAction =
   | 'quit'
+  | 'ctrl-c'
   | 'new-conversation'
   | 'next-conversation'
   | 'previous-conversation';
@@ -20,7 +21,10 @@ function hasCtrlModifier(modifierCode: number): boolean {
   return ((modifierCode - 1) & 0b0100) !== 0;
 }
 
-function mapAsciiCodeToAction(asciiCode: number): MuxGlobalShortcutAction | null {
+function mapRawControlByteToAction(asciiCode: number): MuxGlobalShortcutAction | null {
+  if (asciiCode === 0x03) {
+    return 'ctrl-c';
+  }
   if (asciiCode === 0x14) {
     return 'new-conversation';
   }
@@ -30,7 +34,17 @@ function mapAsciiCodeToAction(asciiCode: number): MuxGlobalShortcutAction | null
   if (asciiCode === 0x10) {
     return 'previous-conversation';
   }
-  if (asciiCode === 0x1d || asciiCode === 93) {
+  if (asciiCode === 0x1d) {
+    return 'quit';
+  }
+  return null;
+}
+
+function mapCtrlKeyCodeToAction(asciiCode: number): MuxGlobalShortcutAction | null {
+  if (asciiCode === 99) {
+    return 'ctrl-c';
+  }
+  if (asciiCode === 93) {
     return 'quit';
   }
   if (asciiCode === 116) {
@@ -66,7 +80,7 @@ function parseKittyKeyboardProtocol(text: string): MuxGlobalShortcutAction | nul
     return null;
   }
 
-  return mapAsciiCodeToAction(keyCode);
+  return mapCtrlKeyCodeToAction(keyCode);
 }
 
 function parseModifyOtherKeysProtocol(text: string): MuxGlobalShortcutAction | null {
@@ -86,12 +100,12 @@ function parseModifyOtherKeysProtocol(text: string): MuxGlobalShortcutAction | n
     return null;
   }
 
-  return mapAsciiCodeToAction(keyCode);
+  return mapCtrlKeyCodeToAction(keyCode);
 }
 
 export function detectMuxGlobalShortcut(input: Buffer): MuxGlobalShortcutAction | null {
   if (input.length === 1) {
-    return mapAsciiCodeToAction(input[0]!);
+    return mapRawControlByteToAction(input[0]!);
   }
 
   const text = input.toString('utf8');
