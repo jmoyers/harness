@@ -174,6 +174,10 @@ interface GitSummary {
 const DEFAULT_RESIZE_MIN_INTERVAL_MS = 33;
 const DEFAULT_PTY_RESIZE_SETTLE_MS = 75;
 const DEFAULT_STARTUP_SETTLE_QUIET_MS = 300;
+const STARTUP_TERMINAL_MIN_COLS = 40;
+const STARTUP_TERMINAL_MIN_ROWS = 10;
+const STARTUP_TERMINAL_PROBE_TIMEOUT_MS = 250;
+const STARTUP_TERMINAL_PROBE_INTERVAL_MS = 10;
 function restoreTerminalState(
   newline: boolean,
   restoreInputModes: (() => void) | null = null
@@ -487,6 +491,34 @@ function terminalSize(): { cols: number; rows: number } {
     return { cols, rows };
   }
   return { cols: 120, rows: 40 };
+}
+
+function startupTerminalSizeLooksPlausible(size: { cols: number; rows: number }): boolean {
+  return size.cols >= STARTUP_TERMINAL_MIN_COLS && size.rows >= STARTUP_TERMINAL_MIN_ROWS;
+}
+
+async function readStartupTerminalSize(): Promise<{ cols: number; rows: number }> {
+  let best = terminalSize();
+  if (startupTerminalSizeLooksPlausible(best)) {
+    return best;
+  }
+  const startedAtMs = Date.now();
+  while (Date.now() - startedAtMs < STARTUP_TERMINAL_PROBE_TIMEOUT_MS) {
+    await new Promise((resolve) => {
+      setTimeout(resolve, STARTUP_TERMINAL_PROBE_INTERVAL_MS);
+    });
+    const next = terminalSize();
+    if (next.cols * next.rows > best.cols * best.rows) {
+      best = next;
+    }
+    if (startupTerminalSizeLooksPlausible(next)) {
+      return next;
+    }
+  }
+  if (!startupTerminalSizeLooksPlausible(best)) {
+    return { cols: 120, rows: 40 };
+  }
+  return best;
 }
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
@@ -1456,7 +1488,11 @@ async function main(): Promise<number> {
         )
       : null;
 
-  let size = terminalSize();
+  let size = await readStartupTerminalSize();
+  recordPerfEvent('mux.startup.terminal-size', {
+    cols: size.cols,
+    rows: size.rows
+  });
   let layout = computeDualPaneLayout(size.cols, size.rows);
   const resizeMinIntervalMs = debugConfig.enabled
     ? debugConfig.mux.resizeMinIntervalMs

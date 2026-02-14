@@ -5,6 +5,7 @@ interface RunMetrics {
   readonly run: number;
   readonly firstOutputMs: number | null;
   readonly firstVisibleMs: number | null;
+  readonly readyPatternMs: number | null;
   readonly settledMs: number | null;
   readonly timedOut: boolean;
 }
@@ -26,6 +27,7 @@ function parseArgs(argv: readonly string[]): {
   readonly rows: number;
   readonly settleMs: number;
   readonly timeoutMs: number;
+  readonly readyPattern: string | null;
   readonly json: boolean;
   readonly codexArgs: readonly string[];
 } {
@@ -34,6 +36,7 @@ function parseArgs(argv: readonly string[]): {
   let rows = 30;
   let settleMs = 300;
   let timeoutMs = 15_000;
+  let readyPattern: string | null = null;
   let json = false;
   const codexArgs: string[] = [];
 
@@ -64,6 +67,14 @@ function parseArgs(argv: readonly string[]): {
       idx += 1;
       continue;
     }
+    if (arg === '--ready-pattern') {
+      const value = argv[idx + 1];
+      if (value !== undefined && value.trim().length > 0) {
+        readyPattern = value;
+      }
+      idx += 1;
+      continue;
+    }
     if (arg === '--json') {
       json = true;
       continue;
@@ -77,6 +88,7 @@ function parseArgs(argv: readonly string[]): {
     rows,
     settleMs,
     timeoutMs,
+    readyPattern,
     json,
     codexArgs
   };
@@ -102,6 +114,21 @@ function countVisibleGlyphCells(frame: ReturnType<ReturnType<typeof startCodexLi
   return count;
 }
 
+function snapshotVisibleText(frame: ReturnType<ReturnType<typeof startCodexLiveSession>['snapshot']>): string {
+  const rows: string[] = [];
+  for (const line of frame.richLines) {
+    let row = '';
+    for (const cell of line.cells) {
+      if (cell.continued) {
+        continue;
+      }
+      row += cell.glyph;
+    }
+    rows.push(row);
+  }
+  return rows.join('\n');
+}
+
 function percentile(values: readonly number[], fraction: number): number {
   if (values.length === 0) {
     return Number.NaN;
@@ -117,7 +144,8 @@ async function runOne(
   cols: number,
   rows: number,
   settleMs: number,
-  timeoutMs: number
+  timeoutMs: number,
+  readyPattern: string | null
 ): Promise<RunMetrics> {
   const startedNs = nowNs();
   const session = startCodexLiveSession({
@@ -129,6 +157,7 @@ async function runOne(
 
   let firstOutputNs: bigint | null = null;
   let firstVisibleNs: bigint | null = null;
+  let readyPatternNs: bigint | null = null;
   let settledNs: bigint | null = null;
   let timedOut = false;
   let lastOutputNs: bigint | null = null;
@@ -145,6 +174,12 @@ async function runOne(
     const visibleCells = countVisibleGlyphCells(session.snapshot());
     if (firstVisibleNs === null && visibleCells > 0) {
       firstVisibleNs = now;
+    }
+    if (readyPatternNs === null && readyPattern !== null) {
+      const text = snapshotVisibleText(session.snapshot());
+      if (text.includes(readyPattern)) {
+        readyPatternNs = now;
+      }
     }
   });
 
@@ -180,6 +215,7 @@ async function runOne(
     run,
     firstOutputMs: firstOutputNs === null ? null : nsToMs(firstOutputNs - startedNs),
     firstVisibleMs: firstVisibleNs === null ? null : nsToMs(firstVisibleNs - startedNs),
+    readyPatternMs: readyPatternNs === null ? null : nsToMs(readyPatternNs - startedNs),
     settledMs: settledNs === null ? null : nsToMs(settledNs - startedNs),
     timedOut
   };
@@ -199,7 +235,8 @@ async function main(): Promise<number> {
       args.cols,
       args.rows,
       args.settleMs,
-      args.timeoutMs
+      args.timeoutMs,
+      args.readyPattern
     );
     runs.push(metrics);
   }
@@ -211,7 +248,7 @@ async function main(): Promise<number> {
 
   for (const run of runs) {
     process.stdout.write(
-      `run ${String(run.run).padStart(2, ' ')}: first-output=${run.firstOutputMs === null ? 'n/a' : formatMs(run.firstOutputMs)} first-visible=${run.firstVisibleMs === null ? 'n/a' : formatMs(run.firstVisibleMs)} settled=${run.settledMs === null ? 'n/a' : formatMs(run.settledMs)} timeout=${run.timedOut}\n`
+      `run ${String(run.run).padStart(2, ' ')}: first-output=${run.firstOutputMs === null ? 'n/a' : formatMs(run.firstOutputMs)} first-visible=${run.firstVisibleMs === null ? 'n/a' : formatMs(run.firstVisibleMs)} ready-pattern=${run.readyPatternMs === null ? 'n/a' : formatMs(run.readyPatternMs)} settled=${run.settledMs === null ? 'n/a' : formatMs(run.settledMs)} timeout=${run.timedOut}\n`
     );
   }
 
@@ -219,6 +256,9 @@ async function main(): Promise<number> {
     run.firstVisibleMs === null ? [] : [run.firstVisibleMs]
   );
   const settledValues = runs.flatMap((run) => (run.settledMs === null ? [] : [run.settledMs]));
+  const readyPatternValues = runs.flatMap((run) =>
+    run.readyPatternMs === null ? [] : [run.readyPatternMs]
+  );
   if (firstVisibleValues.length > 0) {
     process.stdout.write(
       `first-visible p50=${formatMs(percentile(firstVisibleValues, 0.5))} p95=${formatMs(percentile(firstVisibleValues, 0.95))} min=${formatMs(Math.min(...firstVisibleValues))} max=${formatMs(Math.max(...firstVisibleValues))}\n`
@@ -227,6 +267,11 @@ async function main(): Promise<number> {
   if (settledValues.length > 0) {
     process.stdout.write(
       `settled      p50=${formatMs(percentile(settledValues, 0.5))} p95=${formatMs(percentile(settledValues, 0.95))} min=${formatMs(Math.min(...settledValues))} max=${formatMs(Math.max(...settledValues))}\n`
+    );
+  }
+  if (readyPatternValues.length > 0) {
+    process.stdout.write(
+      `ready-pattern p50=${formatMs(percentile(readyPatternValues, 0.5))} p95=${formatMs(percentile(readyPatternValues, 0.95))} min=${formatMs(Math.min(...readyPatternValues))} max=${formatMs(Math.max(...readyPatternValues))}\n`
     );
   }
   return 0;

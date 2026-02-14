@@ -994,6 +994,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
   - `scripts/terminal-recording-gif-lib.ts` + `scripts/terminal-recording-to-gif.ts` provide offline recording-to-GIF export, enabling visual regression artifacts from mux render captures.
   - `scripts/perf-mux-startup-report.ts` provides a deterministic startup timeline report over captured `perf-core` JSONL traces.
   - `scripts/perf-codex-startup-loop.ts` provides repeatable startup-loop measurement (first output, first visible paint, settled) using the same PTY/VTE model path.
+  - startup-loop tooling supports optional readiness-pattern timing for provider-specific UI readiness (for example Codex tip banner visibility).
   - runtime debug/perf behavior is config-governed in `harness.config.jsonc` under `debug.*`, with overwrite-on-start artifact control for deterministic runs.
   - `src/mux/dual-pane-core.ts` is the typed mux core for layout, SGR mouse parsing/routing, and row-diff rendering.
   - `src/mux/conversation-rail.ts` provides deterministic conversation ordering and rail rendering primitives for multi-session mux navigation.

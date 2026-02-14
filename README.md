@@ -34,6 +34,7 @@ This recording shows three separate Codex sessions running in parallel, with liv
 - Expose stream subscriptions with scoped replay for automation clients monitoring live session state/output.
 - Record terminal frames and export deterministic GIF artifacts.
 - Measure startup repeatably with loop tooling (`perf:codex:startup:loop`) and mux startup traces (`perf:mux:startup`).
+- Codex startup loop supports readiness pattern timing (`--ready-pattern "Tip: ..."`) in addition to first output/paint.
 
 ## Technical Strategy
 
