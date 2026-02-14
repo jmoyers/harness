@@ -833,6 +833,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
 - Transactional append-only SQLite `events` persistence in `src/store/event-store.ts` (tenant/user scoped reads).
 - Milestone 2 live-steered checkpoint is implemented:
   - `src/codex/live-session.ts` hosts a PTY-backed live Codex session with attach/detach, steering writes/resizes, and event emission.
+  - Live session now includes terminal query reply support for `OSC 10/11` color probes to improve visual parity with direct terminal runs.
   - `src/terminal/snapshot-oracle.ts` provides deterministic pseudo-snapshots (`rows`, `cols`, `activeScreen`, `cursor`, `lines`, `frameHash`) from live PTY output, including DEC scroll-region/origin handling required for pinned-footer UIs.
   - Supported terminal semantics now include `DECSTBM` (`CSI t;b r`), `DECOM` (`CSI ? 6 h/l`), `IND`/`NEL`/`RI`, and region-scoped `IL`/`DL` behavior.
   - `src/terminal/parity-suite.ts` defines codex/vim/core parity scenes and a deterministic matrix runner with scene-level failures and frame-hash output.

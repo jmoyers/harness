@@ -6,8 +6,10 @@ import test from 'node:test';
 import {
   buildTomlStringArray,
   classifyNotifyRecord,
+  normalizeTerminalColorHex,
   parseNotifyRecordLine,
   startCodexLiveSession,
+  terminalHexToOscColor,
   type NotifyPayload
 } from '../src/codex/live-session.ts';
 import type { BrokerAttachmentHandlers } from '../src/pty/session-broker.ts';
@@ -71,6 +73,14 @@ void test('buildTomlStringArray escapes quotes and backslashes', () => {
     'c\\d'
   ]);
   assert.equal(value, '["/usr/bin/env","node","a\\"b","c\\\\d"]');
+});
+
+void test('terminal color normalization and OSC formatting are deterministic', () => {
+  assert.equal(normalizeTerminalColorHex(undefined, '112233'), '112233');
+  assert.equal(normalizeTerminalColorHex('#A1b2C3', '112233'), 'a1b2c3');
+  assert.equal(normalizeTerminalColorHex(' bad ', '112233'), '112233');
+  assert.equal(terminalHexToOscColor('010203'), 'rgb:0101/0202/0303');
+  assert.equal(terminalHexToOscColor('nope'), 'rgb:d0d0/d7d7/dede');
 });
 
 void test('parseNotifyRecordLine validates json structure', () => {
@@ -255,6 +265,51 @@ void test('codex live session emits terminal and notify-derived events', () => {
   assert.equal(broker.closeCount, 1);
   assert.equal(broker.detachCount, 2);
   assert.equal(clearHandles.length, 1);
+});
+
+void test('codex live session replies to OSC terminal color queries', () => {
+  const broker = new FakeBroker();
+  const session = startCodexLiveSession(
+    {
+      useNotifyHook: false,
+      env: {
+        ...process.env,
+        HARNESS_TERM_FG: '#010203',
+        HARNESS_TERM_BG: '#040506'
+      },
+      terminalForegroundHex: '#a0b1c2',
+      terminalBackgroundHex: '0d0e0f'
+    },
+    {
+      startBroker: () => broker,
+      readFile: () => '',
+      setIntervalFn: () => {
+        throw new Error('notify polling should be disabled');
+      },
+      clearIntervalFn: () => {
+        // no-op
+      }
+    }
+  );
+
+  broker.emitData(1, Buffer.from('x', 'utf8'));
+  broker.emitData(2, Buffer.from('\u001b[', 'utf8'));
+  broker.emitData(3, Buffer.from('\u001b]10;?\u0007', 'utf8'));
+  broker.emitData(4, Buffer.from('\u001b]11;?', 'utf8'));
+  broker.emitData(5, Buffer.from('\u001b', 'utf8'));
+  broker.emitData(6, Buffer.from('\\', 'utf8'));
+  broker.emitData(7, Buffer.from('\u001b]12;?\u0007', 'utf8'));
+  broker.emitData(8, Buffer.from('\u001b]10;?\u001bX\u0007', 'utf8'));
+
+  assert.deepEqual(
+    broker.writes.map((entry) => String(entry)),
+    [
+      '\u001b]10;rgb:a0a0/b1b1/c2c2\u0007',
+      '\u001b]11;rgb:0d0d/0e0e/0f0f\u001b\\'
+    ]
+  );
+
+  session.close();
 });
 
 void test('codex live session handles disabled notify hook and poll edge cases', () => {

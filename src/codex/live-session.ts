@@ -45,6 +45,8 @@ interface StartCodexLiveSessionOptions {
   maxBacklogBytes?: number;
   initialCols?: number;
   initialRows?: number;
+  terminalForegroundHex?: string;
+  terminalBackgroundHex?: string;
 }
 
 type CodexLiveEvent =
@@ -82,6 +84,128 @@ const DEFAULT_COMMAND = 'codex';
 const DEFAULT_BASE_ARGS = ['--no-alt-screen'];
 const DEFAULT_NOTIFY_POLL_MS = 100;
 const DEFAULT_RELAY_SCRIPT_PATH = join(process.cwd(), 'scripts/codex-notify-relay.ts');
+const DEFAULT_TERMINAL_FOREGROUND_HEX = 'd0d7de';
+const DEFAULT_TERMINAL_BACKGROUND_HEX = '0f1419';
+
+interface TerminalPalette {
+  foregroundOsc: string;
+  backgroundOsc: string;
+}
+
+export function normalizeTerminalColorHex(value: string | undefined, fallbackHex: string): string {
+  if (typeof value !== 'string') {
+    return fallbackHex;
+  }
+
+  const normalized = value.trim().replace(/^#/, '');
+  if (/^[0-9a-fA-F]{6}$/.test(normalized)) {
+    return normalized.toLowerCase();
+  }
+  return fallbackHex;
+}
+
+export function terminalHexToOscColor(hexColor: string): string {
+  const normalized = normalizeTerminalColorHex(hexColor, DEFAULT_TERMINAL_FOREGROUND_HEX);
+  const red = normalized.slice(0, 2);
+  const green = normalized.slice(2, 4);
+  const blue = normalized.slice(4, 6);
+  return `rgb:${red}${red}/${green}${green}/${blue}${blue}`;
+}
+
+function buildTerminalPalette(options: StartCodexLiveSessionOptions): TerminalPalette {
+  const fallbackForeground = normalizeTerminalColorHex(
+    options.env?.HARNESS_TERM_FG,
+    DEFAULT_TERMINAL_FOREGROUND_HEX
+  );
+  const fallbackBackground = normalizeTerminalColorHex(
+    options.env?.HARNESS_TERM_BG,
+    DEFAULT_TERMINAL_BACKGROUND_HEX
+  );
+  const foreground = normalizeTerminalColorHex(options.terminalForegroundHex, fallbackForeground);
+  const background = normalizeTerminalColorHex(options.terminalBackgroundHex, fallbackBackground);
+  return {
+    foregroundOsc: terminalHexToOscColor(foreground),
+    backgroundOsc: terminalHexToOscColor(background)
+  };
+}
+
+type OscParserMode = 'normal' | 'esc' | 'osc' | 'osc-esc';
+
+class OscQueryResponder {
+  private mode: OscParserMode = 'normal';
+  private oscPayload = '';
+  private readonly palette: TerminalPalette;
+  private readonly writeReply: (reply: string) => void;
+
+  constructor(palette: TerminalPalette, writeReply: (reply: string) => void) {
+    this.palette = palette;
+    this.writeReply = writeReply;
+  }
+
+  ingest(chunk: Uint8Array): void {
+    const text = Buffer.from(chunk).toString('utf8');
+    for (const char of text) {
+      this.processChar(char);
+    }
+  }
+
+  private processChar(char: string): void {
+    if (this.mode === 'normal') {
+      if (char === '\u001b') {
+        this.mode = 'esc';
+      }
+      return;
+    }
+
+    if (this.mode === 'esc') {
+      if (char === ']') {
+        this.mode = 'osc';
+        this.oscPayload = '';
+      } else {
+        this.mode = 'normal';
+      }
+      return;
+    }
+
+    if (this.mode === 'osc') {
+      if (char === '\u0007') {
+        this.respondToOscQuery(this.oscPayload, true);
+        this.mode = 'normal';
+        return;
+      }
+      if (char === '\u001b') {
+        this.mode = 'osc-esc';
+        return;
+      }
+      this.oscPayload += char;
+      return;
+    }
+
+    if (char === '\\') {
+      this.respondToOscQuery(this.oscPayload, false);
+      this.mode = 'normal';
+      return;
+    }
+
+    this.oscPayload += '\u001b';
+    this.oscPayload += char;
+    this.mode = 'osc';
+  }
+
+  private respondToOscQuery(payload: string, useBellTerminator: boolean): void {
+    const trimmedPayload = payload.trim();
+    const terminator = useBellTerminator ? '\u0007' : '\u001b\\';
+
+    if (trimmedPayload === '10;?') {
+      this.writeReply(`\u001b]10;${this.palette.foregroundOsc}${terminator}`);
+      return;
+    }
+
+    if (trimmedPayload === '11;?') {
+      this.writeReply(`\u001b]11;${this.palette.backgroundOsc}${terminator}`);
+    }
+  }
+}
 
 export function buildTomlStringArray(values: string[]): string {
   const escaped = values.map((value) => {
@@ -148,6 +272,7 @@ class CodexLiveSession {
   private readonly notifyFilePath: string;
   private readonly listeners = new Set<(event: CodexLiveEvent) => void>();
   private readonly snapshotOracle: TerminalSnapshotOracle;
+  private readonly oscQueryResponder: OscQueryResponder;
   private readonly brokerAttachmentId: string;
   private readonly notifyTimer: NodeJS.Timeout | null;
   private notifyOffset = 0;
@@ -196,9 +321,13 @@ class CodexLiveSession {
     }
 
     this.broker = startBroker(startOptions, options.maxBacklogBytes);
+    this.oscQueryResponder = new OscQueryResponder(buildTerminalPalette(options), (reply) => {
+      this.broker.write(reply);
+    });
 
     this.brokerAttachmentId = this.broker.attach({
       onData: (event: BrokerDataEvent) => {
+        this.oscQueryResponder.ingest(event.chunk);
         this.snapshotOracle.ingest(event.chunk);
         this.emit({
           type: 'terminal-output',

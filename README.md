@@ -1,35 +1,44 @@
 # harness
 
-Terminal-first multi-agent harness focused on low-latency human control, with agent/API parity over the same control plane.
+A terminal-first control plane for many live coding agents.
 
-## Core Documents
-- `design.md`: living architecture and principles.
-- `agents.md`: living execution and quality laws.
+The goal is simple: keep the speed and feel of a real terminal, but add the operator-grade controls that current agent UIs are missing.
 
-## Current Verified Baseline
-- PTY passthrough with vim-grade parity checks.
+## Why This Exists
+- Most agent desktop apps degrade quickly with 5-6 active branches/conversations.
+- Human steering gets slow when context switching, checking diffs, and handling attention prompts.
+- We want one system where human-led and agent-led control use the exact same machinery.
+
+## What This Project Is
+- A first-party PTY + terminal stack optimized for low-latency interaction.
+- A Codex-first harness that can be steered live by a human and observed programmatically.
+- A foundation for multi-project, multi-conversation operation with strict tenant/user boundaries.
+
+## Verified Progress
+- Rust PTY sidecar + typed TypeScript host integration.
 - Single-session attach/detach/reconnect broker.
-- Latency benchmark gate with p50/p95/p99 overhead checks.
-- Codex live-session checkpoint: PTY-hosted `codex` with notify-hook event ingestion and persisted normalized stream output.
-- Stream isolation checkpoint: PTY bytes stay in the terminal stream; events are out-of-band in SQLite/event views.
-- Deterministic pseudo-snapshot oracle for integration/e2e (`rows`, `cols`, `activeScreen`, `cursor`, `lines`, `frameHash`).
-- Scroll-region/origin-mode terminal correctness for pinned-footer UIs (`DECSTBM`, `DECOM`, `IND`/`NEL`/`RI`, `IL`/`DL`).
-- Programmatic parity matrix runner for codex/vim/core scenes (`npm run terminal:parity`).
+- PTY passthrough verified with `vim` interaction tests.
+- Codex live session hosted through PTY with notify-hook ingestion.
+- Stream isolation: PTY bytes never mixed with structured event output.
+- Deterministic terminal snapshot oracle (`rows`, `cols`, `activeScreen`, `cursor`, `lines`, `frameHash`).
+- Scroll-region/origin correctness for pinned UI areas (`DECSTBM`, `DECOM`, `IND`/`NEL`/`RI`, `IL`/`DL`).
+- OSC terminal color query replies (`OSC 10/11`) for better Codex visual parity.
+- Parity scene matrix for codex/vim/core profiles (`npm run terminal:parity`).
+- Strict verification gate: lint + typecheck + deadcode + 100% unit/integration/e2e coverage.
 
-## Priority Direction
-- Primary: self-hosted live-steered Codex PTY session.
-- Secondary: programmatic steering parity over the same stream API.
-- Enrichment: notify event channels layered on top, never replacing live session authority.
-
-## Commands
+## Try It
 - `npm run verify`
 - `npm run vim:passthrough`
 - `npm run benchmark:latency`
 - `npm run codex:live -- <codex-args>`
-- `npm run codex:live:mux -- <codex-args>` (first-party split: live session + event feed)
+- `npm run codex:live:mux -- <codex-args>`
 - `npm run codex:live:tail -- --conversation-id <id> [--from-now] [--only-notify] [--include-text-deltas]`
 - `npm run codex:live:snapshot -- --conversation-id <id> [--follow] [--from-now] [--json]`
 - `npm run terminal:parity [-- --json]`
+
+## Core Docs
+- `design.md`: architecture, principles, milestones, and verified system behavior.
+- `agents.md`: execution laws and quality rules for humans and agents working in this repo.
 
 ## License
 - `UNLICENSE`
