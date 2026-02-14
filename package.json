@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build:ptyd": "mkdir -p bin && cc -std=c11 -O2 -Wall -Wextra -pedantic src/pty/ptyd.c -o bin/ptyd",
+    "build:ptyd": "export PATH=\"$HOME/.cargo/bin:$PATH\" && cargo build --manifest-path native/ptyd/Cargo.toml --release && mkdir -p bin && cp native/ptyd/target/release/ptyd bin/ptyd",
     "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\" --max-warnings 0",
     "typecheck": "tsc --noEmit",
     "pretest": "npm run build:ptyd",
