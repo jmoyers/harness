@@ -5151,7 +5151,9 @@ async function main(): Promise<number> {
         mainPaneScrollRows += wheelDelta;
         continue;
       }
-      forwardToSession.push(Buffer.from(token.event.sequence, 'utf8'));
+      // The mux owns mouse interactions. Forwarding raw SGR mouse sequences to shell-style
+      // threads produces visible control garbage (for example on initial click-to-focus).
+      continue;
     }
 
     if (mainPaneScrollRows !== 0 && inputConversation !== null) {

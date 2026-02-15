@@ -116,3 +116,11 @@ void test('codex-live-mux rail rendering consumes per-project git summary map an
   assert.equal(source.includes('let gitSummary:'), false);
   assert.equal(source.includes('const refreshGitSummary = async'), false);
 });
+
+void test('codex-live-mux does not forward raw mouse SGR sequences into sessions', () => {
+  const scriptPath = resolve(process.cwd(), 'scripts/codex-live-mux.ts');
+  const source = readFileSync(scriptPath, 'utf8');
+
+  assert.equal(source.includes("forwardToSession.push(Buffer.from(token.event.sequence, 'utf8'));"), false);
+  assert.equal(source.includes('The mux owns mouse interactions.'), true);
+});
