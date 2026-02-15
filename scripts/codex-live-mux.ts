@@ -49,6 +49,7 @@ import {
 } from '../src/mux/conversation-rail.ts';
 import { findAnsiIntegrityIssues } from '../src/mux/ansi-integrity.ts';
 import { ControlPlaneOpQueue } from '../src/mux/control-plane-op-queue.ts';
+import { detectConversationDoubleClick } from '../src/mux/double-click.ts';
 import {
   renderWorkspaceRailAnsiRows
 } from '../src/mux/workspace-rail.ts';
@@ -229,6 +230,7 @@ const DEFAULT_BACKGROUND_START_MAX_WAIT_MS = 5000;
 const DEFAULT_BACKGROUND_RESUME_PERSISTED = false;
 const DEFAULT_BACKGROUND_PROBES_ENABLED = false;
 const DEFAULT_CONVERSATION_TITLE_EDIT_DEBOUNCE_MS = 250;
+const CONVERSATION_TITLE_EDIT_DOUBLE_CLICK_WINDOW_MS = 350;
 const STARTUP_TERMINAL_MIN_COLS = 40;
 const STARTUP_TERMINAL_MIN_ROWS = 10;
 const STARTUP_TERMINAL_PROBE_TIMEOUT_MS = 250;
@@ -2270,6 +2272,7 @@ async function main(): Promise<number> {
   let selectionPinnedFollowOutput: boolean | null = null;
   let addDirectoryPrompt: { value: string; error: string | null } | null = null;
   let conversationTitleEdit: ConversationTitleEditState | null = null;
+  let conversationTitleEditClickState: { conversationId: string; atMs: number } | null = null;
   let paneDividerDragActive = false;
   let ansiValidationReported = false;
   let resizeTimer: NodeJS.Timeout | null = null;
@@ -4106,10 +4109,12 @@ async function main(): Promise<number> {
         const selectedProjectId = projectIdAtWorkspaceRailRow(latestRailViewRows, rowIndex);
         const selectedAction = actionAtWorkspaceRailRow(latestRailViewRows, rowIndex);
         const selectedRowKind = kindAtWorkspaceRailRow(latestRailViewRows, rowIndex);
+        const supportsConversationTitleEditClick =
+          selectedRowKind === 'conversation-title' || selectedRowKind === 'conversation-meta';
         const keepTitleEditActive =
           conversationTitleEdit !== null &&
           selectedConversationId === conversationTitleEdit.conversationId &&
-          selectedRowKind === 'conversation-title';
+          supportsConversationTitleEditClick;
         if (!keepTitleEditActive && conversationTitleEdit !== null) {
           stopConversationTitleEdit(true);
         }
@@ -4119,6 +4124,7 @@ async function main(): Promise<number> {
           releaseViewportPinForSelection();
         }
         if (selectedAction === 'conversation.new') {
+          conversationTitleEditClickState = null;
           const targetDirectoryId = selectedProjectId ?? resolveDirectoryForAction();
           if (targetDirectoryId !== null) {
             queueControlPlaneOp(async () => {
@@ -4129,6 +4135,7 @@ async function main(): Promise<number> {
           continue;
         }
         if (selectedAction === 'conversation.delete') {
+          conversationTitleEditClickState = null;
           if (activeConversationId !== null) {
             const targetConversationId = activeConversationId;
             queueControlPlaneOp(async () => {
@@ -4139,6 +4146,7 @@ async function main(): Promise<number> {
           continue;
         }
         if (selectedAction === 'project.add') {
+          conversationTitleEditClickState = null;
           addDirectoryPrompt = {
             value: '',
             error: null
@@ -4147,6 +4155,7 @@ async function main(): Promise<number> {
           continue;
         }
         if (selectedAction === 'project.close') {
+          conversationTitleEditClickState = null;
           const targetDirectoryId = selectedProjectId ?? resolveDirectoryForAction();
           if (targetDirectoryId !== null) {
             queueControlPlaneOp(async () => {
@@ -4157,10 +4166,24 @@ async function main(): Promise<number> {
           continue;
         }
         if (selectedAction === 'shortcuts.toggle') {
+          conversationTitleEditClickState = null;
           shortcutsCollapsed = !shortcutsCollapsed;
           markDirty();
           continue;
         }
+        const clickNowMs = Date.now();
+        const conversationClick = selectedConversationId !== null && supportsConversationTitleEditClick
+          ? detectConversationDoubleClick(
+              conversationTitleEditClickState,
+              selectedConversationId,
+              clickNowMs,
+              CONVERSATION_TITLE_EDIT_DOUBLE_CLICK_WINDOW_MS
+            )
+          : {
+              doubleClick: false,
+              nextState: null
+            };
+        conversationTitleEditClickState = conversationClick.nextState;
         if (selectedConversationId !== null && selectedConversationId === activeConversationId) {
           if (mainPaneMode !== 'conversation') {
             mainPaneMode = 'conversation';
@@ -4169,13 +4192,21 @@ async function main(): Promise<number> {
             forceFullClear = true;
             previousRows = [];
           }
-          if (selectedRowKind === 'conversation-title') {
+          if (conversationClick.doubleClick) {
             beginConversationTitleEdit(selectedConversationId);
           }
           markDirty();
           continue;
         }
         if (selectedConversationId !== null) {
+          if (conversationClick.doubleClick) {
+            queueControlPlaneOp(async () => {
+              await activateConversation(selectedConversationId);
+              beginConversationTitleEdit(selectedConversationId);
+            }, 'mouse-activate-edit-conversation');
+            markDirty();
+            continue;
+          }
           queueControlPlaneOp(async () => {
             await activateConversation(selectedConversationId);
           }, 'mouse-activate-conversation');
@@ -4187,10 +4218,12 @@ async function main(): Promise<number> {
           selectedProjectId !== null &&
           directories.has(selectedProjectId)
         ) {
+          conversationTitleEditClickState = null;
           enterProjectPane(selectedProjectId);
           markDirty();
           continue;
         }
+        conversationTitleEditClickState = null;
         markDirty();
         continue;
       }
