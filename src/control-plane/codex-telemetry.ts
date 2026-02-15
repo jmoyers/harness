@@ -29,6 +29,10 @@ interface OtlpAttribute {
   value: unknown;
 }
 
+function normalizeLookupKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/gu, '');
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return null;
@@ -160,6 +164,153 @@ function asSummaryText(value: unknown): string | null {
   return null;
 }
 
+function readFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
+function compactSummaryText(value: string | null, maxLength = 72): string | null {
+  if (value === null) {
+    return null;
+  }
+  const normalized = value.replace(/\s+/gu, ' ').trim();
+  return normalized.length <= maxLength
+    ? normalized
+    : `${normalized.slice(0, Math.max(0, maxLength - 1))}…`;
+}
+
+function findNestedFieldByKey(
+  value: unknown,
+  targetKeys: ReadonlySet<string>,
+  depth = 0,
+  maxDepth = 4,
+  budget: { remaining: number } = { remaining: 160 }
+): unknown {
+  if (budget.remaining <= 0 || depth > maxDepth) {
+    return undefined;
+  }
+  budget.remaining -= 1;
+  if (typeof value !== 'object' || value === null) {
+    return undefined;
+  }
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const nested = findNestedFieldByKey(entry, targetKeys, depth + 1, maxDepth, budget);
+      if (nested !== undefined) {
+        return nested;
+      }
+    }
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  for (const [key, entry] of Object.entries(record)) {
+    if (targetKeys.has(normalizeLookupKey(key))) {
+      return entry;
+    }
+  }
+  for (const entry of Object.values(record)) {
+    const nested = findNestedFieldByKey(entry, targetKeys, depth + 1, maxDepth, budget);
+    if (nested !== undefined) {
+      return nested;
+    }
+  }
+  return undefined;
+}
+
+function pickFieldValue(
+  attributes: Record<string, unknown>,
+  body: unknown,
+  keys: readonly string[]
+): unknown {
+  const normalizedKeys = new Set(keys.map((key) => normalizeLookupKey(key)));
+  for (const [key, value] of Object.entries(attributes)) {
+    if (normalizedKeys.has(normalizeLookupKey(key))) {
+      return value;
+    }
+  }
+  return findNestedFieldByKey(body, normalizedKeys);
+}
+
+function pickFieldText(
+  attributes: Record<string, unknown>,
+  body: unknown,
+  keys: readonly string[]
+): string | null {
+  return asSummaryText(pickFieldValue(attributes, body, keys));
+}
+
+function pickFieldNumber(
+  attributes: Record<string, unknown>,
+  body: unknown,
+  keys: readonly string[]
+): number | null {
+  return readFiniteNumber(pickFieldValue(attributes, body, keys));
+}
+
+function includesAnySubstring(input: string, candidates: readonly string[]): boolean {
+  for (const candidate of candidates) {
+    if (input.includes(candidate)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+const NEEDS_INPUT_HINT_TOKENS = [
+  'needs-input',
+  'needs_input',
+  'attention-required',
+  'attention_required',
+  'input-required',
+  'approval-required',
+  'approval_required',
+  'denied',
+  'reject',
+  'abort',
+  'error',
+  'failed'
+] as const;
+
+const COMPLETED_HINT_TOKENS = [
+  'response.completed',
+  'turn-complete',
+  'turn completed',
+  'complete'
+] as const;
+
+const RUNNING_HINT_TOKENS = [
+  'running',
+  'in-progress',
+  'in progress',
+  'started',
+  'stream'
+] as const;
+
+function statusFromOutcomeText(value: string | null): CodexStatusHint | null {
+  const normalized = value?.toLowerCase().trim() ?? '';
+  if (normalized.length === 0) {
+    return null;
+  }
+  if (includesAnySubstring(normalized, NEEDS_INPUT_HINT_TOKENS)) {
+    return 'needs-input';
+  }
+  if (includesAnySubstring(normalized, COMPLETED_HINT_TOKENS)) {
+    return 'completed';
+  }
+  if (includesAnySubstring(normalized, RUNNING_HINT_TOKENS)) {
+    return 'running';
+  }
+  return null;
+}
+
 function pickEventName(
   explicit: unknown,
   attributes: Record<string, unknown>,
@@ -260,21 +411,41 @@ export function extractCodexThreadId(payload: unknown): string | null {
 function statusHintFromText(input: string): CodexStatusHint | null {
   const normalized = input.toLowerCase();
   if (
-    normalized.includes('response.completed') ||
-    normalized.includes('turn-complete') ||
-    normalized.includes('turn completed')
+    includesAnySubstring(normalized, [
+      'response.completed',
+      'turn-complete',
+      'turn completed',
+      'turn.e2e_duration_ms',
+      'conversation.turn.count'
+    ])
   ) {
     return 'completed';
   }
-  if (normalized.includes('attention-required') || normalized.includes('needs-input')) {
+  if (
+    includesAnySubstring(normalized, [
+      'attention-required',
+      'needs-input',
+      'approval-required',
+      'denied',
+      'abort',
+      'failed'
+    ])
+  ) {
     return 'needs-input';
   }
   if (
-    normalized.includes('codex.user_prompt') ||
-    normalized.includes('user_prompt') ||
-    normalized.includes('conversation_starts') ||
-    normalized.includes('api_request') ||
-    normalized.includes('response.created')
+    includesAnySubstring(normalized, [
+      'codex.user_prompt',
+      'user_prompt',
+      'conversation_starts',
+      'api_request',
+      'response.created',
+      'codex.sse_event',
+      'codex.tool_decision',
+      'codex.tool_result',
+      'codex.websocket_request',
+      'codex.websocket_event'
+    ])
   ) {
     return 'running';
   }
@@ -283,9 +454,67 @@ function statusHintFromText(input: string): CodexStatusHint | null {
 
 function deriveStatusHint(
   eventName: string | null,
+  severity: string | null,
   summary: string | null,
   payload: Record<string, unknown>
 ): CodexStatusHint | null {
+  const runningEventNames = new Set([
+    'codex.user_prompt',
+    'codex.conversation_starts',
+    'codex.api_request',
+    'codex.sse_event',
+    'codex.tool_decision',
+    'codex.tool_result',
+    'codex.websocket_request',
+    'codex.websocket_event'
+  ]);
+  const normalizedEventName = eventName?.toLowerCase().trim() ?? '';
+  const payloadAttributes = asRecord(payload['attributes']) ?? {};
+  const payloadBody = payload['body'];
+  const outcomeHint = statusFromOutcomeText(
+    pickFieldText(payloadAttributes, payloadBody, [
+      'status',
+      'result',
+      'outcome',
+      'decision',
+      'kind',
+      'event.kind',
+      'event_type',
+      'event.type',
+      'type'
+    ])
+  );
+  if (outcomeHint !== null) {
+    return outcomeHint;
+  }
+
+  if (runningEventNames.has(normalizedEventName)) {
+    if (
+      normalizedEventName === 'codex.api_request' ||
+      normalizedEventName === 'codex.tool_result' ||
+      normalizedEventName === 'codex.tool_decision'
+    ) {
+      const statusField = pickFieldText(payloadAttributes, payloadBody, [
+        'status',
+        'result',
+        'outcome',
+        'decision'
+      ]);
+      const statusHint = statusFromOutcomeText(statusField);
+      if (statusHint !== null) {
+        return statusHint;
+      }
+    }
+    return 'running';
+  }
+
+  if (
+    normalizedEventName === 'codex.turn.e2e_duration_ms' ||
+    normalizedEventName === 'codex.conversation.turn.count'
+  ) {
+    return 'completed';
+  }
+
   if (eventName !== null) {
     const fromEvent = statusHintFromText(eventName);
     if (fromEvent !== null) {
@@ -298,6 +527,10 @@ function deriveStatusHint(
       return fromSummary;
     }
   }
+  const severityHint = statusFromOutcomeText(severity);
+  if (severityHint !== null) {
+    return severityHint;
+  }
   const compactPayload = JSON.stringify(payload).toLowerCase();
   return statusHintFromText(compactPayload);
 }
@@ -307,9 +540,97 @@ function buildLogSummary(
   body: unknown,
   attributes: Record<string, unknown>
 ): string | null {
+  const normalizedEventName = eventName?.toLowerCase().trim() ?? '';
   const bodyText = asSummaryText(body);
-  const eventText = eventName ?? null;
-  const statusText = asSummaryText(attributes['status']) ?? asSummaryText(attributes['result']);
+  const eventText = eventName?.trim() ?? null;
+  const statusText =
+    pickFieldText(attributes, body, ['status', 'result', 'outcome', 'decision']) ??
+    asSummaryText(attributes['status']) ??
+    asSummaryText(attributes['result']);
+  const kindText = pickFieldText(attributes, body, ['kind', 'event.kind', 'event_type', 'event.type', 'type']);
+  const toolText = pickFieldText(attributes, body, ['tool.name', 'tool_name', 'toolName', 'tool', 'name']);
+  const modelText = pickFieldText(attributes, body, ['model', 'model_name', 'modelName']);
+  const durationMs = pickFieldNumber(attributes, body, ['duration_ms', 'durationMs', 'latency_ms', 'elapsed_ms']);
+
+  if (normalizedEventName === 'codex.user_prompt') {
+    const promptText = compactSummaryText(bodyText);
+    return promptText === null ? 'prompt submitted' : `prompt: ${promptText}`;
+  }
+  if (normalizedEventName === 'codex.conversation_starts') {
+    const model = compactSummaryText(modelText);
+    return model === null ? 'conversation started' : `conversation started (${model})`;
+  }
+  if (normalizedEventName === 'codex.api_request') {
+    const outcome = compactSummaryText(statusText);
+    if (outcome !== null && durationMs !== null) {
+      return `model request ${outcome} (${durationMs.toFixed(0)}ms)`;
+    }
+    if (outcome !== null) {
+      return `model request ${outcome}`;
+    }
+    if (durationMs !== null) {
+      return `model request (${durationMs.toFixed(0)}ms)`;
+    }
+    return 'model request';
+  }
+  if (normalizedEventName === 'codex.sse_event') {
+    const kind = compactSummaryText(kindText ?? bodyText);
+    return kind === null ? 'stream event' : `stream ${kind}`;
+  }
+  if (normalizedEventName === 'codex.tool_decision') {
+    const decision = compactSummaryText(statusText);
+    const tool = compactSummaryText(toolText);
+    if (decision !== null && tool !== null) {
+      return `approval ${decision} (${tool})`;
+    }
+    if (decision !== null) {
+      return `approval ${decision}`;
+    }
+    if (tool !== null) {
+      return `approval (${tool})`;
+    }
+    return 'approval decision';
+  }
+  if (normalizedEventName === 'codex.tool_result') {
+    const tool = compactSummaryText(toolText);
+    const outcome = compactSummaryText(statusText);
+    if (tool !== null && outcome !== null && durationMs !== null) {
+      return `tool ${tool} ${outcome} (${durationMs.toFixed(0)}ms)`;
+    }
+    if (tool !== null && outcome !== null) {
+      return `tool ${tool} ${outcome}`;
+    }
+    if (tool !== null && durationMs !== null) {
+      return `tool ${tool} (${durationMs.toFixed(0)}ms)`;
+    }
+    if (tool !== null) {
+      return `tool ${tool}`;
+    }
+    if (outcome !== null) {
+      return `tool result ${outcome}`;
+    }
+    return 'tool result';
+  }
+  if (normalizedEventName === 'codex.websocket_request') {
+    if (durationMs !== null) {
+      return `realtime request (${durationMs.toFixed(0)}ms)`;
+    }
+    return 'realtime request';
+  }
+  if (normalizedEventName === 'codex.websocket_event') {
+    const kind = compactSummaryText(kindText ?? bodyText);
+    const outcome = compactSummaryText(statusText);
+    if (kind !== null && outcome !== null) {
+      return `realtime ${kind} (${outcome})`;
+    }
+    if (kind !== null) {
+      return `realtime ${kind}`;
+    }
+    if (outcome !== null) {
+      return `realtime event (${outcome})`;
+    }
+    return 'realtime event';
+  }
   if (eventText !== null && statusText !== null) {
     return `${eventText} (${statusText})`;
   }
@@ -369,7 +690,7 @@ export function parseOtlpLogEvents(payload: unknown, observedAtFallback: string)
           severity,
           summary,
           providerThreadId: extractCodexThreadId(payloadRecord),
-          statusHint: deriveStatusHint(eventName, summary, payloadRecord),
+          statusHint: deriveStatusHint(eventName, severity, summary, payloadRecord),
           payload: payloadRecord
         });
       }
@@ -379,7 +700,7 @@ export function parseOtlpLogEvents(payload: unknown, observedAtFallback: string)
   return events;
 }
 
-function metricDatapointCount(metric: Record<string, unknown>): number {
+function metricDataPoints(metric: Record<string, unknown>): readonly Record<string, unknown>[] {
   const candidates = [
     asRecord(metric['sum'])?.['dataPoints'],
     asRecord(metric['gauge'])?.['dataPoints'],
@@ -388,11 +709,27 @@ function metricDatapointCount(metric: Record<string, unknown>): number {
     asRecord(metric['summary'])?.['dataPoints']
   ];
   for (const candidate of candidates) {
-    if (Array.isArray(candidate)) {
-      return candidate.length;
+    if (!Array.isArray(candidate)) {
+      continue;
     }
+    return candidate.flatMap((entry) => {
+      const record = asRecord(entry);
+      return record === null ? [] : [record];
+    });
   }
-  return 0;
+  return [];
+}
+
+function readMetricPointValue(point: Record<string, unknown>): number | null {
+  const direct = readFiniteNumber(point['asDouble']) ?? readFiniteNumber(point['asInt']);
+  if (direct !== null) {
+    return direct;
+  }
+  const sum = readFiniteNumber(point['sum']);
+  if (sum !== null) {
+    return sum;
+  }
+  return null;
 }
 
 export function parseOtlpMetricEvents(
@@ -422,15 +759,24 @@ export function parseOtlpMetricEvents(
           continue;
         }
         const metricName = readStringTrimmed(metric['name']);
-        const pointCount = metricDatapointCount(metric);
+        const points = metricDataPoints(metric);
+        const pointCount = points.length;
+        const firstPointValue = points.length > 0 ? readMetricPointValue(points[0]!) : null;
         const payloadRecord: Record<string, unknown> = {
           resource: resourceAttributes,
           metric
         };
-        const summary =
-          metricName === null
-            ? `metric points=${String(pointCount)}`
-            : `${metricName} points=${String(pointCount)}`;
+        let summary: string;
+        if (metricName === 'codex.turn.e2e_duration_ms' && firstPointValue !== null) {
+          summary = `turn complete (${firstPointValue.toFixed(0)}ms)`;
+        } else if (metricName === 'codex.conversation.turn.count' && firstPointValue !== null) {
+          summary = `turn count ${String(Math.max(0, Math.round(firstPointValue)))}`;
+        } else {
+          summary =
+            metricName === null
+              ? `metric points=${String(pointCount)}`
+              : `${metricName} points=${String(pointCount)}`;
+        }
         events.push({
           source: 'otlp-metric',
           observedAt: observedAtFallback,
@@ -438,7 +784,7 @@ export function parseOtlpMetricEvents(
           severity: null,
           summary,
           providerThreadId: extractCodexThreadId(payloadRecord),
-          statusHint: deriveStatusHint(metricName, summary, payloadRecord),
+          statusHint: deriveStatusHint(metricName, null, summary, payloadRecord),
           payload: payloadRecord
         });
       }
@@ -476,6 +822,18 @@ export function parseOtlpTraceEvents(
         const attributes = parseOtlpAttributes(span['attributes']);
         const spanName = readStringTrimmed(span['name']);
         const observedAt = normalizeNanoTimestamp(span['endTimeUnixNano'], observedAtFallback);
+        const kind = pickFieldText(attributes, span, ['kind', 'event.kind', 'event_type', 'event.type', 'type']);
+        const status = pickFieldText(attributes, span, ['status', 'result', 'outcome']);
+        const summary =
+          spanName === null
+            ? compactSummaryText(kind) ?? compactSummaryText(status) ?? 'span'
+            : (compactSummaryText(
+                kind === null
+                  ? status === null
+                    ? spanName
+                    : `${spanName} (${status})`
+                  : `${spanName}: ${kind}`
+              ) as string);
         const payloadRecord: Record<string, unknown> = {
           resource: resourceAttributes,
           attributes,
@@ -486,9 +844,9 @@ export function parseOtlpTraceEvents(
           observedAt,
           eventName: spanName,
           severity: null,
-          summary: spanName,
+          summary,
           providerThreadId: extractCodexThreadId(payloadRecord),
-          statusHint: deriveStatusHint(spanName, spanName, payloadRecord),
+          statusHint: deriveStatusHint(spanName, null, summary, payloadRecord),
           payload: payloadRecord
         });
       }
@@ -593,7 +951,7 @@ export function parseCodexHistoryLine(
     severity: null,
     summary,
     providerThreadId: extractCodexThreadId(record),
-    statusHint: deriveStatusHint(eventName, summary, record),
+    statusHint: deriveStatusHint(eventName, null, summary, record),
     payload: record
   };
 }

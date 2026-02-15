@@ -1050,6 +1050,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - terminal-output persistence is buffered and flushed in batches (`mux.events.flush`) so per-chunk SQLite writes do not execute directly in the PTY output hot path
     - active-session attach now resumes from the last observed PTY cursor and inactive-session event subscriptions are removed on detach, preventing full-history replay and non-selected event churn
     - key-event subscription wiring (`session-status` + `session-key-event`) that drives thread bubble status and second-line "last known work" text from provider/telemetry signals rather than local keystroke heuristics
+    - Codex OTEL normalization now maps provider-native event families (`codex.user_prompt`, `codex.api_request`, `codex.sse_event`, `codex.tool_*`, `codex.websocket_*`) plus turn-latency metrics (`codex.turn.e2e_duration_ms`) into deterministic `running/completed/needs-input` hints and concise operator-facing work summaries.
     - takeover-aware interaction so humans can explicitly claim/take over sessions currently controlled by automation
     - first-party styled rail rendering built from low-level terminal UI primitives rather than framework-driven VDOM
     - per-conversation thread-id correlation keeps status routing correct when multiple sessions run concurrently

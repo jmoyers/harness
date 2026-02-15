@@ -705,6 +705,7 @@ void test('workspace rail model prefers last-known-work text over cpu or attenti
           cpuPercent: 11.1,
           memoryMb: 99,
           lastKnownWork: 'codex.sse_event: response.completed',
+          lastKnownWorkAt: '2026-01-01T00:00:01.000Z',
           status: 'running',
           attentionReason: 'approval',
           startedAt: '2026-01-01T00:00:00.000Z',
@@ -934,4 +935,269 @@ void test('workspace rail model shows controller ownership hints for non-local c
   );
   assert.notEqual(undefinedLabelBodyRow, undefined);
   assert.equal(undefinedLabelBodyRow?.text.includes('controlled by agent:agent-raw'), true);
+});
+
+void test('workspace rail model derives complete status icon from telemetry text when runtime status lags', () => {
+  const rows = buildWorkspaceRailViewRows(
+    {
+      directories: [
+        {
+          key: 'dir',
+          workspaceId: 'harness',
+          worktreeId: 'none',
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0
+          }
+        }
+      ],
+      conversations: [
+        {
+          sessionId: 'conversation-lagging-complete',
+          directoryKey: 'dir',
+          title: 'task',
+          agentLabel: 'codex',
+          cpuPercent: null,
+          memoryMb: null,
+          lastKnownWork: 'stream response.completed',
+          lastKnownWorkAt: '2026-01-01T00:00:03.000Z',
+          status: 'running',
+          attentionReason: null,
+          startedAt: '2026-01-01T00:00:00.000Z',
+          lastEventAt: '2026-01-01T00:00:03.000Z'
+        }
+      ],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: 'conversation-lagging-complete',
+      nowMs: Date.parse('2026-01-01T00:00:05.000Z')
+    },
+    16
+  );
+
+  const titleRow = rows.find(
+    (row) => row.kind === 'conversation-title' && row.conversationSessionId === 'conversation-lagging-complete'
+  );
+  assert.notEqual(titleRow, undefined);
+  assert.equal(titleRow?.text.includes('◇ codex - task'), true);
+});
+
+void test('workspace rail model does not keep stale complete telemetry once newer running activity exists', () => {
+  const rows = buildWorkspaceRailViewRows(
+    {
+      directories: [
+        {
+          key: 'dir',
+          workspaceId: 'harness',
+          worktreeId: 'none',
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0
+          }
+        }
+      ],
+      conversations: [
+        {
+          sessionId: 'conversation-stale-complete',
+          directoryKey: 'dir',
+          title: 'task',
+          agentLabel: 'codex',
+          cpuPercent: 0.3,
+          memoryMb: 20,
+          lastKnownWork: 'turn complete (812ms)',
+          lastKnownWorkAt: '2026-01-01T00:00:03.000Z',
+          status: 'running',
+          attentionReason: null,
+          startedAt: '2026-01-01T00:00:00.000Z',
+          lastEventAt: '2026-01-01T00:00:08.000Z'
+        }
+      ],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: 'conversation-stale-complete',
+      nowMs: Date.parse('2026-01-01T00:00:09.000Z')
+    },
+    16
+  );
+
+  const titleRow = rows.find(
+    (row) => row.kind === 'conversation-title' && row.conversationSessionId === 'conversation-stale-complete'
+  );
+  const bodyRow = rows.find(
+    (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-stale-complete'
+  );
+  assert.notEqual(titleRow, undefined);
+  assert.notEqual(bodyRow, undefined);
+  assert.equal(titleRow?.text.includes('◇ codex - task'), false);
+  assert.equal(titleRow?.text.includes('◆ codex - task'), true);
+  assert.equal(bodyRow?.text.includes('turn complete'), false);
+  assert.equal(bodyRow?.text.includes('working · 0.3% · 20MB'), true);
+});
+
+void test('workspace rail model includes normalized status in fallback detail text when telemetry is missing', () => {
+  const rows = buildWorkspaceRailViewRows(
+    {
+      directories: [
+        {
+          key: 'dir',
+          workspaceId: 'harness',
+          worktreeId: 'none',
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0
+          }
+        }
+      ],
+      conversations: [
+        {
+          sessionId: 'conversation-no-telemetry',
+          directoryKey: 'dir',
+          title: 'task',
+          agentLabel: 'codex',
+          cpuPercent: 1.2,
+          memoryMb: 33,
+          lastKnownWork: null,
+          status: 'running',
+          attentionReason: null,
+          startedAt: '2026-01-01T00:00:00.000Z',
+          lastEventAt: '2026-01-01T00:00:00.000Z'
+        }
+      ],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: 'conversation-no-telemetry',
+      nowMs: Date.parse('2026-01-01T00:00:30.000Z')
+    },
+    16
+  );
+  const bodyRow = rows.find(
+    (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-no-telemetry'
+  );
+  assert.notEqual(bodyRow, undefined);
+  assert.equal(bodyRow?.text.includes('idle · 1.2% · 33MB'), true);
+});
+
+void test('workspace rail model infers needs-action and working from last-known-work text', () => {
+  const rows = buildWorkspaceRailViewRows(
+    {
+      directories: [
+        {
+          key: 'dir',
+          workspaceId: 'harness',
+          worktreeId: 'none',
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0
+          }
+        }
+      ],
+      conversations: [
+        {
+          sessionId: 'conversation-needs-action',
+          directoryKey: 'dir',
+          title: 'approval',
+          agentLabel: 'codex',
+          cpuPercent: null,
+          memoryMb: null,
+          lastKnownWork: 'needs-input: approval denied',
+          lastKnownWorkAt: '2026-01-01T00:00:10.000Z',
+          status: 'running',
+          attentionReason: null,
+          startedAt: '2026-01-01T00:00:00.000Z',
+          lastEventAt: '2026-01-01T00:00:10.000Z'
+        },
+        {
+          sessionId: 'conversation-working',
+          directoryKey: 'dir',
+          title: 'streaming',
+          agentLabel: 'codex',
+          cpuPercent: null,
+          memoryMb: null,
+          lastKnownWork: 'tool request in progress',
+          lastKnownWorkAt: '2026-01-01T00:00:12.000Z',
+          status: 'running',
+          attentionReason: null,
+          startedAt: '2026-01-01T00:00:00.000Z',
+          lastEventAt: '2026-01-01T00:00:12.000Z'
+        }
+      ],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: null,
+      nowMs: Date.parse('2026-01-01T00:00:13.000Z')
+    },
+    20
+  );
+  const needsActionRow = rows.find(
+    (row) => row.kind === 'conversation-title' && row.conversationSessionId === 'conversation-needs-action'
+  );
+  const workingRow = rows.find(
+    (row) => row.kind === 'conversation-title' && row.conversationSessionId === 'conversation-working'
+  );
+  assert.notEqual(needsActionRow, undefined);
+  assert.notEqual(workingRow, undefined);
+  assert.equal(needsActionRow?.text.includes('▲ codex - approval'), true);
+  const workingGlyphRendered =
+    workingRow === undefined
+      ? false
+      : workingRow.text.includes('◆ codex - streaming') || workingRow.text.includes('◇ codex - streaming');
+  assert.equal(workingGlyphRendered, true);
+});
+
+void test('workspace rail model treats missing lastEventAt as current for last-known-work text', () => {
+  const rows = buildWorkspaceRailViewRows(
+    {
+      directories: [
+        {
+          key: 'dir',
+          workspaceId: 'harness',
+          worktreeId: 'none',
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0
+          }
+        }
+      ],
+      conversations: [
+        {
+          sessionId: 'conversation-no-last-event',
+          directoryKey: 'dir',
+          title: 'task',
+          agentLabel: 'codex',
+          cpuPercent: null,
+          memoryMb: null,
+          lastKnownWork: 'turn complete (1200ms)',
+          status: 'running',
+          attentionReason: null,
+          startedAt: '2026-01-01T00:00:00.000Z',
+          lastEventAt: null
+        }
+      ],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: 'conversation-no-last-event',
+      nowMs: Date.parse('2026-01-01T00:00:10.000Z')
+    },
+    16
+  );
+  const titleRow = rows.find(
+    (row) => row.kind === 'conversation-title' && row.conversationSessionId === 'conversation-no-last-event'
+  );
+  const bodyRow = rows.find(
+    (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-no-last-event'
+  );
+  assert.notEqual(titleRow, undefined);
+  assert.notEqual(bodyRow, undefined);
+  assert.equal(titleRow?.text.includes('◇ codex - task'), true);
+  assert.equal(bodyRow?.text.includes('turn complete (1200ms)'), true);
 });

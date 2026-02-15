@@ -1480,6 +1480,7 @@ function buildRailModel(
           cpuPercent: processUsageBySessionId.get(conversation.sessionId)?.cpuPercent ?? null,
           memoryMb: processUsageBySessionId.get(conversation.sessionId)?.memoryMb ?? null,
           lastKnownWork: conversation.lastKnownWork,
+          lastKnownWorkAt: conversation.lastKnownWorkAt,
           controller: conversation.controller
         };
       })

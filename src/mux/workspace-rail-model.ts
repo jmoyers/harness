@@ -24,6 +24,7 @@ interface WorkspaceRailConversationSummary {
   readonly cpuPercent: number | null;
   readonly memoryMb: number | null;
   readonly lastKnownWork: string | null;
+  readonly lastKnownWorkAt?: string | null;
   readonly status: ConversationRailSessionSummary['status'];
   readonly attentionReason: string | null;
   readonly startedAt: string;
@@ -89,6 +90,57 @@ type WorkspaceRailAction =
 
 type NormalizedConversationStatus = 'needs-action' | 'working' | 'idle' | 'complete' | 'exited';
 
+function parseIsoMs(value: string | null | undefined): number {
+  if (value === null || value === undefined) {
+    return Number.NaN;
+  }
+  return Date.parse(value);
+}
+
+function isLastKnownWorkCurrent(conversation: WorkspaceRailConversationSummary): boolean {
+  const lastKnownWorkAtMs = parseIsoMs(conversation.lastKnownWorkAt ?? null);
+  const lastEventAtMs = parseIsoMs(conversation.lastEventAt);
+  if (!Number.isFinite(lastEventAtMs)) {
+    return true;
+  }
+  if (!Number.isFinite(lastKnownWorkAtMs)) {
+    return false;
+  }
+  return lastKnownWorkAtMs + 200 >= lastEventAtMs;
+}
+
+function inferStatusFromLastKnownWork(lastKnownWork: string | null): NormalizedConversationStatus | null {
+  const normalized = summaryText(lastKnownWork)?.toLowerCase() ?? null;
+  if (normalized === null) {
+    return null;
+  }
+  if (
+    normalized.includes('needs-input') ||
+    normalized.includes('needs input') ||
+    normalized.includes('attention-required') ||
+    normalized.includes('approval denied')
+  ) {
+    return 'needs-action';
+  }
+  if (
+    normalized.includes('turn complete') ||
+    normalized.includes('response.completed') ||
+    normalized.includes('completed')
+  ) {
+    return 'complete';
+  }
+  if (
+    normalized.includes('prompt') ||
+    normalized.includes('request') ||
+    normalized.includes('stream') ||
+    normalized.includes('tool ') ||
+    normalized.includes('realtime')
+  ) {
+    return 'working';
+  }
+  return null;
+}
+
 function normalizeConversationStatus(
   conversation: WorkspaceRailConversationSummary,
   nowMs: number
@@ -102,9 +154,16 @@ function normalizeConversationStatus(
   if (conversation.status === 'exited') {
     return 'exited';
   }
-  const lastEventAtMs = conversation.lastEventAt === null ? Number.NaN : Date.parse(conversation.lastEventAt);
+  const inferred = inferStatusFromLastKnownWork(conversation.lastKnownWork);
+  if ((inferred === 'needs-action' || inferred === 'complete') && isLastKnownWorkCurrent(conversation)) {
+    return inferred;
+  }
+  const lastEventAtMs = parseIsoMs(conversation.lastEventAt);
   if (!Number.isFinite(lastEventAtMs) || nowMs - lastEventAtMs > 15_000) {
     return 'idle';
+  }
+  if (inferred === 'working' && isLastKnownWorkCurrent(conversation)) {
+    return 'working';
   }
   return 'working';
 }
@@ -151,6 +210,22 @@ function summaryText(value: string | null): string | null {
   return normalized.length === 0 ? null : normalized;
 }
 
+function statusLineLabel(status: NormalizedConversationStatus): string {
+  if (status === 'needs-action') {
+    return 'needs input';
+  }
+  if (status === 'working') {
+    return 'working';
+  }
+  if (status === 'complete') {
+    return 'complete';
+  }
+  if (status === 'exited') {
+    return 'exited';
+  }
+  return 'idle';
+}
+
 function controllerDisplayText(
   conversation: WorkspaceRailConversationSummary,
   localControllerId: string | null
@@ -171,21 +246,22 @@ function controllerDisplayText(
 
 function conversationDetailText(
   conversation: WorkspaceRailConversationSummary,
-  localControllerId: string | null
+  localControllerId: string | null,
+  normalizedStatus: NormalizedConversationStatus
 ): string {
   const controllerText = controllerDisplayText(conversation, localControllerId);
   if (controllerText !== null) {
     return controllerText;
   }
   const lastKnownWork = summaryText(conversation.lastKnownWork);
-  if (lastKnownWork !== null) {
+  if (lastKnownWork !== null && isLastKnownWorkCurrent(conversation)) {
     return lastKnownWork;
   }
   const attentionReason = summaryText(conversation.attentionReason);
   if (attentionReason !== null) {
     return attentionReason;
   }
-  return `${formatCpu(conversation.cpuPercent)} · ${formatMem(conversation.memoryMb)}`;
+  return `${statusLineLabel(normalizedStatus)} · ${formatCpu(conversation.cpuPercent)} · ${formatMem(conversation.memoryMb)}`;
 }
 
 function directoryDisplayName(directory: WorkspaceRailDirectorySummary): string {
@@ -281,7 +357,7 @@ function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly Wo
         pushRow(
           rows,
           'conversation-body',
-          `│    ${conversationDetailText(conversation, model.localControllerId ?? null)}`,
+          `│    ${conversationDetailText(conversation, model.localControllerId ?? null, normalizedStatus)}`,
           active,
           conversation.sessionId,
           directory.key,

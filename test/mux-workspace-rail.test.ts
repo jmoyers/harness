@@ -93,8 +93,7 @@ void test('workspace rail renders project-centric rows with icon-only thread sta
   assert.equal(plainRows.some((row) => row.includes('codex - untitled task 1')), true);
   assert.equal(plainRows.some((row) => row.includes('◆ codex - untitled task 1')), true);
   assert.equal(plainRows.some((row) => row.includes('◇ codex - untitled task 2')), true);
-  assert.equal(plainRows.some((row) => row.includes('0.2% · 12MB')), true);
-  assert.equal(plainRows.some((row) => row.includes(' working')), false);
+  assert.equal(plainRows.some((row) => row.includes('working · 0.2% · 12MB')), true);
   assert.equal(plainRows.some((row) => row.includes('⚙ npm run dev')), true);
   assert.equal(plainRows.some((row) => row.includes('running · 3.4% · 180MB')), true);
   assert.equal(rows.some((row) => row.includes('[+ thread]')), true);
@@ -126,6 +125,93 @@ void test('workspace rail renders project-centric rows with icon-only thread sta
   assert.equal(threadButtonRowPlain.trimEnd().endsWith('[+ thread]'), true);
   assert.equal(threadButtonRowPlain.indexOf('[+ thread]') > 60, true);
   assert.equal(rows.some((row) => row.includes('conversation-a')), false);
+});
+
+void test('workspace rail render transitions from complete telemetry to active working state with newer events', () => {
+  const completeRows = renderWorkspaceRailAnsiRows(
+    {
+      directories: [
+        {
+          key: 'dir',
+          workspaceId: '~/dev/harness',
+          worktreeId: 'worktree-local',
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0
+          }
+        }
+      ],
+      conversations: [
+        {
+          sessionId: 'conversation-a',
+          directoryKey: 'dir',
+          title: 'task',
+          agentLabel: 'codex',
+          cpuPercent: 0.4,
+          memoryMb: 16,
+          lastKnownWork: 'turn complete (812ms)',
+          lastKnownWorkAt: '2026-01-01T00:00:03.000Z',
+          status: 'running',
+          attentionReason: null,
+          startedAt: '2026-01-01T00:00:00.000Z',
+          lastEventAt: '2026-01-01T00:00:03.000Z'
+        }
+      ],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: 'conversation-a',
+      nowMs: Date.parse('2026-01-01T00:00:04.000Z')
+    },
+    80,
+    16
+  ).map((row) => stripAnsi(row));
+  assert.equal(completeRows.some((row) => row.includes('◇ codex - task')), true);
+  assert.equal(completeRows.some((row) => row.includes('turn complete (812ms)')), true);
+
+  const workingRows = renderWorkspaceRailAnsiRows(
+    {
+      directories: [
+        {
+          key: 'dir',
+          workspaceId: '~/dev/harness',
+          worktreeId: 'worktree-local',
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0
+          }
+        }
+      ],
+      conversations: [
+        {
+          sessionId: 'conversation-a',
+          directoryKey: 'dir',
+          title: 'task',
+          agentLabel: 'codex',
+          cpuPercent: 0.4,
+          memoryMb: 16,
+          lastKnownWork: 'turn complete (812ms)',
+          lastKnownWorkAt: '2026-01-01T00:00:03.000Z',
+          status: 'running',
+          attentionReason: null,
+          startedAt: '2026-01-01T00:00:00.000Z',
+          lastEventAt: '2026-01-01T00:00:08.000Z'
+        }
+      ],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: 'conversation-a',
+      nowMs: Date.parse('2026-01-01T00:00:09.000Z')
+    },
+    80,
+    16
+  ).map((row) => stripAnsi(row));
+  assert.equal(workingRows.some((row) => row.includes('◆ codex - task')), true);
+  assert.equal(workingRows.some((row) => row.includes('turn complete (812ms)')), false);
+  assert.equal(workingRows.some((row) => row.includes('working · 0.4% · 16MB')), true);
 });
 
 void test('workspace rail renders no-title conversations without dash separator', () => {
