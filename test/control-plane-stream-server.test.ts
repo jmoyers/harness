@@ -3334,6 +3334,7 @@ void test('stream server telemetry/history private guard branches are stable', a
 
   try {
     const internals = server as unknown as {
+      stateStore: SqliteControlPlaneStore;
       resolveSessionIdByThreadId: (threadId: string) => string | null;
       updateSessionThreadId: (
         state: {
@@ -3466,6 +3467,36 @@ void test('stream server telemetry/history private guard branches are stable', a
       summary: null,
       providerThreadId: 'thread-missing',
       statusHint: null,
+      payload: {}
+    });
+    internals.stateStore.upsertDirectory({
+      directoryId: 'directory-archived-thread',
+      tenantId: 'tenant-archived-thread',
+      userId: 'user-archived-thread',
+      workspaceId: 'workspace-archived-thread',
+      path: '/tmp/archived-thread'
+    });
+    internals.stateStore.createConversation({
+      conversationId: 'conversation-archived-thread',
+      directoryId: 'directory-archived-thread',
+      title: 'archived thread',
+      agentType: 'codex',
+      adapterState: {
+        codex: {
+          resumeSessionId: 'thread-archived'
+        }
+      }
+    });
+    internals.stateStore.archiveConversation('conversation-archived-thread');
+    assert.equal(internals.resolveSessionIdByThreadId('thread-archived'), null);
+    internals.ingestParsedTelemetryEvent('conversation-archived-thread', {
+      source: 'history',
+      observedAt: '2026-02-15T00:00:02.000Z',
+      eventName: 'history.entry',
+      severity: null,
+      summary: 'archived telemetry should not republish',
+      providerThreadId: 'thread-archived',
+      statusHint: 'running',
       payload: {}
     });
     assert.equal(internals.resolveSessionIdByThreadId('   '), null);

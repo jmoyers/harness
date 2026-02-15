@@ -700,6 +700,13 @@ function isSessionNotLiveError(error: unknown): boolean {
   return /session is not live/i.test(error.message);
 }
 
+function isConversationNotFoundError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return /conversation not found/i.test(error.message);
+}
+
 function mapTerminalOutputToNormalizedEvent(
   chunk: Buffer,
   scope: EventScope,
@@ -3943,10 +3950,27 @@ async function main(): Promise<number> {
       }
     }
 
-    await streamClient.sendCommand({
-      type: 'conversation.archive',
-      conversationId: sessionId
-    });
+    try {
+      await streamClient.sendCommand({
+        type: 'session.remove',
+        sessionId
+      });
+    } catch (error: unknown) {
+      if (!isSessionNotFoundError(error)) {
+        throw error;
+      }
+    }
+
+    try {
+      await streamClient.sendCommand({
+        type: 'conversation.archive',
+        conversationId: sessionId
+      });
+    } catch (error: unknown) {
+      if (!isConversationNotFoundError(error)) {
+        throw error;
+      }
+    }
     await unsubscribeConversationEvents(sessionId);
 
     removeConversationState(sessionId);

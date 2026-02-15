@@ -864,6 +864,7 @@ export class SqliteControlPlaneStore {
           SELECT conversation_id
           FROM conversations
           WHERE json_extract(adapter_state_json, '$.codex.resumeSessionId') = ?
+            AND archived_at IS NULL
           ORDER BY created_at DESC, conversation_id DESC
           LIMIT 1
         `
@@ -878,7 +879,7 @@ export class SqliteControlPlaneStore {
     }
 
     const rows = this.listConversations({
-      includeArchived: true,
+      includeArchived: false,
       limit: 10000
     });
     for (let idx = rows.length - 1; idx >= 0; idx -= 1) {

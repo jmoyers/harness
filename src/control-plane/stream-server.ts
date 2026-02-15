@@ -770,7 +770,7 @@ export class ControlPlaneStreamServer {
       return this.sessionScope(liveState);
     }
     const persisted = this.stateStore.getConversation(sessionId);
-    if (persisted === null) {
+    if (persisted === null || persisted.archivedAt !== null) {
       return null;
     }
     return {

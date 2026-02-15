@@ -402,6 +402,8 @@ void test('control-plane store persists telemetry, deduplicates fingerprints, an
       store.findConversationIdByCodexThreadId('thread-telemetry'),
       'conversation-telemetry'
     );
+    store.archiveConversation('conversation-telemetry');
+    assert.equal(store.findConversationIdByCodexThreadId('thread-telemetry'), null);
     assert.equal(store.findConversationIdByCodexThreadId('missing-thread'), null);
     assert.equal(store.findConversationIdByCodexThreadId('   '), null);
     assert.equal(store.latestTelemetrySummary('missing-conversation'), null);

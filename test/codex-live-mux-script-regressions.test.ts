@@ -60,6 +60,8 @@ void test('codex-live-mux enforces selection-gated close/archive shortcuts and i
   assert.equal(source.includes('projectPaneActionAtRow('), true);
   assert.equal(source.includes('PROJECT_PANE_CLOSE_PROJECT_BUTTON_LABEL'), true);
   assert.equal(source.includes('CONVERSATION_EDIT_ARCHIVE_BUTTON_LABEL'), true);
+  assert.equal(source.includes("type: 'session.remove'"), true);
+  assert.equal(source.includes('isConversationNotFoundError'), true);
 });
 
 void test('codex-live-mux creates threads through a type-selection modal and supports terminal threads', () => {
