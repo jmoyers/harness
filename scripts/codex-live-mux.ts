@@ -1044,7 +1044,7 @@ function createConversationState(
     turnId,
     scope: createConversationScope(baseScope, sessionId, turnId),
     oracle: new TerminalSnapshotOracle(cols, rows),
-    status: 'running',
+    status: 'completed',
     attentionReason: null,
     startedAt: new Date().toISOString(),
     lastEventAt: null,
@@ -1299,6 +1299,15 @@ function cursorStyleEqual(left: RenderCursorStyle | null, right: RenderCursorSty
     return false;
   }
   return left.shape === right.shape && left.blinking === right.blinking;
+}
+
+function inputContainsTurnSubmission(data: Uint8Array): boolean {
+  for (const byte of data) {
+    if (byte === 0x0a || byte === 0x0d) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function compareSelectionPoints(left: SelectionPoint, right: SelectionPoint): number {
@@ -4186,6 +4195,12 @@ async function main(): Promise<number> {
     }
 
     for (const forwardChunk of forwardToSession) {
+      if (inputContainsTurnSubmission(forwardChunk) && inputConversation.status !== 'exited') {
+        inputConversation.status = 'running';
+        inputConversation.attentionReason = null;
+        inputConversation.lastEventAt = new Date().toISOString();
+        markDirty();
+      }
       streamClient.sendInput(inputConversation.sessionId, forwardChunk);
     }
 

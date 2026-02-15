@@ -90,7 +90,7 @@ function normalizeConversationStatus(
     return 'exited';
   }
   const lastEventAtMs = conversation.lastEventAt === null ? Number.NaN : Date.parse(conversation.lastEventAt);
-  if (Number.isFinite(lastEventAtMs) && nowMs - lastEventAtMs > 15_000) {
+  if (!Number.isFinite(lastEventAtMs) || nowMs - lastEventAtMs > 15_000) {
     return 'idle';
   }
   return 'working';

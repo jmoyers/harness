@@ -512,7 +512,7 @@ void test('stream server supports session.list, session.status, and session.snap
     assert.equal(sessionEntries[0]?.['sessionId'], 'session-list');
     assert.equal(sessionEntries[0]?.['tenantId'], 'tenant-a');
     assert.equal(sessionEntries[0]?.['workspaceId'], 'workspace-a');
-    assert.equal(sessionEntries[0]?.['status'], 'running');
+    assert.equal(sessionEntries[0]?.['status'], 'completed');
     assert.equal(typeof sessionEntries[0]?.['processId'], 'number');
     assert.equal(sessionEntries[1]?.['sessionId'], 'session-list-2');
 
@@ -562,7 +562,7 @@ void test('stream server supports session.list, session.status, and session.snap
       sessionId: 'session-list'
     });
     assert.equal(status['sessionId'], 'session-list');
-    assert.equal(status['status'], 'running');
+    assert.equal(status['status'], 'completed');
     assert.equal(typeof status['processId'], 'number');
 
     const snapshot = await client.sendCommand({
@@ -1222,6 +1222,137 @@ void test('stream server exposes attention list and respond/interrupt wrappers',
     });
     assert.equal(interrupted['interrupted'], true);
     assert.equal(sessions[0]!.writes.some((chunk) => chunk.toString('utf8') === '\u0003'), true);
+  } finally {
+    client.close();
+    await server.close();
+  }
+});
+
+void test('stream server marks sessions running only after turn-submission input', async () => {
+  const sessions: FakeLiveSession[] = [];
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => {
+      const session = new FakeLiveSession(input);
+      sessions.push(session);
+      return session;
+    }
+  });
+  const address = server.address();
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port
+  });
+
+  try {
+    await client.sendCommand({
+      type: 'pty.start',
+      sessionId: 'session-typing',
+      args: [],
+      initialCols: 80,
+      initialRows: 24
+    });
+    assert.equal(sessions.length, 1);
+
+    const initial = await client.sendCommand({
+      type: 'session.status',
+      sessionId: 'session-typing'
+    });
+    assert.equal(initial['status'], 'completed');
+
+    client.sendInput('session-typing', Buffer.from('typed', 'utf8'));
+    await delay(10);
+    const afterTyping = await client.sendCommand({
+      type: 'session.status',
+      sessionId: 'session-typing'
+    });
+    assert.equal(afterTyping['status'], 'completed');
+
+    client.sendInput('session-typing', Buffer.from('\r', 'utf8'));
+    await delay(10);
+    const afterSubmit = await client.sendCommand({
+      type: 'session.status',
+      sessionId: 'session-typing'
+    });
+    assert.equal(afterSubmit['status'], 'running');
+  } finally {
+    client.close();
+    await server.close();
+  }
+});
+
+void test('stream server restores persisted needs-input status on restart', async () => {
+  const sessions: FakeLiveSession[] = [];
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => {
+      const session = new FakeLiveSession(input);
+      sessions.push(session);
+      return session;
+    }
+  });
+  const address = server.address();
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port
+  });
+
+  try {
+    await client.sendCommand({
+      type: 'directory.upsert',
+      directoryId: 'directory-restart',
+      path: '/tmp/harness-restart'
+    });
+    await client.sendCommand({
+      type: 'conversation.create',
+      conversationId: 'session-restart-needs-input',
+      directoryId: 'directory-restart',
+      title: 'needs-input restart',
+      agentType: 'codex',
+      adapterState: {}
+    });
+
+    await client.sendCommand({
+      type: 'pty.start',
+      sessionId: 'session-restart-needs-input',
+      args: [],
+      initialCols: 80,
+      initialRows: 24
+    });
+    sessions[sessions.length - 1]!.emitEvent({
+      type: 'attention-required',
+      reason: 'approval',
+      record: {
+        ts: new Date(0).toISOString(),
+        payload: {
+          type: 'approval-needed'
+        }
+      }
+    });
+    await delay(10);
+    const needsInputBeforeClose = await client.sendCommand({
+      type: 'session.status',
+      sessionId: 'session-restart-needs-input'
+    });
+    assert.equal(needsInputBeforeClose['status'], 'needs-input');
+    assert.equal(needsInputBeforeClose['attentionReason'], 'approval');
+
+    await client.sendCommand({
+      type: 'pty.close',
+      sessionId: 'session-restart-needs-input'
+    });
+    await client.sendCommand({
+      type: 'pty.start',
+      sessionId: 'session-restart-needs-input',
+      args: [],
+      initialCols: 80,
+      initialRows: 24
+    });
+
+    const needsInputAfterRestart = await client.sendCommand({
+      type: 'session.status',
+      sessionId: 'session-restart-needs-input'
+    });
+    assert.equal(needsInputAfterRestart['status'], 'needs-input');
+    assert.equal(needsInputAfterRestart['attentionReason'], 'approval');
   } finally {
     client.close();
     await server.close();

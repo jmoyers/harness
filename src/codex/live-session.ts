@@ -452,16 +452,22 @@ export function classifyNotifyRecord(record: NotifyRecord):
   if (typeof eventType !== 'string') {
     return null;
   }
+  const normalizedEventType = eventType.toLowerCase();
 
-  if (eventType === 'agent-turn-complete') {
+  if (
+    normalizedEventType === 'agent-turn-complete' ||
+    normalizedEventType.includes('turn-complete') ||
+    normalizedEventType.includes('turn.complete') ||
+    normalizedEventType.includes('turn_completed')
+  ) {
     return { type: 'turn-completed' };
   }
 
-  if (eventType.includes('approval')) {
+  if (normalizedEventType.includes('approval')) {
     return { type: 'attention-required', reason: 'approval' };
   }
 
-  if (eventType.includes('input')) {
+  if (normalizedEventType.includes('input')) {
     return { type: 'attention-required', reason: 'user-input' };
   }
 

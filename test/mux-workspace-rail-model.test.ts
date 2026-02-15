@@ -297,7 +297,7 @@ void test('workspace rail model supports newline-delimited shortcut hint rows', 
   assert.equal(rows.some((row) => row.text.includes('ctrl+c quit')), true);
 });
 
-void test('workspace rail model treats running sessions with missing last event as working', () => {
+void test('workspace rail model treats running sessions with missing last event as idle', () => {
   const rows = buildWorkspaceRailViewRows(
     {
       directories: [
@@ -335,7 +335,7 @@ void test('workspace rail model treats running sessions with missing last event 
     20
   );
 
-  assert.equal(rows.some((row) => row.text.includes('● working')), true);
+  assert.equal(rows.some((row) => row.text.includes('◍ idle')), true);
 });
 
 void test('workspace rail model supports collapsed shortcut descriptions with clickable toggle row', () => {

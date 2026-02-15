@@ -975,6 +975,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - optional shared-token auth is enforced before non-auth commands when configured.
     - per-connection output buffering is bounded; slow consumers are disconnected once buffered output exceeds configured limits.
     - session runtime status tracking is exposed through `session.status` (`running`, `needs-input`, `completed`, `exited`) with attention reason and last-exit details.
+    - `running` transitions now require turn-submission/control intent (for example newline-submit, `session.respond`, or explicit interrupt/eof control), avoiding false `working` state flips from raw pre-submit keystrokes.
     - session summaries now include PTY `processId` for per-session telemetry in operator clients.
     - exited sessions are tombstoned with TTL-based cleanup to avoid unbounded daemon memory growth while preserving short-lived post-exit status/snapshot queries.
     - control-plane wrappers now include `attention.list`, `session.respond`, `session.interrupt`, and `session.remove` to provide parity-safe steering and explicit tombstone cleanup.

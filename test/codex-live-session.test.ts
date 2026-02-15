@@ -111,6 +111,13 @@ void test('classifyNotifyRecord maps completion and attention', () => {
     }
   });
   assert.deepEqual(completion, { type: 'turn-completed' });
+  const completionVariant = classifyNotifyRecord({
+    ts: 't',
+    payload: {
+      type: 'agent.turn-completed'
+    }
+  });
+  assert.deepEqual(completionVariant, { type: 'turn-completed' });
 
   const approval = classifyNotifyRecord({
     ts: 't',

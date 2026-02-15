@@ -163,6 +163,15 @@ function compareIsoDesc(left: string | null, right: string | null): number {
   return right.localeCompare(left);
 }
 
+function inputContainsTurnSubmission(data: Uint8Array): boolean {
+  for (const byte of data) {
+    if (byte === 0x0a || byte === 0x0d) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function sessionPriority(status: StreamSessionRuntimeStatus): number {
   if (status === 'needs-input') {
     return 0;
@@ -836,7 +845,7 @@ export class ControlPlaneStreamServer {
     if (command.type === 'session.respond') {
       const state = this.requireLiveSession(command.sessionId);
       state.session.write(command.text);
-      this.setSessionStatus(state, 'running', null, null);
+      this.setSessionStatus(state, 'running', null, new Date().toISOString());
       return {
         responded: true,
         sentBytes: Buffer.byteLength(command.text)
@@ -846,7 +855,7 @@ export class ControlPlaneStreamServer {
     if (command.type === 'session.interrupt') {
       const state = this.requireLiveSession(command.sessionId);
       state.session.write('\u0003');
-      this.setSessionStatus(state, 'running', null, null);
+      this.setSessionStatus(state, 'running', null, new Date().toISOString());
       return {
         interrupted: true
       };
@@ -894,6 +903,15 @@ export class ControlPlaneStreamServer {
       });
 
       const persistedConversation = this.stateStore.getConversation(command.sessionId);
+      const persistedRuntimeStatus = persistedConversation?.runtimeStatus;
+      const initialStatus: StreamSessionRuntimeStatus =
+        persistedRuntimeStatus === undefined ||
+        persistedRuntimeStatus === 'running' ||
+        persistedRuntimeStatus === 'exited'
+          ? 'completed'
+          : persistedRuntimeStatus;
+      const initialAttentionReason =
+        initialStatus === 'needs-input' ? persistedConversation?.runtimeAttentionReason ?? null : null;
       this.sessions.set(command.sessionId, {
         id: command.sessionId,
         directoryId: persistedConversation?.directoryId ?? null,
@@ -907,10 +925,10 @@ export class ControlPlaneStreamServer {
         eventSubscriberConnectionIds: new Set<string>(),
         attachmentByConnectionId: new Map<string, string>(),
         unsubscribe,
-        status: 'running',
-        attentionReason: null,
-        lastEventAt: null,
-        lastExit: null,
+        status: initialStatus,
+        attentionReason: initialAttentionReason,
+        lastEventAt: persistedConversation?.runtimeLastEventAt ?? null,
+        lastExit: persistedConversation?.runtimeLastExit ?? null,
         lastSnapshot: null,
         startedAt: new Date().toISOString(),
         exitedAt: null,
@@ -1031,7 +1049,9 @@ export class ControlPlaneStreamServer {
       return;
     }
     state.session.write(data);
-    this.setSessionStatus(state, 'running', null, null);
+    if (inputContainsTurnSubmission(data)) {
+      this.setSessionStatus(state, 'running', null, new Date().toISOString());
+    }
   }
 
   private handleResize(sessionId: string, cols: number, rows: number): void {
@@ -1056,13 +1076,13 @@ export class ControlPlaneStreamServer {
 
     if (signal === 'interrupt') {
       state.session.write('\u0003');
-      this.setSessionStatus(state, 'running', null, null);
+      this.setSessionStatus(state, 'running', null, new Date().toISOString());
       return;
     }
 
     if (signal === 'eof') {
       state.session.write('\u0004');
-      this.setSessionStatus(state, 'running', null, null);
+      this.setSessionStatus(state, 'running', null, new Date().toISOString());
       return;
     }
 
