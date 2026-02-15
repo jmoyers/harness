@@ -86,6 +86,14 @@ void test('workspace rail model builds rows with conversation spacing and proces
   assert.equal(rows.some((row) => row.kind === 'dir-header' && row.text.startsWith('├─ 📁 charlie')), true);
   assert.equal(rows.some((row) => row.kind === 'muted' && row.text.includes('(no conversations)')), true);
   assert.equal(rows.some((row) => row.kind === 'muted' && row.text === '│'), true);
+  const secondDirectoryHeaderRowIndex = rows.findIndex(
+    (row) => row.kind === 'dir-header' && row.text.startsWith('├─ 📁 charlie')
+  );
+  assert.equal(secondDirectoryHeaderRowIndex > 1, true);
+  assert.equal(rows[secondDirectoryHeaderRowIndex - 1]?.kind, 'muted');
+  assert.equal(rows[secondDirectoryHeaderRowIndex - 1]?.text, '│');
+  assert.equal(rows[secondDirectoryHeaderRowIndex - 2]?.kind, 'muted');
+  assert.equal(rows[secondDirectoryHeaderRowIndex - 2]?.text, '│');
   assert.equal(rows.some((row) => row.kind === 'conversation-title' && row.conversationSessionId === 's1'), true);
   assert.equal(
     rows.some(

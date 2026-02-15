@@ -65,6 +65,8 @@ interface WorkspaceRailViewRow {
   readonly railAction: WorkspaceRailAction | null;
 }
 
+const INTER_DIRECTORY_SPACER_ROWS = 2;
+
 type WorkspaceRailAction =
   | 'conversation.new'
   | 'conversation.delete'
@@ -237,6 +239,12 @@ function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly Wo
           'process-meta',
           `│    ${processStatusText(process.status)} · ${formatCpu(process.cpuPercent)} · ${formatMem(process.memoryMb)}`
         );
+      }
+    }
+
+    if (directoryIndex + 1 < model.directories.length) {
+      for (let spacerIndex = 0; spacerIndex < INTER_DIRECTORY_SPACER_ROWS; spacerIndex += 1) {
+        pushRow(rows, 'muted', '│');
       }
     }
   }
