@@ -1070,10 +1070,12 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
   - runtime debug/perf behavior is config-governed in `harness.config.jsonc` under `debug.*`, with overwrite-on-start artifact control for deterministic runs.
   - `src/mux/dual-pane-core.ts` is the typed mux core for layout, SGR mouse parsing/routing, and row-diff rendering.
   - `src/mux/conversation-rail.ts` provides deterministic conversation ordering and rail rendering primitives for multi-session mux navigation.
+  - `src/mux/runtime-wiring.ts` is the extracted session-status/session-telemetry reducer for mux Layer-4 wiring (stream key events -> in-memory conversation state), so runtime composition is covered under the `src/**` 100% coverage gate.
   - `src/mux/workspace-rail-model.ts` separates left-rail data/view modeling from terminal rendering so future UI technologies can reuse the same model pipeline.
   - `src/mux/workspace-rail.ts` provides left-rail rendering for directory-scoped conversation stacks with inline git + process telemetry and compact unicode/emoji scanning cues.
   - `src/ui/surface.ts` + `src/ui/kit.ts` provide reusable immediate-mode terminal UI primitives (cell surface, rect/row painters, box strokes, modal overlays, ANSI row render) to compose panes, selectors, and prompt dialogs without virtual-DOM abstractions.
   - `test/mux-dual-pane-core.test.ts` deterministically verifies mux layout, mouse routing, viewport follow/pin transitions, and row-diff behavior.
+  - `test/mux-runtime-wiring.integration.test.ts` exercises the full path (OTLP ingest -> stream subscription -> mux wiring reducer -> rail rows) so icon/status-line regressions are caught outside isolated unit layers.
   - terminal parity now includes footer background persistence checks via `codex-footer-background-persistence`.
   - `scripts/terminal-parity.ts` exposes the parity matrix gate (`npm run terminal:parity`).
 

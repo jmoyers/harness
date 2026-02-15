@@ -80,6 +80,10 @@ import {
 } from '../src/mux/new-thread-prompt.ts';
 import { buildProjectTreeLines } from '../src/mux/project-tree.ts';
 import {
+  applyMuxControlPlaneKeyEvent,
+  applyTelemetrySummaryToConversation
+} from '../src/mux/runtime-wiring.ts';
+import {
   StartupSequencer
 } from '../src/mux/startup-sequencer.ts';
 import {
@@ -1328,52 +1332,6 @@ function createConversationState(
   };
 }
 
-function normalizeInlineSummaryText(value: string): string {
-  const compact = value.replace(/\s+/gu, ' ').trim();
-  if (compact.length <= 96) {
-    return compact;
-  }
-  return `${compact.slice(0, 95)}…`;
-}
-
-function telemetrySummaryText(summary: {
-  source: string;
-  eventName: string | null;
-  summary: string | null;
-}): string | null {
-  const eventName = summary.eventName?.trim() ?? '';
-  const description = summary.summary?.trim() ?? '';
-  const merged =
-    description.length > 0 && eventName.length > 0 && !description.includes(eventName)
-      ? `${eventName}: ${description}`
-      : description.length > 0
-        ? description
-        : eventName.length > 0
-          ? eventName
-          : summary.source;
-  const normalized = normalizeInlineSummaryText(merged);
-  return normalized.length === 0 ? null : normalized;
-}
-
-function applyTelemetrySummaryToConversation(
-  target: ConversationState,
-  telemetry:
-    | {
-        source: string;
-        eventName: string | null;
-        summary: string | null;
-        observedAt: string;
-      }
-    | null
-): void {
-  if (telemetry === null) {
-    return;
-  }
-  target.lastKnownWork = telemetrySummaryText(telemetry);
-  target.lastKnownWorkAt = telemetry.observedAt;
-  target.lastTelemetrySource = telemetry.source;
-}
-
 function applySummaryToConversation(
   target: ConversationState,
   summary: ReturnType<typeof parseSessionSummaryRecord>
@@ -2234,53 +2192,10 @@ async function main(): Promise<number> {
   };
 
   const applyControlPlaneKeyEvent = (event: ControlPlaneKeyEvent): void => {
-    if (removedConversationIds.has(event.sessionId)) {
-      return;
-    }
-    const conversation = ensureConversation(event.sessionId, {
-      directoryId: event.directoryId
+    applyMuxControlPlaneKeyEvent(event, {
+      removedConversationIds,
+      ensureConversation
     });
-    if (event.directoryId !== null) {
-      conversation.directoryId = event.directoryId;
-    }
-
-    if (event.type === 'session-status') {
-      conversation.status = event.status;
-      conversation.attentionReason = event.attentionReason;
-      conversation.live = event.live;
-      conversation.controller = event.controller;
-      conversation.lastEventAt = event.ts;
-      applyTelemetrySummaryToConversation(conversation, event.telemetry);
-      return;
-    }
-
-    if (event.type === 'session-control') {
-      conversation.controller = event.controller;
-      conversation.lastEventAt = event.ts;
-      return;
-    }
-
-    applyTelemetrySummaryToConversation(conversation, {
-      source: event.keyEvent.source,
-      eventName: event.keyEvent.eventName,
-      summary: event.keyEvent.summary,
-      observedAt: event.keyEvent.observedAt
-    });
-    conversation.lastEventAt = event.keyEvent.observedAt;
-    if (event.keyEvent.statusHint === 'needs-input') {
-      conversation.status = 'needs-input';
-      conversation.attentionReason = 'telemetry';
-      return;
-    }
-    if (event.keyEvent.statusHint === 'running' && conversation.status !== 'exited') {
-      conversation.status = 'running';
-      conversation.attentionReason = null;
-      return;
-    }
-    if (event.keyEvent.statusHint === 'completed' && conversation.status !== 'exited') {
-      conversation.status = 'completed';
-      conversation.attentionReason = null;
-    }
   };
 
   const hydrateDirectoryList = async (): Promise<void> => {
