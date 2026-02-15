@@ -256,6 +256,66 @@ void test('control-plane store restores archived directory and validates errors'
   }
 });
 
+void test('control-plane store upsertDirectory updates existing id paths and rejects scope mismatch', () => {
+  const store = new SqliteControlPlaneStore(':memory:');
+  try {
+    const created = store.upsertDirectory({
+      directoryId: 'dir-update',
+      tenantId: 'tenant-update',
+      userId: 'user-update',
+      workspaceId: 'workspace-update',
+      path: '/tmp/update-a'
+    });
+    assert.equal(created.path, '/tmp/update-a');
+    assert.equal(created.archivedAt, null);
+
+    const unchanged = store.upsertDirectory({
+      directoryId: 'dir-update',
+      tenantId: 'tenant-update',
+      userId: 'user-update',
+      workspaceId: 'workspace-update',
+      path: '/tmp/update-a'
+    });
+    assert.equal(unchanged.directoryId, 'dir-update');
+    assert.equal(unchanged.path, '/tmp/update-a');
+
+    const moved = store.upsertDirectory({
+      directoryId: 'dir-update',
+      tenantId: 'tenant-update',
+      userId: 'user-update',
+      workspaceId: 'workspace-update',
+      path: '/tmp/update-b'
+    });
+    assert.equal(moved.directoryId, 'dir-update');
+    assert.equal(moved.path, '/tmp/update-b');
+    assert.equal(moved.archivedAt, null);
+
+    store.archiveDirectory('dir-update');
+    const restoredSameId = store.upsertDirectory({
+      directoryId: 'dir-update',
+      tenantId: 'tenant-update',
+      userId: 'user-update',
+      workspaceId: 'workspace-update',
+      path: '/tmp/update-b'
+    });
+    assert.equal(restoredSameId.archivedAt, null);
+
+    assert.throws(
+      () =>
+        store.upsertDirectory({
+          directoryId: 'dir-update',
+          tenantId: 'tenant-other',
+          userId: 'user-update',
+          workspaceId: 'workspace-update',
+          path: '/tmp/update-c'
+        }),
+      /directory scope mismatch/
+    );
+  } finally {
+    store.close();
+  }
+});
+
 void test('control-plane store normalization helpers validate row shapes and fields', () => {
   assert.throws(() => normalizeStoredDirectoryRow(null), /expected object row/);
   assert.throws(
@@ -572,6 +632,36 @@ void test('control-plane store rollback guards cover impossible post-write null 
           path: '/tmp/rollback-directory'
         }),
       /directory insert failed/
+    );
+
+    store.getDirectory = originalGetDirectory;
+    store.upsertDirectory({
+      directoryId: 'dir-update-fail',
+      tenantId: 'tenant-live',
+      userId: 'user-live',
+      workspaceId: 'workspace-live',
+      path: '/tmp/update-fail-old'
+    });
+    let updateFailGetDirectoryCalls = 0;
+    store.getDirectory = ((directoryId: string) => {
+      if (directoryId === 'dir-update-fail') {
+        updateFailGetDirectoryCalls += 1;
+        if (updateFailGetDirectoryCalls >= 2) {
+          return null;
+        }
+      }
+      return originalGetDirectory(directoryId);
+    }) as typeof store.getDirectory;
+    assert.throws(
+      () =>
+        store.upsertDirectory({
+          directoryId: 'dir-update-fail',
+          tenantId: 'tenant-live',
+          userId: 'user-live',
+          workspaceId: 'workspace-live',
+          path: '/tmp/update-fail-new'
+        }),
+      /directory missing after update/
     );
 
     store.getDirectory = originalGetDirectory;

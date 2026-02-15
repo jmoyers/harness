@@ -217,6 +217,36 @@ export class SqliteControlPlaneStore {
   upsertDirectory(input: UpsertDirectoryInput): ControlPlaneDirectoryRecord {
     this.db.exec('BEGIN IMMEDIATE TRANSACTION');
     try {
+      const existingById = this.getDirectory(input.directoryId);
+      if (existingById !== null) {
+        if (
+          existingById.tenantId !== input.tenantId ||
+          existingById.userId !== input.userId ||
+          existingById.workspaceId !== input.workspaceId
+        ) {
+          throw new Error(`directory scope mismatch: ${input.directoryId}`);
+        }
+        if (existingById.path !== input.path || existingById.archivedAt !== null) {
+          this.db
+            .prepare(
+              `
+              UPDATE directories
+              SET path = ?, archived_at = NULL
+              WHERE directory_id = ?
+            `
+            )
+            .run(input.path, input.directoryId);
+          const updated = this.getDirectory(input.directoryId);
+          if (updated === null) {
+            throw new Error(`directory missing after update: ${input.directoryId}`);
+          }
+          this.db.exec('COMMIT');
+          return updated;
+        }
+        this.db.exec('COMMIT');
+        return existingById;
+      }
+
       const existing = this.findDirectoryByScopePath(
         input.tenantId,
         input.userId,
