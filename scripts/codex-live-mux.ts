@@ -71,6 +71,13 @@ import {
 import {
   resolveWorkspacePath
 } from '../src/mux/workspace-path.ts';
+import {
+  createNewThreadPromptState,
+  newThreadPromptBodyLines,
+  normalizeThreadAgentType,
+  reduceNewThreadPromptInput,
+  resolveNewThreadPromptAgentByRow
+} from '../src/mux/new-thread-prompt.ts';
 import { buildProjectTreeLines } from '../src/mux/project-tree.ts';
 import {
   StartupSequencer
@@ -107,6 +114,8 @@ import {
 const execFileAsync = promisify(execFile);
 
 type ResolvedMuxShortcutBindings = ReturnType<typeof resolveMuxShortcutBindings>;
+type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
+type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
 
 interface MuxOptions {
   codexArgs: string[];
@@ -287,12 +296,6 @@ interface ProjectPaneWrappedLine {
 }
 
 type ProjectPaneAction = 'conversation.new' | 'project.close';
-type ThreadAgentType = 'codex' | 'terminal';
-
-interface NewThreadPromptState {
-  readonly directoryId: string;
-  selectedAgentType: ThreadAgentType;
-}
 
 const PROJECT_PANE_NEW_CONVERSATION_BUTTON_LABEL = formatUiButton({
   label: 'new thread',
@@ -1294,14 +1297,6 @@ function createConversationState(
     lastTelemetrySource: null,
     controller: null
   };
-}
-
-function normalizeThreadAgentType(value: string): ThreadAgentType {
-  return value === 'terminal' ? 'terminal' : 'codex';
-}
-
-function nextThreadAgentType(value: ThreadAgentType): ThreadAgentType {
-  return value === 'codex' ? 'terminal' : 'codex';
 }
 
 function normalizeInlineSummaryText(value: string): string {
@@ -3518,16 +3513,6 @@ async function main(): Promise<number> {
     if (newThreadPrompt === null) {
       return null;
     }
-    const codexSelected = newThreadPrompt.selectedAgentType === 'codex';
-    const terminalSelected = newThreadPrompt.selectedAgentType === 'terminal';
-    const bodyLines = [
-      'choose thread type',
-      '',
-      `${codexSelected ? '●' : '○'} ${NEW_THREAD_MODAL_CODEX_BUTTON}`,
-      `${terminalSelected ? '●' : '○'} ${NEW_THREAD_MODAL_TERMINAL_BUTTON}`,
-      '',
-      'c/t toggle'
-    ];
     return buildUiModalOverlay({
       viewportCols: layout.cols,
       viewportRows,
@@ -3536,7 +3521,10 @@ async function main(): Promise<number> {
       anchor: 'center',
       marginRows: 1,
       title: 'New Thread',
-      bodyLines,
+      bodyLines: newThreadPromptBodyLines(newThreadPrompt, {
+        codexButtonLabel: NEW_THREAD_MODAL_CODEX_BUTTON,
+        terminalButtonLabel: NEW_THREAD_MODAL_TERMINAL_BUTTON
+      }),
       footer: 'enter create   esc cancel',
       theme: MUX_MODAL_THEME
     });
@@ -3794,10 +3782,7 @@ async function main(): Promise<number> {
       stopConversationTitleEdit(true);
     }
     conversationTitleEditClickState = null;
-    newThreadPrompt = {
-      directoryId,
-      selectedAgentType: 'codex'
-    };
+    newThreadPrompt = createNewThreadPromptState(directoryId);
     markDirty();
   };
 
@@ -4606,14 +4591,8 @@ async function main(): Promise<number> {
         if (overlay === null) {
           return false;
         }
-        const codexRow = overlay.top + 4;
-        const terminalRow = overlay.top + 5;
-        let selectedAgentType: ThreadAgentType | null = null;
-        if (row - 1 === codexRow) {
-          selectedAgentType = 'codex';
-        } else if (row - 1 === terminalRow) {
-          selectedAgentType = 'terminal';
-        } else {
+        const selectedAgentType = resolveNewThreadPromptAgentByRow(overlay.top, row);
+        if (selectedAgentType === null) {
           return false;
         }
         const targetDirectoryId = newThreadPrompt?.directoryId;
@@ -4630,37 +4609,16 @@ async function main(): Promise<number> {
       return true;
     }
 
-    let selectedAgentType = newThreadPrompt.selectedAgentType;
-    let changed = false;
-    let submit = false;
-    for (const byte of input) {
-      if (byte === 0x0d || byte === 0x0a) {
-        submit = true;
-        break;
-      }
-      if (byte === 0x09 || byte === 0x20) {
-        selectedAgentType = nextThreadAgentType(selectedAgentType);
-        changed = true;
-        continue;
-      }
-      if (byte === 0x31 || byte === 0x63 || byte === 0x43) {
-        selectedAgentType = 'codex';
-        changed = true;
-        continue;
-      }
-      if (byte === 0x32 || byte === 0x74 || byte === 0x54) {
-        selectedAgentType = 'terminal';
-        changed = true;
-        continue;
-      }
-    }
+    const reduction = reduceNewThreadPromptInput(newThreadPrompt, input);
+    const changed = reduction.nextState.selectedAgentType !== newThreadPrompt.selectedAgentType;
 
-    if (changed && newThreadPrompt !== null) {
-      newThreadPrompt.selectedAgentType = selectedAgentType;
+    if (changed) {
+      newThreadPrompt = reduction.nextState;
       markDirty();
     }
-    if (submit) {
+    if (reduction.submit) {
       const targetDirectoryId = newThreadPrompt?.directoryId;
+      const selectedAgentType = reduction.nextState.selectedAgentType;
       newThreadPrompt = null;
       if (targetDirectoryId !== undefined) {
         queueControlPlaneOp(async () => {

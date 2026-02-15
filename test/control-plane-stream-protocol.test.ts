@@ -734,6 +734,10 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
       sessionId: 's1'
     },
     {
+      kind: 'pty.signal',
+      signal: 'interrupt'
+    },
+    {
       kind: 'pty.resize',
       sessionId: 's1',
       cols: '100',
@@ -951,6 +955,46 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
     {
       kind: 'stream.event',
       subscriptionId: 'subscription-1',
+      cursor: 12.46,
+      event: {
+        type: 'session-key-event',
+        sessionId: 's1',
+        keyEvent: {
+          source: 'otlp-metric',
+          eventName: 'turn.e2e_duration_ms',
+          severity: 'INFO',
+          summary: 'turn in progress',
+          observedAt: new Date(0).toISOString(),
+          statusHint: 'running'
+        },
+        ts: new Date(0).toISOString(),
+        directoryId: null,
+        conversationId: null
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 12.47,
+      event: {
+        type: 'session-key-event',
+        sessionId: 's1',
+        keyEvent: {
+          source: 'otlp-trace',
+          eventName: 'codex.tool_decision',
+          severity: 'WARN',
+          summary: 'approval required',
+          observedAt: new Date(0).toISOString(),
+          statusHint: 'needs-input'
+        },
+        ts: new Date(0).toISOString(),
+        directoryId: null,
+        conversationId: null
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
       cursor: 13,
       event: {
         type: 'session-output',
@@ -1048,6 +1092,25 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
     {
       kind: 'stream.event',
       subscriptionId: 'subscription-1',
+      cursor: 17.25,
+      event: {
+        type: 'session-event',
+        sessionId: 's1',
+        event: {
+          type: 'session-exit',
+          exit: {
+            code: 0,
+            signal: null
+          }
+        },
+        ts: new Date(0).toISOString(),
+        directoryId: 'directory-1',
+        conversationId: 'conversation-1'
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
       cursor: 17.5,
       event: {
         type: 'session-control',
@@ -1091,6 +1154,27 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
         directoryId: null,
         conversationId: null
       }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 17.7,
+      event: {
+        type: 'session-control',
+        sessionId: 's1',
+        action: 'released',
+        controller: null,
+        previousController: {
+          controllerId: 'agent-1',
+          controllerType: 'agent',
+          controllerLabel: 'agent one',
+          claimedAt: new Date(0).toISOString()
+        },
+        reason: 'released by user',
+        ts: new Date(0).toISOString(),
+        directoryId: null,
+        conversationId: null
+      }
     }
   ];
 
@@ -1126,6 +1210,11 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
       sessionId: 's1',
       cursor: 'x',
       chunkBase64: 'abc'
+    },
+    {
+      kind: 'pty.exit',
+      sessionId: 's1',
+      exit: null
     },
     {
       kind: 'pty.exit',
@@ -1278,6 +1367,60 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
         attentionReason: null,
         live: true,
         ts: new Date(0).toISOString()
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'session-status',
+        sessionId: 's1',
+        status: 'running',
+        attentionReason: null,
+        live: 'yes',
+        ts: new Date(0).toISOString(),
+        directoryId: null,
+        conversationId: null,
+        telemetry: null
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'session-event',
+        sessionId: 's1',
+        event: {
+          type: 'session-exit',
+          exit: {
+            code: 0,
+            signal: null
+          }
+        },
+        ts: new Date(0).toISOString(),
+        directoryId: 7,
+        conversationId: null
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'session-event',
+        sessionId: 's1',
+        event: {
+          type: 'session-exit',
+          exit: {
+            code: 0,
+            signal: null
+          }
+        },
+        ts: new Date(0).toISOString(),
+        directoryId: null,
+        conversationId: 7
       }
     },
     {
@@ -1776,6 +1919,28 @@ void test('protocol parsers cover remaining guard branches', () => {
   const extraInvalidServer: unknown[] = [
     {
       kind: 5
+    },
+    {
+      kind: 'command.completed',
+      commandId: 9,
+      result: {}
+    },
+    {
+      kind: 'command.failed',
+      commandId: 9,
+      error: 'bad'
+    },
+    {
+      kind: 'pty.output',
+      cursor: 1,
+      chunkBase64: 'abc'
+    },
+    {
+      kind: 'pty.exit',
+      exit: {
+        code: 0,
+        signal: null
+      }
     },
     {
       kind: 'pty.event',

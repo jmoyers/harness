@@ -66,7 +66,8 @@ void test('codex-live-mux creates threads through a type-selection modal and sup
   const scriptPath = resolve(process.cwd(), 'scripts/codex-live-mux.ts');
   const source = readFileSync(scriptPath, 'utf8');
 
-  assert.equal(source.includes('type ThreadAgentType = \'codex\' | \'terminal\';'), true);
+  assert.equal(source.includes('type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;'), true);
+  assert.equal(source.includes('type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;'), true);
   assert.equal(source.includes('let newThreadPrompt: NewThreadPromptState | null = null;'), true);
   assert.equal(source.includes('const openNewThreadPrompt = (directoryId: string): void => {'), true);
   assert.equal(source.includes('const buildNewThreadModalOverlay = (viewportRows: number)'), true);
