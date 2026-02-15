@@ -32,6 +32,7 @@ This recording shows three separate Codex sessions running in parallel, with liv
 - Support keyboard and clickable left-rail actions for new conversation, archive conversation, add directory, and close directory.
 - Soft-delete conversations in the mux by archiving them; permanent delete remains a control-plane API command.
 - Add and close directories from the mux without leaving the TUI.
+- Render prompt workflows (directory add, title edit) as immediate-mode modal overlays built from first-party UI-kit primitives.
 - Drag the pane divider to resize rail/content width interactively.
 - Keep one protocol path for both human UI and API clients through the control-plane stream.
 - Prioritize interactive control actions over background warm-start work so switching and selection stay responsive under multi-session load.

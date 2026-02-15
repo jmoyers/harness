@@ -10,6 +10,9 @@ import {
   fillUiRow,
   renderUiSurfaceAnsiRows
 } from '../ui/surface.ts';
+import {
+  paintUiRow
+} from '../ui/kit.ts';
 
 export interface ConversationRailSessionSummary {
   readonly sessionId: string;
@@ -273,13 +276,12 @@ export function renderConversationRailAnsiRows(
   for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
     const row = rows[rowIndex]!;
     if (row.kind === 'header') {
-      fillUiRow(surface, rowIndex, HEADER_ROW_STYLE);
-      drawUiText(surface, 1, rowIndex, row.text, HEADER_ROW_STYLE);
+      paintUiRow(surface, rowIndex, row.text, HEADER_ROW_STYLE, HEADER_ROW_STYLE, 1);
       continue;
     }
 
     if (row.kind === 'empty') {
-      fillUiRow(surface, rowIndex, NORMAL_ROW_STYLE);
+      paintUiRow(surface, rowIndex, '', NORMAL_ROW_STYLE, NORMAL_ROW_STYLE);
       continue;
     }
 

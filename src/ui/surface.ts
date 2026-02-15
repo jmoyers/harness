@@ -1,11 +1,11 @@
 import { measureDisplayWidth } from '../terminal/snapshot-oracle.ts';
 
-type UiColor =
+export type UiColor =
   | { kind: 'default' }
   | { kind: 'indexed'; index: number }
   | { kind: 'rgb'; r: number; g: number; b: number };
 
-interface UiStyle {
+export interface UiStyle {
   readonly fg: UiColor;
   readonly bg: UiColor;
   readonly bold: boolean;
@@ -17,7 +17,7 @@ interface UiCell {
   style: UiStyle;
 }
 
-interface UiSurface {
+export interface UiSurface {
   readonly cols: number;
   readonly rows: number;
   readonly baseStyle: UiStyle;

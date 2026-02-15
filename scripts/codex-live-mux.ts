@@ -72,6 +72,9 @@ import {
   shutdownPerfCore,
   startPerfSpan
 } from '../src/perf/perf-core.ts';
+import {
+  buildUiModalOverlay
+} from '../src/ui/kit.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -1218,6 +1221,46 @@ function buildRenderRows(
   rows.push(status);
 
   return rows;
+}
+
+const MUX_MODAL_THEME = {
+  frameStyle: {
+    fg: { kind: 'indexed', index: 252 },
+    bg: { kind: 'indexed', index: 236 },
+    bold: true
+  },
+  titleStyle: {
+    fg: { kind: 'indexed', index: 231 },
+    bg: { kind: 'indexed', index: 236 },
+    bold: true
+  },
+  bodyStyle: {
+    fg: { kind: 'indexed', index: 253 },
+    bg: { kind: 'indexed', index: 236 },
+    bold: false
+  },
+  footerStyle: {
+    fg: { kind: 'indexed', index: 247 },
+    bg: { kind: 'indexed', index: 236 },
+    bold: false
+  }
+} as const;
+
+function applyModalOverlay(
+  rows: string[],
+  overlay: ReturnType<typeof buildUiModalOverlay>
+): void {
+  for (let rowOffset = 0; rowOffset < overlay.rows.length; rowOffset += 1) {
+    const targetRow = overlay.top + rowOffset;
+    if (targetRow < 0 || targetRow >= rows.length) {
+      continue;
+    }
+    const overlayRow = overlay.rows[rowOffset];
+    if (overlayRow === undefined) {
+      continue;
+    }
+    rows[targetRow] = `${rows[targetRow] ?? ''}\u001b[${String(overlay.left + 1)}G${overlayRow}`;
+  }
 }
 
 function renderCanonicalFrameAnsi(
@@ -3270,16 +3313,29 @@ async function main(): Promise<number> {
       rightFrame,
       perfStatusRow
     );
+    const modalMaxWidth = Math.max(16, layout.cols - 2);
     if (addDirectoryPrompt !== null) {
-      const promptPrefix = '[mux] add directory path: ';
       const promptValue = addDirectoryPrompt.value.length > 0 ? addDirectoryPrompt.value : '.';
-      const errorSuffix =
-        addDirectoryPrompt.error === null || addDirectoryPrompt.error.length === 0
-          ? ''
-          : ` (${addDirectoryPrompt.error})`;
-      rows[rows.length - 1] = padOrTrimDisplay(
-        `${promptPrefix}${promptValue}_  enter save  esc cancel${errorSuffix}`,
-        layout.cols
+      const addDirectoryBody = [`path: ${promptValue}_`];
+      if (addDirectoryPrompt.error !== null && addDirectoryPrompt.error.length > 0) {
+        addDirectoryBody.push(`error: ${addDirectoryPrompt.error}`);
+      } else {
+        addDirectoryBody.push('add a workspace directory for new conversations');
+      }
+      applyModalOverlay(
+        rows,
+        buildUiModalOverlay({
+          viewportCols: layout.cols,
+          viewportRows: rows.length,
+          width: Math.min(modalMaxWidth, 96),
+          height: 6,
+          anchor: 'bottom',
+          marginRows: 1,
+          title: 'Add Directory',
+          bodyLines: addDirectoryBody,
+          footer: 'enter save   esc cancel',
+          theme: MUX_MODAL_THEME
+        })
       );
     } else if (conversationTitleEdit !== null) {
       const editState =
@@ -3288,13 +3344,26 @@ async function main(): Promise<number> {
           : conversationTitleEdit.value === conversationTitleEdit.lastSavedValue
             ? 'saved'
             : 'pending';
-      const errorSuffix =
-        conversationTitleEdit.error === null || conversationTitleEdit.error.length === 0
-          ? ''
-          : ` (${conversationTitleEdit.error})`;
-      rows[rows.length - 1] = padOrTrimDisplay(
-        `[mux] edit title: ${conversationTitleEdit.value}_  ${editState}  typing saves  enter done  esc done${errorSuffix}`,
-        layout.cols
+      const editBody = [`title: ${conversationTitleEdit.value}_`, `state: ${editState}`];
+      if (conversationTitleEdit.error !== null && conversationTitleEdit.error.length > 0) {
+        editBody.push(`error: ${conversationTitleEdit.error}`);
+      } else {
+        editBody.push('changes save automatically while typing');
+      }
+      applyModalOverlay(
+        rows,
+        buildUiModalOverlay({
+          viewportCols: layout.cols,
+          viewportRows: rows.length,
+          width: Math.min(modalMaxWidth, 96),
+          height: 7,
+          anchor: 'bottom',
+          marginRows: 1,
+          title: 'Edit Conversation Title',
+          bodyLines: editBody,
+          footer: 'typing autosaves   enter done   esc done',
+          theme: MUX_MODAL_THEME
+        })
       );
     }
     if (validateAnsi) {

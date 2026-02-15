@@ -1032,7 +1032,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
   - `src/mux/conversation-rail.ts` provides deterministic conversation ordering and rail rendering primitives for multi-session mux navigation.
   - `src/mux/workspace-rail-model.ts` separates left-rail data/view modeling from terminal rendering so future UI technologies can reuse the same model pipeline.
   - `src/mux/workspace-rail.ts` provides left-rail rendering for directory-scoped conversation stacks with inline git + process telemetry and compact unicode/emoji scanning cues.
-  - `src/ui/surface.ts` provides reusable immediate-mode terminal UI primitives (cell surface, row fill, text draw, ANSI row render) to compose panes, selectors, and future modal/splitter widgets.
+  - `src/ui/surface.ts` + `src/ui/kit.ts` provide reusable immediate-mode terminal UI primitives (cell surface, rect/row painters, box strokes, modal overlays, ANSI row render) to compose panes, selectors, and prompt dialogs without virtual-DOM abstractions.
   - `test/mux-dual-pane-core.test.ts` deterministically verifies mux layout, mouse routing, viewport follow/pin transitions, and row-diff behavior.
   - terminal parity now includes footer background persistence checks via `codex-footer-background-persistence`.
   - `scripts/terminal-parity.ts` exposes the parity matrix gate (`npm run terminal:parity`).

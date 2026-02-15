@@ -6,6 +6,9 @@ import {
   renderUiSurfaceAnsiRows
 } from '../ui/surface.ts';
 import {
+  paintUiRow
+} from '../ui/kit.ts';
+import {
   buildWorkspaceRailViewRows
 } from './workspace-rail-model.ts';
 
@@ -88,13 +91,11 @@ export function renderWorkspaceRailAnsiRows(
   for (let rowIndex = 0; rowIndex < safeRows; rowIndex += 1) {
     const row = rows[rowIndex]!;
     if (row.kind === 'dir-header') {
-      fillUiRow(surface, rowIndex, HEADER_STYLE);
-      drawUiText(surface, 0, rowIndex, row.text, HEADER_STYLE);
+      paintUiRow(surface, rowIndex, row.text, HEADER_STYLE);
       continue;
     }
     if (row.kind === 'dir-meta') {
-      fillUiRow(surface, rowIndex, NORMAL_STYLE);
-      drawUiText(surface, 0, rowIndex, row.text, META_STYLE);
+      paintUiRow(surface, rowIndex, row.text, META_STYLE, NORMAL_STYLE);
       continue;
     }
     if (row.kind === 'conversation-title' || row.kind === 'conversation-meta') {
@@ -102,28 +103,23 @@ export function renderWorkspaceRailAnsiRows(
       continue;
     }
     if (row.kind === 'process-title' || row.kind === 'process-meta') {
-      fillUiRow(surface, rowIndex, NORMAL_STYLE);
-      drawUiText(surface, 0, rowIndex, row.text, PROCESS_STYLE);
+      paintUiRow(surface, rowIndex, row.text, PROCESS_STYLE, NORMAL_STYLE);
       continue;
     }
     if (row.kind === 'shortcut-header') {
-      fillUiRow(surface, rowIndex, HEADER_STYLE);
-      drawUiText(surface, 0, rowIndex, row.text, HEADER_STYLE);
+      paintUiRow(surface, rowIndex, row.text, HEADER_STYLE);
       continue;
     }
     if (row.kind === 'shortcut-body') {
-      fillUiRow(surface, rowIndex, SHORTCUT_STYLE);
-      drawUiText(surface, 0, rowIndex, row.text, SHORTCUT_STYLE);
+      paintUiRow(surface, rowIndex, row.text, SHORTCUT_STYLE);
       continue;
     }
     if (row.kind === 'action') {
-      fillUiRow(surface, rowIndex, ACTION_STYLE);
-      drawUiText(surface, 0, rowIndex, row.text, ACTION_STYLE);
+      paintUiRow(surface, rowIndex, row.text, ACTION_STYLE);
       continue;
     }
     if (row.kind === 'muted') {
-      fillUiRow(surface, rowIndex, NORMAL_STYLE);
-      drawUiText(surface, 0, rowIndex, row.text, MUTED_STYLE);
+      paintUiRow(surface, rowIndex, row.text, MUTED_STYLE, NORMAL_STYLE);
       continue;
     }
   }
