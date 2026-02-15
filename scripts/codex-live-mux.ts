@@ -16,6 +16,7 @@ import { SqliteEventStore } from '../src/store/event-store.ts';
 import {
   TerminalSnapshotOracle,
   renderSnapshotAnsiRow,
+  wrapTextForColumns,
   type TerminalSnapshotFrameCore
 } from '../src/terminal/snapshot-oracle.ts';
 import {
@@ -28,7 +29,6 @@ import {
   classifyPaneAt,
   computeDualPaneLayout,
   diffRenderedRows,
-  padOrTrimDisplay,
   parseMuxInputChunk,
   wheelDeltaRowsFromCode
 } from '../src/mux/dual-pane-core.ts';
@@ -47,6 +47,7 @@ import {
   type ConversationRailSessionSummary
 } from '../src/mux/conversation-rail.ts';
 import { findAnsiIntegrityIssues } from '../src/mux/ansi-integrity.ts';
+import { ControlPlaneOpQueue } from '../src/mux/control-plane-op-queue.ts';
 import {
   renderWorkspaceRailAnsiRows
 } from '../src/mux/workspace-rail.ts';
@@ -54,8 +55,23 @@ import {
   actionAtWorkspaceRailRow,
   buildWorkspaceRailViewRows,
   conversationIdAtWorkspaceRailRow,
+  projectIdAtWorkspaceRailRow,
   kindAtWorkspaceRailRow
 } from '../src/mux/workspace-rail-model.ts';
+import {
+  resolveWorkspacePath
+} from '../src/mux/workspace-path.ts';
+import { buildProjectTreeLines } from '../src/mux/project-tree.ts';
+import {
+  StartupSequencer
+} from '../src/mux/startup-sequencer.ts';
+import {
+  applyModalOverlay,
+  buildRenderRows,
+  cursorStyleEqual,
+  cursorStyleToDecscusr,
+  renderCanonicalFrameAnsi
+} from '../src/mux/render-frame.ts';
 import {
   createTerminalRecordingWriter
 } from '../src/recording/terminal-recording.ts';
@@ -73,7 +89,8 @@ import {
   startPerfSpan
 } from '../src/perf/perf-core.ts';
 import {
-  buildUiModalOverlay
+  buildUiModalOverlay,
+  isUiModalOverlayHit
 } from '../src/ui/kit.ts';
 
 const execFileAsync = promisify(execFile);
@@ -215,6 +232,53 @@ const STARTUP_TERMINAL_MIN_COLS = 40;
 const STARTUP_TERMINAL_MIN_ROWS = 10;
 const STARTUP_TERMINAL_PROBE_TIMEOUT_MS = 250;
 const STARTUP_TERMINAL_PROBE_INTERVAL_MS = 10;
+
+interface ProjectPaneSnapshot {
+  readonly directoryId: string;
+  readonly path: string;
+  readonly lines: readonly string[];
+}
+
+function buildProjectPaneSnapshot(directoryId: string, path: string): ProjectPaneSnapshot {
+  const projectName = basename(path) || path;
+  return {
+    directoryId,
+    path,
+    lines: [
+      `project ${projectName}`,
+      `path ${path}`,
+      '',
+      'ctrl+t create conversation in this project',
+      'ctrl+w archive this project',
+      '',
+      ...buildProjectTreeLines(path)
+    ]
+  };
+}
+
+function buildProjectPaneRows(
+  snapshot: ProjectPaneSnapshot,
+  cols: number,
+  paneRows: number,
+  scrollTop: number
+): { rows: readonly string[]; top: number } {
+  const safeCols = Math.max(1, cols);
+  const safeRows = Math.max(1, paneRows);
+  const wrappedLines = snapshot.lines.flatMap((line) => wrapTextForColumns(line, safeCols));
+  if (wrappedLines.length === 0) {
+    wrappedLines.push('');
+  }
+  const maxTop = Math.max(0, wrappedLines.length - safeRows);
+  const nextTop = Math.max(0, Math.min(maxTop, scrollTop));
+  const viewport = wrappedLines.slice(nextTop, nextTop + safeRows);
+  while (viewport.length < safeRows) {
+    viewport.push('');
+  }
+  return {
+    rows: viewport.map((row) => padOrTrimDisplay(row, safeCols)),
+    top: nextTop
+  };
+}
 function restoreTerminalState(
   newline: boolean,
   restoreInputModes: (() => void) | null = null
@@ -578,23 +642,11 @@ function parseBooleanEnv(value: string | undefined, fallback: boolean): boolean 
   return fallback;
 }
 
-function expandHomePath(value: string): string {
-  const trimmed = value.trim();
-  if (trimmed === '~') {
-    const home = process.env.HOME;
-    return typeof home === 'string' && home.length > 0 ? home : trimmed;
-  }
-  if (trimmed.startsWith('~/')) {
-    const home = process.env.HOME;
-    if (typeof home === 'string' && home.length > 0) {
-      return join(home, trimmed.slice(2));
-    }
-  }
-  return trimmed;
-}
-
-function resolveWorkspacePath(invocationDirectory: string, value: string): string {
-  return resolve(invocationDirectory, expandHomePath(value));
+function resolveWorkspacePathForMux(invocationDirectory: string, value: string): string {
+  const home = typeof process.env.HOME === 'string' && process.env.HOME.length > 0
+    ? process.env.HOME
+    : null;
+  return resolveWorkspacePath(invocationDirectory, value, home);
 }
 
 async function runGitCommand(cwd: string, args: readonly string[]): Promise<string> {
@@ -1097,13 +1149,13 @@ function conversationOrder(conversations: ReadonlyMap<string, ConversationState>
 function shortcutHintText(bindings: ResolvedMuxShortcutBindings): string {
   const newConversation = firstShortcutText(bindings, 'mux.conversation.new') || 'ctrl+t';
   const deleteConversation = firstShortcutText(bindings, 'mux.conversation.delete') || 'ctrl+x';
-  const addDirectory = firstShortcutText(bindings, 'mux.directory.add') || 'ctrl+o';
-  const closeDirectory = firstShortcutText(bindings, 'mux.directory.close') || 'ctrl+w';
+  const addProject = firstShortcutText(bindings, 'mux.directory.add') || 'ctrl+o';
+  const closeProject = firstShortcutText(bindings, 'mux.directory.close') || 'ctrl+w';
   const next = firstShortcutText(bindings, 'mux.conversation.next') || 'ctrl+j';
   const previous = firstShortcutText(bindings, 'mux.conversation.previous') || 'ctrl+k';
   const interrupt = firstShortcutText(bindings, 'mux.app.interrupt-all') || 'ctrl+c';
   const switchHint = next === previous ? next : `${next}/${previous}`;
-  return `${newConversation} new  ${deleteConversation} archive  ${addDirectory}/${closeDirectory} dirs  ${switchHint} switch  ${interrupt} quit`;
+  return `${newConversation} new  ${deleteConversation} archive  ${addProject}/${closeProject} projects  ${switchHint} switch  ${interrupt} quit`;
 }
 
 type WorkspaceRailModel = Parameters<typeof renderWorkspaceRailAnsiRows>[0];
@@ -1112,8 +1164,9 @@ function buildRailModel(
   directories: ReadonlyMap<string, ControlPlaneDirectoryRecord>,
   conversations: ReadonlyMap<string, ConversationState>,
   orderedIds: readonly string[],
-  activeDirectoryId: string | null,
+  activeProjectId: string | null,
   activeConversationId: string | null,
+  projectSelectionEnabled: boolean,
   shortcutsCollapsed: boolean,
   gitSummary: GitSummary,
   processUsageBySessionId: ReadonlyMap<string, ProcessUsageSample>,
@@ -1123,7 +1176,6 @@ function buildRailModel(
     key: directory.directoryId,
     workspaceId: basename(directory.path) || directory.path,
     worktreeId: directory.path,
-    active: directory.directoryId === activeDirectoryId,
     git: gitSummary
   }));
   const knownDirectoryKeys = new Set(directoryRows.map((directory) => directory.key));
@@ -1138,7 +1190,6 @@ function buildRailModel(
       key: directoryKey,
       workspaceId: '(untracked)',
       worktreeId: '(untracked)',
-      active: directoryKey === activeDirectoryId,
       git: gitSummary
     });
   }
@@ -1162,7 +1213,9 @@ function buildRailModel(
         };
       })
       .flatMap((conversation) => (conversation === null ? [] : [conversation])),
+    activeProjectId,
     activeConversationId,
+    projectSelectionEnabled,
     processes: [],
     shortcutHint: shortcutHintText(shortcutBindings),
     shortcutsCollapsed,
@@ -1175,8 +1228,9 @@ function buildRailRows(
   directories: ReadonlyMap<string, ControlPlaneDirectoryRecord>,
   conversations: ReadonlyMap<string, ConversationState>,
   orderedIds: readonly string[],
-  activeDirectoryId: string | null,
+  activeProjectId: string | null,
   activeConversationId: string | null,
+  projectSelectionEnabled: boolean,
   shortcutsCollapsed: boolean,
   gitSummary: GitSummary,
   processUsageBySessionId: ReadonlyMap<string, ProcessUsageSample>,
@@ -1186,8 +1240,9 @@ function buildRailRows(
     directories,
     conversations,
     orderedIds,
-    activeDirectoryId,
+    activeProjectId,
     activeConversationId,
+    projectSelectionEnabled,
     shortcutsCollapsed,
     gitSummary,
     processUsageBySessionId,
@@ -1198,29 +1253,6 @@ function buildRailRows(
     ansiRows: renderWorkspaceRailAnsiRows(railModel, layout.leftCols, layout.paneRows),
     viewRows
   };
-}
-
-function buildRenderRows(
-  layout: ReturnType<typeof computeDualPaneLayout>,
-  railRows: readonly string[],
-  rightFrame: TerminalSnapshotFrameCore,
-  perf: MuxPerfStatusRow
-): string[] {
-  const rows: string[] = [];
-  const separatorAnchor = `\u001b[${String(layout.separatorCol)}G`;
-  const rightAnchor = `\u001b[${String(layout.rightStartCol)}G`;
-  for (let row = 0; row < layout.paneRows; row += 1) {
-    const left = railRows[row] ?? ' '.repeat(layout.leftCols);
-    const right = renderSnapshotAnsiRow(rightFrame, row, layout.rightCols);
-    rows.push(`${left}\u001b[0m${separatorAnchor}│${rightAnchor}${right}`);
-  }
-  const status = padOrTrimDisplay(
-    `[mux] fps=${perf.fps.toFixed(1)} kb/s=${perf.kbPerSecond.toFixed(1)} render=${perf.renderAvgMs.toFixed(2)}/${perf.renderMaxMs.toFixed(2)}ms output=${perf.outputHandleAvgMs.toFixed(2)}/${perf.outputHandleMaxMs.toFixed(2)}ms loop.p95=${perf.eventLoopP95Ms.toFixed(1)}ms`,
-    layout.cols
-  );
-  rows.push(status);
-
-  return rows;
 }
 
 const MUX_MODAL_THEME = {
@@ -1245,61 +1277,6 @@ const MUX_MODAL_THEME = {
     bold: false
   }
 } as const;
-
-function applyModalOverlay(
-  rows: string[],
-  overlay: ReturnType<typeof buildUiModalOverlay>
-): void {
-  for (let rowOffset = 0; rowOffset < overlay.rows.length; rowOffset += 1) {
-    const targetRow = overlay.top + rowOffset;
-    if (targetRow < 0 || targetRow >= rows.length) {
-      continue;
-    }
-    const overlayRow = overlay.rows[rowOffset];
-    if (overlayRow === undefined) {
-      continue;
-    }
-    rows[targetRow] = `${rows[targetRow] ?? ''}\u001b[${String(overlay.left + 1)}G${overlayRow}`;
-  }
-}
-
-function renderCanonicalFrameAnsi(
-  rows: readonly string[],
-  cursorStyle: RenderCursorStyle,
-  cursorVisible: boolean,
-  cursorRow: number,
-  cursorCol: number
-): string {
-  let output = '\u001b[?25l\u001b[H\u001b[2J';
-  output += cursorStyleToDecscusr(cursorStyle);
-  for (let row = 0; row < rows.length; row += 1) {
-    output += `\u001b[${String(row + 1)};1H\u001b[2K${rows[row] ?? ''}`;
-  }
-  if (cursorVisible) {
-    output += '\u001b[?25h';
-    output += `\u001b[${String(cursorRow + 1)};${String(cursorCol + 1)}H`;
-  } else {
-    output += '\u001b[?25l';
-  }
-  return output;
-}
-
-function cursorStyleToDecscusr(style: RenderCursorStyle): string {
-  if (style.shape === 'block') {
-    return style.blinking ? '\u001b[1 q' : '\u001b[2 q';
-  }
-  if (style.shape === 'underline') {
-    return style.blinking ? '\u001b[3 q' : '\u001b[4 q';
-  }
-  return style.blinking ? '\u001b[5 q' : '\u001b[6 q';
-}
-
-function cursorStyleEqual(left: RenderCursorStyle | null, right: RenderCursorStyle): boolean {
-  if (left === null) {
-    return false;
-  }
-  return left.shape === right.shape && left.blinking === right.blinking;
-}
 
 function inputContainsTurnSubmission(data: Uint8Array): boolean {
   for (const byte of data) {
@@ -1717,6 +1694,9 @@ async function main(): Promise<number> {
   }
   directoryUpsertSpan.end();
   let activeDirectoryId: string | null = persistedDirectory.directoryId;
+  let mainPaneMode: 'conversation' | 'project' = 'conversation';
+  let projectPaneSnapshot: ProjectPaneSnapshot | null = null;
+  let projectPaneScrollTop = 0;
 
   const sessionEnv = {
     ...sanitizeProcessEnv(),
@@ -1734,17 +1714,9 @@ async function main(): Promise<number> {
   let startupActiveFirstOutputSpan: ReturnType<typeof startPerfSpan> | null = null;
   let startupActiveFirstPaintSpan: ReturnType<typeof startPerfSpan> | null = null;
   let startupActiveSettledSpan: ReturnType<typeof startPerfSpan> | null = null;
-  let startupActiveFirstOutputObserved = false;
-  let startupActiveFirstOutputAtMs: number | null = null;
-  let startupActiveFirstPaintObserved = false;
-  let startupActiveHeaderObserved = false;
-  let startupActiveSettleGate: 'header' | 'nonempty' | null = null;
-  let startupActiveSettledObserved = false;
-  let startupActiveSettledSignaled = false;
-  let startupActiveSettledTimer: NodeJS.Timeout | null = null;
-  let resolveStartupActiveSettledWait: (() => void) | null = null;
-  const startupActiveSettledWait = new Promise<void>((resolve) => {
-    resolveStartupActiveSettledWait = resolve;
+  const startupSequencer = new StartupSequencer({
+    quietMs: startupSettleQuietMs,
+    nonemptyFallbackMs: DEFAULT_STARTUP_SETTLE_NONEMPTY_FALLBACK_MS
   });
   const startupSessionFirstOutputObserved = new Set<string>();
 
@@ -1781,20 +1753,11 @@ async function main(): Promise<number> {
   };
 
   const clearStartupSettledTimer = (): void => {
-    if (startupActiveSettledTimer === null) {
-      return;
-    }
-    clearTimeout(startupActiveSettledTimer);
-    startupActiveSettledTimer = null;
+    startupSequencer.clearSettledTimer();
   };
 
   const signalStartupActiveSettled = (): void => {
-    if (startupActiveSettledSignaled) {
-      return;
-    }
-    startupActiveSettledSignaled = true;
-    resolveStartupActiveSettledWait?.();
-    resolveStartupActiveSettledWait = null;
+    startupSequencer.signalSettled();
   };
 
   const visibleGlyphCellCount = (conversation: ConversationState): number => {
@@ -1832,47 +1795,26 @@ async function main(): Promise<number> {
   };
 
   const scheduleStartupSettledProbe = (sessionId: string): void => {
-    if (
-      startupFirstPaintTargetSessionId !== sessionId ||
-      !startupActiveFirstOutputObserved ||
-      !startupActiveFirstPaintObserved ||
-      startupActiveSettleGate === null ||
-      startupActiveSettledObserved
-    ) {
-      return;
-    }
-    if (startupActiveSettleGate === 'header') {
-      if (startupActiveSettledTimer !== null) {
+    startupSequencer.scheduleSettledProbe(sessionId, (event) => {
+      if (startupFirstPaintTargetSessionId !== event.sessionId) {
         return;
       }
-    } else {
-      clearStartupSettledTimer();
-    }
-    startupActiveSettledTimer = setTimeout(() => {
-      startupActiveSettledTimer = null;
-      if (startupFirstPaintTargetSessionId !== sessionId || startupActiveSettledObserved) {
-        return;
-      }
-      const conversation = conversations.get(sessionId);
-      if (conversation === undefined) {
-        return;
-      }
-      const glyphCells = visibleGlyphCellCount(conversation);
-      startupActiveSettledObserved = true;
+      const conversation = conversations.get(event.sessionId);
+      const glyphCells = conversation === undefined ? 0 : visibleGlyphCellCount(conversation);
       recordPerfEvent('mux.startup.active-settled', {
-        sessionId,
-        gate: startupActiveSettleGate,
-        quietMs: startupSettleQuietMs,
+        sessionId: event.sessionId,
+        gate: event.gate,
+        quietMs: event.quietMs,
         glyphCells
       });
       endStartupActiveSettledSpan({
         observed: true,
-        gate: startupActiveSettleGate,
-        quietMs: startupSettleQuietMs,
+        gate: event.gate,
+        quietMs: event.quietMs,
         glyphCells
       });
       signalStartupActiveSettled();
-    }, startupSettleQuietMs);
+    });
   };
 
   const firstDirectoryId = (): string | null => {
@@ -1890,6 +1832,27 @@ async function main(): Promise<number> {
     const fallback = firstDirectoryId();
     activeDirectoryId = fallback;
     return fallback;
+  };
+
+  const resolveDirectoryForAction = (): string | null => {
+    if (mainPaneMode === 'project') {
+      if (activeDirectoryId !== null && directories.has(activeDirectoryId)) {
+        return activeDirectoryId;
+      }
+      return null;
+    }
+    if (activeConversationId !== null) {
+      const conversation = conversations.get(activeConversationId);
+      if (conversation?.directoryId !== null && conversation?.directoryId !== undefined) {
+        if (directories.has(conversation.directoryId)) {
+          return conversation.directoryId;
+        }
+      }
+    }
+    if (activeDirectoryId !== null && directories.has(activeDirectoryId)) {
+      return activeDirectoryId;
+    }
+    return null;
   };
 
   const ensureConversation = (
@@ -1957,6 +1920,20 @@ async function main(): Promise<number> {
     for (const row of rows) {
       const record = parseDirectoryRecord(row);
       if (record === null) {
+        continue;
+      }
+      const normalizedPath = resolveWorkspacePathForMux(options.invocationDirectory, record.path);
+      if (normalizedPath !== record.path) {
+        const repairedResult = await streamClient.sendCommand({
+          type: 'directory.upsert',
+          directoryId: record.directoryId,
+          tenantId: record.tenantId,
+          userId: record.userId,
+          workspaceId: record.workspaceId,
+          path: normalizedPath
+        });
+        const repairedRecord = parseDirectoryRecord(repairedResult['directory']);
+        directories.set(record.directoryId, repairedRecord ?? { ...record, path: normalizedPath });
         continue;
       }
       directories.set(record.directoryId, record);
@@ -2035,7 +2012,7 @@ async function main(): Promise<number> {
         targetConversation.directoryId === null
           ? null
           : directories.get(targetConversation.directoryId)?.path ?? null;
-      const sessionCwd = resolveWorkspacePath(
+      const sessionCwd = resolveWorkspacePathForMux(
         options.invocationDirectory,
         configuredDirectoryPath ?? options.invocationDirectory
       );
@@ -2386,7 +2363,7 @@ async function main(): Promise<number> {
     backgroundProbesStarted = true;
     recordPerfEvent('mux.startup.background-probes.begin', {
       timedOut,
-      settledObserved: startupActiveSettledObserved
+      settledObserved: startupSequencer.snapshot().settledObserved
     });
     void refreshProcessUsage('startup');
     void refreshGitSummary('startup');
@@ -2412,7 +2389,7 @@ async function main(): Promise<number> {
     }
     let timedOut = false;
     await Promise.race([
-      startupActiveSettledWait,
+      startupSequencer.waitForSettled(),
       new Promise<void>((resolve) => {
         setTimeout(() => {
           timedOut = true;
@@ -2724,148 +2701,78 @@ async function main(): Promise<number> {
     applyLayout(size);
   };
 
-  type ControlPlaneOpPriority = 'interactive' | 'background';
-  interface QueuedControlPlaneOp {
-    readonly id: number;
-    readonly priority: ControlPlaneOpPriority;
-    readonly label: string;
-    readonly enqueuedAtMs: number;
-    readonly task: () => Promise<void>;
-  }
-  const interactiveControlPlaneQueue: QueuedControlPlaneOp[] = [];
-  const backgroundControlPlaneQueue: QueuedControlPlaneOp[] = [];
-  let controlPlaneOpNextId = 1;
-  let controlPlaneOpRunning = false;
-  let controlPlanePumpScheduled = false;
-  const controlPlaneDrainWaiters: Array<() => void> = [];
-
-  const resolveControlPlaneDrainIfIdle = (): void => {
-    if (controlPlaneOpRunning || interactiveControlPlaneQueue.length > 0 || backgroundControlPlaneQueue.length > 0) {
-      return;
+  const controlPlaneOpSpans = new Map<number, ReturnType<typeof startPerfSpan>>();
+  const controlPlaneQueue = new ControlPlaneOpQueue({
+    onFatal: (error: unknown) => {
+      handleRuntimeFatal('control-plane-pump', error);
+    },
+    onEnqueued: (event, metrics) => {
+      recordPerfEvent('mux.control-plane.op.enqueued', {
+        id: event.id,
+        label: event.label,
+        priority: event.priority,
+        interactiveQueued: metrics.interactiveQueued,
+        backgroundQueued: metrics.backgroundQueued
+      });
+    },
+    onStart: (event, metrics) => {
+      const opSpan = startPerfSpan('mux.control-plane.op', {
+        id: event.id,
+        label: event.label,
+        priority: event.priority,
+        waitMs: event.waitMs
+      });
+      controlPlaneOpSpans.set(event.id, opSpan);
+      recordPerfEvent('mux.control-plane.op.start', {
+        id: event.id,
+        label: event.label,
+        priority: event.priority,
+        waitMs: event.waitMs,
+        interactiveQueued: metrics.interactiveQueued,
+        backgroundQueued: metrics.backgroundQueued
+      });
+    },
+    onSuccess: (event) => {
+      const opSpan = controlPlaneOpSpans.get(event.id);
+      if (opSpan !== undefined) {
+        opSpan.end({
+          id: event.id,
+          label: event.label,
+          priority: event.priority,
+          status: 'ok',
+          waitMs: event.waitMs
+        });
+        controlPlaneOpSpans.delete(event.id);
+      }
+    },
+    onError: (event, _metrics, error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      const opSpan = controlPlaneOpSpans.get(event.id);
+      if (opSpan !== undefined) {
+        opSpan.end({
+          id: event.id,
+          label: event.label,
+          priority: event.priority,
+          status: 'error',
+          waitMs: event.waitMs,
+          message
+        });
+        controlPlaneOpSpans.delete(event.id);
+      }
+      process.stderr.write(`[mux] control-plane error ${message}\n`);
     }
-    while (controlPlaneDrainWaiters.length > 0) {
-      const resolve = controlPlaneDrainWaiters.shift();
-      resolve?.();
-    }
-  };
+  });
 
   const waitForControlPlaneDrain = async (): Promise<void> => {
-    if (!controlPlaneOpRunning && interactiveControlPlaneQueue.length === 0 && backgroundControlPlaneQueue.length === 0) {
-      return;
-    }
-    await new Promise<void>((resolve) => {
-      controlPlaneDrainWaiters.push(resolve);
-    });
-  };
-
-  const pickNextControlPlaneOp = (): QueuedControlPlaneOp | null => {
-    const interactive = interactiveControlPlaneQueue.shift();
-    if (interactive !== undefined) {
-      return interactive;
-    }
-    const background = backgroundControlPlaneQueue.shift();
-    return background ?? null;
-  };
-
-  const runControlPlaneQueue = async (): Promise<void> => {
-    if (controlPlaneOpRunning) {
-      return;
-    }
-    const next = pickNextControlPlaneOp();
-    if (next === null) {
-      resolveControlPlaneDrainIfIdle();
-      return;
-    }
-    controlPlaneOpRunning = true;
-    const waitMs = Math.max(0, Date.now() - next.enqueuedAtMs);
-    const opSpan = startPerfSpan('mux.control-plane.op', {
-      id: next.id,
-      label: next.label,
-      priority: next.priority,
-      waitMs
-    });
-    recordPerfEvent('mux.control-plane.op.start', {
-      id: next.id,
-      label: next.label,
-      priority: next.priority,
-      waitMs,
-      interactiveQueued: interactiveControlPlaneQueue.length,
-      backgroundQueued: backgroundControlPlaneQueue.length
-    });
-    try {
-      await next.task();
-      opSpan.end({
-        id: next.id,
-        label: next.label,
-        priority: next.priority,
-        status: 'ok',
-        waitMs
-      });
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      opSpan.end({
-        id: next.id,
-        label: next.label,
-        priority: next.priority,
-        status: 'error',
-        waitMs,
-        message
-      });
-      process.stderr.write(`[mux] control-plane error ${message}\n`);
-    } finally {
-      controlPlaneOpRunning = false;
-      resolveControlPlaneDrainIfIdle();
-      scheduleControlPlanePump();
-    }
-  };
-
-  const scheduleControlPlanePump = (): void => {
-    if (controlPlanePumpScheduled) {
-      return;
-    }
-    controlPlanePumpScheduled = true;
-    setImmediate(() => {
-      controlPlanePumpScheduled = false;
-      void runControlPlaneQueue().catch((error: unknown) => {
-        handleRuntimeFatal('control-plane-pump', error);
-      });
-    });
-  };
-
-  const enqueueControlPlaneOp = (
-    task: () => Promise<void>,
-    priority: ControlPlaneOpPriority,
-    label: string
-  ): void => {
-    const op: QueuedControlPlaneOp = {
-      id: controlPlaneOpNextId,
-      priority,
-      label,
-      enqueuedAtMs: Date.now(),
-      task
-    };
-    controlPlaneOpNextId += 1;
-    if (priority === 'interactive') {
-      interactiveControlPlaneQueue.push(op);
-    } else {
-      backgroundControlPlaneQueue.push(op);
-    }
-    recordPerfEvent('mux.control-plane.op.enqueued', {
-      id: op.id,
-      label,
-      priority,
-      interactiveQueued: interactiveControlPlaneQueue.length,
-      backgroundQueued: backgroundControlPlaneQueue.length
-    });
-    scheduleControlPlanePump();
+    await controlPlaneQueue.waitForDrain();
   };
 
   const queueControlPlaneOp = (task: () => Promise<void>, label = 'interactive-op'): void => {
-    enqueueControlPlaneOp(task, 'interactive', label);
+    controlPlaneQueue.enqueueInteractive(task, label);
   };
 
   const queueBackgroundControlPlaneOp = (task: () => Promise<void>, label = 'background-op'): void => {
-    enqueueControlPlaneOp(task, 'background', label);
+    controlPlaneQueue.enqueueBackground(task, label);
   };
 
   const clearConversationTitleEditTimer = (edit: ConversationTitleEditState): void => {
@@ -2981,6 +2888,98 @@ async function main(): Promise<number> {
     markDirty();
   };
 
+  const buildAddDirectoryModalOverlay = (viewportRows: number): ReturnType<typeof buildUiModalOverlay> | null => {
+    if (addDirectoryPrompt === null) {
+      return null;
+    }
+    const modalMaxWidth = Math.max(16, layout.cols - 2);
+    const promptValue = addDirectoryPrompt.value.length > 0 ? addDirectoryPrompt.value : '.';
+    const addDirectoryBody = [`path: ${promptValue}_`];
+    if (addDirectoryPrompt.error !== null && addDirectoryPrompt.error.length > 0) {
+      addDirectoryBody.push(`error: ${addDirectoryPrompt.error}`);
+    } else {
+      addDirectoryBody.push('add a workspace project for new conversations');
+    }
+    return buildUiModalOverlay({
+      viewportCols: layout.cols,
+      viewportRows,
+      width: Math.min(modalMaxWidth, 96),
+      height: 6,
+      anchor: 'center',
+      marginRows: 1,
+      title: 'Add Project',
+      bodyLines: addDirectoryBody,
+      footer: 'enter save   esc cancel',
+      theme: MUX_MODAL_THEME
+    });
+  };
+
+  const buildConversationTitleModalOverlay = (viewportRows: number): ReturnType<typeof buildUiModalOverlay> | null => {
+    if (conversationTitleEdit === null) {
+      return null;
+    }
+    const modalMaxWidth = Math.max(16, layout.cols - 2);
+    const editState =
+      conversationTitleEdit.persistInFlight
+        ? 'saving'
+        : conversationTitleEdit.value === conversationTitleEdit.lastSavedValue
+          ? 'saved'
+          : 'pending';
+    const editBody = [`title: ${conversationTitleEdit.value}_`, `state: ${editState}`];
+    if (conversationTitleEdit.error !== null && conversationTitleEdit.error.length > 0) {
+      editBody.push(`error: ${conversationTitleEdit.error}`);
+    }
+    return buildUiModalOverlay({
+      viewportCols: layout.cols,
+      viewportRows,
+      width: Math.min(modalMaxWidth, 96),
+      height: 7,
+      anchor: 'center',
+      marginRows: 1,
+      title: 'Edit Conversation Title',
+      bodyLines: editBody,
+      footer: 'typing autosaves   enter done   esc done',
+      theme: MUX_MODAL_THEME
+    });
+  };
+
+  const buildCurrentModalOverlay = (): ReturnType<typeof buildUiModalOverlay> | null => {
+    const addDirectoryOverlay = buildAddDirectoryModalOverlay(layout.rows);
+    if (addDirectoryOverlay !== null) {
+      return addDirectoryOverlay;
+    }
+    return buildConversationTitleModalOverlay(layout.rows);
+  };
+
+  const dismissModalOnOutsideClick = (input: Buffer, dismiss: () => void): boolean => {
+    if (!input.includes(0x1b)) {
+      return false;
+    }
+    const parsed = parseMuxInputChunk(inputRemainder, input);
+    inputRemainder = parsed.remainder;
+    const modalOverlay = buildCurrentModalOverlay();
+    if (modalOverlay === null) {
+      return true;
+    }
+    for (const token of parsed.tokens) {
+      if (token.kind !== 'mouse') {
+        continue;
+      }
+      const pointerPress =
+        token.event.final === 'M' &&
+        !isWheelMouseCode(token.event.code) &&
+        !isMotionMouseCode(token.event.code);
+      if (!pointerPress) {
+        continue;
+      }
+      if (!isUiModalOverlayHit(modalOverlay, token.event.col, token.event.row)) {
+        dismiss();
+        return true;
+      }
+    }
+    return true;
+  };
+
   const attachConversation = async (sessionId: string): Promise<void> => {
     const conversation = conversations.get(sessionId);
     if (conversation === undefined) {
@@ -3031,8 +3030,35 @@ async function main(): Promise<number> {
     });
   };
 
+  const refreshProjectPaneSnapshot = (directoryId: string): void => {
+    const directory = directories.get(directoryId);
+    if (directory === undefined) {
+      projectPaneSnapshot = null;
+      return;
+    }
+    projectPaneSnapshot = buildProjectPaneSnapshot(directory.directoryId, directory.path);
+  };
+
+  const enterProjectPane = (directoryId: string): void => {
+    if (!directories.has(directoryId)) {
+      return;
+    }
+    activeDirectoryId = directoryId;
+    mainPaneMode = 'project';
+    projectPaneScrollTop = 0;
+    refreshProjectPaneSnapshot(directoryId);
+    forceFullClear = true;
+    previousRows = [];
+  };
+
   const activateConversation = async (sessionId: string): Promise<void> => {
     if (activeConversationId === sessionId) {
+      if (mainPaneMode !== 'conversation') {
+        mainPaneMode = 'conversation';
+        forceFullClear = true;
+        previousRows = [];
+        markDirty();
+      }
       return;
     }
     if (conversationTitleEdit !== null && conversationTitleEdit.conversationId !== sessionId) {
@@ -3046,12 +3072,12 @@ async function main(): Promise<number> {
       await detachConversation(previousActiveId);
     }
     activeConversationId = sessionId;
+    mainPaneMode = 'conversation';
+    projectPaneSnapshot = null;
+    projectPaneScrollTop = 0;
     forceFullClear = true;
     previousRows = [];
     const targetConversation = conversations.get(sessionId);
-    if (targetConversation?.directoryId !== null && targetConversation !== undefined) {
-      activeDirectoryId = targetConversation.directoryId;
-    }
     if (targetConversation !== undefined && !targetConversation.live) {
       await startConversation(sessionId);
     }
@@ -3114,14 +3140,6 @@ async function main(): Promise<number> {
     await activateConversation(sessionId);
   };
 
-  const createAndActivateConversation = async (): Promise<void> => {
-    const directoryId = resolveActiveDirectoryId();
-    if (directoryId === null) {
-      throw new Error('cannot create conversation without an active directory');
-    }
-    await createAndActivateConversationInDirectory(directoryId);
-  };
-
   const archiveConversation = async (sessionId: string): Promise<void> => {
     const target = conversations.get(sessionId);
     if (target === undefined) {
@@ -3146,11 +3164,12 @@ async function main(): Promise<number> {
     removeConversationState(sessionId);
 
     if (activeConversationId === sessionId) {
+      const archivedDirectoryId = target.directoryId;
       const ordered = conversationOrder(conversations);
       const nextConversationId =
         ordered.find((candidateId) => {
           const candidate = conversations.get(candidateId);
-          return candidate?.directoryId === activeDirectoryId;
+          return candidate?.directoryId === archivedDirectoryId;
         }) ??
         ordered[0] ??
         null;
@@ -3170,7 +3189,7 @@ async function main(): Promise<number> {
   };
 
   const addDirectoryByPath = async (rawPath: string): Promise<void> => {
-    const normalizedPath = resolveWorkspacePath(options.invocationDirectory, rawPath);
+    const normalizedPath = resolveWorkspacePathForMux(options.invocationDirectory, rawPath);
     const directoryResult = await streamClient.sendCommand({
       type: 'directory.upsert',
       directoryId: `directory-${randomUUID()}`,
@@ -3234,6 +3253,10 @@ async function main(): Promise<number> {
       directoryId
     });
     directories.delete(directoryId);
+    if (projectPaneSnapshot?.directoryId === directoryId) {
+      projectPaneSnapshot = null;
+      projectPaneScrollTop = 0;
+    }
 
     if (directories.size === 0) {
       await addDirectoryByPath(options.invocationDirectory);
@@ -3296,23 +3319,36 @@ async function main(): Promise<number> {
     if (shuttingDown || !dirty) {
       return;
     }
-    if (activeConversationId === null) {
+    const projectPaneActive =
+      mainPaneMode === 'project' &&
+      activeDirectoryId !== null &&
+      directories.has(activeDirectoryId);
+    if (!projectPaneActive && activeConversationId === null) {
       dirty = false;
       return;
     }
     const renderStartedAtNs = perfNowNs();
 
-    const active = activeConversation();
-    const rightFrame = active.oracle.snapshotWithoutHash();
+    const active =
+      activeConversationId === null ? null : conversations.get(activeConversationId) ?? null;
+    if (!projectPaneActive && active === null) {
+      dirty = false;
+      return;
+    }
+    const rightFrame =
+      !projectPaneActive && active !== null ? active.oracle.snapshotWithoutHash() : null;
     const renderSelection =
-      selectionDrag !== null && selectionDrag.hasDragged
+      rightFrame !== null && selectionDrag !== null && selectionDrag.hasDragged
         ? {
             anchor: selectionDrag.anchor,
             focus: selectionDrag.focus,
             text: ''
           }
-        : selection;
-    const selectionRows = selectionVisibleRows(rightFrame, renderSelection);
+        : rightFrame !== null
+          ? selection
+          : null;
+    const selectionRows =
+      rightFrame === null ? [] : selectionVisibleRows(rightFrame, renderSelection);
     const orderedIds = conversationOrder(conversations);
     const rail = buildRailRows(
       layout,
@@ -3321,70 +3357,52 @@ async function main(): Promise<number> {
       orderedIds,
       activeDirectoryId,
       activeConversationId,
+      mainPaneMode === 'project',
       shortcutsCollapsed,
       gitSummary,
       processUsageBySessionId,
       shortcutBindings
     );
     latestRailViewRows = rail.viewRows;
+    let rightRows: readonly string[] = [];
+    if (rightFrame !== null) {
+      rightRows = Array.from({ length: layout.paneRows }, (_value, row) =>
+        renderSnapshotAnsiRow(rightFrame, row, layout.rightCols)
+      );
+    } else if (projectPaneActive && activeDirectoryId !== null) {
+      if (
+        projectPaneSnapshot === null ||
+        projectPaneSnapshot.directoryId !== activeDirectoryId
+      ) {
+        refreshProjectPaneSnapshot(activeDirectoryId);
+      }
+      if (projectPaneSnapshot === null) {
+        rightRows = Array.from({ length: layout.paneRows }, () => ' '.repeat(layout.rightCols));
+      } else {
+        const view = buildProjectPaneRows(
+          projectPaneSnapshot,
+          layout.rightCols,
+          layout.paneRows,
+          projectPaneScrollTop
+        );
+        projectPaneScrollTop = view.top;
+        rightRows = view.rows;
+      }
+    } else {
+      rightRows = Array.from({ length: layout.paneRows }, () => ' '.repeat(layout.rightCols));
+    }
     const rows = buildRenderRows(
       layout,
       rail.ansiRows,
-      rightFrame,
+      rightRows,
       perfStatusRow
     );
-    const modalMaxWidth = Math.max(16, layout.cols - 2);
-    if (addDirectoryPrompt !== null) {
-      const promptValue = addDirectoryPrompt.value.length > 0 ? addDirectoryPrompt.value : '.';
-      const addDirectoryBody = [`path: ${promptValue}_`];
-      if (addDirectoryPrompt.error !== null && addDirectoryPrompt.error.length > 0) {
-        addDirectoryBody.push(`error: ${addDirectoryPrompt.error}`);
-      } else {
-        addDirectoryBody.push('add a workspace directory for new conversations');
-      }
-      applyModalOverlay(
-        rows,
-        buildUiModalOverlay({
-          viewportCols: layout.cols,
-          viewportRows: rows.length,
-          width: Math.min(modalMaxWidth, 96),
-          height: 6,
-          anchor: 'center',
-          marginRows: 1,
-          title: 'Add Directory',
-          bodyLines: addDirectoryBody,
-          footer: 'enter save   esc cancel',
-          theme: MUX_MODAL_THEME
-        })
-      );
-    } else if (conversationTitleEdit !== null) {
-      const editState =
-        conversationTitleEdit.persistInFlight
-          ? 'saving'
-          : conversationTitleEdit.value === conversationTitleEdit.lastSavedValue
-            ? 'saved'
-            : 'pending';
-      const editBody = [`title: ${conversationTitleEdit.value}_`, `state: ${editState}`];
-      if (conversationTitleEdit.error !== null && conversationTitleEdit.error.length > 0) {
-        editBody.push(`error: ${conversationTitleEdit.error}`);
-      } else {
-        editBody.push('changes save automatically while typing');
-      }
-      applyModalOverlay(
-        rows,
-        buildUiModalOverlay({
-          viewportCols: layout.cols,
-          viewportRows: rows.length,
-          width: Math.min(modalMaxWidth, 96),
-          height: 7,
-          anchor: 'center',
-          marginRows: 1,
-          title: 'Edit Conversation Title',
-          bodyLines: editBody,
-          footer: 'typing autosaves   enter done   esc done',
-          theme: MUX_MODAL_THEME
-        })
-      );
+    const modalOverlay =
+      addDirectoryPrompt !== null
+        ? buildAddDirectoryModalOverlay(rows.length)
+        : buildConversationTitleModalOverlay(rows.length);
+    if (modalOverlay !== null) {
+      applyModalOverlay(rows, modalOverlay);
     }
     if (validateAnsi) {
       const issues = findAnsiIntegrityIssues(rows);
@@ -3419,34 +3437,46 @@ async function main(): Promise<number> {
       }
     }
 
-    const shouldEnableBracketedPaste = rightFrame.modes.bracketedPaste;
-    if (renderedBracketedPaste !== shouldEnableBracketedPaste) {
-      output += shouldEnableBracketedPaste ? '\u001b[?2004h' : '\u001b[?2004l';
-      renderedBracketedPaste = shouldEnableBracketedPaste;
-    }
-
-    if (!cursorStyleEqual(renderedCursorStyle, rightFrame.cursor.style)) {
-      output += cursorStyleToDecscusr(rightFrame.cursor.style);
-      renderedCursorStyle = rightFrame.cursor.style;
-    }
-
-    output += renderSelectionOverlay(layout, rightFrame, renderSelection);
-
-    const shouldShowCursor =
-      rightFrame.viewport.followOutput &&
-      rightFrame.cursor.visible &&
-      rightFrame.cursor.row >= 0 &&
-      rightFrame.cursor.row < layout.paneRows &&
-      rightFrame.cursor.col >= 0 &&
-      rightFrame.cursor.col < layout.rightCols;
-
-    if (shouldShowCursor) {
-      if (renderedCursorVisible !== true) {
-        output += '\u001b[?25h';
-        renderedCursorVisible = true;
+    let shouldShowCursor = false;
+    if (rightFrame !== null) {
+      const shouldEnableBracketedPaste = rightFrame.modes.bracketedPaste;
+      if (renderedBracketedPaste !== shouldEnableBracketedPaste) {
+        output += shouldEnableBracketedPaste ? '\u001b[?2004h' : '\u001b[?2004l';
+        renderedBracketedPaste = shouldEnableBracketedPaste;
       }
-      output += `\u001b[${String(rightFrame.cursor.row + 1)};${String(layout.rightStartCol + rightFrame.cursor.col)}H`;
+
+      if (!cursorStyleEqual(renderedCursorStyle, rightFrame.cursor.style)) {
+        output += cursorStyleToDecscusr(rightFrame.cursor.style);
+        renderedCursorStyle = rightFrame.cursor.style;
+      }
+
+      output += renderSelectionOverlay(layout, rightFrame, renderSelection);
+
+      shouldShowCursor =
+        rightFrame.viewport.followOutput &&
+        rightFrame.cursor.visible &&
+        rightFrame.cursor.row >= 0 &&
+        rightFrame.cursor.row < layout.paneRows &&
+        rightFrame.cursor.col >= 0 &&
+        rightFrame.cursor.col < layout.rightCols;
+
+      if (shouldShowCursor) {
+        if (renderedCursorVisible !== true) {
+          output += '\u001b[?25h';
+          renderedCursorVisible = true;
+        }
+        output += `\u001b[${String(rightFrame.cursor.row + 1)};${String(layout.rightStartCol + rightFrame.cursor.col)}H`;
+      } else {
+        if (renderedCursorVisible !== false) {
+          output += '\u001b[?25l';
+          renderedCursorVisible = false;
+        }
+      }
     } else {
+      if (renderedBracketedPaste !== false) {
+        output += '\u001b[?2004l';
+        renderedBracketedPaste = false;
+      }
       if (renderedCursorVisible !== false) {
         output += '\u001b[?25l';
         renderedCursorVisible = false;
@@ -3456,14 +3486,15 @@ async function main(): Promise<number> {
     if (output.length > 0) {
       process.stdout.write(output);
       if (
+        active !== null &&
+        rightFrame !== null &&
         startupFirstPaintTargetSessionId !== null &&
         activeConversationId === startupFirstPaintTargetSessionId &&
-        startupActiveFirstOutputObserved &&
-        !startupActiveFirstPaintObserved
+        startupSequencer.snapshot().firstOutputObserved &&
+        !startupSequencer.snapshot().firstPaintObserved
       ) {
         const glyphCells = visibleGlyphCellCount(active);
-        if (glyphCells > 0) {
-          startupActiveFirstPaintObserved = true;
+        if (startupSequencer.markFirstPaintVisible(startupFirstPaintTargetSessionId, glyphCells)) {
           recordPerfEvent('mux.startup.active-first-visible-paint', {
             sessionId: startupFirstPaintTargetSessionId,
             changedRows: diff.changedRows.length,
@@ -3477,45 +3508,46 @@ async function main(): Promise<number> {
         }
       }
       if (
+        active !== null &&
+        rightFrame !== null &&
         startupFirstPaintTargetSessionId !== null &&
         activeConversationId === startupFirstPaintTargetSessionId &&
-        startupActiveFirstOutputObserved
+        startupSequencer.snapshot().firstOutputObserved
       ) {
         const glyphCells = visibleGlyphCellCount(active);
-        if (!startupActiveHeaderObserved && codexHeaderVisible(active)) {
-          startupActiveHeaderObserved = true;
+        if (startupSequencer.markHeaderVisible(startupFirstPaintTargetSessionId, codexHeaderVisible(active))) {
           recordPerfEvent('mux.startup.active-header-visible', {
             sessionId: startupFirstPaintTargetSessionId,
             glyphCells
           });
         }
-        if (startupActiveSettleGate === null) {
-          if (startupActiveHeaderObserved) {
-            startupActiveSettleGate = 'header';
-          } else if (
-            glyphCells > 0 &&
-            startupActiveFirstOutputAtMs !== null &&
-            Date.now() - startupActiveFirstOutputAtMs >= DEFAULT_STARTUP_SETTLE_NONEMPTY_FALLBACK_MS
-          ) {
-            startupActiveSettleGate = 'nonempty';
-          }
-          if (startupActiveSettleGate !== null) {
-            recordPerfEvent('mux.startup.active-settle-gate', {
-              sessionId: startupFirstPaintTargetSessionId,
-              gate: startupActiveSettleGate,
-              glyphCells
-            });
-          }
+        const selectedGate = startupSequencer.maybeSelectSettleGate(
+          startupFirstPaintTargetSessionId,
+          glyphCells
+        );
+        if (selectedGate !== null) {
+          recordPerfEvent('mux.startup.active-settle-gate', {
+            sessionId: startupFirstPaintTargetSessionId,
+            gate: selectedGate,
+            glyphCells
+          });
         }
         scheduleStartupSettledProbe(startupFirstPaintTargetSessionId);
       }
       if (muxRecordingWriter !== null && muxRecordingOracle !== null) {
+        const recordingCursorStyle =
+          rightFrame === null ? { shape: 'block', blinking: false } : rightFrame.cursor.style;
+        const recordingCursorRow = rightFrame === null ? 0 : rightFrame.cursor.row;
+        const recordingCursorCol =
+          rightFrame === null
+            ? layout.rightStartCol - 1
+            : layout.rightStartCol + rightFrame.cursor.col - 1;
         const canonicalFrame = renderCanonicalFrameAnsi(
           rows,
-          rightFrame.cursor.style,
+          recordingCursorStyle,
           shouldShowCursor,
-          rightFrame.cursor.row,
-          layout.rightStartCol + rightFrame.cursor.col - 1
+          recordingCursorRow,
+          recordingCursorCol
         );
         muxRecordingOracle.ingest(canonicalFrame);
         try {
@@ -3563,18 +3595,18 @@ async function main(): Promise<number> {
       if (
         startupFirstPaintTargetSessionId !== null &&
         envelope.sessionId === startupFirstPaintTargetSessionId &&
-        !startupActiveFirstOutputObserved
+        !startupSequencer.snapshot().firstOutputObserved
       ) {
-        startupActiveFirstOutputObserved = true;
-        startupActiveFirstOutputAtMs = Date.now();
-        recordPerfEvent('mux.startup.active-first-output', {
-          sessionId: envelope.sessionId,
-          bytes: chunk.length
-        });
-        endStartupActiveFirstOutputSpan({
-          observed: true,
-          bytes: chunk.length
-        });
+        if (startupSequencer.markFirstOutput(envelope.sessionId)) {
+          recordPerfEvent('mux.startup.active-first-output', {
+            sessionId: envelope.sessionId,
+            bytes: chunk.length
+          });
+          endStartupActiveFirstOutputSpan({
+            observed: true,
+            bytes: chunk.length
+          });
+        }
       }
       if (envelope.cursor < conversation.lastOutputCursor) {
         recordPerfEvent('mux.output.cursor-regression', {
@@ -3700,6 +3732,7 @@ async function main(): Promise<number> {
 
   const initialActiveId = activeConversationId;
   activeConversationId = null;
+  startupSequencer.setTargetSession(initialActiveId);
   if (initialActiveId !== null) {
     startupFirstPaintTargetSessionId = initialActiveId;
     startupActiveStartCommandSpan = startPerfSpan('mux.startup.active-start-command', {
@@ -3742,7 +3775,7 @@ async function main(): Promise<number> {
       return;
     }
     await Promise.race([
-      startupActiveSettledWait,
+      startupSequencer.waitForSettled(),
       new Promise<void>((resolve) => {
         setTimeout(() => {
           timedOut = true;
@@ -3753,7 +3786,7 @@ async function main(): Promise<number> {
     recordPerfEvent('mux.startup.background-start.begin', {
       sessionId: initialActiveId ?? 'none',
       timedOut,
-      settledObserved: startupActiveSettledObserved
+      settledObserved: startupSequencer.snapshot().settledObserved
     });
     const queued = queuePersistedConversationsInBackground(initialActiveId);
     recordPerfEvent('mux.startup.background-start.queued', {
@@ -3774,7 +3807,11 @@ async function main(): Promise<number> {
       stopConversationTitleEdit(true);
       return true;
     }
-    if (input.includes(0x1b)) {
+    if (
+      dismissModalOnOutsideClick(input, () => {
+        stopConversationTitleEdit(true);
+      })
+    ) {
       return true;
     }
 
@@ -3825,7 +3862,12 @@ async function main(): Promise<number> {
       markDirty();
       return true;
     }
-    if (input.includes(0x1b)) {
+    if (
+      dismissModalOnOutsideClick(input, () => {
+        addDirectoryPrompt = null;
+        markDirty();
+      })
+    ) {
       return true;
     }
 
@@ -3889,8 +3931,11 @@ async function main(): Promise<number> {
         releaseViewportPinForSelection();
         markDirty();
       }
-      if (activeConversationId !== null) {
-        streamClient.sendInput(activeConversation().sessionId, chunk);
+      if (mainPaneMode === 'conversation' && activeConversationId !== null) {
+        const escapeTarget = conversations.get(activeConversationId);
+        if (escapeTarget !== undefined) {
+          streamClient.sendInput(escapeTarget.sessionId, chunk);
+        }
       }
       return;
     }
@@ -3918,9 +3963,12 @@ async function main(): Promise<number> {
       return;
     }
     if (globalShortcut === 'mux.conversation.new') {
-      queueControlPlaneOp(async () => {
-        await createAndActivateConversation();
-      }, 'shortcut-new-conversation');
+      const targetDirectoryId = resolveDirectoryForAction();
+      if (targetDirectoryId !== null) {
+        queueControlPlaneOp(async () => {
+          await createAndActivateConversationInDirectory(targetDirectoryId);
+        }, 'shortcut-new-conversation');
+      }
       return;
     }
     if (globalShortcut === 'mux.conversation.archive') {
@@ -3950,7 +3998,7 @@ async function main(): Promise<number> {
       return;
     }
     if (globalShortcut === 'mux.directory.close') {
-      const targetDirectoryId = resolveActiveDirectoryId();
+      const targetDirectoryId = resolveDirectoryForAction();
       if (targetDirectoryId !== null) {
         queueControlPlaneOp(async () => {
           await closeDirectory(targetDirectoryId);
@@ -3973,7 +4021,11 @@ async function main(): Promise<number> {
       return;
     }
 
-    if (selection !== null && isCopyShortcutInput(focusExtraction.sanitized)) {
+    if (
+      mainPaneMode === 'conversation' &&
+      selection !== null &&
+      isCopyShortcutInput(focusExtraction.sanitized)
+    ) {
       if (activeConversationId === null) {
         return;
       }
@@ -3985,15 +4037,13 @@ async function main(): Promise<number> {
       return;
     }
 
-    if (activeConversationId === null) {
-      return;
-    }
-
     const parsed = parseMuxInputChunk(inputRemainder, focusExtraction.sanitized);
     inputRemainder = parsed.remainder;
 
-    const inputConversation = activeConversation();
-    let snapshotForInput = inputConversation.oracle.snapshotWithoutHash();
+    const inputConversation =
+      activeConversationId === null ? null : conversations.get(activeConversationId) ?? null;
+    let snapshotForInput =
+      inputConversation === null ? null : inputConversation.oracle.snapshotWithoutHash();
     const routedTokens: Array<(typeof parsed.tokens)[number]> = [];
     for (const token of parsed.tokens) {
       if (token.kind !== 'mouse') {
@@ -4033,8 +4083,12 @@ async function main(): Promise<number> {
       const wheelDelta = wheelDeltaRowsFromCode(token.event.code);
       if (wheelDelta !== null) {
         if (target === 'right') {
-          inputConversation.oracle.scrollViewport(wheelDelta);
-          snapshotForInput = inputConversation.oracle.snapshotWithoutHash();
+          if (mainPaneMode === 'project') {
+            projectPaneScrollTop = Math.max(0, projectPaneScrollTop + wheelDelta);
+          } else if (inputConversation !== null) {
+            inputConversation.oracle.scrollViewport(wheelDelta);
+            snapshotForInput = inputConversation.oracle.snapshotWithoutHash();
+          }
           markDirty();
           continue;
         }
@@ -4047,6 +4101,7 @@ async function main(): Promise<number> {
       if (leftPaneConversationSelect) {
         const rowIndex = Math.max(0, Math.min(layout.paneRows - 1, token.event.row - 1));
         const selectedConversationId = conversationIdAtWorkspaceRailRow(latestRailViewRows, rowIndex);
+        const selectedProjectId = projectIdAtWorkspaceRailRow(latestRailViewRows, rowIndex);
         const selectedAction = actionAtWorkspaceRailRow(latestRailViewRows, rowIndex);
         const selectedRowKind = kindAtWorkspaceRailRow(latestRailViewRows, rowIndex);
         const keepTitleEditActive =
@@ -4062,9 +4117,12 @@ async function main(): Promise<number> {
           releaseViewportPinForSelection();
         }
         if (selectedAction === 'conversation.new') {
-          queueControlPlaneOp(async () => {
-            await createAndActivateConversation();
-          }, 'mouse-new-conversation');
+          const targetDirectoryId = selectedProjectId ?? resolveDirectoryForAction();
+          if (targetDirectoryId !== null) {
+            queueControlPlaneOp(async () => {
+              await createAndActivateConversationInDirectory(targetDirectoryId);
+            }, 'mouse-new-conversation');
+          }
           markDirty();
           continue;
         }
@@ -4078,7 +4136,7 @@ async function main(): Promise<number> {
           markDirty();
           continue;
         }
-        if (selectedAction === 'directory.add') {
+        if (selectedAction === 'project.add') {
           addDirectoryPrompt = {
             value: '',
             error: null
@@ -4086,8 +4144,8 @@ async function main(): Promise<number> {
           markDirty();
           continue;
         }
-        if (selectedAction === 'directory.close') {
-          const targetDirectoryId = resolveActiveDirectoryId();
+        if (selectedAction === 'project.close') {
+          const targetDirectoryId = selectedProjectId ?? resolveDirectoryForAction();
           if (targetDirectoryId !== null) {
             queueControlPlaneOp(async () => {
               await closeDirectory(targetDirectoryId);
@@ -4101,24 +4159,48 @@ async function main(): Promise<number> {
           markDirty();
           continue;
         }
-        if (
-          selectedConversationId !== null &&
-          selectedConversationId === activeConversationId &&
-          selectedRowKind === 'conversation-title'
-        ) {
-          beginConversationTitleEdit(selectedConversationId);
+        if (selectedConversationId !== null && selectedConversationId === activeConversationId) {
+          if (mainPaneMode !== 'conversation') {
+            mainPaneMode = 'conversation';
+            projectPaneSnapshot = null;
+            projectPaneScrollTop = 0;
+            forceFullClear = true;
+            previousRows = [];
+          }
+          if (selectedRowKind === 'conversation-title') {
+            beginConversationTitleEdit(selectedConversationId);
+          }
+          markDirty();
           continue;
         }
-        if (selectedConversationId !== null && selectedConversationId !== activeConversationId) {
+        if (selectedConversationId !== null) {
           queueControlPlaneOp(async () => {
             await activateConversation(selectedConversationId);
           }, 'mouse-activate-conversation');
+          markDirty();
+          continue;
+        }
+        if (
+          selectedConversationId === null &&
+          selectedProjectId !== null &&
+          directories.has(selectedProjectId)
+        ) {
+          enterProjectPane(selectedProjectId);
+          markDirty();
+          continue;
         }
         markDirty();
         continue;
       }
+      if (snapshotForInput === null || mainPaneMode !== 'conversation') {
+        routedTokens.push(token);
+        continue;
+      }
       const point = pointFromMouseEvent(layout, snapshotForInput, token.event);
-      const startSelection = isMainPaneTarget && isLeftButtonPress(token.event.code, token.event.final) && !hasAltModifier(token.event.code);
+      const startSelection =
+        isMainPaneTarget &&
+        isLeftButtonPress(token.event.code, token.event.final) &&
+        !hasAltModifier(token.event.code);
       const updateSelection =
         selectionDrag !== null &&
         isMainPaneTarget &&
@@ -4189,12 +4271,15 @@ async function main(): Promise<number> {
     const forwardToSession: Buffer[] = [];
     for (const token of routedTokens) {
       if (token.kind === 'passthrough') {
-        if (token.text.length > 0) {
+        if (mainPaneMode === 'conversation' && token.text.length > 0) {
           forwardToSession.push(Buffer.from(token.text, 'utf8'));
         }
         continue;
       }
       if (classifyPaneAt(layout, token.event.col, token.event.row) !== 'right') {
+        continue;
+      }
+      if (mainPaneMode !== 'conversation') {
         continue;
       }
       const wheelDelta = wheelDeltaRowsFromCode(token.event.code);
@@ -4205,9 +4290,13 @@ async function main(): Promise<number> {
       forwardToSession.push(Buffer.from(token.event.sequence, 'utf8'));
     }
 
-    if (mainPaneScrollRows !== 0) {
+    if (mainPaneScrollRows !== 0 && inputConversation !== null) {
       inputConversation.oracle.scrollViewport(mainPaneScrollRows);
       markDirty();
+    }
+
+    if (inputConversation === null) {
+      return;
     }
 
     for (const forwardChunk of forwardToSession) {
@@ -4350,16 +4439,17 @@ async function main(): Promise<number> {
     endStartupActiveStartCommandSpan({
       observed: false
     });
+    const startupSnapshot = startupSequencer.snapshot();
     endStartupActiveFirstOutputSpan({
-      observed: startupActiveFirstOutputObserved
+      observed: startupSnapshot.firstOutputObserved
     });
     endStartupActiveFirstPaintSpan({
-      observed: startupActiveFirstPaintObserved
+      observed: startupSnapshot.firstPaintObserved
     });
     clearStartupSettledTimer();
     endStartupActiveSettledSpan({
-      observed: startupActiveSettledObserved,
-      gate: startupActiveSettleGate ?? 'none'
+      observed: startupSnapshot.settledObserved,
+      gate: startupSnapshot.settleGate ?? 'none'
     });
     signalStartupActiveSettled();
     shutdownPerfCore();
