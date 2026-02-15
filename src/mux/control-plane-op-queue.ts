@@ -95,6 +95,14 @@ export class ControlPlaneOpQueue {
     });
   }
 
+  metrics(): {
+    readonly interactiveQueued: number;
+    readonly backgroundQueued: number;
+    readonly running: boolean;
+  } {
+    return this.metricsSnapshot();
+  }
+
   private enqueue(task: () => Promise<void>, priority: ControlPlaneOpPriority, label: string): void {
     const op: QueuedControlPlaneOp = {
       id: this.nextId,

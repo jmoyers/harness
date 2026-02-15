@@ -2516,6 +2516,7 @@ async function main(): Promise<number> {
       markDirty();
     }
     if (totalChunks > 0 || hasRenderSamples) {
+      const controlPlaneQueueMetrics = controlPlaneQueue.metrics();
       recordPerfEvent('mux.output-load.sample', {
         windowMs,
         activeChunks: outputSampleActiveChunks,
@@ -2534,9 +2535,9 @@ async function main(): Promise<number> {
         activeConversationId: activeConversationId ?? 'none',
         sessionsWithOutput: outputSampleSessionIds.size,
         pendingPersistedEvents: pendingPersistedEvents.length,
-        interactiveQueued: interactiveControlPlaneQueue.length,
-        backgroundQueued: backgroundControlPlaneQueue.length,
-        controlPlaneOpRunning: controlPlaneOpRunning ? 1 : 0
+        interactiveQueued: controlPlaneQueueMetrics.interactiveQueued,
+        backgroundQueued: controlPlaneQueueMetrics.backgroundQueued,
+        controlPlaneOpRunning: controlPlaneQueueMetrics.running ? 1 : 0
       });
     }
     outputSampleWindowStartedAtMs = nowMs;

@@ -30,6 +30,8 @@ interface MuxModalOverlay {
   readonly rows: readonly string[];
 }
 
+const MUTED_SEPARATOR = '\u001b[0;38;5;240m│\u001b[0m';
+
 export function buildRenderRows(
   layout: MuxPaneLayout,
   railRows: readonly string[],
@@ -42,7 +44,7 @@ export function buildRenderRows(
   for (let row = 0; row < layout.paneRows; row += 1) {
     const left = railRows[row] ?? ' '.repeat(layout.leftCols);
     const right = rightRows[row] ?? ' '.repeat(layout.rightCols);
-    rows.push(`${left}\u001b[0m${separatorAnchor}│${rightAnchor}${right}`);
+    rows.push(`${left}\u001b[0m${separatorAnchor}${MUTED_SEPARATOR}${rightAnchor}${right}`);
   }
   const status = padOrTrimDisplay(
     `[mux] fps=${perf.fps.toFixed(1)} kb/s=${perf.kbPerSecond.toFixed(1)} render=${perf.renderAvgMs.toFixed(2)}/${perf.renderMaxMs.toFixed(2)}ms output=${perf.outputHandleAvgMs.toFixed(2)}/${perf.outputHandleMaxMs.toFixed(2)}ms loop.p95=${perf.eventLoopP95Ms.toFixed(1)}ms`,

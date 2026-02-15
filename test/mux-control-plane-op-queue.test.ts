@@ -69,8 +69,56 @@ void test('control-plane op queue waitForDrain resolves immediately when queue i
       throw new Error('schedule should not be called for idle wait');
     }
   });
+  assert.deepEqual(queue.metrics(), {
+    interactiveQueued: 0,
+    backgroundQueued: 0,
+    running: false
+  });
   await queue.waitForDrain();
   assert.ok(true);
+});
+
+void test('control-plane op queue metrics reflect enqueued and running operations', async () => {
+  const scheduled: Array<() => void> = [];
+  let releaseTask: () => void = () => {
+    throw new Error('expected task release callback');
+  };
+  const heldTask = new Promise<void>((resolve) => {
+    releaseTask = resolve;
+  });
+  const queue = new ControlPlaneOpQueue({
+    schedule: (callback) => {
+      scheduled.push(callback);
+    }
+  });
+
+  queue.enqueueBackground(async () => {
+    await heldTask;
+  }, 'held');
+  assert.deepEqual(queue.metrics(), {
+    interactiveQueued: 0,
+    backgroundQueued: 1,
+    running: false
+  });
+
+  await flushManualSchedule(scheduled);
+  assert.deepEqual(queue.metrics(), {
+    interactiveQueued: 0,
+    backgroundQueued: 0,
+    running: true
+  });
+
+  releaseTask();
+  await new Promise<void>((resolve) => {
+    setImmediate(resolve);
+  });
+  await flushManualSchedule(scheduled);
+  await queue.waitForDrain();
+  assert.deepEqual(queue.metrics(), {
+    interactiveQueued: 0,
+    backgroundQueued: 0,
+    running: false
+  });
 });
 
 void test('control-plane op queue reports task errors and continues draining subsequent tasks', async () => {

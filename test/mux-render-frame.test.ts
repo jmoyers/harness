@@ -32,8 +32,11 @@ void test('mux render frame builds pane rows with status footer and fallback pad
   );
 
   assert.equal(rows.length, 3);
-  assert.equal((rows[0] ?? '').includes('\u001b[5G│\u001b[6G'), true);
-  assert.equal((rows[1] ?? '').includes('    \u001b[0m\u001b[5G│\u001b[6G      '), true);
+  assert.equal((rows[0] ?? '').includes('\u001b[5G\u001b[0;38;5;240m│\u001b[0m\u001b[6G'), true);
+  assert.equal(
+    (rows[1] ?? '').includes('    \u001b[0m\u001b[5G\u001b[0;38;5;240m│\u001b[0m\u001b[6G      '),
+    true
+  );
   assert.equal((rows[2] ?? '').length, 20);
   assert.equal((rows[2] ?? '').startsWith('[mux] fps=6.3'), true);
 });
