@@ -317,6 +317,35 @@ const NEW_THREAD_MODAL_TERMINAL_BUTTON = formatUiButton({
   label: 'terminal',
   prefixIcon: '▣'
 });
+const GOLDEN_RATIO = (1 + Math.sqrt(5)) / 2;
+
+function resolveGoldenModalSize(
+  viewportCols: number,
+  viewportRows: number,
+  options: {
+    readonly preferredHeight: number;
+    readonly minWidth: number;
+    readonly maxWidth: number;
+  }
+): { width: number; height: number } {
+  const safeViewportCols = Math.max(1, Math.floor(viewportCols));
+  const safeViewportRows = Math.max(1, Math.floor(viewportRows));
+  const maxHeight = Math.max(1, safeViewportRows - 2);
+  const height = Math.max(1, Math.min(Math.floor(options.preferredHeight), maxHeight));
+  const maxWidth = Math.max(
+    options.minWidth,
+    Math.min(Math.floor(options.maxWidth), Math.max(1, safeViewportCols - 2))
+  );
+  const targetWidth = Math.round(height * GOLDEN_RATIO);
+  const width = Math.max(
+    Math.floor(options.minWidth),
+    Math.min(targetWidth, maxWidth)
+  );
+  return {
+    width,
+    height
+  };
+}
 
 function buildProjectPaneSnapshot(directoryId: string, path: string): ProjectPaneSnapshot {
   const projectName = basename(path) || path;
@@ -3513,11 +3542,16 @@ async function main(): Promise<number> {
     if (newThreadPrompt === null) {
       return null;
     }
+    const modalSize = resolveGoldenModalSize(layout.cols, viewportRows, {
+      preferredHeight: 14,
+      minWidth: 22,
+      maxWidth: 36
+    });
     return buildUiModalOverlay({
       viewportCols: layout.cols,
       viewportRows,
-      width: Math.min(Math.max(24, layout.cols - 2), 52),
-      height: 10,
+      width: modalSize.width,
+      height: modalSize.height,
       anchor: 'center',
       marginRows: 1,
       title: 'New Thread',
@@ -3525,7 +3559,7 @@ async function main(): Promise<number> {
         codexButtonLabel: NEW_THREAD_MODAL_CODEX_BUTTON,
         terminalButtonLabel: NEW_THREAD_MODAL_TERMINAL_BUTTON
       }),
-      footer: 'enter create   esc cancel',
+      footer: 'enter create  esc',
       theme: MUX_MODAL_THEME
     });
   };
@@ -3534,7 +3568,11 @@ async function main(): Promise<number> {
     if (addDirectoryPrompt === null) {
       return null;
     }
-    const modalMaxWidth = Math.max(16, layout.cols - 2);
+    const modalSize = resolveGoldenModalSize(layout.cols, viewportRows, {
+      preferredHeight: 15,
+      minWidth: 24,
+      maxWidth: 40
+    });
     const promptValue = addDirectoryPrompt.value.length > 0 ? addDirectoryPrompt.value : '.';
     const addDirectoryBody = [`path: ${promptValue}_`];
     if (addDirectoryPrompt.error !== null && addDirectoryPrompt.error.length > 0) {
@@ -3545,13 +3583,13 @@ async function main(): Promise<number> {
     return buildUiModalOverlay({
       viewportCols: layout.cols,
       viewportRows,
-      width: Math.min(modalMaxWidth, 96),
-      height: 6,
+      width: modalSize.width,
+      height: modalSize.height,
       anchor: 'center',
       marginRows: 1,
       title: 'Add Project',
       bodyLines: addDirectoryBody,
-      footer: 'enter save   esc cancel',
+      footer: 'enter save  esc',
       theme: MUX_MODAL_THEME
     });
   };
@@ -3560,7 +3598,11 @@ async function main(): Promise<number> {
     if (conversationTitleEdit === null) {
       return null;
     }
-    const modalMaxWidth = Math.max(16, layout.cols - 2);
+    const modalSize = resolveGoldenModalSize(layout.cols, viewportRows, {
+      preferredHeight: 18,
+      minWidth: 26,
+      maxWidth: 44
+    });
     const editState =
       conversationTitleEdit.persistInFlight
         ? 'saving'
@@ -3579,13 +3621,13 @@ async function main(): Promise<number> {
     return buildUiModalOverlay({
       viewportCols: layout.cols,
       viewportRows,
-      width: Math.min(modalMaxWidth, 96),
-      height: 9,
+      width: modalSize.width,
+      height: modalSize.height,
       anchor: 'center',
       marginRows: 1,
       title: 'Edit Thread Title',
       bodyLines: editBody,
-      footer: 'typing autosaves   enter done   ctrl+x archive   esc done',
+      footer: 'type to save  enter done',
       theme: MUX_MODAL_THEME
     });
   };

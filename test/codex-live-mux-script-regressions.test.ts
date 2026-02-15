@@ -124,3 +124,13 @@ void test('codex-live-mux does not forward raw mouse SGR sequences into sessions
   assert.equal(source.includes("forwardToSession.push(Buffer.from(token.event.sequence, 'utf8'));"), false);
   assert.equal(source.includes('The mux owns mouse interactions.'), true);
 });
+
+void test('codex-live-mux modal sizing uses golden-ratio dimensions instead of wide fixed-width layouts', () => {
+  const scriptPath = resolve(process.cwd(), 'scripts/codex-live-mux.ts');
+  const source = readFileSync(scriptPath, 'utf8');
+
+  assert.equal(source.includes('const GOLDEN_RATIO = (1 + Math.sqrt(5)) / 2;'), true);
+  assert.equal(source.includes('resolveGoldenModalSize(layout.cols, viewportRows'), true);
+  assert.equal(source.includes('width: Math.min(Math.max(24, layout.cols - 2), 52)'), false);
+  assert.equal(source.includes('width: Math.min(modalMaxWidth, 96)'), false);
+});
