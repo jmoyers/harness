@@ -517,7 +517,7 @@ export class SqliteControlPlaneStore {
             runtime_last_exit_code,
             runtime_last_exit_signal,
             adapter_state_json
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 'completed', 0, NULL, NULL, NULL, NULL, NULL, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 'running', 0, NULL, NULL, NULL, NULL, NULL, ?)
         `
         )
         .run(

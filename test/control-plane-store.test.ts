@@ -45,7 +45,7 @@ void test('control-plane store upserts directories and persists conversations/ru
       agentType: 'codex'
     });
     assert.equal(conversation.conversationId, 'conversation-1');
-    assert.equal(conversation.runtimeStatus, 'completed');
+    assert.equal(conversation.runtimeStatus, 'running');
     assert.equal(conversation.runtimeLive, false);
     assert.deepEqual(conversation.adapterState, {});
 

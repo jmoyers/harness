@@ -531,7 +531,9 @@ void test('stream server supports start/attach/io/events/cleanup over one protoc
   });
   assert.equal(created.length, 2);
   clientA.sendSignal('session-2', 'terminate');
-  await delay(10);
+  for (let attempt = 0; attempt < 20 && !created[1]!.isClosed(); attempt += 1) {
+    await delay(10);
+  }
   assert.equal(created[1]!.isClosed(), true);
 
   await assert.rejects(
@@ -656,7 +658,7 @@ void test('stream server supports session.list, session.status, and session.snap
     assert.equal(sessionEntries[0]?.['sessionId'], 'session-list');
     assert.equal(sessionEntries[0]?.['tenantId'], 'tenant-a');
     assert.equal(sessionEntries[0]?.['workspaceId'], 'workspace-a');
-    assert.equal(sessionEntries[0]?.['status'], 'completed');
+    assert.equal(sessionEntries[0]?.['status'], 'running');
     assert.equal(typeof sessionEntries[0]?.['processId'], 'number');
     assert.equal(sessionEntries[1]?.['sessionId'], 'session-list-2');
 
@@ -706,7 +708,7 @@ void test('stream server supports session.list, session.status, and session.snap
       sessionId: 'session-list'
     });
     assert.equal(status['sessionId'], 'session-list');
-    assert.equal(status['status'], 'completed');
+    assert.equal(status['status'], 'running');
     assert.equal(typeof status['processId'], 'number');
 
     const snapshot = await client.sendCommand({
@@ -1372,7 +1374,7 @@ void test('stream server attention-first sorting falls back to recency when stat
     const entries = listed['sessions'] as Array<Record<string, unknown>>;
     assert.equal(entries.length, 2);
     assert.equal(entries[0]?.['sessionId'], 'conversation-b');
-    assert.equal(entries[0]?.['status'], 'completed');
+    assert.equal(entries[0]?.['status'], 'running');
     assert.equal(entries[1]?.['sessionId'], 'conversation-a');
   } finally {
     client.close();
@@ -1745,7 +1747,7 @@ void test('stream server assertConnectionCanMutateSession tolerates stale null-c
   }
 });
 
-void test('stream server keeps status completed while typing until runtime events arrive', async () => {
+void test('stream server keeps status running while typing until runtime events arrive', async () => {
   const sessions: FakeLiveSession[] = [];
   const server = await startControlPlaneStreamServer({
     startSession: (input) => {
@@ -1774,7 +1776,7 @@ void test('stream server keeps status completed while typing until runtime event
       type: 'session.status',
       sessionId: 'session-typing'
     });
-    assert.equal(initial['status'], 'completed');
+    assert.equal(initial['status'], 'running');
 
     client.sendInput('session-typing', Buffer.from('typed', 'utf8'));
     await delay(10);
@@ -1782,7 +1784,7 @@ void test('stream server keeps status completed while typing until runtime event
       type: 'session.status',
       sessionId: 'session-typing'
     });
-    assert.equal(afterTyping['status'], 'completed');
+    assert.equal(afterTyping['status'], 'running');
 
     client.sendInput('session-typing', Buffer.from('\r', 'utf8'));
     await delay(10);
@@ -1790,7 +1792,7 @@ void test('stream server keeps status completed while typing until runtime event
       type: 'session.status',
       sessionId: 'session-typing'
     });
-    assert.equal(afterSubmit['status'], 'completed');
+    assert.equal(afterSubmit['status'], 'running');
   } finally {
     client.close();
     await server.close();
@@ -1860,7 +1862,7 @@ void test('stream server emits session-exit events for subscribed non-attached s
       type: 'session.status',
       sessionId: 'session-background'
     });
-    assert.equal(runningStatus['status'], 'completed');
+    assert.equal(runningStatus['status'], 'running');
 
     sessions[1]!.emitExit({
       code: 0,
@@ -3097,7 +3099,7 @@ void test('stream server ingests codex history lines and supports reset when fil
       type: 'session.status',
       sessionId: 'conversation-history'
     });
-    assert.equal(firstStatus['status'], 'completed');
+    assert.equal(firstStatus['status'], 'running');
     assert.equal((firstStatus['telemetry'] as Record<string, unknown>)['source'], 'history');
 
     writeFileSync(
@@ -3129,7 +3131,7 @@ void test('stream server ingests codex history lines and supports reset when fil
       type: 'session.status',
       sessionId: 'conversation-history'
     });
-    assert.equal(secondStatus['status'], 'completed');
+    assert.equal(secondStatus['status'], 'running');
     assert.equal(
       (secondStatus['telemetry'] as Record<string, unknown>)['eventName'],
       'response.completed'

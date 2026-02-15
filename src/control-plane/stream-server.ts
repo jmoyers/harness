@@ -1536,11 +1536,13 @@ export class ControlPlaneStreamServer {
       });
 
       const persistedRuntimeStatus = persistedConversation?.runtimeStatus;
+      const persistedRuntimeLastEventAt = persistedConversation?.runtimeLastEventAt ?? null;
       const initialStatus: StreamSessionRuntimeStatus =
         persistedRuntimeStatus === undefined ||
         persistedRuntimeStatus === 'running' ||
-        persistedRuntimeStatus === 'exited'
-          ? 'completed'
+        persistedRuntimeStatus === 'exited' ||
+        (persistedRuntimeStatus === 'completed' && persistedRuntimeLastEventAt === null)
+          ? 'running'
           : persistedRuntimeStatus;
       const initialAttentionReason =
         initialStatus === 'needs-input' ? persistedConversation?.runtimeAttentionReason ?? null : null;
