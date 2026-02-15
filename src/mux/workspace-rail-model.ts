@@ -200,6 +200,7 @@ function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly Wo
     );
     if (conversations.length === 0) {
       pushRow(rows, 'muted', '│  (no conversations)');
+      pushRow(rows, 'action', '│  + new conversation', false, null, 'conversation.new');
     } else {
       for (let index = 0; index < conversations.length; index += 1) {
         const conversation = conversations[index]!;

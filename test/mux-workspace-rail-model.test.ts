@@ -146,6 +146,39 @@ void test('workspace rail model handles empty directories and blank workspace na
   assert.equal(blankNameRows.some((row) => row.text.includes('(unnamed)')), true);
 });
 
+void test('workspace rail model makes empty-directory state clickable for new conversation', () => {
+  const rows = buildWorkspaceRailViewRows(
+    {
+      directories: [
+        {
+          key: 'dir',
+          workspaceId: 'harness',
+          worktreeId: 'worktree-local',
+          active: false,
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0
+          }
+        }
+      ],
+      conversations: [],
+      processes: [],
+      activeConversationId: null
+    },
+    20
+  );
+
+  const emptyStateRowIndex = rows.findIndex((row) => row.kind === 'muted' && row.text.includes('(no conversations)'));
+  assert.equal(emptyStateRowIndex >= 0, true);
+  const emptyStateActionRowIndex = rows.findIndex(
+    (row, index) => index > emptyStateRowIndex && row.kind === 'action' && row.text.includes('+ new conversation')
+  );
+  assert.equal(emptyStateActionRowIndex >= 0, true);
+  assert.equal(actionAtWorkspaceRailRow(rows, emptyStateActionRowIndex), 'conversation.new');
+});
+
 void test('workspace rail model truncates content before pinned shortcuts and supports two-row limit', () => {
   const twoRows = buildWorkspaceRailViewRows(
     {
