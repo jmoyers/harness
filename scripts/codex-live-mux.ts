@@ -51,6 +51,7 @@ import {
   renderWorkspaceRailAnsiRows
 } from '../src/mux/workspace-rail.ts';
 import {
+  actionAtWorkspaceRailRow,
   buildWorkspaceRailViewRows,
   conversationIdAtWorkspaceRailRow
 } from '../src/mux/workspace-rail-model.ts';
@@ -155,6 +156,8 @@ interface ControlPlaneDirectoryRecord {
   readonly userId: string;
   readonly workspaceId: string;
   readonly path: string;
+  readonly createdAt: string | null;
+  readonly archivedAt: string | null;
 }
 
 interface ControlPlaneConversationRecord {
@@ -279,12 +282,16 @@ function parseDirectoryRecord(value: unknown): ControlPlaneDirectoryRecord | nul
   const userId = record['userId'];
   const workspaceId = record['workspaceId'];
   const path = record['path'];
+  const createdAtRaw = record['createdAt'];
+  const archivedAtRaw = record['archivedAt'];
   if (
     typeof directoryId !== 'string' ||
     typeof tenantId !== 'string' ||
     typeof userId !== 'string' ||
     typeof workspaceId !== 'string' ||
-    typeof path !== 'string'
+    typeof path !== 'string' ||
+    (createdAtRaw !== undefined && createdAtRaw !== null && typeof createdAtRaw !== 'string') ||
+    (archivedAtRaw !== undefined && archivedAtRaw !== null && typeof archivedAtRaw !== 'string')
   ) {
     return null;
   }
@@ -293,7 +300,9 @@ function parseDirectoryRecord(value: unknown): ControlPlaneDirectoryRecord | nul
     tenantId,
     userId,
     workspaceId,
-    path
+    path,
+    createdAt: typeof createdAtRaw === 'string' ? createdAtRaw : null,
+    archivedAt: typeof archivedAtRaw === 'string' ? archivedAtRaw : null
   };
 }
 
@@ -1038,68 +1047,61 @@ function conversationOrder(conversations: ReadonlyMap<string, ConversationState>
 
 function shortcutHintText(bindings: ResolvedMuxShortcutBindings): string {
   const newConversation = firstShortcutText(bindings, 'mux.conversation.new') || 'ctrl+t';
+  const deleteConversation = firstShortcutText(bindings, 'mux.conversation.delete') || 'ctrl+x';
+  const addDirectory = firstShortcutText(bindings, 'mux.directory.add') || 'ctrl+o';
+  const closeDirectory = firstShortcutText(bindings, 'mux.directory.close') || 'ctrl+w';
   const next = firstShortcutText(bindings, 'mux.conversation.next') || 'ctrl+j';
   const previous = firstShortcutText(bindings, 'mux.conversation.previous') || 'ctrl+k';
   const interrupt = firstShortcutText(bindings, 'mux.app.interrupt-all') || 'ctrl+c';
   const switchHint = next === previous ? next : `${next}/${previous}`;
-  return `${newConversation} new  ${switchHint} switch  ${interrupt} x2 quit`;
+  return `${newConversation} new  ${deleteConversation} archive  ${addDirectory}/${closeDirectory} dirs  ${switchHint} switch  ${interrupt} x2 quit`;
 }
 
 type WorkspaceRailModel = Parameters<typeof renderWorkspaceRailAnsiRows>[0];
 
 function buildRailModel(
+  directories: ReadonlyMap<string, ControlPlaneDirectoryRecord>,
   conversations: ReadonlyMap<string, ConversationState>,
   orderedIds: readonly string[],
+  activeDirectoryId: string | null,
   activeConversationId: string | null,
   gitSummary: GitSummary,
   processUsageBySessionId: ReadonlyMap<string, ProcessUsageSample>,
   shortcutBindings: ResolvedMuxShortcutBindings
 ): WorkspaceRailModel {
-  const directoriesByKey = new Map<
-    string,
-    {
-      workspaceId: string;
-      worktreeId: string;
-      active: boolean;
-    }
-  >();
-
+  const directoryRows = [...directories.values()].map((directory) => ({
+    key: directory.directoryId,
+    workspaceId: basename(directory.path) || directory.path,
+    worktreeId: directory.path,
+    active: directory.directoryId === activeDirectoryId,
+    git: gitSummary
+  }));
+  const knownDirectoryKeys = new Set(directoryRows.map((directory) => directory.key));
   for (const sessionId of orderedIds) {
     const conversation = conversations.get(sessionId);
-    if (conversation === undefined) {
+    const directoryKey = conversation?.directoryId;
+    if (directoryKey === null || directoryKey === undefined || knownDirectoryKeys.has(directoryKey)) {
       continue;
     }
-    const key = `${conversation.scope.workspaceId}:${conversation.scope.worktreeId}`;
-    const existing = directoriesByKey.get(key);
-    const active = sessionId === activeConversationId;
-    if (existing === undefined) {
-      directoriesByKey.set(key, {
-        workspaceId: conversation.scope.workspaceId,
-        worktreeId: conversation.scope.worktreeId,
-        active
-      });
-      continue;
-    }
-    if (active) {
-      existing.active = true;
-    }
+    knownDirectoryKeys.add(directoryKey);
+    directoryRows.push({
+      key: directoryKey,
+      workspaceId: '(untracked)',
+      worktreeId: '(untracked)',
+      active: directoryKey === activeDirectoryId,
+      git: gitSummary
+    });
   }
 
   return {
-    directories: [...directoriesByKey.entries()].map(([key, value]) => ({
-      key,
-      workspaceId: value.workspaceId,
-      worktreeId: value.worktreeId,
-      active: value.active,
-      git: gitSummary
-    })),
+    directories: directoryRows,
     conversations: orderedIds
-      .map((sessionId, index) => {
+      .map((sessionId) => {
         const conversation = conversations.get(sessionId);
         if (conversation === undefined) {
           return null;
         }
-        const directoryKey = `${conversation.scope.workspaceId}:${conversation.scope.worktreeId}`;
+        const directoryKey = conversation.directoryId ?? 'directory-missing';
         return {
           ...conversationSummary(conversation),
           directoryKey,
@@ -1119,16 +1121,20 @@ function buildRailModel(
 
 function buildRailRows(
   layout: ReturnType<typeof computeDualPaneLayout>,
+  directories: ReadonlyMap<string, ControlPlaneDirectoryRecord>,
   conversations: ReadonlyMap<string, ConversationState>,
   orderedIds: readonly string[],
+  activeDirectoryId: string | null,
   activeConversationId: string | null,
   gitSummary: GitSummary,
   processUsageBySessionId: ReadonlyMap<string, ProcessUsageSample>,
   shortcutBindings: ResolvedMuxShortcutBindings
 ): { ansiRows: readonly string[]; viewRows: ReturnType<typeof buildWorkspaceRailViewRows> } {
   const railModel = buildRailModel(
+    directories,
     conversations,
     orderedIds,
+    activeDirectoryId,
     activeConversationId,
     gitSummary,
     processUsageBySessionId,
@@ -1162,10 +1168,13 @@ function buildRenderRows(
   const selection = selectionActive ? 'select=drag' : 'select=idle';
   const interruptKey = firstShortcutText(shortcutBindings, 'mux.app.interrupt-all') || 'ctrl+c';
   const newKey = firstShortcutText(shortcutBindings, 'mux.conversation.new') || 'ctrl+t';
+  const deleteKey = firstShortcutText(shortcutBindings, 'mux.conversation.delete') || 'ctrl+x';
+  const addDirectoryKey = firstShortcutText(shortcutBindings, 'mux.directory.add') || 'ctrl+o';
+  const closeDirectoryKey = firstShortcutText(shortcutBindings, 'mux.directory.close') || 'ctrl+w';
   const nextKey = firstShortcutText(shortcutBindings, 'mux.conversation.next') || 'ctrl+j';
   const previousKey = firstShortcutText(shortcutBindings, 'mux.conversation.previous') || 'ctrl+k';
   const status = padOrTrimDisplay(
-    `[mux] conversation=${activeConversationId ?? '-'} ${mainMode} ${selection} ${newKey} new ${nextKey}/${previousKey} switch drag copy alt-pass ${interruptKey} x2 quit`,
+    `[mux] conversation=${activeConversationId ?? '-'} ${mainMode} ${selection} ${newKey} new ${deleteKey} archive ${addDirectoryKey}/${closeDirectoryKey} dirs ${nextKey}/${previousKey} switch drag copy alt-pass ${interruptKey} x2 quit`,
     layout.cols
   );
   rows.push(status);
@@ -1499,7 +1508,10 @@ async function main(): Promise<number> {
     cols: size.cols,
     rows: size.rows
   });
-  let layout = computeDualPaneLayout(size.cols, size.rows);
+  let leftPaneColsOverride: number | null = null;
+  let layout = computeDualPaneLayout(size.cols, size.rows, {
+    leftCols: leftPaneColsOverride
+  });
   const resizeMinIntervalMs = debugConfig.enabled
     ? debugConfig.mux.resizeMinIntervalMs
     : DEFAULT_RESIZE_MIN_INTERVAL_MS;
@@ -1602,12 +1614,15 @@ async function main(): Promise<number> {
     throw new Error('control-plane directory.upsert returned malformed directory record');
   }
   directoryUpsertSpan.end();
-  const activeDirectoryId = persistedDirectory.directoryId;
+  let activeDirectoryId: string | null = persistedDirectory.directoryId;
 
   const sessionEnv = {
     ...sanitizeProcessEnv(),
     TERM: process.env.TERM ?? 'xterm-256color'
   };
+  const directories = new Map<string, ControlPlaneDirectoryRecord>([
+    [persistedDirectory.directoryId, persistedDirectory]
+  ]);
   const conversations = new Map<string, ConversationState>();
   const conversationStartInFlight = new Map<string, Promise<ConversationState>>();
   const removedConversationIds = new Set<string>();
@@ -1758,6 +1773,23 @@ async function main(): Promise<number> {
     }, startupSettleQuietMs);
   };
 
+  const firstDirectoryId = (): string | null => {
+    const iterator = directories.keys().next();
+    if (iterator.done === true) {
+      return null;
+    }
+    return iterator.value;
+  };
+
+  const resolveActiveDirectoryId = (): string | null => {
+    if (activeDirectoryId !== null && directories.has(activeDirectoryId)) {
+      return activeDirectoryId;
+    }
+    const fallback = firstDirectoryId();
+    activeDirectoryId = fallback;
+    return fallback;
+  };
+
   const ensureConversation = (
     sessionId: string,
     seed?: {
@@ -1784,9 +1816,10 @@ async function main(): Promise<number> {
       return existing;
     }
     removedConversationIds.delete(sessionId);
+    const directoryId = seed?.directoryId ?? resolveActiveDirectoryId();
     const state = createConversationState(
       sessionId,
-      seed?.directoryId ?? activeDirectoryId,
+      directoryId,
       seed?.title ?? `untitled task ${String(conversations.size + 1)}`,
       seed?.agentType ?? 'codex',
       normalizeAdapterState(seed?.adapterState),
@@ -1808,6 +1841,66 @@ async function main(): Promise<number> {
       throw new Error(`active conversation missing: ${activeConversationId}`);
     }
     return state;
+  };
+
+  const hydrateDirectoryList = async (): Promise<void> => {
+    const listed = await streamClient.sendCommand({
+      type: 'directory.list',
+      tenantId: options.scope.tenantId,
+      userId: options.scope.userId,
+      workspaceId: options.scope.workspaceId
+    });
+    const rows = Array.isArray(listed['directories']) ? listed['directories'] : [];
+    directories.clear();
+    for (const row of rows) {
+      const record = parseDirectoryRecord(row);
+      if (record === null) {
+        continue;
+      }
+      directories.set(record.directoryId, record);
+    }
+    if (!directories.has(persistedDirectory.directoryId)) {
+      directories.set(persistedDirectory.directoryId, persistedDirectory);
+    }
+    if (resolveActiveDirectoryId() === null) {
+      throw new Error('no active directory available after hydrate');
+    }
+  };
+
+  const hydratePersistedConversationsForDirectory = async (directoryId: string): Promise<number> => {
+    const listedPersisted = await streamClient.sendCommand({
+      type: 'conversation.list',
+      directoryId,
+      tenantId: options.scope.tenantId,
+      userId: options.scope.userId,
+      workspaceId: options.scope.workspaceId
+    });
+    const persistedRows = Array.isArray(listedPersisted['conversations'])
+      ? listedPersisted['conversations']
+      : [];
+    for (const row of persistedRows) {
+      const record = parseConversationRecord(row);
+      if (record === null) {
+        continue;
+      }
+      const conversation = ensureConversation(record.conversationId, {
+        directoryId: record.directoryId,
+        title: record.title,
+        agentType: record.agentType,
+        adapterState: record.adapterState
+      });
+      conversation.scope.tenantId = record.tenantId;
+      conversation.scope.userId = record.userId;
+      conversation.scope.workspaceId = record.workspaceId;
+      conversation.status =
+        !record.runtimeLive &&
+        (record.runtimeStatus === 'running' || record.runtimeStatus === 'needs-input')
+          ? 'completed'
+          : record.runtimeStatus;
+      // Persisted runtime flags are advisory; session.list is authoritative for live sessions.
+      conversation.live = false;
+    }
+    return persistedRows.length;
   };
 
   const startConversation = async (sessionId: string): Promise<ConversationState> => {
@@ -1921,37 +2014,10 @@ async function main(): Promise<number> {
 
   const hydrateConversationList = async (): Promise<void> => {
     const hydrateSpan = startPerfSpan('mux.startup.hydrate-conversations');
-    const listedPersisted = await streamClient.sendCommand({
-      type: 'conversation.list',
-      directoryId: activeDirectoryId,
-      tenantId: options.scope.tenantId,
-      userId: options.scope.userId,
-      workspaceId: options.scope.workspaceId
-    });
-    const persistedRows = Array.isArray(listedPersisted['conversations'])
-      ? listedPersisted['conversations']
-      : [];
-    for (const row of persistedRows) {
-      const record = parseConversationRecord(row);
-      if (record === null) {
-        continue;
-      }
-      const conversation = ensureConversation(record.conversationId, {
-        directoryId: record.directoryId,
-        title: record.title,
-        agentType: record.agentType,
-        adapterState: record.adapterState
-      });
-      conversation.scope.tenantId = record.tenantId;
-      conversation.scope.userId = record.userId;
-      conversation.scope.workspaceId = record.workspaceId;
-      conversation.status =
-        !record.runtimeLive &&
-        (record.runtimeStatus === 'running' || record.runtimeStatus === 'needs-input')
-          ? 'completed'
-          : record.runtimeStatus;
-      // Persisted runtime flags are advisory; session.list is authoritative for live sessions.
-      conversation.live = false;
+    await hydrateDirectoryList();
+    let persistedCount = 0;
+    for (const directoryId of directories.keys()) {
+      persistedCount += await hydratePersistedConversationsForDirectory(directoryId);
     }
 
     const listedLive = await streamClient.sendCommand({
@@ -1968,24 +2034,28 @@ async function main(): Promise<number> {
       applySummaryToConversation(conversation, summary);
     }
     hydrateSpan.end({
-      persisted: persistedRows.length,
+      persisted: persistedCount,
       live: summaries.length
     });
   };
 
   await hydrateConversationList();
   if (conversations.size === 0) {
+    const targetDirectoryId = resolveActiveDirectoryId();
+    if (targetDirectoryId === null) {
+      throw new Error('cannot create initial conversation without an active directory');
+    }
     const initialTitle = `untitled task ${String(conversations.size + 1)}`;
     await streamClient.sendCommand({
       type: 'conversation.create',
       conversationId: options.initialConversationId,
-      directoryId: activeDirectoryId,
+      directoryId: targetDirectoryId,
       title: initialTitle,
       agentType: 'codex',
       adapterState: {}
     });
     ensureConversation(options.initialConversationId, {
-      directoryId: activeDirectoryId,
+      directoryId: targetDirectoryId,
       title: initialTitle,
       agentType: 'codex',
       adapterState: {}
@@ -2106,6 +2176,8 @@ async function main(): Promise<number> {
   let selection: PaneSelection | null = null;
   let selectionDrag: PaneSelectionDrag | null = null;
   let selectionPinnedFollowOutput: boolean | null = null;
+  let addDirectoryPrompt: { value: string; error: string | null } | null = null;
+  let paneDividerDragActive = false;
   let ansiValidationReported = false;
   let lastInterruptShortcutAtMs: number | null = null;
   let resizeTimer: NodeJS.Timeout | null = null;
@@ -2394,7 +2466,9 @@ async function main(): Promise<number> {
   };
 
   const applyLayout = (nextSize: { cols: number; rows: number }, forceImmediatePtyResize = false): void => {
-    const nextLayout = computeDualPaneLayout(nextSize.cols, nextSize.rows);
+    const nextLayout = computeDualPaneLayout(nextSize.cols, nextSize.rows, {
+      leftCols: leftPaneColsOverride
+    });
     schedulePtyResize(
       {
         cols: nextLayout.rightCols,
@@ -2468,6 +2542,12 @@ async function main(): Promise<number> {
     const elapsedMs = nowMs - lastResizeApplyAtMs;
     const delayMs = elapsedMs >= resizeMinIntervalMs ? 0 : resizeMinIntervalMs - elapsedMs;
     resizeTimer = setTimeout(flushPendingResize, delayMs);
+  };
+
+  const applyPaneDividerAtCol = (col: number): void => {
+    const normalizedCol = Math.max(1, Math.min(size.cols, col));
+    leftPaneColsOverride = Math.max(1, normalizedCol - 1);
+    applyLayout(size);
   };
 
   type ControlPlaneOpPriority = 'interactive' | 'background';
@@ -2677,6 +2757,9 @@ async function main(): Promise<number> {
     forceFullClear = true;
     previousRows = [];
     const targetConversation = conversations.get(sessionId);
+    if (targetConversation?.directoryId !== null && targetConversation !== undefined) {
+      activeDirectoryId = targetConversation.directoryId;
+    }
     if (targetConversation !== undefined && !targetConversation.live) {
       await startConversation(sessionId);
     }
@@ -2707,19 +2790,27 @@ async function main(): Promise<number> {
     markDirty();
   };
 
-  const createAndActivateConversation = async (): Promise<void> => {
+  const removeConversationState = (sessionId: string): void => {
+    removedConversationIds.add(sessionId);
+    conversations.delete(sessionId);
+    conversationStartInFlight.delete(sessionId);
+    ptySizeByConversationId.delete(sessionId);
+    processUsageBySessionId.delete(sessionId);
+  };
+
+  const createAndActivateConversationInDirectory = async (directoryId: string): Promise<void> => {
     const sessionId = `conversation-${randomUUID()}`;
     const title = `untitled task ${String(conversations.size + 1)}`;
     await streamClient.sendCommand({
       type: 'conversation.create',
       conversationId: sessionId,
-      directoryId: activeDirectoryId,
+      directoryId,
       title,
       agentType: 'codex',
       adapterState: {}
     });
     ensureConversation(sessionId, {
-      directoryId: activeDirectoryId,
+      directoryId,
       title,
       agentType: 'codex',
       adapterState: {}
@@ -2728,10 +2819,15 @@ async function main(): Promise<number> {
     await activateConversation(sessionId);
   };
 
-  const archiveOrDeleteConversation = async (
-    sessionId: string,
-    mode: 'archive' | 'delete'
-  ): Promise<void> => {
+  const createAndActivateConversation = async (): Promise<void> => {
+    const directoryId = resolveActiveDirectoryId();
+    if (directoryId === null) {
+      throw new Error('cannot create conversation without an active directory');
+    }
+    await createAndActivateConversationInDirectory(directoryId);
+  };
+
+  const archiveConversation = async (sessionId: string): Promise<void> => {
     const target = conversations.get(sessionId);
     if (target === undefined) {
       return;
@@ -2747,32 +2843,126 @@ async function main(): Promise<number> {
       }
     }
 
-    if (mode === 'archive') {
+    await streamClient.sendCommand({
+      type: 'conversation.archive',
+      conversationId: sessionId
+    });
+
+    removeConversationState(sessionId);
+
+    if (activeConversationId === sessionId) {
+      const ordered = conversationOrder(conversations);
+      const nextConversationId =
+        ordered.find((candidateId) => {
+          const candidate = conversations.get(candidateId);
+          return candidate?.directoryId === activeDirectoryId;
+        }) ??
+        ordered[0] ??
+        null;
+      activeConversationId = null;
+      if (nextConversationId !== null) {
+        await activateConversation(nextConversationId);
+        return;
+      }
+      const fallbackDirectoryId = resolveActiveDirectoryId();
+      if (fallbackDirectoryId !== null) {
+        await createAndActivateConversationInDirectory(fallbackDirectoryId);
+      }
+      return;
+    }
+
+    markDirty();
+  };
+
+  const addDirectoryByPath = async (rawPath: string): Promise<void> => {
+    const normalizedPath = resolve(options.invocationDirectory, rawPath);
+    const directoryResult = await streamClient.sendCommand({
+      type: 'directory.upsert',
+      directoryId: `directory-${randomUUID()}`,
+      tenantId: options.scope.tenantId,
+      userId: options.scope.userId,
+      workspaceId: options.scope.workspaceId,
+      path: normalizedPath
+    });
+    const directory = parseDirectoryRecord(directoryResult['directory']);
+    if (directory === null) {
+      throw new Error('control-plane directory.upsert returned malformed directory record');
+    }
+    directories.set(directory.directoryId, directory);
+    activeDirectoryId = directory.directoryId;
+
+    await hydratePersistedConversationsForDirectory(directory.directoryId);
+    const targetConversationId = conversationOrder(conversations).find((sessionId) => {
+      const conversation = conversations.get(sessionId);
+      return conversation?.directoryId === directory.directoryId;
+    });
+    if (targetConversationId !== undefined) {
+      await activateConversation(targetConversationId);
+      return;
+    }
+    await createAndActivateConversationInDirectory(directory.directoryId);
+  };
+
+  const closeDirectory = async (directoryId: string): Promise<void> => {
+    if (!directories.has(directoryId)) {
+      return;
+    }
+    const sessionIds = conversationOrder(conversations).filter((sessionId) => {
+      const conversation = conversations.get(sessionId);
+      return conversation?.directoryId === directoryId;
+    });
+
+    for (const sessionId of sessionIds) {
+      const target = conversations.get(sessionId);
+      if (target?.live === true) {
+        try {
+          await streamClient.sendCommand({
+            type: 'pty.close',
+            sessionId
+          });
+        } catch {
+          // Best-effort close only.
+        }
+      }
       await streamClient.sendCommand({
         type: 'conversation.archive',
         conversationId: sessionId
       });
-    } else {
-      await streamClient.sendCommand({
-        type: 'conversation.delete',
-        conversationId: sessionId
-      });
+      removeConversationState(sessionId);
+      if (activeConversationId === sessionId) {
+        activeConversationId = null;
+      }
     }
 
-    removedConversationIds.add(sessionId);
-    conversations.delete(sessionId);
-    ptySizeByConversationId.delete(sessionId);
-    processUsageBySessionId.delete(sessionId);
+    await streamClient.sendCommand({
+      type: 'directory.archive',
+      directoryId
+    });
+    directories.delete(directoryId);
 
-    if (activeConversationId === sessionId) {
-      const ordered = conversationOrder(conversations);
-      const nextConversationId = ordered[0] ?? null;
-      activeConversationId = null;
-      if (nextConversationId !== null) {
-        await activateConversation(nextConversationId);
-      } else {
-        await createAndActivateConversation();
-      }
+    if (directories.size === 0) {
+      await addDirectoryByPath(options.invocationDirectory);
+      return;
+    }
+
+    if (activeDirectoryId === directoryId || activeDirectoryId === null || !directories.has(activeDirectoryId)) {
+      activeDirectoryId = firstDirectoryId();
+    }
+
+    const fallbackDirectoryId = resolveActiveDirectoryId();
+    const fallbackConversationId =
+      conversationOrder(conversations).find((sessionId) => {
+        const conversation = conversations.get(sessionId);
+        return conversation?.directoryId === fallbackDirectoryId;
+      }) ??
+      conversationOrder(conversations)[0] ??
+      null;
+    if (fallbackConversationId !== null) {
+      await activateConversation(fallbackConversationId);
+      return;
+    }
+    if (fallbackDirectoryId !== null) {
+      await createAndActivateConversationInDirectory(fallbackDirectoryId);
       return;
     }
 
@@ -2825,8 +3015,10 @@ async function main(): Promise<number> {
     const orderedIds = conversationOrder(conversations);
     const rail = buildRailRows(
       layout,
+      directories,
       conversations,
       orderedIds,
+      activeDirectoryId,
       activeConversationId,
       gitSummary,
       processUsageBySessionId,
@@ -2841,6 +3033,18 @@ async function main(): Promise<number> {
       renderSelection !== null,
       shortcutBindings
     );
+    if (addDirectoryPrompt !== null) {
+      const promptPrefix = '[mux] add directory path: ';
+      const promptValue = addDirectoryPrompt.value.length > 0 ? addDirectoryPrompt.value : '.';
+      const errorSuffix =
+        addDirectoryPrompt.error === null || addDirectoryPrompt.error.length === 0
+          ? ''
+          : ` (${addDirectoryPrompt.error})`;
+      rows[rows.length - 1] = padOrTrimDisplay(
+        `${promptPrefix}${promptValue}_  enter save  esc cancel${errorSuffix}`,
+        layout.cols
+      );
+    }
     if (validateAnsi) {
       const issues = findAnsiIntegrityIssues(rows);
       if (issues.length > 0 && !ansiValidationReported) {
@@ -3211,8 +3415,69 @@ async function main(): Promise<number> {
     });
   })();
 
+  const handleAddDirectoryPromptInput = (input: Buffer): boolean => {
+    if (addDirectoryPrompt === null) {
+      return false;
+    }
+    if (input.length === 1 && input[0] === 0x03) {
+      return false;
+    }
+    if (input.length === 1 && input[0] === 0x1b) {
+      addDirectoryPrompt = null;
+      if (activeConversationId !== null) {
+        streamClient.sendInput(activeConversation().sessionId, input);
+      }
+      markDirty();
+      return true;
+    }
+
+    let value = addDirectoryPrompt.value;
+    let submit = false;
+    for (const byte of input) {
+      if (byte === 0x0d || byte === 0x0a) {
+        submit = true;
+        break;
+      }
+      if (byte === 0x7f || byte === 0x08) {
+        value = value.slice(0, -1);
+        continue;
+      }
+      if (byte >= 32 && byte <= 126) {
+        value += String.fromCharCode(byte);
+      }
+    }
+
+    if (!submit) {
+      addDirectoryPrompt = {
+        value,
+        error: null
+      };
+      markDirty();
+      return true;
+    }
+
+    const trimmed = value.trim();
+    if (trimmed.length === 0) {
+      addDirectoryPrompt = {
+        value,
+        error: 'path required'
+      };
+      markDirty();
+      return true;
+    }
+    addDirectoryPrompt = null;
+    queueControlPlaneOp(async () => {
+      await addDirectoryByPath(trimmed);
+    }, 'prompt-add-directory');
+    markDirty();
+    return true;
+  };
+
   const onInput = (chunk: Buffer): void => {
     if (shuttingDown) {
+      return;
+    }
+    if (handleAddDirectoryPromptInput(chunk)) {
       return;
     }
 
@@ -3268,7 +3533,7 @@ async function main(): Promise<number> {
       const targetConversationId = activeConversationId;
       if (targetConversationId !== null) {
         queueControlPlaneOp(async () => {
-          await archiveOrDeleteConversation(targetConversationId, 'archive');
+          await archiveConversation(targetConversationId);
         }, 'shortcut-archive-conversation');
       }
       return;
@@ -3277,8 +3542,25 @@ async function main(): Promise<number> {
       const targetConversationId = activeConversationId;
       if (targetConversationId !== null) {
         queueControlPlaneOp(async () => {
-          await archiveOrDeleteConversation(targetConversationId, 'delete');
+          await archiveConversation(targetConversationId);
         }, 'shortcut-delete-conversation');
+      }
+      return;
+    }
+    if (globalShortcut === 'mux.directory.add') {
+      addDirectoryPrompt = {
+        value: '',
+        error: null
+      };
+      markDirty();
+      return;
+    }
+    if (globalShortcut === 'mux.directory.close') {
+      const targetDirectoryId = resolveActiveDirectoryId();
+      if (targetDirectoryId !== null) {
+        queueControlPlaneOp(async () => {
+          await closeDirectory(targetDirectoryId);
+        }, 'shortcut-close-directory');
       }
       return;
     }
@@ -3328,7 +3610,28 @@ async function main(): Promise<number> {
         continue;
       }
 
+      if (paneDividerDragActive) {
+        if (isMouseRelease(token.event.final)) {
+          paneDividerDragActive = false;
+          markDirty();
+          continue;
+        }
+        if (!isWheelMouseCode(token.event.code)) {
+          applyPaneDividerAtCol(token.event.col);
+          continue;
+        }
+      }
+
       const target = classifyPaneAt(layout, token.event.col, token.event.row);
+      if (
+        target === 'separator' &&
+        isLeftButtonPress(token.event.code, token.event.final) &&
+        !hasAltModifier(token.event.code)
+      ) {
+        paneDividerDragActive = true;
+        applyPaneDividerAtCol(token.event.col);
+        continue;
+      }
       const isMainPaneTarget = target === 'right';
       const wheelDelta = wheelDeltaRowsFromCode(token.event.code);
       if (wheelDelta !== null) {
@@ -3347,10 +3650,46 @@ async function main(): Promise<number> {
       if (leftPaneConversationSelect) {
         const rowIndex = Math.max(0, Math.min(layout.paneRows - 1, token.event.row - 1));
         const selectedConversationId = conversationIdAtWorkspaceRailRow(latestRailViewRows, rowIndex);
+        const selectedAction = actionAtWorkspaceRailRow(latestRailViewRows, rowIndex);
         if (selection !== null || selectionDrag !== null) {
           selection = null;
           selectionDrag = null;
           releaseViewportPinForSelection();
+        }
+        if (selectedAction === 'conversation.new') {
+          queueControlPlaneOp(async () => {
+            await createAndActivateConversation();
+          }, 'mouse-new-conversation');
+          markDirty();
+          continue;
+        }
+        if (selectedAction === 'conversation.delete') {
+          if (activeConversationId !== null) {
+            const targetConversationId = activeConversationId;
+            queueControlPlaneOp(async () => {
+              await archiveConversation(targetConversationId);
+            }, 'mouse-archive-conversation');
+          }
+          markDirty();
+          continue;
+        }
+        if (selectedAction === 'directory.add') {
+          addDirectoryPrompt = {
+            value: '',
+            error: null
+          };
+          markDirty();
+          continue;
+        }
+        if (selectedAction === 'directory.close') {
+          const targetDirectoryId = resolveActiveDirectoryId();
+          if (targetDirectoryId !== null) {
+            queueControlPlaneOp(async () => {
+              await closeDirectory(targetDirectoryId);
+            }, 'mouse-close-directory');
+          }
+          markDirty();
+          continue;
         }
         if (selectedConversationId !== null && selectedConversationId !== activeConversationId) {
           queueControlPlaneOp(async () => {

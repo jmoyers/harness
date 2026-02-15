@@ -55,6 +55,10 @@ interface EventPaneView {
   readonly totalRows: number;
 }
 
+interface ComputeDualPaneLayoutOptions {
+  readonly leftCols?: number | null;
+}
+
 function clamp(value: number, min: number, max: number): number {
   if (value < min) {
     return min;
@@ -65,22 +69,32 @@ function clamp(value: number, min: number, max: number): number {
   return value;
 }
 
-export function computeDualPaneLayout(cols: number, rows: number): DualPaneLayout {
+function resolveLeftPaneCols(normalizedCols: number, requestedLeftCols: number | null): number {
+  const availablePaneCols = normalizedCols - 1;
+  const defaultLeftCols = Math.floor((normalizedCols * LEFT_RATIO_NUMERATOR) / LEFT_RATIO_DENOMINATOR);
+  const requested = requestedLeftCols === null ? defaultLeftCols : Math.floor(requestedLeftCols);
+
+  let leftCols = clamp(requested, 1, availablePaneCols - 1);
+  if (normalizedCols >= MIN_LEFT_PANE_COLS + MIN_RIGHT_PANE_COLS + 1) {
+    leftCols = Math.max(MIN_LEFT_PANE_COLS, leftCols);
+    const maxLeft = availablePaneCols - MIN_RIGHT_PANE_COLS;
+    leftCols = Math.min(leftCols, maxLeft);
+  }
+  return leftCols;
+}
+
+export function computeDualPaneLayout(
+  cols: number,
+  rows: number,
+  options: ComputeDualPaneLayoutOptions = {}
+): DualPaneLayout {
   const normalizedCols = Math.max(3, cols);
   const normalizedRows = Math.max(2, rows);
   const paneRows = Math.max(1, normalizedRows - 1);
   const statusRow = paneRows + 1;
 
   const availablePaneCols = normalizedCols - 1;
-  let leftCols = Math.floor((normalizedCols * LEFT_RATIO_NUMERATOR) / LEFT_RATIO_DENOMINATOR);
-  leftCols = clamp(leftCols, 1, availablePaneCols - 1);
-
-  if (normalizedCols >= MIN_LEFT_PANE_COLS + MIN_RIGHT_PANE_COLS + 1) {
-    leftCols = Math.max(MIN_LEFT_PANE_COLS, leftCols);
-    const maxLeft = availablePaneCols - MIN_RIGHT_PANE_COLS;
-    leftCols = Math.min(leftCols, maxLeft);
-  }
-
+  const leftCols = resolveLeftPaneCols(normalizedCols, options.leftCols ?? null);
   const rightCols = availablePaneCols - leftCols;
 
   return {

@@ -22,6 +22,11 @@ interface DirectoryListCommand {
   limit?: number;
 }
 
+interface DirectoryArchiveCommand {
+  type: 'directory.archive';
+  directoryId: string;
+}
+
 interface ConversationCreateCommand {
   type: 'conversation.create';
   conversationId?: string;
@@ -153,6 +158,7 @@ interface PtyCloseCommand {
 export type StreamCommand =
   | DirectoryUpsertCommand
   | DirectoryListCommand
+  | DirectoryArchiveCommand
   | ConversationCreateCommand
   | ConversationListCommand
   | ConversationArchiveCommand
@@ -238,6 +244,11 @@ export type StreamObservedEvent =
   | {
       type: 'directory-upserted';
       directory: Record<string, unknown>;
+    }
+  | {
+      type: 'directory-archived';
+      directoryId: string;
+      ts: string;
     }
   | {
       type: 'conversation-created';
@@ -520,6 +531,17 @@ function parseStreamCommand(value: unknown): StreamCommand | null {
       command.limit = limit;
     }
     return command;
+  }
+
+  if (type === 'directory.archive') {
+    const directoryId = readString(record['directoryId']);
+    if (directoryId === null) {
+      return null;
+    }
+    return {
+      type,
+      directoryId
+    };
   }
 
   if (type === 'conversation.create') {
@@ -1097,6 +1119,19 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
     return {
       type,
       directory
+    };
+  }
+
+  if (type === 'directory-archived') {
+    const directoryId = readString(record['directoryId']);
+    const ts = readString(record['ts']);
+    if (directoryId === null || ts === null) {
+      return null;
+    }
+    return {
+      type,
+      directoryId,
+      ts
     };
   }
 

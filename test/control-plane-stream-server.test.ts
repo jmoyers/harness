@@ -803,6 +803,88 @@ void test('stream server persists directories and conversations and replays scop
   }
 });
 
+void test('stream server archives directories and excludes archived rows from default list', async () => {
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input)
+  });
+  const address = server.address();
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port
+  });
+  const observed = collectEnvelopes(client);
+
+  try {
+    await client.sendCommand({
+      type: 'stream.subscribe',
+      tenantId: 'tenant-archive',
+      userId: 'user-archive',
+      workspaceId: 'workspace-archive',
+      includeOutput: false,
+      afterCursor: 0
+    });
+
+    await client.sendCommand({
+      type: 'directory.upsert',
+      directoryId: 'directory-archive',
+      tenantId: 'tenant-archive',
+      userId: 'user-archive',
+      workspaceId: 'workspace-archive',
+      path: '/tmp/archive-me'
+    });
+
+    const archived = await client.sendCommand({
+      type: 'directory.archive',
+      directoryId: 'directory-archive'
+    });
+    const archivedDirectory = archived['directory'] as Record<string, unknown>;
+    assert.equal(archivedDirectory['directoryId'], 'directory-archive');
+    assert.equal(typeof archivedDirectory['archivedAt'], 'string');
+
+    const defaultListed = await client.sendCommand({
+      type: 'directory.list',
+      tenantId: 'tenant-archive',
+      userId: 'user-archive',
+      workspaceId: 'workspace-archive'
+    });
+    assert.deepEqual(defaultListed['directories'], []);
+
+    const listedWithArchived = await client.sendCommand({
+      type: 'directory.list',
+      tenantId: 'tenant-archive',
+      userId: 'user-archive',
+      workspaceId: 'workspace-archive',
+      includeArchived: true
+    });
+    const rows = listedWithArchived['directories'] as Array<Record<string, unknown>>;
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]?.['directoryId'], 'directory-archive');
+    assert.equal(typeof rows[0]?.['archivedAt'], 'string');
+
+    await assert.rejects(
+      client.sendCommand({
+        type: 'conversation.create',
+        conversationId: 'conversation-archived-directory',
+        directoryId: 'directory-archive',
+        title: 'should fail',
+        agentType: 'codex'
+      }),
+      /directory not found/
+    );
+
+    assert.equal(
+      observed.some(
+        (envelope) =>
+          envelope.kind === 'stream.event' && envelope.event.type === 'directory-archived'
+      ),
+      true
+    );
+  } finally {
+    client.close();
+    await server.close();
+  }
+});
+
 void test('stream server attention-first sorting prioritizes needs-input sessions', async () => {
   const sessions: FakeLiveSession[] = [];
   const server = await startControlPlaneStreamServer({

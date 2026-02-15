@@ -48,6 +48,11 @@ const SHORTCUT_STYLE = {
   bg: { kind: 'indexed', index: 236 },
   bold: false
 } as const;
+const ACTION_STYLE = {
+  fg: { kind: 'indexed', index: 230 },
+  bg: { kind: 'indexed', index: 237 },
+  bold: false
+} as const;
 
 function drawConversationRow(
   surface: ReturnType<typeof createUiSurface>,
@@ -109,6 +114,11 @@ export function renderWorkspaceRailAnsiRows(
     if (row.kind === 'shortcut-body') {
       fillUiRow(surface, rowIndex, SHORTCUT_STYLE);
       drawUiText(surface, 0, rowIndex, row.text, SHORTCUT_STYLE);
+      continue;
+    }
+    if (row.kind === 'action') {
+      fillUiRow(surface, rowIndex, ACTION_STYLE);
+      drawUiText(surface, 0, rowIndex, row.text, ACTION_STYLE);
       continue;
     }
     if (row.kind === 'muted') {

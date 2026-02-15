@@ -56,11 +56,19 @@ interface WorkspaceRailViewRow {
     | 'process-meta'
     | 'shortcut-header'
     | 'shortcut-body'
+    | 'action'
     | 'muted';
   readonly text: string;
   readonly active: boolean;
   readonly conversationSessionId: string | null;
+  readonly railAction: WorkspaceRailAction | null;
 }
+
+type WorkspaceRailAction =
+  | 'conversation.new'
+  | 'conversation.delete'
+  | 'directory.add'
+  | 'directory.close';
 
 type NormalizedConversationStatus = 'needs-action' | 'working' | 'idle' | 'complete' | 'exited';
 
@@ -162,13 +170,15 @@ function pushRow(
   kind: WorkspaceRailViewRow['kind'],
   text: string,
   active = false,
-  conversationSessionId: string | null = null
+  conversationSessionId: string | null = null,
+  railAction: WorkspaceRailAction | null = null
 ): void {
   rows.push({
     kind,
     text,
     active,
-    conversationSessionId
+    conversationSessionId,
+    railAction
   });
 }
 
@@ -253,13 +263,43 @@ function shortcutRows(): readonly WorkspaceRailViewRow[] {
       kind: 'shortcut-header',
       text: '├─ ⌨ shortcuts',
       active: false,
-      conversationSessionId: null
+      conversationSessionId: null,
+      railAction: null
     },
     {
       kind: 'shortcut-body',
       text: '│  ctrl+t new  ctrl+j/k switch  ctrl+c x2 quit',
       active: false,
-      conversationSessionId: null
+      conversationSessionId: null,
+      railAction: null
+    },
+    {
+      kind: 'action',
+      text: '│  ➕ new conversation',
+      active: false,
+      conversationSessionId: null,
+      railAction: 'conversation.new'
+    },
+    {
+      kind: 'action',
+      text: '│  🗑 archive conversation',
+      active: false,
+      conversationSessionId: null,
+      railAction: 'conversation.delete'
+    },
+    {
+      kind: 'action',
+      text: '│  📁 add directory',
+      active: false,
+      conversationSessionId: null,
+      railAction: 'directory.add'
+    },
+    {
+      kind: 'action',
+      text: '│  📂 close directory',
+      active: false,
+      conversationSessionId: null,
+      railAction: 'directory.close'
     }
   ];
 }
@@ -302,4 +342,15 @@ export function conversationIdAtWorkspaceRailRow(
     return null;
   }
   return row.conversationSessionId;
+}
+
+export function actionAtWorkspaceRailRow(
+  rows: readonly WorkspaceRailViewRow[],
+  rowIndex: number
+): WorkspaceRailAction | null {
+  const row = rows[rowIndex];
+  if (row === undefined) {
+    return null;
+  }
+  return row.railAction;
 }

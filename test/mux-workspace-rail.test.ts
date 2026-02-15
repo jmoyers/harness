@@ -102,8 +102,9 @@ void test('workspace rail keeps shortcuts pinned to bottom rows', () => {
   );
 
   assert.equal(rows.length, 6);
-  assert.equal(rows[4]?.includes('⌨ shortcuts'), true);
-  assert.equal(rows[5]?.includes('ctrl+t new'), true);
+  assert.equal(rows[0]?.includes('⌨ shortcuts'), true);
+  assert.equal(rows[1]?.includes('ctrl+t new'), true);
+  assert.equal(rows[5]?.includes('close directory'), true);
 });
 
 void test('workspace rail handles tiny row counts by showing shortcut tail', () => {
@@ -119,5 +120,5 @@ void test('workspace rail handles tiny row counts by showing shortcut tail', () 
     1
   );
   assert.equal(rows.length, 1);
-  assert.equal(rows[0]?.includes('ctrl+t new'), true);
+  assert.equal(rows[0]?.includes('close directory'), true);
 });

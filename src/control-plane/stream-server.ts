@@ -550,6 +550,28 @@ export class ControlPlaneStreamServer {
       };
     }
 
+    if (command.type === 'directory.archive') {
+      const archived = this.stateStore.archiveDirectory(command.directoryId);
+      const record = this.directoryRecord(archived);
+      this.publishObservedEvent(
+        {
+          tenantId: archived.tenantId,
+          userId: archived.userId,
+          workspaceId: archived.workspaceId,
+          directoryId: archived.directoryId,
+          conversationId: null
+        },
+        {
+          type: 'directory-archived',
+          directoryId: archived.directoryId,
+          ts: archived.archivedAt ?? new Date().toISOString()
+        }
+      );
+      return {
+        directory: record
+      };
+    }
+
     if (command.type === 'conversation.create') {
       const conversation = this.stateStore.createConversation({
         conversationId: command.conversationId ?? `conversation-${randomUUID()}`,

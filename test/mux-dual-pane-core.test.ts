@@ -32,6 +32,28 @@ void test('computeDualPaneLayout normalizes dimensions and computes pane widths'
   assert.equal(narrow.leftCols > 0, true);
   assert.equal(narrow.rightCols > 0, true);
   assert.equal(narrow.leftCols + narrow.rightCols + 1, narrow.cols);
+
+  const customWide = computeDualPaneLayout(120, 40, {
+    leftCols: 50
+  });
+  assert.equal(customWide.leftCols, 50);
+  assert.equal(customWide.rightCols, 69);
+
+  const customWideTooSmall = computeDualPaneLayout(120, 40, {
+    leftCols: 5
+  });
+  assert.equal(customWideTooSmall.leftCols, 28);
+
+  const customWideTooLarge = computeDualPaneLayout(120, 40, {
+    leftCols: 500
+  });
+  assert.equal(customWideTooLarge.rightCols, 20);
+
+  const customNarrow = computeDualPaneLayout(30, 6, {
+    leftCols: 500
+  });
+  assert.equal(customNarrow.leftCols, 28);
+  assert.equal(customNarrow.rightCols, 1);
 });
 
 void test('classifyPaneAt maps terminal coordinates into pane regions', () => {

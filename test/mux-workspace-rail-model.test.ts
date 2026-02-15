@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  actionAtWorkspaceRailRow,
   buildWorkspaceRailViewRows,
   conversationIdAtWorkspaceRailRow
 } from '../src/mux/workspace-rail-model.ts';
@@ -73,10 +74,10 @@ void test('workspace rail model builds rows with conversation spacing and proces
       activeConversationId: 's1',
       nowMs: Date.parse('2026-01-01T00:00:10.000Z')
     },
-    18
+    24
   );
 
-  assert.equal(rows.length, 18);
+  assert.equal(rows.length, 24);
   assert.equal(rows.some((row) => row.kind === 'conversation-title' && row.active), true);
   assert.equal(rows.some((row) => row.kind === 'conversation-meta' && row.text.includes('needs action · approval')), true);
   assert.equal(rows.some((row) => row.kind === 'conversation-meta' && row.text.includes('◌ exited · · · ·')), true);
@@ -85,8 +86,9 @@ void test('workspace rail model builds rows with conversation spacing and proces
   assert.equal(rows.some((row) => row.kind === 'muted' && row.text.includes('(no conversations)')), true);
   assert.equal(rows.some((row) => row.kind === 'muted' && row.text === '│'), true);
   assert.equal(rows.some((row) => row.kind === 'conversation-title' && row.conversationSessionId === 's1'), true);
-  assert.equal(rows[rows.length - 2]?.kind, 'shortcut-header');
-  assert.equal(rows[rows.length - 1]?.kind, 'shortcut-body');
+  assert.equal(rows[rows.length - 6]?.kind, 'shortcut-header');
+  assert.equal(rows[rows.length - 5]?.kind, 'shortcut-body');
+  assert.equal(rows[rows.length - 1]?.kind, 'action');
 });
 
 void test('workspace rail model handles empty directories and blank workspace name', () => {
@@ -98,7 +100,7 @@ void test('workspace rail model handles empty directories and blank workspace na
       activeConversationId: null,
       nowMs: Date.parse('2026-01-01T00:00:00.000Z')
     },
-    5
+    8
   );
   assert.equal(noDirectoryRows[0]?.text.includes('no directories'), true);
 
@@ -122,7 +124,7 @@ void test('workspace rail model handles empty directories and blank workspace na
       processes: [],
       activeConversationId: null
     },
-    4
+    8
   );
   assert.equal(blankNameRows.some((row) => row.text.includes('(unnamed)')), true);
 });
@@ -138,8 +140,9 @@ void test('workspace rail model truncates content before pinned shortcuts and su
     2
   );
   assert.equal(twoRows.length, 2);
-  assert.equal(twoRows[0]?.kind, 'shortcut-header');
-  assert.equal(twoRows[1]?.kind, 'shortcut-body');
+  assert.equal(twoRows[0]?.kind, 'action');
+  assert.equal(twoRows[1]?.kind, 'action');
+  assert.equal(twoRows[1]?.text.includes('close directory'), true);
 
   const truncated = buildWorkspaceRailViewRows(
     {
@@ -178,8 +181,9 @@ void test('workspace rail model truncates content before pinned shortcuts and su
     3
   );
   assert.equal(truncated.length, 3);
-  assert.equal(truncated[1]?.kind, 'shortcut-header');
-  assert.equal(truncated[2]?.kind, 'shortcut-body');
+  assert.equal(truncated[0]?.text.includes('archive conversation'), true);
+  assert.equal(truncated[1]?.text.includes('add directory'), true);
+  assert.equal(truncated[2]?.text.includes('close directory'), true);
 });
 
 void test('workspace rail model supports idle normalization custom shortcuts and row hit-testing', () => {
@@ -218,14 +222,22 @@ void test('workspace rail model supports idle normalization custom shortcuts and
       shortcutHint: '   ',
       nowMs: Date.parse('2026-01-01T00:00:20.000Z')
     },
-    8
+    12
   );
 
   assert.equal(rows.some((row) => row.text.includes('◍ idle')), true);
-  assert.equal(rows[rows.length - 1]?.text.includes('ctrl+j/k switch'), true);
-  assert.equal(conversationIdAtWorkspaceRailRow(rows, 3), 'conversation-a');
+  assert.equal(rows.some((row) => row.text.includes('ctrl+j/k switch')), true);
+  assert.equal(rows.some((row) => row.text.includes('add directory')), true);
+  const conversationRowIndex = rows.findIndex(
+    (row) => row.kind === 'conversation-title' && row.conversationSessionId === 'conversation-a'
+  );
+  assert.equal(conversationRowIndex >= 0, true);
+  assert.equal(conversationIdAtWorkspaceRailRow(rows, conversationRowIndex), 'conversation-a');
+  assert.equal(actionAtWorkspaceRailRow(rows, rows.length - 1), 'directory.close');
   assert.equal(conversationIdAtWorkspaceRailRow(rows, -1), null);
   assert.equal(conversationIdAtWorkspaceRailRow(rows, 100), null);
+  assert.equal(actionAtWorkspaceRailRow(rows, -1), null);
+  assert.equal(actionAtWorkspaceRailRow(rows, 100), null);
 });
 
 void test('workspace rail model overrides default shortcut text when custom hint is set', () => {
@@ -237,10 +249,10 @@ void test('workspace rail model overrides default shortcut text when custom hint
       activeConversationId: null,
       shortcutHint: 'ctrl+t new  ctrl+n/p switch  ctrl+] quit'
     },
-    3
+    8
   );
 
-  assert.equal(rows[2]?.text.includes('ctrl+n/p switch'), true);
+  assert.equal(rows.some((row) => row.text.includes('ctrl+n/p switch')), true);
 });
 
 void test('workspace rail model treats running sessions with missing last event as working', () => {
@@ -278,7 +290,7 @@ void test('workspace rail model treats running sessions with missing last event 
       activeConversationId: null,
       nowMs: Date.parse('2026-01-01T00:00:20.000Z')
     },
-    10
+    12
   );
 
   assert.equal(rows.some((row) => row.text.includes('● working')), true);

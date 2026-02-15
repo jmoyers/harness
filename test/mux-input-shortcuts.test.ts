@@ -12,6 +12,9 @@ void test('detectMuxGlobalShortcut maps default raw control-byte bindings', () =
   assert.equal(detectMuxGlobalShortcut(Buffer.from([0x0a]), bindings), 'mux.conversation.next');
   assert.equal(detectMuxGlobalShortcut(Buffer.from([0x0b]), bindings), 'mux.conversation.previous');
   assert.equal(detectMuxGlobalShortcut(Buffer.from([0x03]), bindings), 'mux.app.interrupt-all');
+  assert.equal(detectMuxGlobalShortcut(Buffer.from([0x18]), bindings), 'mux.conversation.delete');
+  assert.equal(detectMuxGlobalShortcut(Buffer.from([0x0f]), bindings), 'mux.directory.add');
+  assert.equal(detectMuxGlobalShortcut(Buffer.from([0x17]), bindings), 'mux.directory.close');
   assert.equal(detectMuxGlobalShortcut(Buffer.from([0x1d]), bindings), null);
   assert.equal(detectMuxGlobalShortcut(Buffer.from([0x74]), bindings), null);
 });

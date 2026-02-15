@@ -60,6 +60,14 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
     },
     {
       kind: 'command',
+      commandId: 'c0ba',
+      command: {
+        type: 'directory.archive',
+        directoryId: 'directory-1'
+      }
+    },
+    {
+      kind: 'command',
       commandId: 'c0c',
       command: {
         type: 'conversation.create',
@@ -356,6 +364,13 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
       command: {
         type: 'directory.list',
         limit: 0
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2directoryf',
+      command: {
+        type: 'directory.archive'
       }
     },
     {
@@ -822,6 +837,16 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
     {
       kind: 'stream.event',
       subscriptionId: 'subscription-1',
+      cursor: 14.5,
+      event: {
+        type: 'directory-archived',
+        directoryId: 'directory-1',
+        ts: new Date(0).toISOString()
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
       cursor: 15,
       event: {
         type: 'conversation-created',
@@ -984,7 +1009,25 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
       subscriptionId: 'subscription-1',
       cursor: 1,
       event: {
+        type: 'directory-upserted',
+        directory: null
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
         type: 99
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'directory-archived',
+        directoryId: 'directory-1'
       }
     },
     {

@@ -345,6 +345,39 @@ export class SqliteControlPlaneStore {
     return rows.map((row) => normalizeDirectoryRow(row));
   }
 
+  archiveDirectory(directoryId: string): ControlPlaneDirectoryRecord {
+    this.db.exec('BEGIN IMMEDIATE TRANSACTION');
+    try {
+      const existing = this.getDirectory(directoryId);
+      if (existing === null) {
+        throw new Error(`directory not found: ${directoryId}`);
+      }
+      if (existing.archivedAt !== null) {
+        this.db.exec('COMMIT');
+        return existing;
+      }
+      const archivedAt = new Date().toISOString();
+      this.db
+        .prepare(
+          `
+          UPDATE directories
+          SET archived_at = ?
+          WHERE directory_id = ?
+        `
+        )
+        .run(archivedAt, directoryId);
+      const archived = this.getDirectory(directoryId);
+      if (archived === null) {
+        throw new Error(`directory missing after archive: ${directoryId}`);
+      }
+      this.db.exec('COMMIT');
+      return archived;
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
   createConversation(input: CreateConversationInput): ControlPlaneConversationRecord {
     this.db.exec('BEGIN IMMEDIATE TRANSACTION');
     try {

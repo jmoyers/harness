@@ -157,6 +157,15 @@ Pass-through stream invariants:
 - High-level helper commands (for example `conversation.send-turn`) are optional wrappers that compile to the same PTY primitives.
 - Session replay/reattach uses persisted PTY/output + event cursor state; no synthetic state not derivable from authoritative streams.
 
+## Mux Interaction Rules
+
+- Escape is forwarded to the active PTY session; mux does not reserve it as a quit key.
+- `ctrl+c` handling is two-stage: first press forwards interrupt to the active PTY, second press within the interrupt window requests mux shutdown.
+- Conversation "delete" in the mux is soft-delete (archive); hard delete remains an explicit control-plane command.
+- Directory lifecycle in the mux is first-class: `directory.upsert`, `directory.list`, and `directory.archive` drive add/close behavior through the same control-plane stream API as automation clients.
+- The left rail includes clickable action rows (new conversation, archive conversation, add directory, close directory) with keybind parity.
+- The pane separator is draggable; divider moves recompute layout and PTY resize through the normal mux resize path.
+
 ## Control Plane Transport Principles
 
 - Stream-first interface: long-lived full-duplex connection is primary (`tcp` or `ws` transport profile).

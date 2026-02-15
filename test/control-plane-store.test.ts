@@ -96,6 +96,21 @@ void test('control-plane store upserts directories and persists conversations/ru
     assert.equal(listedDirectories.length, 1);
     assert.equal(store.listDirectories({}).length, 1);
     assert.equal(store.listDirectories({ includeArchived: true }).length, 1);
+    const archivedDirectory = store.archiveDirectory('dir-1');
+    assert.notEqual(archivedDirectory.archivedAt, null);
+    assert.equal(store.listDirectories({}).length, 0);
+    assert.equal(store.listDirectories({ includeArchived: true }).length, 1);
+    const archivedDirectoryAgain = store.archiveDirectory('dir-1');
+    assert.equal(archivedDirectoryAgain.directoryId, 'dir-1');
+    assert.equal(archivedDirectoryAgain.archivedAt, archivedDirectory.archivedAt);
+    store.upsertDirectory({
+      directoryId: 'dir-restore',
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      path: '/tmp/workspace-1'
+    });
+    assert.equal(store.listDirectories({}).length, 1);
 
     const listedConversations = store.listConversations({
       directoryId: 'dir-1',
@@ -194,15 +209,7 @@ void test('control-plane store restores archived directory and validates errors'
       null
     );
 
-    const internals = store as unknown as {
-      db: {
-        prepare: (sql: string) => { run: (...args: Array<number | string | null>) => void };
-      };
-    };
-    internals.db.prepare('UPDATE directories SET archived_at = ? WHERE directory_id = ?').run(
-      '2026-02-14T00:00:00.000Z',
-      'dir-a'
-    );
+    store.archiveDirectory('dir-a');
 
     const restored = store.upsertDirectory({
       directoryId: 'dir-new',
@@ -214,10 +221,7 @@ void test('control-plane store restores archived directory and validates errors'
     assert.equal(restored.directoryId, 'dir-a');
     assert.equal(restored.archivedAt, null);
 
-    internals.db.prepare('UPDATE directories SET archived_at = ? WHERE directory_id = ?').run(
-      '2026-02-14T00:02:00.000Z',
-      'dir-a'
-    );
+    store.archiveDirectory('dir-a');
     assert.throws(
       () =>
         store.createConversation({
@@ -229,6 +233,11 @@ void test('control-plane store restores archived directory and validates errors'
       /directory not found/
     );
 
+    assert.throws(
+      () =>
+        store.archiveDirectory('missing-directory'),
+      /directory not found/
+    );
     assert.throws(
       () =>
         store.createConversation({
@@ -640,6 +649,19 @@ void test('control-plane store rollback guards cover impossible post-write null 
     const stillPresent = store.getConversation('conversation-live');
     assert.notEqual(stillPresent, null);
     assert.equal(stillPresent?.archivedAt, null);
+
+    let getDirectoryCallCount = 0;
+    store.getDirectory = ((directoryId: string) => {
+      getDirectoryCallCount += 1;
+      if (directoryId === 'dir-live' && getDirectoryCallCount >= 2) {
+        return null;
+      }
+      return originalGetDirectory(directoryId);
+    }) as typeof store.getDirectory;
+    assert.throws(
+      () => store.archiveDirectory('dir-live'),
+      /directory missing after archive/
+    );
   } finally {
     store.close();
   }

@@ -29,7 +29,10 @@ This recording shows three separate Codex sessions running in parallel, with liv
 - Show a directory-scoped left rail with conversation status, git summary, and per-session telemetry.
 - Normalize actionable session states for operators (`working`, `needs action`, `idle`, `complete`, `exited`).
 - Support keyboard and mouse-driven conversation selection in the mux.
-- Archive or permanently delete conversations through the same control-plane API used by UI and agents.
+- Support keyboard and clickable left-rail actions for new conversation, archive conversation, add directory, and close directory.
+- Soft-delete conversations in the mux by archiving them; permanent delete remains a control-plane API command.
+- Add and close directories from the mux without leaving the TUI.
+- Drag the pane divider to resize rail/content width interactively.
 - Keep one protocol path for both human UI and API clients through the control-plane stream.
 - Prioritize interactive control actions over background warm-start work so switching and selection stay responsive under multi-session load.
 - Keep PTY/event subscriptions scoped to the active conversation and reattach with cursor continuity to avoid replay storms on conversation switches.
@@ -52,7 +55,7 @@ Use the standalone hot-path harness to reproduce latency/FPS pressure with deter
 npm run perf:mux:hotpath -- --duration-ms 6000 --output-hz 140 --bytes-per-chunk 320 --sessions 2 --parse-passes 2 --profile mixed
 ```
 
-Run the built-in diagnostic matrix to A/B the main suspects from `PERF-DIAGNOSTIC.md`:
+Run the built-in diagnostic matrix to A/B the main hot-path suspects:
 
 ```bash
 npm run perf:mux:hotpath -- --matrix --duration-ms 4000
