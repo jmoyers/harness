@@ -476,6 +476,13 @@ Design constraints:
   - scheduler queue wait/run timing
   - renderer diff/flush timing
   - control-plane command handling latency
+- Performance work must support an isolated hot-path harness mode that does not require provider startup or control-plane boot.
+  - The harness must drive deterministic synthetic/replayed terminal output through the same terminal-model and render/diff code paths.
+  - The harness must independently toggle protocol encode/decode overhead, parse-pass multiplicity, and recording-style snapshot passes to attribute cost by layer.
+  - The harness must report render cadence, event-loop delay, and input-delay probes in the same run so throughput and interactivity regressions can be compared directly.
+- Parse-pass budget is explicit and measured.
+  - Duplicate terminal-model ingest passes across server/client/recording paths are treated as first-order latency risks and must be benchmarked with the harness matrix.
+  - Hot-path rendering defaults to snapshot-without-hash; full-frame hash computation is opt-in diagnostic work, not the default frame path.
 - Global runtime boolean controls instrumentation emission (enabled/disabled) without removing instrumentation calls from code.
 - Disabled mode must be near-no-op: no formatting, no dynamic allocation, and no file write on disabled path.
 
@@ -485,6 +492,7 @@ Design constraints:
 - JSON-with-comments format (JSONC) is required to allow inline documentation and annotation.
 - Single configuration abstraction only (`config-core`) used by every subsystem and process.
 - No competing runtime config sources for core behavior (no shadow config files, no duplicate per-module configs).
+- Runtime behavior toggles are config-first; environment variables are reserved for bootstrap/transport wiring and test harness injection, not the primary control surface.
 - Config lifecycle:
   - parse -> validate -> publish immutable runtime snapshot
   - on reload, replace snapshot atomically
@@ -939,6 +947,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
 - Milestone 2 live-steered checkpoint is implemented:
   - `src/codex/live-session.ts` hosts a PTY-backed live Codex session with attach/detach, steering writes/resizes, and event emission.
   - Live session now includes terminal query reply support for `OSC 10/11` and indexed palette `OSC 4` probes (0..15) to improve visual parity with direct terminal runs.
+  - Live session now emits `perf-core` query-observation events (`codex.terminal-query`) for CSI/OSC/DCS startup-query attribution (handled vs unhandled).
   - `src/terminal/snapshot-oracle.ts` provides deterministic pseudo-snapshots (`rows`, `cols`, `activeScreen`, `cursor`, `lines`, `frameHash`) from live PTY output, including DEC scroll-region/origin handling required for pinned-footer UIs.
   - Supported terminal semantics now include `DECSTBM` (`CSI t;b r`), `DECOM` (`CSI ? 6 h/l`), `IND`/`NEL`/`RI`, and region-scoped `IL`/`DL` behavior.
   - `src/terminal/parity-suite.ts` defines codex/vim/core parity scenes and a deterministic matrix runner with scene-level failures and frame-hash output.
@@ -964,12 +973,19 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - per-session adapter state is updated from scoped provider events and reused on next launch, enabling conversation continuity (for Codex: `codex resume <session-id>`).
   - `src/control-plane/stream-client.ts` provides a typed client used by operators and automation to issue the same control-plane operations.
     - command ids are UUID-based and auth handshake is supported in `connectControlPlaneStreamClient`.
+    - remote connect now supports bounded retry windows (`connectRetryWindowMs` + `connectRetryDelayMs`) to tolerate control-plane cold starts without requiring client-side sleep loops.
+    - startup/operation attribution is captured via `perf-core` command RTT + connect-attempt events (`control-plane.command.rtt`, `control-plane.connect.*`) so mux startup command latency is directly measurable.
+    - client/server role attribution is explicit in control-plane traces (`role: client|server`) with connection/auth lifecycle events (`control-plane.server.connection.*`, `control-plane.server.auth.*`) for negotiation-stage diagnosis.
   - `src/control-plane/codex-session-stream.ts` extracts mux/session control-plane wiring into reusable infrastructure (embedded or remote transport).
   - `scripts/control-plane-daemon.ts` provides a standalone control-plane process (`npm run control-plane:daemon`) for split client/server operation.
     - non-loopback bind now requires an auth token (`--auth-token` or `HARNESS_CONTROL_PLANE_AUTH_TOKEN`).
     - daemon state persistence path is configurable (`--state-db-path` / `HARNESS_CONTROL_PLANE_DB_PATH`).
+  - `scripts/control-plane-daemon-fixture.ts` provides a deterministic fixture daemon path that runs a local command (default `/bin/sh`) instead of Codex, for startup paint/protocol isolation.
   - `scripts/codex-live-mux-launch.ts` provides a one-command launcher (`npm run codex:live:mux:launch -- ...`) that boots a dedicated daemon and connects the remote mux client for client/server parity without manual multi-terminal setup.
     - launcher mode sets local-exit policy so `Ctrl+C` cleanly tears down both mux client and daemon.
+    - launcher now overlaps daemon and mux process startup; remote connect retries bridge daemon readiness instead of serially blocking mux spawn.
+    - launcher/daemon/mux startup milestones now emit through `perf-core` only (single JSONL instrumentation stream, no side-channel startup tracer).
+  - `scripts/mux-fixture-launch.ts` provides a one-command fixture launch (`npm run mux:fixture:launch`) that boots fixture daemon + mux client with isolated sqlite paths and controlled startup content for render-settle verification without Codex dependency.
   - `scripts/codex-live-mux.ts` provides the first-party split UI (left: workspace rail, right: live steerable Codex session rendered via shared snapshot oracle) with:
     - control operations routed over the control-plane stream (`pty.start`, `pty.attach`, `pty.input`, `pty.resize`, `pty.signal`, `pty.close`) instead of direct in-process session calls
     - remote-server mode via `--harness-server-host` and `--harness-server-port` for exact two-pane behavior against an external daemon
@@ -981,19 +997,24 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - first-party gesture-based in-pane selection with visual highlight and keyboard-triggered copy, with modifier-based passthrough for app mouse input
     - multi-conversation rail + active session switching (`Ctrl+N`/`Ctrl+P`) + new conversation creation (`Ctrl+T`) while preserving live PTY pass-through for the active session
     - left rail composition uses directory-wrapped conversation blocks with inline git summary and per-conversation telemetry (CPU/memory sampled from `ps` via `processId`)
+    - git summary and process-usage sampling run asynchronously in background tasks (`mux.background.git-summary`, `mux.background.process-usage`) and are disabled by default (`HARNESS_MUX_BACKGROUND_PROBES=1` to enable) so startup/render/input hot paths are not contended by probe subprocesses
+    - control-plane operations are scheduled with interactive-first priority, and persisted non-active conversation warm-start is opt-in (`HARNESS_MUX_BACKGROUND_RESUME=1`) so startup and interactivity are not taxed by non-selected sessions
+    - terminal-output persistence is buffered and flushed in batches (`mux.events.flush`) so per-chunk SQLite writes do not execute directly in the PTY output hot path
+    - active-session attach now resumes from the last observed PTY cursor and inactive-session event subscriptions are removed on detach, preventing full-history replay and non-selected event churn
     - first-party styled rail rendering built from low-level terminal UI primitives rather than framework-driven VDOM
     - per-conversation notify sink isolation to keep status routing correct when multiple sessions run concurrently
     - optional terminal-frame recording to JSONL (`--record-path`, `--record-fps`) sourced from canonical full-frame mux snapshots (not incremental repaint diffs) for replay/debug artifact generation
     - one-step recording + export path (`--record-output <path.gif>`) writes JSONL sidecar + GIF at mux shutdown
     - startup performance spans/events for startup and conversation launch (`mux.startup.*`, `mux.conversation.start`) through `perf-core`
-    - explicit startup trace points for active-session process startup, first PTY output, and first visible paint (`mux.startup.active-start-command`, `mux.startup.active-first-output`, `mux.startup.active-first-visible-paint`)
-    - startup settle trace point based on terminal-buffer quiet period (`mux.startup.active-settled`)
-    - eager background start of persisted non-active conversations on boot to remove first-select cold-start behavior
+    - explicit startup checkpoints for active-session process startup, first PTY output, first visible paint, header-visible gate, and settled quiet-period (`mux.startup.active-start-command`, `mux.startup.active-first-output`, `mux.startup.active-first-visible-paint`, `mux.startup.active-header-visible`, `mux.startup.active-settle-gate`, `mux.startup.active-settled`)
+    - runtime output-load checkpoints (`mux.output-load.sample`) attribute active vs inactive output pressure, render cost, and event-loop lag to diagnose interactivity starvation
+    - background resume checkpointing now records explicit begin/skip events (`mux.startup.background-start.begin` / `mux.startup.background-start.skipped`) for startup tradeoff diagnosis
     - archive/delete controls wired through the same control-plane path used by human and automation clients
   - recording timestamps are monotonic relative wall-clock samples with footer close-time; GIF frame delays are quantized with drift compensation to preserve elapsed timing semantics.
   - `scripts/terminal-recording-gif-lib.ts` + `scripts/terminal-recording-to-gif.ts` provide offline recording-to-GIF export, enabling visual regression artifacts from mux render captures.
-  - `scripts/perf-mux-startup-report.ts` provides a deterministic startup timeline report over captured `perf-core` JSONL traces.
+  - `scripts/perf-mux-startup-report.ts` provides a deterministic visual startup timeline report over captured `perf-core` JSONL traces, including launch/daemon/mux/client/server negotiation checkpoints and startup terminal-query handled/unhandled cataloging.
   - `scripts/perf-codex-startup-loop.ts` provides repeatable startup-loop measurement (first output, first visible paint, settled) using the same PTY/VTE model path.
+  - `scripts/perf-mux-launch-startup-loop.ts` provides repeatable direct-vs-launch startup comparison and waits through `mux.startup.active-settled`, using only `perf-core` milestones from launch/daemon/mux.
   - startup-loop tooling supports optional readiness-pattern timing for provider-specific UI readiness (for example Codex tip banner visibility).
   - runtime debug/perf behavior is config-governed in `harness.config.jsonc` under `debug.*`, with overwrite-on-start artifact control for deterministic runs.
   - `src/mux/dual-pane-core.ts` is the typed mux core for layout, SGR mouse parsing/routing, and row-diff rendering.

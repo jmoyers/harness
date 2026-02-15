@@ -6,9 +6,9 @@
       "mux.conversation.new": ["ctrl+t"],
       "mux.conversation.next": ["ctrl+j"],
       "mux.conversation.previous": ["ctrl+k"],
-      "mux.app.interrupt-all": ["ctrl+c"],
-      "mux.app.quit": ["ctrl+]"]
+      "mux.app.interrupt-all": ["ctrl+c"]
       // Optional:
+      // "mux.app.quit": ["ctrl+q"],
       // "mux.conversation.archive": ["alt+a"],
       // "mux.conversation.delete": ["alt+d"]
     }
@@ -23,11 +23,11 @@
       "filePath": ".harness/perf-startup.jsonl"
     },
     "mux": {
-      "debugPath": ".harness/mux-debug.jsonl",
       "validateAnsi": false,
       "resizeMinIntervalMs": 33,
       "ptyResizeSettleMs": 75,
-      "startupSettleQuietMs": 300
+      "startupSettleQuietMs": 300,
+      "serverSnapshotModelEnabled": true
     }
   }
 }

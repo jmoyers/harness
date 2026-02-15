@@ -28,6 +28,7 @@ import {
   mergeAdapterStateFromSessionEvent,
   normalizeAdapterState
 } from '../adapters/agent-session-state.ts';
+import { recordPerfEvent, startPerfSpan } from '../perf/perf-core.ts';
 
 interface SessionDataEvent {
   cursor: number;
@@ -342,6 +343,11 @@ export class ControlPlaneStreamServer {
     };
 
     this.connections.set(connectionId, state);
+    recordPerfEvent('control-plane.server.connection.open', {
+      role: 'server',
+      connectionId,
+      authRequired: this.authToken !== null
+    });
 
     socket.on('data', (chunk: Buffer) => {
       this.handleSocketData(state, chunk);
@@ -386,6 +392,10 @@ export class ControlPlaneStreamServer {
         kind: 'auth.error',
         error: 'authentication required'
       });
+      recordPerfEvent('control-plane.server.auth.required', {
+        role: 'server',
+        connectionId: connection.id
+      });
       connection.socket.destroy();
       return;
     }
@@ -414,6 +424,11 @@ export class ControlPlaneStreamServer {
       this.sendToConnection(connection.id, {
         kind: 'auth.ok'
       });
+      recordPerfEvent('control-plane.server.auth.ok', {
+        role: 'server',
+        connectionId: connection.id,
+        authRequired: false
+      });
       return;
     }
 
@@ -421,6 +436,10 @@ export class ControlPlaneStreamServer {
       this.sendToConnection(connection.id, {
         kind: 'auth.error',
         error: 'invalid auth token'
+      });
+      recordPerfEvent('control-plane.server.auth.failed', {
+        role: 'server',
+        connectionId: connection.id
       });
       connection.socket.destroy();
       return;
@@ -430,6 +449,11 @@ export class ControlPlaneStreamServer {
     this.sendToConnection(connection.id, {
       kind: 'auth.ok'
     });
+    recordPerfEvent('control-plane.server.auth.ok', {
+      role: 'server',
+      connectionId: connection.id,
+      authRequired: true
+    });
   }
 
   private handleCommand(connection: ConnectionState, commandId: string, command: StreamCommand): void {
@@ -438,14 +462,27 @@ export class ControlPlaneStreamServer {
       commandId
     });
 
+    const commandSpan = startPerfSpan('control-plane.server.command', {
+      role: 'server',
+      type: command.type
+    });
     try {
       const result = this.executeCommand(connection, command);
+      commandSpan.end({
+        type: command.type,
+        status: 'completed'
+      });
       this.sendToConnection(connection.id, {
         kind: 'command.completed',
         commandId,
         result
       });
     } catch (error) {
+      commandSpan.end({
+        type: command.type,
+        status: 'failed',
+        message: String(error)
+      });
       this.sendToConnection(connection.id, {
         kind: 'command.failed',
         commandId,
@@ -1237,6 +1274,10 @@ export class ControlPlaneStreamServer {
     }
 
     this.connections.delete(connectionId);
+    recordPerfEvent('control-plane.server.connection.closed', {
+      role: 'server',
+      connectionId
+    });
   }
 
   private deactivateSession(sessionId: string, closeSession: boolean): void {

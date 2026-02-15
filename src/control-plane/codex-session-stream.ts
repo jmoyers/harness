@@ -5,6 +5,8 @@ interface BaseControlPlaneAddress {
   host: string;
   port: number;
   authToken?: string;
+  connectRetryWindowMs?: number;
+  connectRetryDelayMs?: number;
 }
 
 interface EmbeddedControlPlaneOptions {
@@ -67,12 +69,20 @@ export async function openCodexControlPlaneClient(
     host: string;
     port: number;
     authToken?: string;
+    connectRetryWindowMs?: number;
+    connectRetryDelayMs?: number;
   } = {
     host: controlPlaneAddress.host,
     port: controlPlaneAddress.port
   };
   if (controlPlaneAddress.authToken !== undefined) {
     clientConnectOptions.authToken = controlPlaneAddress.authToken;
+  }
+  if (controlPlaneAddress.connectRetryWindowMs !== undefined) {
+    clientConnectOptions.connectRetryWindowMs = controlPlaneAddress.connectRetryWindowMs;
+  }
+  if (controlPlaneAddress.connectRetryDelayMs !== undefined) {
+    clientConnectOptions.connectRetryDelayMs = controlPlaneAddress.connectRetryDelayMs;
   }
   const client = await connectControlPlaneStreamClient(clientConnectOptions);
 

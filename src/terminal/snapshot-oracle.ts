@@ -38,7 +38,7 @@ interface TerminalSnapshotLine {
   cells: TerminalCell[];
 }
 
-export interface TerminalSnapshotFrame {
+export interface TerminalSnapshotFrameCore {
   rows: number;
   cols: number;
   activeScreen: ActiveScreen;
@@ -58,6 +58,9 @@ export interface TerminalSnapshotFrame {
   };
   lines: string[];
   richLines: TerminalSnapshotLine[];
+}
+
+export interface TerminalSnapshotFrame extends TerminalSnapshotFrameCore {
   frameHash: string;
 }
 
@@ -520,8 +523,25 @@ class ScreenBuffer {
     cursorVisible: boolean,
     cursorStyle: TerminalCursorStyle,
     activeScreen: ActiveScreen,
-    bracketedPasteMode: boolean
-  ): TerminalSnapshotFrame {
+    bracketedPasteMode: boolean,
+    includeHash: true
+  ): TerminalSnapshotFrame;
+  snapshot(
+    cursor: ScreenCursor,
+    cursorVisible: boolean,
+    cursorStyle: TerminalCursorStyle,
+    activeScreen: ActiveScreen,
+    bracketedPasteMode: boolean,
+    includeHash: false
+  ): TerminalSnapshotFrameCore;
+  snapshot(
+    cursor: ScreenCursor,
+    cursorVisible: boolean,
+    cursorStyle: TerminalCursorStyle,
+    activeScreen: ActiveScreen,
+    bracketedPasteMode: boolean,
+    includeHash: boolean
+  ): TerminalSnapshotFrame | TerminalSnapshotFrameCore {
     const combined = [...this.scrollback, ...this.lines];
     const totalRows = combined.length;
     const viewportTop = Math.max(0, Math.min(this.viewportTop, Math.max(0, totalRows - this.rows)));
@@ -545,7 +565,7 @@ class ScreenBuffer {
 
     const simpleLines = richLines.map((line) => line.text);
 
-    const frameWithoutHash = {
+    const frameWithoutHash: TerminalSnapshotFrameCore = {
       rows: this.rows,
       cols: this.cols,
       activeScreen,
@@ -567,11 +587,13 @@ class ScreenBuffer {
       richLines
     };
 
-    const frameHash = createHash('sha256').update(JSON.stringify(frameWithoutHash)).digest('hex');
+    if (!includeHash) {
+      return frameWithoutHash;
+    }
 
     return {
       ...frameWithoutHash,
-      frameHash
+      frameHash: createHash('sha256').update(JSON.stringify(frameWithoutHash)).digest('hex')
     };
   }
 
@@ -907,7 +929,19 @@ export class TerminalSnapshotOracle {
       this.cursorVisible,
       this.cursorStyle,
       this.activeScreen,
-      this.bracketedPasteMode
+      this.bracketedPasteMode,
+      true
+    );
+  }
+
+  snapshotWithoutHash(): TerminalSnapshotFrameCore {
+    return this.currentScreen().snapshot(
+      this.cursor,
+      this.cursorVisible,
+      this.cursorStyle,
+      this.activeScreen,
+      this.bracketedPasteMode,
+      false
     );
   }
 
@@ -1376,7 +1410,7 @@ export class TerminalSnapshotOracle {
 }
 
 export function renderSnapshotAnsiRow(
-  frame: TerminalSnapshotFrame,
+  frame: TerminalSnapshotFrameCore,
   rowIndex: number,
   cols: number
 ): string {

@@ -1,5 +1,6 @@
 import { connect, type Socket } from 'node:net';
 import { randomUUID } from 'node:crypto';
+import { recordPerfEvent, startPerfSpan } from '../perf/perf-core.ts';
 import {
   consumeJsonLines,
   encodeStreamEnvelope,
@@ -14,9 +15,13 @@ interface ControlPlaneStreamClientOptions {
   host: string;
   port: number;
   authToken?: string;
+  connectRetryWindowMs?: number;
+  connectRetryDelayMs?: number;
 }
 
 interface PendingCommand {
+  readonly type: string;
+  readonly span: ReturnType<typeof startPerfSpan>;
   resolve: (result: Record<string, unknown>) => void;
   reject: (error: Error) => void;
 }
@@ -59,16 +64,31 @@ export class ControlPlaneStreamClient {
 
   sendCommand(command: StreamCommand): Promise<Record<string, unknown>> {
     const commandId = `command-${randomUUID()}`;
+    const commandType = command.type;
+    const commandSpan = startPerfSpan('control-plane.command.rtt', {
+      role: 'client',
+      type: commandType
+    });
 
     return new Promise<Record<string, unknown>>((resolve, reject) => {
       if (this.closed) {
+        commandSpan.end({
+          type: commandType,
+          status: 'client-closed'
+        });
         reject(new Error('control-plane stream is closed'));
         return;
       }
 
       this.pending.set(commandId, {
+        type: commandType,
+        span: commandSpan,
         resolve,
         reject
+      });
+      recordPerfEvent('control-plane.command.sent', {
+        role: 'client',
+        type: commandType
       });
 
       const envelope: StreamCommandEnvelope = {
@@ -81,19 +101,39 @@ export class ControlPlaneStreamClient {
   }
 
   authenticate(token: string): Promise<void> {
+    const authSpan = startPerfSpan('control-plane.auth.rtt', {
+      role: 'client'
+    });
     return new Promise<void>((resolve, reject) => {
       if (this.closed) {
+        authSpan.end({
+          status: 'client-closed'
+        });
         reject(new Error('control-plane stream is closed'));
         return;
       }
       if (this.pendingAuth !== null) {
+        authSpan.end({
+          status: 'already-pending'
+        });
         reject(new Error('auth is already pending'));
         return;
       }
 
       this.pendingAuth = {
-        resolve,
-        reject
+        resolve: () => {
+          authSpan.end({
+            status: 'ok'
+          });
+          resolve();
+        },
+        reject: (error: Error) => {
+          authSpan.end({
+            status: 'error',
+            message: error.message
+          });
+          reject(error);
+        }
       };
       this.socket.write(
         encodeStreamEnvelope({
@@ -198,6 +238,10 @@ export class ControlPlaneStreamClient {
         return;
       }
       this.pending.delete(envelope.commandId);
+      pending.span.end({
+        type: pending.type,
+        status: 'completed'
+      });
       pending.resolve(envelope.result);
       return;
     }
@@ -208,6 +252,11 @@ export class ControlPlaneStreamClient {
         return;
       }
       this.pending.delete(envelope.commandId);
+      pending.span.end({
+        type: pending.type,
+        status: 'failed',
+        message: envelope.error
+      });
       pending.reject(new Error(envelope.error));
       return;
     }
@@ -232,6 +281,11 @@ export class ControlPlaneStreamClient {
       pendingAuth.reject(error);
     }
     for (const pending of this.pending.values()) {
+      pending.span.end({
+        type: pending.type,
+        status: 'closed',
+        message: error.message
+      });
       pending.reject(error);
     }
     this.pending.clear();
@@ -241,24 +295,104 @@ export class ControlPlaneStreamClient {
 export async function connectControlPlaneStreamClient(
   options: ControlPlaneStreamClientOptions
 ): Promise<ControlPlaneStreamClient> {
-  const socket = await new Promise<Socket>((resolve, reject) => {
-    const client = connect(options.port, options.host);
-    const onError = (error: Error): void => {
-      client.off('connect', onConnect);
-      reject(error);
-    };
-    const onConnect = (): void => {
-      client.off('error', onError);
-      resolve(client);
-    };
-
-    client.once('error', onError);
-    client.once('connect', onConnect);
+  const retryWindowMs = Math.max(0, options.connectRetryWindowMs ?? 0);
+  const retryDelayMs = Math.max(1, options.connectRetryDelayMs ?? 50);
+  const retryableCodes = new Set([
+    'ECONNREFUSED',
+    'ECONNRESET',
+    'EHOSTUNREACH',
+    'ENETUNREACH',
+    'ENOTFOUND',
+    'ETIMEDOUT'
+  ]);
+  const startedAtMs = Date.now();
+  recordPerfEvent('control-plane.connect.begin', {
+    role: 'client',
+    host: options.host,
+    port: options.port,
+    retryWindowMs,
+    retryDelayMs
   });
+  let attempts = 0;
+  let socket: Socket | null = null;
+  while (socket === null) {
+    attempts += 1;
+    const attemptSpan = startPerfSpan('control-plane.connect.attempt', {
+      role: 'client',
+      attempt: attempts,
+      host: options.host,
+      port: options.port
+    });
+    try {
+      socket = await new Promise<Socket>((resolve, reject) => {
+        const client = connect(options.port, options.host);
+        const onError = (error: Error): void => {
+          client.off('connect', onConnect);
+          reject(error);
+        };
+        const onConnect = (): void => {
+          client.off('error', onError);
+          resolve(client);
+        };
+
+        client.once('error', onError);
+        client.once('connect', onConnect);
+      });
+      attemptSpan.end({
+        attempt: attempts,
+        status: 'connected'
+      });
+    } catch (error: unknown) {
+      const code = (error as NodeJS.ErrnoException | null)?.code;
+      const elapsedMs = Date.now() - startedAtMs;
+      attemptSpan.end({
+        attempt: attempts,
+        status: 'error',
+        code: typeof code === 'string' ? code : 'unknown'
+      });
+      if (
+        retryWindowMs === 0 ||
+        typeof code !== 'string' ||
+        !retryableCodes.has(code) ||
+        elapsedMs >= retryWindowMs
+      ) {
+        recordPerfEvent('control-plane.connect.failed', {
+          role: 'client',
+          host: options.host,
+          port: options.port,
+          attempts,
+          elapsedMs,
+          code: typeof code === 'string' ? code : 'unknown'
+        });
+        throw error;
+      }
+      const remainingMs = retryWindowMs - elapsedMs;
+      recordPerfEvent('control-plane.connect.retrying', {
+        role: 'client',
+        host: options.host,
+        port: options.port,
+        attempts,
+        elapsedMs,
+        remainingMs,
+        code: typeof code === 'string' ? code : 'unknown'
+      });
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, Math.max(1, Math.min(retryDelayMs, remainingMs)));
+      });
+    }
+  }
 
   const client = new ControlPlaneStreamClient(socket);
   if (typeof options.authToken === 'string') {
     await client.authenticate(options.authToken);
   }
+  recordPerfEvent('control-plane.connect.ready', {
+    role: 'client',
+    host: options.host,
+    port: options.port,
+    attempts,
+    elapsedMs: Date.now() - startedAtMs,
+    authenticated: typeof options.authToken === 'string'
+  });
   return client;
 }

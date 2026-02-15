@@ -86,7 +86,8 @@ void test('parseHarnessConfigText falls back for invalid root shapes', () => {
         validateAnsi: false,
         resizeMinIntervalMs: 33,
         ptyResizeSettleMs: 75,
-        startupSettleQuietMs: 300
+        startupSettleQuietMs: 300,
+      serverSnapshotModelEnabled: true
       }
     }
   });
@@ -143,7 +144,8 @@ void test('loadHarnessConfig reads valid config file', () => {
         validateAnsi: false,
         resizeMinIntervalMs: 33,
         ptyResizeSettleMs: 75,
-        startupSettleQuietMs: 300
+        startupSettleQuietMs: 300,
+      serverSnapshotModelEnabled: true
       }
     }
   });
@@ -176,7 +178,8 @@ void test('loadHarnessConfig falls back atomically on parse errors', () => {
           validateAnsi: true,
           resizeMinIntervalMs: 1,
           ptyResizeSettleMs: 2,
-          startupSettleQuietMs: 3
+          startupSettleQuietMs: 3,
+      serverSnapshotModelEnabled: true
         }
       }
     }
@@ -199,7 +202,8 @@ void test('loadHarnessConfig falls back atomically on parse errors', () => {
         validateAnsi: true,
         resizeMinIntervalMs: 1,
         ptyResizeSettleMs: 2,
-        startupSettleQuietMs: 3
+        startupSettleQuietMs: 3,
+      serverSnapshotModelEnabled: true
       }
     }
   });
@@ -235,7 +239,8 @@ void test('loadHarnessConfig supports explicit file path override', () => {
         validateAnsi: false,
         resizeMinIntervalMs: 33,
         ptyResizeSettleMs: 75,
-        startupSettleQuietMs: 300
+        startupSettleQuietMs: 300,
+      serverSnapshotModelEnabled: true
       }
     }
   });
@@ -271,7 +276,8 @@ void test('loadHarnessConfig resolves defaults from process cwd when options are
           validateAnsi: false,
           resizeMinIntervalMs: 33,
           ptyResizeSettleMs: 75,
-          startupSettleQuietMs: 300
+          startupSettleQuietMs: 300,
+      serverSnapshotModelEnabled: true
         }
       }
     });
@@ -295,7 +301,8 @@ void test('parseHarnessConfigText parses debug perf and mux toggles', () => {
           "validateAnsi": true,
           "resizeMinIntervalMs": 12,
           "ptyResizeSettleMs": 34,
-          "startupSettleQuietMs": 56
+          "startupSettleQuietMs": 56,
+          "serverSnapshotModelEnabled": false
         }
       }
     }
@@ -312,7 +319,8 @@ void test('parseHarnessConfigText parses debug perf and mux toggles', () => {
       validateAnsi: true,
       resizeMinIntervalMs: 12,
       ptyResizeSettleMs: 34,
-      startupSettleQuietMs: 56
+      startupSettleQuietMs: 56,
+      serverSnapshotModelEnabled: false
     }
   });
 });
@@ -350,7 +358,8 @@ void test('parseHarnessConfigText falls back for invalid debug shapes and values
       validateAnsi: false,
       resizeMinIntervalMs: 33,
       ptyResizeSettleMs: 75,
-      startupSettleQuietMs: 300
+      startupSettleQuietMs: 300,
+      serverSnapshotModelEnabled: true
     }
   });
 
@@ -368,7 +377,8 @@ void test('parseHarnessConfigText falls back for invalid debug shapes and values
           "validateAnsi": "no",
           "resizeMinIntervalMs": -1,
           "ptyResizeSettleMs": -2,
-          "startupSettleQuietMs": -3
+          "startupSettleQuietMs": -3,
+          "serverSnapshotModelEnabled": "no"
         }
       }
     }
@@ -385,7 +395,8 @@ void test('parseHarnessConfigText falls back for invalid debug shapes and values
       validateAnsi: false,
       resizeMinIntervalMs: 33,
       ptyResizeSettleMs: 75,
-      startupSettleQuietMs: 300
+      startupSettleQuietMs: 300,
+      serverSnapshotModelEnabled: true
     }
   });
 });
@@ -408,7 +419,8 @@ void test('parseHarnessConfigText normalizes null mux debug path and falls back 
     validateAnsi: false,
     resizeMinIntervalMs: 1,
     ptyResizeSettleMs: 75,
-    startupSettleQuietMs: 300
+    startupSettleQuietMs: 300,
+      serverSnapshotModelEnabled: true
   });
 });
 

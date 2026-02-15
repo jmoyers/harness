@@ -25,16 +25,46 @@ This recording shows three separate Codex sessions running in parallel, with liv
 - Run multiple conversations concurrently and switch active control instantly.
 - Persist directory/conversation metadata across reconnects via the control-plane SQLite state store.
 - Persist adapter state required for provider-native thread continuity (Codex resume path).
-- Eager-start persisted conversations at mux boot so switching is fast without first-select cold starts.
+- Keep startup focused on the selected conversation by default; persisted non-selected conversations are not auto-resumed unless explicitly enabled.
 - Show a directory-scoped left rail with conversation status, git summary, and per-session telemetry.
 - Normalize actionable session states for operators (`working`, `needs action`, `idle`, `complete`, `exited`).
 - Support keyboard and mouse-driven conversation selection in the mux.
 - Archive or permanently delete conversations through the same control-plane API used by UI and agents.
 - Keep one protocol path for both human UI and API clients through the control-plane stream.
+- Prioritize interactive control actions over background warm-start work so switching and selection stay responsive under multi-session load.
+- Keep PTY/event subscriptions scoped to the active conversation and reattach with cursor continuity to avoid replay storms on conversation switches.
+- Keep expensive left-rail probes (git/process telemetry) opt-in (`HARNESS_MUX_BACKGROUND_PROBES=1`) so output/render/input stay responsive by default.
 - Expose stream subscriptions with scoped replay for automation clients monitoring live session state/output.
 - Record terminal frames and export deterministic GIF artifacts.
-- Measure startup repeatably with loop tooling (`perf:codex:startup:loop`) and mux startup traces (`perf:mux:startup`).
+- Measure startup repeatably with loop tooling (`perf:codex:startup:loop`) and mux `perf-core` timeline reports (`perf:mux:startup`).
+- Compare direct Codex startup versus `codex:live:mux:launch` through first output, first paint, and settled (`mux.startup.active-settled`) with one `perf-core` stream (`perf:mux:launch:startup:loop`).
+- Render a visual startup timeline report (`perf:mux:startup`) that includes launch/daemon/mux/client/server negotiation checkpoints and terminal-query handled/unhandled cataloging.
+- Run a deterministic no-Codex startup paint probe through the same mux client/server path (`mux:fixture:launch`) to isolate harness rendering/protocol overhead.
+- Run a standalone mux hot-path micro-harness (`perf:mux:hotpath`) that isolates VTE parse, snapshot/hash, row render/diff, protocol roundtrip, and input-delay behavior without Codex or the control-plane daemon.
+- Capture terminal startup-query handling (`codex.terminal-query`) to identify unanswered protocol probes.
 - Codex startup loop supports readiness pattern timing (`--ready-pattern "Tip: ..."`) in addition to first output/paint.
+
+## Performance Loop
+
+Use the standalone hot-path harness to reproduce latency/FPS pressure with deterministic synthetic output and no daemon/PTY/Codex startup noise:
+
+```bash
+npm run perf:mux:hotpath -- --duration-ms 6000 --output-hz 140 --bytes-per-chunk 320 --sessions 2 --parse-passes 2 --profile mixed
+```
+
+Run the built-in diagnostic matrix to A/B the main suspects from `PERF-DIAGNOSTIC.md`:
+
+```bash
+npm run perf:mux:hotpath -- --matrix --duration-ms 4000
+```
+
+Key toggles:
+- `--parse-passes`: simulate single/double/triple `TerminalSnapshotOracle` ingest cost.
+- `--protocol-roundtrip`: include base64+JSON encode/decode overhead per output chunk.
+- `--snapshot-hash`: include per-render full-frame hash work (disabled by default to match mux hot-path optimization).
+- `--recording-snapshot-pass`: include an extra snapshot/hash pass to model recording overhead.
+- `--fixture-file <path>`: replay deterministic bytes from a local file instead of synthetic chunks.
+- `harness.config.jsonc` -> `debug.mux.serverSnapshotModelEnabled`: controls whether the server-side live-session snapshot model ingests PTY output (`true` default). Keep this in config, not env, when profiling server/client duplicate-parse cost.
 
 ## Technical Strategy
 

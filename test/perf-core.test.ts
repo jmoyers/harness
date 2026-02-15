@@ -107,9 +107,13 @@ void test('perf-core writes event and span records to configured file', () => {
 
     const records = readRecords(outputPath);
     assert.ok(records.some((record) => record.type === 'event' && record.name === 'perf.event'));
+    const eventRecord = records.find((record) => record.type === 'event' && record.name === 'perf.event');
+    assert.equal(typeof eventRecord?.['ts-ms'], 'number');
     assert.ok(
       records.some((record) => record.type === 'span' && record.name === 'perf.span.base')
     );
+    const spanRecord = records.find((record) => record.type === 'span' && record.name === 'perf.span.base');
+    assert.equal(typeof spanRecord?.['end-ms'], 'number');
     assert.ok(
       records.some((record) => record.type === 'span' && record.name === 'perf.span.end-attrs')
     );

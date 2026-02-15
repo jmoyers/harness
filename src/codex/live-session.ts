@@ -8,7 +8,12 @@ import {
   type BrokerDataEvent
 } from '../pty/session-broker.ts';
 import type { PtyExit } from '../pty/pty_host.ts';
-import { TerminalSnapshotOracle, type TerminalSnapshotFrame } from '../terminal/snapshot-oracle.ts';
+import {
+  TerminalSnapshotOracle,
+  type TerminalSnapshotFrame,
+  type TerminalSnapshotFrameCore
+} from '../terminal/snapshot-oracle.ts';
+import { recordPerfEvent } from '../perf/perf-core.ts';
 
 interface StartPtySessionOptions {
   command?: string;
@@ -51,6 +56,7 @@ interface StartCodexLiveSessionOptions {
   initialRows?: number;
   terminalForegroundHex?: string;
   terminalBackgroundHex?: string;
+  enableSnapshotModel?: boolean;
 }
 
 export type CodexLiveEvent =
@@ -158,7 +164,7 @@ function buildTerminalPalette(options: StartCodexLiveSessionOptions): TerminalPa
   };
 }
 
-type TerminalQueryParserMode = 'normal' | 'esc' | 'csi' | 'osc' | 'osc-esc';
+type TerminalQueryParserMode = 'normal' | 'esc' | 'csi' | 'osc' | 'osc-esc' | 'dcs' | 'dcs-esc';
 
 const DEFAULT_DA1_REPLY = '\u001b[?62;4;6;22c';
 const DEFAULT_DA2_REPLY = '\u001b[>1;10;0c';
@@ -169,13 +175,14 @@ class TerminalQueryResponder {
   private mode: TerminalQueryParserMode = 'normal';
   private oscPayload = '';
   private csiPayload = '';
+  private dcsPayload = '';
   private readonly palette: TerminalPalette;
-  private readonly readFrame: () => TerminalSnapshotFrame;
+  private readonly readFrame: () => TerminalSnapshotFrameCore;
   private readonly writeReply: (reply: string) => void;
 
   constructor(
     palette: TerminalPalette,
-    readFrame: () => TerminalSnapshotFrame,
+    readFrame: () => TerminalSnapshotFrameCore,
     writeReply: (reply: string) => void
   ) {
     this.palette = palette;
@@ -205,6 +212,9 @@ class TerminalQueryResponder {
       } else if (char === '[') {
         this.mode = 'csi';
         this.csiPayload = '';
+      } else if (char === 'P') {
+        this.mode = 'dcs';
+        this.dcsPayload = '';
       } else {
         this.mode = 'normal';
       }
@@ -242,6 +252,28 @@ class TerminalQueryResponder {
       return;
     }
 
+    if (this.mode === 'dcs') {
+      if (char === '\u001b') {
+        this.mode = 'dcs-esc';
+        return;
+      }
+      this.dcsPayload += char;
+      return;
+    }
+
+    if (this.mode === 'dcs-esc') {
+      if (char === '\\') {
+        this.observeDcsQuery(this.dcsPayload);
+        this.mode = 'normal';
+        this.dcsPayload = '';
+        return;
+      }
+      this.dcsPayload += '\u001b';
+      this.dcsPayload += char;
+      this.mode = 'dcs';
+      return;
+    }
+
     if (char === '\\') {
       this.respondToOscQuery(this.oscPayload, false);
       this.mode = 'normal';
@@ -256,74 +288,123 @@ class TerminalQueryResponder {
   private respondToOscQuery(payload: string, useBellTerminator: boolean): void {
     const trimmedPayload = payload.trim();
     const terminator = useBellTerminator ? '\u0007' : '\u001b\\';
+    let handled = false;
 
     if (trimmedPayload === '10;?') {
       this.writeReply(`\u001b]10;${this.palette.foregroundOsc}${terminator}`);
-      return;
+      handled = true;
     }
 
-    if (trimmedPayload === '11;?') {
+    if (!handled && trimmedPayload === '11;?') {
       this.writeReply(`\u001b]11;${this.palette.backgroundOsc}${terminator}`);
-      return;
+      handled = true;
     }
 
-    if (trimmedPayload.startsWith('4;') && trimmedPayload.endsWith(';?')) {
+    if (!handled && trimmedPayload.startsWith('4;') && trimmedPayload.endsWith(';?')) {
       const parts = trimmedPayload.split(';');
-      if (parts.length !== 3) {
-        return;
+      if (parts.length === 3) {
+        const code = Number.parseInt(parts[1]!, 10);
+        if (Number.isInteger(code)) {
+          const color = this.palette.indexedOscByCode[code];
+          if (typeof color === 'string') {
+            this.writeReply(`\u001b]4;${String(code)};${color}${terminator}`);
+            handled = true;
+          }
+        }
       }
-      const code = Number.parseInt(parts[1]!, 10);
-      if (!Number.isInteger(code)) {
-        return;
-      }
-      const color = this.palette.indexedOscByCode[code];
-      if (typeof color !== 'string') {
-        return;
-      }
-      this.writeReply(`\u001b]4;${String(code)};${color}${terminator}`);
     }
+    this.recordQueryObservation('osc', trimmedPayload, handled);
   }
 
   private respondToCsiQuery(payload: string): void {
     const frame = this.readFrame();
+    let handled = false;
 
     if (payload === 'c' || payload === '0c') {
       this.writeReply(DEFAULT_DA1_REPLY);
-      return;
+      handled = true;
     }
 
-    if (payload === '>c' || payload === '>0c') {
+    if (!handled && (payload === '>c' || payload === '>0c')) {
       this.writeReply(DEFAULT_DA2_REPLY);
-      return;
+      handled = true;
     }
 
-    if (payload === '5n') {
+    if (!handled && payload === '5n') {
       this.writeReply('\u001b[0n');
-      return;
+      handled = true;
     }
 
-    if (payload === '6n') {
+    if (!handled && payload === '6n') {
       const row = Math.max(1, Math.floor(frame.cursor.row + 1));
       const col = Math.max(1, Math.floor(frame.cursor.col + 1));
       this.writeReply(`\u001b[${String(row)};${String(col)}R`);
-      return;
+      handled = true;
     }
 
-    if (payload === '14t') {
+    if (!handled && payload === '14t') {
       const pixelHeight = Math.max(1, frame.rows * CELL_PIXEL_HEIGHT);
       const pixelWidth = Math.max(1, frame.cols * CELL_PIXEL_WIDTH);
       this.writeReply(`\u001b[4;${String(pixelHeight)};${String(pixelWidth)}t`);
-      return;
+      handled = true;
     }
 
-    if (payload === '16t') {
+    if (!handled && payload === '16t') {
       this.writeReply(`\u001b[6;${String(CELL_PIXEL_HEIGHT)};${String(CELL_PIXEL_WIDTH)}t`);
-      return;
+      handled = true;
     }
 
-    if (payload === '18t') {
+    if (!handled && payload === '18t') {
       this.writeReply(`\u001b[8;${String(frame.rows)};${String(frame.cols)}t`);
+      handled = true;
     }
+
+    if (!handled && payload === '?u') {
+      this.writeReply('\u001b[?0u');
+      handled = true;
+    }
+    this.recordQueryObservation('csi', payload, handled);
+  }
+
+  private observeDcsQuery(payload: string): void {
+    const trimmedPayload = payload.trim();
+    this.recordQueryObservation('dcs', trimmedPayload, false);
+  }
+
+  private recordQueryObservation(kind: 'csi' | 'osc' | 'dcs', payload: string, handled: boolean): void {
+    if (kind === 'csi' && !this.isLikelyCsiQueryPayload(payload)) {
+      return;
+    }
+    if (kind === 'osc' && !payload.includes('?')) {
+      return;
+    }
+    recordPerfEvent('codex.terminal-query', {
+      kind,
+      payload: payload.slice(0, 120),
+      handled
+    });
+  }
+
+  private isLikelyCsiQueryPayload(payload: string): boolean {
+    if (/^(?:c|0c|>c|>0c)$/.test(payload)) {
+      return true;
+    }
+    if (/^[0-9]*n$/.test(payload)) {
+      return true;
+    }
+    if (/^(?:14|16|18)t$/.test(payload)) {
+      return true;
+    }
+    if (/^>0q$/.test(payload)) {
+      return true;
+    }
+    if (/^\?[0-9;]*\$p$/.test(payload)) {
+      return true;
+    }
+    if (payload === '?u') {
+      return true;
+    }
+    return false;
   }
 }
 
@@ -392,6 +473,7 @@ class CodexLiveSession {
   private readonly notifyFilePath: string;
   private readonly listeners = new Set<(event: CodexLiveEvent) => void>();
   private readonly snapshotOracle: TerminalSnapshotOracle;
+  private readonly snapshotModelEnabled: boolean;
   private readonly terminalQueryResponder: TerminalQueryResponder;
   private readonly brokerAttachmentId: string;
   private readonly notifyTimer: NodeJS.Timeout | null;
@@ -406,6 +488,7 @@ class CodexLiveSession {
     const initialCols = options.initialCols ?? 80;
     const initialRows = options.initialRows ?? 24;
     this.snapshotOracle = new TerminalSnapshotOracle(initialCols, initialRows);
+    this.snapshotModelEnabled = options.enableSnapshotModel ?? true;
 
     const command = options.command ?? DEFAULT_COMMAND;
     const useNotifyHook = options.useNotifyHook ?? true;
@@ -447,7 +530,7 @@ class CodexLiveSession {
     this.broker = startBroker(startOptions, options.maxBacklogBytes);
     this.terminalQueryResponder = new TerminalQueryResponder(
       buildTerminalPalette(options),
-      () => this.snapshotOracle.snapshot(),
+      () => this.snapshotOracle.snapshotWithoutHash(),
       (reply) => {
         this.broker.write(reply);
       }
@@ -456,7 +539,9 @@ class CodexLiveSession {
     this.brokerAttachmentId = this.broker.attach({
       onData: (event: BrokerDataEvent) => {
         this.terminalQueryResponder.ingest(event.chunk);
-        this.snapshotOracle.ingest(event.chunk);
+        if (this.snapshotModelEnabled) {
+          this.snapshotOracle.ingest(event.chunk);
+        }
         this.emit({
           type: 'terminal-output',
           cursor: event.cursor,

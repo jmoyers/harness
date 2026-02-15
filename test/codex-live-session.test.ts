@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -14,6 +14,7 @@ import {
 } from '../src/codex/live-session.ts';
 import type { BrokerAttachmentHandlers } from '../src/pty/session-broker.ts';
 import type { PtyExit } from '../src/pty/pty_host.ts';
+import { configurePerfCore, shutdownPerfCore } from '../src/perf/perf-core.ts';
 
 class FakeBroker {
   private readonly attachments = new Map<string, BrokerAttachmentHandlers>();
@@ -279,8 +280,44 @@ void test('codex live session emits terminal and notify-derived events', () => {
   assert.equal(clearHandles.length, 1);
 });
 
+void test('codex live session can disable snapshot ingest while preserving output events', () => {
+  const broker = new FakeBroker();
+  const session = startCodexLiveSession(
+    {
+      useNotifyHook: false,
+      enableSnapshotModel: false
+    },
+    {
+      startBroker: () => broker
+    }
+  );
+
+  const observedChunks: string[] = [];
+  const removeListener = session.onEvent((event) => {
+    if (event.type === 'terminal-output') {
+      observedChunks.push(event.chunk.toString('utf8'));
+    }
+  });
+
+  broker.emitData(1, Buffer.from('hello', 'utf8'));
+
+  assert.deepEqual(observedChunks, ['hello']);
+  const snapshot = session.snapshot();
+  assert.equal(snapshot.lines[0], '');
+  assert.equal(snapshot.cursor.row, 0);
+  assert.equal(snapshot.cursor.col, 0);
+
+  removeListener();
+  session.close();
+});
+
 void test('codex live session replies to OSC terminal color queries', () => {
   const broker = new FakeBroker();
+  const perfPath = join(tmpdir(), `harness-query-perf-${Date.now().toString(36)}.jsonl`);
+  configurePerfCore({
+    enabled: true,
+    filePath: perfPath
+  });
   const session = startCodexLiveSession(
     {
       useNotifyHook: false,
@@ -328,6 +365,14 @@ void test('codex live session replies to OSC terminal color queries', () => {
   broker.emitData(16, Buffer.from('\u001bX', 'utf8'));
   broker.emitData(17, Buffer.from('\u001b[12\u001b', 'utf8'));
   broker.emitData(18, Buffer.from('\u001b[19t', 'utf8'));
+  broker.emitData(19, Buffer.from('\u001b[>0q', 'utf8'));
+  broker.emitData(20, Buffer.from('\u001b[?25$p', 'utf8'));
+  broker.emitData(21, Buffer.from('\u001bP+q544e\u001b\\', 'utf8'));
+  broker.emitData(22, Buffer.from('\u001bP+qfoo\u001bX\u001b\\', 'utf8'));
+  broker.emitData(23, Buffer.from('\u001b[?u', 'utf8'));
+  broker.emitData(24, Buffer.from('\u001b[>7u', 'utf8'));
+  broker.emitData(25, Buffer.from('\u001b[1;1H', 'utf8'));
+  broker.emitData(26, Buffer.from('\u001b]12;plain-text\u0007', 'utf8'));
 
   const writes = broker.writes.map((entry) => String(entry));
   const isCursorReply = (value: string): boolean => {
@@ -354,10 +399,68 @@ void test('codex live session replies to OSC terminal color queries', () => {
     '\u001b[0n',
     '\u001b[4;384;640t',
     '\u001b[6;16;8t',
-    '\u001b[8;24;80t'
+    '\u001b[8;24;80t',
+    '\u001b[?0u'
   ]);
 
   session.close();
+  configurePerfCore({
+    enabled: false
+  });
+  shutdownPerfCore();
+  const perfLines = readFileSync(perfPath, 'utf8')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  const queryRecords = perfLines
+    .map((line) => JSON.parse(line) as { name?: string; attrs?: Record<string, unknown> })
+    .filter((record) => record.name === 'codex.terminal-query')
+    .map((record) => record.attrs ?? {});
+
+  assert.equal(
+    queryRecords.some(
+      (attrs) => attrs.kind === 'csi' && attrs.payload === '>0q' && attrs.handled === false
+    ),
+    true
+  );
+  assert.equal(
+    queryRecords.some(
+      (attrs) => attrs.kind === 'csi' && attrs.payload === '?25$p' && attrs.handled === false
+    ),
+    true
+  );
+  assert.equal(
+    queryRecords.some(
+      (attrs) => attrs.kind === 'csi' && attrs.payload === '?u' && attrs.handled === true
+    ),
+    true
+  );
+  assert.equal(
+    queryRecords.some(
+      (attrs) => attrs.kind === 'dcs' && attrs.payload === '+q544e' && attrs.handled === false
+    ),
+    true
+  );
+  assert.equal(
+    queryRecords.some(
+      (attrs) =>
+        attrs.kind === 'dcs' && String(attrs.payload).includes('+qfoo') && attrs.handled === false
+    ),
+    true
+  );
+  assert.equal(
+    queryRecords.some((attrs) => attrs.kind === 'csi' && attrs.payload === '>7u'),
+    false
+  );
+  assert.equal(
+    queryRecords.some((attrs) => attrs.kind === 'csi' && attrs.payload === '1;1H'),
+    false
+  );
+  assert.equal(
+    queryRecords.some((attrs) => attrs.kind === 'osc' && attrs.payload === '12;plain-text'),
+    false
+  );
+  rmSync(perfPath, { force: true });
 });
 
 void test('codex live session ignores OSC indexed queries with non-numeric indices', () => {

@@ -1,11 +1,60 @@
+import { resolve } from 'node:path';
 import { startCodexLiveSession } from '../src/codex/live-session.ts';
 import { startControlPlaneStreamServer } from '../src/control-plane/stream-server.ts';
+import { loadHarnessConfig } from '../src/config/config-core.ts';
+import {
+  configurePerfCore,
+  recordPerfEvent,
+  shutdownPerfCore,
+  startPerfSpan
+} from '../src/perf/perf-core.ts';
 
 interface DaemonOptions {
   host: string;
   port: number;
   authToken: string | null;
   stateDbPath: string;
+}
+
+function parseBooleanEnv(value: string | undefined, fallback: boolean): boolean {
+  if (typeof value !== 'string') {
+    return fallback;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on') {
+    return true;
+  }
+  if (normalized === '0' || normalized === 'false' || normalized === 'no' || normalized === 'off') {
+    return false;
+  }
+  return fallback;
+}
+
+function resolveInvocationDirectory(): string {
+  return process.env.HARNESS_INVOKE_CWD ?? process.env.INIT_CWD ?? process.cwd();
+}
+
+function configureProcessPerf(invocationDirectory: string): void {
+  const loadedConfig = loadHarnessConfig({ cwd: invocationDirectory });
+  const configEnabled = loadedConfig.config.debug.enabled && loadedConfig.config.debug.perf.enabled;
+  const perfEnabled = parseBooleanEnv(process.env.HARNESS_PERF_ENABLED, configEnabled);
+  const configuredPath = resolve(invocationDirectory, loadedConfig.config.debug.perf.filePath);
+  const envPath = process.env.HARNESS_PERF_FILE_PATH;
+  const perfFilePath =
+    typeof envPath === 'string' && envPath.trim().length > 0
+      ? resolve(invocationDirectory, envPath)
+      : configuredPath;
+
+  configurePerfCore({
+    enabled: perfEnabled,
+    filePath: perfFilePath
+  });
+
+  recordPerfEvent('daemon.perf.configured', {
+    process: 'daemon',
+    enabled: perfEnabled,
+    filePath: perfFilePath
+  });
 }
 
 function parseArgs(argv: string[]): DaemonOptions {
@@ -81,8 +130,21 @@ function parseArgs(argv: string[]): DaemonOptions {
 }
 
 async function main(): Promise<number> {
+  const invocationDirectory = resolveInvocationDirectory();
+  configureProcessPerf(invocationDirectory);
+  const loadedConfig = loadHarnessConfig({ cwd: invocationDirectory });
+  const serverSnapshotModelEnabled = loadedConfig.config.debug.mux.serverSnapshotModelEnabled;
+  const startupSpan = startPerfSpan('daemon.startup.total', {
+    process: 'daemon'
+  });
+  recordPerfEvent('daemon.startup.begin', {
+    process: 'daemon'
+  });
   const options = parseArgs(process.argv.slice(2));
 
+  const listenSpan = startPerfSpan('daemon.startup.listen', {
+    process: 'daemon'
+  });
   const server = await startControlPlaneStreamServer({
     host: options.host,
     port: options.port,
@@ -95,11 +157,20 @@ async function main(): Promise<number> {
         initialCols: input.initialCols,
         initialRows: input.initialRows,
         terminalForegroundHex: input.terminalForegroundHex,
-        terminalBackgroundHex: input.terminalBackgroundHex
+        terminalBackgroundHex: input.terminalBackgroundHex,
+        enableSnapshotModel: serverSnapshotModelEnabled
       })
   });
+  listenSpan.end({ listening: true });
 
   const address = server.address();
+  recordPerfEvent('daemon.startup.listening', {
+    process: 'daemon',
+    host: address.address,
+    port: address.port,
+    auth: options.authToken === null ? 'off' : 'on'
+  });
+  startupSpan.end({ listening: true });
   process.stdout.write(
     `[control-plane] listening host=${address.address} port=${String(address.port)} auth=${options.authToken === null ? 'off' : 'on'} db=${options.stateDbPath}\n`
   );
@@ -122,7 +193,13 @@ async function main(): Promise<number> {
   process.once('SIGTERM', requestStop);
 
   await stopPromise;
+  recordPerfEvent('daemon.runtime.stop-requested', {
+    process: 'daemon'
+  });
   await server.close();
+  recordPerfEvent('daemon.runtime.closed', {
+    process: 'daemon'
+  });
   return 0;
 }
 
@@ -133,4 +210,6 @@ try {
     `control-plane daemon fatal error: ${error instanceof Error ? error.stack ?? error.message : String(error)}\n`
   );
   process.exitCode = 1;
+} finally {
+  shutdownPerfCore();
 }

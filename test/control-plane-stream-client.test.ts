@@ -22,6 +22,29 @@ interface WritableSocket {
   destroy(error?: Error): this;
 }
 
+async function reserveLocalPort(): Promise<number> {
+  const server = createServer();
+  await new Promise<void>((resolve, reject) => {
+    server.listen(0, '127.0.0.1', () => resolve());
+    server.once('error', reject);
+  });
+  const address = server.address();
+  if (address === null || typeof address === 'string') {
+    throw new Error('expected tcp server address');
+  }
+  const port = address.port;
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error !== undefined && error !== null) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
+  return port;
+}
+
 async function startHarnessServer(
   onMessage: (socket: Socket, envelope: StreamClientEnvelope) => void
 ): Promise<HarnessServer> {
@@ -349,5 +372,29 @@ void test('stream client auth rejects when closed or already pending', async () 
     await assert.rejects(client.authenticate('after-close'), /closed/);
   } finally {
     await harness.stop();
+  }
+});
+
+void test('stream client retries connection while server is starting', async () => {
+  const port = await reserveLocalPort();
+  const delayedServer = createServer((socket) => {
+    socket.end();
+  });
+  setTimeout(() => {
+    delayedServer.listen(port, '127.0.0.1');
+  }, 120);
+
+  try {
+    const client = await connectControlPlaneStreamClient({
+      host: '127.0.0.1',
+      port,
+      connectRetryWindowMs: 1000,
+      connectRetryDelayMs: 20
+    });
+    client.close();
+  } finally {
+    await new Promise<void>((resolve) => {
+      delayedServer.close(() => resolve());
+    });
   }
 });

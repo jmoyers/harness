@@ -187,7 +187,9 @@ void test('openCodexControlPlaneClient opens remote stream without starting a se
     mode: 'remote',
     host: address.address,
     port: address.port,
-    authToken: 'client-only-secret'
+    authToken: 'client-only-secret',
+    connectRetryWindowMs: 250,
+    connectRetryDelayMs: 25
   });
 
   try {

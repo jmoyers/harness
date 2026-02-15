@@ -42,7 +42,10 @@ This project has two core documents:
 - One instrumentation abstraction (`perf-core`) is used everywhere.
 - Instrumentation is permanent, controlled by one global boolean, and must support near-no-op disabled mode.
 - One config abstraction (`config-core`) and one canonical config file (`harness.config.jsonc`) govern runtime behavior.
+- Runtime feature/perf toggles are config-first (`harness.config.jsonc`); environment variables are only for process bootstrap plumbing, not the primary behavior surface.
 - Config reload must be atomic with last-known-good fallback on invalid config.
+- Performance changes must be validated with the isolated mux hot-path harness matrix before and after edits (`parse-passes`, protocol roundtrip, snapshot-hash, recording pass).
+- Hot-path cost multipliers (extra VTE parse passes, per-frame full-frame hashing, recording re-parse) require explicit justification and measurable benefit.
 
 ## Quality Bar
 - If behavior is not tested, it is not done.

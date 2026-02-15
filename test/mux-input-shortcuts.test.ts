@@ -12,7 +12,7 @@ void test('detectMuxGlobalShortcut maps default raw control-byte bindings', () =
   assert.equal(detectMuxGlobalShortcut(Buffer.from([0x0a]), bindings), 'mux.conversation.next');
   assert.equal(detectMuxGlobalShortcut(Buffer.from([0x0b]), bindings), 'mux.conversation.previous');
   assert.equal(detectMuxGlobalShortcut(Buffer.from([0x03]), bindings), 'mux.app.interrupt-all');
-  assert.equal(detectMuxGlobalShortcut(Buffer.from([0x1d]), bindings), 'mux.app.quit');
+  assert.equal(detectMuxGlobalShortcut(Buffer.from([0x1d]), bindings), null);
   assert.equal(detectMuxGlobalShortcut(Buffer.from([0x74]), bindings), null);
 });
 
@@ -21,11 +21,11 @@ void test('detectMuxGlobalShortcut parses kitty and modifyOtherKeys control comb
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[116;5u', 'utf8'), bindings), 'mux.conversation.new');
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[106;5u', 'utf8'), bindings), 'mux.conversation.next');
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[107;5u', 'utf8'), bindings), 'mux.conversation.previous');
-  assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[93;5u', 'utf8'), bindings), 'mux.app.quit');
+  assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[93;5u', 'utf8'), bindings), null);
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[27;5;116~', 'utf8'), bindings), 'mux.conversation.new');
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[27;5;106~', 'utf8'), bindings), 'mux.conversation.next');
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[27;5;107~', 'utf8'), bindings), 'mux.conversation.previous');
-  assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[27;5;93~', 'utf8'), bindings), 'mux.app.quit');
+  assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[27;5;93~', 'utf8'), bindings), null);
 });
 
 void test('resolveMuxShortcutBindings applies config overrides and display helpers', () => {

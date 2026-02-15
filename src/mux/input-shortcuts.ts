@@ -36,7 +36,7 @@ const ACTION_ORDER: readonly MuxGlobalShortcutAction[] = [
 ];
 
 const DEFAULT_MUX_SHORTCUT_BINDINGS_RAW: Readonly<Record<MuxGlobalShortcutAction, readonly string[]>> = {
-  'mux.app.quit': ['ctrl+]'],
+  'mux.app.quit': [],
   'mux.app.interrupt-all': ['ctrl+c'],
   'mux.conversation.new': ['ctrl+t'],
   'mux.conversation.next': ['ctrl+j'],

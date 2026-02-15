@@ -13,6 +13,7 @@ interface PerfEventRecord {
   type: 'event';
   name: string;
   'ts-ns': string;
+  'ts-ms': number;
   attrs?: PerfAttrs;
 }
 
@@ -21,6 +22,7 @@ interface PerfSpanRecord {
   name: string;
   'start-ns': string;
   'duration-ns': string;
+  'end-ms': number;
   'trace-id': string;
   'span-id': string;
   'parent-span-id'?: string;
@@ -66,8 +68,7 @@ function closeWriter(): void {
 
 function writeRecord(record: PerfRecord): void {
   ensureWriter();
-  writeSync(state.fd as number, JSON.stringify(record));
-  writeSync(state.fd as number, '\n');
+  writeSync(state.fd as number, `${JSON.stringify(record)}\n`);
 }
 
 function nextTraceId(): string {
@@ -111,11 +112,13 @@ function writeDurationRecord(
   }
 
   const endedAtNs = perfNowNs();
+  const endedAtMs = Date.now();
   const record: PerfSpanRecord = {
     type: 'span',
     name,
     'start-ns': startedAtNs.toString(),
     'duration-ns': (endedAtNs - startedAtNs).toString(),
+    'end-ms': endedAtMs,
     'trace-id': traceId ?? nextTraceId(),
     'span-id': spanId ?? nextSpanId()
   };
@@ -236,7 +239,8 @@ export function recordPerfEvent(name: string, attrs?: PerfAttrs): void {
   const record: PerfEventRecord = {
     type: 'event',
     name,
-    'ts-ns': perfNowNs().toString()
+    'ts-ns': perfNowNs().toString(),
+    'ts-ms': Date.now()
   };
   if (attrs !== undefined) {
     record.attrs = attrs;

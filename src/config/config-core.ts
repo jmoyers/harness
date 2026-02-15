@@ -18,6 +18,7 @@ interface HarnessDebugMuxConfig {
   readonly resizeMinIntervalMs: number;
   readonly ptyResizeSettleMs: number;
   readonly startupSettleQuietMs: number;
+  readonly serverSnapshotModelEnabled: boolean;
 }
 
 interface HarnessDebugConfig {
@@ -55,7 +56,8 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
       validateAnsi: false,
       resizeMinIntervalMs: 33,
       ptyResizeSettleMs: 75,
-      startupSettleQuietMs: 300
+      startupSettleQuietMs: 300,
+      serverSnapshotModelEnabled: true
     }
   }
 };
@@ -273,12 +275,17 @@ function normalizeDebugMuxConfig(input: unknown): HarnessDebugMuxConfig {
     record['startupSettleQuietMs'],
     DEFAULT_HARNESS_CONFIG.debug.mux.startupSettleQuietMs
   );
+  const serverSnapshotModelEnabled =
+    typeof record['serverSnapshotModelEnabled'] === 'boolean'
+      ? record['serverSnapshotModelEnabled']
+      : DEFAULT_HARNESS_CONFIG.debug.mux.serverSnapshotModelEnabled;
   return {
     debugPath,
     validateAnsi,
     resizeMinIntervalMs,
     ptyResizeSettleMs,
-    startupSettleQuietMs
+    startupSettleQuietMs,
+    serverSnapshotModelEnabled
   };
 }
 

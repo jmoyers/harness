@@ -71,6 +71,17 @@ void test('snapshot row renderer handles wide glyph continuation cells', () => {
   assert.equal(ansi.includes('a'), true);
 });
 
+void test('snapshot oracle can emit frame data without hash for hot-path rendering', () => {
+  const oracle = new TerminalSnapshotOracle(8, 2);
+  oracle.ingest('hello\nworld');
+  const withHash = oracle.snapshot();
+  const withoutHash = oracle.snapshotWithoutHash();
+  assert.equal(withHash.lines[0], withoutHash.lines[0]);
+  assert.equal(withHash.lines[1], withoutHash.lines[1]);
+  assert.equal(withHash.viewport.top, withoutHash.viewport.top);
+  assert.equal('frameHash' in withoutHash, false);
+});
+
 void test('snapshot row renderer tolerates transient missing cells during resize races', () => {
   const oracle = new TerminalSnapshotOracle(4, 1);
   oracle.ingest('ab');

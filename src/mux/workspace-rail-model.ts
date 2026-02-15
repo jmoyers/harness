@@ -257,7 +257,7 @@ function shortcutRows(): readonly WorkspaceRailViewRow[] {
     },
     {
       kind: 'shortcut-body',
-      text: '│  ctrl+t new  ctrl+j/k switch  ctrl+] quit',
+      text: '│  ctrl+t new  ctrl+j/k switch  ctrl+c x2 quit',
       active: false,
       conversationSessionId: null
     }

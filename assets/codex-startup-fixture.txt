@@ -1,0 +1,6 @@
+>_ OpenAI Codex (v0.101.0)
+
+model:      gpt-5.3-codex high    /model to change
+directory:  ~/dev/harness
+
+fixture: startup paint probe

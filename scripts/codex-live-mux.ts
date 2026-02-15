@@ -1,7 +1,9 @@
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { appendFileSync, mkdirSync, truncateSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
+import { monitorEventLoopDelay } from 'node:perf_hooks';
+import { promisify } from 'node:util';
 import { startCodexLiveSession } from '../src/codex/live-session.ts';
 import { openCodexControlPlaneClient } from '../src/control-plane/codex-session-stream.ts';
 import { startControlPlaneStreamServer } from '../src/control-plane/stream-server.ts';
@@ -14,7 +16,7 @@ import { SqliteEventStore } from '../src/store/event-store.ts';
 import {
   TerminalSnapshotOracle,
   renderSnapshotAnsiRow,
-  type TerminalSnapshotFrame
+  type TerminalSnapshotFrameCore
 } from '../src/terminal/snapshot-oracle.ts';
 import {
   createNormalizedEvent,
@@ -63,10 +65,13 @@ import {
 } from '../src/adapters/agent-session-state.ts';
 import {
   configurePerfCore,
+  perfNowNs,
   recordPerfEvent,
   shutdownPerfCore,
   startPerfSpan
 } from '../src/perf/perf-core.ts';
+
+const execFileAsync = promisify(execFile);
 
 type ResolvedMuxShortcutBindings = ReturnType<typeof resolveMuxShortcutBindings>;
 
@@ -136,6 +141,7 @@ interface ConversationState {
   processId: number | null;
   live: boolean;
   attached: boolean;
+  lastOutputCursor: number;
 }
 
 interface ProcessUsageSample {
@@ -174,6 +180,11 @@ interface GitSummary {
 const DEFAULT_RESIZE_MIN_INTERVAL_MS = 33;
 const DEFAULT_PTY_RESIZE_SETTLE_MS = 75;
 const DEFAULT_STARTUP_SETTLE_QUIET_MS = 300;
+const DEFAULT_STARTUP_SETTLE_NONEMPTY_FALLBACK_MS = 1500;
+const DEFAULT_BACKGROUND_START_MAX_WAIT_MS = 5000;
+const DEFAULT_BACKGROUND_RESUME_PERSISTED = false;
+const DEFAULT_BACKGROUND_PROBES_ENABLED = false;
+const DEFAULT_INTERRUPT_EXIT_WINDOW_MS = 1500;
 const STARTUP_TERMINAL_MIN_COLS = 40;
 const STARTUP_TERMINAL_MIN_ROWS = 10;
 const STARTUP_TERMINAL_PROBE_TIMEOUT_MS = 250;
@@ -228,24 +239,6 @@ function extractFocusEvents(chunk: Buffer): FocusEventExtraction {
     focusInCount,
     focusOutCount
   };
-}
-
-function appendDebugRecord(debugPath: string | null, record: Record<string, unknown>): void {
-  if (debugPath === null) {
-    return;
-  }
-  try {
-    appendFileSync(
-      debugPath,
-      `${JSON.stringify({
-        ts: new Date().toISOString(),
-        ...record
-      })}\n`,
-      'utf8'
-    );
-  } catch {
-    // Debug tracing must never break the live session loop.
-  }
 }
 
 function prepareArtifactPath(path: string, overwriteOnStart: boolean): string {
@@ -546,26 +539,29 @@ function parseBooleanEnv(value: string | undefined, fallback: boolean): boolean 
   return fallback;
 }
 
-function runGitCommand(cwd: string, args: readonly string[]): string {
-  const result = spawnSync('git', [...args], {
-    cwd,
-    encoding: 'utf8'
-  });
-  if (result.status !== 0) {
+async function runGitCommand(cwd: string, args: readonly string[]): Promise<string> {
+  try {
+    const result = await execFileAsync('git', [...args], {
+      cwd,
+      encoding: 'utf8',
+      timeout: 1500,
+      maxBuffer: 1024 * 1024
+    });
+    return result.stdout.trim();
+  } catch {
     return '';
   }
-  return result.stdout.trim();
 }
 
-function readGitSummary(cwd: string): GitSummary {
-  const branch = runGitCommand(cwd, ['rev-parse', '--abbrev-ref', 'HEAD']) || '(detached)';
-  const statusOutput = runGitCommand(cwd, ['status', '--porcelain']);
+async function readGitSummary(cwd: string): Promise<GitSummary> {
+  const branch = (await runGitCommand(cwd, ['rev-parse', '--abbrev-ref', 'HEAD'])) || '(detached)';
+  const statusOutput = await runGitCommand(cwd, ['status', '--porcelain']);
   const changedFiles = statusOutput.length === 0 ? 0 : statusOutput.split('\n').filter((line) => line.trim().length > 0).length;
 
-  const numstatOutputs = [
+  const numstatOutputs = await Promise.all([
     runGitCommand(cwd, ['diff', '--numstat']),
     runGitCommand(cwd, ['diff', '--numstat', '--cached'])
-  ];
+  ]);
   let additions = 0;
   let deletions = 0;
   for (const output of numstatOutputs) {
@@ -597,7 +593,7 @@ function readGitSummary(cwd: string): GitSummary {
   };
 }
 
-function readProcessUsageSample(processId: number | null): ProcessUsageSample {
+async function readProcessUsageSample(processId: number | null): Promise<ProcessUsageSample> {
   if (processId === null) {
     return {
       cpuPercent: null,
@@ -605,17 +601,22 @@ function readProcessUsageSample(processId: number | null): ProcessUsageSample {
     };
   }
 
-  const result = spawnSync('ps', ['-p', String(processId), '-o', '%cpu=,rss='], {
-    encoding: 'utf8'
-  });
-  if (result.status !== 0) {
+  let stdout = '';
+  try {
+    const result = await execFileAsync('ps', ['-p', String(processId), '-o', '%cpu=,rss='], {
+      encoding: 'utf8',
+      timeout: 1000,
+      maxBuffer: 8 * 1024
+    });
+    stdout = result.stdout;
+  } catch {
     return {
       cpuPercent: null,
       memoryMb: null
     };
   }
 
-  const line = result.stdout
+  const line = stdout
     .split('\n')
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0)
@@ -993,7 +994,8 @@ function createConversationState(
     lastExit: null,
     processId: null,
     live: true,
-    attached: false
+    attached: false,
+    lastOutputCursor: 0
   };
 }
 
@@ -1038,9 +1040,9 @@ function shortcutHintText(bindings: ResolvedMuxShortcutBindings): string {
   const newConversation = firstShortcutText(bindings, 'mux.conversation.new') || 'ctrl+t';
   const next = firstShortcutText(bindings, 'mux.conversation.next') || 'ctrl+j';
   const previous = firstShortcutText(bindings, 'mux.conversation.previous') || 'ctrl+k';
-  const quit = firstShortcutText(bindings, 'mux.app.quit') || 'ctrl+]';
+  const interrupt = firstShortcutText(bindings, 'mux.app.interrupt-all') || 'ctrl+c';
   const switchHint = next === previous ? next : `${next}/${previous}`;
-  return `${newConversation} new  ${switchHint} switch  ${quit} quit`;
+  return `${newConversation} new  ${switchHint} switch  ${interrupt} x2 quit`;
 }
 
 type WorkspaceRailModel = Parameters<typeof renderWorkspaceRailAnsiRows>[0];
@@ -1142,10 +1144,9 @@ function buildRailRows(
 function buildRenderRows(
   layout: ReturnType<typeof computeDualPaneLayout>,
   railRows: readonly string[],
-  rightFrame: TerminalSnapshotFrame,
+  rightFrame: TerminalSnapshotFrameCore,
   activeConversationId: string | null,
   selectionActive: boolean,
-  ctrlCExits: boolean,
   shortcutBindings: ResolvedMuxShortcutBindings
 ): string[] {
   const rows: string[] = [];
@@ -1159,14 +1160,12 @@ function buildRenderRows(
     ? 'pty=live'
     : `pty=scroll(${String(rightFrame.viewport.top + 1)}/${String(rightFrame.viewport.totalRows)})`;
   const selection = selectionActive ? 'select=drag' : 'select=idle';
-  const quitKey = firstShortcutText(shortcutBindings, 'mux.app.quit') || 'ctrl+]';
   const interruptKey = firstShortcutText(shortcutBindings, 'mux.app.interrupt-all') || 'ctrl+c';
   const newKey = firstShortcutText(shortcutBindings, 'mux.conversation.new') || 'ctrl+t';
   const nextKey = firstShortcutText(shortcutBindings, 'mux.conversation.next') || 'ctrl+j';
   const previousKey = firstShortcutText(shortcutBindings, 'mux.conversation.previous') || 'ctrl+k';
-  const quitHint = ctrlCExits ? `${interruptKey}/${quitKey} quit` : `${quitKey} quit`;
   const status = padOrTrimDisplay(
-    `[mux] conversation=${activeConversationId ?? '-'} ${mainMode} ${selection} ${newKey} new ${nextKey}/${previousKey} switch drag copy alt-pass ${quitHint}`,
+    `[mux] conversation=${activeConversationId ?? '-'} ${mainMode} ${selection} ${newKey} new ${nextKey}/${previousKey} switch drag copy alt-pass ${interruptKey} x2 quit`,
     layout.cols
   );
   rows.push(status);
@@ -1238,7 +1237,7 @@ function normalizeSelection(selection: PaneSelection): { start: SelectionPoint; 
 
 function clampPanePoint(
   layout: ReturnType<typeof computeDualPaneLayout>,
-  frame: TerminalSnapshotFrame,
+  frame: TerminalSnapshotFrameCore,
   rowAbs: number,
   col: number
 ): SelectionPoint {
@@ -1251,7 +1250,7 @@ function clampPanePoint(
 
 function pointFromMouseEvent(
   layout: ReturnType<typeof computeDualPaneLayout>,
-  frame: TerminalSnapshotFrame,
+  frame: TerminalSnapshotFrameCore,
   event: { col: number; row: number }
 ): SelectionPoint {
   const rowViewport = Math.max(0, Math.min(layout.paneRows - 1, event.row - 1));
@@ -1293,7 +1292,7 @@ function isSelectionDrag(code: number, final: 'M' | 'm'): boolean {
   return final === 'M' && isMotionMouseCode(code);
 }
 
-function cellGlyphForOverlay(frame: TerminalSnapshotFrame, row: number, col: number): string {
+function cellGlyphForOverlay(frame: TerminalSnapshotFrameCore, row: number, col: number): string {
   const line = frame.richLines[row];
   if (line === undefined) {
     return ' ';
@@ -1310,7 +1309,7 @@ function cellGlyphForOverlay(frame: TerminalSnapshotFrame, row: number, col: num
 
 function renderSelectionOverlay(
   layout: ReturnType<typeof computeDualPaneLayout>,
-  frame: TerminalSnapshotFrame,
+  frame: TerminalSnapshotFrameCore,
   selection: PaneSelection | null
 ): string {
   if (selection === null) {
@@ -1346,7 +1345,7 @@ function renderSelectionOverlay(
 }
 
 function selectionVisibleRows(
-  frame: TerminalSnapshotFrame,
+  frame: TerminalSnapshotFrameCore,
   selection: PaneSelection | null
 ): readonly number[] {
   if (selection === null) {
@@ -1389,7 +1388,7 @@ function mergeUniqueRows(
   return [...merged].sort((a, b) => a - b);
 }
 
-function selectionText(frame: TerminalSnapshotFrame, selection: PaneSelection | null): string {
+function selectionText(frame: TerminalSnapshotFrameCore, selection: PaneSelection | null): string {
   if (selection === null) {
     return '';
   }
@@ -1461,10 +1460,20 @@ async function main(): Promise<number> {
     cwd: options.invocationDirectory
   });
   const debugConfig = loadedConfig.config.debug;
-  const perfEnabled = debugConfig.enabled && debugConfig.perf.enabled;
-  const perfFilePath = resolve(options.invocationDirectory, debugConfig.perf.filePath);
+  const perfEnabled = parseBooleanEnv(
+    process.env.HARNESS_PERF_ENABLED,
+    debugConfig.enabled && debugConfig.perf.enabled
+  );
+  const perfFilePath = resolve(
+    options.invocationDirectory,
+    process.env.HARNESS_PERF_FILE_PATH ?? debugConfig.perf.filePath
+  );
+  const perfTruncateOnStart = parseBooleanEnv(
+    process.env.HARNESS_PERF_TRUNCATE_ON_START,
+    debugConfig.overwriteArtifactsOnStart
+  );
   if (perfEnabled) {
-    prepareArtifactPath(perfFilePath, debugConfig.overwriteArtifactsOnStart);
+    prepareArtifactPath(perfFilePath, perfTruncateOnStart);
   }
   configurePerfCore({
     enabled: perfEnabled,
@@ -1474,19 +1483,16 @@ async function main(): Promise<number> {
     invocationDirectory: options.invocationDirectory,
     codexArgs: options.codexArgs.length
   });
-  recordPerfEvent('mux.startup.begin');
+  recordPerfEvent('mux.startup.begin', {
+    stdinTty: process.stdin.isTTY ? 1 : 0,
+    stdoutTty: process.stdout.isTTY ? 1 : 0,
+    perfFilePath
+  });
   if (loadedConfig.error !== null) {
     process.stderr.write(`[config] using last-known-good due to parse error: ${loadedConfig.error}\n`);
   }
   const shortcutBindings = resolveMuxShortcutBindings(loadedConfig.config.mux.keybindings);
   const store = new SqliteEventStore(options.storePath);
-  const debugPath =
-    debugConfig.enabled && debugConfig.mux.debugPath !== null
-      ? prepareArtifactPath(
-          resolve(options.invocationDirectory, debugConfig.mux.debugPath),
-          debugConfig.overwriteArtifactsOnStart
-        )
-      : null;
 
   let size = await readStartupTerminalSize();
   recordPerfEvent('mux.startup.terminal-size', {
@@ -1503,7 +1509,22 @@ async function main(): Promise<number> {
   const startupSettleQuietMs = debugConfig.enabled
     ? debugConfig.mux.startupSettleQuietMs
     : DEFAULT_STARTUP_SETTLE_QUIET_MS;
-  const ctrlCExits = parseBooleanEnv(process.env.HARNESS_MUX_CTRL_C_EXITS, true);
+  const controlPlaneConnectRetryWindowMs = parsePositiveInt(
+    process.env.HARNESS_CONTROL_PLANE_CONNECT_RETRY_WINDOW_MS,
+    0
+  );
+  const controlPlaneConnectRetryDelayMs = Math.max(
+    1,
+    parsePositiveInt(process.env.HARNESS_CONTROL_PLANE_CONNECT_RETRY_DELAY_MS, 50)
+  );
+  const backgroundResumePersisted = parseBooleanEnv(
+    process.env.HARNESS_MUX_BACKGROUND_RESUME,
+    DEFAULT_BACKGROUND_RESUME_PERSISTED
+  );
+  const backgroundProbesEnabled = parseBooleanEnv(
+    process.env.HARNESS_MUX_BACKGROUND_PROBES,
+    DEFAULT_BACKGROUND_PROBES_ENABLED
+  );
   const validateAnsi = debugConfig.enabled ? debugConfig.mux.validateAnsi : false;
 
   process.stdin.setRawMode(true);
@@ -1539,7 +1560,9 @@ async function main(): Promise<number> {
           mode: 'remote',
           host: options.controlPlaneHost,
           port: options.controlPlanePort,
-          authToken: options.controlPlaneAuthToken ?? undefined
+          authToken: options.controlPlaneAuthToken ?? undefined,
+          connectRetryWindowMs: controlPlaneConnectRetryWindowMs,
+          connectRetryDelayMs: controlPlaneConnectRetryDelayMs
         }
       : {
           mode: 'embedded'
@@ -1558,7 +1581,8 @@ async function main(): Promise<number> {
             initialCols: input.initialCols,
             initialRows: input.initialRows,
             terminalForegroundHex: input.terminalForegroundHex,
-              terminalBackgroundHex: input.terminalBackgroundHex
+            terminalBackgroundHex: input.terminalBackgroundHex,
+            enableSnapshotModel: debugConfig.mux.serverSnapshotModelEnabled
           })
       })
   });
@@ -1594,9 +1618,18 @@ async function main(): Promise<number> {
   let startupActiveFirstPaintSpan: ReturnType<typeof startPerfSpan> | null = null;
   let startupActiveSettledSpan: ReturnType<typeof startPerfSpan> | null = null;
   let startupActiveFirstOutputObserved = false;
+  let startupActiveFirstOutputAtMs: number | null = null;
   let startupActiveFirstPaintObserved = false;
+  let startupActiveHeaderObserved = false;
+  let startupActiveSettleGate: 'header' | 'nonempty' | null = null;
   let startupActiveSettledObserved = false;
+  let startupActiveSettledSignaled = false;
   let startupActiveSettledTimer: NodeJS.Timeout | null = null;
+  let resolveStartupActiveSettledWait: (() => void) | null = null;
+  const startupActiveSettledWait = new Promise<void>((resolve) => {
+    resolveStartupActiveSettledWait = resolve;
+  });
+  const startupSessionFirstOutputObserved = new Set<string>();
 
   const endStartupActiveStartCommandSpan = (attrs: Record<string, boolean | number | string>): void => {
     if (startupActiveStartCommandSpan === null) {
@@ -1638,8 +1671,17 @@ async function main(): Promise<number> {
     startupActiveSettledTimer = null;
   };
 
+  const signalStartupActiveSettled = (): void => {
+    if (startupActiveSettledSignaled) {
+      return;
+    }
+    startupActiveSettledSignaled = true;
+    resolveStartupActiveSettledWait?.();
+    resolveStartupActiveSettledWait = null;
+  };
+
   const visibleGlyphCellCount = (conversation: ConversationState): number => {
-    const frame = conversation.oracle.snapshot();
+    const frame = conversation.oracle.snapshotWithoutHash();
     let count = 0;
     for (const line of frame.richLines) {
       for (const cell of line.cells) {
@@ -1651,15 +1693,44 @@ async function main(): Promise<number> {
     return count;
   };
 
+  const visibleText = (conversation: ConversationState): string => {
+    const frame = conversation.oracle.snapshotWithoutHash();
+    const rows: string[] = [];
+    for (const line of frame.richLines) {
+      let row = '';
+      for (const cell of line.cells) {
+        if (cell.continued) {
+          continue;
+        }
+        row += cell.glyph;
+      }
+      rows.push(row.trimEnd());
+    }
+    return rows.join('\n');
+  };
+
+  const codexHeaderVisible = (conversation: ConversationState): boolean => {
+    const text = visibleText(conversation);
+    return text.includes('OpenAI Codex') && text.includes('model:') && text.includes('directory:');
+  };
+
   const scheduleStartupSettledProbe = (sessionId: string): void => {
     if (
       startupFirstPaintTargetSessionId !== sessionId ||
       !startupActiveFirstOutputObserved ||
+      !startupActiveFirstPaintObserved ||
+      startupActiveSettleGate === null ||
       startupActiveSettledObserved
     ) {
       return;
     }
-    clearStartupSettledTimer();
+    if (startupActiveSettleGate === 'header') {
+      if (startupActiveSettledTimer !== null) {
+        return;
+      }
+    } else {
+      clearStartupSettledTimer();
+    }
     startupActiveSettledTimer = setTimeout(() => {
       startupActiveSettledTimer = null;
       if (startupFirstPaintTargetSessionId !== sessionId || startupActiveSettledObserved) {
@@ -1673,14 +1744,17 @@ async function main(): Promise<number> {
       startupActiveSettledObserved = true;
       recordPerfEvent('mux.startup.active-settled', {
         sessionId,
+        gate: startupActiveSettleGate,
         quietMs: startupSettleQuietMs,
         glyphCells
       });
       endStartupActiveSettledSpan({
         observed: true,
+        gate: startupActiveSettleGate,
         quietMs: startupSettleQuietMs,
         glyphCells
       });
+      signalStartupActiveSettled();
     }, startupSettleQuietMs);
   };
 
@@ -1756,6 +1830,7 @@ async function main(): Promise<number> {
         sessionId
       });
       const targetConversation = ensureConversation(sessionId);
+      targetConversation.lastOutputCursor = 0;
       const launchArgs = buildAgentStartArgs(
         targetConversation.agentType,
         options.codexArgs,
@@ -1801,10 +1876,6 @@ async function main(): Promise<number> {
       if (statusSummary !== null) {
         applySummaryToConversation(state, statusSummary);
       }
-      await streamClient.sendCommand({
-        type: 'pty.subscribe-events',
-        sessionId
-      });
       startSpan.end({
         live: state.live
       });
@@ -1819,10 +1890,11 @@ async function main(): Promise<number> {
     }
   };
 
-  const startPersistedConversationsInBackground = async (
+  const queuePersistedConversationsInBackground = (
     activeSessionId: string | null
-  ): Promise<void> => {
+  ): number => {
     const ordered = conversationOrder(conversations);
+    let queued = 0;
     for (const sessionId of ordered) {
       if (activeSessionId !== null && sessionId === activeSessionId) {
         continue;
@@ -1831,9 +1903,20 @@ async function main(): Promise<number> {
       if (conversation === undefined || conversation.live) {
         continue;
       }
-      await startConversation(sessionId);
+      queueBackgroundControlPlaneOp(
+        async () => {
+          const latest = conversations.get(sessionId);
+          if (latest === undefined || latest.live) {
+            return;
+          }
+          await startConversation(sessionId);
+          markDirty();
+        },
+        `background-start:${sessionId}`
+      );
+      queued += 1;
     }
-    markDirty();
+    return queued;
   };
 
   const hydrateConversationList = async (): Promise<void> => {
@@ -1883,10 +1966,6 @@ async function main(): Promise<number> {
     for (const summary of summaries) {
       const conversation = ensureConversation(summary.sessionId);
       applySummaryToConversation(conversation, summary);
-      await streamClient.sendCommand({
-        type: 'pty.subscribe-events',
-        sessionId: summary.sessionId
-      });
     }
     hydrateSpan.end({
       persisted: persistedRows.length,
@@ -1917,16 +1996,98 @@ async function main(): Promise<number> {
     activeConversationId = ordered[0] ?? options.initialConversationId;
   }
 
-  let gitSummary = readGitSummary(process.cwd());
+  let gitSummary: GitSummary = {
+    branch: '(loading)',
+    changedFiles: 0,
+    additions: 0,
+    deletions: 0
+  };
   const processUsageBySessionId = new Map<string, ProcessUsageSample>();
+  let processUsageRefreshInFlight = false;
+  let gitSummaryRefreshInFlight = false;
 
-  const refreshProcessUsage = (): void => {
-    for (const [sessionId, conversation] of conversations.entries()) {
-      processUsageBySessionId.set(sessionId, readProcessUsageSample(conversation.processId));
+  const processUsageEqual = (left: ProcessUsageSample, right: ProcessUsageSample): boolean =>
+    left.cpuPercent === right.cpuPercent && left.memoryMb === right.memoryMb;
+
+  const gitSummaryEqual = (left: GitSummary, right: GitSummary): boolean =>
+    left.branch === right.branch &&
+    left.changedFiles === right.changedFiles &&
+    left.additions === right.additions &&
+    left.deletions === right.deletions;
+
+  const refreshProcessUsage = async (reason: 'startup' | 'interval'): Promise<void> => {
+    if (processUsageRefreshInFlight) {
+      return;
+    }
+    processUsageRefreshInFlight = true;
+    const usageSpan = startPerfSpan('mux.background.process-usage', {
+      reason,
+      conversations: conversations.size
+    });
+    try {
+      const entries = await Promise.all(
+        [...conversations.entries()].map(async ([sessionId, conversation]) => ({
+          sessionId,
+          sample: await readProcessUsageSample(conversation.processId)
+        }))
+      );
+
+      let changed = false;
+      const observedSessionIds = new Set<string>();
+      for (const entry of entries) {
+        observedSessionIds.add(entry.sessionId);
+        const previous = processUsageBySessionId.get(entry.sessionId);
+        if (previous === undefined || !processUsageEqual(previous, entry.sample)) {
+          processUsageBySessionId.set(entry.sessionId, entry.sample);
+          changed = true;
+        }
+      }
+      for (const sessionId of processUsageBySessionId.keys()) {
+        if (observedSessionIds.has(sessionId)) {
+          continue;
+        }
+        processUsageBySessionId.delete(sessionId);
+        changed = true;
+      }
+
+      if (changed) {
+        markDirty();
+      }
+      usageSpan.end({
+        reason,
+        samples: entries.length,
+        changed
+      });
+    } finally {
+      processUsageRefreshInFlight = false;
     }
   };
 
-  refreshProcessUsage();
+  const refreshGitSummary = async (reason: 'startup' | 'interval'): Promise<void> => {
+    if (gitSummaryRefreshInFlight) {
+      return;
+    }
+    gitSummaryRefreshInFlight = true;
+    const gitSpan = startPerfSpan('mux.background.git-summary', {
+      reason
+    });
+    try {
+      const next = await readGitSummary(options.invocationDirectory);
+      const changed = !gitSummaryEqual(gitSummary, next);
+      if (changed) {
+        gitSummary = next;
+        markDirty();
+      }
+      gitSpan.end({
+        reason,
+        changed,
+        branch: next.branch,
+        changedFiles: next.changedFiles
+      });
+    } finally {
+      gitSummaryRefreshInFlight = false;
+    }
+  };
 
   const idFactory = (): string => `event-${randomUUID()}`;
   let exit: PtyExit | null = null;
@@ -1946,6 +2107,7 @@ async function main(): Promise<number> {
   let selectionDrag: PaneSelectionDrag | null = null;
   let selectionPinnedFollowOutput: boolean | null = null;
   let ansiValidationReported = false;
+  let lastInterruptShortcutAtMs: number | null = null;
   let resizeTimer: NodeJS.Timeout | null = null;
   let pendingSize: { cols: number; rows: number } | null = null;
   let lastResizeApplyAtMs = 0;
@@ -1974,7 +2136,7 @@ async function main(): Promise<number> {
           // Best-effort shutdown only.
         }
       }
-    });
+    }, 'shutdown-close-live-sessions');
     markDirty();
   };
 
@@ -2000,22 +2162,177 @@ async function main(): Promise<number> {
     scheduleRender();
   };
 
-  const processUsageTimer = setInterval(() => {
-    refreshProcessUsage();
-    markDirty();
-  }, 1000);
-  const gitSummaryTimer = setInterval(() => {
-    const next = readGitSummary(process.cwd());
-    if (
-      next.branch !== gitSummary.branch ||
-      next.changedFiles !== gitSummary.changedFiles ||
-      next.additions !== gitSummary.additions ||
-      next.deletions !== gitSummary.deletions
-    ) {
-      gitSummary = next;
-      markDirty();
+  let processUsageTimer: NodeJS.Timeout | null = null;
+  let gitSummaryTimer: NodeJS.Timeout | null = null;
+  let backgroundProbesStarted = false;
+  const startBackgroundProbes = (timedOut: boolean): void => {
+    if (shuttingDown || backgroundProbesStarted || !backgroundProbesEnabled) {
+      return;
     }
-  }, 1500);
+    backgroundProbesStarted = true;
+    recordPerfEvent('mux.startup.background-probes.begin', {
+      timedOut,
+      settledObserved: startupActiveSettledObserved
+    });
+    void refreshProcessUsage('startup');
+    void refreshGitSummary('startup');
+    processUsageTimer = setInterval(() => {
+      void refreshProcessUsage('interval');
+    }, 1000);
+    gitSummaryTimer = setInterval(() => {
+      void refreshGitSummary('interval');
+    }, 1500);
+  };
+  recordPerfEvent('mux.startup.background-probes.wait', {
+    maxWaitMs: DEFAULT_BACKGROUND_START_MAX_WAIT_MS,
+    enabled: backgroundProbesEnabled ? 1 : 0
+  });
+  if (!backgroundProbesEnabled) {
+    recordPerfEvent('mux.startup.background-probes.skipped', {
+      reason: 'disabled'
+    });
+  }
+  void (async () => {
+    if (!backgroundProbesEnabled) {
+      return;
+    }
+    let timedOut = false;
+    await Promise.race([
+      startupActiveSettledWait,
+      new Promise<void>((resolve) => {
+        setTimeout(() => {
+          timedOut = true;
+          resolve();
+        }, DEFAULT_BACKGROUND_START_MAX_WAIT_MS);
+      })
+    ]);
+    startBackgroundProbes(timedOut);
+  })();
+
+  const PERSISTED_EVENT_FLUSH_DELAY_MS = 12;
+  const PERSISTED_EVENT_FLUSH_MAX_BATCH = 64;
+  let pendingPersistedEvents: NormalizedEventEnvelope[] = [];
+  let persistedEventFlushTimer: NodeJS.Timeout | null = null;
+
+  const flushPendingPersistedEvents = (reason: 'timer' | 'immediate' | 'shutdown'): void => {
+    if (persistedEventFlushTimer !== null) {
+      clearTimeout(persistedEventFlushTimer);
+      persistedEventFlushTimer = null;
+    }
+    if (pendingPersistedEvents.length === 0) {
+      return;
+    }
+    const batch = pendingPersistedEvents;
+    pendingPersistedEvents = [];
+    const flushSpan = startPerfSpan('mux.events.flush', {
+      reason,
+      count: batch.length
+    });
+    try {
+      store.appendEvents(batch);
+      flushSpan.end({
+        reason,
+        status: 'ok',
+        count: batch.length
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      flushSpan.end({
+        reason,
+        status: 'error',
+        count: batch.length,
+        message
+      });
+      process.stderr.write(`[mux] event-store error ${message}\n`);
+    }
+  };
+
+  const schedulePersistedEventFlush = (): void => {
+    if (persistedEventFlushTimer !== null) {
+      return;
+    }
+    persistedEventFlushTimer = setTimeout(() => {
+      persistedEventFlushTimer = null;
+      flushPendingPersistedEvents('timer');
+    }, PERSISTED_EVENT_FLUSH_DELAY_MS);
+  };
+
+  const enqueuePersistedEvent = (event: NormalizedEventEnvelope): void => {
+    pendingPersistedEvents.push(event);
+    if (pendingPersistedEvents.length >= PERSISTED_EVENT_FLUSH_MAX_BATCH) {
+      flushPendingPersistedEvents('immediate');
+      return;
+    }
+    schedulePersistedEventFlush();
+  };
+
+  const eventLoopDelayMonitor = monitorEventLoopDelay({
+    resolution: 20
+  });
+  eventLoopDelayMonitor.enable();
+
+  let outputSampleWindowStartedAtMs = Date.now();
+  let outputSampleActiveBytes = 0;
+  let outputSampleInactiveBytes = 0;
+  let outputSampleActiveChunks = 0;
+  let outputSampleInactiveChunks = 0;
+  let outputHandleSampleCount = 0;
+  let outputHandleSampleTotalMs = 0;
+  let outputHandleSampleMaxMs = 0;
+  let renderSampleCount = 0;
+  let renderSampleTotalMs = 0;
+  let renderSampleMaxMs = 0;
+  let renderSampleChangedRows = 0;
+  const outputSampleSessionIds = new Set<string>();
+  const outputLoadSampleTimer = setInterval(() => {
+    const totalChunks = outputSampleActiveChunks + outputSampleInactiveChunks;
+    const hasRenderSamples = renderSampleCount > 0;
+    if (totalChunks > 0 || hasRenderSamples) {
+      const nowMs = Date.now();
+      const eventLoopP95Ms = Number(eventLoopDelayMonitor.percentile(95)) / 1e6;
+      const eventLoopMaxMs = Number(eventLoopDelayMonitor.max) / 1e6;
+      recordPerfEvent('mux.output-load.sample', {
+        windowMs: Math.max(1, nowMs - outputSampleWindowStartedAtMs),
+        activeChunks: outputSampleActiveChunks,
+        inactiveChunks: outputSampleInactiveChunks,
+        activeBytes: outputSampleActiveBytes,
+        inactiveBytes: outputSampleInactiveBytes,
+        outputHandleCount: outputHandleSampleCount,
+        outputHandleAvgMs:
+          outputHandleSampleCount === 0
+            ? 0
+            : Number((outputHandleSampleTotalMs / outputHandleSampleCount).toFixed(3)),
+        outputHandleMaxMs: Number(outputHandleSampleMaxMs.toFixed(3)),
+        renderCount: renderSampleCount,
+        renderAvgMs:
+          renderSampleCount === 0 ? 0 : Number((renderSampleTotalMs / renderSampleCount).toFixed(3)),
+        renderMaxMs: Number(renderSampleMaxMs.toFixed(3)),
+        renderChangedRows: renderSampleChangedRows,
+        eventLoopP95Ms: Number(eventLoopP95Ms.toFixed(3)),
+        eventLoopMaxMs: Number(eventLoopMaxMs.toFixed(3)),
+        activeConversationId: activeConversationId ?? 'none',
+        sessionsWithOutput: outputSampleSessionIds.size,
+        pendingPersistedEvents: pendingPersistedEvents.length,
+        interactiveQueued: interactiveControlPlaneQueue.length,
+        backgroundQueued: backgroundControlPlaneQueue.length,
+        controlPlaneOpRunning: controlPlaneOpRunning ? 1 : 0
+      });
+      outputSampleWindowStartedAtMs = nowMs;
+      outputSampleActiveBytes = 0;
+      outputSampleInactiveBytes = 0;
+      outputSampleActiveChunks = 0;
+      outputSampleInactiveChunks = 0;
+      outputHandleSampleCount = 0;
+      outputHandleSampleTotalMs = 0;
+      outputHandleSampleMaxMs = 0;
+      renderSampleCount = 0;
+      renderSampleTotalMs = 0;
+      renderSampleMaxMs = 0;
+      renderSampleChangedRows = 0;
+      outputSampleSessionIds.clear();
+      eventLoopDelayMonitor.reset();
+    }
+  }, 1000);
 
   const applyPtyResizeToSession = (
     sessionId: string,
@@ -2041,13 +2358,6 @@ async function main(): Promise<number> {
     });
     conversation.oracle.resize(ptySize.cols, ptySize.rows);
     streamClient.sendResize(sessionId, ptySize.cols, ptySize.rows);
-    appendDebugRecord(debugPath, {
-      kind: 'resize-pty-apply',
-      sessionId,
-      ptyCols: ptySize.cols,
-      ptyRows: ptySize.rows,
-      force
-    });
     markDirty();
   };
 
@@ -2068,13 +2378,6 @@ async function main(): Promise<number> {
 
   const schedulePtyResize = (ptySize: { cols: number; rows: number }, immediate = false): void => {
     pendingPtySize = ptySize;
-    appendDebugRecord(debugPath, {
-      kind: 'resize-pty-schedule',
-      ptyCols: ptySize.cols,
-      ptyRows: ptySize.rows,
-      immediate,
-      settleMs: ptyResizeSettleMs
-    });
     if (immediate) {
       if (ptyResizeTimer !== null) {
         clearTimeout(ptyResizeTimer);
@@ -2129,14 +2432,6 @@ async function main(): Promise<number> {
     // Force a full clear on actual layout changes to avoid stale diagonal artifacts during drag.
     previousRows = [];
     forceFullClear = true;
-    appendDebugRecord(debugPath, {
-      kind: 'resize-layout-apply',
-      cols: nextLayout.cols,
-      rows: nextLayout.rows,
-      leftCols: nextLayout.leftCols,
-      rightCols: nextLayout.rightCols,
-      paneRows: nextLayout.paneRows
-    });
     markDirty();
   };
 
@@ -2175,15 +2470,146 @@ async function main(): Promise<number> {
     resizeTimer = setTimeout(flushPendingResize, delayMs);
   };
 
-  let controlPlaneOps = Promise.resolve();
-  const queueControlPlaneOp = (task: () => Promise<void>): void => {
-    controlPlaneOps = controlPlaneOps
-      .then(task)
-      .catch((error: unknown) => {
-        process.stderr.write(
-          `[mux] control-plane error ${error instanceof Error ? error.message : String(error)}\n`
-        );
+  type ControlPlaneOpPriority = 'interactive' | 'background';
+  interface QueuedControlPlaneOp {
+    readonly id: number;
+    readonly priority: ControlPlaneOpPriority;
+    readonly label: string;
+    readonly enqueuedAtMs: number;
+    readonly task: () => Promise<void>;
+  }
+  const interactiveControlPlaneQueue: QueuedControlPlaneOp[] = [];
+  const backgroundControlPlaneQueue: QueuedControlPlaneOp[] = [];
+  let controlPlaneOpNextId = 1;
+  let controlPlaneOpRunning = false;
+  let controlPlanePumpScheduled = false;
+  const controlPlaneDrainWaiters: Array<() => void> = [];
+
+  const resolveControlPlaneDrainIfIdle = (): void => {
+    if (controlPlaneOpRunning || interactiveControlPlaneQueue.length > 0 || backgroundControlPlaneQueue.length > 0) {
+      return;
+    }
+    while (controlPlaneDrainWaiters.length > 0) {
+      const resolve = controlPlaneDrainWaiters.shift();
+      resolve?.();
+    }
+  };
+
+  const waitForControlPlaneDrain = async (): Promise<void> => {
+    if (!controlPlaneOpRunning && interactiveControlPlaneQueue.length === 0 && backgroundControlPlaneQueue.length === 0) {
+      return;
+    }
+    await new Promise<void>((resolve) => {
+      controlPlaneDrainWaiters.push(resolve);
+    });
+  };
+
+  const pickNextControlPlaneOp = (): QueuedControlPlaneOp | null => {
+    const interactive = interactiveControlPlaneQueue.shift();
+    if (interactive !== undefined) {
+      return interactive;
+    }
+    const background = backgroundControlPlaneQueue.shift();
+    return background ?? null;
+  };
+
+  const runControlPlaneQueue = async (): Promise<void> => {
+    if (controlPlaneOpRunning) {
+      return;
+    }
+    const next = pickNextControlPlaneOp();
+    if (next === null) {
+      resolveControlPlaneDrainIfIdle();
+      return;
+    }
+    controlPlaneOpRunning = true;
+    const waitMs = Math.max(0, Date.now() - next.enqueuedAtMs);
+    const opSpan = startPerfSpan('mux.control-plane.op', {
+      id: next.id,
+      label: next.label,
+      priority: next.priority,
+      waitMs
+    });
+    recordPerfEvent('mux.control-plane.op.start', {
+      id: next.id,
+      label: next.label,
+      priority: next.priority,
+      waitMs,
+      interactiveQueued: interactiveControlPlaneQueue.length,
+      backgroundQueued: backgroundControlPlaneQueue.length
+    });
+    try {
+      await next.task();
+      opSpan.end({
+        id: next.id,
+        label: next.label,
+        priority: next.priority,
+        status: 'ok',
+        waitMs
       });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      opSpan.end({
+        id: next.id,
+        label: next.label,
+        priority: next.priority,
+        status: 'error',
+        waitMs,
+        message
+      });
+      process.stderr.write(`[mux] control-plane error ${message}\n`);
+    } finally {
+      controlPlaneOpRunning = false;
+      resolveControlPlaneDrainIfIdle();
+      scheduleControlPlanePump();
+    }
+  };
+
+  const scheduleControlPlanePump = (): void => {
+    if (controlPlanePumpScheduled) {
+      return;
+    }
+    controlPlanePumpScheduled = true;
+    setImmediate(() => {
+      controlPlanePumpScheduled = false;
+      void runControlPlaneQueue();
+    });
+  };
+
+  const enqueueControlPlaneOp = (
+    task: () => Promise<void>,
+    priority: ControlPlaneOpPriority,
+    label: string
+  ): void => {
+    const op: QueuedControlPlaneOp = {
+      id: controlPlaneOpNextId,
+      priority,
+      label,
+      enqueuedAtMs: Date.now(),
+      task
+    };
+    controlPlaneOpNextId += 1;
+    if (priority === 'interactive') {
+      interactiveControlPlaneQueue.push(op);
+    } else {
+      backgroundControlPlaneQueue.push(op);
+    }
+    recordPerfEvent('mux.control-plane.op.enqueued', {
+      id: op.id,
+      label,
+      priority,
+      interactiveQueued: interactiveControlPlaneQueue.length,
+      backgroundQueued: backgroundControlPlaneQueue.length
+    });
+    scheduleControlPlanePump();
+  };
+
+  const queueControlPlaneOp = (task: () => Promise<void>, label = 'interactive-op'): void => {
+    enqueueControlPlaneOp(task, 'interactive', label);
+  };
+
+  const queueBackgroundControlPlaneOp = (task: () => Promise<void>, label = 'background-op'): void => {
+    enqueueControlPlaneOp(task, 'background', label);
   };
 
   const attachConversation = async (sessionId: string): Promise<void> => {
@@ -2195,12 +2621,17 @@ async function main(): Promise<number> {
       return;
     }
     if (!conversation.attached) {
+      const sinceCursor = Math.max(0, conversation.lastOutputCursor);
       await streamClient.sendCommand({
         type: 'pty.attach',
         sessionId,
-        sinceCursor: 0
+        sinceCursor
       });
       conversation.attached = true;
+      recordPerfEvent('mux.conversation.attach', {
+        sessionId,
+        sinceCursor
+      });
     }
     await streamClient.sendCommand({
       type: 'pty.subscribe-events',
@@ -2220,7 +2651,15 @@ async function main(): Promise<number> {
       type: 'pty.detach',
       sessionId
     });
+    await streamClient.sendCommand({
+      type: 'pty.unsubscribe-events',
+      sessionId
+    });
     conversation.attached = false;
+    recordPerfEvent('mux.conversation.detach', {
+      sessionId,
+      lastOutputCursor: conversation.lastOutputCursor
+    });
   };
 
   const activateConversation = async (sessionId: string): Promise<void> => {
@@ -2344,7 +2783,7 @@ async function main(): Promise<number> {
     if (selectionPinnedFollowOutput !== null) {
       return;
     }
-    const follow = activeConversation().oracle.snapshot().viewport.followOutput;
+    const follow = activeConversation().oracle.snapshotWithoutHash().viewport.followOutput;
     selectionPinnedFollowOutput = follow;
     if (follow) {
       activeConversation().oracle.setFollowOutput(false);
@@ -2370,9 +2809,10 @@ async function main(): Promise<number> {
       dirty = false;
       return;
     }
+    const renderStartedAtNs = perfNowNs();
 
     const active = activeConversation();
-    const rightFrame = active.oracle.snapshot();
+    const rightFrame = active.oracle.snapshotWithoutHash();
     const renderSelection =
       selectionDrag !== null && selectionDrag.hasDragged
         ? {
@@ -2399,7 +2839,6 @@ async function main(): Promise<number> {
       rightFrame,
       activeConversationId,
       renderSelection !== null,
-      ctrlCExits,
       shortcutBindings
     );
     if (validateAnsi) {
@@ -2477,15 +2916,53 @@ async function main(): Promise<number> {
         startupActiveFirstOutputObserved &&
         !startupActiveFirstPaintObserved
       ) {
-        startupActiveFirstPaintObserved = true;
-        recordPerfEvent('mux.startup.active-first-visible-paint', {
-          sessionId: startupFirstPaintTargetSessionId,
-          changedRows: diff.changedRows.length
-        });
-        endStartupActiveFirstPaintSpan({
-          observed: true,
-          changedRows: diff.changedRows.length
-        });
+        const glyphCells = visibleGlyphCellCount(active);
+        if (glyphCells > 0) {
+          startupActiveFirstPaintObserved = true;
+          recordPerfEvent('mux.startup.active-first-visible-paint', {
+            sessionId: startupFirstPaintTargetSessionId,
+            changedRows: diff.changedRows.length,
+            glyphCells
+          });
+          endStartupActiveFirstPaintSpan({
+            observed: true,
+            changedRows: diff.changedRows.length,
+            glyphCells
+          });
+        }
+      }
+      if (
+        startupFirstPaintTargetSessionId !== null &&
+        activeConversationId === startupFirstPaintTargetSessionId &&
+        startupActiveFirstOutputObserved
+      ) {
+        const glyphCells = visibleGlyphCellCount(active);
+        if (!startupActiveHeaderObserved && codexHeaderVisible(active)) {
+          startupActiveHeaderObserved = true;
+          recordPerfEvent('mux.startup.active-header-visible', {
+            sessionId: startupFirstPaintTargetSessionId,
+            glyphCells
+          });
+        }
+        if (startupActiveSettleGate === null) {
+          if (startupActiveHeaderObserved) {
+            startupActiveSettleGate = 'header';
+          } else if (
+            glyphCells > 0 &&
+            startupActiveFirstOutputAtMs !== null &&
+            Date.now() - startupActiveFirstOutputAtMs >= DEFAULT_STARTUP_SETTLE_NONEMPTY_FALLBACK_MS
+          ) {
+            startupActiveSettleGate = 'nonempty';
+          }
+          if (startupActiveSettleGate !== null) {
+            recordPerfEvent('mux.startup.active-settle-gate', {
+              sessionId: startupFirstPaintTargetSessionId,
+              gate: startupActiveSettleGate,
+              glyphCells
+            });
+          }
+        }
+        scheduleStartupSettledProbe(startupFirstPaintTargetSessionId);
       }
       if (muxRecordingWriter !== null && muxRecordingOracle !== null) {
         const canonicalFrame = renderCanonicalFrameAnsi(
@@ -2503,37 +2980,48 @@ async function main(): Promise<number> {
         }
       }
     }
-    appendDebugRecord(debugPath, {
-      kind: 'render',
-      changedRows: diff.changedRows,
-      overlayResetRows,
-      rightViewportTop: rightFrame.viewport.top,
-      rightViewportFollow: rightFrame.viewport.followOutput,
-      rightViewportTotalRows: rightFrame.viewport.totalRows,
-      rightCursorRow: rightFrame.cursor.row,
-      rightCursorCol: rightFrame.cursor.col,
-      rightCursorVisible: rightFrame.cursor.visible,
-      shouldShowCursor
-    });
-
     previousRows = diff.nextRows;
     previousSelectionRows = selectionRows;
     dirty = false;
+    const renderDurationMs = Number(perfNowNs() - renderStartedAtNs) / 1e6;
+    renderSampleCount += 1;
+    renderSampleTotalMs += renderDurationMs;
+    if (renderDurationMs > renderSampleMaxMs) {
+      renderSampleMaxMs = renderDurationMs;
+    }
+    renderSampleChangedRows += diff.changedRows.length;
   };
 
   const handleEnvelope = (envelope: StreamServerEnvelope): void => {
     if (envelope.kind === 'pty.output') {
+      const outputHandledStartedAtNs = perfNowNs();
       if (removedConversationIds.has(envelope.sessionId)) {
         return;
       }
       const conversation = ensureConversation(envelope.sessionId);
       const chunk = Buffer.from(envelope.chunkBase64, 'base64');
+      outputSampleSessionIds.add(envelope.sessionId);
+      if (activeConversationId === envelope.sessionId) {
+        outputSampleActiveBytes += chunk.length;
+        outputSampleActiveChunks += 1;
+      } else {
+        outputSampleInactiveBytes += chunk.length;
+        outputSampleInactiveChunks += 1;
+      }
+      if (!startupSessionFirstOutputObserved.has(envelope.sessionId)) {
+        startupSessionFirstOutputObserved.add(envelope.sessionId);
+        recordPerfEvent('mux.session.first-output', {
+          sessionId: envelope.sessionId,
+          bytes: chunk.length
+        });
+      }
       if (
         startupFirstPaintTargetSessionId !== null &&
         envelope.sessionId === startupFirstPaintTargetSessionId &&
         !startupActiveFirstOutputObserved
       ) {
         startupActiveFirstOutputObserved = true;
+        startupActiveFirstOutputAtMs = Date.now();
         recordPerfEvent('mux.startup.active-first-output', {
           sessionId: envelope.sessionId,
           bytes: chunk.length
@@ -2543,7 +3031,16 @@ async function main(): Promise<number> {
           bytes: chunk.length
         });
       }
+      if (envelope.cursor < conversation.lastOutputCursor) {
+        recordPerfEvent('mux.output.cursor-regression', {
+          sessionId: envelope.sessionId,
+          previousCursor: conversation.lastOutputCursor,
+          cursor: envelope.cursor
+        });
+        conversation.lastOutputCursor = 0;
+      }
       conversation.oracle.ingest(chunk);
+      conversation.lastOutputCursor = envelope.cursor;
       if (
         startupFirstPaintTargetSessionId !== null &&
         envelope.sessionId === startupFirstPaintTargetSessionId
@@ -2552,10 +3049,16 @@ async function main(): Promise<number> {
       }
 
       const normalized = mapTerminalOutputToNormalizedEvent(chunk, conversation.scope, idFactory);
-      store.appendEvents([normalized]);
+      enqueuePersistedEvent(normalized);
       conversation.lastEventAt = normalized.ts;
       if (activeConversationId === envelope.sessionId) {
         markDirty();
+      }
+      const outputHandledDurationMs = Number(perfNowNs() - outputHandledStartedAtNs) / 1e6;
+      outputHandleSampleCount += 1;
+      outputHandleSampleTotalMs += outputHandledDurationMs;
+      if (outputHandledDurationMs > outputHandleSampleMaxMs) {
+        outputHandleSampleMaxMs = outputHandledDurationMs;
       }
       return;
     }
@@ -2578,7 +3081,7 @@ async function main(): Promise<number> {
       }
       const normalized = mapSessionEventToNormalizedEvent(envelope.event, conversation.scope, idFactory);
       if (normalized !== null) {
-        store.appendEvents([normalized]);
+        enqueuePersistedEvent(normalized);
       }
       if (envelope.event.type === 'attention-required') {
         conversation.status = 'needs-input';
@@ -2605,7 +3108,7 @@ async function main(): Promise<number> {
           if (fallback !== undefined) {
             queueControlPlaneOp(async () => {
               await activateConversation(fallback);
-            });
+            }, 'fallback-activate-from-session-event');
           }
         }
       }
@@ -2634,7 +3137,7 @@ async function main(): Promise<number> {
           if (fallback !== undefined) {
             queueControlPlaneOp(async () => {
               await activateConversation(fallback);
-            });
+            }, 'fallback-activate-from-pty-exit');
           }
         }
       }
@@ -2673,23 +3176,56 @@ async function main(): Promise<number> {
   recordPerfEvent('mux.startup.ready', {
     conversations: conversations.size
   });
-  queueControlPlaneOp(async () => {
-    await startPersistedConversationsInBackground(initialActiveId);
-  });
+  void (async () => {
+    let timedOut = false;
+    recordPerfEvent('mux.startup.background-start.wait', {
+      sessionId: initialActiveId ?? 'none',
+      maxWaitMs: DEFAULT_BACKGROUND_START_MAX_WAIT_MS,
+      enabled: backgroundResumePersisted ? 1 : 0
+    });
+    if (!backgroundResumePersisted) {
+      recordPerfEvent('mux.startup.background-start.skipped', {
+        sessionId: initialActiveId ?? 'none',
+        reason: 'disabled'
+      });
+      return;
+    }
+    await Promise.race([
+      startupActiveSettledWait,
+      new Promise<void>((resolve) => {
+        setTimeout(() => {
+          timedOut = true;
+          resolve();
+        }, DEFAULT_BACKGROUND_START_MAX_WAIT_MS);
+      })
+    ]);
+    recordPerfEvent('mux.startup.background-start.begin', {
+      sessionId: initialActiveId ?? 'none',
+      timedOut,
+      settledObserved: startupActiveSettledObserved
+    });
+    const queued = queuePersistedConversationsInBackground(initialActiveId);
+    recordPerfEvent('mux.startup.background-start.queued', {
+      sessionId: initialActiveId ?? 'none',
+      queued
+    });
+  })();
 
   const onInput = (chunk: Buffer): void => {
     if (shuttingDown) {
       return;
     }
 
-    if ((selection !== null || selectionDrag !== null) && chunk.length === 1 && chunk[0] === 0x1b) {
-      selection = null;
-      selectionDrag = null;
-      releaseViewportPinForSelection();
-      appendDebugRecord(debugPath, {
-        kind: 'selection-clear-escape'
-      });
-      markDirty();
+    if (chunk.length === 1 && chunk[0] === 0x1b) {
+      if (selection !== null || selectionDrag !== null) {
+        selection = null;
+        selectionDrag = null;
+        releaseViewportPinForSelection();
+        markDirty();
+      }
+      if (activeConversationId !== null) {
+        streamClient.sendInput(activeConversation().sessionId, chunk);
+      }
       return;
     }
 
@@ -2703,24 +3239,20 @@ async function main(): Promise<number> {
     }
 
     if (focusExtraction.sanitized.length === 0) {
-      appendDebugRecord(debugPath, {
-        kind: 'input-focus-only',
-        rawBytesHex: chunk.toString('hex'),
-        focusInCount: focusExtraction.focusInCount,
-        focusOutCount: focusExtraction.focusOutCount
-      });
       return;
     }
 
     const globalShortcut = detectMuxGlobalShortcut(focusExtraction.sanitized, shortcutBindings);
-    if (
-      globalShortcut === 'mux.app.interrupt-all' &&
-      ctrlCExits &&
-      selection === null &&
-      selectionDrag === null
-    ) {
-      requestStop();
-      return;
+    if (globalShortcut === 'mux.app.interrupt-all') {
+      const nowMs = Date.now();
+      if (
+        lastInterruptShortcutAtMs !== null &&
+        nowMs - lastInterruptShortcutAtMs <= DEFAULT_INTERRUPT_EXIT_WINDOW_MS
+      ) {
+        requestStop();
+        return;
+      }
+      lastInterruptShortcutAtMs = nowMs;
     }
     if (globalShortcut === 'mux.app.quit') {
       requestStop();
@@ -2729,7 +3261,7 @@ async function main(): Promise<number> {
     if (globalShortcut === 'mux.conversation.new') {
       queueControlPlaneOp(async () => {
         await createAndActivateConversation();
-      });
+      }, 'shortcut-new-conversation');
       return;
     }
     if (globalShortcut === 'mux.conversation.archive') {
@@ -2737,7 +3269,7 @@ async function main(): Promise<number> {
       if (targetConversationId !== null) {
         queueControlPlaneOp(async () => {
           await archiveOrDeleteConversation(targetConversationId, 'archive');
-        });
+        }, 'shortcut-archive-conversation');
       }
       return;
     }
@@ -2746,7 +3278,7 @@ async function main(): Promise<number> {
       if (targetConversationId !== null) {
         queueControlPlaneOp(async () => {
           await archiveOrDeleteConversation(targetConversationId, 'delete');
-        });
+        }, 'shortcut-delete-conversation');
       }
       return;
     }
@@ -2760,20 +3292,18 @@ async function main(): Promise<number> {
       if (targetId !== null) {
         queueControlPlaneOp(async () => {
           await activateConversation(targetId);
-        });
+        }, `shortcut-activate-${direction}`);
       }
       return;
     }
 
-    if (selection !== null && isCopyShortcutInput(focusExtraction.sanitized)) {
-      const selectedFrame = activeConversation().oracle.snapshot();
+    if (
+      selection !== null &&
+      globalShortcut !== 'mux.app.interrupt-all' &&
+      isCopyShortcutInput(focusExtraction.sanitized)
+    ) {
+      const selectedFrame = activeConversation().oracle.snapshotWithoutHash();
       const copied = writeTextToClipboard(selectionText(selectedFrame, selection));
-      appendDebugRecord(debugPath, {
-        kind: 'selection-copy-shortcut',
-        copied,
-        rawBytesHex: chunk.toString('hex'),
-        sanitizedBytesHex: focusExtraction.sanitized.toString('hex')
-      });
       if (copied) {
         markDirty();
       }
@@ -2784,7 +3314,7 @@ async function main(): Promise<number> {
     inputRemainder = parsed.remainder;
 
     const inputConversation = activeConversation();
-    let snapshotForInput = inputConversation.oracle.snapshot();
+    let snapshotForInput = inputConversation.oracle.snapshotWithoutHash();
     const routedTokens: Array<(typeof parsed.tokens)[number]> = [];
     for (const token of parsed.tokens) {
       if (token.kind !== 'mouse') {
@@ -2793,9 +3323,6 @@ async function main(): Promise<number> {
           selectionDrag = null;
           releaseViewportPinForSelection();
           markDirty();
-          appendDebugRecord(debugPath, {
-            kind: 'selection-clear-typed-input'
-          });
         }
         routedTokens.push(token);
         continue;
@@ -2807,7 +3334,7 @@ async function main(): Promise<number> {
       if (wheelDelta !== null) {
         if (target === 'right') {
           inputConversation.oracle.scrollViewport(wheelDelta);
-          snapshotForInput = inputConversation.oracle.snapshot();
+          snapshotForInput = inputConversation.oracle.snapshotWithoutHash();
           markDirty();
           continue;
         }
@@ -2828,15 +3355,8 @@ async function main(): Promise<number> {
         if (selectedConversationId !== null && selectedConversationId !== activeConversationId) {
           queueControlPlaneOp(async () => {
             await activateConversation(selectedConversationId);
-          });
+          }, 'mouse-activate-conversation');
         }
-        appendDebugRecord(debugPath, {
-          kind: 'conversation-select-mouse',
-          row: token.event.row,
-          col: token.event.col,
-          rowIndex,
-          selectedConversationId
-        });
         markDirty();
         continue;
       }
@@ -2857,11 +3377,6 @@ async function main(): Promise<number> {
           focus: point,
           hasDragged: false
         };
-        appendDebugRecord(debugPath, {
-          kind: 'selection-start',
-          rowAbs: point.rowAbs,
-          col: point.col
-        });
         markDirty();
         continue;
       }
@@ -2898,12 +3413,6 @@ async function main(): Promise<number> {
         if (!finalized.hasDragged) {
           releaseViewportPinForSelection();
         }
-        appendDebugRecord(debugPath, {
-          kind: 'selection-release',
-          rowAbs: point.rowAbs,
-          col: point.col,
-          hasDragged: finalized.hasDragged
-        });
         selectionDrag = null;
         markDirty();
         continue;
@@ -2914,9 +3423,6 @@ async function main(): Promise<number> {
         selectionDrag = null;
         releaseViewportPinForSelection();
         markDirty();
-        appendDebugRecord(debugPath, {
-          kind: 'selection-clear-mouse'
-        });
       }
 
       routedTokens.push(token);
@@ -2951,27 +3457,10 @@ async function main(): Promise<number> {
       streamClient.sendInput(inputConversation.sessionId, forwardChunk);
     }
 
-    appendDebugRecord(debugPath, {
-      kind: 'input',
-      rawBytesHex: chunk.toString('hex'),
-      sanitizedBytesHex: focusExtraction.sanitized.toString('hex'),
-      focusInCount: focusExtraction.focusInCount,
-      focusOutCount: focusExtraction.focusOutCount,
-      tokenCount: parsed.tokens.length,
-      routedTokenCount: routedTokens.length,
-      remainderLength: inputRemainder.length,
-      routedForwardCount: forwardToSession.length,
-      mainPaneScrollRows
-    });
   };
 
   const onResize = (): void => {
     const nextSize = terminalSize();
-    appendDebugRecord(debugPath, {
-      kind: 'resize-observed',
-      cols: nextSize.cols,
-      rows: nextSize.rows
-    });
     queueResize(nextSize);
   };
 
@@ -2993,8 +3482,16 @@ async function main(): Promise<number> {
   } finally {
     shuttingDown = true;
     dirty = false;
-    clearInterval(processUsageTimer);
-    clearInterval(gitSummaryTimer);
+    clearInterval(outputLoadSampleTimer);
+    eventLoopDelayMonitor.disable();
+    if (processUsageTimer !== null) {
+      clearInterval(processUsageTimer);
+      processUsageTimer = null;
+    }
+    if (gitSummaryTimer !== null) {
+      clearInterval(gitSummaryTimer);
+      gitSummaryTimer = null;
+    }
     if (resizeTimer !== null) {
       clearTimeout(resizeTimer);
       resizeTimer = null;
@@ -3014,11 +3511,12 @@ async function main(): Promise<number> {
 
     let recordingCloseError: unknown = null;
     try {
-      await controlPlaneOps;
+      await waitForControlPlaneDrain();
       await controlPlaneClient.close();
     } catch {
       // Best-effort shutdown only.
     }
+    flushPendingPersistedEvents('shutdown');
     if (muxRecordingWriter !== null) {
       try {
         await muxRecordingWriter.close();
@@ -3066,8 +3564,10 @@ async function main(): Promise<number> {
     });
     clearStartupSettledTimer();
     endStartupActiveSettledSpan({
-      observed: startupActiveSettledObserved
+      observed: startupActiveSettledObserved,
+      gate: startupActiveSettleGate ?? 'none'
     });
+    signalStartupActiveSettled();
     shutdownPerfCore();
   }
 
