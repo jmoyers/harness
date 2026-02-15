@@ -65,9 +65,11 @@ import {
   actionAtWorkspaceRailCell,
   buildWorkspaceRailViewRows,
   conversationIdAtWorkspaceRailRow,
+  projectWorkspaceRailConversation,
   projectIdAtWorkspaceRailRow,
   kindAtWorkspaceRailRow
 } from '../src/mux/workspace-rail-model.ts';
+import { buildSelectorIndexEntries } from '../src/mux/selector-index.ts';
 import {
   resolveWorkspacePath
 } from '../src/mux/workspace-path.ts';
@@ -216,6 +218,12 @@ interface ConversationState {
 interface ProcessUsageSample {
   readonly cpuPercent: number | null;
   readonly memoryMb: number | null;
+}
+
+interface ConversationProjectionSnapshot {
+  readonly status: string;
+  readonly glyph: string;
+  readonly detailText: string;
 }
 
 interface ControlPlaneDirectoryRecord {
@@ -1371,6 +1379,17 @@ function conversationOrder(conversations: ReadonlyMap<string, ConversationState>
   return [...conversations.keys()];
 }
 
+function compactDebugText(value: string | null): string {
+  if (value === null) {
+    return '';
+  }
+  const normalized = value.replace(/\s+/gu, ' ').trim();
+  if (normalized.length <= 160) {
+    return normalized;
+  }
+  return `${normalized.slice(0, 159)}…`;
+}
+
 function shortcutHintText(bindings: ResolvedMuxShortcutBindings): string {
   const newConversation = firstShortcutText(bindings, 'mux.conversation.new') || 'ctrl+t';
   const deleteConversation = firstShortcutText(bindings, 'mux.conversation.delete') || 'ctrl+x';
@@ -2192,10 +2211,17 @@ async function main(): Promise<number> {
   };
 
   const applyControlPlaneKeyEvent = (event: ControlPlaneKeyEvent): void => {
-    applyMuxControlPlaneKeyEvent(event, {
+    const existing = conversations.get(event.sessionId);
+    const beforeProjection = existing === undefined ? null : projectionSnapshotForConversation(existing);
+    const updated = applyMuxControlPlaneKeyEvent(event, {
       removedConversationIds,
       ensureConversation
     });
+    if (updated === null) {
+      return;
+    }
+    refreshSelectorInstrumentation(`event:${event.type}`);
+    recordProjectionTransition(event, beforeProjection, updated);
   };
 
   const hydrateDirectoryList = async (): Promise<void> => {
@@ -2489,7 +2515,136 @@ async function main(): Promise<number> {
   const pendingGitSummaryRefreshByDirectoryId = new Map<string, PendingGitSummaryRefresh>();
   const gitRefreshInFlightDirectoryIds = new Set<string>();
   const processUsageBySessionId = new Map<string, ProcessUsageSample>();
+  const selectorIndexBySessionId = new Map<
+    string,
+    {
+      selectorIndex: number;
+      directoryIndex: number;
+      directoryId: string;
+    }
+  >();
+  let lastSelectorSnapshotHash: string | null = null;
+  let selectorSnapshotVersion = 0;
   let processUsageRefreshInFlight = false;
+
+  const projectionSnapshotForConversation = (
+    conversation: ConversationState
+  ): ConversationProjectionSnapshot => {
+    const projected = projectWorkspaceRailConversation(
+      {
+        ...conversationSummary(conversation),
+        directoryKey: conversation.directoryId ?? 'directory-missing',
+        title: conversation.title,
+        agentLabel: conversation.agentType,
+        cpuPercent: processUsageBySessionId.get(conversation.sessionId)?.cpuPercent ?? null,
+        memoryMb: processUsageBySessionId.get(conversation.sessionId)?.memoryMb ?? null,
+        lastKnownWork: conversation.lastKnownWork,
+        lastKnownWorkAt: conversation.lastKnownWorkAt,
+        controller: conversation.controller
+      },
+      {
+        localControllerId: muxControllerId,
+        nowMs: Date.now()
+      }
+    );
+    return {
+      status: projected.status,
+      glyph: projected.glyph,
+      detailText: compactDebugText(projected.detailText)
+    };
+  };
+
+  const projectionSnapshotEqual = (
+    left: ConversationProjectionSnapshot | null,
+    right: ConversationProjectionSnapshot
+  ): boolean => {
+    if (left === null) {
+      return false;
+    }
+    return left.status === right.status && left.glyph === right.glyph && left.detailText === right.detailText;
+  };
+
+  const refreshSelectorInstrumentation = (reason: string): void => {
+    const orderedIds = conversationOrder(conversations);
+    const entries = buildSelectorIndexEntries(directories, conversations, orderedIds);
+    const hash = entries
+      .map(
+        (entry) =>
+          `${entry.selectorIndex}:${entry.directoryId}:${entry.sessionId}:${entry.directoryIndex}:${entry.title}:${entry.agentType}`
+      )
+      .join('|');
+    if (hash === lastSelectorSnapshotHash) {
+      return;
+    }
+    lastSelectorSnapshotHash = hash;
+    selectorSnapshotVersion += 1;
+    selectorIndexBySessionId.clear();
+    for (const entry of entries) {
+      selectorIndexBySessionId.set(entry.sessionId, {
+        selectorIndex: entry.selectorIndex,
+        directoryIndex: entry.directoryIndex,
+        directoryId: entry.directoryId
+      });
+    }
+    recordPerfEvent('mux.selector.snapshot', {
+      reason: compactDebugText(reason),
+      version: selectorSnapshotVersion,
+      count: entries.length
+    });
+    for (const entry of entries) {
+      recordPerfEvent('mux.selector.entry', {
+        version: selectorSnapshotVersion,
+        index: entry.selectorIndex,
+        directoryIndex: entry.directoryIndex,
+        sessionId: entry.sessionId,
+        directoryId: entry.directoryId,
+        title: compactDebugText(entry.title),
+        agentType: entry.agentType
+      });
+    }
+  };
+
+  const recordProjectionTransition = (
+    event: ControlPlaneKeyEvent,
+    before: ConversationProjectionSnapshot | null,
+    conversation: ConversationState
+  ): void => {
+    const after = projectionSnapshotForConversation(conversation);
+    if (projectionSnapshotEqual(before, after)) {
+      return;
+    }
+    const selectorEntry = selectorIndexBySessionId.get(conversation.sessionId);
+    let source = '';
+    let eventName = '';
+    let summary: string | null = null;
+    if (event.type === 'session-telemetry') {
+      source = event.keyEvent.source;
+      eventName = event.keyEvent.eventName ?? '';
+      summary = event.keyEvent.summary;
+    } else if (event.type === 'session-status') {
+      source = event.telemetry?.source ?? '';
+      eventName = event.telemetry?.eventName ?? '';
+      summary = event.telemetry?.summary ?? null;
+    }
+    recordPerfEvent('mux.session-projection.transition', {
+      sessionId: conversation.sessionId,
+      eventType: event.type,
+      cursor: event.cursor,
+      selectorIndex: selectorEntry?.selectorIndex ?? 0,
+      directoryIndex: selectorEntry?.directoryIndex ?? 0,
+      statusFrom: before?.status ?? '',
+      statusTo: after.status,
+      glyphFrom: before?.glyph ?? '',
+      glyphTo: after.glyph,
+      detailFrom: before?.detailText ?? '',
+      detailTo: after.detailText,
+      source,
+      eventName,
+      summary: compactDebugText(summary)
+    });
+  };
+
+  refreshSelectorInstrumentation('startup');
 
   const processUsageEqual = (left: ProcessUsageSample, right: ProcessUsageSample): boolean =>
     left.cpuPercent === right.cpuPercent && left.memoryMb === right.memoryMb;
@@ -4012,6 +4167,7 @@ async function main(): Promise<number> {
     const selectionRows =
       rightFrame === null ? [] : selectionVisibleRows(rightFrame, renderSelection);
     const orderedIds = conversationOrder(conversations);
+    refreshSelectorInstrumentation('render');
     const rail = buildRailRows(
       layout,
       directories,

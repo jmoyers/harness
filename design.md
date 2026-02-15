@@ -540,6 +540,7 @@ Design constraints:
   - right pane: active live steerable PTY session
   - left-rail conversation activation via keyboard and mouse click with deterministic row hit-testing
   - normalized action-oriented conversation status labels (`needs action`, `working`, `idle`, `complete`, `exited`)
+  - perf-core emits selector index snapshots and session projection transitions, enabling replay of icon/status-line behavior without screen scraping
   - keybindings loaded from `harness.config.jsonc` using VS Code-style action IDs and parseable key strings
 - Next target layout iterations:
   - first-class directory/worktree actions in rail (`add/select/archive`) via control-plane commands

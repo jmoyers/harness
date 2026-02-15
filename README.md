@@ -88,6 +88,8 @@ Harness is built to expose operational truth, not hide it.
 
 - Canonical thread/session lifecycle events.
 - Typed telemetry events for status hints and recent work summaries.
+- Mux projection instrumentation (`mux.session-projection.transition`) for icon/status-line timeline debugging.
+- Selector index snapshots (`mux.selector.snapshot` + `mux.selector.entry`) so threads can be referenced by visible rail index.
 - Session ownership/control transition events.
 - Durable state in SQLite for reconnect-safe operations.
 - Codex telemetry ingestion (logs, metrics, traces, history) for deep diagnostics.
@@ -128,6 +130,12 @@ npm run codex:live:mux
 ```
 
 Configuration is file-first via `harness.config.jsonc`.
+
+Inspect the latest selector index snapshot from perf artifacts:
+
+```bash
+npm run perf:mux:selector -- --file .harness/perf-startup.jsonl
+```
 
 ## Documentation
 

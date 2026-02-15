@@ -5,6 +5,7 @@ import {
   actionAtWorkspaceRailRow,
   buildWorkspaceRailViewRows,
   conversationIdAtWorkspaceRailRow,
+  projectWorkspaceRailConversation,
   projectIdAtWorkspaceRailRow,
   kindAtWorkspaceRailRow
 } from '../src/mux/workspace-rail-model.ts';
@@ -1196,4 +1197,88 @@ void test('workspace rail model treats missing lastEventAt as current for last-k
   assert.notEqual(bodyRow, undefined);
   assert.equal(titleRow?.text.includes('◇ codex - task'), true);
   assert.equal(bodyRow?.text.includes('turn complete (1200ms)'), true);
+});
+
+void test('workspace rail conversation projection exposes glyph and detail text', () => {
+  const projected = projectWorkspaceRailConversation(
+    {
+      sessionId: 'conversation-1',
+      directoryKey: 'dir',
+      title: 'task',
+      agentLabel: 'codex',
+      cpuPercent: null,
+      memoryMb: null,
+      lastKnownWork: 'writing response…',
+      lastKnownWorkAt: '2026-01-01T00:00:00.000Z',
+      status: 'running',
+      attentionReason: null,
+      startedAt: '2026-01-01T00:00:00.000Z',
+      lastEventAt: '2026-01-01T00:00:00.000Z',
+      controller: null
+    },
+    {
+      nowMs: Date.parse('2026-01-01T00:00:01.000Z')
+    }
+  );
+  assert.equal(projected.status, 'working');
+  assert.equal(projected.glyph, '◆');
+  assert.equal(projected.detailText, 'writing response…');
+});
+
+void test('workspace rail conversation projection surfaces controller lock text', () => {
+  const projected = projectWorkspaceRailConversation(
+    {
+      sessionId: 'conversation-1',
+      directoryKey: 'dir',
+      title: 'task',
+      agentLabel: 'codex',
+      cpuPercent: null,
+      memoryMb: null,
+      lastKnownWork: null,
+      lastKnownWorkAt: null,
+      status: 'completed',
+      attentionReason: null,
+      startedAt: '2026-01-01T00:00:00.000Z',
+      lastEventAt: '2026-01-01T00:00:00.000Z',
+      controller: {
+        controllerId: 'agent-1',
+        controllerType: 'agent',
+        controllerLabel: 'Build Bot',
+        claimedAt: '2026-01-01T00:00:00.000Z'
+      }
+    },
+    {
+      localControllerId: 'human-me',
+      nowMs: Date.parse('2026-01-01T00:00:01.000Z')
+    }
+  );
+  assert.equal(projected.status, 'complete');
+  assert.equal(projected.glyph, '◇');
+  assert.equal(projected.detailText, 'controlled by Build Bot');
+});
+
+void test('workspace rail conversation projection supports default option branches', () => {
+  const projected = projectWorkspaceRailConversation({
+    sessionId: 'conversation-default',
+    directoryKey: 'dir',
+    title: '',
+    agentLabel: 'codex',
+    cpuPercent: null,
+    memoryMb: null,
+    lastKnownWork: null,
+    lastKnownWorkAt: null,
+    status: 'running',
+    attentionReason: null,
+    startedAt: '2026-01-01T00:00:00.000Z',
+    lastEventAt: null,
+    controller: {
+      controllerId: 'human-local',
+      controllerType: 'human',
+      controllerLabel: 'Me',
+      claimedAt: '2026-01-01T00:00:00.000Z'
+    }
+  });
+  assert.equal(projected.status, 'idle');
+  assert.equal(projected.glyph, '○');
+  assert.equal(projected.detailText.includes('controlled by'), true);
 });

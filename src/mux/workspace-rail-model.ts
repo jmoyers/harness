@@ -90,6 +90,12 @@ type WorkspaceRailAction =
 
 type NormalizedConversationStatus = 'needs-action' | 'working' | 'idle' | 'complete' | 'exited';
 
+interface WorkspaceRailConversationProjection {
+  readonly status: NormalizedConversationStatus;
+  readonly glyph: string;
+  readonly detailText: string;
+}
+
 function parseIsoMs(value: string | null | undefined): number {
   if (value === null || value === undefined) {
     return Number.NaN;
@@ -264,6 +270,21 @@ function conversationDetailText(
   return `${statusLineLabel(normalizedStatus)} · ${formatCpu(conversation.cpuPercent)} · ${formatMem(conversation.memoryMb)}`;
 }
 
+export function projectWorkspaceRailConversation(
+  conversation: WorkspaceRailConversationSummary,
+  options: {
+    readonly localControllerId?: string | null;
+    readonly nowMs?: number;
+  } = {}
+): WorkspaceRailConversationProjection {
+  const normalizedStatus = normalizeConversationStatus(conversation, options.nowMs ?? Date.now());
+  return {
+    status: normalizedStatus,
+    glyph: statusGlyph(normalizedStatus),
+    detailText: conversationDetailText(conversation, options.localControllerId ?? null, normalizedStatus)
+  };
+}
+
 function directoryDisplayName(directory: WorkspaceRailDirectorySummary): string {
   const name = directory.workspaceId.trim();
   if (name.length === 0) {
@@ -343,26 +364,29 @@ function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly Wo
         const conversation = conversations[index]!;
         const active =
           !(model.projectSelectionEnabled ?? false) && conversation.sessionId === model.activeConversationId;
-        const normalizedStatus = normalizeConversationStatus(conversation, nowMs);
+        const projection = projectWorkspaceRailConversation(conversation, {
+          localControllerId: model.localControllerId ?? null,
+          nowMs
+        });
         pushRow(
           rows,
           'conversation-title',
-          `│  ${active ? '▸' : ' '} ${statusGlyph(normalizedStatus)} ${conversationDisplayTitle(conversation)}`,
+          `│  ${active ? '▸' : ' '} ${projection.glyph} ${conversationDisplayTitle(conversation)}`,
           active,
           conversation.sessionId,
           directory.key,
           null,
-          normalizedStatus
+          projection.status
         );
         pushRow(
           rows,
           'conversation-body',
-          `│    ${conversationDetailText(conversation, model.localControllerId ?? null, normalizedStatus)}`,
+          `│    ${projection.detailText}`,
           active,
           conversation.sessionId,
           directory.key,
           null,
-          normalizedStatus
+          projection.status
         );
         if (index + 1 < conversations.length) {
           pushRow(rows, 'muted', '│', false, null, directory.key);

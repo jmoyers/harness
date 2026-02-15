@@ -24,6 +24,7 @@
     "prebenchmark:latency": "npm run build:ptyd",
     "benchmark:latency": "node --experimental-strip-types scripts/benchmark-pty-latency.ts",
     "perf:mux:startup": "node --experimental-strip-types scripts/perf-mux-startup-report.ts",
+    "perf:mux:selector": "node --experimental-strip-types scripts/perf-mux-selector-report.ts",
     "perf:mux:hotpath": "node --experimental-strip-types scripts/perf-mux-hotpath-harness.ts",
     "perf:mux:launch:startup:loop": "node --experimental-strip-types scripts/perf-mux-launch-startup-loop.ts",
     "perf:codex:startup:loop": "node --experimental-strip-types scripts/perf-codex-startup-loop.ts",
