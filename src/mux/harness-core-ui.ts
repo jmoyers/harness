@@ -39,6 +39,7 @@ export interface TaskPaneRepositoryRecord {
   readonly name: string;
   readonly remoteUrl?: string;
   readonly defaultBranch?: string;
+  readonly metadata?: Record<string, unknown>;
   readonly archivedAt: string | null;
 }
 
@@ -136,6 +137,10 @@ export const TASKS_PANE_FOOTER_EDIT_BUTTON_LABEL = formatUiButton({
   label: 'edit ^E',
   prefixIcon: '✎'
 });
+export const TASKS_PANE_FOOTER_DELETE_BUTTON_LABEL = formatUiButton({
+  label: 'delete ^?',
+  prefixIcon: '⌫'
+});
 export const TASKS_PANE_FOOTER_COMPLETE_BUTTON_LABEL = formatUiButton({
   label: 'complete ^S',
   prefixIcon: '✓'
@@ -143,6 +148,14 @@ export const TASKS_PANE_FOOTER_COMPLETE_BUTTON_LABEL = formatUiButton({
 export const TASKS_PANE_FOOTER_DRAFT_BUTTON_LABEL = formatUiButton({
   label: 'draft ^R',
   prefixIcon: '◇'
+});
+export const TASKS_PANE_FOOTER_REPOSITORY_EDIT_BUTTON_LABEL = formatUiButton({
+  label: 'repo edit E',
+  prefixIcon: '✎'
+});
+export const TASKS_PANE_FOOTER_REPOSITORY_ARCHIVE_BUTTON_LABEL = formatUiButton({
+  label: 'repo archive X',
+  prefixIcon: '⌫'
 });
 export const CONVERSATION_EDIT_ARCHIVE_BUTTON_LABEL = formatUiButton({
   label: 'archive thread',
@@ -193,6 +206,17 @@ export function sortedRepositoryList<T extends TaskPaneRepositoryRecord>(
   return [...repositories.values()]
     .filter((repository) => repository.archivedAt === null)
     .sort((left, right) => {
+      const leftPriority = repositoryHomePriority(left);
+      const rightPriority = repositoryHomePriority(right);
+      if (leftPriority !== null && rightPriority !== null && leftPriority !== rightPriority) {
+        return leftPriority - rightPriority;
+      }
+      if (leftPriority !== null && rightPriority === null) {
+        return -1;
+      }
+      if (leftPriority === null && rightPriority !== null) {
+        return 1;
+      }
       const nameCompare = left.name.localeCompare(right.name);
       if (nameCompare !== 0) {
         return nameCompare;
@@ -318,12 +342,27 @@ function parseMetadataTimestamp(value: unknown): string | null {
   return Number.isFinite(Date.parse(value)) ? value : null;
 }
 
+function repositoryHomePriority(repository: TaskPaneRepositoryRecord): number | null {
+  const metadata = repository.metadata;
+  if (metadata === undefined) {
+    return null;
+  }
+  const raw = metadata['homePriority'];
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) {
+    return null;
+  }
+  if (!Number.isInteger(raw) || raw < 0) {
+    return null;
+  }
+  return raw;
+}
+
 function repositoryCommitCountLabel(repository: TaskPaneRepositoryRecord): string {
-  const metadata = (repository as { metadata?: unknown }).metadata;
-  if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) {
+  const metadata = repository.metadata;
+  if (metadata === undefined) {
     return '?c';
   }
-  const commitCount = parseMetadataNumber((metadata as Record<string, unknown>)['commitCount']);
+  const commitCount = parseMetadataNumber(metadata['commitCount']);
   if (commitCount === null) {
     return '?c';
   }
@@ -352,11 +391,11 @@ function formatCompactRelativeIsoTime(nowMs: number, value: string | null): stri
 }
 
 function repositoryLastCommitAgeLabel(repository: TaskPaneRepositoryRecord, nowMs: number): string {
-  const metadata = (repository as { metadata?: unknown }).metadata;
-  if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) {
+  const metadata = repository.metadata;
+  if (metadata === undefined) {
     return '?';
   }
-  const lastCommitAt = parseMetadataTimestamp((metadata as Record<string, unknown>)['lastCommitAt']);
+  const lastCommitAt = parseMetadataTimestamp(metadata['lastCommitAt']);
   return formatCompactRelativeIsoTime(nowMs, lastCommitAt);
 }
 
@@ -514,7 +553,7 @@ export function buildTaskPaneSnapshot(
     push(` NOTICE: ${truncateLabel(notice, 68)}`);
     push('');
   }
-  push(' REPOSITORIES                                                     ^⇧R +', null, null, 'repository.create');
+  push(' REPOSITORIES                                          R add  drag prioritize', null, null, 'repository.create');
   push(` ${fillLine(74, '─')}`);
   if (activeRepositories.length === 0) {
     push('   no repositories');
@@ -532,7 +571,7 @@ export function buildTaskPaneSnapshot(
     }
   }
   push('');
-  push(' TASKS                                                            ^⇧A +', null, null, 'task.create');
+  push(' TASKS                                                   A add  E edit  X archive', null, null, 'task.create');
   push(` ${fillLine(74, '─')}`);
   if (orderedTasks.length === 0) {
     push('   no tasks');
@@ -587,7 +626,7 @@ export function buildTaskPaneRows(
     };
   }
 
-  const fixedRows = 4;
+  const fixedRows = 5;
   const contentRows = Math.max(1, safeRows - fixedRows);
   const maxTop = Math.max(0, snapshot.lines.length - contentRows);
   const nextTop = Math.max(0, Math.min(maxTop, scrollTop));
@@ -634,14 +673,45 @@ export function buildTaskPaneRows(
   }
   pushRow(`├${fillLine(innerCols, '─')}┤`);
 
-  const footerContent =
-    ` ${TASKS_PANE_FOOTER_EDIT_BUTTON_LABEL}  ${TASKS_PANE_FOOTER_COMPLETE_BUTTON_LABEL}  ${TASKS_PANE_FOOTER_DRAFT_BUTTON_LABEL}`;
-  const footerInner = padOrTrimDisplay(footerContent, innerCols);
-  const footerCells: TaskPaneActionCell[] = [];
-  const footerMappings: ReadonlyArray<{ label: string; action: TaskPaneAction }> = [
+  const repositoryFooterContent =
+    ` ${TASKS_PANE_FOOTER_REPOSITORY_EDIT_BUTTON_LABEL}  ${TASKS_PANE_FOOTER_REPOSITORY_ARCHIVE_BUTTON_LABEL}`;
+  const repositoryFooterInner = padOrTrimDisplay(repositoryFooterContent, innerCols);
+  const repositoryFooterCells: TaskPaneActionCell[] = [];
+  const repositoryFooterMappings: ReadonlyArray<{ label: string; action: TaskPaneAction }> = [
+    {
+      label: TASKS_PANE_FOOTER_REPOSITORY_EDIT_BUTTON_LABEL,
+      action: 'repository.edit'
+    },
+    {
+      label: TASKS_PANE_FOOTER_REPOSITORY_ARCHIVE_BUTTON_LABEL,
+      action: 'repository.archive'
+    }
+  ];
+  for (const mapping of repositoryFooterMappings) {
+    const start = repositoryFooterInner.indexOf(mapping.label);
+    if (start < 0) {
+      continue;
+    }
+    repositoryFooterCells.push({
+      startCol: 1 + start,
+      endCol: start + mapping.label.length,
+      action: mapping.action
+    });
+  }
+  pushRow(`│${repositoryFooterInner}│`, null, null, null, repositoryFooterCells);
+
+  const taskFooterContent =
+    ` ${TASKS_PANE_FOOTER_EDIT_BUTTON_LABEL}  ${TASKS_PANE_FOOTER_DELETE_BUTTON_LABEL}  ${TASKS_PANE_FOOTER_COMPLETE_BUTTON_LABEL}  ${TASKS_PANE_FOOTER_DRAFT_BUTTON_LABEL}`;
+  const taskFooterInner = padOrTrimDisplay(taskFooterContent, innerCols);
+  const taskFooterCells: TaskPaneActionCell[] = [];
+  const taskFooterMappings: ReadonlyArray<{ label: string; action: TaskPaneAction }> = [
     {
       label: TASKS_PANE_FOOTER_EDIT_BUTTON_LABEL,
       action: 'task.edit'
+    },
+    {
+      label: TASKS_PANE_FOOTER_DELETE_BUTTON_LABEL,
+      action: 'task.delete'
     },
     {
       label: TASKS_PANE_FOOTER_COMPLETE_BUTTON_LABEL,
@@ -652,18 +722,18 @@ export function buildTaskPaneRows(
       action: 'task.draft'
     }
   ];
-  for (const mapping of footerMappings) {
-    const start = footerInner.indexOf(mapping.label);
+  for (const mapping of taskFooterMappings) {
+    const start = taskFooterInner.indexOf(mapping.label);
     if (start < 0) {
       continue;
     }
-    footerCells.push({
+    taskFooterCells.push({
       startCol: 1 + start,
       endCol: start + mapping.label.length,
       action: mapping.action
     });
   }
-  pushRow(`│${footerInner}│`, null, null, null, footerCells);
+  pushRow(`│${taskFooterInner}│`, null, null, null, taskFooterCells);
   pushRow(`└${fillLine(innerCols, '─')}┘`);
 
   return {

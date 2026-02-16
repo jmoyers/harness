@@ -18,8 +18,11 @@ import {
   TASKS_PANE_DRAFT_TASK_BUTTON_LABEL,
   TASKS_PANE_EDIT_TASK_BUTTON_LABEL,
   TASKS_PANE_FOOTER_COMPLETE_BUTTON_LABEL,
+  TASKS_PANE_FOOTER_DELETE_BUTTON_LABEL,
   TASKS_PANE_FOOTER_DRAFT_BUTTON_LABEL,
   TASKS_PANE_FOOTER_EDIT_BUTTON_LABEL,
+  TASKS_PANE_FOOTER_REPOSITORY_ARCHIVE_BUTTON_LABEL,
+  TASKS_PANE_FOOTER_REPOSITORY_EDIT_BUTTON_LABEL,
   TASKS_PANE_READY_TASK_BUTTON_LABEL,
   TASKS_PANE_REORDER_DOWN_BUTTON_LABEL,
   TASKS_PANE_REORDER_UP_BUTTON_LABEL,
@@ -94,8 +97,11 @@ void test('harness-core ui exports remain reachable from test/src import graph',
   assert.equal(TASKS_PANE_REORDER_UP_BUTTON_LABEL.length > 0, true);
   assert.equal(TASKS_PANE_REORDER_DOWN_BUTTON_LABEL.length > 0, true);
   assert.equal(TASKS_PANE_FOOTER_EDIT_BUTTON_LABEL.length > 0, true);
+  assert.equal(TASKS_PANE_FOOTER_DELETE_BUTTON_LABEL.length > 0, true);
   assert.equal(TASKS_PANE_FOOTER_COMPLETE_BUTTON_LABEL.length > 0, true);
   assert.equal(TASKS_PANE_FOOTER_DRAFT_BUTTON_LABEL.length > 0, true);
+  assert.equal(TASKS_PANE_FOOTER_REPOSITORY_EDIT_BUTTON_LABEL.length > 0, true);
+  assert.equal(TASKS_PANE_FOOTER_REPOSITORY_ARCHIVE_BUTTON_LABEL.length > 0, true);
   assert.equal(CONVERSATION_EDIT_ARCHIVE_BUTTON_LABEL.length > 0, true);
   assert.equal(NEW_THREAD_MODAL_CODEX_BUTTON.length > 0, true);
   assert.equal(NEW_THREAD_MODAL_TERMINAL_BUTTON.length > 0, true);
@@ -126,18 +132,34 @@ void test('resolveGoldenModalSize clamps viewport-derived dimensions', () => {
   assert.equal(contradictory.width, 30);
 });
 
-void test('sortedRepositoryList filters archived rows and sorts by name then id', () => {
+void test('sortedRepositoryList honors persisted home priority then falls back to name/id ordering', () => {
   const repositories = new Map<string, TaskPaneRepositoryRecord>([
     ['r3', { repositoryId: 'r3', name: 'alpha', archivedAt: null }],
-    ['r1', { repositoryId: 'r1', name: 'alpha', archivedAt: null }],
+    ['r1', { repositoryId: 'r1', name: 'alpha', archivedAt: null, metadata: { homePriority: 1 } }],
     ['r2', { repositoryId: 'r2', name: 'beta', archivedAt: null }],
+    ['r0', { repositoryId: 'r0', name: 'zeta', archivedAt: null, metadata: { homePriority: 0 } }],
     ['r4', { repositoryId: 'r4', name: 'zzz', archivedAt: '2026-01-01T00:00:00.000Z' }]
   ]);
 
   const ordered = sortedRepositoryList(repositories);
   assert.deepEqual(
     ordered.map((entry) => entry.repositoryId),
-    ['r1', 'r3', 'r2']
+    ['r0', 'r1', 'r3', 'r2']
+  );
+});
+
+void test('sortedRepositoryList ignores invalid numeric home priority values and uses repository id as final tiebreak', () => {
+  const repositories = new Map<string, TaskPaneRepositoryRecord>([
+    ['r2', { repositoryId: 'r2', name: 'alpha', archivedAt: null, metadata: { homePriority: 1 } }],
+    ['r1', { repositoryId: 'r1', name: 'alpha', archivedAt: null, metadata: { homePriority: 1 } }],
+    ['r3', { repositoryId: 'r3', name: 'alpha', archivedAt: null, metadata: { homePriority: -1 } }],
+    ['r4', { repositoryId: 'r4', name: 'beta', archivedAt: null, metadata: { homePriority: 1.5 } }]
+  ]);
+
+  const ordered = sortedRepositoryList(repositories);
+  assert.deepEqual(
+    ordered.map((entry) => entry.repositoryId),
+    ['r1', 'r2', 'r3', 'r4']
   );
 });
 
@@ -395,8 +417,8 @@ void test('buildTaskPaneSnapshot renders sectioned repositories/tasks with statu
   const snapshot = buildTaskPaneSnapshot(repositories, tasks, 'missing-selection', null, NOW_MS, 'hello');
   const lines = snapshot.lines.map((entry) => entry.text);
   assert.equal(lines.some((line) => line.includes('NOTICE: hello')), true);
-  assert.equal(lines.some((line) => line.includes('REPOSITORIES') && line.includes('^⇧R +')), true);
-  assert.equal(lines.some((line) => line.includes('TASKS') && line.includes('^⇧A +')), true);
+  assert.equal(lines.some((line) => line.includes('REPOSITORIES') && line.includes('drag prioritize')), true);
+  assert.equal(lines.some((line) => line.includes('TASKS') && line.includes('A add')), true);
   assert.equal(lines.some((line) => line.includes('github.com/jmoyers/harness')), true);
   assert.equal(lines.some((line) => line.includes('12c')), true);
 
@@ -604,16 +626,28 @@ void test('buildTaskPaneRows renders framed home view with footer button hitboxe
   assert.equal(taskPaneTaskIdAtRow(view, taskRowIndex), 'task-1');
   assert.equal(taskPaneRepositoryIdAtRow(view, repositoryRowIndex), 'repo-1');
 
-  const footerRowIndex = view.rows.findIndex((row) => row.includes(TASKS_PANE_FOOTER_EDIT_BUTTON_LABEL));
-  assert.equal(footerRowIndex >= 0, true);
-  const footerRow = view.rows[footerRowIndex] ?? '';
-  const editCol = footerRow.indexOf(TASKS_PANE_FOOTER_EDIT_BUTTON_LABEL);
-  const completeCol = footerRow.indexOf(TASKS_PANE_FOOTER_COMPLETE_BUTTON_LABEL);
-  const draftCol = footerRow.indexOf(TASKS_PANE_FOOTER_DRAFT_BUTTON_LABEL);
-  assert.equal(taskPaneActionAtCell(view, footerRowIndex, editCol), 'task.edit');
-  assert.equal(taskPaneActionAtCell(view, footerRowIndex, completeCol), 'task.complete');
-  assert.equal(taskPaneActionAtCell(view, footerRowIndex, draftCol), 'task.draft');
-  assert.equal(taskPaneActionAtCell(view, footerRowIndex, 0), null);
+  const repositoryFooterRowIndex = view.rows.findIndex((row) =>
+    row.includes(TASKS_PANE_FOOTER_REPOSITORY_EDIT_BUTTON_LABEL)
+  );
+  assert.equal(repositoryFooterRowIndex >= 0, true);
+  const repositoryFooterRow = view.rows[repositoryFooterRowIndex] ?? '';
+  const repositoryEditCol = repositoryFooterRow.indexOf(TASKS_PANE_FOOTER_REPOSITORY_EDIT_BUTTON_LABEL);
+  const repositoryArchiveCol = repositoryFooterRow.indexOf(TASKS_PANE_FOOTER_REPOSITORY_ARCHIVE_BUTTON_LABEL);
+  assert.equal(taskPaneActionAtCell(view, repositoryFooterRowIndex, repositoryEditCol), 'repository.edit');
+  assert.equal(taskPaneActionAtCell(view, repositoryFooterRowIndex, repositoryArchiveCol), 'repository.archive');
+
+  const taskFooterRowIndex = view.rows.findIndex((row) => row.includes(TASKS_PANE_FOOTER_EDIT_BUTTON_LABEL));
+  assert.equal(taskFooterRowIndex >= 0, true);
+  const taskFooterRow = view.rows[taskFooterRowIndex] ?? '';
+  const editCol = taskFooterRow.indexOf(TASKS_PANE_FOOTER_EDIT_BUTTON_LABEL);
+  const deleteCol = taskFooterRow.indexOf(TASKS_PANE_FOOTER_DELETE_BUTTON_LABEL);
+  const completeCol = taskFooterRow.indexOf(TASKS_PANE_FOOTER_COMPLETE_BUTTON_LABEL);
+  const draftCol = taskFooterRow.indexOf(TASKS_PANE_FOOTER_DRAFT_BUTTON_LABEL);
+  assert.equal(taskPaneActionAtCell(view, taskFooterRowIndex, editCol), 'task.edit');
+  assert.equal(taskPaneActionAtCell(view, taskFooterRowIndex, deleteCol), 'task.delete');
+  assert.equal(taskPaneActionAtCell(view, taskFooterRowIndex, completeCol), 'task.complete');
+  assert.equal(taskPaneActionAtCell(view, taskFooterRowIndex, draftCol), 'task.draft');
+  assert.equal(taskPaneActionAtCell(view, taskFooterRowIndex, 0), null);
 });
 
 void test('buildTaskPaneRows clamps scroll and falls back to flat rows in tiny panes', () => {

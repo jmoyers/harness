@@ -237,6 +237,46 @@ void test('codex-live-mux task pane keyboard shortcuts ignore escape-sequence in
   assert.equal(source.includes("if (mainPaneMode !== 'home') {"), true);
 });
 
+void test('codex-live-mux home pane resolves click targets as action -> task -> repository', () => {
+  const source = readLegacySource();
+  const clickSectionStart = source.indexOf('if (taskPaneActionClick) {');
+  const clickSectionEnd = source.indexOf('const leftPaneConversationSelect =', clickSectionStart);
+  const clickSection = source.slice(clickSectionStart, clickSectionEnd);
+
+  assert.equal(clickSection.includes('const action ='), true);
+  assert.equal(clickSection.includes('const taskId = taskPaneTaskIdAtRow'), true);
+  assert.equal(clickSection.includes('const repositoryId = taskPaneRepositoryIdAtRow'), true);
+  assert.equal(
+    clickSection.indexOf('const taskId = taskPaneTaskIdAtRow') <
+      clickSection.indexOf('const repositoryId = taskPaneRepositoryIdAtRow'),
+    true
+  );
+});
+
+void test('codex-live-mux home pane supports double-click edit and drag reorder for tasks/repositories', () => {
+  const source = readLegacySource();
+
+  assert.equal(source.includes('HOME_PANE_EDIT_DOUBLE_CLICK_WINDOW_MS'), true);
+  assert.equal(source.includes('detectEntityDoubleClick('), true);
+  assert.equal(source.includes('homePaneDragState'), true);
+  assert.equal(source.includes('reorderTaskByDrop'), true);
+  assert.equal(source.includes('reorderRepositoryByDrop'), true);
+  assert.equal(source.includes("'tasks-reorder-drag'"), true);
+  assert.equal(source.includes("'repositories-reorder-drag'"), true);
+  assert.equal(source.includes('...repository.metadata'), true);
+  assert.equal(source.includes('homePriority: index'), true);
+});
+
+void test('codex-live-mux home pane keyboard shortcuts are focus-aware for task vs repository actions', () => {
+  const source = readLegacySource();
+
+  assert.equal(source.includes("let taskPaneSelectionFocus: 'task' | 'repository' = 'task';"), true);
+  assert.equal(source.includes('runFocusedTaskPaneEditAction'), true);
+  assert.equal(source.includes('runFocusedTaskPaneDeleteAction'), true);
+  assert.equal(source.includes('moveRepositorySelection(1);'), true);
+  assert.equal(source.includes('reorderSelectedRepository(-1);'), true);
+});
+
 void test('harness-core shim exists and delegates to codex-live-mux implementation', () => {
   const source = readCanonicalSource();
   assert.equal(source.includes("await import('./codex-live-mux.ts');"), true);

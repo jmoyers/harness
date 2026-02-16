@@ -130,6 +130,11 @@ function waitForExit(
   });
 }
 
+function assertExpectedBootTeardownExit(exit: PtyExit): void {
+  assert.equal(exit.signal, null);
+  assert.equal(exit.code === 0 || exit.code === 129 || exit.code === 130, true);
+}
+
 function createWorkspace(): string {
   return mkdtempSync(join(tmpdir(), 'harness-mux-startup-'));
 }
@@ -189,7 +194,7 @@ async function captureMuxBootOutput(
     await delay(durationMs);
   } finally {
     if (exitResult === null) {
-      session.write('\u0003');
+      session.close();
     }
   }
 
@@ -284,8 +289,7 @@ void test(
 
     try {
       const result = await captureMuxBootOutput(workspace, 1800);
-      assert.equal(result.exit.signal, null);
-      assert.equal(result.exit.code, 0);
+      assertExpectedBootTeardownExit(result.exit);
       const output = result.output;
       assert.equal(output.includes('codex:live:mux fatal error'), false);
       assert.equal(output.includes('Cannot access'), false);
@@ -389,8 +393,7 @@ void test(
           HARNESS_MUX_BACKGROUND_RESUME: '1'
         }
       });
-      assert.equal(result.exit.signal, null);
-      assert.equal(result.exit.code, 0);
+      assertExpectedBootTeardownExit(result.exit);
       assert.equal(startedSessionInputs.length, startsBeforeMux);
 
       const listedSessions = await client.sendCommand({

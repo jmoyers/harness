@@ -1,6 +1,19 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { detectConversationDoubleClick } from '../src/mux/double-click.ts';
+import { detectConversationDoubleClick, detectEntityDoubleClick } from '../src/mux/double-click.ts';
+
+void test('entity double click detector requires same entity id within window', () => {
+  const first = detectEntityDoubleClick(null, 'task-a', 1_000, 350);
+  assert.equal(first.doubleClick, false);
+  assert.deepEqual(first.nextState, {
+    entityId: 'task-a',
+    atMs: 1_000
+  });
+
+  const second = detectEntityDoubleClick(first.nextState, 'task-a', 1_200, 350);
+  assert.equal(second.doubleClick, true);
+  assert.equal(second.nextState, null);
+});
 
 void test('conversation double click detector requires same conversation id within window', () => {
   const first = detectConversationDoubleClick(null, 'conversation-a', 1_000, 350);

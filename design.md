@@ -1096,6 +1096,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - project-scoped actions (`new thread`, `close project`) target the selected project in project mode and preserve active-thread project affinity in thread mode
     - a Home planning pane in the right side of mux unifies repository + task management, backed by control-plane repository/task commands
     - Home pane supports repository add/edit/archive plus task add/edit/delete, ready/draft/complete transitions, explicit reorder, and status-priority task ordering (`in-progress`, `ready`, `draft`, `completed`)
+    - Home pane interaction model is Linear-style: click selects, double-click opens edit for task/repository rows, drag-and-drop reprioritizes rows (tasks via `task.reorder`, repositories via persisted `metadata.homePriority`), and keyboard actions are selection-focus aware
     - Home pane state is hydrated from `repository.list` + `task.list` and kept live through scoped `stream.subscribe` updates
     - when a project has zero threads, mux stays in project view and surfaces explicit `new thread` actions instead of auto-starting a thread
     - thread creation opens a modal selector (`codex` or `terminal`), and terminal threads launch plain shells under the same control-plane session lifecycle

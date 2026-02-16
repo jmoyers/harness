@@ -8,16 +8,26 @@ interface ConversationDoubleClickResult {
   readonly nextState: ConversationDoubleClickState | null;
 }
 
-export function detectConversationDoubleClick(
-  previous: ConversationDoubleClickState | null,
-  conversationId: string,
+interface EntityDoubleClickState {
+  readonly entityId: string;
+  readonly atMs: number;
+}
+
+interface EntityDoubleClickResult {
+  readonly doubleClick: boolean;
+  readonly nextState: EntityDoubleClickState | null;
+}
+
+export function detectEntityDoubleClick(
+  previous: EntityDoubleClickState | null,
+  entityId: string,
   nowMs: number,
   windowMs: number
-): ConversationDoubleClickResult {
+): EntityDoubleClickResult {
   const elapsedMs = previous === null ? Number.POSITIVE_INFINITY : nowMs - previous.atMs;
   if (
     previous !== null &&
-    previous.conversationId === conversationId &&
+    previous.entityId === entityId &&
     elapsedMs >= 0 &&
     elapsedMs <= windowMs
   ) {
@@ -29,8 +39,40 @@ export function detectConversationDoubleClick(
   return {
     doubleClick: false,
     nextState: {
-      conversationId,
+      entityId,
       atMs: nowMs
+    }
+  };
+}
+
+export function detectConversationDoubleClick(
+  previous: ConversationDoubleClickState | null,
+  conversationId: string,
+  nowMs: number,
+  windowMs: number
+): ConversationDoubleClickResult {
+  const generic = detectEntityDoubleClick(
+    previous === null
+      ? null
+      : {
+          entityId: previous.conversationId,
+          atMs: previous.atMs
+        },
+    conversationId,
+    nowMs,
+    windowMs
+  );
+  if (generic.nextState === null) {
+    return {
+      doubleClick: generic.doubleClick,
+      nextState: null
+    };
+  }
+  return {
+    doubleClick: generic.doubleClick,
+    nextState: {
+      conversationId: generic.nextState.entityId,
+      atMs: generic.nextState.atMs
     }
   };
 }

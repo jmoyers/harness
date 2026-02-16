@@ -42,6 +42,7 @@ Harness is built for developers who want to:
 - Repository/task control-plane stream commands (`repository.*`, `task.*`) for automation and UI clients.
 - Repository/task stream subscriptions, including scoped filters for `repositoryId` and `taskId`.
 - Home planning pane in mux now unifies repository + task workflows with one click target in the left rail.
+- Home pane interactions now mirror Linear-style planning ergonomics: click-to-select, double-click-to-edit, drag-to-prioritize for tasks/repositories, and focus-aware `A`/`E`/`X` keyboard actions.
 - Real-time typed event stream for status, telemetry, control changes, and output.
 - Codex notify-hook relay support on the same stream (`session-event notify`, including `agent-turn-complete` payloads).
 - Lifecycle hook connectors for external integrations (sound packs, webhooks, automation).
