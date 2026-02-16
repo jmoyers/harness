@@ -429,6 +429,12 @@ function gitRepositorySnapshotEqual(
   );
 }
 
+export const streamServerInternalsForTest = {
+  runWithConcurrencyLimit,
+  gitSummaryEqual,
+  gitRepositorySnapshotEqual
+};
+
 function toPublicSessionController(
   controller: SessionControllerState | null | undefined
 ): StreamSessionController | null {

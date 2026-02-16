@@ -32,28 +32,44 @@ export function normalizeGitHubRemoteUrl(value: string): string | null {
   if (trimmed.length === 0) {
     return null;
   }
+
+  const normalizePath = (rawPath: string): string | null => {
+    let path = rawPath.trim().replace(/^\/+/u, '').replace(/\/+$/u, '');
+    if (path.length === 0) {
+      return null;
+    }
+    if (path.endsWith('.git')) {
+      path = path.slice(0, -4);
+    }
+    const [owner = '', repository = ''] = path.split('/');
+    if (owner.length === 0 || repository.length === 0) {
+      return null;
+    }
+    return `https://github.com/${owner.toLowerCase()}/${repository.toLowerCase()}`;
+  };
+
+  const scpMatch = trimmed.match(/^git@github\.com:(.+)$/iu);
+  if (scpMatch !== null) {
+    return normalizePath(scpMatch[1]!);
+  }
+
   let candidate = trimmed;
-  if (candidate.startsWith('git@')) {
-    candidate = candidate.replace(':', '/').replace(/^git@/, 'https://');
-  }
   if (candidate.startsWith('ssh://')) {
-    candidate = candidate.replace(/^ssh:\/\//, 'https://');
+    candidate = `https://${candidate.slice('ssh://'.length)}`;
+  } else if (candidate.startsWith('git://')) {
+    candidate = `https://${candidate.slice('git://'.length)}`;
   }
-  if (candidate.startsWith('git://')) {
-    candidate = candidate.replace(/^git:\/\//, 'https://');
-  }
-  if (candidate.endsWith('.git')) {
-    candidate = candidate.slice(0, -4);
-  }
-  const normalized = candidate.toLowerCase();
-  if (!normalized.startsWith('https://github.com/')) {
+
+  let parsed: URL;
+  try {
+    parsed = new URL(candidate);
+  } catch {
     return null;
   }
-  const remainder = normalized.slice('https://github.com/'.length);
-  if (remainder.length === 0 || !remainder.includes('/')) {
+  if (parsed.hostname.toLowerCase() !== 'github.com') {
     return null;
   }
-  return `https://github.com/${remainder}`;
+  return normalizePath(parsed.pathname);
 }
 
 export function repositoryNameFromGitHubRemoteUrl(remoteUrl: string): string {
@@ -62,10 +78,7 @@ export function repositoryNameFromGitHubRemoteUrl(remoteUrl: string): string {
     return remoteUrl;
   }
   const parts = normalized.split('/');
-  const name = parts[parts.length - 1];
-  if (typeof name !== 'string' || name.length === 0) {
-    return remoteUrl;
-  }
+  const name = parts[parts.length - 1]!;
   return name;
 }
 

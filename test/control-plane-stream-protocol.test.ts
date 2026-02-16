@@ -1800,6 +1800,58 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
       subscriptionId: 'subscription-1',
       cursor: 1,
       event: {
+        type: 'directory-git-updated',
+        directoryId: 'directory-1',
+        summary: {
+          branch: 'main',
+          changedFiles: 1,
+          additions: null,
+          deletions: 1
+        },
+        repositorySnapshot: {
+          normalizedRemoteUrl: null,
+          commitCount: null,
+          lastCommitAt: null,
+          shortCommitHash: null,
+          inferredName: null,
+          defaultBranch: null
+        },
+        repositoryId: null,
+        repository: null,
+        observedAt: new Date(0).toISOString()
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'directory-git-updated',
+        directoryId: 'directory-1',
+        summary: {
+          branch: 'main',
+          changedFiles: 1,
+          additions: 1,
+          deletions: 1
+        },
+        repositorySnapshot: {
+          normalizedRemoteUrl: 42,
+          commitCount: null,
+          lastCommitAt: null,
+          shortCommitHash: null,
+          inferredName: null,
+          defaultBranch: null
+        },
+        repositoryId: null,
+        repository: null,
+        observedAt: new Date(0).toISOString()
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
         type: 'repository-upserted',
         repository: null
       }

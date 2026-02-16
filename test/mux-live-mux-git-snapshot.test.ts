@@ -92,6 +92,55 @@ void test('readGitDirectorySnapshot handles detached/unknown metadata branches',
   });
 });
 
+void test('readGitDirectorySnapshot falls back to non-origin github remotes when origin is unavailable', async () => {
+  const snapshot = await readGitDirectorySnapshot('/tmp', runnerFromMap({
+    'rev-parse --is-inside-work-tree': 'true',
+    'status --porcelain=1 --branch': '## main...upstream/main\n',
+    'diff --shortstat': '',
+    'diff --cached --shortstat': '',
+    'remote get-url origin': '',
+    remote: 'upstream\n',
+    'remote get-url upstream': 'ssh://git@github.com/Acme/Harness.git',
+    'rev-list --count HEAD': '7',
+    'log -1 --format=%ct %h': 'abc123\t2026-01-01T00:00:00.000Z'
+  }));
+
+  assert.deepEqual(snapshot, {
+    summary: {
+      branch: 'main',
+      changedFiles: 0,
+      additions: 0,
+      deletions: 0
+    },
+    repository: {
+      normalizedRemoteUrl: 'https://github.com/acme/harness',
+      commitCount: 7,
+      lastCommitAt: '2026-01-01T00:00:00.000Z',
+      shortCommitHash: 'abc123',
+      inferredName: 'harness',
+      defaultBranch: 'main'
+    }
+  });
+});
+
+void test('readGitDirectorySnapshot skips non-github remotes while scanning fallback remote list', async () => {
+  const snapshot = await readGitDirectorySnapshot('/tmp', runnerFromMap({
+    'rev-parse --is-inside-work-tree': 'true',
+    'status --porcelain=1 --branch': '## main\n',
+    'diff --shortstat': '',
+    'diff --cached --shortstat': '',
+    'remote get-url origin': '',
+    remote: 'mirror\nupstream\n',
+    'remote get-url mirror': 'https://gitlab.com/acme/harness.git',
+    'remote get-url upstream': 'git@github.com:Acme/Harness.git',
+    'rev-list --count HEAD': '1',
+    'log -1 --format=%ct %h': 'abc123\t2026-01-01T00:00:00.000Z'
+  }));
+
+  assert.equal(snapshot.repository.normalizedRemoteUrl, 'https://github.com/acme/harness');
+  assert.equal(snapshot.repository.inferredName, 'harness');
+});
+
 void test('readGitDirectorySnapshot handles empty status output without header line', async () => {
   const snapshot = await readGitDirectorySnapshot('/tmp', runnerFromMap({
     'rev-parse --is-inside-work-tree': 'true',

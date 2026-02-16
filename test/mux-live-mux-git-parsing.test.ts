@@ -39,20 +39,20 @@ void test('normalizeGitHubRemoteUrl canonicalizes supported github remote forms'
   assert.equal(normalizeGitHubRemoteUrl(''), null);
   assert.equal(normalizeGitHubRemoteUrl('https://example.com/acme/repo'), null);
   assert.equal(normalizeGitHubRemoteUrl('https://github.com/acme'), null);
+  assert.equal(normalizeGitHubRemoteUrl('https://github.com/'), null);
   assert.equal(normalizeGitHubRemoteUrl('https://github.com/acme/repo'), 'https://github.com/acme/repo');
   assert.equal(normalizeGitHubRemoteUrl('https://github.com/Acme/Repo.git'), 'https://github.com/acme/repo');
+  assert.equal(normalizeGitHubRemoteUrl('https://github.com/Acme/Repo.git/'), 'https://github.com/acme/repo');
+  assert.equal(normalizeGitHubRemoteUrl('git@github.com:   '), null);
   assert.equal(normalizeGitHubRemoteUrl('git@github.com:Acme/Repo.git'), 'https://github.com/acme/repo');
-  assert.equal(normalizeGitHubRemoteUrl('ssh://git@github.com/acme/repo.git'), null);
+  assert.equal(normalizeGitHubRemoteUrl('ssh://git@github.com/acme/repo.git'), 'https://github.com/acme/repo');
   assert.equal(normalizeGitHubRemoteUrl('ssh://github.com/acme/repo.git'), 'https://github.com/acme/repo');
   assert.equal(normalizeGitHubRemoteUrl('git://github.com/acme/repo.git'), 'https://github.com/acme/repo');
 });
 
 void test('repositoryNameFromGitHubRemoteUrl returns parsed repository when available', () => {
   assert.equal(repositoryNameFromGitHubRemoteUrl('https://github.com/acme/harness.git'), 'harness');
-  assert.equal(
-    repositoryNameFromGitHubRemoteUrl('https://github.com/acme/harness/'),
-    'https://github.com/acme/harness/'
-  );
+  assert.equal(repositoryNameFromGitHubRemoteUrl('https://github.com/acme/harness/'), 'harness');
   assert.equal(repositoryNameFromGitHubRemoteUrl('not-a-github-remote'), 'not-a-github-remote');
 });
 

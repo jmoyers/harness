@@ -116,6 +116,28 @@ export async function runGitCommand(
   }
 }
 
+async function readNormalizedGitHubRemoteUrl(
+  cwd: string,
+  runCommand: GitCommandRunner
+): Promise<string | null> {
+  const originRemoteUrl = normalizeGitHubRemoteUrl(await runCommand(cwd, ['remote', 'get-url', 'origin']));
+  if (originRemoteUrl !== null) {
+    return originRemoteUrl;
+  }
+
+  const remoteNames = (await runCommand(cwd, ['remote']))
+    .split('\n')
+    .map((name) => name.trim())
+    .filter((name) => name.length > 0);
+  for (const remoteName of remoteNames) {
+    const remoteUrl = normalizeGitHubRemoteUrl(await runCommand(cwd, ['remote', 'get-url', remoteName]));
+    if (remoteUrl !== null) {
+      return remoteUrl;
+    }
+  }
+  return null;
+}
+
 export async function readGitDirectorySnapshot(
   cwd: string,
   runCommand: GitCommandRunner = runGitCommand
@@ -131,7 +153,7 @@ export async function readGitDirectorySnapshot(
   const statusOutputPromise = runCommand(cwd, ['status', '--porcelain=1', '--branch']);
   const unstagedShortstatPromise = runCommand(cwd, ['diff', '--shortstat']);
   const stagedShortstatPromise = runCommand(cwd, ['diff', '--cached', '--shortstat']);
-  const remoteUrlPromise = runCommand(cwd, ['remote', 'get-url', 'origin']);
+  const remoteUrlPromise = readNormalizedGitHubRemoteUrl(cwd, runCommand);
   const commitCountPromise = runCommand(cwd, ['rev-list', '--count', 'HEAD']);
   const lastCommitPromise = runCommand(cwd, ['log', '-1', '--format=%ct %h']);
 
@@ -155,7 +177,7 @@ export async function readGitDirectorySnapshot(
 
   const unstaged = parseGitShortstatCounts(unstagedShortstat);
   const staged = parseGitShortstatCounts(stagedShortstat);
-  const normalizedRemoteUrl = normalizeGitHubRemoteUrl(remoteUrlRaw);
+  const normalizedRemoteUrl = remoteUrlRaw;
   const commitCount = parseCommitCount(commitCountRaw);
   const lastCommit = parseLastCommitLine(lastCommitRaw);
 
