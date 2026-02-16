@@ -985,7 +985,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
 
 ## Initial Success Criteria
 
-- Strict TypeScript + lint gates pass with zero warnings/errors.
+- Strict TypeScript + Oxlint gates pass with zero warnings/errors.
 - Dependency boundary policy is enforced: no third-party imports in declared hot-path modules.
 - Single-session terminal pass-through meets direct-terminal parity thresholds (p50 <= 1 ms, p95 <= 3 ms, p99 <= 5 ms overhead) and passes blind A/B perception test.
 - Live-steered Codex session operates via PTY as primary control path, with continuous event emission.

@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import {
   ControlPlaneStreamServer,
   resolveTerminalCommandForEnvironment,
+  streamServerTestInternals,
   startControlPlaneStreamServer,
   type StartControlPlaneSessionInput
 } from '../src/control-plane/stream-server.ts';
@@ -4003,6 +4004,98 @@ void test('resolveTerminalCommandForEnvironment prefers shell then ComSpec then 
       'darwin'
     ),
     'sh'
+  );
+});
+
+void test('stream server helper internals cover concurrency and git snapshot equality', async () => {
+  const processed = new Set<string>();
+  await streamServerTestInternals.runWithConcurrencyLimit(
+    ['first', undefined, 'second'],
+    8,
+    async (value) => {
+      if (value !== undefined) {
+        processed.add(value);
+      }
+    }
+  );
+  assert.deepEqual([...processed].sort(), ['first', 'second']);
+
+  assert.equal(
+    streamServerTestInternals.gitSummaryEqual(
+      {
+        branch: 'main',
+        changedFiles: 2,
+        additions: 5,
+        deletions: 1
+      },
+      {
+        branch: 'main',
+        changedFiles: 2,
+        additions: 5,
+        deletions: 1
+      }
+    ),
+    true
+  );
+  assert.equal(
+    streamServerTestInternals.gitSummaryEqual(
+      {
+        branch: 'main',
+        changedFiles: 2,
+        additions: 5,
+        deletions: 1
+      },
+      {
+        branch: 'dev',
+        changedFiles: 2,
+        additions: 5,
+        deletions: 1
+      }
+    ),
+    false
+  );
+
+  assert.equal(
+    streamServerTestInternals.gitRepositorySnapshotEqual(
+      {
+        normalizedRemoteUrl: 'https://github.com/example/harness',
+        commitCount: 12,
+        lastCommitAt: '2026-02-16T00:00:00.000Z',
+        shortCommitHash: 'abcdef1',
+        inferredName: 'harness',
+        defaultBranch: 'main'
+      },
+      {
+        normalizedRemoteUrl: 'https://github.com/example/harness',
+        commitCount: 12,
+        lastCommitAt: '2026-02-16T00:00:00.000Z',
+        shortCommitHash: 'abcdef1',
+        inferredName: 'harness',
+        defaultBranch: 'main'
+      }
+    ),
+    true
+  );
+  assert.equal(
+    streamServerTestInternals.gitRepositorySnapshotEqual(
+      {
+        normalizedRemoteUrl: 'https://github.com/example/harness',
+        commitCount: 12,
+        lastCommitAt: '2026-02-16T00:00:00.000Z',
+        shortCommitHash: 'abcdef1',
+        inferredName: 'harness',
+        defaultBranch: 'main'
+      },
+      {
+        normalizedRemoteUrl: 'https://github.com/example/harness-2',
+        commitCount: 12,
+        lastCommitAt: '2026-02-16T00:00:00.000Z',
+        shortCommitHash: 'abcdef1',
+        inferredName: 'harness',
+        defaultBranch: 'main'
+      }
+    ),
+    false
   );
 });
 

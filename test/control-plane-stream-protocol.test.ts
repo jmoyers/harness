@@ -2431,6 +2431,66 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
   }
 });
 
+void test('parseServerEnvelope rejects directory git updates with malformed summary fields', () => {
+  const parsed = parseServerEnvelope({
+    kind: 'stream.event',
+    subscriptionId: 'subscription-1',
+    cursor: 1,
+    event: {
+      type: 'directory-git-updated',
+      directoryId: 'directory-1',
+      summary: {
+        branch: null,
+        changedFiles: 1,
+        additions: 1,
+        deletions: 1
+      },
+      repositorySnapshot: {
+        normalizedRemoteUrl: null,
+        commitCount: null,
+        lastCommitAt: null,
+        shortCommitHash: null,
+        inferredName: null,
+        defaultBranch: null
+      },
+      repositoryId: null,
+      repository: null,
+      observedAt: new Date(0).toISOString()
+    }
+  });
+  assert.equal(parsed, null);
+});
+
+void test('parseServerEnvelope rejects directory git updates with malformed repository snapshot fields', () => {
+  const parsed = parseServerEnvelope({
+    kind: 'stream.event',
+    subscriptionId: 'subscription-1',
+    cursor: 1,
+    event: {
+      type: 'directory-git-updated',
+      directoryId: 'directory-1',
+      summary: {
+        branch: 'main',
+        changedFiles: 1,
+        additions: 1,
+        deletions: 1
+      },
+      repositorySnapshot: {
+        normalizedRemoteUrl: null,
+        commitCount: 'bad-commit-count',
+        lastCommitAt: null,
+        shortCommitHash: null,
+        inferredName: null,
+        defaultBranch: null
+      },
+      repositoryId: null,
+      repository: null,
+      observedAt: new Date(0).toISOString()
+    }
+  });
+  assert.equal(parsed, null);
+});
+
 void test('protocol parse helpers round-trip encoded envelopes', () => {
   const client: StreamClientEnvelope = {
     kind: 'pty.signal',

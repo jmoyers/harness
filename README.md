@@ -176,7 +176,7 @@ Harness is built to expose operational truth, not hide it.
 - Performance is a first-class feature: low-latency interaction and predictable terminal behavior.
 - Strict TypeScript in production code.
 - 100% test coverage gate (lines/functions/branches).
-- 100% lint gate (zero warnings).
+- 100% Oxlint gate (zero warnings).
 - No privileged UI path: human and API flows use the same control plane.
 
 ## Getting Started
@@ -276,6 +276,13 @@ Run strict quality gates (lint, typecheck, dead-code, Bun test coverage with glo
 
 ```bash
 bun run verify
+```
+
+Run Oxc formatter checks or apply formatting:
+
+```bash
+bun run format:check
+bun run format
 ```
 
 Run the on-demand long Codex status stability scenario (3 poems + tool actions, extended timeout) to validate no premature `inactive` transitions under non-verbose telemetry:

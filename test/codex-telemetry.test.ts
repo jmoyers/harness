@@ -1136,13 +1136,11 @@ void test('codex telemetry parsers tolerate malformed nested payload shapes and 
   assert.equal(malformedLogs.length, 1);
   assert.equal(malformedLogs[0]?.severity, null);
   assert.equal(malformedLogs[0]?.statusHint, 'needs-input');
-  assert.equal(typeof malformedLogs[0]?.payload['attributes'], 'object');
+  const malformedAttributes = malformedLogs[0]?.payload['attributes'];
+  assert.equal(typeof malformedAttributes, 'object');
+  assert.ok(malformedAttributes !== null);
   assert.equal(
-    (
-      (malformedLogs[0]?.payload['attributes'] as Record<string, unknown>)[
-        'int-string-invalid'
-      ] as string
-    ).toLowerCase(),
+    ((malformedAttributes as Record<string, unknown>)['int-string-invalid'] as string).toLowerCase(),
     'nan'
   );
 
