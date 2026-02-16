@@ -169,6 +169,39 @@ void test('workspace rail model handles empty projects and blank workspace name'
   assert.equal(blankNameRows.some((row) => row.text.includes('(unnamed)')), true);
 });
 
+void test('workspace rail model can hide repository and task controls from the rail', () => {
+  const rows = buildWorkspaceRailViewRows(
+    {
+      showTaskPlanningUi: false,
+      repositories: [
+        {
+          repositoryId: 'repository-1',
+          name: 'harness',
+          remoteUrl: 'https://github.com/acme/harness.git',
+          associatedProjectCount: 1,
+          commitCount: 42,
+          lastCommitAt: '2026-01-01T00:00:00.000Z',
+          shortCommitHash: 'abc1234'
+        }
+      ],
+      repositoriesCollapsed: false,
+      directories: [],
+      conversations: [],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: null,
+      nowMs: Date.parse('2026-01-01T00:00:10.000Z')
+    },
+    16
+  );
+
+  assert.equal(rows.some((row) => row.kind === 'repository-header'), false);
+  assert.equal(rows.some((row) => row.kind === 'repository-row'), false);
+  assert.equal(rows.some((row) => row.railAction === 'repository.add'), false);
+  assert.equal(rows.some((row) => row.railAction === 'tasks.open'), false);
+  assert.equal(rows.some((row) => row.railAction === 'project.add'), true);
+});
+
 void test('workspace rail model formats finite process stats and shows empty repository section copy', () => {
   const rows = buildWorkspaceRailViewRows(
     {

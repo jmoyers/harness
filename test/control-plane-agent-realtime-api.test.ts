@@ -1869,6 +1869,116 @@ void test('agent realtime connect forwards optional filters and ignores unrelate
   }
 });
 
+void test('agent realtime connect drops post-connect events for unknown subscription ids', async () => {
+  const sockets = new Set<Socket>();
+  const harness = await startMockHarnessServer((socket, envelope) => {
+    if (envelope.kind !== 'command') {
+      return;
+    }
+    socket.write(
+      encodeStreamEnvelope({
+        kind: 'command.accepted',
+        commandId: envelope.commandId
+      })
+    );
+    if (envelope.command.type === 'stream.subscribe') {
+      sockets.add(socket);
+      socket.write(
+        encodeStreamEnvelope({
+          kind: 'command.completed',
+          commandId: envelope.commandId,
+          result: {
+            subscriptionId: 'subscription-main',
+            cursor: 0
+          }
+        })
+      );
+      return;
+    }
+    if (envelope.command.type === 'stream.unsubscribe') {
+      socket.write(
+        encodeStreamEnvelope({
+          kind: 'command.completed',
+          commandId: envelope.commandId,
+          result: {
+            unsubscribed: true
+          }
+        })
+      );
+      return;
+    }
+    socket.write(
+      encodeStreamEnvelope({
+        kind: 'command.completed',
+        commandId: envelope.commandId,
+        result: {}
+      })
+    );
+  });
+
+  const client = await connectHarnessAgentRealtimeClient({
+    host: harness.address.address,
+    port: harness.address.port
+  });
+  const observed: string[] = [];
+  const remove = client.on('*', (event) => {
+    observed.push(`${event.subscriptionId ?? 'none'}:${event.type}`);
+  });
+
+  try {
+    const iterator = sockets.values().next();
+    assert.equal(iterator.done, false);
+    const eventSocket = iterator.value;
+    eventSocket.write(
+      encodeStreamEnvelope({
+        kind: 'stream.event',
+        subscriptionId: 'subscription-other',
+        cursor: 1,
+        event: {
+          type: 'session-status',
+          sessionId: 'session-other',
+          status: 'running',
+          attentionReason: null,
+          live: true,
+          ts: '2026-02-02T00:00:00.000Z',
+          directoryId: null,
+          conversationId: null,
+          telemetry: null,
+          controller: null
+        }
+      })
+    );
+    eventSocket.write(
+      encodeStreamEnvelope({
+        kind: 'stream.event',
+        subscriptionId: 'subscription-main',
+        cursor: 2,
+        event: {
+          type: 'session-status',
+          sessionId: 'session-main',
+          status: 'running',
+          attentionReason: null,
+          live: true,
+          ts: '2026-02-02T00:00:01.000Z',
+          directoryId: null,
+          conversationId: null,
+          telemetry: null,
+          controller: null
+        }
+      })
+    );
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.deepEqual(observed, ['subscription-main:session.status']);
+  } finally {
+    remove();
+    await client.close();
+    for (const socket of sockets) {
+      socket.destroy();
+    }
+    await harness.stop();
+  }
+});
+
 void test('agent realtime connect rejects malformed subscribe response and closes socket', async () => {
   const sockets = new Set<Socket>();
   let socketClosed = false;

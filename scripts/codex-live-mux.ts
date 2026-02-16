@@ -1552,6 +1552,7 @@ function shortcutHintText(bindings: ResolvedMuxShortcutBindings): string {
 }
 
 type WorkspaceRailModel = Parameters<typeof renderWorkspaceRailAnsiRows>[0];
+const SHOW_TASK_PLANNING_UI = false;
 
 function buildRailModel(
   repositories: ReadonlyMap<string, ControlPlaneRepositoryRecord>,
@@ -1655,6 +1656,7 @@ function buildRailModel(
       .flatMap((conversation) => (conversation === null ? [] : [conversation])),
     activeProjectId,
     activeConversationId,
+    showTaskPlanningUi: SHOW_TASK_PLANNING_UI,
     localControllerId,
     projectSelectionEnabled,
     repositoriesCollapsed,

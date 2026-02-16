@@ -197,6 +197,8 @@ void test('codex-live-mux wires repository rail section and control-plane reposi
   const source = readLegacySource();
 
   assert.equal(source.includes('repositoriesCollapsed'), true);
+  assert.equal(source.includes('showTaskPlanningUi: SHOW_TASK_PLANNING_UI'), true);
+  assert.equal(source.includes('const SHOW_TASK_PLANNING_UI = false;'), true);
   assert.equal(source.includes("type: 'repository.list'"), true);
   assert.equal(source.includes("type: 'repository.upsert'"), true);
   assert.equal(source.includes("type: 'repository.update'"), true);

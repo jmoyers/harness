@@ -56,6 +56,7 @@ interface WorkspaceRailModel {
   readonly directories: readonly WorkspaceRailDirectorySummary[];
   readonly conversations: readonly WorkspaceRailConversationSummary[];
   readonly processes: readonly WorkspaceRailProcessSummary[];
+  readonly showTaskPlanningUi?: boolean;
   readonly activeProjectId: string | null;
   readonly activeConversationId: string | null;
   readonly localControllerId?: string | null;
@@ -425,8 +426,9 @@ function repositoryStatLine(repository: WorkspaceRailRepositorySummary, nowMs: n
 
 function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly WorkspaceRailViewRow[] {
   const rows: WorkspaceRailViewRow[] = [];
+  const showTaskPlanningUi = model.showTaskPlanningUi ?? true;
   const showRepositorySection =
-    model.repositories !== undefined || model.repositoriesCollapsed !== undefined;
+    showTaskPlanningUi && (model.repositories !== undefined || model.repositoriesCollapsed !== undefined);
   if (showRepositorySection) {
     const repositories = model.repositories ?? [];
     const repositoriesCollapsed = model.repositoriesCollapsed ?? false;
@@ -464,7 +466,9 @@ function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly Wo
   }
 
   pushRow(rows, 'action', `│  ${ADD_PROJECT_BUTTON_LABEL}`, false, null, null, null, 'project.add');
-  pushRow(rows, 'action', `│  ${TASKS_BUTTON_LABEL}`, false, null, null, null, 'tasks.open');
+  if (showTaskPlanningUi) {
+    pushRow(rows, 'action', `│  ${TASKS_BUTTON_LABEL}`, false, null, null, null, 'tasks.open');
+  }
   pushRow(rows, 'muted', '│');
 
   if (model.directories.length === 0) {

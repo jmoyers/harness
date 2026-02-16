@@ -171,8 +171,8 @@ Pass-through stream invariants:
 - In embedded/local mode, mux shutdown also closes live PTYs.
 - Thread "delete" in the mux is soft-delete (archive); hard delete remains an explicit control-plane command.
 - Project lifecycle in the mux is first-class: `directory.upsert`, `directory.list`, and `directory.archive` drive add/close behavior through the same control-plane stream API as automation clients.
-- The left rail includes clickable action rows (new thread, archive thread, add project, open tasks, close project) with keybind parity.
-- The left rail also exposes a collapsible repository section with CRUD actions (`repository.upsert`, `repository.list`, `repository.update`, `repository.archive`) and per-repository commit stats.
+- The left rail includes clickable action rows (new thread, archive thread, add project, close project) with keybind parity.
+- Repository/task rail surfaces are temporarily hidden in the mux UI; control-plane repository/task commands and subscriptions remain active and supported.
 - Active project directories are scraped for GitHub remotes at startup/refresh; remotes are normalized and deduped so many projects can map to one repository row.
 - Project rows in the left rail are selectable; selecting a project switches the right pane into a project view and scopes project actions to that explicit selection.
 - `new thread` preserves thread-project affinity when a thread row is selected; in project view it uses the selected project.
@@ -1090,13 +1090,13 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - multi-thread rail + active session switching (`Ctrl+N`/`Ctrl+P`) + new thread creation (`Ctrl+T`) while preserving live PTY pass-through for the active session
     - explicit directory selection from rail rows, with a project-focused right-pane tree view when directory mode is active
     - project-scoped actions (`new thread`, `close project`) target the selected project in project mode and preserve active-thread project affinity in thread mode
-    - left-rail `tasks` action opens a dedicated full-width task-management pane backed by control-plane repository/task commands
+    - task-management pane implementation remains available in code, backed by control-plane repository/task commands
     - task-management pane supports add/edit/delete, ready/draft/complete transitions, explicit reorder, and a recently-completed section with relative completion times
     - task-management pane state is hydrated from `repository.list` + `task.list` and kept live through scoped `stream.subscribe` updates
     - when a project has zero threads, mux stays in project view and surfaces explicit `new thread` actions instead of auto-starting a thread
     - thread creation opens a modal selector (`codex` or `terminal`), and terminal threads launch plain shells under the same control-plane session lifecycle
     - left rail composition uses project-wrapped thread blocks with inline git summary and per-thread telemetry (CPU/memory sampled from `ps` via `processId`)
-    - left rail repository section is independently collapsible and supports add/edit/archive flows via repository control-plane commands, with persistent UI collapse state in `mux.ui`
+    - repository rail section implementation remains in the model layer (including add/edit/archive actions and persistent collapse state in `mux.ui`), but is currently hidden in mux UI output
     - repository rows show commit count, last update age, and short commit hash, derived from project git scans and aggregated by deduped normalized GitHub remote URL
     - git summary uses an adaptive per-project scheduler (`mux.background.git-summary`) with config-driven active/idle/burst intervals and bounded concurrency (`mux.git.*`), while process-usage sampling (`mux.background.process-usage`) remains opt-in through `HARNESS_MUX_BACKGROUND_PROBES=1`
     - control-plane operations are scheduled with interactive-first priority, and persisted non-active conversation warm-start is opt-in (`HARNESS_MUX_BACKGROUND_RESUME=1`) so startup and interactivity are not taxed by non-selected sessions
