@@ -1,9 +1,6 @@
-import { basename, dirname, extname, join, resolve } from 'node:path';
+import { basename, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { appendFileSync, mkdirSync, truncateSync } from 'node:fs';
-import { execFile } from 'node:child_process';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
-import { promisify } from 'node:util';
 import { startCodexLiveSession } from '../src/codex/live-session.ts';
 import {
   openCodexControlPlaneClient,
@@ -14,8 +11,7 @@ import { startControlPlaneStreamServer } from '../src/control-plane/stream-serve
 import type {
   StreamObservedEvent,
   StreamServerEnvelope,
-  StreamSessionController,
-  StreamSessionEvent
+  StreamSessionController
 } from '../src/control-plane/stream-protocol.ts';
 import {
   parseSessionSummaryRecord,
@@ -24,11 +20,9 @@ import {
 import { SqliteEventStore } from '../src/store/event-store.ts';
 import {
   TerminalSnapshotOracle,
-  renderSnapshotAnsiRow,
-  type TerminalSnapshotFrameCore
+  renderSnapshotAnsiRow
 } from '../src/terminal/snapshot-oracle.ts';
 import {
-  createNormalizedEvent,
   type EventScope,
   type NormalizedEventEnvelope
 } from '../src/events/normalized-events.ts';
@@ -49,7 +43,6 @@ import {
   resolveMuxShortcutBindings
 } from '../src/mux/input-shortcuts.ts';
 import {
-  DISABLE_MUX_INPUT_MODES,
   createMuxInputModeManager
 } from '../src/mux/terminal-input-modes.ts';
 import {
@@ -75,9 +68,6 @@ import {
   buildLeftNavSelectorEntries,
   buildSelectorIndexEntries
 } from '../src/mux/selector-index.ts';
-import {
-  resolveWorkspacePath
-} from '../src/mux/workspace-path.ts';
 import {
   createNewThreadPromptState,
   newThreadPromptBodyLines,
@@ -140,38 +130,79 @@ import {
   buildUiModalOverlay,
   isUiModalOverlayHit
 } from '../src/ui/kit.ts';
-
-const execFileAsync = promisify(execFile);
+import {
+  parseConversationRecord,
+  parseDirectoryRecord,
+  parseRepositoryRecord,
+  parseSessionControllerRecord,
+  parseTaskRecord
+} from '../src/mux/live-mux/control-plane-records.ts';
+import {
+  leftColsFromPaneWidthPercent,
+  paneWidthPercentFromLayout
+} from '../src/mux/live-mux/layout.ts';
+import {
+  normalizeGitHubRemoteUrl,
+  repositoryNameFromGitHubRemoteUrl
+} from '../src/mux/live-mux/git-parsing.ts';
+import {
+  extractOscColorReplies
+} from '../src/mux/live-mux/palette-parsing.ts';
+import {
+  GIT_REPOSITORY_NONE,
+  readGitDirectorySnapshot,
+  readProcessUsageSample
+} from '../src/mux/live-mux/git-snapshot.ts';
+import {
+  extractFocusEvents,
+  formatErrorMessage,
+  parseBooleanEnv,
+  parsePositiveInt,
+  prepareArtifactPath,
+  readStartupTerminalSize,
+  resolveWorkspacePathForMux,
+  restoreTerminalState,
+  sanitizeProcessEnv,
+  terminalSize
+} from '../src/mux/live-mux/startup-utils.ts';
+import {
+  normalizeExitCode,
+  isSessionNotFoundError,
+  isSessionNotLiveError,
+  isConversationNotFoundError,
+  mapTerminalOutputToNormalizedEvent,
+  mapSessionEventToNormalizedEvent,
+  observedAtFromSessionEvent
+} from '../src/mux/live-mux/event-mapping.ts';
+import { parseMuxArgs } from '../src/mux/live-mux/args.ts';
+import {
+  hasAltModifier,
+  isCopyShortcutInput,
+  isLeftButtonPress,
+  isMotionMouseCode,
+  isMouseRelease,
+  isSelectionDrag,
+  isWheelMouseCode,
+  mergeUniqueRows,
+  pointFromMouseEvent,
+  renderSelectionOverlay,
+  selectionPointsEqual,
+  selectionText,
+  selectionVisibleRows,
+  type PaneSelection,
+  writeTextToClipboard
+} from '../src/mux/live-mux/selection.ts';
 
 type ResolvedMuxShortcutBindings = ReturnType<typeof resolveMuxShortcutBindings>;
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
-
-interface MuxOptions {
-  codexArgs: string[];
-  storePath: string;
-  initialConversationId: string;
-  invocationDirectory: string;
-  controlPlaneHost: string | null;
-  controlPlanePort: number | null;
-  controlPlaneAuthToken: string | null;
-  recordingPath: string | null;
-  recordingGifOutputPath: string | null;
-  recordingFps: number;
-  scope: EventScope;
-}
-
-interface TerminalPaletteProbe {
-  foregroundHex?: string;
-  backgroundHex?: string;
-  indexedHexByCode?: Record<number, string>;
-}
-
-interface FocusEventExtraction {
-  readonly sanitized: Buffer;
-  readonly focusInCount: number;
-  readonly focusOutCount: number;
-}
+type ControlPlaneDirectoryRecord = NonNullable<ReturnType<typeof parseDirectoryRecord>>;
+type ControlPlaneRepositoryRecord = NonNullable<ReturnType<typeof parseRepositoryRecord>>;
+type ControlPlaneTaskRecord = NonNullable<ReturnType<typeof parseTaskRecord>>;
+type GitDirectorySnapshot = Awaited<ReturnType<typeof readGitDirectorySnapshot>>;
+type ProcessUsageSample = Awaited<ReturnType<typeof readProcessUsageSample>>;
+type GitSummary = GitDirectorySnapshot['summary'];
+type GitRepositorySnapshot = GitDirectorySnapshot['repository'];
 
 interface RenderCursorStyle {
   readonly shape: 'block' | 'underline' | 'bar';
@@ -191,12 +222,6 @@ interface MuxPerfStatusRow {
 interface SelectionPoint {
   readonly rowAbs: number;
   readonly col: number;
-}
-
-interface PaneSelection {
-  readonly anchor: SelectionPoint;
-  readonly focus: SelectionPoint;
-  readonly text: string;
 }
 
 interface PaneSelectionDrag {
@@ -246,93 +271,10 @@ interface ConversationState {
   controller: StreamSessionController | null;
 }
 
-interface ProcessUsageSample {
-  readonly cpuPercent: number | null;
-  readonly memoryMb: number | null;
-}
-
 interface ConversationProjectionSnapshot {
   readonly status: string;
   readonly glyph: string;
   readonly detailText: string;
-}
-
-interface ControlPlaneDirectoryRecord {
-  readonly directoryId: string;
-  readonly tenantId: string;
-  readonly userId: string;
-  readonly workspaceId: string;
-  readonly path: string;
-  readonly createdAt: string | null;
-  readonly archivedAt: string | null;
-}
-
-interface ControlPlaneConversationRecord {
-  readonly conversationId: string;
-  readonly directoryId: string;
-  readonly tenantId: string;
-  readonly userId: string;
-  readonly workspaceId: string;
-  readonly title: string;
-  readonly agentType: string;
-  readonly adapterState: Record<string, unknown>;
-  readonly runtimeStatus: ConversationRailSessionSummary['status'];
-  readonly runtimeLive: boolean;
-}
-
-interface ControlPlaneRepositoryRecord {
-  readonly repositoryId: string;
-  readonly tenantId: string;
-  readonly userId: string;
-  readonly workspaceId: string;
-  readonly name: string;
-  readonly remoteUrl: string;
-  readonly defaultBranch: string;
-  readonly metadata: Record<string, unknown>;
-  readonly createdAt: string | null;
-  readonly archivedAt: string | null;
-}
-
-interface ControlPlaneTaskRecord {
-  readonly taskId: string;
-  readonly tenantId: string;
-  readonly userId: string;
-  readonly workspaceId: string;
-  readonly repositoryId: string | null;
-  readonly title: string;
-  readonly description: string;
-  readonly status: TaskStatus;
-  readonly orderIndex: number;
-  readonly claimedByControllerId: string | null;
-  readonly claimedByDirectoryId: string | null;
-  readonly branchName: string | null;
-  readonly baseBranch: string | null;
-  readonly claimedAt: string | null;
-  readonly completedAt: string | null;
-  readonly createdAt: string;
-  readonly updatedAt: string;
-}
-
-type TaskStatus = 'draft' | 'ready' | 'in-progress' | 'completed';
-interface GitSummary {
-  readonly branch: string;
-  readonly changedFiles: number;
-  readonly additions: number;
-  readonly deletions: number;
-}
-
-interface GitRepositorySnapshot {
-  readonly normalizedRemoteUrl: string | null;
-  readonly commitCount: number | null;
-  readonly lastCommitAt: string | null;
-  readonly shortCommitHash: string | null;
-  readonly inferredName: string | null;
-  readonly defaultBranch: string | null;
-}
-
-interface GitDirectorySnapshot {
-  readonly summary: GitSummary;
-  readonly repository: GitRepositorySnapshot;
 }
 
 type GitSummaryRefreshReason = 'startup' | 'interval' | 'focus' | 'trigger';
@@ -352,32 +294,12 @@ const DEFAULT_BACKGROUND_PROBES_ENABLED = false;
 const DEFAULT_CONVERSATION_TITLE_EDIT_DEBOUNCE_MS = 250;
 const CONVERSATION_TITLE_EDIT_DOUBLE_CLICK_WINDOW_MS = 350;
 const HOME_PANE_EDIT_DOUBLE_CLICK_WINDOW_MS = 350;
-const STARTUP_TERMINAL_MIN_COLS = 40;
-const STARTUP_TERMINAL_MIN_ROWS = 10;
-const STARTUP_TERMINAL_PROBE_TIMEOUT_MS = 250;
-const STARTUP_TERMINAL_PROBE_INTERVAL_MS = 10;
 const UI_STATE_PERSIST_DEBOUNCE_MS = 200;
-const MIN_PANE_WIDTH_PERCENT = 1;
-const MAX_PANE_WIDTH_PERCENT = 99;
 const GIT_SUMMARY_LOADING: GitSummary = {
   branch: '(loading)',
   changedFiles: 0,
   additions: 0,
   deletions: 0
-};
-const GIT_SUMMARY_NOT_REPOSITORY: GitSummary = {
-  branch: '(not git)',
-  changedFiles: 0,
-  additions: 0,
-  deletions: 0
-};
-const GIT_REPOSITORY_NONE: GitRepositorySnapshot = {
-  normalizedRemoteUrl: null,
-  commitCount: null,
-  lastCommitAt: null,
-  shortCommitHash: null,
-  inferredName: null,
-  defaultBranch: null
 };
 
 interface TaskEditorPromptState {
@@ -399,859 +321,11 @@ interface HomePaneDragState {
   readonly hasDragged: boolean;
 }
 
-function normalizePaneWidthPercent(value: number): number {
-  if (!Number.isFinite(value)) {
-    return 30;
-  }
-  if (value < MIN_PANE_WIDTH_PERCENT) {
-    return MIN_PANE_WIDTH_PERCENT;
-  }
-  if (value > MAX_PANE_WIDTH_PERCENT) {
-    return MAX_PANE_WIDTH_PERCENT;
-  }
-  return value;
-}
-
-function leftColsFromPaneWidthPercent(cols: number, paneWidthPercent: number): number {
-  const availablePaneCols = Math.max(2, cols - 1);
-  const normalizedPercent = normalizePaneWidthPercent(paneWidthPercent);
-  const requestedLeftCols = Math.round((availablePaneCols * normalizedPercent) / 100);
-  return Math.max(1, Math.min(availablePaneCols - 1, requestedLeftCols));
-}
-
-function paneWidthPercentFromLayout(layout: { cols: number; leftCols: number }): number {
-  const availablePaneCols = Math.max(2, layout.cols - 1);
-  const percent = (layout.leftCols / availablePaneCols) * 100;
-  const rounded = Math.round(percent * 100) / 100;
-  return normalizePaneWidthPercent(rounded);
-}
-
-function restoreTerminalState(
-  newline: boolean,
-  restoreInputModes: (() => void) | null = null
-): void {
-  try {
-    if (restoreInputModes === null) {
-      process.stdout.write(DISABLE_MUX_INPUT_MODES);
-    } else {
-      restoreInputModes();
-    }
-    process.stdout.write(`\u001b[?25h\u001b[0m${newline ? '\n' : ''}`);
-  } catch {
-    // Best-effort restore only.
-  }
-
-  if (process.stdin.isTTY) {
-    try {
-      process.stdin.setRawMode(false);
-    } catch {
-      // Best-effort restore only.
-    }
-    try {
-      process.stdin.pause();
-    } catch {
-      // Best-effort restore only.
-    }
-  }
-}
-
-function formatErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.stack ?? error.message;
-  }
-  return String(error);
-}
-
-function extractFocusEvents(chunk: Buffer): FocusEventExtraction {
-  const text = chunk.toString('utf8');
-  const focusInCount = text.split('\u001b[I').length - 1;
-  const focusOutCount = text.split('\u001b[O').length - 1;
-
-  if (focusInCount === 0 && focusOutCount === 0) {
-    return {
-      sanitized: chunk,
-      focusInCount: 0,
-      focusOutCount: 0
-    };
-  }
-
-  const sanitizedText = text.replaceAll('\u001b[I', '').replaceAll('\u001b[O', '');
-  return {
-    sanitized: Buffer.from(sanitizedText, 'utf8'),
-    focusInCount,
-    focusOutCount
-  };
-}
-
-function prepareArtifactPath(path: string, overwriteOnStart: boolean): string {
-  const resolvedPath = resolve(path);
-  mkdirSync(dirname(resolvedPath), { recursive: true });
-  if (overwriteOnStart) {
-    try {
-      truncateSync(resolvedPath, 0);
-    } catch (error: unknown) {
-      const code = (error as { code?: unknown }).code;
-      if (code !== 'ENOENT') {
-        throw error;
-      }
-      appendFileSync(resolvedPath, '', 'utf8');
-    }
-  }
-  return resolvedPath;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (typeof value !== 'object' || value === null) {
-    return null;
-  }
-  return value as Record<string, unknown>;
-}
-
-function parseDirectoryRecord(value: unknown): ControlPlaneDirectoryRecord | null {
-  const record = asRecord(value);
-  if (record === null) {
-    return null;
-  }
-  const directoryId = record['directoryId'];
-  const tenantId = record['tenantId'];
-  const userId = record['userId'];
-  const workspaceId = record['workspaceId'];
-  const path = record['path'];
-  const createdAtRaw = record['createdAt'];
-  const archivedAtRaw = record['archivedAt'];
-  if (
-    typeof directoryId !== 'string' ||
-    typeof tenantId !== 'string' ||
-    typeof userId !== 'string' ||
-    typeof workspaceId !== 'string' ||
-    typeof path !== 'string' ||
-    (createdAtRaw !== undefined && createdAtRaw !== null && typeof createdAtRaw !== 'string') ||
-    (archivedAtRaw !== undefined && archivedAtRaw !== null && typeof archivedAtRaw !== 'string')
-  ) {
-    return null;
-  }
-  return {
-    directoryId,
-    tenantId,
-    userId,
-    workspaceId,
-    path,
-    createdAt: typeof createdAtRaw === 'string' ? createdAtRaw : null,
-    archivedAt: typeof archivedAtRaw === 'string' ? archivedAtRaw : null
-  };
-}
-
-function parseConversationRecord(value: unknown): ControlPlaneConversationRecord | null {
-  const record = asRecord(value);
-  if (record === null) {
-    return null;
-  }
-  const conversationId = record['conversationId'];
-  const directoryId = record['directoryId'];
-  const tenantId = record['tenantId'];
-  const userId = record['userId'];
-  const workspaceId = record['workspaceId'];
-  const title = record['title'];
-  const agentType = record['agentType'];
-  const adapterStateRaw = record['adapterState'];
-  const runtimeStatus = record['runtimeStatus'];
-  const runtimeLive = record['runtimeLive'];
-  if (
-    typeof conversationId !== 'string' ||
-    typeof directoryId !== 'string' ||
-    typeof tenantId !== 'string' ||
-    typeof userId !== 'string' ||
-    typeof workspaceId !== 'string' ||
-    typeof title !== 'string' ||
-    typeof agentType !== 'string' ||
-    (typeof adapterStateRaw !== 'object' || adapterStateRaw === null || Array.isArray(adapterStateRaw)) ||
-    typeof runtimeLive !== 'boolean'
-  ) {
-    return null;
-  }
-  if (
-    runtimeStatus !== 'running' &&
-    runtimeStatus !== 'needs-input' &&
-    runtimeStatus !== 'completed' &&
-    runtimeStatus !== 'exited'
-  ) {
-    return null;
-  }
-  return {
-    conversationId,
-    directoryId,
-    tenantId,
-    userId,
-    workspaceId,
-    title,
-    agentType,
-    adapterState: adapterStateRaw as Record<string, unknown>,
-    runtimeStatus,
-    runtimeLive
-  };
-}
-
-function parseRepositoryRecord(value: unknown): ControlPlaneRepositoryRecord | null {
-  const record = asRecord(value);
-  if (record === null) {
-    return null;
-  }
-  const repositoryId = record['repositoryId'];
-  const tenantId = record['tenantId'];
-  const userId = record['userId'];
-  const workspaceId = record['workspaceId'];
-  const name = record['name'];
-  const remoteUrl = record['remoteUrl'];
-  const defaultBranch = record['defaultBranch'];
-  const metadataRaw = record['metadata'];
-  const createdAtRaw = record['createdAt'];
-  const archivedAtRaw = record['archivedAt'];
-  if (
-    typeof repositoryId !== 'string' ||
-    typeof tenantId !== 'string' ||
-    typeof userId !== 'string' ||
-    typeof workspaceId !== 'string' ||
-    typeof name !== 'string' ||
-    typeof remoteUrl !== 'string' ||
-    typeof defaultBranch !== 'string' ||
-    (typeof metadataRaw !== 'object' || metadataRaw === null || Array.isArray(metadataRaw)) ||
-    (createdAtRaw !== undefined && createdAtRaw !== null && typeof createdAtRaw !== 'string') ||
-    (archivedAtRaw !== undefined && archivedAtRaw !== null && typeof archivedAtRaw !== 'string')
-  ) {
-    return null;
-  }
-  return {
-    repositoryId,
-    tenantId,
-    userId,
-    workspaceId,
-    name,
-    remoteUrl,
-    defaultBranch,
-    metadata: metadataRaw as Record<string, unknown>,
-    createdAt: typeof createdAtRaw === 'string' ? createdAtRaw : null,
-    archivedAt: typeof archivedAtRaw === 'string' ? archivedAtRaw : null
-  };
-}
-
-function parseTaskStatus(value: unknown): TaskStatus | null {
-  if (value === 'queued') {
-    return 'ready';
-  }
-  if (value === 'draft' || value === 'ready' || value === 'in-progress' || value === 'completed') {
-    return value;
-  }
-  return null;
-}
-
-function parseTaskRecord(value: unknown): ControlPlaneTaskRecord | null {
-  const record = asRecord(value);
-  if (record === null) {
-    return null;
-  }
-  const taskId = record['taskId'];
-  const tenantId = record['tenantId'];
-  const userId = record['userId'];
-  const workspaceId = record['workspaceId'];
-  const repositoryIdRaw = record['repositoryId'];
-  const title = record['title'];
-  const description = record['description'];
-  const status = parseTaskStatus(record['status']);
-  const orderIndex = record['orderIndex'];
-  const claimedByControllerIdRaw = record['claimedByControllerId'];
-  const claimedByDirectoryIdRaw = record['claimedByDirectoryId'];
-  const branchNameRaw = record['branchName'];
-  const baseBranchRaw = record['baseBranch'];
-  const claimedAtRaw = record['claimedAt'];
-  const completedAtRaw = record['completedAt'];
-  const createdAt = record['createdAt'];
-  const updatedAt = record['updatedAt'];
-  if (
-    typeof taskId !== 'string' ||
-    typeof tenantId !== 'string' ||
-    typeof userId !== 'string' ||
-    typeof workspaceId !== 'string' ||
-    (repositoryIdRaw !== null && repositoryIdRaw !== undefined && typeof repositoryIdRaw !== 'string') ||
-    typeof title !== 'string' ||
-    typeof description !== 'string' ||
-    status === null ||
-    typeof orderIndex !== 'number' ||
-    (claimedByControllerIdRaw !== null &&
-      claimedByControllerIdRaw !== undefined &&
-      typeof claimedByControllerIdRaw !== 'string') ||
-    (claimedByDirectoryIdRaw !== null &&
-      claimedByDirectoryIdRaw !== undefined &&
-      typeof claimedByDirectoryIdRaw !== 'string') ||
-    (branchNameRaw !== null && branchNameRaw !== undefined && typeof branchNameRaw !== 'string') ||
-    (baseBranchRaw !== null && baseBranchRaw !== undefined && typeof baseBranchRaw !== 'string') ||
-    (claimedAtRaw !== null && claimedAtRaw !== undefined && typeof claimedAtRaw !== 'string') ||
-    (completedAtRaw !== null && completedAtRaw !== undefined && typeof completedAtRaw !== 'string') ||
-    typeof createdAt !== 'string' ||
-    typeof updatedAt !== 'string'
-  ) {
-    return null;
-  }
-  return {
-    taskId,
-    tenantId,
-    userId,
-    workspaceId,
-    repositoryId: repositoryIdRaw === null || repositoryIdRaw === undefined ? null : repositoryIdRaw,
-    title,
-    description,
-    status,
-    orderIndex,
-    claimedByControllerId:
-      claimedByControllerIdRaw === null || claimedByControllerIdRaw === undefined
-        ? null
-        : claimedByControllerIdRaw,
-    claimedByDirectoryId:
-      claimedByDirectoryIdRaw === null || claimedByDirectoryIdRaw === undefined
-        ? null
-        : claimedByDirectoryIdRaw,
-    branchName: branchNameRaw === null || branchNameRaw === undefined ? null : branchNameRaw,
-    baseBranch: baseBranchRaw === null || baseBranchRaw === undefined ? null : baseBranchRaw,
-    claimedAt: claimedAtRaw === null || claimedAtRaw === undefined ? null : claimedAtRaw,
-    completedAt: completedAtRaw === null || completedAtRaw === undefined ? null : completedAtRaw,
-    createdAt,
-    updatedAt
-  };
-}
-
-function parseSessionControllerRecord(value: unknown): StreamSessionController | null {
-  const record = asRecord(value);
-  if (record === null) {
-    return null;
-  }
-  const controllerId = record['controllerId'];
-  const controllerType = record['controllerType'];
-  const controllerLabelRaw = record['controllerLabel'];
-  const claimedAt = record['claimedAt'];
-  if (
-    typeof controllerId !== 'string' ||
-    (controllerType !== 'human' && controllerType !== 'agent' && controllerType !== 'automation') ||
-    (controllerLabelRaw !== null && typeof controllerLabelRaw !== 'string') ||
-    typeof claimedAt !== 'string'
-  ) {
-    return null;
-  }
-  return {
-    controllerId,
-    controllerType,
-    controllerLabel: controllerLabelRaw,
-    claimedAt
-  };
-}
-
-function normalizeExitCode(exit: PtyExit): number {
-  if (exit.code !== null) {
-    return exit.code;
-  }
-  if (exit.signal !== null) {
-    return 128;
-  }
-  return 1;
-}
-
-function isSessionNotFoundError(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-  return /session not found/i.test(error.message);
-}
-
-function isSessionNotLiveError(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-  return /session is not live/i.test(error.message);
-}
-
-function isConversationNotFoundError(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-  return /conversation not found/i.test(error.message);
-}
-
-function mapTerminalOutputToNormalizedEvent(
-  chunk: Buffer,
-  scope: EventScope,
-  idFactory: () => string
-): NormalizedEventEnvelope {
-  return createNormalizedEvent(
-    'provider',
-    'provider-text-delta',
-    scope,
-    {
-      kind: 'text-delta',
-      threadId: scope.conversationId,
-      turnId: scope.turnId ?? 'turn-live',
-      delta: chunk.toString('utf8')
-    },
-    () => new Date(),
-    idFactory
-  );
-}
-
-function mapSessionEventToNormalizedEvent(
-  event: StreamSessionEvent,
-  scope: EventScope,
-  idFactory: () => string
-): NormalizedEventEnvelope | null {
-  if (event.type === 'session-exit') {
-    return createNormalizedEvent(
-      'meta',
-      'meta-attention-cleared',
-      scope,
-      {
-        kind: 'attention',
-        threadId: scope.conversationId,
-        turnId: scope.turnId ?? 'turn-live',
-        reason: 'stalled',
-        detail: 'session-exit'
-      },
-      () => new Date(),
-      idFactory
-    );
-  }
-
-  return null;
-}
-
-function observedAtFromSessionEvent(event: StreamSessionEvent): string {
-  if (event.type === 'session-exit') {
-    return new Date().toISOString();
-  }
-  const record = asRecord((event as { record?: unknown }).record);
-  const ts = record?.['ts'];
-  return typeof ts === 'string' ? ts : new Date().toISOString();
-}
-
-function sanitizeProcessEnv(): Record<string, string> {
-  const env: Record<string, string> = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (typeof value === 'string') {
-      env[key] = value;
-    }
-  }
-  return env;
-}
-
-function terminalSize(): { cols: number; rows: number } {
-  const cols = process.stdout.columns;
-  const rows = process.stdout.rows;
-  if (typeof cols === 'number' && cols > 0 && typeof rows === 'number' && rows > 0) {
-    return { cols, rows };
-  }
-  return { cols: 120, rows: 40 };
-}
-
-function startupTerminalSizeLooksPlausible(size: { cols: number; rows: number }): boolean {
-  return size.cols >= STARTUP_TERMINAL_MIN_COLS && size.rows >= STARTUP_TERMINAL_MIN_ROWS;
-}
-
-async function readStartupTerminalSize(): Promise<{ cols: number; rows: number }> {
-  let best = terminalSize();
-  if (startupTerminalSizeLooksPlausible(best)) {
-    return best;
-  }
-  const startedAtMs = Date.now();
-  while (Date.now() - startedAtMs < STARTUP_TERMINAL_PROBE_TIMEOUT_MS) {
-    await new Promise((resolve) => {
-      setTimeout(resolve, STARTUP_TERMINAL_PROBE_INTERVAL_MS);
-    });
-    const next = terminalSize();
-    if (next.cols * next.rows > best.cols * best.rows) {
-      best = next;
-    }
-    if (startupTerminalSizeLooksPlausible(next)) {
-      return next;
-    }
-  }
-  if (!startupTerminalSizeLooksPlausible(best)) {
-    return { cols: 120, rows: 40 };
-  }
-  return best;
-}
-
-function parsePositiveInt(value: string | undefined, fallback: number): number {
-  if (value === undefined) {
-    return fallback;
-  }
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    return fallback;
-  }
-  return parsed;
-}
-
-function parseBooleanEnv(value: string | undefined, fallback: boolean): boolean {
-  if (value === undefined) {
-    return fallback;
-  }
-  const normalized = value.trim().toLowerCase();
-  if (normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on') {
-    return true;
-  }
-  if (normalized === '0' || normalized === 'false' || normalized === 'no' || normalized === 'off') {
-    return false;
-  }
-  return fallback;
-}
-
-function resolveWorkspacePathForMux(invocationDirectory: string, value: string): string {
-  const home = typeof process.env.HOME === 'string' && process.env.HOME.length > 0
-    ? process.env.HOME
-    : null;
-  return resolveWorkspacePath(invocationDirectory, value, home);
-}
-
-async function runGitCommand(cwd: string, args: readonly string[]): Promise<string> {
-  try {
-    const result = await execFileAsync('git', [...args], {
-      cwd,
-      encoding: 'utf8',
-      timeout: 1500,
-      maxBuffer: 1024 * 1024
-    });
-    return result.stdout.trim();
-  } catch {
-    return '';
-  }
-}
-
-function parseGitBranchFromStatusHeader(header: string | null): string {
-  if (header === null) {
-    return '(detached)';
-  }
-  const raw = header.trim();
-  if (raw.length === 0) {
-    return '(detached)';
-  }
-  if (raw.startsWith('No commits yet on ')) {
-    const branch = raw.slice('No commits yet on '.length).trim();
-    return branch.length > 0 ? branch : '(detached)';
-  }
-  const head = raw.split('...')[0]?.trim() ?? '';
-  if (head.length === 0 || head === 'HEAD' || head.startsWith('HEAD ')) {
-    return '(detached)';
-  }
-  return head;
-}
-
-function parseGitShortstatCounts(output: string): { additions: number; deletions: number } {
-  if (output.length === 0) {
-    return {
-      additions: 0,
-      deletions: 0
-    };
-  }
-  const additionsMatch = /(\d+)\s+insertion(?:s)?\(\+\)/.exec(output);
-  const deletionsMatch = /(\d+)\s+deletion(?:s)?\(-\)/.exec(output);
-  return {
-    additions: additionsMatch === null ? 0 : Number.parseInt(additionsMatch[1] ?? '0', 10),
-    deletions: deletionsMatch === null ? 0 : Number.parseInt(deletionsMatch[1] ?? '0', 10)
-  };
-}
-
-function normalizeGitHubRemoteUrl(value: string): string | null {
-  const trimmed = value.trim();
-  if (trimmed.length === 0) {
-    return null;
-  }
-  const patterns = [
-    /^https?:\/\/github\.com\/([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/iu,
-    /^git@github\.com:([^/\s]+)\/([^/\s]+?)(?:\.git)?$/iu,
-    /^ssh:\/\/git@github\.com\/([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/iu,
-    /^git:\/\/github\.com\/([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/iu
-  ];
-  for (const pattern of patterns) {
-    const match = pattern.exec(trimmed);
-    if (match === null) {
-      continue;
-    }
-    const owner = match[1] ?? '';
-    const repository = match[2] ?? '';
-    if (owner.length === 0 || repository.length === 0) {
-      return null;
-    }
-    return `https://github.com/${owner}/${repository}`;
-  }
-  return null;
-}
-
-function repositoryNameFromGitHubRemoteUrl(remoteUrl: string): string {
-  const normalized = normalizeGitHubRemoteUrl(remoteUrl);
-  if (normalized === null) {
-    return 'repository';
-  }
-  const parts = normalized.split('/');
-  return parts[parts.length - 1] ?? 'repository';
-}
-
-function parseCommitCount(output: string): number | null {
-  const parsed = Number.parseInt(output.trim(), 10);
-  if (!Number.isFinite(parsed)) {
-    return null;
-  }
-  return Math.max(0, parsed);
-}
-
-function parseLastCommitLine(output: string): { lastCommitAt: string | null; shortCommitHash: string | null } {
-  const normalized = output.trim();
-  if (normalized.length === 0) {
-    return {
-      lastCommitAt: null,
-      shortCommitHash: null
-    };
-  }
-  const [epochRaw, shortHashRaw] = normalized.split(/\s+/u);
-  const epochSeconds = Number.parseInt(epochRaw ?? '', 10);
-  const lastCommitAt =
-    Number.isFinite(epochSeconds) && epochSeconds > 0
-      ? new Date(epochSeconds * 1000).toISOString()
-      : null;
-  const shortCommitHash =
-    typeof shortHashRaw === 'string' && shortHashRaw.trim().length > 0
-      ? shortHashRaw.trim()
-      : null;
-  return {
-    lastCommitAt,
-    shortCommitHash
-  };
-}
-
-async function readGitDirectorySnapshot(cwd: string): Promise<GitDirectorySnapshot> {
-  const insideWorkTree = await runGitCommand(cwd, ['rev-parse', '--is-inside-work-tree']);
-  if (insideWorkTree !== 'true') {
-    return {
-      summary: GIT_SUMMARY_NOT_REPOSITORY,
-      repository: GIT_REPOSITORY_NONE
-    };
-  }
-  const statusOutputPromise = runGitCommand(cwd, ['status', '--porcelain=1', '--branch']);
-  const unstagedShortstatPromise = runGitCommand(cwd, ['diff', '--shortstat']);
-  const stagedShortstatPromise = runGitCommand(cwd, ['diff', '--cached', '--shortstat']);
-  const remoteUrlPromise = runGitCommand(cwd, ['remote', 'get-url', 'origin']);
-  const commitCountPromise = runGitCommand(cwd, ['rev-list', '--count', 'HEAD']);
-  const lastCommitPromise = runGitCommand(cwd, ['log', '-1', '--format=%ct %h']);
-  const statusOutput = await statusOutputPromise;
-  const statusLines = statusOutput.split('\n').filter((line) => line.trim().length > 0);
-  const firstStatusLine = statusLines[0];
-  const headerLine =
-    firstStatusLine !== undefined && firstStatusLine.startsWith('## ')
-      ? statusLines.shift()?.slice(3) ?? null
-      : null;
-  const branch = parseGitBranchFromStatusHeader(headerLine);
-  const changedFiles = statusLines.length;
-  const [unstagedShortstat, stagedShortstat, remoteUrlRaw, commitCountRaw, lastCommitRaw] = await Promise.all([
-    unstagedShortstatPromise,
-    stagedShortstatPromise,
-    remoteUrlPromise,
-    commitCountPromise,
-    lastCommitPromise
-  ]);
-  const unstaged = parseGitShortstatCounts(unstagedShortstat);
-  const staged = parseGitShortstatCounts(stagedShortstat);
-  const normalizedRemoteUrl = normalizeGitHubRemoteUrl(remoteUrlRaw);
-  const commitCount = parseCommitCount(commitCountRaw);
-  const lastCommit = parseLastCommitLine(lastCommitRaw);
-  return {
-    summary: {
-      branch,
-      changedFiles,
-      additions: unstaged.additions + staged.additions,
-      deletions: unstaged.deletions + staged.deletions
-    },
-    repository: {
-      normalizedRemoteUrl,
-      commitCount,
-      lastCommitAt: lastCommit.lastCommitAt,
-      shortCommitHash: lastCommit.shortCommitHash,
-      inferredName: normalizedRemoteUrl === null ? null : repositoryNameFromGitHubRemoteUrl(normalizedRemoteUrl),
-      defaultBranch: branch === '(detached)' ? null : branch
-    }
-  };
-}
-
-async function readProcessUsageSample(processId: number | null): Promise<ProcessUsageSample> {
-  if (processId === null) {
-    return {
-      cpuPercent: null,
-      memoryMb: null
-    };
-  }
-
-  let stdout = '';
-  try {
-    const result = await execFileAsync('ps', ['-p', String(processId), '-o', '%cpu=,rss='], {
-      encoding: 'utf8',
-      timeout: 1000,
-      maxBuffer: 8 * 1024
-    });
-    stdout = result.stdout;
-  } catch {
-    return {
-      cpuPercent: null,
-      memoryMb: null
-    };
-  }
-
-  const line = stdout
-    .split('\n')
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0)
-    .at(-1);
-  if (line === undefined) {
-    return {
-      cpuPercent: null,
-      memoryMb: null
-    };
-  }
-
-  const parts = line.split(/\s+/);
-  const cpuPercentRaw = Number.parseFloat(parts[0] ?? '');
-  const memoryKbRaw = Number.parseInt(parts[1] ?? '', 10);
-  return {
-    cpuPercent: Number.isFinite(cpuPercentRaw) ? cpuPercentRaw : null,
-    memoryMb: Number.isFinite(memoryKbRaw) ? memoryKbRaw / 1024 : null
-  };
-}
-
-function parseOscRgbHex(value: string): string | null {
-  if (!value.startsWith('rgb:')) {
-    return null;
-  }
-
-  const components = value.slice(4).split('/');
-  if (components.length !== 3) {
-    return null;
-  }
-
-  const bytes: string[] = [];
-  for (const component of components) {
-    const normalized = component.trim();
-    if (normalized.length < 1 || normalized.length > 4) {
-      return null;
-    }
-    if (!/^[0-9a-fA-F]+$/.test(normalized)) {
-      return null;
-    }
-
-    const raw = Number.parseInt(normalized, 16);
-    if (Number.isNaN(raw)) {
-      return null;
-    }
-    const max = (1 << (normalized.length * 4)) - 1;
-    const scaled = Math.round((raw * 255) / max);
-    bytes.push(scaled.toString(16).padStart(2, '0'));
-  }
-
-  return `${bytes[0]}${bytes[1]}${bytes[2]}`;
-}
-
-function extractOscColorReplies(buffer: string): {
-  readonly remainder: string;
-  readonly foregroundHex?: string;
-  readonly backgroundHex?: string;
-  readonly indexedHexByCode: Record<number, string>;
-} {
-  let remainder = buffer;
-  let foregroundHex: string | undefined;
-  let backgroundHex: string | undefined;
-  const indexedHexByCode: Record<number, string> = {};
-
-  while (true) {
-    const start = remainder.indexOf('\u001b]');
-    if (start < 0) {
-      break;
-    }
-    if (start > 0) {
-      remainder = remainder.slice(start);
-    }
-
-    const bellTerminator = remainder.indexOf('\u0007', 2);
-    const stTerminator = remainder.indexOf('\u001b\\', 2);
-    let end = -1;
-    let terminatorLength = 0;
-
-    if (bellTerminator >= 0 && (stTerminator < 0 || bellTerminator < stTerminator)) {
-      end = bellTerminator;
-      terminatorLength = 1;
-    } else if (stTerminator >= 0) {
-      end = stTerminator;
-      terminatorLength = 2;
-    }
-
-    if (end < 0) {
-      break;
-    }
-
-    const payload = remainder.slice(2, end);
-    remainder = remainder.slice(end + terminatorLength);
-    const separator = payload.indexOf(';');
-    if (separator < 0) {
-      continue;
-    }
-
-    const code = payload.slice(0, separator);
-    if (code === '10') {
-      const hex = parseOscRgbHex(payload.slice(separator + 1));
-      if (hex !== null) {
-        foregroundHex = hex;
-      }
-      continue;
-    }
-
-    if (code === '11') {
-      const hex = parseOscRgbHex(payload.slice(separator + 1));
-      if (hex !== null) {
-        backgroundHex = hex;
-      }
-      continue;
-    }
-
-    if (code === '4') {
-      const value = payload.slice(separator + 1);
-      const paletteSeparator = value.indexOf(';');
-      if (paletteSeparator < 0) {
-        continue;
-      }
-      const paletteIndexRaw = value.slice(0, paletteSeparator).trim();
-      const paletteValueRaw = value.slice(paletteSeparator + 1);
-      const parsedIndex = Number.parseInt(paletteIndexRaw, 10);
-      if (!Number.isInteger(parsedIndex) || parsedIndex < 0 || parsedIndex > 255) {
-        continue;
-      }
-      const hex = parseOscRgbHex(paletteValueRaw);
-      if (hex !== null) {
-        indexedHexByCode[parsedIndex] = hex;
-      }
-    }
-  }
-
-  if (remainder.length > 512) {
-    remainder = remainder.slice(-512);
-  }
-
-  return {
-    remainder,
-    ...(foregroundHex !== undefined
-      ? {
-          foregroundHex
-        }
-      : {}),
-    ...(backgroundHex !== undefined
-      ? {
-          backgroundHex
-        }
-      : {}),
-    indexedHexByCode
-  };
-}
-
-async function probeTerminalPalette(timeoutMs = 80): Promise<TerminalPaletteProbe> {
+async function probeTerminalPalette(timeoutMs = 80): Promise<{
+  foregroundHex?: string;
+  backgroundHex?: string;
+  indexedHexByCode?: Record<number, string>;
+}> {
   return await new Promise((resolve) => {
     let finished = false;
     let buffer = '';
@@ -1323,138 +397,6 @@ async function probeTerminalPalette(timeoutMs = 80): Promise<TerminalPaletteProb
     }
     process.stdout.write(probeSequence);
   });
-}
-
-function parseArgs(argv: string[]): MuxOptions {
-  const codexArgs: string[] = [];
-  let controlPlaneHost = process.env.HARNESS_CONTROL_PLANE_HOST ?? null;
-  let controlPlanePortRaw = process.env.HARNESS_CONTROL_PLANE_PORT ?? null;
-  let controlPlaneAuthToken = process.env.HARNESS_CONTROL_PLANE_AUTH_TOKEN ?? null;
-  let recordingPath = process.env.HARNESS_RECORDING_PATH ?? null;
-  let recordingOutputPath = process.env.HARNESS_RECORD_OUTPUT ?? null;
-  let recordingFps = parsePositiveInt(process.env.HARNESS_RECORDING_FPS, 15);
-  const invocationDirectory = process.env.HARNESS_INVOKE_CWD ?? process.env.INIT_CWD ?? process.cwd();
-
-  for (let idx = 0; idx < argv.length; idx += 1) {
-    const arg = argv[idx]!;
-    if (arg === '--harness-server-host') {
-      const value = argv[idx + 1];
-      if (value === undefined) {
-        throw new Error('missing value for --harness-server-host');
-      }
-      controlPlaneHost = value;
-      idx += 1;
-      continue;
-    }
-
-    if (arg === '--harness-server-port') {
-      const value = argv[idx + 1];
-      if (value === undefined) {
-        throw new Error('missing value for --harness-server-port');
-      }
-      controlPlanePortRaw = value;
-      idx += 1;
-      continue;
-    }
-
-    if (arg === '--harness-server-token') {
-      const value = argv[idx + 1];
-      if (value === undefined) {
-        throw new Error('missing value for --harness-server-token');
-      }
-      controlPlaneAuthToken = value;
-      idx += 1;
-      continue;
-    }
-
-    if (arg === '--record-path') {
-      const value = argv[idx + 1];
-      if (value === undefined) {
-        throw new Error('missing value for --record-path');
-      }
-      recordingPath = value;
-      idx += 1;
-      continue;
-    }
-
-    if (arg === '--record-output') {
-      const value = argv[idx + 1];
-      if (value === undefined) {
-        throw new Error('missing value for --record-output');
-      }
-      recordingOutputPath = value;
-      idx += 1;
-      continue;
-    }
-
-    if (arg === '--record-fps') {
-      const value = argv[idx + 1];
-      if (value === undefined) {
-        throw new Error('missing value for --record-fps');
-      }
-      recordingFps = parsePositiveInt(value, recordingFps);
-      idx += 1;
-      continue;
-    }
-
-    codexArgs.push(arg);
-  }
-
-  let controlPlanePort: number | null = null;
-  if (controlPlanePortRaw !== null) {
-    const parsed = Number.parseInt(controlPlanePortRaw, 10);
-    if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 65535) {
-      throw new Error(`invalid --harness-server-port value: ${controlPlanePortRaw}`);
-    }
-    controlPlanePort = parsed;
-  }
-
-  if ((controlPlaneHost === null) !== (controlPlanePort === null)) {
-    throw new Error('both control-plane host and port must be set together');
-  }
-
-  if (recordingPath !== null && recordingPath.length > 0) {
-    recordingPath = resolve(invocationDirectory, recordingPath);
-  }
-  if (recordingOutputPath !== null && recordingOutputPath.length > 0) {
-    recordingOutputPath = resolve(invocationDirectory, recordingOutputPath);
-  }
-
-  let recordingGifOutputPath: string | null = null;
-  if (recordingOutputPath !== null && recordingOutputPath.length > 0) {
-    if (extname(recordingOutputPath).toLowerCase() === '.gif') {
-      recordingGifOutputPath = recordingOutputPath;
-      const fileName = basename(recordingOutputPath, '.gif');
-      const sidecarName = `${fileName}.jsonl`;
-      recordingPath = join(dirname(recordingOutputPath), sidecarName);
-    } else {
-      recordingPath = recordingOutputPath;
-    }
-  }
-
-  const initialConversationId = process.env.HARNESS_CONVERSATION_ID ?? `conversation-${randomUUID()}`;
-  const turnId = process.env.HARNESS_TURN_ID ?? `turn-${randomUUID()}`;
-
-  return {
-    codexArgs,
-    storePath: process.env.HARNESS_EVENTS_DB_PATH ?? '.harness/events.sqlite',
-    initialConversationId,
-    invocationDirectory,
-    controlPlaneHost,
-    controlPlanePort,
-    controlPlaneAuthToken,
-    recordingPath,
-    recordingGifOutputPath,
-    recordingFps: Math.max(1, recordingFps),
-    scope: {
-      tenantId: process.env.HARNESS_TENANT_ID ?? 'tenant-local',
-      userId: process.env.HARNESS_USER_ID ?? 'user-local',
-      workspaceId: process.env.HARNESS_WORKSPACE_ID ?? basename(process.cwd()),
-      worktreeId: process.env.HARNESS_WORKTREE_ID ?? 'worktree-local',
-      conversationId: initialConversationId,
-      turnId
-    }
-  };
 }
 
 function createConversationScope(baseScope: EventScope, conversationId: string, turnId: string): EventScope {
@@ -1749,258 +691,6 @@ const MUX_MODAL_THEME = {
   }
 } as const;
 
-function compareSelectionPoints(left: SelectionPoint, right: SelectionPoint): number {
-  if (left.rowAbs !== right.rowAbs) {
-    return left.rowAbs - right.rowAbs;
-  }
-  return left.col - right.col;
-}
-
-function selectionPointsEqual(left: SelectionPoint, right: SelectionPoint): boolean {
-  return left.rowAbs === right.rowAbs && left.col === right.col;
-}
-
-function normalizeSelection(selection: PaneSelection): { start: SelectionPoint; end: SelectionPoint } {
-  if (compareSelectionPoints(selection.anchor, selection.focus) <= 0) {
-    return {
-      start: selection.anchor,
-      end: selection.focus
-    };
-  }
-  return {
-    start: selection.focus,
-    end: selection.anchor
-  };
-}
-
-function clampPanePoint(
-  layout: ReturnType<typeof computeDualPaneLayout>,
-  frame: TerminalSnapshotFrameCore,
-  rowAbs: number,
-  col: number
-): SelectionPoint {
-  const maxRowAbs = Math.max(0, frame.viewport.totalRows - 1);
-  return {
-    rowAbs: Math.max(0, Math.min(maxRowAbs, rowAbs)),
-    col: Math.max(0, Math.min(layout.rightCols - 1, col))
-  };
-}
-
-function pointFromMouseEvent(
-  layout: ReturnType<typeof computeDualPaneLayout>,
-  frame: TerminalSnapshotFrameCore,
-  event: { col: number; row: number }
-): SelectionPoint {
-  const rowViewport = Math.max(0, Math.min(layout.paneRows - 1, event.row - 1));
-  return clampPanePoint(
-    layout,
-    frame,
-    frame.viewport.top + rowViewport,
-    event.col - layout.rightStartCol
-  );
-}
-
-function isWheelMouseCode(code: number): boolean {
-  return (code & 0b0100_0000) !== 0;
-}
-
-function isMotionMouseCode(code: number): boolean {
-  return (code & 0b0010_0000) !== 0;
-}
-
-function hasAltModifier(code: number): boolean {
-  return (code & 0b0000_1000) !== 0;
-}
-
-function isLeftButtonPress(code: number, final: 'M' | 'm'): boolean {
-  if (final !== 'M') {
-    return false;
-  }
-  if (isWheelMouseCode(code) || isMotionMouseCode(code)) {
-    return false;
-  }
-  return (code & 0b0000_0011) === 0;
-}
-
-function isMouseRelease(final: 'M' | 'm'): boolean {
-  return final === 'm';
-}
-
-function isSelectionDrag(code: number, final: 'M' | 'm'): boolean {
-  return final === 'M' && isMotionMouseCode(code);
-}
-
-function cellGlyphForOverlay(frame: TerminalSnapshotFrameCore, row: number, col: number): string {
-  const line = frame.richLines[row];
-  if (line === undefined) {
-    return ' ';
-  }
-  const cell = line.cells[col];
-  if (cell === undefined) {
-    return ' ';
-  }
-  if (cell.continued) {
-    return ' ';
-  }
-  return cell.glyph.length > 0 ? cell.glyph : ' ';
-}
-
-function renderSelectionOverlay(
-  layout: ReturnType<typeof computeDualPaneLayout>,
-  frame: TerminalSnapshotFrameCore,
-  selection: PaneSelection | null
-): string {
-  if (selection === null) {
-    return '';
-  }
-
-  const { start, end } = normalizeSelection(selection);
-  const visibleStartAbs = frame.viewport.top;
-  const visibleEndAbs = frame.viewport.top + frame.rows - 1;
-  const paintStartAbs = Math.max(start.rowAbs, visibleStartAbs);
-  const paintEndAbs = Math.min(end.rowAbs, visibleEndAbs);
-  if (paintEndAbs < paintStartAbs) {
-    return '';
-  }
-
-  let output = '';
-  for (let rowAbs = paintStartAbs; rowAbs <= paintEndAbs; rowAbs += 1) {
-    const row = rowAbs - frame.viewport.top;
-    const rowStartCol = rowAbs === start.rowAbs ? start.col : 0;
-    const rowEndCol = rowAbs === end.rowAbs ? end.col : frame.cols - 1;
-    if (rowEndCol < rowStartCol) {
-      continue;
-    }
-
-    output += `\u001b[${String(row + 1)};${String(layout.rightStartCol + rowStartCol)}H\u001b[7m`;
-    for (let col = rowStartCol; col <= rowEndCol; col += 1) {
-      output += cellGlyphForOverlay(frame, row, col);
-    }
-    output += '\u001b[0m';
-  }
-
-  return output;
-}
-
-function selectionVisibleRows(
-  frame: TerminalSnapshotFrameCore,
-  selection: PaneSelection | null
-): readonly number[] {
-  if (selection === null) {
-    return [];
-  }
-
-  const { start, end } = normalizeSelection(selection);
-  const visibleStartAbs = frame.viewport.top;
-  const visibleEndAbs = frame.viewport.top + frame.rows - 1;
-  const paintStartAbs = Math.max(start.rowAbs, visibleStartAbs);
-  const paintEndAbs = Math.min(end.rowAbs, visibleEndAbs);
-  if (paintEndAbs < paintStartAbs) {
-    return [];
-  }
-
-  const rows: number[] = [];
-  for (let rowAbs = paintStartAbs; rowAbs <= paintEndAbs; rowAbs += 1) {
-    rows.push(rowAbs - frame.viewport.top);
-  }
-  return rows;
-}
-
-function mergeUniqueRows(
-  left: readonly number[],
-  right: readonly number[]
-): readonly number[] {
-  if (left.length === 0) {
-    return right;
-  }
-  if (right.length === 0) {
-    return left;
-  }
-  const merged = new Set<number>();
-  for (const row of left) {
-    merged.add(row);
-  }
-  for (const row of right) {
-    merged.add(row);
-  }
-  return [...merged].sort((a, b) => a - b);
-}
-
-function selectionText(frame: TerminalSnapshotFrameCore, selection: PaneSelection | null): string {
-  if (selection === null) {
-    return '';
-  }
-
-  if (selection.text.length > 0) {
-    return selection.text;
-  }
-
-  const { start, end } = normalizeSelection(selection);
-  const rows: string[] = [];
-  const visibleStartAbs = frame.viewport.top;
-  const visibleEndAbs = frame.viewport.top + frame.rows - 1;
-  const readStartAbs = Math.max(start.rowAbs, visibleStartAbs);
-  const readEndAbs = Math.min(end.rowAbs, visibleEndAbs);
-  for (let rowAbs = readStartAbs; rowAbs <= readEndAbs; rowAbs += 1) {
-    const row = rowAbs - frame.viewport.top;
-    const rowStartCol = rowAbs === start.rowAbs ? start.col : 0;
-    const rowEndCol = rowAbs === end.rowAbs ? end.col : frame.cols - 1;
-    if (rowEndCol < rowStartCol) {
-      rows.push('');
-      continue;
-    }
-
-    let line = '';
-    for (let col = rowStartCol; col <= rowEndCol; col += 1) {
-      const lineRef = frame.richLines[row];
-      const cell = lineRef?.cells[col];
-      if (cell === undefined || cell.continued) {
-        continue;
-      }
-      line += cell.glyph;
-    }
-    rows.push(line);
-  }
-  return rows.join('\n');
-}
-
-function isCopyShortcutInput(input: Buffer): boolean {
-  if (input.length === 1 && input[0] === 0x03) {
-    return true;
-  }
-
-  const text = input.toString('utf8');
-  const prefixes = ['\u001b[99;', '\u001b[67;'] as const;
-  for (const prefix of prefixes) {
-    let startIndex = text.indexOf(prefix);
-    while (startIndex !== -1) {
-      let index = startIndex + prefix.length;
-      while (index < text.length && text.charCodeAt(index) >= 0x30 && text.charCodeAt(index) <= 0x39) {
-        index += 1;
-      }
-      if (index > startIndex + prefix.length && text[index] === 'u') {
-        return true;
-      }
-      startIndex = text.indexOf(prefix, startIndex + 1);
-    }
-  }
-  return false;
-}
-
-function writeTextToClipboard(value: string): boolean {
-  if (value.length === 0) {
-    return false;
-  }
-
-  try {
-    const encoded = Buffer.from(value, 'utf8').toString('base64');
-    process.stdout.write(`\u001b]52;c;${encoded}\u0007`);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 async function main(): Promise<number> {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     process.stderr.write('codex:live:mux requires a TTY stdin/stdout\n');
@@ -2009,7 +699,7 @@ async function main(): Promise<number> {
 
   const invocationDirectory = process.env.HARNESS_INVOKE_CWD ?? process.env.INIT_CWD ?? process.cwd();
   loadHarnessSecrets({ cwd: invocationDirectory });
-  const options = parseArgs(process.argv.slice(2));
+  const options = parseMuxArgs(process.argv.slice(2));
   const loadedConfig = loadHarnessConfig({
     cwd: options.invocationDirectory
   });

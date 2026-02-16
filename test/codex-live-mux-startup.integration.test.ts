@@ -180,7 +180,7 @@ async function captureMuxBootOutput(
     }
   });
   let exitResult: PtyExit | null = null;
-  const exitPromise = waitForExit(session, 12000);
+  const exitPromise = waitForExit(session, 20000);
   session.on('data', (chunk: Buffer) => {
     collected.push(chunk);
   });

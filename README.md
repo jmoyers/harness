@@ -147,6 +147,8 @@ Harness is built to expose operational truth, not hide it.
 - Session ownership/control transition events.
 - Durable state in SQLite for reconnect-safe operations.
 - Codex telemetry ingestion (logs, metrics, traces, history) for deep diagnostics when verbose capture is enabled.
+- Shared mux runtime helpers are factored into `src/mux/live-mux/*` (args parsing, control-plane record parsing, startup env/terminal helpers, git/palette parsing, git/process snapshot probes, event mapping, pane layout math, selection/copy helpers).
+- Mux regression checks are behavior-first; tests validate runtime behavior directly instead of asserting source-code string fragments.
 
 ## Performance and Quality Principles
 
