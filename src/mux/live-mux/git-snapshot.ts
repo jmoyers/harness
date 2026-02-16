@@ -32,6 +32,10 @@ interface GitDirectorySnapshot {
   readonly repository: GitRepositorySnapshot;
 }
 
+interface ReadGitDirectorySnapshotOptions {
+  readonly includeCommitCount?: boolean;
+}
+
 interface ProcessUsageSample {
   readonly cpuPercent: number | null;
   readonly memoryMb: number | null;
@@ -140,7 +144,8 @@ async function readNormalizedGitHubRemoteUrl(
 
 export async function readGitDirectorySnapshot(
   cwd: string,
-  runCommand: GitCommandRunner = runGitCommand
+  runCommand: GitCommandRunner = runGitCommand,
+  options: ReadGitDirectorySnapshotOptions = {}
 ): Promise<GitDirectorySnapshot> {
   const insideWorkTree = await runCommand(cwd, ['rev-parse', '--is-inside-work-tree']);
   if (insideWorkTree !== 'true') {
@@ -154,8 +159,9 @@ export async function readGitDirectorySnapshot(
   const unstagedShortstatPromise = runCommand(cwd, ['diff', '--shortstat']);
   const stagedShortstatPromise = runCommand(cwd, ['diff', '--cached', '--shortstat']);
   const remoteUrlPromise = readNormalizedGitHubRemoteUrl(cwd, runCommand);
-  const commitCountPromise = runCommand(cwd, ['rev-list', '--count', 'HEAD']);
   const lastCommitPromise = runCommand(cwd, ['log', '-1', '--format=%ct %h']);
+  const commitCountPromise =
+    options.includeCommitCount === false ? Promise.resolve('') : runCommand(cwd, ['rev-list', '--count', 'HEAD']);
 
   const statusOutput = await statusOutputPromise;
   const statusLines = statusOutput.split('\n').filter((line) => line.trim().length > 0);

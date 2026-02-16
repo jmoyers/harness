@@ -228,11 +228,21 @@ interface DirectoryGitStatusCacheEntry {
   readonly repositorySnapshot: GitDirectorySnapshot['repository'];
   readonly repositoryId: string | null;
   readonly lastRefreshedAtMs: number;
+  readonly lastRefreshDurationMs: number;
 }
 
 interface OtlpEndpointTarget {
   readonly kind: 'logs' | 'metrics' | 'traces';
   readonly token: string;
+}
+
+function isTelemetryRequestAbortError(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException).code;
+  if (code === 'ECONNRESET' || code === 'ERR_STREAM_PREMATURE_CLOSE') {
+    return true;
+  }
+  const message = error instanceof Error ? error.message.toLowerCase() : '';
+  return message.includes('aborted');
 }
 
 const DEFAULT_MAX_CONNECTION_BUFFERED_BYTES = 4 * 1024 * 1024;
@@ -245,6 +255,7 @@ const DEFAULT_TENANT_ID = 'tenant-local';
 const DEFAULT_USER_ID = 'user-local';
 const DEFAULT_WORKSPACE_ID = 'workspace-local';
 const DEFAULT_WORKTREE_ID = 'worktree-local';
+const LINE_FEED_BYTE = '\n'.charCodeAt(0);
 const LIFECYCLE_TELEMETRY_EVENT_NAMES = new Set([
   'codex.user_prompt',
   'codex.turn.e2e_duration_ms',
@@ -340,17 +351,25 @@ async function runWithConcurrencyLimit<T>(
   }
   const workerCount = Math.min(values.length, Math.max(1, Math.floor(concurrency)));
   let index = 0;
-  const runners = Array.from({ length: workerCount }, async () => {
-    while (index < values.length) {
-      const nextIndex = index;
-      index += 1;
-      const value = values[nextIndex];
-      if (value === undefined) {
-        continue;
-      }
-      await worker(value);
-    }
-  });
+  const runners: Promise<void>[] = [];
+  for (let workerIndex = 0; workerIndex < workerCount; workerIndex += 1) {
+    runners.push(
+      (async () => {
+        while (true) {
+          const nextIndex = index;
+          index += 1;
+          if (nextIndex >= values.length) {
+            return;
+          }
+          const value = values[nextIndex];
+          if (value === undefined) {
+            continue;
+          }
+          await worker(value);
+        }
+      })()
+    );
+  }
   await Promise.all(runners);
 }
 
@@ -495,6 +514,8 @@ export class ControlPlaneStreamServer {
   private readonly lifecycleHooks: LifecycleHooksRuntime;
   private historyPollTimer: NodeJS.Timeout | null = null;
   private historyPollInFlight = false;
+  private historyIdleStreak = 0;
+  private historyNextAllowedPollAtMs = 0;
   private historyOffset = 0;
   private historyRemainder = '';
   private gitStatusPollTimer: NodeJS.Timeout | null = null;
@@ -534,7 +555,12 @@ export class ControlPlaneStreamServer {
     this.codexTelemetry = normalizeCodexTelemetryConfig(options.codexTelemetry);
     this.codexHistory = normalizeCodexHistoryConfig(options.codexHistory);
     this.gitStatusMonitor = normalizeGitStatusMonitorConfig(options.gitStatus);
-    this.readGitDirectorySnapshot = options.readGitDirectorySnapshot ?? readGitDirectorySnapshot;
+    this.readGitDirectorySnapshot =
+      options.readGitDirectorySnapshot ??
+      (async (cwd: string) =>
+        await readGitDirectorySnapshot(cwd, undefined, {
+          includeCommitCount: false
+        }));
     this.lifecycleHooks = new LifecycleHooksRuntime(
       options.lifecycleHooks ?? {
         enabled: false,
@@ -693,6 +719,8 @@ export class ControlPlaneStreamServer {
     if (!this.codexHistory.enabled || this.historyPollTimer !== null) {
       return;
     }
+    this.historyIdleStreak = 0;
+    this.historyNextAllowedPollAtMs = 0;
     this.historyPollTimer = setInterval(() => {
       void this.pollHistoryFile();
     }, this.codexHistory.pollMs);
@@ -705,6 +733,8 @@ export class ControlPlaneStreamServer {
     }
     clearInterval(this.historyPollTimer);
     this.historyPollTimer = null;
+    this.historyIdleStreak = 0;
+    this.historyNextAllowedPollAtMs = 0;
   }
 
   private startGitStatusPollingIfEnabled(): void {
@@ -918,7 +948,16 @@ export class ControlPlaneStreamServer {
   }
 
   private handleTelemetryHttpRequest(request: IncomingMessage, response: ServerResponse): void {
-    void this.handleTelemetryHttpRequestAsync(request, response);
+    void this.handleTelemetryHttpRequestAsync(request, response).catch((error: unknown) => {
+      if (isTelemetryRequestAbortError(error)) {
+        return;
+      }
+      if (response.writableEnded) {
+        return;
+      }
+      response.statusCode = 500;
+      response.end();
+    });
   }
 
   private async handleTelemetryHttpRequestAsync(
@@ -1152,22 +1191,36 @@ export class ControlPlaneStreamServer {
   }
 
   private async pollHistoryFile(): Promise<void> {
+    const nowMs = Date.now();
+    if (nowMs < this.historyNextAllowedPollAtMs) {
+      return;
+    }
     if (this.historyPollInFlight) {
       return;
     }
     this.historyPollInFlight = true;
     try {
-      await this.pollHistoryFileUnsafe();
+      const consumedNewBytes = await this.pollHistoryFileUnsafe();
+      if (consumedNewBytes) {
+        this.historyIdleStreak = 0;
+        this.historyNextAllowedPollAtMs = Date.now() + this.codexHistory.pollMs;
+      } else {
+        this.historyIdleStreak = Math.min(this.historyIdleStreak + 1, 4);
+        const backoffMs = Math.min(5000, this.codexHistory.pollMs * (1 << this.historyIdleStreak));
+        this.historyNextAllowedPollAtMs = Date.now() + backoffMs;
+      }
     } catch {
       // History ingestion is best-effort and should never crash the control-plane runtime.
+      this.historyIdleStreak = Math.min(this.historyIdleStreak + 1, 4);
+      this.historyNextAllowedPollAtMs = Date.now() + Math.min(5000, this.codexHistory.pollMs * 4);
     } finally {
       this.historyPollInFlight = false;
     }
   }
 
-  private async pollHistoryFileUnsafe(): Promise<void> {
+  private async pollHistoryFileUnsafe(): Promise<boolean> {
     if (!this.codexHistory.enabled) {
-      return;
+      return false;
     }
     const resolvedHistoryPath = expandTildePath(this.codexHistory.filePath);
     let handle: Awaited<ReturnType<typeof open>>;
@@ -1176,24 +1229,42 @@ export class ControlPlaneStreamServer {
     } catch (error) {
       const errorWithCode = error as { code?: unknown };
       if (errorWithCode.code === 'ENOENT') {
-        return;
+        return false;
       }
       throw error;
     }
     let delta = '';
+    let fileTruncated = false;
     try {
       const stats = await handle.stat();
       const fileSize = Number(stats.size);
       if (!Number.isFinite(fileSize)) {
-        return;
+        return false;
       }
       if (fileSize < this.historyOffset) {
+        fileTruncated = true;
         this.historyOffset = 0;
         this.historyRemainder = '';
       }
+      if (
+        !fileTruncated &&
+        this.historyOffset > 0 &&
+        this.historyRemainder.length === 0 &&
+        fileSize >= this.historyOffset
+      ) {
+        // Detect in-place rewrites where truncation and rewrite both happen between polls.
+        const probe = Buffer.allocUnsafe(1);
+        const { bytesRead: probeBytesRead } = await handle.read(probe, 0, 1, this.historyOffset - 1);
+        const historyBoundaryMatches = probeBytesRead === 1 && probe[0] === LINE_FEED_BYTE;
+        if (!historyBoundaryMatches) {
+          fileTruncated = true;
+          this.historyOffset = 0;
+          this.historyRemainder = '';
+        }
+      }
       const remainingBytes = fileSize - this.historyOffset;
       if (remainingBytes <= 0) {
-        return;
+        return fileTruncated;
       }
       const buffer = Buffer.allocUnsafe(remainingBytes);
       let bytesReadTotal = 0;
@@ -1210,7 +1281,7 @@ export class ControlPlaneStreamServer {
         bytesReadTotal += bytesRead;
       }
       if (bytesReadTotal <= 0) {
-        return;
+        return fileTruncated;
       }
       this.historyOffset += bytesReadTotal;
       delta = buffer.toString('utf8', 0, bytesReadTotal);
@@ -1219,7 +1290,7 @@ export class ControlPlaneStreamServer {
     }
 
     if (delta.length === 0) {
-      return;
+      return fileTruncated;
     }
 
     const buffered = `${this.historyRemainder}${delta}`;
@@ -1238,6 +1309,7 @@ export class ControlPlaneStreamServer {
         parsed.providerThreadId === null ? null : this.resolveSessionIdByThreadId(parsed.providerThreadId);
       this.ingestParsedTelemetryEvent(sessionId, parsed);
     }
+    return true;
   }
 
   private async pollGitStatus(): Promise<void> {
@@ -1256,7 +1328,11 @@ export class ControlPlaneStreamServer {
         if (previous === undefined) {
           return true;
         }
-        return nowMs - previous.lastRefreshedAtMs >= this.gitStatusMonitor.minDirectoryRefreshMs;
+        const minRefreshWindowMs = Math.max(
+          this.gitStatusMonitor.minDirectoryRefreshMs,
+          Math.min(10 * 60 * 1000, Math.max(1000, previous.lastRefreshDurationMs * 4))
+        );
+        return nowMs - previous.lastRefreshedAtMs >= minRefreshWindowMs;
       });
       await runWithConcurrencyLimit(
         dueDirectories,
@@ -1276,32 +1352,54 @@ export class ControlPlaneStreamServer {
     const gitSpan = startPerfSpan('control-plane.background.git-status', {
       directoryId: directory.directoryId
     });
+    const startedAtMs = Date.now();
+    const previous = this.gitStatusByDirectoryId.get(directory.directoryId) ?? null;
     try {
       const snapshot = await this.readGitDirectorySnapshot(directory.path);
+      let repositorySnapshot: GitDirectorySnapshot['repository'] = snapshot.repository;
+      if (
+        repositorySnapshot.commitCount === null &&
+        previous !== null &&
+        previous.repositorySnapshot.normalizedRemoteUrl === repositorySnapshot.normalizedRemoteUrl &&
+        previous.repositorySnapshot.shortCommitHash === repositorySnapshot.shortCommitHash
+      ) {
+        repositorySnapshot = {
+          ...repositorySnapshot,
+          commitCount: previous.repositorySnapshot.commitCount
+        };
+      }
       let repositoryId: string | null = null;
       let repositoryRecord: Record<string, unknown> | null = null;
-      if (snapshot.repository.normalizedRemoteUrl !== null) {
-        const upserted = this.stateStore.upsertRepository({
-          repositoryId: `repository-${randomUUID()}`,
-          tenantId: directory.tenantId,
-          userId: directory.userId,
-          workspaceId: directory.workspaceId,
-          name: snapshot.repository.inferredName ?? 'repository',
-          remoteUrl: snapshot.repository.normalizedRemoteUrl,
-          defaultBranch: snapshot.repository.defaultBranch ?? 'main',
-          metadata: {
-            source: 'control-plane-git-status'
-          }
-        });
-        repositoryId = upserted.repositoryId;
-        repositoryRecord = this.repositoryRecord(upserted);
+      if (repositorySnapshot.normalizedRemoteUrl !== null) {
+        if (
+          previous !== null &&
+          previous.repositoryId !== null &&
+          previous.repositorySnapshot.normalizedRemoteUrl === repositorySnapshot.normalizedRemoteUrl
+        ) {
+          repositoryId = previous.repositoryId;
+        } else {
+          const upserted = this.stateStore.upsertRepository({
+            repositoryId: `repository-${randomUUID()}`,
+            tenantId: directory.tenantId,
+            userId: directory.userId,
+            workspaceId: directory.workspaceId,
+            name: repositorySnapshot.inferredName ?? 'repository',
+            remoteUrl: repositorySnapshot.normalizedRemoteUrl,
+            defaultBranch: repositorySnapshot.defaultBranch ?? 'main',
+            metadata: {
+              source: 'control-plane-git-status'
+            }
+          });
+          repositoryId = upserted.repositoryId;
+          repositoryRecord = this.repositoryRecord(upserted);
+        }
       }
-      const previous = this.gitStatusByDirectoryId.get(directory.directoryId) ?? null;
       const next: DirectoryGitStatusCacheEntry = {
         summary: snapshot.summary,
-        repositorySnapshot: snapshot.repository,
+        repositorySnapshot,
         repositoryId,
-        lastRefreshedAtMs: Date.now()
+        lastRefreshedAtMs: Date.now(),
+        lastRefreshDurationMs: Math.max(1, Date.now() - startedAtMs)
       };
       this.gitStatusByDirectoryId.set(directory.directoryId, next);
       const changed =
@@ -1310,6 +1408,12 @@ export class ControlPlaneStreamServer {
         !gitRepositorySnapshotEqual(previous.repositorySnapshot, next.repositorySnapshot) ||
         previous.repositoryId !== next.repositoryId;
       if (changed) {
+        if (repositoryRecord === null && repositoryId !== null) {
+          const existingRepository = this.stateStore.getRepository(repositoryId);
+          if (existingRepository !== null) {
+            repositoryRecord = this.repositoryRecord(existingRepository);
+          }
+        }
         this.publishObservedEvent(
           {
             tenantId: directory.tenantId,
@@ -1328,12 +1432,12 @@ export class ControlPlaneStreamServer {
               deletions: snapshot.summary.deletions
             },
             repositorySnapshot: {
-              normalizedRemoteUrl: snapshot.repository.normalizedRemoteUrl,
-              commitCount: snapshot.repository.commitCount,
-              lastCommitAt: snapshot.repository.lastCommitAt,
-              shortCommitHash: snapshot.repository.shortCommitHash,
-              inferredName: snapshot.repository.inferredName,
-              defaultBranch: snapshot.repository.defaultBranch
+              normalizedRemoteUrl: repositorySnapshot.normalizedRemoteUrl,
+              commitCount: repositorySnapshot.commitCount,
+              lastCommitAt: repositorySnapshot.lastCommitAt,
+              shortCommitHash: repositorySnapshot.shortCommitHash,
+              inferredName: repositorySnapshot.inferredName,
+              defaultBranch: repositorySnapshot.defaultBranch
             },
             repositoryId,
             repository: repositoryRecord,
@@ -1348,6 +1452,13 @@ export class ControlPlaneStreamServer {
       });
     } catch {
       // Git status polling is best-effort and should not interrupt control-plane operations.
+      if (previous !== null) {
+        this.gitStatusByDirectoryId.set(directory.directoryId, {
+          ...previous,
+          lastRefreshedAtMs: Date.now(),
+          lastRefreshDurationMs: Math.max(1, Date.now() - startedAtMs)
+        });
+      }
       gitSpan.end({
         directoryId: directory.directoryId,
         changed: false,

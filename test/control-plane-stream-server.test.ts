@@ -364,6 +364,76 @@ void test('stream server publishes directory git updates from control-plane moni
   }
 });
 
+void test('stream server deduplicates unchanged git snapshots when using default reader', async () => {
+  const workspace = mkdtempSync(join(tmpdir(), 'harness-git-default-'));
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input),
+    gitStatus: {
+      enabled: false,
+      pollMs: 100,
+      maxConcurrency: 2,
+      minDirectoryRefreshMs: 100
+    }
+  });
+  const address = server.address();
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port
+  });
+  const observed = collectEnvelopes(client);
+
+  try {
+    await client.sendCommand({
+      type: 'directory.upsert',
+      directoryId: 'directory-git-default',
+      tenantId: 'tenant-git-default',
+      userId: 'user-git-default',
+      workspaceId: 'workspace-git-default',
+      path: workspace
+    });
+    await client.sendCommand({
+      type: 'stream.subscribe',
+      tenantId: 'tenant-git-default',
+      userId: 'user-git-default',
+      workspaceId: 'workspace-git-default'
+    });
+
+    const internals = server as unknown as {
+      stateStore: SqliteControlPlaneStore;
+      reloadGitStatusDirectoriesFromStore: () => void;
+      pollGitStatus: () => Promise<void>;
+      refreshGitStatusForDirectory: (directory: unknown) => Promise<void>;
+    };
+    internals.reloadGitStatusDirectoriesFromStore();
+    await internals.pollGitStatus();
+
+    const directory = internals.stateStore.getDirectory('directory-git-default');
+    assert.notEqual(directory, null);
+    await internals.refreshGitStatusForDirectory(directory as unknown);
+    await delay(20);
+
+    const gitEvents = observed.flatMap((envelope) => {
+      if (envelope.kind !== 'stream.event') {
+        return [];
+      }
+      if (envelope.event.type !== 'directory-git-updated') {
+        return [];
+      }
+      return [envelope.event];
+    });
+    assert.equal(gitEvents.length, 1);
+    const latest = gitEvents[0]!;
+    assert.equal(latest.directoryId, 'directory-git-default');
+    assert.equal(latest.summary.branch, '(not git)');
+    assert.equal(latest.repositorySnapshot.commitCount, null);
+    assert.equal(latest.repository, null);
+  } finally {
+    client.close();
+    await server.close();
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 void test('stream server dispatches lifecycle hooks from observed events', async () => {
   const webhookEvents: string[] = [];
   const webhookServer = createServer((request, response) => {
@@ -3721,8 +3791,12 @@ void test('stream server ingests codex history lines and supports reset when fil
     host: address.address,
     port: address.port
   });
+  const internals = server as unknown as {
+    pollHistoryFileUnsafe: () => Promise<boolean>;
+  };
 
   try {
+    await delay(30);
     await client.sendCommand({
       type: 'directory.upsert',
       directoryId: 'directory-history',
@@ -3753,7 +3827,7 @@ void test('stream server ingests codex history lines and supports reset when fil
       })}\n`,
       'utf8'
     );
-    await delay(80);
+    await internals.pollHistoryFileUnsafe();
 
     await client.sendCommand({
       type: 'pty.start',
@@ -3783,7 +3857,7 @@ void test('stream server ingests codex history lines and supports reset when fil
       })}\n`,
       'utf8'
     );
-    await delay(80);
+    await internals.pollHistoryFileUnsafe();
 
     const firstStatus = await client.sendCommand({
       type: 'session.status',
@@ -3801,22 +3875,22 @@ void test('stream server ingests codex history lines and supports reset when fil
       })}\n`,
       'utf8'
     );
-    await delay(80);
+    await internals.pollHistoryFileUnsafe();
 
+    const rewrittenMessage = 'done '.repeat(80).trim();
     writeFileSync(historyPath, '', 'utf8');
-    await delay(40);
-
     writeFileSync(
       historyPath,
       `${JSON.stringify({
         timestamp: '2026-02-15T12:00:01.000Z',
         type: 'response.completed',
-        message: 'done',
+        message: rewrittenMessage,
         session_id: 'thread-history'
       })}\n`,
       'utf8'
     );
-    await delay(80);
+    await internals.pollHistoryFileUnsafe();
+
     const secondStatus = await client.sendCommand({
       type: 'session.status',
       sessionId: 'conversation-history'
@@ -4155,6 +4229,20 @@ void test('stream server telemetry/history private guard branches are stable', a
           end: () => void;
         }
       ) => Promise<void>;
+      handleTelemetryHttpRequest: (
+        request: {
+          method?: string;
+          url?: string;
+          [Symbol.asyncIterator]?: () => AsyncIterableIterator<Uint8Array>;
+        },
+        response: {
+          statusCode: number;
+          writableEnded?: boolean;
+          setHeader?: (name: string, value: string) => void;
+          end: () => void;
+        }
+      ) => void;
+      telemetryTokenToSessionId: Map<string, string>;
       ingestOtlpPayload: (kind: 'logs' | 'metrics' | 'traces', sessionId: string, payload: unknown) => void;
       ingestParsedTelemetryEvent: (
         fallbackSessionId: string | null,
@@ -4169,7 +4257,7 @@ void test('stream server telemetry/history private guard branches are stable', a
           payload: Record<string, unknown>;
         }
       ) => void;
-      pollHistoryFileUnsafe: () => Promise<void>;
+      pollHistoryFileUnsafe: () => Promise<boolean>;
       startTelemetryServer: () => Promise<void>;
     };
     const coldServer = new ControlPlaneStreamServer({
@@ -4234,6 +4322,69 @@ void test('stream server telemetry/history private guard branches are stable', a
     );
     assert.equal(responseRecord.statusCode, 404);
     assert.equal(responseRecord.ended, true);
+    internals.telemetryTokenToSessionId.set('abort-token', 'missing-session');
+    const abortedResponse = {
+      statusCode: 0,
+      writableEnded: false,
+      ended: false,
+      end() {
+        this.ended = true;
+        this.writableEnded = true;
+      }
+    };
+    internals.handleTelemetryHttpRequest(
+      {
+        method: 'POST',
+        url: '/v1/logs/abort-token',
+        [Symbol.asyncIterator]() {
+          const iterator: AsyncIterableIterator<Uint8Array> = {
+            next() {
+              const abortedError = Object.assign(new Error('aborted'), { code: 'ECONNRESET' });
+              return Promise.reject(abortedError);
+            },
+            [Symbol.asyncIterator]() {
+              return iterator;
+            }
+          };
+          return iterator;
+        }
+      },
+      abortedResponse
+    );
+    await delay(20);
+    assert.equal(abortedResponse.statusCode, 0);
+    assert.equal(abortedResponse.ended, false);
+
+    const fatalResponse = {
+      statusCode: 0,
+      writableEnded: false,
+      ended: false,
+      end() {
+        this.ended = true;
+        this.writableEnded = true;
+      }
+    };
+    internals.handleTelemetryHttpRequest(
+      {
+        method: 'POST',
+        url: '/v1/logs/abort-token',
+        [Symbol.asyncIterator]() {
+          const iterator: AsyncIterableIterator<Uint8Array> = {
+            next() {
+              return Promise.reject(new Error('unexpected read failure'));
+            },
+            [Symbol.asyncIterator]() {
+              return iterator;
+            }
+          };
+          return iterator;
+        }
+      },
+      fatalResponse
+    );
+    await delay(20);
+    assert.equal(fatalResponse.statusCode, 500);
+    assert.equal(fatalResponse.ended, true);
     internals.ingestOtlpPayload('metrics', 'missing-session', {});
     internals.ingestOtlpPayload('traces', 'missing-session', {});
     internals.ingestOtlpPayload('logs', 'missing-session', {});

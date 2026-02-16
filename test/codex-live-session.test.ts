@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { test } from 'bun:test';
 import {
   buildTomlStringArray,
@@ -146,7 +147,7 @@ void test('codex live session builds bun-native notify command', () => {
   }
 });
 
-void test('codex live session emits notify events when notify hook polling is enabled', () => {
+void test('codex live session emits notify events when notify hook polling is enabled', async () => {
   const broker = new FakeBroker();
   let startOptions:
     | {
@@ -209,6 +210,7 @@ void test('codex live session emits notify events when notify hook polling is en
     'malformed'
   ].join('\n');
   pollNotify();
+  await delay(0);
 
   assert.deepEqual(notifyTypes, ['agent-turn-complete', 'approval-required']);
 
@@ -217,7 +219,7 @@ void test('codex live session emits notify events when notify hook polling is en
   assert.equal(clearedTimer, true);
 });
 
-void test('codex live session notify polling handles resets, malformed lines, and read errors', () => {
+void test('codex live session notify polling handles resets, malformed lines, and read errors', async () => {
   const broker = new FakeBroker();
   let pollNotify: () => void = () => undefined;
   let readCallCount = 0;
@@ -280,15 +282,65 @@ void test('codex live session notify polling handles resets, malformed lines, an
   });
 
   pollNotify();
+  await delay(0);
   pollNotify();
+  await delay(0);
   pollNotify();
+  await delay(0);
   pollNotify();
+  await delay(0);
   pollNotify();
+  await delay(0);
 
   assert.deepEqual(notifyTypes, ['approval-required']);
-  assert.throws(() => {
-    pollNotify();
-  }, /denied/u);
+  pollNotify();
+  await delay(0);
+  assert.equal(readCallCount, 6);
+  assert.deepEqual(notifyTypes, ['approval-required']);
+
+  removeListener();
+  session.close();
+});
+
+void test('codex live session notify polling supports async readFile dependency', async () => {
+  const broker = new FakeBroker();
+  let pollNotify: () => void = () => undefined;
+  const fakeTimer = {
+    refresh: () => fakeTimer,
+    ref: () => fakeTimer,
+    unref: () => fakeTimer,
+    hasRef: () => false
+  } as unknown as NodeJS.Timeout;
+  const notifyTypes: string[] = [];
+  const session = startCodexLiveSession(
+    {
+      useNotifyHook: true,
+      notifyFilePath: '/tmp/harness-notify.jsonl',
+      relayScriptPath: '/tmp/relay.ts'
+    },
+    {
+      startBroker: () => broker,
+      readFile: () =>
+        Promise.resolve('{"ts":"2026-01-01T00:00:00.200Z","payload":{"type":"agent-turn-complete"}}\n'),
+      setIntervalFn: (callback) => {
+        pollNotify = callback;
+        return fakeTimer;
+      }
+    }
+  );
+
+  const removeListener = session.onEvent((event) => {
+    if (event.type === 'notify') {
+      const payloadType = event.record.payload['type'];
+      if (typeof payloadType === 'string') {
+        notifyTypes.push(payloadType);
+      }
+    }
+  });
+
+  pollNotify();
+  await delay(0);
+  assert.deepEqual(notifyTypes, ['agent-turn-complete']);
 
   removeListener();
   session.close();

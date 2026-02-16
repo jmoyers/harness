@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFile as readFileAsync } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -79,7 +79,7 @@ export type CodexLiveEvent =
 
 interface LiveSessionDependencies {
   startBroker?: (options?: StartPtySessionOptions, maxBacklogBytes?: number) => SessionBrokerLike;
-  readFile?: (path: string) => string;
+  readFile?: (path: string) => string | Promise<string>;
   setIntervalFn?: (callback: () => void, intervalMs: number) => NodeJS.Timeout;
   clearIntervalFn?: (handle: NodeJS.Timeout) => void;
 }
@@ -442,7 +442,7 @@ class TerminalQueryResponder {
 
 class CodexLiveSession {
   private readonly broker: SessionBrokerLike;
-  private readonly readFile: (path: string) => string;
+  private readonly readFile: (path: string) => string | Promise<string>;
   private readonly clearIntervalFn: (handle: NodeJS.Timeout) => void;
   private readonly notifyFilePath: string;
   private readonly listeners = new Set<(event: CodexLiveEvent) => void>();
@@ -451,6 +451,7 @@ class CodexLiveSession {
   private readonly terminalQueryResponder: TerminalQueryResponder;
   private readonly brokerAttachmentId: string;
   private readonly notifyTimer: NodeJS.Timeout | null;
+  private notifyPollInFlight = false;
   private notifyOffset = 0;
   private notifyRemainder = '';
   private closed = false;
@@ -479,7 +480,7 @@ class CodexLiveSession {
     ];
 
     const startBroker = dependencies.startBroker ?? startSingleSessionBroker;
-    this.readFile = dependencies.readFile ?? ((path) => readFileSync(path, 'utf8'));
+    this.readFile = dependencies.readFile ?? (async (path) => await readFileAsync(path, 'utf8'));
     const setIntervalFn = dependencies.setIntervalFn ?? setInterval;
     this.clearIntervalFn = dependencies.clearIntervalFn ?? clearInterval;
 
@@ -593,16 +594,46 @@ class CodexLiveSession {
   }
 
   private pollNotifyFile(): void {
-    let content: string;
-    try {
-      content = this.readFile(this.notifyFilePath);
-    } catch (error) {
-      const withCode = error as { code?: unknown };
-      if (withCode.code === 'ENOENT') {
-        return;
-      }
-      throw error;
+    if (this.notifyPollInFlight || this.closed) {
+      return;
     }
+    this.notifyPollInFlight = true;
+    let contentOrPromise: string | Promise<string>;
+    try {
+      contentOrPromise = this.readFile(this.notifyFilePath);
+    } catch (error: unknown) {
+      this.notifyPollInFlight = false;
+      this.handleNotifyReadError(error);
+      return;
+    }
+    void Promise.resolve(contentOrPromise)
+      .then((content) => {
+        this.consumeNotifyFileContent(content);
+      })
+      .catch((error: unknown) => {
+        this.handleNotifyReadError(error);
+      })
+      .finally(() => {
+        this.notifyPollInFlight = false;
+      });
+  }
+
+  private handleNotifyReadError(error: unknown): void {
+    const withCode = error as { code?: unknown };
+    if (withCode.code === 'ENOENT') {
+      return;
+    }
+    const code =
+      typeof withCode.code === 'string' || typeof withCode.code === 'number'
+        ? String(withCode.code)
+        : '';
+    recordPerfEvent('codex.notify.poll.error', {
+      code,
+      message: error instanceof Error ? error.message : String(error)
+    });
+  }
+
+  private consumeNotifyFileContent(content: string): void {
     if (content.length < this.notifyOffset) {
       this.notifyOffset = 0;
       this.notifyRemainder = '';

@@ -170,6 +170,37 @@ void test('readGitDirectorySnapshot handles empty status output without header l
   });
 });
 
+void test('readGitDirectorySnapshot can skip commit-count command for cheaper polling', async () => {
+  const executedCommands: string[] = [];
+  const runner: GitCommandRunner = (_cwd, args) => {
+    const key = args.join(' ');
+    executedCommands.push(key);
+    if (key === 'rev-parse --is-inside-work-tree') {
+      return Promise.resolve('true');
+    }
+    if (key === 'status --porcelain=1 --branch') {
+      return Promise.resolve('## main');
+    }
+    if (key === 'diff --shortstat' || key === 'diff --cached --shortstat') {
+      return Promise.resolve('');
+    }
+    if (key === 'remote get-url origin') {
+      return Promise.resolve('https://github.com/acme/repo');
+    }
+    if (key === 'log -1 --format=%ct %h') {
+      return Promise.resolve('abc123\t2026-01-01T00:00:00.000Z');
+    }
+    return Promise.resolve('');
+  };
+
+  const snapshot = await readGitDirectorySnapshot('/tmp', runner, {
+    includeCommitCount: false
+  });
+
+  assert.equal(executedCommands.includes('rev-list --count HEAD'), false);
+  assert.equal(snapshot.repository.commitCount, null);
+});
+
 void test('readProcessUsageSample handles null ids, parsing, and process failures', async () => {
   assert.deepEqual(await readProcessUsageSample(null), {
     cpuPercent: null,
