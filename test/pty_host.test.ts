@@ -417,6 +417,61 @@ void test(
 );
 
 void test(
+  'pty-host trims roundtrip output window when buffered stdout exceeds max bytes',
+  { timeout: 10000 },
+  async () => {
+    const tempPath = mkdtempSync(join(tmpdir(), 'harness-perf-window-'));
+    const perfFilePath = join(tempPath, 'perf.jsonl');
+    let session: ReturnType<typeof startPtySession> | null = null;
+
+    try {
+      configurePerfCore({
+        enabled: true,
+        filePath: perfFilePath
+      });
+
+      session = startPtySession({
+        command: '/bin/cat',
+        commandArgs: []
+      });
+
+      const internals = session as unknown as {
+        pendingRoundtripProbes: Array<{
+          probeId: number;
+          payloadLength: number;
+          matchPayloads: Buffer[];
+          startedAtNs: bigint;
+        }>;
+        outputWindow: Buffer;
+        trackRoundtrip: (chunk: Buffer) => void;
+      };
+      internals.pendingRoundtripProbes.push({
+        probeId: 1,
+        payloadLength: 5,
+        matchPayloads: [Buffer.from('never-match-probe', 'utf8')],
+        startedAtNs: process.hrtime.bigint()
+      });
+      internals.trackRoundtrip(Buffer.alloc(9000, 0x41));
+
+      assert.equal(internals.pendingRoundtripProbes.length, 1);
+      assert.equal(internals.outputWindow.length, 8192);
+      session.write(new Uint8Array([0x04]));
+      const exit = await waitForExit(session, 5000);
+      assert.equal(exit.code, 0);
+      session = null;
+    } finally {
+      if (session !== null) {
+        session.write(new Uint8Array([0x04]));
+        await waitForExit(session, 1000).catch(() => undefined);
+      }
+      configurePerfCore({ enabled: false });
+      shutdownPerfCore();
+      rmSync(tempPath, { recursive: true, force: true });
+    }
+  }
+);
+
+void test(
   'pty-host emits keystroke roundtrip instrumentation with low latency',
   { timeout: 30000 },
   async () => {

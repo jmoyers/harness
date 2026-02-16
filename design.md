@@ -171,7 +171,7 @@ Pass-through stream invariants:
 - In embedded/local mode, mux shutdown also closes live PTYs.
 - Thread "delete" in the mux is soft-delete (archive); hard delete remains an explicit control-plane command.
 - Project lifecycle in the mux is first-class: `directory.upsert`, `directory.list`, and `directory.archive` drive add/close behavior through the same control-plane stream API as automation clients.
-- The left rail includes clickable action rows (new thread, archive thread, add project, close project) with keybind parity.
+- The left rail includes clickable action rows (new thread, archive thread, add project, open tasks, close project) with keybind parity.
 - The left rail also exposes a collapsible repository section with CRUD actions (`repository.upsert`, `repository.list`, `repository.update`, `repository.archive`) and per-repository commit stats.
 - Active project directories are scraped for GitHub remotes at startup/refresh; remotes are normalized and deduped so many projects can map to one repository row.
 - Project rows in the left rail are selectable; selecting a project switches the right pane into a project view and scopes project actions to that explicit selection.
@@ -1060,10 +1060,10 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - Codex launch mode defaults are config-first and directory-aware (`codex.launch.defaultMode` + `codex.launch.directoryModes`), with repo default set to `yolo`.
     - repository/task planning primitives are persisted in the same SQLite store:
       - `repositories` (`repository_id`, remote URL, default branch, metadata, archive state)
-      - `tasks` (task records with CRUD, explicit ordering, claim, complete, and ready transitions)
+    - `tasks` (task records with CRUD, explicit ordering, claim, complete, ready, and draft-reset transitions)
     - control-plane stream commands now expose this model directly:
       - repositories: `repository.upsert`, `repository.get`, `repository.list`, `repository.update`, `repository.archive`
-      - tasks: `task.create`, `task.get`, `task.list`, `task.update`, `task.delete`, `task.claim`, `task.complete`, `task.ready`, `task.queue` (compat alias), `task.reorder`
+      - tasks: `task.create`, `task.get`, `task.list`, `task.update`, `task.delete`, `task.claim`, `task.complete`, `task.ready`, `task.draft`, `task.queue` (compat alias), `task.reorder`
       - task lifecycle baseline: `draft -> ready -> in-progress -> completed`
     - stream subscriptions also carry repository/task mutations, with optional `repositoryId` and `taskId` filters on `stream.subscribe`.
     - thread/worktree-level planning linkage is deferred; directory-based task claims are supported now.
@@ -1107,6 +1107,9 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - multi-thread rail + active session switching (`Ctrl+N`/`Ctrl+P`) + new thread creation (`Ctrl+T`) while preserving live PTY pass-through for the active session
     - explicit directory selection from rail rows, with a project-focused right-pane tree view when directory mode is active
     - project-scoped actions (`new thread`, `close project`) target the selected project in project mode and preserve active-thread project affinity in thread mode
+    - left-rail `tasks` action opens a dedicated full-width task-management pane backed by control-plane repository/task commands
+    - task-management pane supports add/edit/delete, ready/draft/complete transitions, explicit reorder, and a recently-completed section with relative completion times
+    - task-management pane state is hydrated from `repository.list` + `task.list` and kept live through scoped `stream.subscribe` updates
     - when a project has zero threads, mux stays in project view and surfaces explicit `new thread` actions instead of auto-starting a thread
     - thread creation opens a modal selector (`codex` or `terminal`), and terminal threads launch plain shells under the same control-plane session lifecycle
     - left rail composition uses project-wrapped thread blocks with inline git summary and per-thread telemetry (CPU/memory sampled from `ps` via `processId`)

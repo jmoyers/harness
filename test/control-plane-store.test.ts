@@ -1515,9 +1515,23 @@ void test('control-plane store manages repositories and task lifecycle', () => {
       controllerId: 'agent-3'
     });
     assert.equal(claimedTaskWithoutDirectory.claimedByDirectoryId, null);
+    const draftedTaskB = store.draftTask('task-b');
+    assert.equal(draftedTaskB.status, 'draft');
+    assert.equal(draftedTaskB.claimedByControllerId, null);
+    assert.equal(draftedTaskB.claimedByDirectoryId, null);
+    assert.equal(draftedTaskB.claimedAt, null);
+    assert.throws(
+      () =>
+        store.claimTask({
+          taskId: 'task-b',
+          controllerId: 'agent-4'
+        }),
+      /cannot claim draft task/
+    );
 
     assert.throws(() => store.completeTask('missing-task'), /task not found/);
     assert.throws(() => store.queueTask('missing-task'), /task not found/);
+    assert.throws(() => store.draftTask('missing-task'), /task not found/);
 
     assert.throws(
       () =>
@@ -1923,6 +1937,26 @@ void test('control-plane store repository and task rollback guards cover impossi
       return originalGetTask(taskId);
     }) as typeof store.getTask;
     assert.throws(() => store.queueTask('task-queue-fail'), /missing after ready/);
+
+    store.createTask({
+      taskId: 'task-draft-fail',
+      tenantId: 'tenant-rollback',
+      userId: 'user-rollback',
+      workspaceId: 'workspace-rollback',
+      title: 'draft fail'
+    });
+    store.readyTask('task-draft-fail');
+    let draftFailCalls = 0;
+    store.getTask = ((taskId: string) => {
+      if (taskId === 'task-draft-fail') {
+        draftFailCalls += 1;
+        if (draftFailCalls >= 2) {
+          return null;
+        }
+      }
+      return originalGetTask(taskId);
+    }) as typeof store.getTask;
+    assert.throws(() => store.draftTask('task-draft-fail'), /missing after draft/);
   } finally {
     store.close();
   }

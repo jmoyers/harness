@@ -2541,10 +2541,10 @@ void test('stream server supports injected state store and observed filter/journ
           tenantId?: string;
           userId?: string;
           workspaceId?: string;
-          directoryId?: string;
-          conversationId?: string;
           repositoryId?: string;
           taskId?: string;
+          directoryId?: string;
+          conversationId?: string;
         }
       ) => boolean;
       publishObservedEvent: (
@@ -2585,7 +2585,7 @@ void test('stream server supports injected state store and observed filter/journ
       directoryId: 'directory-a',
       conversationId: 'conversation-a'
     };
-    const reorderedTasksEvent = {
+    const reorderedEvent = {
       type: 'task-reordered',
       tasks: [
         {
@@ -2635,6 +2635,20 @@ void test('stream server supports injected state store and observed filter/journ
       false
     );
     assert.equal(
+      internals.matchesObservedFilter(baseScope, reorderedEvent, {
+        includeOutput: true,
+        repositoryId: 'repository-b'
+      }),
+      false
+    );
+    assert.equal(
+      internals.matchesObservedFilter(baseScope, reorderedEvent, {
+        includeOutput: true,
+        taskId: 'task-b'
+      }),
+      false
+    );
+    assert.equal(
       internals.matchesObservedFilter(baseScope, statusEvent, {
         includeOutput: true,
         tenantId: 'tenant-a',
@@ -2646,14 +2660,14 @@ void test('stream server supports injected state store and observed filter/journ
       true
     );
     assert.equal(
-      internals.matchesObservedFilter(baseScope, reorderedTasksEvent, {
+      internals.matchesObservedFilter(baseScope, reorderedEvent, {
         includeOutput: true,
         repositoryId: 'repository-missing'
       }),
       false
     );
     assert.equal(
-      internals.matchesObservedFilter(baseScope, reorderedTasksEvent, {
+      internals.matchesObservedFilter(baseScope, reorderedEvent, {
         includeOutput: true,
         taskId: 'task-missing'
       }),
@@ -3890,6 +3904,11 @@ void test('stream server exposes repository and task commands', async () => {
       taskId: 'task-1'
     });
     assert.equal((queuedTask['task'] as Record<string, unknown>)['status'], 'ready');
+    const draftedTask = await client.sendCommand({
+      type: 'task.draft',
+      taskId: 'task-1'
+    });
+    assert.equal((draftedTask['task'] as Record<string, unknown>)['status'], 'draft');
 
     const updatedTask = await client.sendCommand({
       type: 'task.update',

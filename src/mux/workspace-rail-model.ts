@@ -103,6 +103,10 @@ const ARCHIVE_REPOSITORY_BUTTON_LABEL = formatUiButton({
   label: 'archive repository',
   prefixIcon: '<'
 });
+const TASKS_BUTTON_LABEL = formatUiButton({
+  label: 'tasks',
+  prefixIcon: '#'
+});
 const STARTING_TEXT_STALE_MS = 2_000;
 const WORKING_TEXT_STALE_MS = 5_000;
 const NEEDS_ACTION_TEXT_STALE_MS = 60_000;
@@ -112,6 +116,7 @@ type WorkspaceRailAction =
   | 'conversation.new'
   | 'conversation.delete'
   | 'project.add'
+  | 'tasks.open'
   | 'project.close'
   | 'shortcuts.toggle'
   | 'repository.add'
@@ -500,6 +505,7 @@ function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly Wo
   }
 
   pushRow(rows, 'action', `│  ${ADD_PROJECT_BUTTON_LABEL}`, false, null, null, null, 'project.add');
+  pushRow(rows, 'action', `│  ${TASKS_BUTTON_LABEL}`, false, null, null, null, 'tasks.open');
   pushRow(rows, 'muted', '│');
 
   if (model.directories.length === 0) {

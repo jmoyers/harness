@@ -118,6 +118,9 @@ void test('workspace rail renders project-centric rows with icon-only thread sta
   assert.equal(addProjectRow?.includes('\u001b[0;38;5;245;49m│  '), true);
   assert.equal(addProjectRow?.includes('\u001b[0;38;5;230;48;5;237m[ > add project ]'), true);
   assert.equal(addProjectRow?.includes('\u001b[0;38;5;245;48;5;237m│  '), false);
+  const tasksRow = rows.find((row) => row.includes('[ # tasks ]'));
+  assert.notEqual(tasksRow, undefined);
+  assert.equal(tasksRow?.includes('\u001b[0;38;5;230;48;5;237m[ # tasks ]'), true);
   const threadButtonRow = rows.find((row) => row.includes('[+ thread]'));
   assert.notEqual(threadButtonRow, undefined);
   assert.equal(threadButtonRow?.includes('\u001b[0;38;5;230;48;5;237m[+ thread]'), true);

@@ -195,6 +195,11 @@ interface TaskReadyCommand {
   taskId: string;
 }
 
+interface TaskDraftCommand {
+  type: 'task.draft';
+  taskId: string;
+}
+
 interface TaskReorderCommand {
   type: 'task.reorder';
   tenantId: string;
@@ -344,6 +349,7 @@ export type StreamCommand =
   | TaskCompleteCommand
   | TaskQueueCommand
   | TaskReadyCommand
+  | TaskDraftCommand
   | TaskReorderCommand
   | StreamSubscribeCommand
   | StreamUnsubscribeCommand

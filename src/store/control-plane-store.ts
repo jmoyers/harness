@@ -1689,6 +1689,43 @@ export class SqliteControlPlaneStore {
     }
   }
 
+  draftTask(taskId: string): ControlPlaneTaskRecord {
+    this.db.exec('BEGIN IMMEDIATE TRANSACTION');
+    try {
+      const existing = this.getTask(taskId);
+      if (existing === null) {
+        throw new Error(`task not found: ${taskId}`);
+      }
+      const updatedAt = new Date().toISOString();
+      this.db
+        .prepare(
+          `
+          UPDATE tasks
+          SET
+            status = 'draft',
+            claimed_by_controller_id = NULL,
+            claimed_by_directory_id = NULL,
+            branch_name = NULL,
+            base_branch = NULL,
+            claimed_at = NULL,
+            completed_at = NULL,
+            updated_at = ?
+          WHERE task_id = ?
+        `
+        )
+        .run(updatedAt, taskId);
+      const drafted = this.getTask(taskId);
+      if (drafted === null) {
+        throw new Error(`task missing after draft: ${taskId}`);
+      }
+      this.db.exec('COMMIT');
+      return drafted;
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
   queueTask(taskId: string): ControlPlaneTaskRecord {
     return this.readyTask(taskId);
   }

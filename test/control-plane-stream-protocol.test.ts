@@ -274,6 +274,14 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
       kind: 'command',
       commandId: 'c0ep',
       command: {
+        type: 'task.draft',
+        taskId: 'task-1'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c0eq',
+      command: {
         type: 'task.reorder',
         tenantId: 'tenant-local',
         userId: 'user-local',
@@ -740,6 +748,13 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
     {
       kind: 'command',
       commandId: 'c2taski',
+      command: {
+        type: 'task.draft'
+      }
+    },
+    {
+      kind: 'command',
+      commandId: 'c2taskj',
       command: {
         type: 'task.reorder',
         tenantId: 'tenant-local',

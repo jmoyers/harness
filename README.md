@@ -40,6 +40,7 @@ Harness is built for developers who want to:
 - Programmatic task lifecycle with full CRUD, explicit ordering, `draft -> ready -> in-progress -> completed`, plus ready/reset transitions.
 - Repository/task control-plane stream commands (`repository.*`, `task.*`) for automation and UI clients.
 - Repository/task stream subscriptions, including scoped filters for `repositoryId` and `taskId`.
+- Dedicated mux task-management pane (opened from the left rail) with real-time repository/task sync, reorder controls, and a recently completed view.
 - Real-time typed event stream for status, telemetry, control changes, and output.
 - Lifecycle hook connectors for external integrations (sound packs, webhooks, automation).
 - Directory-scoped Codex launch policy with configurable default mode (`yolo` by default).

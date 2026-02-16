@@ -125,6 +125,7 @@ void test('workspace rail model builds rows with conversation spacing and proces
   assert.equal(rows.some((row) => row.kind === 'shortcut-body' && row.text.includes('ctrl+t')), true);
   assert.equal(rows[rows.length - 1]?.kind, 'shortcut-body');
   assert.equal(rows[0]?.railAction, 'project.add');
+  assert.equal(rows[1]?.railAction, 'tasks.open');
 });
 
 void test('workspace rail model handles empty projects and blank workspace name', () => {
@@ -141,6 +142,7 @@ void test('workspace rail model handles empty projects and blank workspace name'
   );
   assert.equal(noDirectoryRows.some((row) => row.text.includes('no projects')), true);
   assert.equal(noDirectoryRows[0]?.railAction, 'project.add');
+  assert.equal(noDirectoryRows[1]?.railAction, 'tasks.open');
 
   const blankNameRows = buildWorkspaceRailViewRows(
     {

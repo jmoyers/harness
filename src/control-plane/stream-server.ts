@@ -1649,6 +1649,26 @@ export class ControlPlaneStreamServer {
       };
     }
 
+    if (command.type === 'task.draft') {
+      const task = this.stateStore.draftTask(command.taskId);
+      this.publishObservedEvent(
+        {
+          tenantId: task.tenantId,
+          userId: task.userId,
+          workspaceId: task.workspaceId,
+          directoryId: null,
+          conversationId: null
+        },
+        {
+          type: 'task-updated',
+          task: this.taskRecord(task)
+        }
+      );
+      return {
+        task: this.taskRecord(task)
+      };
+    }
+
     if (command.type === 'task.reorder') {
       const tasks = this.stateStore
         .reorderTasks({

@@ -248,6 +248,16 @@ void test('parseStreamCommand parses repository and task commands', () => {
   );
   assert.deepEqual(
     parseStreamCommand({
+      type: 'task.draft',
+      taskId: 'task-1'
+    }),
+    {
+      type: 'task.draft',
+      taskId: 'task-1'
+    }
+  );
+  assert.deepEqual(
+    parseStreamCommand({
       type: 'task.reorder',
       tenantId: 'tenant-1',
       userId: 'user-1',
@@ -337,7 +347,8 @@ void test('parseStreamCommand rejects unknown or malformed command shapes', () =
   assert.equal(
     parseStreamCommand({
       type: 'repository.upsert',
-      name: 'Harness'
+      name: 42,
+      remoteUrl: 'https://github.com/acme/harness.git'
     }),
     null
   );
@@ -391,6 +402,15 @@ void test('parseStreamCommand rejects unknown or malformed command shapes', () =
   );
   assert.equal(
     parseStreamCommand({
+      type: 'repository.upsert',
+      name: 'Harness',
+      remoteUrl: 'https://github.com/acme/harness.git',
+      defaultBranch: 5
+    }),
+    null
+  );
+  assert.equal(
+    parseStreamCommand({
       type: 'repository.get'
     }),
     null
@@ -399,6 +419,21 @@ void test('parseStreamCommand rejects unknown or malformed command shapes', () =
     parseStreamCommand({
       type: 'repository.list',
       includeArchived: 'yes'
+    }),
+    null
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'repository.update',
+      name: 'missing repository id'
+    }),
+    null
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'repository.update',
+      repositoryId: 'repository-1',
+      name: 7
     }),
     null
   );
@@ -434,43 +469,7 @@ void test('parseStreamCommand rejects unknown or malformed command shapes', () =
   assert.equal(
     parseStreamCommand({
       type: 'task.create',
-      tenantId: 'tenant-1'
-    }),
-    null
-  );
-  assert.equal(
-    parseStreamCommand({
-      type: 'task.get'
-    }),
-    null
-  );
-  assert.equal(
-    parseStreamCommand({
-      type: 'task.update',
-      title: 'missing task id'
-    }),
-    null
-  );
-  assert.equal(
-    parseStreamCommand({
-      type: 'task.update',
-      taskId: 'task-1',
-      title: 5
-    }),
-    null
-  );
-  assert.equal(
-    parseStreamCommand({
-      type: 'task.delete'
-    }),
-    null
-  );
-  assert.equal(
-    parseStreamCommand({
-      type: 'task.claim',
-      taskId: 'task-1',
-      controllerId: 'agent-1',
-      branchName: 5
+      title: 123
     }),
     null
   );
@@ -512,15 +511,7 @@ void test('parseStreamCommand rejects unknown or malformed command shapes', () =
   assert.equal(
     parseStreamCommand({
       type: 'task.update',
-      taskId: 'task-1',
-      repositoryId: 5
-    }),
-    null
-  );
-  assert.equal(
-    parseStreamCommand({
-      type: 'task.update',
-      title: 'missing id'
+      title: 'missing task id'
     }),
     null
   );
@@ -529,6 +520,26 @@ void test('parseStreamCommand rejects unknown or malformed command shapes', () =
       type: 'task.update',
       taskId: 'task-1',
       title: 5
+    }),
+    null
+  );
+  assert.deepEqual(
+    parseStreamCommand({
+      type: 'task.update',
+      taskId: 'task-1',
+      title: 'without repository change'
+    }),
+    {
+      type: 'task.update',
+      taskId: 'task-1',
+      title: 'without repository change'
+    }
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'task.update',
+      taskId: 'task-1',
+      repositoryId: 5
     }),
     null
   );
@@ -557,6 +568,15 @@ void test('parseStreamCommand rejects unknown or malformed command shapes', () =
   );
   assert.equal(
     parseStreamCommand({
+      type: 'task.claim',
+      taskId: 'task-1',
+      controllerId: 'agent-1',
+      branchName: 99
+    }),
+    null
+  );
+  assert.equal(
+    parseStreamCommand({
       type: 'task.complete'
     }),
     null
@@ -570,6 +590,12 @@ void test('parseStreamCommand rejects unknown or malformed command shapes', () =
   assert.equal(
     parseStreamCommand({
       type: 'task.ready'
+    }),
+    null
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'task.draft'
     }),
     null
   );

@@ -12,6 +12,7 @@ import {
 } from '../src/control-plane/codex-session-stream.ts';
 import { startControlPlaneStreamServer } from '../src/control-plane/stream-server.ts';
 import type {
+  StreamObservedEvent,
   StreamServerEnvelope,
   StreamSessionController,
   StreamSessionEvent
@@ -270,6 +271,27 @@ interface ControlPlaneRepositoryRecord {
   readonly archivedAt: string | null;
 }
 
+interface ControlPlaneTaskRecord {
+  readonly taskId: string;
+  readonly tenantId: string;
+  readonly userId: string;
+  readonly workspaceId: string;
+  readonly repositoryId: string | null;
+  readonly title: string;
+  readonly description: string;
+  readonly status: TaskStatus;
+  readonly orderIndex: number;
+  readonly claimedByControllerId: string | null;
+  readonly claimedByDirectoryId: string | null;
+  readonly branchName: string | null;
+  readonly baseBranch: string | null;
+  readonly claimedAt: string | null;
+  readonly completedAt: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+type TaskStatus = 'draft' | 'ready' | 'in-progress' | 'completed';
 interface GitSummary {
   readonly branch: string;
   readonly changedFiles: number;
@@ -351,6 +373,50 @@ interface ProjectPaneWrappedLine {
 }
 
 type ProjectPaneAction = 'conversation.new' | 'project.close';
+type TaskPaneAction =
+  | 'task.create'
+  | 'repository.create'
+  | 'task.edit'
+  | 'task.delete'
+  | 'task.ready'
+  | 'task.draft'
+  | 'task.complete'
+  | 'task.reorder-up'
+  | 'task.reorder-down';
+
+interface TaskPaneSnapshotLine {
+  readonly text: string;
+  readonly taskId: string | null;
+  readonly action: TaskPaneAction | null;
+}
+
+interface TaskPaneSnapshot {
+  readonly lines: readonly TaskPaneSnapshotLine[];
+}
+
+interface TaskPaneWrappedLine {
+  readonly text: string;
+  readonly taskId: string | null;
+  readonly action: TaskPaneAction | null;
+}
+
+interface TaskPaneView {
+  readonly rows: readonly string[];
+  readonly taskIds: readonly (string | null)[];
+  readonly actions: readonly (TaskPaneAction | null)[];
+  readonly top: number;
+}
+
+interface TaskEditorPromptState {
+  mode: 'create' | 'edit';
+  taskId: string | null;
+  title: string;
+  description: string;
+  repositoryIds: readonly string[];
+  repositoryIndex: number;
+  fieldIndex: 0 | 1 | 2;
+  error: string | null;
+}
 
 const PROJECT_PANE_NEW_CONVERSATION_BUTTON_LABEL = formatUiButton({
   label: 'new thread',
@@ -359,6 +425,42 @@ const PROJECT_PANE_NEW_CONVERSATION_BUTTON_LABEL = formatUiButton({
 const PROJECT_PANE_CLOSE_PROJECT_BUTTON_LABEL = formatUiButton({
   label: 'close project',
   prefixIcon: '<'
+});
+const TASKS_PANE_ADD_TASK_BUTTON_LABEL = formatUiButton({
+  label: 'add task',
+  prefixIcon: '+'
+});
+const TASKS_PANE_ADD_REPOSITORY_BUTTON_LABEL = formatUiButton({
+  label: 'add repository',
+  prefixIcon: '+'
+});
+const TASKS_PANE_EDIT_TASK_BUTTON_LABEL = formatUiButton({
+  label: 'edit task',
+  prefixIcon: 'e'
+});
+const TASKS_PANE_DELETE_TASK_BUTTON_LABEL = formatUiButton({
+  label: 'delete task',
+  prefixIcon: 'x'
+});
+const TASKS_PANE_READY_TASK_BUTTON_LABEL = formatUiButton({
+  label: 'mark ready',
+  prefixIcon: 'r'
+});
+const TASKS_PANE_DRAFT_TASK_BUTTON_LABEL = formatUiButton({
+  label: 'mark draft',
+  prefixIcon: 'd'
+});
+const TASKS_PANE_COMPLETE_TASK_BUTTON_LABEL = formatUiButton({
+  label: 'mark complete',
+  prefixIcon: 'c'
+});
+const TASKS_PANE_REORDER_UP_BUTTON_LABEL = formatUiButton({
+  label: 'move up',
+  prefixIcon: '^'
+});
+const TASKS_PANE_REORDER_DOWN_BUTTON_LABEL = formatUiButton({
+  label: 'move down',
+  prefixIcon: 'v'
 });
 const CONVERSATION_EDIT_ARCHIVE_BUTTON_LABEL = formatUiButton({
   label: 'archive thread',
@@ -500,6 +602,228 @@ function projectPaneActionAtRow(
     return 'project.close';
   }
   return null;
+}
+
+function parseIsoTimestampMs(value: string | null | undefined): number {
+  if (value === null || value === undefined) {
+    return Number.NaN;
+  }
+  return Date.parse(value);
+}
+
+function formatRelativeIsoTime(nowMs: number, value: string | null | undefined): string {
+  const ts = parseIsoTimestampMs(value);
+  if (!Number.isFinite(ts)) {
+    return 'unknown';
+  }
+  const deltaSeconds = Math.max(0, Math.floor((nowMs - ts) / 1000));
+  if (deltaSeconds < 60) {
+    return `${String(deltaSeconds)}s ago`;
+  }
+  const deltaMinutes = Math.floor(deltaSeconds / 60);
+  if (deltaMinutes < 60) {
+    return `${String(deltaMinutes)}m ago`;
+  }
+  const deltaHours = Math.floor(deltaMinutes / 60);
+  if (deltaHours < 24) {
+    return `${String(deltaHours)}h ago`;
+  }
+  const deltaDays = Math.floor(deltaHours / 24);
+  return `${String(deltaDays)}d ago`;
+}
+
+function sortedRepositoryList(
+  repositories: ReadonlyMap<string, ControlPlaneRepositoryRecord>
+): readonly ControlPlaneRepositoryRecord[] {
+  return [...repositories.values()]
+    .filter((repository) => repository.archivedAt === null)
+    .sort((left, right) => {
+      const nameCompare = left.name.localeCompare(right.name);
+      if (nameCompare !== 0) {
+        return nameCompare;
+      }
+      return left.repositoryId.localeCompare(right.repositoryId);
+    });
+}
+
+function sortTasksByOrder(tasks: readonly ControlPlaneTaskRecord[]): readonly ControlPlaneTaskRecord[] {
+  return [...tasks].sort((left, right) => {
+    if (left.orderIndex !== right.orderIndex) {
+      return left.orderIndex - right.orderIndex;
+    }
+    const leftCreatedAt = parseIsoTimestampMs(left.createdAt);
+    const rightCreatedAt = parseIsoTimestampMs(right.createdAt);
+    if (Number.isFinite(leftCreatedAt) && Number.isFinite(rightCreatedAt) && leftCreatedAt !== rightCreatedAt) {
+      return leftCreatedAt - rightCreatedAt;
+    }
+    return left.taskId.localeCompare(right.taskId);
+  });
+}
+
+function buildTaskPaneSnapshot(
+  repositories: ReadonlyMap<string, ControlPlaneRepositoryRecord>,
+  tasks: ReadonlyMap<string, ControlPlaneTaskRecord>,
+  selectedTaskId: string | null,
+  nowMs: number,
+  notice: string | null
+): TaskPaneSnapshot {
+  const activeRepositories = sortedRepositoryList(repositories);
+  const repositoryNameById = new Map<string, string>(
+    activeRepositories.map((repository) => [repository.repositoryId, repository.name] as const)
+  );
+  const orderedTasks = sortTasksByOrder([...tasks.values()]);
+  const activeTasks = orderedTasks.filter((task) => task.status !== 'completed');
+  const completedTasks = orderedTasks
+    .filter((task) => task.status === 'completed')
+    .sort((left, right) => {
+      const leftCompletedAt = parseIsoTimestampMs(left.completedAt);
+      const rightCompletedAt = parseIsoTimestampMs(right.completedAt);
+      if (Number.isFinite(leftCompletedAt) && Number.isFinite(rightCompletedAt)) {
+        return rightCompletedAt - leftCompletedAt;
+      }
+      return right.updatedAt.localeCompare(left.updatedAt);
+    });
+  const effectiveSelectedTaskId =
+    (selectedTaskId !== null && tasks.has(selectedTaskId) ? selectedTaskId : null) ??
+    activeTasks[0]?.taskId ??
+    null;
+  const lines: TaskPaneSnapshotLine[] = [];
+  const push = (text: string, taskId: string | null = null, action: TaskPaneAction | null = null): void => {
+    lines.push({
+      text,
+      taskId,
+      action
+    });
+  };
+
+  push('tasks');
+  push(
+    `repositories ${String(activeRepositories.length)} · active ${String(activeTasks.length)} · completed ${String(
+      completedTasks.length
+    )}`
+  );
+  if (notice !== null) {
+    push(`notice: ${notice}`);
+  }
+  push('');
+  push(TASKS_PANE_ADD_TASK_BUTTON_LABEL, null, 'task.create');
+  push(TASKS_PANE_ADD_REPOSITORY_BUTTON_LABEL, null, 'repository.create');
+  push(TASKS_PANE_EDIT_TASK_BUTTON_LABEL, null, 'task.edit');
+  push(TASKS_PANE_DELETE_TASK_BUTTON_LABEL, null, 'task.delete');
+  push(TASKS_PANE_READY_TASK_BUTTON_LABEL, null, 'task.ready');
+  push(TASKS_PANE_DRAFT_TASK_BUTTON_LABEL, null, 'task.draft');
+  push(TASKS_PANE_COMPLETE_TASK_BUTTON_LABEL, null, 'task.complete');
+  push(TASKS_PANE_REORDER_UP_BUTTON_LABEL, null, 'task.reorder-up');
+  push(TASKS_PANE_REORDER_DOWN_BUTTON_LABEL, null, 'task.reorder-down');
+  push('');
+  push('active tasks');
+  if (activeTasks.length === 0) {
+    push('  no active tasks');
+  } else {
+    for (let index = 0; index < activeTasks.length; index += 1) {
+      const task = activeTasks[index]!;
+      const selected = task.taskId === effectiveSelectedTaskId ? '▸' : ' ';
+      const repositoryName =
+        (task.repositoryId !== null ? repositoryNameById.get(task.repositoryId) : null) ??
+        '(missing repository)';
+      push(`${selected} ${String(index + 1)}. [${task.status}] ${task.title}`, task.taskId);
+      push(`    ${repositoryName} · updated ${formatRelativeIsoTime(nowMs, task.updatedAt)}`, task.taskId);
+      const description = task.description.trim();
+      if (description.length > 0) {
+        push(`    ${description}`, task.taskId);
+      }
+      if (index + 1 < activeTasks.length) {
+        push('');
+      }
+    }
+  }
+  push('');
+  push('recently completed');
+  if (completedTasks.length === 0) {
+    push('  nothing completed yet');
+  } else {
+    for (const task of completedTasks.slice(0, 8)) {
+      const repositoryName =
+        (task.repositoryId !== null ? repositoryNameById.get(task.repositoryId) : null) ??
+        '(missing repository)';
+      const completedLabel = formatRelativeIsoTime(nowMs, task.completedAt ?? task.updatedAt);
+      push(`  ✓ ${task.title} · ${repositoryName} · ${completedLabel}`, task.taskId);
+    }
+  }
+  push('');
+  push('keys: n new  e edit  x delete  r ready  d draft  c complete  [ up  ] down');
+  push('click rows to select and run actions');
+  return {
+    lines
+  };
+}
+
+function buildTaskPaneWrappedLines(snapshot: TaskPaneSnapshot, cols: number): readonly TaskPaneWrappedLine[] {
+  const safeCols = Math.max(1, cols);
+  const wrapped: TaskPaneWrappedLine[] = [];
+  for (const line of snapshot.lines) {
+    const segments = wrapTextForColumns(line.text, safeCols);
+    if (segments.length === 0) {
+      wrapped.push({
+        text: '',
+        taskId: line.taskId,
+        action: line.action
+      });
+      continue;
+    }
+    for (const segment of segments) {
+      wrapped.push({
+        text: segment,
+        taskId: line.taskId,
+        action: line.action
+      });
+    }
+  }
+  if (wrapped.length === 0) {
+    wrapped.push({
+      text: '',
+      taskId: null,
+      action: null
+    });
+  }
+  return wrapped;
+}
+
+function buildTaskPaneRows(
+  snapshot: TaskPaneSnapshot,
+  cols: number,
+  paneRows: number,
+  scrollTop: number
+): TaskPaneView {
+  const safeCols = Math.max(1, cols);
+  const safeRows = Math.max(1, paneRows);
+  const wrappedLines = buildTaskPaneWrappedLines(snapshot, safeCols);
+  const maxTop = Math.max(0, wrappedLines.length - safeRows);
+  const nextTop = Math.max(0, Math.min(maxTop, scrollTop));
+  const viewport = wrappedLines.slice(nextTop, nextTop + safeRows);
+  while (viewport.length < safeRows) {
+    viewport.push({
+      text: '',
+      taskId: null,
+      action: null
+    });
+  }
+  return {
+    rows: viewport.map((row) => padOrTrimDisplay(row.text, safeCols)),
+    taskIds: viewport.map((row) => row.taskId),
+    actions: viewport.map((row) => row.action),
+    top: nextTop
+  };
+}
+
+function taskPaneActionAtRow(view: TaskPaneView, rowIndex: number): TaskPaneAction | null {
+  const normalizedRow = Math.max(0, Math.min(view.actions.length - 1, rowIndex));
+  return view.actions[normalizedRow] ?? null;
+}
+
+function taskPaneTaskIdAtRow(view: TaskPaneView, rowIndex: number): string | null {
+  const normalizedRow = Math.max(0, Math.min(view.taskIds.length - 1, rowIndex));
+  return view.taskIds[normalizedRow] ?? null;
 }
 
 function normalizePaneWidthPercent(value: number): number {
@@ -734,6 +1058,90 @@ function parseRepositoryRecord(value: unknown): ControlPlaneRepositoryRecord | n
     metadata: metadataRaw as Record<string, unknown>,
     createdAt: typeof createdAtRaw === 'string' ? createdAtRaw : null,
     archivedAt: typeof archivedAtRaw === 'string' ? archivedAtRaw : null
+  };
+}
+
+function parseTaskStatus(value: unknown): TaskStatus | null {
+  if (value === 'queued') {
+    return 'ready';
+  }
+  if (value === 'draft' || value === 'ready' || value === 'in-progress' || value === 'completed') {
+    return value;
+  }
+  return null;
+}
+
+function parseTaskRecord(value: unknown): ControlPlaneTaskRecord | null {
+  const record = asRecord(value);
+  if (record === null) {
+    return null;
+  }
+  const taskId = record['taskId'];
+  const tenantId = record['tenantId'];
+  const userId = record['userId'];
+  const workspaceId = record['workspaceId'];
+  const repositoryIdRaw = record['repositoryId'];
+  const title = record['title'];
+  const description = record['description'];
+  const status = parseTaskStatus(record['status']);
+  const orderIndex = record['orderIndex'];
+  const claimedByControllerIdRaw = record['claimedByControllerId'];
+  const claimedByDirectoryIdRaw = record['claimedByDirectoryId'];
+  const branchNameRaw = record['branchName'];
+  const baseBranchRaw = record['baseBranch'];
+  const claimedAtRaw = record['claimedAt'];
+  const completedAtRaw = record['completedAt'];
+  const createdAt = record['createdAt'];
+  const updatedAt = record['updatedAt'];
+  if (
+    typeof taskId !== 'string' ||
+    typeof tenantId !== 'string' ||
+    typeof userId !== 'string' ||
+    typeof workspaceId !== 'string' ||
+    (repositoryIdRaw !== null && repositoryIdRaw !== undefined && typeof repositoryIdRaw !== 'string') ||
+    typeof title !== 'string' ||
+    typeof description !== 'string' ||
+    status === null ||
+    typeof orderIndex !== 'number' ||
+    (claimedByControllerIdRaw !== null &&
+      claimedByControllerIdRaw !== undefined &&
+      typeof claimedByControllerIdRaw !== 'string') ||
+    (claimedByDirectoryIdRaw !== null &&
+      claimedByDirectoryIdRaw !== undefined &&
+      typeof claimedByDirectoryIdRaw !== 'string') ||
+    (branchNameRaw !== null && branchNameRaw !== undefined && typeof branchNameRaw !== 'string') ||
+    (baseBranchRaw !== null && baseBranchRaw !== undefined && typeof baseBranchRaw !== 'string') ||
+    (claimedAtRaw !== null && claimedAtRaw !== undefined && typeof claimedAtRaw !== 'string') ||
+    (completedAtRaw !== null && completedAtRaw !== undefined && typeof completedAtRaw !== 'string') ||
+    typeof createdAt !== 'string' ||
+    typeof updatedAt !== 'string'
+  ) {
+    return null;
+  }
+  return {
+    taskId,
+    tenantId,
+    userId,
+    workspaceId,
+    repositoryId: repositoryIdRaw === null || repositoryIdRaw === undefined ? null : repositoryIdRaw,
+    title,
+    description,
+    status,
+    orderIndex,
+    claimedByControllerId:
+      claimedByControllerIdRaw === null || claimedByControllerIdRaw === undefined
+        ? null
+        : claimedByControllerIdRaw,
+    claimedByDirectoryId:
+      claimedByDirectoryIdRaw === null || claimedByDirectoryIdRaw === undefined
+        ? null
+        : claimedByDirectoryIdRaw,
+    branchName: branchNameRaw === null || branchNameRaw === undefined ? null : branchNameRaw,
+    baseBranch: baseBranchRaw === null || baseBranchRaw === undefined ? null : baseBranchRaw,
+    claimedAt: claimedAtRaw === null || claimedAtRaw === undefined ? null : claimedAtRaw,
+    completedAt: completedAtRaw === null || completedAtRaw === undefined ? null : completedAtRaw,
+    createdAt,
+    updatedAt
   };
 }
 
@@ -2232,9 +2640,18 @@ async function main(): Promise<number> {
   }
   directoryUpsertSpan.end();
   let activeDirectoryId: string | null = persistedDirectory.directoryId;
-  let mainPaneMode: 'conversation' | 'project' = 'conversation';
+  let mainPaneMode: 'conversation' | 'project' | 'tasks' = 'conversation';
   let projectPaneSnapshot: ProjectPaneSnapshot | null = null;
   let projectPaneScrollTop = 0;
+  let taskPaneScrollTop = 0;
+  let latestTaskPaneView: TaskPaneView = {
+    rows: [],
+    taskIds: [],
+    actions: [],
+    top: 0
+  };
+  let taskPaneSelectedTaskId: string | null = null;
+  let taskPaneNotice: string | null = null;
 
   const sessionEnv = {
     ...sanitizeProcessEnv(),
@@ -2251,6 +2668,8 @@ async function main(): Promise<number> {
   const muxControllerId = `human-mux-${process.pid}-${randomUUID()}`;
   const muxControllerLabel = `human mux ${process.pid}`;
   const conversations = new Map<string, ConversationState>();
+  const tasks = new Map<string, ControlPlaneTaskRecord>();
+  let observedStreamSubscriptionId: string | null = null;
   let keyEventSubscription: Awaited<ReturnType<typeof subscribeControlPlaneKeyEvents>> | null = null;
   const conversationStartInFlight = new Map<string, Promise<ConversationState>>();
   const removedConversationIds = new Set<string>();
@@ -2793,6 +3212,8 @@ async function main(): Promise<number> {
 
   await hydrateConversationList();
   await hydrateRepositoryList();
+  await hydrateTaskPlanningState();
+  await subscribeTaskPlanningEvents();
   if (activeConversationId === null) {
     const ordered = conversationOrder(conversations);
     activeConversationId = ordered[0] ?? null;
@@ -3293,6 +3714,7 @@ async function main(): Promise<number> {
   let repositoryPrompt: RepositoryPromptState | null = null;
   let newThreadPrompt: NewThreadPromptState | null = null;
   let addDirectoryPrompt: { value: string; error: string | null } | null = null;
+  let taskEditorPrompt: TaskEditorPromptState | null = null;
   let conversationTitleEdit: ConversationTitleEditState | null = null;
   let conversationTitleEditClickState: { conversationId: string; atMs: number } | null = null;
   let paneDividerDragActive = false;
@@ -4053,6 +4475,49 @@ async function main(): Promise<number> {
     });
   };
 
+  const buildTaskEditorModalOverlay = (viewportRows: number): ReturnType<typeof buildUiModalOverlay> | null => {
+    if (taskEditorPrompt === null) {
+      return null;
+    }
+    const modalSize = resolveGoldenModalSize(layout.cols, viewportRows, {
+      preferredHeight: 18,
+      minWidth: 30,
+      maxWidth: 56
+    });
+    const selectedRepositoryId = taskEditorPrompt.repositoryIds[taskEditorPrompt.repositoryIndex] ?? null;
+    const selectedRepositoryName =
+      selectedRepositoryId === null
+        ? '(none)'
+        : repositories.get(selectedRepositoryId)?.name ?? '(missing)';
+    const taskBody = [
+      `${taskEditorPrompt.fieldIndex === 0 ? '>' : ' '} title: ${taskEditorPrompt.title}${
+        taskEditorPrompt.fieldIndex === 0 ? '_' : ''
+      }`,
+      `${taskEditorPrompt.fieldIndex === 1 ? '>' : ' '} repository: ${selectedRepositoryName}`,
+      `${taskEditorPrompt.fieldIndex === 2 ? '>' : ' '} description: ${taskEditorPrompt.description}${
+        taskEditorPrompt.fieldIndex === 2 ? '_' : ''
+      }`,
+      '',
+      'tab next field',
+      'left/right change repository'
+    ];
+    if (taskEditorPrompt.error !== null && taskEditorPrompt.error.length > 0) {
+      taskBody.push(`error: ${taskEditorPrompt.error}`);
+    }
+    return buildUiModalOverlay({
+      viewportCols: layout.cols,
+      viewportRows,
+      width: modalSize.width,
+      height: modalSize.height,
+      anchor: 'center',
+      marginRows: 1,
+      title: taskEditorPrompt.mode === 'create' ? 'New Task' : 'Edit Task',
+      bodyLines: taskBody,
+      footer: 'enter save  esc',
+      theme: MUX_MODAL_THEME
+    });
+  };
+
   const buildRepositoryModalOverlay = (viewportRows: number): ReturnType<typeof buildUiModalOverlay> | null => {
     if (repositoryPrompt === null) {
       return null;
@@ -4131,6 +4596,10 @@ async function main(): Promise<number> {
     const addDirectoryOverlay = buildAddDirectoryModalOverlay(layout.rows);
     if (addDirectoryOverlay !== null) {
       return addDirectoryOverlay;
+    }
+    const taskEditorOverlay = buildTaskEditorModalOverlay(layout.rows);
+    if (taskEditorOverlay !== null) {
+      return taskEditorOverlay;
     }
     const repositoryOverlay = buildRepositoryModalOverlay(layout.rows);
     if (repositoryOverlay !== null) {
@@ -4239,6 +4708,173 @@ async function main(): Promise<number> {
     previousRows = [];
   };
 
+  const orderedTaskRecords = (): readonly ControlPlaneTaskRecord[] => {
+    return sortTasksByOrder([...tasks.values()]);
+  };
+
+  const syncTaskPaneSelection = (): void => {
+    if (taskPaneSelectedTaskId !== null && tasks.has(taskPaneSelectedTaskId)) {
+      return;
+    }
+    const activeTasks = orderedTaskRecords().filter((task) => task.status !== 'completed');
+    taskPaneSelectedTaskId = activeTasks[0]?.taskId ?? null;
+  };
+
+  const selectedTaskRecord = (): ControlPlaneTaskRecord | null => {
+    if (taskPaneSelectedTaskId === null) {
+      return null;
+    }
+    return tasks.get(taskPaneSelectedTaskId) ?? null;
+  };
+
+  const activeRepositoryIds = (): readonly string[] => {
+    return sortedRepositoryList(repositories).map((repository) => repository.repositoryId);
+  };
+
+  const enterTaskPane = (): void => {
+    mainPaneMode = 'tasks';
+    projectPaneSnapshot = null;
+    projectPaneScrollTop = 0;
+    selection = null;
+    selectionDrag = null;
+    releaseViewportPinForSelection();
+    taskPaneScrollTop = 0;
+    taskPaneNotice = null;
+    syncTaskPaneSelection();
+    forceFullClear = true;
+    previousRows = [];
+    markDirty();
+  };
+
+  async function hydrateTaskPlanningState(): Promise<void> {
+    const repositoriesResult = await streamClient.sendCommand({
+      type: 'repository.list',
+      tenantId: options.scope.tenantId,
+      userId: options.scope.userId,
+      workspaceId: options.scope.workspaceId
+    });
+    const repositoriesRaw = repositoriesResult['repositories'];
+    if (!Array.isArray(repositoriesRaw)) {
+      throw new Error('control-plane repository.list returned malformed repositories');
+    }
+    repositories.clear();
+    for (const value of repositoriesRaw) {
+      const repository = parseRepositoryRecord(value);
+      if (repository === null) {
+        throw new Error('control-plane repository.list returned malformed repository record');
+      }
+      repositories.set(repository.repositoryId, repository);
+    }
+
+    const tasksResult = await streamClient.sendCommand({
+      type: 'task.list',
+      tenantId: options.scope.tenantId,
+      userId: options.scope.userId,
+      workspaceId: options.scope.workspaceId,
+      limit: 1000
+    });
+    const tasksRaw = tasksResult['tasks'];
+    if (!Array.isArray(tasksRaw)) {
+      throw new Error('control-plane task.list returned malformed tasks');
+    }
+    tasks.clear();
+    for (const value of tasksRaw) {
+      const task = parseTaskRecord(value);
+      if (task === null) {
+        throw new Error('control-plane task.list returned malformed task record');
+      }
+      tasks.set(task.taskId, task);
+    }
+    syncTaskPaneSelection();
+    markDirty();
+  }
+
+  const applyObservedTaskPlanningEvent = (observed: StreamObservedEvent): void => {
+    if (observed.type === 'repository-upserted' || observed.type === 'repository-updated') {
+      const repository = parseRepositoryRecord(observed.repository);
+      if (repository !== null) {
+        repositories.set(repository.repositoryId, repository);
+        markDirty();
+      }
+      return;
+    }
+    if (observed.type === 'repository-archived') {
+      const repository = repositories.get(observed.repositoryId);
+      if (repository !== undefined) {
+        repositories.set(observed.repositoryId, {
+          ...repository,
+          archivedAt: observed.ts
+        });
+        markDirty();
+      }
+      return;
+    }
+    if (observed.type === 'task-created' || observed.type === 'task-updated') {
+      const task = parseTaskRecord(observed.task);
+      if (task !== null) {
+        tasks.set(task.taskId, task);
+        syncTaskPaneSelection();
+        markDirty();
+      }
+      return;
+    }
+    if (observed.type === 'task-deleted') {
+      if (tasks.delete(observed.taskId)) {
+        syncTaskPaneSelection();
+        markDirty();
+      }
+      return;
+    }
+    if (observed.type === 'task-reordered') {
+      let changed = false;
+      for (const value of observed.tasks) {
+        const task = parseTaskRecord(value);
+        if (task === null) {
+          continue;
+        }
+        tasks.set(task.taskId, task);
+        changed = true;
+      }
+      if (changed) {
+        syncTaskPaneSelection();
+        markDirty();
+      }
+    }
+  };
+
+  async function subscribeTaskPlanningEvents(): Promise<void> {
+    if (observedStreamSubscriptionId !== null) {
+      return;
+    }
+    const subscribed = await streamClient.sendCommand({
+      type: 'stream.subscribe',
+      tenantId: options.scope.tenantId,
+      userId: options.scope.userId,
+      workspaceId: options.scope.workspaceId
+    });
+    const subscriptionId = subscribed['subscriptionId'];
+    if (typeof subscriptionId !== 'string') {
+      throw new Error('control-plane stream.subscribe returned malformed subscription id');
+    }
+    observedStreamSubscriptionId = subscriptionId;
+  }
+
+  async function unsubscribeTaskPlanningEvents(): Promise<void> {
+    if (observedStreamSubscriptionId === null) {
+      return;
+    }
+    const subscriptionId = observedStreamSubscriptionId;
+    observedStreamSubscriptionId = null;
+    try {
+      await streamClient.sendCommand({
+        type: 'stream.unsubscribe',
+        subscriptionId
+      });
+    } catch {
+      // Best-effort unsubscribe only.
+    }
+  }
+
   const activateConversation = async (sessionId: string): Promise<void> => {
     if (activeConversationId === sessionId) {
       if (mainPaneMode !== 'conversation') {
@@ -4314,6 +4950,200 @@ async function main(): Promise<number> {
     conversationStartInFlight.delete(sessionId);
     ptySizeByConversationId.delete(sessionId);
     processUsageBySessionId.delete(sessionId);
+  };
+
+  const moveTaskSelection = (direction: 1 | -1): void => {
+    const activeTasks = orderedTaskRecords().filter((task) => task.status !== 'completed');
+    if (activeTasks.length === 0) {
+      taskPaneSelectedTaskId = null;
+      markDirty();
+      return;
+    }
+    const currentIndex = activeTasks.findIndex((task) => task.taskId === taskPaneSelectedTaskId);
+    const safeIndex = currentIndex < 0 ? 0 : currentIndex;
+    const nextIndex = Math.max(0, Math.min(activeTasks.length - 1, safeIndex + direction));
+    taskPaneSelectedTaskId = activeTasks[nextIndex]?.taskId ?? activeTasks[0]!.taskId;
+    markDirty();
+  };
+
+  const openTaskCreatePrompt = (): void => {
+    const repositoryIds = activeRepositoryIds();
+    if (repositoryIds.length === 0) {
+      taskPaneNotice = 'add a repository before creating tasks';
+      markDirty();
+      return;
+    }
+    taskEditorPrompt = {
+      mode: 'create',
+      taskId: null,
+      title: '',
+      description: '',
+      repositoryIds,
+      repositoryIndex: 0,
+      fieldIndex: 0,
+      error: null
+    };
+    taskPaneNotice = null;
+    markDirty();
+  };
+
+  const openTaskEditPrompt = (taskId: string): void => {
+    const task = tasks.get(taskId);
+    if (task === undefined) {
+      return;
+    }
+    const repositoryIds = [...activeRepositoryIds()];
+    if (task.repositoryId !== null && !repositoryIds.includes(task.repositoryId)) {
+      repositoryIds.push(task.repositoryId);
+    }
+    if (repositoryIds.length === 0) {
+      taskPaneNotice = 'add a repository before editing tasks';
+      markDirty();
+      return;
+    }
+    const repositoryIndex =
+      task.repositoryId === null ? 0 : Math.max(0, repositoryIds.indexOf(task.repositoryId));
+    taskEditorPrompt = {
+      mode: 'edit',
+      taskId: task.taskId,
+      title: task.title,
+      description: task.description,
+      repositoryIds,
+      repositoryIndex,
+      fieldIndex: 0,
+      error: null
+    };
+    taskPaneNotice = null;
+    markDirty();
+  };
+
+  const applyTaskFromCommandResult = (result: Record<string, unknown>): ControlPlaneTaskRecord | null => {
+    const parsed = parseTaskRecord(result['task']);
+    if (parsed === null) {
+      return null;
+    }
+    tasks.set(parsed.taskId, parsed);
+    taskPaneSelectedTaskId = parsed.taskId;
+    syncTaskPaneSelection();
+    markDirty();
+    return parsed;
+  };
+
+  const applyTaskListFromCommandResult = (result: Record<string, unknown>): boolean => {
+    const raw = result['tasks'];
+    if (!Array.isArray(raw)) {
+      return false;
+    }
+    let changed = false;
+    for (const value of raw) {
+      const parsed = parseTaskRecord(value);
+      if (parsed === null) {
+        continue;
+      }
+      tasks.set(parsed.taskId, parsed);
+      changed = true;
+    }
+    if (changed) {
+      syncTaskPaneSelection();
+      markDirty();
+    }
+    return changed;
+  };
+
+  const runTaskPaneAction = (action: TaskPaneAction): void => {
+    if (action === 'task.create') {
+      openTaskCreatePrompt();
+      return;
+    }
+    if (action === 'repository.create') {
+      taskPaneNotice = null;
+      openRepositoryPromptForCreate();
+      return;
+    }
+    const selected = selectedTaskRecord();
+    if (selected === null) {
+      taskPaneNotice = 'select a task first';
+      markDirty();
+      return;
+    }
+    if (action === 'task.edit') {
+      openTaskEditPrompt(selected.taskId);
+      return;
+    }
+    if (action === 'task.delete') {
+      queueControlPlaneOp(async () => {
+        await streamClient.sendCommand({
+          type: 'task.delete',
+          taskId: selected.taskId
+        });
+        tasks.delete(selected.taskId);
+        syncTaskPaneSelection();
+        markDirty();
+      }, 'tasks-delete');
+      return;
+    }
+    if (action === 'task.ready') {
+      queueControlPlaneOp(async () => {
+        const result = await streamClient.sendCommand({
+          type: 'task.ready',
+          taskId: selected.taskId
+        });
+        applyTaskFromCommandResult(result);
+      }, 'tasks-ready');
+      return;
+    }
+    if (action === 'task.draft') {
+      queueControlPlaneOp(async () => {
+        const result = await streamClient.sendCommand({
+          type: 'task.draft',
+          taskId: selected.taskId
+        });
+        applyTaskFromCommandResult(result);
+      }, 'tasks-draft');
+      return;
+    }
+    if (action === 'task.complete') {
+      queueControlPlaneOp(async () => {
+        const result = await streamClient.sendCommand({
+          type: 'task.complete',
+          taskId: selected.taskId
+        });
+        applyTaskFromCommandResult(result);
+      }, 'tasks-complete');
+      return;
+    }
+    if (action === 'task.reorder-up' || action === 'task.reorder-down') {
+      const ordered = orderedTaskRecords();
+      const activeTasks = ordered.filter((task) => task.status !== 'completed');
+      const completedTasks = ordered.filter((task) => task.status === 'completed');
+      const selectedIndex = activeTasks.findIndex((task) => task.taskId === selected.taskId);
+      if (selectedIndex < 0) {
+        taskPaneNotice = 'cannot reorder completed tasks';
+        markDirty();
+        return;
+      }
+      const swapIndex = action === 'task.reorder-up' ? selectedIndex - 1 : selectedIndex + 1;
+      if (swapIndex < 0 || swapIndex >= activeTasks.length) {
+        return;
+      }
+      const reordered = [...activeTasks];
+      const currentTask = reordered[selectedIndex]!;
+      reordered[selectedIndex] = reordered[swapIndex]!;
+      reordered[swapIndex] = currentTask;
+      queueControlPlaneOp(async () => {
+        const result = await streamClient.sendCommand({
+          type: 'task.reorder',
+          tenantId: options.scope.tenantId,
+          userId: options.scope.userId,
+          workspaceId: options.scope.workspaceId,
+          orderedTaskIds: [
+            ...reordered.map((task) => task.taskId),
+            ...completedTasks.map((task) => task.taskId)
+          ]
+        });
+        applyTaskListFromCommandResult(result);
+      }, action === 'task.reorder-up' ? 'tasks-reorder-up' : 'tasks-reorder-down');
+    }
   };
 
   const openNewThreadPrompt = (directoryId: string): void => {
@@ -4673,7 +5503,8 @@ async function main(): Promise<number> {
       mainPaneMode === 'project' &&
       activeDirectoryId !== null &&
       directories.has(activeDirectoryId);
-    if (!projectPaneActive && activeConversationId === null) {
+    const taskPaneActive = mainPaneMode === 'tasks';
+    if (!projectPaneActive && !taskPaneActive && activeConversationId === null) {
       dirty = false;
       return;
     }
@@ -4681,12 +5512,12 @@ async function main(): Promise<number> {
 
     const active =
       activeConversationId === null ? null : conversations.get(activeConversationId) ?? null;
-    if (!projectPaneActive && active === null) {
+    if (!projectPaneActive && !taskPaneActive && active === null) {
       dirty = false;
       return;
     }
     const rightFrame =
-      !projectPaneActive && active !== null ? active.oracle.snapshotWithoutHash() : null;
+      !projectPaneActive && !taskPaneActive && active !== null ? active.oracle.snapshotWithoutHash() : null;
     const renderSelection =
       rightFrame !== null && selectionDrag !== null && selectionDrag.hasDragged
         ? {
@@ -4721,10 +5552,33 @@ async function main(): Promise<number> {
     );
     latestRailViewRows = rail.viewRows;
     let rightRows: readonly string[] = [];
+    latestTaskPaneView = {
+      rows: [],
+      taskIds: [],
+      actions: [],
+      top: 0
+    };
     if (rightFrame !== null) {
       rightRows = Array.from({ length: layout.paneRows }, (_value, row) =>
         renderSnapshotAnsiRow(rightFrame, row, layout.rightCols)
       );
+    } else if (taskPaneActive) {
+      const snapshot = buildTaskPaneSnapshot(
+        repositories,
+        tasks,
+        taskPaneSelectedTaskId,
+        Date.now(),
+        taskPaneNotice
+      );
+      const view = buildTaskPaneRows(
+        snapshot,
+        layout.rightCols,
+        layout.paneRows,
+        taskPaneScrollTop
+      );
+      taskPaneScrollTop = view.top;
+      latestTaskPaneView = view;
+      rightRows = view.rows;
     } else if (projectPaneActive && activeDirectoryId !== null) {
       if (
         projectPaneSnapshot === null ||
@@ -5045,6 +5899,11 @@ async function main(): Promise<number> {
         ptySizeByConversationId.delete(envelope.sessionId);
       }
       markDirty();
+      return;
+    }
+
+    if (envelope.kind === 'stream.event') {
+      applyObservedTaskPlanningEvent(envelope.event);
     }
   };
 
@@ -5120,6 +5979,162 @@ async function main(): Promise<number> {
       queued
     });
   })();
+
+  const handleTaskEditorPromptInput = (input: Buffer): boolean => {
+    if (taskEditorPrompt === null) {
+      return false;
+    }
+    if (input.length === 1 && input[0] === 0x03) {
+      return false;
+    }
+    const dismissAction = detectMuxGlobalShortcut(input, modalDismissShortcutBindings);
+    if (dismissAction === 'mux.app.quit') {
+      taskEditorPrompt = null;
+      markDirty();
+      return true;
+    }
+    if (
+      dismissModalOnOutsideClick(input, () => {
+        taskEditorPrompt = null;
+        markDirty();
+      })
+    ) {
+      return true;
+    }
+    const prompt = taskEditorPrompt;
+    let nextTitle = prompt.title;
+    let nextDescription = prompt.description;
+    let nextFieldIndex = prompt.fieldIndex;
+    let nextRepositoryIndex = prompt.repositoryIndex;
+    let submit = false;
+    const text = input.toString('utf8');
+    if (text === '\u001b[C') {
+      nextFieldIndex = 1;
+      nextRepositoryIndex = Math.min(prompt.repositoryIds.length - 1, prompt.repositoryIndex + 1);
+    } else if (text === '\u001b[D') {
+      nextFieldIndex = 1;
+      nextRepositoryIndex = Math.max(0, prompt.repositoryIndex - 1);
+    } else {
+      for (const byte of input) {
+        if (byte === 0x0d || byte === 0x0a) {
+          submit = true;
+          break;
+        }
+        if (byte === 0x09) {
+          nextFieldIndex = ((nextFieldIndex + 1) % 3) as 0 | 1 | 2;
+          continue;
+        }
+        if (byte === 0x7f || byte === 0x08) {
+          if (nextFieldIndex === 0) {
+            nextTitle = nextTitle.slice(0, -1);
+          } else if (nextFieldIndex === 2) {
+            nextDescription = nextDescription.slice(0, -1);
+          }
+          continue;
+        }
+        if (byte >= 32 && byte <= 126) {
+          if (nextFieldIndex === 0) {
+            nextTitle += String.fromCharCode(byte);
+          } else if (nextFieldIndex === 2) {
+            nextDescription += String.fromCharCode(byte);
+          }
+        }
+      }
+    }
+    const changed =
+      nextTitle !== prompt.title ||
+      nextDescription !== prompt.description ||
+      nextFieldIndex !== prompt.fieldIndex ||
+      nextRepositoryIndex !== prompt.repositoryIndex;
+    if (changed) {
+      taskEditorPrompt = {
+        ...prompt,
+        title: nextTitle,
+        description: nextDescription,
+        fieldIndex: nextFieldIndex,
+        repositoryIndex: nextRepositoryIndex,
+        error: null
+      };
+      markDirty();
+    }
+    if (!submit) {
+      return true;
+    }
+    const repositoryId = prompt.repositoryIds[nextRepositoryIndex] ?? null;
+    const title = nextTitle.trim();
+    if (title.length === 0) {
+      taskEditorPrompt = {
+        ...prompt,
+        title: nextTitle,
+        description: nextDescription,
+        fieldIndex: nextFieldIndex,
+        repositoryIndex: nextRepositoryIndex,
+        error: 'title required'
+      };
+      markDirty();
+      return true;
+    }
+    if (repositoryId === null) {
+      taskEditorPrompt = {
+        ...prompt,
+        title: nextTitle,
+        description: nextDescription,
+        fieldIndex: nextFieldIndex,
+        repositoryIndex: nextRepositoryIndex,
+        error: 'repository required'
+      };
+      markDirty();
+      return true;
+    }
+    const commandLabel = prompt.mode === 'create' ? 'tasks-create' : 'tasks-edit';
+    const promptMode = prompt.mode;
+    const promptTaskId = prompt.taskId;
+    queueControlPlaneOp(async () => {
+      try {
+        if (promptMode === 'create') {
+          const result = await streamClient.sendCommand({
+            type: 'task.create',
+            tenantId: options.scope.tenantId,
+            userId: options.scope.userId,
+            workspaceId: options.scope.workspaceId,
+            repositoryId,
+            title,
+            description: nextDescription
+          });
+          const parsed = applyTaskFromCommandResult(result);
+          if (parsed === null) {
+            throw new Error('control-plane task.create returned malformed task record');
+          }
+        } else {
+          if (promptTaskId === null) {
+            throw new Error('task edit state missing task id');
+          }
+          const result = await streamClient.sendCommand({
+            type: 'task.update',
+            taskId: promptTaskId,
+            repositoryId,
+            title,
+            description: nextDescription
+          });
+          const parsed = applyTaskFromCommandResult(result);
+          if (parsed === null) {
+            throw new Error('control-plane task.update returned malformed task record');
+          }
+        }
+        taskEditorPrompt = null;
+        taskPaneNotice = null;
+      } catch (error: unknown) {
+        if (taskEditorPrompt !== null) {
+          taskEditorPrompt.error = error instanceof Error ? error.message : String(error);
+        } else {
+          taskPaneNotice = error instanceof Error ? error.message : String(error);
+        }
+      } finally {
+        markDirty();
+      }
+    }, commandLabel);
+    return true;
+  };
 
   const handleConversationTitleEditInput = (input: Buffer): boolean => {
     if (conversationTitleEdit === null) {
@@ -5409,8 +6424,81 @@ async function main(): Promise<number> {
     return true;
   };
 
+  const handleTaskPaneShortcutInput = (input: Buffer): boolean => {
+    if (mainPaneMode !== 'tasks') {
+      return false;
+    }
+    let handled = false;
+    for (const byte of input) {
+      if (byte === 0x6a) {
+        moveTaskSelection(1);
+        handled = true;
+        continue;
+      }
+      if (byte === 0x6b) {
+        moveTaskSelection(-1);
+        handled = true;
+        continue;
+      }
+      if (byte === 0x6e) {
+        runTaskPaneAction('task.create');
+        handled = true;
+        continue;
+      }
+      if (byte === 0x65) {
+        runTaskPaneAction('task.edit');
+        handled = true;
+        continue;
+      }
+      if (byte === 0x78) {
+        runTaskPaneAction('task.delete');
+        handled = true;
+        continue;
+      }
+      if (byte === 0x72) {
+        runTaskPaneAction('task.ready');
+        handled = true;
+        continue;
+      }
+      if (byte === 0x64) {
+        runTaskPaneAction('task.draft');
+        handled = true;
+        continue;
+      }
+      if (byte === 0x63) {
+        runTaskPaneAction('task.complete');
+        handled = true;
+        continue;
+      }
+      if (byte === 0x5b) {
+        runTaskPaneAction('task.reorder-up');
+        handled = true;
+        continue;
+      }
+      if (byte === 0x5d) {
+        runTaskPaneAction('task.reorder-down');
+        handled = true;
+        continue;
+      }
+      if (byte === 0x0d || byte === 0x0a) {
+        const selected = selectedTaskRecord();
+        if (selected !== null) {
+          openTaskEditPrompt(selected.taskId);
+          handled = true;
+        }
+      }
+    }
+    return handled;
+  };
+
   const onInput = (chunk: Buffer): void => {
     if (shuttingDown) {
+      return;
+    }
+    if (handleTaskEditorPromptInput(chunk)) {
+      return;
+    }
+    if (handleRepositoryPromptInput(chunk)) {
       return;
     }
     if (handleNewThreadPromptInput(chunk)) {
@@ -5420,9 +6508,6 @@ async function main(): Promise<number> {
       return;
     }
     if (handleAddDirectoryPromptInput(chunk)) {
-      return;
-    }
-    if (handleRepositoryPromptInput(chunk)) {
       return;
     }
 
@@ -5538,6 +6623,9 @@ async function main(): Promise<number> {
       }
       return;
     }
+    if (handleTaskPaneShortcutInput(focusExtraction.sanitized)) {
+      return;
+    }
 
     if (
       mainPaneMode === 'conversation' &&
@@ -5603,6 +6691,8 @@ async function main(): Promise<number> {
         if (target === 'right') {
           if (mainPaneMode === 'project') {
             projectPaneScrollTop = Math.max(0, projectPaneScrollTop + wheelDelta);
+          } else if (mainPaneMode === 'tasks') {
+            taskPaneScrollTop = Math.max(0, taskPaneScrollTop + wheelDelta);
           } else if (inputConversation !== null) {
             inputConversation.oracle.scrollViewport(wheelDelta);
             snapshotForInput = inputConversation.oracle.snapshotWithoutHash();
@@ -5636,6 +6726,27 @@ async function main(): Promise<number> {
           queueControlPlaneOp(async () => {
             await closeDirectory(snapshot.directoryId);
           }, 'project-pane-close-project');
+          markDirty();
+          continue;
+        }
+      }
+      const taskPaneActionClick =
+        target === 'right' &&
+        mainPaneMode === 'tasks' &&
+        isLeftButtonPress(token.event.code, token.event.final) &&
+        !hasAltModifier(token.event.code) &&
+        !isMotionMouseCode(token.event.code);
+      if (taskPaneActionClick) {
+        const rowIndex = Math.max(0, Math.min(layout.paneRows - 1, token.event.row - 1));
+        const taskId = taskPaneTaskIdAtRow(latestTaskPaneView, rowIndex);
+        if (taskId !== null) {
+          taskPaneSelectedTaskId = taskId;
+          markDirty();
+          continue;
+        }
+        const action = taskPaneActionAtRow(latestTaskPaneView, rowIndex);
+        if (action !== null) {
+          runTaskPaneAction(action);
           markDirty();
           continue;
         }
@@ -5729,6 +6840,12 @@ async function main(): Promise<number> {
           conversationTitleEditClickState = null;
           repositoriesCollapsed = !repositoriesCollapsed;
           queuePersistMuxUiState();
+          markDirty();
+          continue;
+        }
+        if (selectedAction === 'tasks.open') {
+          conversationTitleEditClickState = null;
+          enterTaskPane();
           markDirty();
           continue;
         }
@@ -6007,6 +7124,7 @@ async function main(): Promise<number> {
     process.off('uncaughtException', onUncaughtException);
     process.off('unhandledRejection', onUnhandledRejection);
     removeEnvelopeListener();
+    await unsubscribeTaskPlanningEvents();
     if (keyEventSubscription !== null) {
       await keyEventSubscription.close();
       keyEventSubscription = null;

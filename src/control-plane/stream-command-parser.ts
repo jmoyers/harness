@@ -633,6 +633,17 @@ function parseTaskReady(record: CommandRecord): StreamCommand | null {
   };
 }
 
+function parseTaskDraft(record: CommandRecord): StreamCommand | null {
+  const taskId = readString(record['taskId']);
+  if (taskId === null) {
+    return null;
+  }
+  return {
+    type: 'task.draft',
+    taskId
+  };
+}
+
 function parseTaskReorder(record: CommandRecord): StreamCommand | null {
   const tenantId = readString(record['tenantId']);
   const userId = readString(record['userId']);
@@ -1002,6 +1013,7 @@ export const DEFAULT_STREAM_COMMAND_PARSERS: StreamCommandParserRegistry = {
   'task.complete': parseTaskComplete,
   'task.queue': parseTaskQueue,
   'task.ready': parseTaskReady,
+  'task.draft': parseTaskDraft,
   'task.reorder': parseTaskReorder,
   'stream.subscribe': parseStreamSubscribe,
   'stream.unsubscribe': parseStreamUnsubscribe,

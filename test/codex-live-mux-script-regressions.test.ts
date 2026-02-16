@@ -199,3 +199,17 @@ void test('codex-live-mux wires repository rail section and control-plane reposi
   assert.equal(source.includes('openRepositoryPromptForCreate'), true);
   assert.equal(source.includes('openRepositoryPromptForEdit'), true);
 });
+
+void test('codex-live-mux includes a realtime tasks management pane with draft/ready transitions', () => {
+  const scriptPath = resolve(process.cwd(), 'scripts/codex-live-mux.ts');
+  const source = readFileSync(scriptPath, 'utf8');
+
+  assert.equal(source.includes("let mainPaneMode: 'conversation' | 'project' | 'tasks' = 'conversation';"), true);
+  assert.equal(source.includes('buildTaskPaneSnapshot('), true);
+  assert.equal(source.includes('async function subscribeTaskPlanningEvents(): Promise<void> {'), true);
+  assert.equal(source.includes("type: 'stream.subscribe'"), true);
+  assert.equal(source.includes('if (envelope.kind === \'stream.event\') {'), true);
+  assert.equal(source.includes("type: 'task.draft'"), true);
+  assert.equal(source.includes("if (selectedAction === 'tasks.open')"), true);
+  assert.equal(source.includes('TASKS_PANE_ADD_TASK_BUTTON_LABEL'), true);
+});
