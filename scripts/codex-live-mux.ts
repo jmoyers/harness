@@ -1330,7 +1330,7 @@ function createConversationState(
     turnId,
     scope: createConversationScope(baseScope, sessionId, turnId),
     oracle: new TerminalSnapshotOracle(cols, rows),
-    status: 'completed',
+    status: 'running',
     attentionReason: null,
     startedAt: new Date().toISOString(),
     lastEventAt: null,

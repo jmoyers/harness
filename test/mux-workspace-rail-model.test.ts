@@ -938,7 +938,7 @@ void test('workspace rail model shows controller ownership hints for non-local c
   assert.equal(undefinedLabelBodyRow?.text.includes('controlled by agent:agent-raw'), true);
 });
 
-void test('workspace rail model derives complete status icon from telemetry text when runtime status lags', () => {
+void test('workspace rail model derives idle status icon from completion telemetry text when runtime status lags', () => {
   const rows = buildWorkspaceRailViewRows(
     {
       directories: [
@@ -982,10 +982,10 @@ void test('workspace rail model derives complete status icon from telemetry text
     (row) => row.kind === 'conversation-title' && row.conversationSessionId === 'conversation-lagging-complete'
   );
   assert.notEqual(titleRow, undefined);
-  assert.equal(titleRow?.text.includes('◇ codex - task'), true);
+  assert.equal(titleRow?.text.includes('○ codex - task'), true);
 });
 
-void test('workspace rail model does not keep stale complete telemetry once newer running activity exists', () => {
+void test('workspace rail model keeps explicit completion telemetry text over last-event recency', () => {
   const rows = buildWorkspaceRailViewRows(
     {
       directories: [
@@ -1033,10 +1033,8 @@ void test('workspace rail model does not keep stale complete telemetry once newe
   );
   assert.notEqual(titleRow, undefined);
   assert.notEqual(bodyRow, undefined);
-  assert.equal(titleRow?.text.includes('◇ codex - task'), false);
-  assert.equal(titleRow?.text.includes('◆ codex - task'), true);
-  assert.equal(bodyRow?.text.includes('turn complete'), false);
-  assert.equal(bodyRow?.text.includes('working · 0.3% · 20MB'), true);
+  assert.equal(titleRow?.text.includes('○ codex - task'), true);
+  assert.equal(bodyRow?.text.includes('turn complete'), true);
 });
 
 void test('workspace rail model keeps status-line text consistent despite selected-thread output activity', () => {
@@ -1262,7 +1260,7 @@ void test('workspace rail model treats missing lastEventAt as current for last-k
   );
   assert.notEqual(titleRow, undefined);
   assert.notEqual(bodyRow, undefined);
-  assert.equal(titleRow?.text.includes('◇ codex - task'), true);
+  assert.equal(titleRow?.text.includes('○ codex - task'), true);
   assert.equal(bodyRow?.text.includes('turn complete (1200ms)'), true);
 });
 
@@ -1319,8 +1317,8 @@ void test('workspace rail conversation projection surfaces controller lock text'
       nowMs: Date.parse('2026-01-01T00:00:01.000Z')
     }
   );
-  assert.equal(projected.status, 'complete');
-  assert.equal(projected.glyph, '◇');
+  assert.equal(projected.status, 'idle');
+  assert.equal(projected.glyph, '○');
   assert.equal(projected.detailText, 'controlled by Build Bot');
 });
 

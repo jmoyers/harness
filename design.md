@@ -259,26 +259,62 @@ The daemon computes derived status from both classes without dropping provider-l
 
 ## Status Model and Attention Routing
 
-Primary statuses:
-- `idle`
+Control-plane runtime statuses:
 - `running`
-- `needs_input`
-- `completed`
-- `failed`
-- `interrupted`
+- `needs-input`
+- `exited`
+- `completed` (legacy/persisted compatibility only; telemetry ingestion no longer promotes live sessions to `completed`)
 
-State machine:
+Workspace rail display statuses:
+- `starting`
+- `working` (`working: thinking` | `working: writing` | `working: tool`)
+- `idle`
+- `needs-action`
+- `exited`
+
+Display transition contract:
 
 ```txt
-IDLE
-  -> RUNNING_TURN
-  -> NEEDS_INPUT (approval/tool/user input)
-  -> RUNNING_TURN
-  -> COMPLETED | FAILED | INTERRUPTED
+session start -> starting -> idle
+user prompt -> working: thinking -> working: writing|tool -> idle
 ```
 
+High-signal classification rules:
+- `codex.conversation_starts` => `starting`
+- `codex.user_prompt` => `working: thinking`
+- `codex.sse_event`:
+  - `response.created|response.in_progress|reasoning_*` => `working: thinking`
+  - `response.output_*|content_part.*` => `working: writing`
+  - `response.completed` => `idle`
+- `codex.tool_decision|codex.tool_result` => `working: tool`
+- `codex.turn.e2e_duration_ms|codex.conversation.turn.count` => `idle`
+- `codex.api_request`, websocket events, trace churn (`receiving`, `handle_responses`, `stream_request`) => no status-line mutation (noise-suppressed)
+
+SQLite-derived reference sequence (captured 2026-02-15 from `session_telemetry`, `conversation-b6ba1963-5268-4c7b-8abb-b8a362d0aad2`):
+
+| telemetry_id | observed_at | event | summary | class | output transition |
+| --- | --- | --- | --- | --- | --- |
+| 19229 | 2026-02-15T21:42:10.291Z | codex.conversation_starts | conversation started (gpt-5.3-codex) | startup | `starting` |
+| (time gate) | +2s without work | n/a | n/a | startup settle | `starting -> idle` |
+| 19234 | 2026-02-15T21:42:21.349Z | codex.user_prompt | prompt submitted | prompt | `idle -> working: thinking` |
+| 19235 | 2026-02-15T21:42:22.446Z | codex.api_request | model request (1054ms) | noise-suppressed | no change |
+| 19237 | 2026-02-15T21:42:22.826Z | codex.sse_event | stream response.in_progress | thinking | stays `working: thinking` |
+| 19340 | 2026-02-15T21:42:24.975Z | codex.sse_event | stream response.output_text.delta | writing | `working: thinking -> working: writing` |
+| 19510 | 2026-02-15T21:42:29.259Z | codex.sse_event | stream response.completed | completion | `working:* -> idle` |
+
+Startup-only reference sequence (captured 2026-02-15 from `session_telemetry`, `conversation-c148f224-78bf-4221-89af-026118f4906d`):
+
+| telemetry_id | observed_at | event | summary | class | output transition |
+| --- | --- | --- | --- | --- | --- |
+| 33066 | 2026-02-15T23:57:07.932Z | codex.conversation_starts | conversation started (gpt-5.3-codex) | startup | `starting` |
+| 33067 | 2026-02-15T23:57:08.535Z | shell_snapshot (trace) | shell_snapshot: 1 | noise-suppressed | no change |
+| (time gate) | +2s without prompt/work | n/a | n/a | startup settle | `starting -> idle` |
+
+Invariant:
+- Pre-prompt telemetry that looks like response churn is ignored for `working:*` transitions unless `codex.user_prompt` has already been observed in that thread timeline.
+
 Notification policy:
-- Trigger sound/desktop notifications on transitions to `needs_input`, `completed`, or `failed`.
+- Trigger sound/desktop notifications on transitions to `needs-input`, `idle` after `working:*`, or `exited`.
 - Optionally focus/switch to target tab/session.
 - De-duplicate repeated alerts for same turn.
 
@@ -539,7 +575,7 @@ Design constraints:
   - left rail: directories -> conversations -> process telemetry -> git stats
   - right pane: active live steerable PTY session
   - left-rail conversation activation via keyboard and mouse click with deterministic row hit-testing
-  - normalized action-oriented conversation status labels (`needs action`, `working`, `idle`, `complete`, `exited`)
+  - normalized action-oriented conversation status labels (`starting`, `needs action`, `working`, `idle`, `exited`)
   - perf-core emits selector index snapshots and session projection transitions, enabling replay of icon/status-line behavior without screen scraping
   - keybindings loaded from `harness.config.jsonc` using VS Code-style action IDs and parseable key strings
 - Next target layout iterations:
@@ -580,7 +616,7 @@ Target layout sketch:
 Left-rail rendering/style principles:
 - Visual hierarchy from typography and spacing first; color is secondary reinforcement.
 - Stable row order by default; selection changes highlight only.
-- Status indicators are short, icon-assisted, and action-oriented (`needs action`, `working`, `idle`, `complete`, `exited`).
+- Status indicators are short, icon-assisted, and action-oriented (`starting`, `needs action`, `working`, `idle`, `exited`).
 - Status text is normalized for operator action semantics rather than provider-specific phrasing.
 - Git and process stats remain visible at all times to reduce context switches.
 

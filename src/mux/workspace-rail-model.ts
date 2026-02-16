@@ -80,8 +80,9 @@ const ADD_PROJECT_BUTTON_LABEL = formatUiButton({
   label: 'add project',
   prefixIcon: '>'
 });
+const STARTING_TEXT_STALE_MS = 2_000;
 const WORKING_TEXT_STALE_MS = 5_000;
-const COMPLETION_TEXT_STALE_MS = 60_000;
+const NEEDS_ACTION_TEXT_STALE_MS = 60_000;
 
 type WorkspaceRailAction =
   | 'conversation.new'
@@ -90,7 +91,7 @@ type WorkspaceRailAction =
   | 'project.close'
   | 'shortcuts.toggle';
 
-type NormalizedConversationStatus = 'needs-action' | 'working' | 'idle' | 'complete' | 'exited';
+type NormalizedConversationStatus = 'needs-action' | 'starting' | 'working' | 'idle' | 'exited';
 
 interface WorkspaceRailConversationProjection {
   readonly status: NormalizedConversationStatus;
@@ -115,13 +116,16 @@ function isLastKnownWorkCurrent(
   }
   const ageMs = Math.max(0, nowMs - lastKnownWorkAtMs);
   const inferred = inferStatusFromLastKnownWork(conversation.lastKnownWork);
-  if (inferred === 'complete' || inferred === 'needs-action') {
-    if (conversation.status === 'running') {
-      return ageMs <= WORKING_TEXT_STALE_MS;
-    }
-    return ageMs <= COMPLETION_TEXT_STALE_MS;
+  if (inferred === 'starting') {
+    return ageMs <= STARTING_TEXT_STALE_MS;
   }
-  return ageMs <= WORKING_TEXT_STALE_MS;
+  if (inferred === 'working') {
+    return ageMs <= WORKING_TEXT_STALE_MS;
+  }
+  if (inferred === 'needs-action') {
+    return ageMs <= NEEDS_ACTION_TEXT_STALE_MS;
+  }
+  return true;
 }
 
 function inferStatusFromLastKnownWork(lastKnownWork: string | null): NormalizedConversationStatus | null {
@@ -137,19 +141,23 @@ function inferStatusFromLastKnownWork(lastKnownWork: string | null): NormalizedC
   ) {
     return 'needs-action';
   }
-  if (
-    normalized.includes('turn complete') ||
-    normalized.includes('response.completed') ||
-    normalized.includes('completed')
-  ) {
-    return 'complete';
+  if (normalized === 'starting' || normalized.includes('conversation started')) {
+    return 'starting';
   }
   if (
-    normalized.includes('prompt') ||
-    normalized.includes('request') ||
-    normalized.includes('stream') ||
-    normalized.includes('tool ') ||
-    normalized.includes('realtime')
+    normalized === 'idle' ||
+    normalized.includes('turn complete') ||
+    normalized.includes('response.completed') ||
+    normalized.includes('response complete') ||
+    normalized.includes('completed')
+  ) {
+    return 'idle';
+  }
+  if (
+    normalized.startsWith('working:') ||
+    normalized.includes('thinking') ||
+    normalized.includes('writing') ||
+    normalized.includes('tool ')
   ) {
     return 'working';
   }
@@ -163,41 +171,28 @@ function normalizeConversationStatus(
   if (conversation.status === 'needs-input') {
     return 'needs-action';
   }
-  if (conversation.status === 'completed') {
-    return 'complete';
-  }
   if (conversation.status === 'exited') {
     return 'exited';
   }
   const inferred = inferStatusFromLastKnownWork(conversation.lastKnownWork);
-  if (
-    (inferred === 'needs-action' || inferred === 'complete') &&
-    isLastKnownWorkCurrent(conversation, nowMs)
-  ) {
+  if (inferred !== null && isLastKnownWorkCurrent(conversation, nowMs)) {
     return inferred;
   }
-  const lastEventAtMs = parseIsoMs(conversation.lastEventAt);
-  if (!Number.isFinite(lastEventAtMs) || nowMs - lastEventAtMs > 15_000) {
-    return 'idle';
-  }
-  if (inferred === 'working' && isLastKnownWorkCurrent(conversation, nowMs)) {
-    return 'working';
-  }
-  return 'working';
+  return 'idle';
 }
 
 function statusGlyph(status: NormalizedConversationStatus): string {
   if (status === 'needs-action') {
     return '▲';
   }
+  if (status === 'starting') {
+    return '◔';
+  }
   if (status === 'working') {
     return '◆';
   }
   if (status === 'idle') {
     return '○';
-  }
-  if (status === 'complete') {
-    return '◇';
   }
   return '■';
 }
@@ -231,12 +226,6 @@ function summaryText(value: string | null): string | null {
 function statusLineLabel(status: NormalizedConversationStatus): string {
   if (status === 'needs-action') {
     return 'needs input';
-  }
-  if (status === 'working') {
-    return 'working';
-  }
-  if (status === 'complete') {
-    return 'complete';
   }
   if (status === 'exited') {
     return 'exited';

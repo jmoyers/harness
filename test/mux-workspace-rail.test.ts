@@ -91,9 +91,9 @@ void test('workspace rail renders project-centric rows with icon-only thread sta
   assert.equal(plainRows.some((row) => row.includes('📁 ~/dev/harness ─ main')), true);
   assert.equal(plainRows.some((row) => row.includes('+12 -3 │ 4 files')), true);
   assert.equal(plainRows.some((row) => row.includes('codex - untitled task 1')), true);
-  assert.equal(plainRows.some((row) => row.includes('◆ codex - untitled task 1')), true);
-  assert.equal(plainRows.some((row) => row.includes('◇ codex - untitled task 2')), true);
-  assert.equal(plainRows.some((row) => row.includes('working · 0.2% · 12MB')), true);
+  assert.equal(plainRows.some((row) => row.includes('○ codex - untitled task 1')), true);
+  assert.equal(plainRows.some((row) => row.includes('○ codex - untitled task 2')), true);
+  assert.equal(plainRows.some((row) => row.includes('idle · 0.2% · 12MB')), true);
   assert.equal(plainRows.some((row) => row.includes('⚙ npm run dev')), true);
   assert.equal(plainRows.some((row) => row.includes('running · 3.4% · 180MB')), true);
   assert.equal(rows.some((row) => row.includes('[+ thread]')), true);
@@ -127,7 +127,7 @@ void test('workspace rail renders project-centric rows with icon-only thread sta
   assert.equal(rows.some((row) => row.includes('conversation-a')), false);
 });
 
-void test('workspace rail render transitions from complete telemetry to active working state with newer events', () => {
+void test('workspace rail render keeps explicit completion text stable despite newer event timestamps', () => {
   const completeRows = renderWorkspaceRailAnsiRows(
     {
       directories: [
@@ -167,7 +167,7 @@ void test('workspace rail render transitions from complete telemetry to active w
     80,
     16
   ).map((row) => stripAnsi(row));
-  assert.equal(completeRows.some((row) => row.includes('◇ codex - task')), true);
+  assert.equal(completeRows.some((row) => row.includes('○ codex - task')), true);
   assert.equal(completeRows.some((row) => row.includes('turn complete (812ms)')), true);
 
   const workingRows = renderWorkspaceRailAnsiRows(
@@ -209,9 +209,8 @@ void test('workspace rail render transitions from complete telemetry to active w
     80,
     16
   ).map((row) => stripAnsi(row));
-  assert.equal(workingRows.some((row) => row.includes('◆ codex - task')), true);
-  assert.equal(workingRows.some((row) => row.includes('turn complete (812ms)')), false);
-  assert.equal(workingRows.some((row) => row.includes('working · 0.4% · 16MB')), true);
+  assert.equal(workingRows.some((row) => row.includes('○ codex - task')), true);
+  assert.equal(workingRows.some((row) => row.includes('turn complete (812ms)')), true);
 });
 
 void test('workspace rail renders no-title conversations without dash separator', () => {
@@ -291,7 +290,7 @@ void test('workspace rail keeps shortcut actions pinned to bottom rows when vert
   assert.equal(rows[5]?.includes('ctrl+c quit mux'), true);
 });
 
-void test('workspace rail renders icon colors for needs-action exited and idle states', () => {
+void test('workspace rail renders icon colors for needs-action exited starting and idle states', () => {
   const rows = renderWorkspaceRailAnsiRows(
     {
       directories: [
@@ -346,6 +345,34 @@ void test('workspace rail renders icon colors for needs-action exited and idle s
           attentionReason: null,
           startedAt: '2026-01-01T00:00:00.000Z',
           lastEventAt: '2026-01-01T00:00:00.000Z'
+        },
+        {
+          sessionId: 'starting',
+          directoryKey: 'd',
+          title: 'booting',
+          agentLabel: 'codex',
+          cpuPercent: null,
+          memoryMb: null,
+          lastKnownWork: 'starting',
+          lastKnownWorkAt: '2026-01-01T00:01:00.000Z',
+          status: 'running',
+          attentionReason: null,
+          startedAt: '2026-01-01T00:00:00.000Z',
+          lastEventAt: '2026-01-01T00:01:00.000Z'
+        },
+        {
+          sessionId: 'working',
+          directoryKey: 'd',
+          title: 'streaming',
+          agentLabel: 'codex',
+          cpuPercent: null,
+          memoryMb: null,
+          lastKnownWork: 'working: writing',
+          lastKnownWorkAt: '2026-01-01T00:01:00.000Z',
+          status: 'running',
+          attentionReason: null,
+          startedAt: '2026-01-01T00:00:00.000Z',
+          lastEventAt: '2026-01-01T00:01:00.000Z'
         }
       ],
       processes: [],
@@ -360,9 +387,11 @@ void test('workspace rail renders icon colors for needs-action exited and idle s
   const plainRows = rows.map((row) => stripAnsi(row));
   assert.equal(plainRows.some((row) => row.includes('▲ codex - approval')), true);
   assert.equal(plainRows.some((row) => row.includes('■ codex - stopped')), true);
+  assert.equal(plainRows.some((row) => row.includes('◔ codex - booting')), true);
   assert.equal(plainRows.some((row) => row.includes('○ codex - stale')), true);
   assert.equal(rows.some((row) => row.includes('\u001b[0;38;5;220;49m▲')), true);
   assert.equal(rows.some((row) => row.includes('\u001b[0;38;5;196;49m■')), true);
+  assert.equal(rows.some((row) => row.includes('\u001b[0;38;5;110;49m◔')), true);
   assert.equal(rows.some((row) => row.includes('\u001b[0;38;5;245;49m○')), true);
 });
 
@@ -532,4 +561,21 @@ void test('workspace rail row renderer covers active project rows muted rows and
     0
   );
   assert.equal(stripAnsi(zeroWidthMutedRowAnsi), '│');
+});
+
+void test('workspace rail row renderer paints working status icon style for thread rows', () => {
+  const workingRowAnsi = renderWorkspaceRailRowAnsiForTest(
+    {
+      kind: 'conversation-title',
+      text: '│    ◆ codex - working',
+      active: false,
+      conversationSessionId: 'working-row',
+      directoryKey: 'd',
+      railAction: null,
+      conversationStatus: 'working'
+    },
+    48
+  );
+  assert.equal(stripAnsi(workingRowAnsi).includes('◆ codex - working'), true);
+  assert.equal(workingRowAnsi.includes('38;5;45'), true);
 });

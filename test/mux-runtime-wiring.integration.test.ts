@@ -86,7 +86,7 @@ function createConversationState(sessionId: string): TestConversationState {
   return {
     sessionId,
     directoryId: null,
-    status: 'completed',
+    status: 'running',
     attentionReason: null,
     live: true,
     controller: null,
@@ -227,6 +227,9 @@ void test('mux runtime wiring integration updates rail status line and icon from
     });
 
     try {
+      const telemetryBaseMs = Date.now() + 1_000;
+      const unixNanoAtOffset = (offsetMs: number): string =>
+        `${BigInt(telemetryBaseMs + offsetMs) * 1_000_000n}`;
       const runningResponse = await postJson(
         {
           host: telemetryAddress?.address ?? '127.0.0.1',
@@ -240,7 +243,7 @@ void test('mux runtime wiring integration updates rail status line and icon from
                 {
                   logRecords: [
                     {
-                      timeUnixNano: '1771126750000000000',
+                      timeUnixNano: unixNanoAtOffset(100),
                       attributes: [
                         {
                           key: 'event.name',
@@ -266,7 +269,7 @@ void test('mux runtime wiring integration updates rail status line and icon from
       const runningConversation = conversations.get('conversation-runtime');
       assert.notEqual(runningConversation, undefined);
       assert.equal(runningConversation?.status, 'running');
-      assert.equal(runningConversation?.lastKnownWork?.includes('prompt submitted'), true);
+      assert.equal(runningConversation?.lastKnownWork, 'working: thinking');
 
       const noisyTraceResponse = await postJson(
         {
@@ -282,7 +285,7 @@ void test('mux runtime wiring integration updates rail status line and icon from
                   spans: [
                     {
                       name: 'handle_responses',
-                      endTimeUnixNano: '1771126752000000000',
+                      endTimeUnixNano: unixNanoAtOffset(300),
                       attributes: [
                         {
                           key: 'kind',
@@ -304,7 +307,7 @@ void test('mux runtime wiring integration updates rail status line and icon from
       const noisyConversation = conversations.get('conversation-runtime');
       assert.notEqual(noisyConversation, undefined);
       assert.equal(noisyConversation?.status, 'running');
-      assert.equal(noisyConversation?.lastKnownWork?.includes('prompt submitted'), true);
+      assert.equal(noisyConversation?.lastKnownWork, 'working: thinking');
 
       const runningRows = buildWorkspaceRailViewRows(
         {
@@ -331,7 +334,7 @@ void test('mux runtime wiring integration updates rail status line and icon from
               memoryMb: null,
               lastKnownWork: runningConversation?.lastKnownWork ?? null,
               lastKnownWorkAt: runningConversation?.lastKnownWorkAt ?? null,
-              status: runningConversation?.status ?? 'completed',
+              status: runningConversation?.status ?? 'running',
               attentionReason: runningConversation?.attentionReason ?? null,
               startedAt: '2026-02-15T00:00:00.000Z',
               lastEventAt: runningConversation?.lastEventAt ?? null,
@@ -349,7 +352,7 @@ void test('mux runtime wiring integration updates rail status line and icon from
       const runningBodyRow = runningRows.find((row) => row.kind === 'conversation-body');
       assert.notEqual(runningTitleRow, undefined);
       assert.equal(runningTitleRow?.text.includes('◆'), true);
-      assert.equal(runningBodyRow?.text.includes('prompt submitted'), true);
+      assert.equal(runningBodyRow?.text.includes('working: thinking'), true);
 
       const completedResponse = await postJson(
         {
@@ -364,7 +367,7 @@ void test('mux runtime wiring integration updates rail status line and icon from
                 {
                   logRecords: [
                     {
-                      timeUnixNano: '1771126753000000000',
+                      timeUnixNano: unixNanoAtOffset(400),
                       attributes: [
                         {
                           key: 'event.name',
@@ -389,8 +392,8 @@ void test('mux runtime wiring integration updates rail status line and icon from
 
       const completedConversation = conversations.get('conversation-runtime');
       assert.notEqual(completedConversation, undefined);
-      assert.equal(completedConversation?.status, 'completed');
-      assert.equal(completedConversation?.lastKnownWork, 'response complete');
+      assert.equal(completedConversation?.status, 'running');
+      assert.equal(completedConversation?.lastKnownWork, 'idle');
 
       const delayedMetricResponse = await postJson(
         {
@@ -409,7 +412,7 @@ void test('mux runtime wiring integration updates rail status line and icon from
                       sum: {
                         dataPoints: [
                           {
-                            timeUnixNano: '1771126763000000000',
+                            timeUnixNano: unixNanoAtOffset(1_400),
                             asDouble: 611
                           }
                         ]
@@ -427,8 +430,8 @@ void test('mux runtime wiring integration updates rail status line and icon from
 
       const delayedMetricConversation = conversations.get('conversation-runtime');
       assert.notEqual(delayedMetricConversation, undefined);
-      assert.equal(delayedMetricConversation?.status, 'completed');
-      assert.equal(delayedMetricConversation?.lastKnownWork, 'response complete');
+      assert.equal(delayedMetricConversation?.status, 'running');
+      assert.equal(delayedMetricConversation?.lastKnownWork, 'idle');
 
       const postCompleteTraceResponse = await postJson(
         {
@@ -444,7 +447,7 @@ void test('mux runtime wiring integration updates rail status line and icon from
                   spans: [
                     {
                       name: 'receiving',
-                      endTimeUnixNano: '1771126754000000000'
+                      endTimeUnixNano: unixNanoAtOffset(500)
                     }
                   ]
                 }
@@ -457,8 +460,8 @@ void test('mux runtime wiring integration updates rail status line and icon from
       await delay(25);
       const postCompleteConversation = conversations.get('conversation-runtime');
       assert.notEqual(postCompleteConversation, undefined);
-      assert.equal(postCompleteConversation?.status, 'completed');
-      assert.equal(postCompleteConversation?.lastKnownWork, 'response complete');
+      assert.equal(postCompleteConversation?.status, 'running');
+      assert.equal(postCompleteConversation?.lastKnownWork, 'idle');
 
       const resumedResponse = await postJson(
         {
@@ -473,6 +476,7 @@ void test('mux runtime wiring integration updates rail status line and icon from
                 {
                   logRecords: [
                     {
+                      timeUnixNano: unixNanoAtOffset(1_600),
                       attributes: [
                         {
                           key: 'event.name',
@@ -498,7 +502,7 @@ void test('mux runtime wiring integration updates rail status line and icon from
       const resumedConversation = conversations.get('conversation-runtime');
       assert.notEqual(resumedConversation, undefined);
       assert.equal(resumedConversation?.status, 'running');
-      assert.equal(resumedConversation?.lastKnownWork?.includes('next prompt'), true);
+      assert.equal(resumedConversation?.lastKnownWork, 'working: thinking');
       assert.equal(dirtyMarks > 0, true);
     } finally {
       await subscription.close();

@@ -46,21 +46,12 @@ const RUNNING_STATUS_HINT_EVENT_NAMES = new Set([
   'codex.websocket_request',
   'codex.websocket_event'
 ]);
-const METRIC_COMPLETION_ENRICH_MAX_DELAY_MS = 2_000;
 
 function parseIsoMs(value: string | null): number {
   if (value === null) {
     return Number.NaN;
   }
   return Date.parse(value);
-}
-
-function normalizeInlineSummaryText(value: string): string {
-  const compact = value.replace(/\s+/gu, ' ').trim();
-  if (compact.length <= 96) {
-    return compact;
-  }
-  return `${compact.slice(0, 95)}…`;
 }
 
 function normalizeLower(value: string | null): string {
@@ -89,21 +80,7 @@ function statusFromTelemetryText(value: string | null): StreamSessionRuntimeStat
   ) {
     return 'needs-input';
   }
-  if (includesAny(normalized, ['turn complete', 'response complete', 'response.completed', 'completed'])) {
-    return 'completed';
-  }
-  if (
-    includesAny(normalized, [
-      'prompt',
-      'model request',
-      'writing response',
-      'streaming response',
-      'drafting response',
-      'reasoning',
-      'tool ',
-      'realtime'
-    ])
-  ) {
+  if (includesAny(normalized, ['working:', 'thinking', 'writing', 'tool'])) {
     return 'running';
   }
   return null;
@@ -111,6 +88,10 @@ function statusFromTelemetryText(value: string | null): StreamSessionRuntimeStat
 
 function isCurrentWorkHeartbeatEligible(currentText: string | null): boolean {
   return statusFromTelemetryText(currentText) === 'running';
+}
+
+function isWorkingSummary(value: string): boolean {
+  return value.startsWith('working:');
 }
 
 function normalizeEventName(value: string | null): string {
@@ -124,10 +105,10 @@ function normalizeSummary(value: string | null): string {
 function projectSseSummary(summary: string): string | null {
   const normalized = summary.toLowerCase();
   if (normalized.includes('response.completed')) {
-    return 'response complete';
+    return 'idle';
   }
   if (includesAny(normalized, ['response.failed', 'response.error', 'error'])) {
-    return 'response error';
+    return null;
   }
   if (
     includesAny(normalized, [
@@ -136,7 +117,7 @@ function projectSseSummary(summary: string): string | null {
       'response.content_part.added'
     ])
   ) {
-    return 'writing response…';
+    return 'working: writing';
   }
   if (
     includesAny(normalized, [
@@ -145,10 +126,10 @@ function projectSseSummary(summary: string): string | null {
       'response.reasoning_summary_text.done'
     ])
   ) {
-    return 'thinking…';
+    return 'working: thinking';
   }
   if (includesAny(normalized, ['response.created', 'response.in_progress'])) {
-    return 'thinking…';
+    return 'working: thinking';
   }
   if (
     includesAny(normalized, [
@@ -157,7 +138,7 @@ function projectSseSummary(summary: string): string | null {
       'response.content_part.done'
     ])
   ) {
-    return 'writing response…';
+    return 'working: writing';
   }
   return null;
 }
@@ -172,9 +153,9 @@ function projectTelemetrySummary(telemetry: Omit<MuxTelemetrySummaryInput, 'obse
     };
   }
   if (telemetry.source === 'otlp-metric') {
-    if (eventName === 'codex.turn.e2e_duration_ms') {
+    if (eventName === 'codex.turn.e2e_duration_ms' || eventName === 'codex.conversation.turn.count') {
       return {
-        text: summary.length > 0 ? normalizeInlineSummaryText(summary) : 'turn complete',
+        text: 'idle',
         heartbeat: false
       };
     }
@@ -184,34 +165,17 @@ function projectTelemetrySummary(telemetry: Omit<MuxTelemetrySummaryInput, 'obse
     };
   }
   if (eventName === 'history.entry') {
-    if (summary.length === 0) {
-      return { text: null, heartbeat: false };
-    }
-    return {
-      text: normalizeInlineSummaryText(`prompt: ${summary}`),
-      heartbeat: false
-    };
+    return { text: null, heartbeat: false };
   }
   if (eventName === 'codex.user_prompt') {
-    const normalizedSummary = summary.toLowerCase();
-    if (
-      summary.length === 0 ||
-      normalizedSummary === 'prompt submitted' ||
-      normalizedSummary.endsWith('prompt submitted')
-    ) {
-      return {
-        text: 'prompt submitted',
-        heartbeat: false
-      };
-    }
     return {
-      text: normalizeInlineSummaryText(summary.startsWith('prompt:') ? summary : `prompt: ${summary}`),
+      text: 'working: thinking',
       heartbeat: false
     };
   }
   if (eventName === 'codex.api_request') {
     return {
-      text: normalizeInlineSummaryText(summary.length > 0 ? summary : 'model request'),
+      text: null,
       heartbeat: false
     };
   }
@@ -223,32 +187,19 @@ function projectTelemetrySummary(telemetry: Omit<MuxTelemetrySummaryInput, 'obse
   }
   if (eventName === 'codex.tool_decision' || eventName === 'codex.tool_result') {
     return {
-      text: normalizeInlineSummaryText(summary.length > 0 ? summary : eventName === 'codex.tool_decision' ? 'approval decision' : 'tool result'),
+      text: 'working: tool',
       heartbeat: false
     };
   }
   if (eventName === 'codex.websocket_request' || eventName === 'codex.websocket_event') {
-    const normalizedSummary = summary.toLowerCase();
-    if (!includesAny(normalizedSummary, ['error', 'failed', 'denied', 'abort'])) {
-      return {
-        text: null,
-        heartbeat: true
-      };
-    }
     return {
-      text: normalizeInlineSummaryText(summary),
-      heartbeat: true
+      text: null,
+      heartbeat: false
     };
   }
   if (eventName === 'codex.conversation_starts') {
     return {
-      text: normalizeInlineSummaryText(summary.length > 0 ? summary : 'conversation started'),
-      heartbeat: false
-    };
-  }
-  if (eventName.startsWith('codex.') && summary.length > 0) {
-    return {
-      text: normalizeInlineSummaryText(summary),
+      text: 'starting',
       heartbeat: false
     };
   }
@@ -277,17 +228,15 @@ export function applyTelemetrySummaryToConversation<TConversation extends MuxRun
   }
   const projected = projectTelemetrySummary(telemetry);
   if (projected.text !== null) {
-    const normalizedEventName = normalizeEventName(telemetry.eventName);
-    if (telemetry.source === 'otlp-metric' && normalizedEventName === 'codex.turn.e2e_duration_ms') {
-      const inferredCurrentStatus = statusFromTelemetryText(target.lastKnownWork);
-      if (
-        inferredCurrentStatus === 'completed' &&
-        Number.isFinite(currentAtMs) &&
-        Number.isFinite(observedAtMs) &&
-        observedAtMs - currentAtMs > METRIC_COMPLETION_ENRICH_MAX_DELAY_MS
-      ) {
-        return;
-      }
+    const eventName = normalizeEventName(telemetry.eventName);
+    const existingWork = target.lastKnownWork;
+    const existingWorkIsRunning = statusFromTelemetryText(existingWork) === 'running';
+    if (
+      isWorkingSummary(projected.text) &&
+      eventName !== 'codex.user_prompt' &&
+      !existingWorkIsRunning
+    ) {
+      return;
     }
     target.lastKnownWork = projected.text;
     target.lastKnownWorkAt = telemetry.observedAt;
@@ -316,10 +265,6 @@ function isSseRunningSummary(summary: string | null): boolean {
   ]);
 }
 
-function isSseCompletedSummary(summary: string | null): boolean {
-  return normalizeLower(summary).includes('response.completed');
-}
-
 function shouldApplyTelemetryStatusHint(keyEvent: StreamSessionKeyEventRecord): boolean {
   if (keyEvent.statusHint === null) {
     return false;
@@ -332,13 +277,7 @@ function shouldApplyTelemetryStatusHint(keyEvent: StreamSessionKeyEventRecord): 
     return true;
   }
   if (keyEvent.statusHint === 'completed') {
-    if (keyEvent.source === 'otlp-metric') {
-      return eventName === 'codex.turn.e2e_duration_ms' || eventName === 'codex.conversation.turn.count';
-    }
-    if (eventName === 'codex.sse_event') {
-      return isSseCompletedSummary(keyEvent.summary);
-    }
-    return statusFromTelemetryText(keyEvent.summary) === 'completed';
+    return false;
   }
   if (eventName === 'codex.sse_event') {
     return isSseRunningSummary(keyEvent.summary);
@@ -366,6 +305,14 @@ export function applyMuxControlPlaneKeyEvent<TConversation extends MuxRuntimeCon
     conversation.live = event.live;
     conversation.controller = event.controller;
     conversation.lastEventAt = event.ts;
+    if (
+      event.status === 'running' &&
+      (conversation.lastKnownWork === null || conversation.lastKnownWork.trim().length === 0)
+    ) {
+      conversation.lastKnownWork = 'starting';
+      conversation.lastKnownWorkAt = event.ts;
+      conversation.lastTelemetrySource = 'control-plane';
+    }
     applyTelemetrySummaryToConversation(conversation, event.telemetry);
     return conversation;
   }
@@ -395,10 +342,6 @@ export function applyMuxControlPlaneKeyEvent<TConversation extends MuxRuntimeCon
     conversation.status = 'running';
     conversation.attentionReason = null;
     return conversation;
-  }
-  if (event.keyEvent.statusHint === 'completed' && conversation.status !== 'exited') {
-    conversation.status = 'completed';
-    conversation.attentionReason = null;
   }
   return conversation;
 }

@@ -35,6 +35,7 @@
     "pretest": "npm run build:ptyd",
     "pretest:coverage": "npm run build:ptyd",
     "test": "node --experimental-strip-types --test \"test/**/*.test.ts\"",
+    "test:integration:codex-status": "node --experimental-strip-types scripts/integration-codex-status-sequence.ts",
     "test:coverage": "node --experimental-strip-types --test --experimental-test-coverage --test-coverage-lines=100 --test-coverage-functions=100 --test-coverage-branches=100 --test-coverage-include=src/**/*.ts \"test/**/*.test.ts\"",
     "verify": "npm run lint && npm run typecheck && npm run deadcode && npm run test:coverage"
   },

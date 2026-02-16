@@ -90,12 +90,12 @@ function conversationStatusIconStyle(
       index:
         status === 'working'
           ? 45
-          : status === 'complete'
-            ? 42
-            : status === 'exited'
-              ? 196
-              : status === 'needs-action'
-                ? 220
+          : status === 'exited'
+            ? 196
+            : status === 'needs-action'
+              ? 220
+              : status === 'starting'
+                ? 110
                 : 245
     },
     bg: active ? { kind: 'indexed', index: 237 } : { kind: 'default' },

@@ -725,6 +725,7 @@ export class ControlPlaneStreamServer {
       let statusPublished = false;
       const shouldApplyStatusHint =
         event.statusHint !== null &&
+        event.statusHint !== 'completed' &&
         event.source !== 'history' &&
         sessionState.status !== 'exited' &&
         sessionState.session !== null;
