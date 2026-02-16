@@ -73,3 +73,13 @@ export function buildSelectorIndexEntries(
   }
   return entries;
 }
+
+export function visualConversationOrder(
+  directories: ReadonlyMap<string, SelectorIndexDirectory>,
+  conversationById: ReadonlyMap<string, SelectorIndexConversation>,
+  orderedSessionIds: readonly string[]
+): readonly string[] {
+  return buildSelectorIndexEntries(directories, conversationById, orderedSessionIds).map(
+    (entry) => entry.sessionId
+  );
+}

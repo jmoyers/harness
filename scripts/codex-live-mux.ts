@@ -69,7 +69,7 @@ import {
   repositoryIdAtWorkspaceRailRow,
   kindAtWorkspaceRailRow
 } from '../src/mux/workspace-rail-model.ts';
-import { buildSelectorIndexEntries } from '../src/mux/selector-index.ts';
+import { buildSelectorIndexEntries, visualConversationOrder } from '../src/mux/selector-index.ts';
 import {
   resolveWorkspacePath
 } from '../src/mux/workspace-path.ts';
@@ -6225,7 +6225,11 @@ async function main(): Promise<number> {
       globalShortcut === 'mux.conversation.next' ||
       globalShortcut === 'mux.conversation.previous'
     ) {
-      const orderedIds = conversationOrder(conversations);
+      const orderedIds = visualConversationOrder(
+        directories,
+        conversations,
+        conversationOrder(conversations)
+      );
       const direction = globalShortcut === 'mux.conversation.next' ? 'next' : 'previous';
       const targetId = cycleConversationId(orderedIds, activeConversationId, direction);
       if (targetId !== null) {
