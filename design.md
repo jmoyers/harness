@@ -174,9 +174,11 @@ Pass-through stream invariants:
 - In embedded/local mode, mux shutdown also closes live PTYs.
 - Thread "delete" in the mux is soft-delete (archive); hard delete remains an explicit control-plane command.
 - Project lifecycle in the mux is first-class: `directory.upsert`, `directory.list`, and `directory.archive` drive add/close behavior through the same control-plane stream API as automation clients.
-- The left rail treats Home as a first-class selectable entry (directory-style block with its own emoji); `ctrl+j/k` cycles left-nav selection in visual order: Home -> project header -> project threads -> next project.
+- The left rail treats Home as a first-class selectable entry (directory-style block with its own emoji); `ctrl+j/h` cycles visible left-nav selection in visual order: Home -> repository group -> project header -> project threads -> next visible item.
 - Repository/task planning is exposed through a dedicated Home entry in the left rail; Home unifies repository and task CRUD in one scrollable right-pane view while control-plane repository/task commands and subscriptions remain the source of truth.
-- Active project directories are scraped for GitHub remotes at startup/refresh; remotes are normalized and deduped so many projects can map to one repository row.
+- Active project directories are scraped for GitHub remotes at startup/refresh; remotes are normalized and deduped, auto-upserted into canonical repository records, and reused for rail grouping.
+- Left rail projects are grouped by canonical repository; projects with no detected canonical remote are grouped under `untracked`.
+- Repository groups are collapsible (`left/right` collapse/expand selected group, `ctrl+k ctrl+0` collapse all, `ctrl+k ctrl+j` expand all), and collapsed groups hide child projects/threads from keyboard traversal.
 - Project rows in the left rail are selectable; selecting a project switches the right pane into a project view and scopes project actions to that explicit selection.
 - `new thread` preserves thread-project affinity when a thread row is selected; in project view it uses the selected project.
 - Projects may remain thread-empty; mux does not auto-seed a thread on startup/project-add/fallback and instead exposes explicit `new thread` entry points.
@@ -567,7 +569,7 @@ Design constraints:
 
 ### TUI (v1)
 - Current verified implementation:
-  - left rail: directories -> conversations -> process telemetry -> git stats
+  - left rail: Home -> repository-group tree -> projects -> conversations, with per-repository collapse and untracked grouping
   - right pane: active live steerable PTY session
   - left-rail conversation activation via keyboard and mouse click with deterministic row hit-testing
   - normalized action-oriented conversation status labels (`starting`, `needs action`, `working`, `idle`, `exited`)
@@ -590,27 +592,27 @@ Target layout sketch:
 
 ```txt
 ┌───────────────────────────────┬──────────────────────────────────────────────────────┐
-│  📁 Directories               │                                                      │
-│  › harness (main)             │  Active Conversation PTY                             │
-│    api (feature/auth)         │  (Codex / Claude Code / shell / vim passthrough)    │
-│                               │                                                      │
-│  💬 Conversations             │                                                      │
-│  ● fix-mux-scroll     RUN     │                                                      │
-│  ○ docs-refresh       DONE    │                                                      │
-│  ○ parity-vim         NEEDS   │                                                      │
-│                               │                                                      │
-│  ⚙ Processes                 │                                                      │
-│  ● test-watch   3.1% 120MB    │                                                      │
-│  ○ dev-server   0.4%  82MB    │                                                      │
-│                               │                                                      │
-│  ⎇ git: feature/mux-left-rail │                                                      │
-│  Δ +12 ~3 -4  | 2 files       │                                                      │
+│  ├─ 🏠 home                   │  Active Conversation PTY                             │
+│  ├─ 📁 harness (3,2) [-]      │  (Codex / terminal shell / vim passthrough)         │
+│  │  ├─ 📁 api (main:+4,-1)    │                                                      │
+│  │  │  ├─ ◆ codex - auth      │                                                      │
+│  │  │  │    writing…          │                                                      │
+│  │  │  └─ ○ terminal - logs   │                                                      │
+│  │  │       inactive          │                                                      │
+│  ├─ 📁 infra (2,0) [+]        │                                                      │
+│  ├─ 📁 untracked (1,0) [-]    │                                                      │
+│  │  └─ 📁 scratch [+ thread]  │                                                      │
+│  │      └─ ◔ codex - draft    │                                                      │
+│  │          starting          │                                                      │
+│                 [> add project]│                                                      │
+│  ├─ shortcuts [-]             │                                                      │
 └───────────────────────────────┴──────────────────────────────────────────────────────┘
 ```
 
 Left-rail rendering/style principles:
 - Visual hierarchy from typography and spacing first; color is secondary reinforcement.
 - Stable row order by default; selection changes highlight only.
+- Selected-row background styling is content-scoped (label text only), not applied to tree connector glyphs.
 - Status indicators are short, icon-assisted, and action-oriented (`starting`, `needs action`, `working`, `idle`, `exited`).
 - Status text is normalized for operator action semantics rather than provider-specific phrasing.
 - Git and process stats remain visible at all times to reduce context switches.
@@ -1107,9 +1109,9 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - Home pane state is hydrated from `repository.list` + `task.list` and kept live through scoped `stream.subscribe` updates
     - when a project has zero threads, mux stays in project view and surfaces explicit `new thread` actions instead of auto-starting a thread
     - thread creation opens a modal selector (`codex` or `terminal`), and terminal threads launch plain shells under the same control-plane session lifecycle
-    - left rail composition uses project-wrapped thread blocks with inline git summary and per-thread telemetry (CPU/memory sampled from `ps` via `processId`)
-    - repository rail section remains available in the rail model (including add/edit/archive actions and persistent collapse state in `mux.ui`) and is rendered when planning UI is enabled
-    - repository rows show commit count, last update age, and short commit hash, derived from project git scans and aggregated by deduped normalized GitHub remote URL
+    - left rail composition uses repository-grouped project/thread tree blocks; project headers inline branch/diff summary as `(branch:+N,-M)` and untracked projects omit git suffix
+    - thread status detail lines align to thread label text and suppress connector overhang under last-thread elbows
+    - repository groups expose project/active counts and collapse state (`[+]`/`[-]`) directly in the group header rows
     - git summary uses an adaptive per-project scheduler (`mux.background.git-summary`) with config-driven active/idle/burst intervals and bounded concurrency (`mux.git.*`), while process-usage sampling (`mux.background.process-usage`) remains opt-in through `HARNESS_MUX_BACKGROUND_PROBES=1`
     - gateway startup eagerly materializes persisted non-archived conversations into live runtimes (using adapter resume state when available), so thread processes are available before any client selects a row
     - mux control-plane operations remain scheduled with interactive-first priority; optional mux background resume (`HARNESS_MUX_BACKGROUND_RESUME=1`) is now a catch-up path for sessions created while a daemon is already running

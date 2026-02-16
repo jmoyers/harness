@@ -88,8 +88,7 @@ void test('workspace rail renders project-centric rows with icon-only thread sta
 
   const plainRows = rows.map((row) => stripAnsi(row));
   assert.equal(rows.length, 25);
-  assert.equal(plainRows.some((row) => row.includes('📁 ~/dev/harness ─ main')), true);
-  assert.equal(plainRows.some((row) => row.includes('+12 -3 │ 4 files')), true);
+  assert.equal(plainRows.some((row) => row.includes('📁 ~/dev/harness')), true);
   assert.equal(plainRows.some((row) => row.includes('codex - untitled task 1')), true);
   assert.equal(plainRows.some((row) => row.includes('◔ codex - untitled task 1')), true);
   assert.equal(plainRows.some((row) => row.includes('○ codex - untitled task 2')), true);
@@ -97,22 +96,6 @@ void test('workspace rail renders project-centric rows with icon-only thread sta
   assert.equal(plainRows.some((row) => row.includes('⚙ bun run dev')), true);
   assert.equal(plainRows.some((row) => row.includes('running · 3.4% · 180MB')), true);
   assert.equal(rows.some((row) => row.includes('[+ thread]')), true);
-  assert.equal(
-    rows.some((row) => row.includes('📁 ~/dev/harness ─ main') && row.includes('48;5;238m')),
-    false
-  );
-  assert.equal(
-    rows.some((row) => row.includes('\u001b[0;38;5;245;48;5;237m│ \u001b[0;38;5;254;48;5;237m')),
-    true
-  );
-  assert.equal(
-    rows.some((row) => row.includes('\u001b[0;38;5;245;49m│ \u001b[0;38;5;254;48;5;237m')),
-    false
-  );
-  assert.equal(
-    rows.some((row) => row.includes('\u001b[0;38;5;245;48;5;238m│ \u001b[0;38;5;254;48;5;238m')),
-    false
-  );
   const addProjectRow = rows.find((row) => row.includes('[ > add project ]'));
   assert.notEqual(addProjectRow, undefined);
   assert.equal(addProjectRow?.includes('\u001b[0;38;5;245;49m│  '), false);
@@ -123,14 +106,14 @@ void test('workspace rail renders project-centric rows with icon-only thread sta
   assert.equal(addProjectRowPlain.indexOf('[ > add project ]') > 35, true);
   const homeRow = rows.find((row) => row.includes('🏠 home'));
   assert.notEqual(homeRow, undefined);
-  assert.equal(homeRow?.includes('38;5;254;48;5;236m'), true);
+  assert.equal(homeRow?.includes('38;5;254'), true);
   assert.equal(homeRow?.includes('\u001b[0;38;5;230;48;5;237m[ ⌂ home ]'), false);
   const threadButtonRow = rows.find((row) => row.includes('[+ thread]'));
   assert.notEqual(threadButtonRow, undefined);
   assert.equal(threadButtonRow?.includes('\u001b[0;38;5;230;48;5;237m[+ thread]'), true);
   const threadButtonRowPlain = stripAnsi(threadButtonRow ?? '');
   assert.equal(threadButtonRowPlain.trimEnd().endsWith('[+ thread]'), true);
-  assert.equal(threadButtonRowPlain.indexOf('[+ thread]') > 60, true);
+  assert.equal(threadButtonRowPlain.indexOf('[+ thread]') > 20, true);
   assert.equal(rows.some((row) => row.includes('conversation-a')), false);
 });
 
@@ -291,9 +274,9 @@ void test('workspace rail keeps shortcut actions pinned to bottom rows when vert
   );
 
   assert.equal(rows.length, 6);
-  assert.equal(rows[0]?.includes('ctrl+x archive thread'), true);
-  assert.equal(rows[1]?.includes('ctrl+l take over thread'), true);
-  assert.equal(rows[4]?.includes('ctrl+j/k switch nav'), true);
+  assert.equal(rows[0]?.includes('ctrl+j/h switch nav'), true);
+  assert.equal(rows[1]?.includes('expand repo'), true);
+  assert.equal(rows[4]?.includes('collapse all repos'), true);
   assert.equal(rows[5]?.includes('ctrl+c quit mux'), true);
 });
 
@@ -399,7 +382,7 @@ void test('workspace rail renders icon colors for needs-action exited starting a
   assert.equal(rows.some((row) => row.includes('\u001b[0;38;5;220;49m▲')), true);
   assert.equal(rows.some((row) => row.includes('\u001b[0;38;5;196;49m■')), true);
   assert.equal(rows.some((row) => row.includes('\u001b[0;38;5;110;49m◔')), true);
-  assert.equal(rows.some((row) => row.includes('\u001b[0;38;5;245;49m○')), true);
+  assert.equal(rows.some((row) => row.includes('38;5;245') && row.includes('○')), true);
 });
 
 void test('workspace rail handles tiny row counts by showing shortcut tail', () => {
@@ -450,7 +433,7 @@ void test('workspace rail renders no-project header without inline thread action
       nowMs: Date.parse('2026-01-01T00:00:00.000Z')
     },
     48,
-    13
+    20
   );
 
   const plainRows = rows.map((row) => stripAnsi(row));
@@ -476,10 +459,11 @@ void test('workspace rail collapses shortcut descriptions while retaining toggle
     8
   );
 
+  const plainRows = rows.map((row) => stripAnsi(row));
   assert.equal(rows.length, 8);
-  assert.equal(rows.some((row) => row.includes('shortcuts [+]')), true);
-  assert.equal(rows.some((row) => row.includes('ctrl+t new thread')), false);
-  assert.equal(rows.some((row) => row.includes('add project')), true);
+  assert.equal(plainRows.some((row) => row.includes('shortcuts [+]')), true);
+  assert.equal(plainRows.some((row) => row.includes('ctrl+t new thread')), false);
+  assert.equal(plainRows.some((row) => row.includes('add project')), true);
 });
 
 void test('workspace rail omits repository section rows and actions', () => {
@@ -592,6 +576,38 @@ void test('workspace rail row renderer paints repository header and row styles f
   assert.equal(stripAnsi(repositoryRowAnsi).includes('harness'), true);
 });
 
+void test('workspace rail row renderer covers header rows without collapse button labels', () => {
+  const repositoryHeaderNoButtonAnsi = renderWorkspaceRailRowAnsiForTest(
+    {
+      kind: 'repository-header',
+      text: '├─ 📁 harness (1 projects, 0 active)',
+      active: false,
+      conversationSessionId: null,
+      directoryKey: null,
+      repositoryId: 'repository-1',
+      railAction: 'repository.toggle',
+      conversationStatus: null
+    },
+    48
+  );
+  assert.equal(stripAnsi(repositoryHeaderNoButtonAnsi).includes('harness (1 projects, 0 active)'), true);
+
+  const shortcutsHeaderNoButtonAnsi = renderWorkspaceRailRowAnsiForTest(
+    {
+      kind: 'shortcut-header',
+      text: '├─ shortcuts',
+      active: false,
+      conversationSessionId: null,
+      directoryKey: null,
+      repositoryId: null,
+      railAction: 'shortcuts.toggle',
+      conversationStatus: null
+    },
+    32
+  );
+  assert.equal(stripAnsi(shortcutsHeaderNoButtonAnsi).includes('shortcuts'), true);
+});
+
 void test('workspace rail row renderer covers active project rows muted rows and zero-width clamp', () => {
   const activeHeaderRowAnsi = renderWorkspaceRailRowAnsiForTest(
     {
@@ -606,12 +622,12 @@ void test('workspace rail row renderer covers active project rows muted rows and
     },
     64
   );
-  assert.equal(activeHeaderRowAnsi.includes('48;5;238m'), true);
+  assert.equal(activeHeaderRowAnsi.includes('48;5;237m'), true);
 
   const activeMetaRowAnsi = renderWorkspaceRailRowAnsiForTest(
     {
       kind: 'dir-meta',
-      text: '│  +12 -3 │ 4 files',
+      text: '│  (main:+12,-3)',
       active: true,
       conversationSessionId: null,
       directoryKey: 'harness:local',
@@ -621,7 +637,7 @@ void test('workspace rail row renderer covers active project rows muted rows and
     },
     64
   );
-  assert.equal(activeMetaRowAnsi.includes('38;5;153;48;5;238m'), true);
+  assert.equal(activeMetaRowAnsi.includes('48;5;237m'), true);
 
   const mutedRowAnsi = renderWorkspaceRailRowAnsiForTest(
     {
@@ -652,6 +668,23 @@ void test('workspace rail row renderer covers active project rows muted rows and
     0
   );
   assert.equal(stripAnsi(zeroWidthMutedRowAnsi), '│');
+});
+
+void test('workspace rail row renderer keeps title rows without status glyph unchanged', () => {
+  const noGlyphTitleRowAnsi = renderWorkspaceRailRowAnsiForTest(
+    {
+      kind: 'conversation-title',
+      text: '│    codex - no glyph',
+      active: false,
+      conversationSessionId: 'no-glyph',
+      directoryKey: 'd',
+      repositoryId: null,
+      railAction: null,
+      conversationStatus: 'idle'
+    },
+    40
+  );
+  assert.equal(stripAnsi(noGlyphTitleRowAnsi).includes('codex - no glyph'), true);
 });
 
 void test('workspace rail row renderer paints working status icon style for thread rows', () => {

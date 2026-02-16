@@ -11,7 +11,7 @@ void test('detectMuxGlobalShortcut maps default raw control-byte bindings', () =
   const bindings = resolveMuxShortcutBindings();
   assert.equal(detectMuxGlobalShortcut(Buffer.from([0x14]), bindings), 'mux.conversation.new');
   assert.equal(detectMuxGlobalShortcut(Buffer.from([0x0a]), bindings), 'mux.conversation.next');
-  assert.equal(detectMuxGlobalShortcut(Buffer.from([0x0b]), bindings), 'mux.conversation.previous');
+  assert.equal(detectMuxGlobalShortcut(Buffer.from([0x08]), bindings), 'mux.conversation.previous');
   assert.equal(detectMuxGlobalShortcut(Buffer.from([0x0c]), bindings), 'mux.conversation.takeover');
   assert.equal(detectMuxGlobalShortcut(Buffer.from([0x03]), bindings), 'mux.app.interrupt-all');
   assert.equal(detectMuxGlobalShortcut(Buffer.from([0x18]), bindings), 'mux.conversation.delete');
@@ -25,12 +25,12 @@ void test('detectMuxGlobalShortcut parses kitty and modifyOtherKeys control comb
   const bindings = resolveMuxShortcutBindings();
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[116;5u', 'utf8'), bindings), 'mux.conversation.new');
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[106;5u', 'utf8'), bindings), 'mux.conversation.next');
-  assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[107;5u', 'utf8'), bindings), 'mux.conversation.previous');
+  assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[104;5u', 'utf8'), bindings), 'mux.conversation.previous');
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[108;5u', 'utf8'), bindings), 'mux.conversation.takeover');
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[93;5u', 'utf8'), bindings), null);
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[27;5;116~', 'utf8'), bindings), 'mux.conversation.new');
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[27;5;106~', 'utf8'), bindings), 'mux.conversation.next');
-  assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[27;5;107~', 'utf8'), bindings), 'mux.conversation.previous');
+  assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[27;5;104~', 'utf8'), bindings), 'mux.conversation.previous');
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[27;5;108~', 'utf8'), bindings), 'mux.conversation.takeover');
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[27;5;93~', 'utf8'), bindings), null);
 });
@@ -54,7 +54,7 @@ void test('shortcut parsing ignores malformed bindings and malformed protocol se
   const bindings = resolveMuxShortcutBindings({
     'mux.conversation.new': ['ctrl+', '', '+', 'meta+bad+token', 'ctrl+t'],
     'mux.conversation.next': ['unknownkey', 'ctrl+j'],
-    'mux.conversation.previous': ['ctrl+k'],
+    'mux.conversation.previous': ['ctrl+h'],
     'mux.app.quit': ['ctrl+]'],
     'mux.app.interrupt-all': ['ctrl+c']
   });
@@ -132,7 +132,7 @@ void test('shortcut parser stress-covers decode paths across raw kitty and modif
   const bindings = resolveMuxShortcutBindings({
     'mux.conversation.new': ['ctrl+t', 'escape'],
     'mux.conversation.next': ['ctrl+j', 'enter'],
-    'mux.conversation.previous': ['ctrl+k', 'tab'],
+    'mux.conversation.previous': ['ctrl+h', 'tab'],
     'mux.app.quit': ['ctrl+]', 'space'],
     'mux.app.interrupt-all': ['ctrl+c', 'meta+q', 'alt+p']
   });
@@ -141,7 +141,7 @@ void test('shortcut parser stress-covers decode paths across raw kitty and modif
     void detectMuxGlobalShortcut(Buffer.from([code]), bindings);
   }
 
-  const kittyKeyCodes = [-2, 9, 13, 27, 32, 65, 106, 107, 110, 113, 116, 300];
+  const kittyKeyCodes = [-2, 9, 13, 27, 32, 65, 104, 106, 110, 113, 116, 300];
   const kittyModifiers = [-2, 0, 1, 2, 5, 6, 9];
   for (const keyCode of kittyKeyCodes) {
     for (const modifier of kittyModifiers) {
@@ -151,7 +151,7 @@ void test('shortcut parser stress-covers decode paths across raw kitty and modif
   void detectMuxGlobalShortcut(Buffer.from('\u001b[116;5;1u', 'utf8'), bindings);
 
   const modifyModifiers = [-2, 0, 1, 2, 5, 6, 9];
-  const modifyKeyCodes = [-2, 9, 13, 27, 32, 65, 99, 106, 107, 113, 116, 300];
+  const modifyKeyCodes = [-2, 9, 13, 27, 32, 65, 99, 104, 106, 113, 116, 300];
   for (const modifier of modifyModifiers) {
     for (const keyCode of modifyKeyCodes) {
       void detectMuxGlobalShortcut(Buffer.from(`\u001b[27;${String(modifier)};${String(keyCode)}~`, 'utf8'), bindings);
@@ -166,7 +166,7 @@ void test('firstShortcutText falls back when action has no configured bindings',
   const bindings = resolveMuxShortcutBindings({
     'mux.conversation.new': [],
     'mux.conversation.next': ['ctrl+j'],
-    'mux.conversation.previous': ['ctrl+k'],
+    'mux.conversation.previous': ['ctrl+h'],
     'mux.app.quit': ['ctrl+]'],
     'mux.app.interrupt-all': ['ctrl+c']
   });

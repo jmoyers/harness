@@ -46,7 +46,7 @@ const DEFAULT_MUX_SHORTCUT_BINDINGS_RAW: Readonly<Record<MuxGlobalShortcutAction
   'mux.app.interrupt-all': ['ctrl+c'],
   'mux.conversation.new': ['ctrl+t'],
   'mux.conversation.next': ['ctrl+j'],
-  'mux.conversation.previous': ['ctrl+k'],
+  'mux.conversation.previous': ['ctrl+h'],
   'mux.conversation.archive': [],
   'mux.conversation.takeover': ['ctrl+l'],
   'mux.conversation.delete': ['ctrl+x'],

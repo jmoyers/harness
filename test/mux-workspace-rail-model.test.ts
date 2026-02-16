@@ -100,18 +100,10 @@ void test('workspace rail model builds rows with conversation spacing and proces
     true
   );
   assert.equal(rows.some((row) => row.kind === 'process-meta' && row.text.includes('exited · · · ·')), true);
-  assert.equal(rows.some((row) => row.kind === 'dir-header' && row.text.startsWith('├─ 📁 charlie')), true);
+  assert.equal(rows.some((row) => row.kind === 'dir-header' && row.text.includes('📁 charlie')), true);
   assert.equal(rows.some((row) => row.kind === 'dir-header' && row.text.includes('[+ thread]')), true);
   assert.equal(rows.some((row) => row.text.includes('(no conversations)')), false);
-  assert.equal(rows.some((row) => row.kind === 'muted' && row.text === '│'), true);
-  const secondDirectoryHeaderRowIndex = rows.findIndex(
-    (row) => row.kind === 'dir-header' && row.text.startsWith('├─ 📁 charlie')
-  );
-  assert.equal(secondDirectoryHeaderRowIndex > 1, true);
-  assert.equal(rows[secondDirectoryHeaderRowIndex - 1]?.kind, 'muted');
-  assert.equal(rows[secondDirectoryHeaderRowIndex - 1]?.text, '│');
-  assert.equal(rows[secondDirectoryHeaderRowIndex - 2]?.kind, 'muted');
-  assert.equal(rows[secondDirectoryHeaderRowIndex - 2]?.text, '│');
+  assert.equal(rows.some((row) => row.kind === 'repository-header' && row.text.includes('untracked')), true);
   assert.equal(rows.some((row) => row.kind === 'conversation-title' && row.conversationSessionId === 's1'), true);
   assert.equal(
     rows.some(
@@ -246,7 +238,7 @@ void test('workspace rail model formats finite process stats without repository 
   );
 
   assert.equal(rows.some((row) => row.kind === 'process-meta' && row.text.includes('12.3% · 43MB')), true);
-  assert.equal(rows.some((row) => row.kind === 'repository-header'), false);
+  assert.equal(rows.some((row) => row.kind === 'repository-header'), true);
   assert.equal(rows.some((row) => row.kind === 'repository-row'), false);
   assert.equal(rows.some((row) => row.text.includes('repositories [-]')), false);
 });
@@ -323,7 +315,7 @@ void test('workspace rail model truncates content before pinned shortcuts and su
   assert.equal(twoRows.length, 2);
   assert.equal(twoRows[0]?.kind, 'shortcut-body');
   assert.equal(twoRows[1]?.kind, 'shortcut-body');
-  assert.equal(twoRows[0]?.text.includes('switch nav'), true);
+  assert.equal(twoRows[0]?.text.includes('repos'), true);
   assert.equal(twoRows[1]?.text.includes('quit mux'), true);
 
   const truncated = buildWorkspaceRailViewRows(
@@ -364,8 +356,8 @@ void test('workspace rail model truncates content before pinned shortcuts and su
     3
   );
   assert.equal(truncated.length, 3);
-  assert.equal(truncated[0]?.text.includes('close project'), true);
-  assert.equal(truncated[1]?.text.includes('switch nav'), true);
+  assert.equal(truncated[0]?.text.includes('expand all repos'), true);
+  assert.equal(truncated[1]?.text.includes('collapse all repos'), true);
   assert.equal(truncated[2]?.text.includes('quit mux'), true);
 });
 
@@ -411,7 +403,7 @@ void test('workspace rail model supports starting normalization custom shortcuts
 
   assert.equal(rows.some((row) => row.text.includes('◔ codex - untitled')), true);
   assert.equal(rows.some((row) => row.kind === 'conversation-body' && row.text.includes('starting')), true);
-  assert.equal(rows.some((row) => row.text.includes('ctrl+j/k switch')), true);
+  assert.equal(rows.some((row) => row.text.includes('ctrl+j/h switch')), true);
   assert.equal(rows.some((row) => row.text.includes('x archive thread')), true);
   assert.equal(rows.some((row) => row.text.includes('🗑 archive thread')), false);
   assert.equal(rows.some((row) => row.text.includes('add project')), true);
@@ -519,7 +511,7 @@ void test('workspace rail model limits active project styling to header and git 
     (row) => row.kind === 'dir-header' && row.text.includes('[+ thread]')
   );
   assert.equal(header?.active, true);
-  assert.equal(meta?.active, true);
+  assert.equal(meta, undefined);
   assert.equal(divider?.active, false);
   assert.equal(newThreadAction?.active, true);
 });
@@ -567,7 +559,7 @@ void test('workspace rail model does not mark project active while selection mod
   const header = rows.find((row) => row.kind === 'dir-header' && row.text.includes('📁 alpha'));
   const meta = rows.find((row) => row.kind === 'dir-meta');
   assert.equal(header?.active, false);
-  assert.equal(meta?.active, false);
+  assert.equal(meta, undefined);
 });
 
 void test('workspace rail model does not mark conversation active while project selection is enabled', () => {
@@ -664,17 +656,13 @@ void test('workspace rail model renders home as a selectable directory-style blo
   assert.equal(homeHeaderIndex >= 0, true);
   assert.equal(rows[homeHeaderIndex]?.active, true);
   assert.equal(rows[homeHeaderIndex]?.railAction, 'home.open');
-  assert.equal(rows[homeHeaderIndex + 1]?.kind, 'dir-meta');
-  assert.equal(rows[homeHeaderIndex + 1]?.active, true);
-  assert.equal(rows[homeHeaderIndex + 2]?.kind, 'muted');
+  assert.equal(rows[homeHeaderIndex + 1]?.kind, 'repository-header');
   assert.equal(rows.some((row) => row.kind === 'conversation-title' && row.active), false);
 
   const firstProjectHeaderIndex = rows.findIndex(
     (row) => row.kind === 'dir-header' && row.text.includes('📁 alpha')
   );
-  assert.equal(firstProjectHeaderIndex - homeHeaderIndex > 2, true);
-  assert.equal(rows[firstProjectHeaderIndex - 1]?.kind, 'muted');
-  assert.equal(rows[firstProjectHeaderIndex - 2]?.kind, 'muted');
+  assert.equal(firstProjectHeaderIndex - homeHeaderIndex > 1, true);
 });
 
 void test('workspace rail model overrides default shortcut text when custom hint is set', () => {
@@ -806,6 +794,117 @@ void test('workspace rail model omits repository rows even when repository data 
   assert.equal(rows.some((row) => row.railAction === 'repositories.toggle'), false);
 });
 
+void test('workspace rail model groups tracked projects by repository and keeps empty repositories hidden', () => {
+  const rows = buildWorkspaceRailViewRows(
+    {
+      repositories: [
+        {
+          repositoryId: 'repository-1',
+          name: 'harness',
+          remoteUrl: 'https://github.com/jmoyers/harness.git',
+          associatedProjectCount: 1,
+          commitCount: 321,
+          lastCommitAt: '2026-01-01T00:00:00.000Z',
+          shortCommitHash: 'abc1234'
+        },
+        {
+          repositoryId: 'repository-empty',
+          name: 'unused',
+          remoteUrl: 'https://github.com/jmoyers/unused.git',
+          associatedProjectCount: 0,
+          commitCount: 1,
+          lastCommitAt: '2026-01-01T00:00:00.000Z',
+          shortCommitHash: 'def5678'
+        }
+      ],
+      directories: [
+        {
+          key: 'tracked-dir',
+          workspaceId: 'tracked-project',
+          worktreeId: 'worktree-local',
+          repositoryId: 'repository-1',
+          git: {
+            branch: 'main',
+            additions: 3,
+            deletions: 1,
+            changedFiles: 1
+          }
+        },
+        {
+          key: 'untracked-dir',
+          workspaceId: 'scratch',
+          worktreeId: 'worktree-local',
+          git: {
+            branch: 'scratch',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0
+          }
+        }
+      ],
+      conversations: [
+        {
+          sessionId: 'conversation-a',
+          directoryKey: 'tracked-dir',
+          title: 'task',
+          agentLabel: 'codex',
+          cpuPercent: 0,
+          memoryMb: 0,
+          lastKnownWork: 'working: update',
+          lastKnownWorkAt: '2026-01-01T00:00:04.000Z',
+          status: 'running',
+          attentionReason: null,
+          startedAt: '2026-01-01T00:00:00.000Z',
+          lastEventAt: '2026-01-01T00:00:04.000Z'
+        }
+      ],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: null,
+      nowMs: Date.parse('2026-01-01T00:00:05.000Z')
+    },
+    32
+  );
+
+  assert.equal(
+    rows.some(
+      (row) =>
+        row.kind === 'repository-header' &&
+        row.repositoryId === 'repository-1' &&
+        row.text.includes('harness (1 projects, 1 active)')
+    ),
+    true
+  );
+  assert.equal(
+    rows.some(
+      (row) =>
+        row.kind === 'dir-header' &&
+        row.repositoryId === 'repository-1' &&
+        row.text.includes('tracked-project (main:+3,-1)')
+    ),
+    true
+  );
+  assert.equal(rows.some((row) => row.kind === 'repository-header' && row.text.includes('unused')), false);
+  assert.equal(
+    rows.some(
+      (row) =>
+        row.kind === 'repository-header' &&
+        row.repositoryId === 'untracked' &&
+        row.text.includes('untracked (1 projects, 0 active)')
+    ),
+    true
+  );
+  assert.equal(
+    rows.some(
+      (row) =>
+        row.kind === 'dir-header' &&
+        row.repositoryId === 'untracked' &&
+        row.text.includes('📁 scratch  [+ thread]')
+    ),
+    true
+  );
+});
+
 void test('workspace rail model repository id helper returns null and starting fallback status line is covered', () => {
   const rows = buildWorkspaceRailViewRows(
     {
@@ -859,7 +958,7 @@ void test('workspace rail model does not expose thread action for headers withou
       activeProjectId: null,
       activeConversationId: null
     },
-    13
+    20
   );
   const noProjectsHeaderRowIndex = rows.findIndex(
     (row) => row.kind === 'dir-header' && row.text.includes('no projects')

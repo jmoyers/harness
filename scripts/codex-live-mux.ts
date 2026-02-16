@@ -65,7 +65,6 @@ import {
   kindAtWorkspaceRailRow
 } from '../src/mux/workspace-rail-model.ts';
 import {
-  buildLeftNavSelectorEntries,
   buildSelectorIndexEntries
 } from '../src/mux/selector-index.ts';
 import {
@@ -319,6 +318,9 @@ const DEFAULT_TASK_EDITOR_AUTOSAVE_DEBOUNCE_MS = 250;
 const CONVERSATION_TITLE_EDIT_DOUBLE_CLICK_WINDOW_MS = 350;
 const HOME_PANE_EDIT_DOUBLE_CLICK_WINDOW_MS = 350;
 const UI_STATE_PERSIST_DEBOUNCE_MS = 200;
+const REPOSITORY_TOGGLE_CHORD_TIMEOUT_MS = 1250;
+const REPOSITORY_COLLAPSE_ALL_CHORD_PREFIX = Buffer.from([0x0b]);
+const UNTRACKED_REPOSITORY_GROUP_ID = 'untracked';
 const GIT_SUMMARY_LOADING: GitSummary = {
   branch: '(loading)',
   changedFiles: 0,
@@ -344,6 +346,23 @@ interface HomePaneDragState {
   readonly latestRowIndex: number;
   readonly hasDragged: boolean;
 }
+
+type LeftNavSelection =
+  | {
+      readonly kind: 'home';
+    }
+  | {
+      readonly kind: 'repository';
+      readonly repositoryId: string;
+    }
+  | {
+      readonly kind: 'project';
+      readonly directoryId: string;
+    }
+  | {
+      readonly kind: 'conversation';
+      readonly sessionId: string;
+    };
 
 async function probeTerminalPalette(timeoutMs = 80): Promise<{
   foregroundHex?: string;
@@ -528,10 +547,10 @@ function shortcutHintText(bindings: ResolvedMuxShortcutBindings): string {
   const addProject = firstShortcutText(bindings, 'mux.directory.add') || 'ctrl+o';
   const closeProject = firstShortcutText(bindings, 'mux.directory.close') || 'ctrl+w';
   const next = firstShortcutText(bindings, 'mux.conversation.next') || 'ctrl+j';
-  const previous = firstShortcutText(bindings, 'mux.conversation.previous') || 'ctrl+k';
+  const previous = firstShortcutText(bindings, 'mux.conversation.previous') || 'ctrl+h';
   const interrupt = firstShortcutText(bindings, 'mux.app.interrupt-all') || 'ctrl+c';
   const switchHint = next === previous ? next : `${next}/${previous}`;
-  return `${newConversation} new  ${deleteConversation} archive  ${takeoverConversation} takeover  ${addProject}/${closeProject} projects  ${switchHint} switch nav  ${interrupt} quit`;
+  return `${newConversation} new  ${deleteConversation} archive  ${takeoverConversation} takeover  ${addProject}/${closeProject} projects  ${switchHint} switch nav  ←/→ collapse/expand  ${interrupt} quit`;
 }
 
 type WorkspaceRailModel = Parameters<typeof renderWorkspaceRailAnsiRows>[0];
@@ -545,10 +564,13 @@ function buildRailModel(
   conversations: ReadonlyMap<string, ConversationState>,
   orderedIds: readonly string[],
   activeProjectId: string | null,
+  activeRepositoryId: string | null,
   activeConversationId: string | null,
   projectSelectionEnabled: boolean,
+  repositorySelectionEnabled: boolean,
   homeSelectionEnabled: boolean,
   repositoriesCollapsed: boolean,
+  collapsedRepositoryGroupIds: ReadonlySet<string>,
   shortcutsCollapsed: boolean,
   gitSummaryByDirectoryId: ReadonlyMap<string, GitSummary>,
   processUsageBySessionId: ReadonlyMap<string, ProcessUsageSample>,
@@ -596,6 +618,7 @@ function buildRailModel(
     key: directory.directoryId,
     workspaceId: basename(directory.path) || directory.path,
     worktreeId: directory.path,
+    repositoryId: repositoryAssociationByDirectoryId.get(directory.directoryId) ?? null,
     git: gitSummaryByDirectoryId.get(directory.directoryId) ?? GIT_SUMMARY_LOADING
   }));
   const knownDirectoryKeys = new Set(directoryRows.map((directory) => directory.key));
@@ -610,6 +633,7 @@ function buildRailModel(
       key: directoryKey,
       workspaceId: '(untracked)',
       worktreeId: '(untracked)',
+      repositoryId: repositoryAssociationByDirectoryId.get(directoryKey) ?? null,
       git: gitSummaryByDirectoryId.get(directoryKey) ?? GIT_SUMMARY_LOADING
     });
   }
@@ -638,11 +662,14 @@ function buildRailModel(
       })
       .flatMap((conversation) => (conversation === null ? [] : [conversation])),
     activeProjectId,
+    activeRepositoryId,
     activeConversationId,
     showTaskPlanningUi: SHOW_TASK_PLANNING_UI,
     projectSelectionEnabled,
+    repositorySelectionEnabled,
     homeSelectionEnabled,
     repositoriesCollapsed,
+    collapsedRepositoryGroupIds: [...collapsedRepositoryGroupIds],
     processes: [],
     shortcutHint: shortcutHintText(shortcutBindings),
     shortcutsCollapsed,
@@ -659,10 +686,13 @@ function buildRailRows(
   conversations: ReadonlyMap<string, ConversationState>,
   orderedIds: readonly string[],
   activeProjectId: string | null,
+  activeRepositoryId: string | null,
   activeConversationId: string | null,
   projectSelectionEnabled: boolean,
+  repositorySelectionEnabled: boolean,
   homeSelectionEnabled: boolean,
   repositoriesCollapsed: boolean,
+  collapsedRepositoryGroupIds: ReadonlySet<string>,
   shortcutsCollapsed: boolean,
   gitSummaryByDirectoryId: ReadonlyMap<string, GitSummary>,
   processUsageBySessionId: ReadonlyMap<string, ProcessUsageSample>,
@@ -676,10 +706,13 @@ function buildRailRows(
     conversations,
     orderedIds,
     activeProjectId,
+    activeRepositoryId,
     activeConversationId,
     projectSelectionEnabled,
+    repositorySelectionEnabled,
     homeSelectionEnabled,
     repositoriesCollapsed,
+    collapsedRepositoryGroupIds,
     shortcutsCollapsed,
     gitSummaryByDirectoryId,
     processUsageBySessionId,
@@ -936,6 +969,14 @@ async function main(): Promise<number> {
   directoryUpsertSpan.end();
   let activeDirectoryId: string | null = persistedDirectory.directoryId;
   let mainPaneMode: 'conversation' | 'project' | 'home' = 'conversation';
+  let leftNavSelection: LeftNavSelection = {
+    kind: 'project',
+    directoryId: persistedDirectory.directoryId
+  };
+  let activeRepositorySelectionId: string | null = null;
+  const collapsedRepositoryGroupIds = new Set<string>();
+  const expandedRepositoryGroupIds = new Set<string>();
+  let repositoryToggleChordPrefixAtMs: number | null = null;
   let projectPaneSnapshot: ProjectPaneSnapshot | null = null;
   let projectPaneScrollTop = 0;
   let taskPaneScrollTop = 0;
@@ -1128,6 +1169,93 @@ async function main(): Promise<number> {
       return activeDirectoryId;
     }
     return null;
+  };
+
+  const repositoryGroupIdForDirectory = (directoryId: string): string =>
+    repositoryAssociationByDirectoryId.get(directoryId) ?? UNTRACKED_REPOSITORY_GROUP_ID;
+
+  const isRepositoryGroupCollapsed = (repositoryGroupId: string): boolean => {
+    if (repositoriesCollapsed) {
+      return !expandedRepositoryGroupIds.has(repositoryGroupId);
+    }
+    return collapsedRepositoryGroupIds.has(repositoryGroupId);
+  };
+
+  const collapseRepositoryGroup = (repositoryGroupId: string): void => {
+    if (repositoriesCollapsed) {
+      expandedRepositoryGroupIds.delete(repositoryGroupId);
+      return;
+    }
+    collapsedRepositoryGroupIds.add(repositoryGroupId);
+  };
+
+  const expandRepositoryGroup = (repositoryGroupId: string): void => {
+    if (repositoriesCollapsed) {
+      expandedRepositoryGroupIds.add(repositoryGroupId);
+      return;
+    }
+    collapsedRepositoryGroupIds.delete(repositoryGroupId);
+  };
+
+  const toggleRepositoryGroup = (repositoryGroupId: string): void => {
+    if (isRepositoryGroupCollapsed(repositoryGroupId)) {
+      expandRepositoryGroup(repositoryGroupId);
+      return;
+    }
+    collapseRepositoryGroup(repositoryGroupId);
+  };
+
+  const collapseAllRepositoryGroups = (): void => {
+    repositoriesCollapsed = true;
+    collapsedRepositoryGroupIds.clear();
+    expandedRepositoryGroupIds.clear();
+    queuePersistMuxUiState();
+  };
+
+  const expandAllRepositoryGroups = (): void => {
+    repositoriesCollapsed = false;
+    collapsedRepositoryGroupIds.clear();
+    expandedRepositoryGroupIds.clear();
+    queuePersistMuxUiState();
+  };
+
+  const firstDirectoryForRepositoryGroup = (repositoryGroupId: string): string | null => {
+    for (const directory of directories.values()) {
+      const candidateRepositoryGroupId = repositoryGroupIdForDirectory(directory.directoryId);
+      if (candidateRepositoryGroupId === repositoryGroupId) {
+        return directory.directoryId;
+      }
+    }
+    return null;
+  };
+
+  const selectLeftNavHome = (): void => {
+    leftNavSelection = {
+      kind: 'home'
+    };
+  };
+
+  const selectLeftNavRepository = (repositoryGroupId: string): void => {
+    activeRepositorySelectionId = repositoryGroupId;
+    leftNavSelection = {
+      kind: 'repository',
+      repositoryId: repositoryGroupId
+    };
+  };
+
+  const selectLeftNavProject = (directoryId: string): void => {
+    activeRepositorySelectionId = repositoryGroupIdForDirectory(directoryId);
+    leftNavSelection = {
+      kind: 'project',
+      directoryId
+    };
+  };
+
+  const selectLeftNavConversation = (sessionId: string): void => {
+    leftNavSelection = {
+      kind: 'conversation',
+      sessionId
+    };
   };
 
   const ensureConversation = (
@@ -1529,8 +1657,12 @@ async function main(): Promise<number> {
       const ordered = conversationOrder(conversations);
       activeConversationId = ordered[0] ?? null;
     }
+    if (activeConversationId !== null) {
+      selectLeftNavConversation(activeConversationId);
+    }
     if (activeConversationId === null && resolveActiveDirectoryId() !== null) {
       mainPaneMode = 'project';
+      selectLeftNavProject(resolveActiveDirectoryId()!);
     }
   }
 
@@ -3024,6 +3156,7 @@ async function main(): Promise<number> {
       return;
     }
     activeDirectoryId = directoryId;
+    selectLeftNavProject(directoryId);
     noteGitActivity(directoryId, 'focus');
     mainPaneMode = 'project';
     homePaneDragState = null;
@@ -3250,6 +3383,7 @@ async function main(): Promise<number> {
 
   const enterHomePane = (): void => {
     mainPaneMode = 'home';
+    selectLeftNavHome();
     projectPaneSnapshot = null;
     projectPaneScrollTop = 0;
     selection = null;
@@ -3445,6 +3579,7 @@ async function main(): Promise<number> {
     if (activeConversationId === sessionId) {
       if (mainPaneMode !== 'conversation') {
         mainPaneMode = 'conversation';
+        selectLeftNavConversation(sessionId);
         forceFullClear = true;
         previousRows = [];
         markDirty();
@@ -3463,6 +3598,7 @@ async function main(): Promise<number> {
     }
     activeConversationId = sessionId;
     mainPaneMode = 'conversation';
+    selectLeftNavConversation(sessionId);
     homePaneDragState = null;
     taskPaneTaskEditClickState = null;
     taskPaneRepositoryEditClickState = null;
@@ -4231,10 +4367,13 @@ async function main(): Promise<number> {
       conversations,
       orderedIds,
       activeDirectoryId,
+      activeRepositorySelectionId,
       activeConversationId,
-      mainPaneMode === 'project',
-      mainPaneMode === 'home',
+      leftNavSelection.kind === 'project',
+      leftNavSelection.kind === 'repository',
+      leftNavSelection.kind === 'home',
       repositoriesCollapsed,
+      collapsedRepositoryGroupIds,
       shortcutsCollapsed,
       gitSummaryByDirectoryId,
       processUsageBySessionId,
@@ -5342,6 +5481,207 @@ async function main(): Promise<number> {
     return true;
   };
 
+  const leftNavTargetKey = (target: LeftNavSelection): string => {
+    if (target.kind === 'home') {
+      return 'home';
+    }
+    if (target.kind === 'repository') {
+      return `repository:${target.repositoryId}`;
+    }
+    if (target.kind === 'project') {
+      return `directory:${target.directoryId}`;
+    }
+    return `conversation:${target.sessionId}`;
+  };
+
+  const leftNavTargetFromRow = (
+    rows: ReturnType<typeof buildWorkspaceRailViewRows>,
+    rowIndex: number
+  ): LeftNavSelection | null => {
+    const row = rows[rowIndex];
+    if (row === undefined) {
+      return null;
+    }
+    if (row.railAction === 'home.open') {
+      return {
+        kind: 'home'
+      };
+    }
+    if (row.kind === 'repository-header' && row.repositoryId !== null) {
+      return {
+        kind: 'repository',
+        repositoryId: row.repositoryId
+      };
+    }
+    if (row.kind === 'dir-header' && row.directoryKey !== null) {
+      return {
+        kind: 'project',
+        directoryId: row.directoryKey
+      };
+    }
+    if (row.kind === 'conversation-title' && row.conversationSessionId !== null) {
+      return {
+        kind: 'conversation',
+        sessionId: row.conversationSessionId
+      };
+    }
+    return null;
+  };
+
+  const visibleLeftNavTargets = (): readonly LeftNavSelection[] => {
+    const entries: LeftNavSelection[] = [];
+    const seen = new Set<string>();
+    for (let rowIndex = 0; rowIndex < latestRailViewRows.length; rowIndex += 1) {
+      const target = leftNavTargetFromRow(latestRailViewRows, rowIndex);
+      if (target === null) {
+        continue;
+      }
+      const key = leftNavTargetKey(target);
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      entries.push(target);
+    }
+    return entries;
+  };
+
+  const selectedRepositoryGroupId = (): string | null => {
+    if (leftNavSelection.kind === 'repository') {
+      return leftNavSelection.repositoryId;
+    }
+    if (leftNavSelection.kind === 'project') {
+      return repositoryGroupIdForDirectory(leftNavSelection.directoryId);
+    }
+    if (leftNavSelection.kind === 'conversation') {
+      const conversation = conversations.get(leftNavSelection.sessionId);
+      if (conversation?.directoryId !== null && conversation?.directoryId !== undefined) {
+        return repositoryGroupIdForDirectory(conversation.directoryId);
+      }
+    }
+    return null;
+  };
+
+  const activateLeftNavTarget = (target: LeftNavSelection, direction: 'next' | 'previous'): void => {
+    if (target.kind === 'home') {
+      enterHomePane();
+      return;
+    }
+    if (target.kind === 'repository') {
+      const firstDirectoryId = firstDirectoryForRepositoryGroup(target.repositoryId);
+      if (firstDirectoryId !== null) {
+        enterProjectPane(firstDirectoryId);
+      } else {
+        mainPaneMode = 'project';
+      }
+      selectLeftNavRepository(target.repositoryId);
+      markDirty();
+      return;
+    }
+    if (target.kind === 'project') {
+      if (directories.has(target.directoryId)) {
+        enterProjectPane(target.directoryId);
+        markDirty();
+        return;
+      }
+      const visibleTargets = visibleLeftNavTargets();
+      const fallbackConversation = visibleTargets.find(
+        (
+          entry
+        ): entry is Extract<LeftNavSelection, { kind: 'conversation' }> =>
+          entry.kind === 'conversation' &&
+          conversations.get(entry.sessionId)?.directoryId === target.directoryId
+      );
+      if (fallbackConversation !== undefined) {
+        queueControlPlaneOp(async () => {
+          await activateConversation(fallbackConversation.sessionId);
+        }, `shortcut-activate-${direction}-directory-fallback`);
+      }
+      return;
+    }
+    if (!conversations.has(target.sessionId)) {
+      return;
+    }
+    queueControlPlaneOp(async () => {
+      await activateConversation(target.sessionId);
+    }, `shortcut-activate-${direction}`);
+  };
+
+  const cycleLeftNavSelection = (direction: 'next' | 'previous'): boolean => {
+    const targets = visibleLeftNavTargets();
+    if (targets.length === 0) {
+      return false;
+    }
+    const targetKeys = targets.map((target) => leftNavTargetKey(target));
+    const targetKey = cycleConversationId(targetKeys, leftNavTargetKey(leftNavSelection), direction);
+    if (targetKey === null) {
+      return false;
+    }
+    const target = targets.find((entry) => leftNavTargetKey(entry) === targetKey);
+    if (target === undefined) {
+      return false;
+    }
+    activateLeftNavTarget(target, direction);
+    return true;
+  };
+
+  const handleRepositoryTreeArrow = (input: Buffer): boolean => {
+    if (leftNavSelection.kind === 'conversation') {
+      return false;
+    }
+    const text = input.toString('utf8');
+    const repositoryId = selectedRepositoryGroupId();
+    if (repositoryId === null) {
+      return false;
+    }
+    if (text === '\u001b[C') {
+      expandRepositoryGroup(repositoryId);
+      selectLeftNavRepository(repositoryId);
+      markDirty();
+      return true;
+    }
+    if (text === '\u001b[D') {
+      collapseRepositoryGroup(repositoryId);
+      selectLeftNavRepository(repositoryId);
+      markDirty();
+      return true;
+    }
+    return false;
+  };
+
+  const handleRepositoryFoldChords = (input: Buffer): boolean => {
+    if (leftNavSelection.kind === 'conversation') {
+      repositoryToggleChordPrefixAtMs = null;
+      return false;
+    }
+    const nowMs = Date.now();
+    if (
+      repositoryToggleChordPrefixAtMs !== null &&
+      nowMs - repositoryToggleChordPrefixAtMs > REPOSITORY_TOGGLE_CHORD_TIMEOUT_MS
+    ) {
+      repositoryToggleChordPrefixAtMs = null;
+    }
+    if (repositoryToggleChordPrefixAtMs !== null) {
+      repositoryToggleChordPrefixAtMs = null;
+      if (input.length === 1 && input[0] === 0x0a) {
+        expandAllRepositoryGroups();
+        markDirty();
+        return true;
+      }
+      if (input.length === 1 && input[0] === 0x30) {
+        collapseAllRepositoryGroups();
+        markDirty();
+        return true;
+      }
+      return false;
+    }
+    if (input.equals(REPOSITORY_COLLAPSE_ALL_CHORD_PREFIX)) {
+      repositoryToggleChordPrefixAtMs = nowMs;
+      return true;
+    }
+    return false;
+  };
+
   const onInput = (chunk: Buffer): void => {
     if (shuttingDown) {
       return;
@@ -5388,6 +5728,12 @@ async function main(): Promise<number> {
     }
 
     if (focusExtraction.sanitized.length === 0) {
+      return;
+    }
+    if (handleRepositoryFoldChords(focusExtraction.sanitized)) {
+      return;
+    }
+    if (handleRepositoryTreeArrow(focusExtraction.sanitized)) {
       return;
     }
 
@@ -5464,67 +5810,8 @@ async function main(): Promise<number> {
       globalShortcut === 'mux.conversation.next' ||
       globalShortcut === 'mux.conversation.previous'
     ) {
-      const orderedIds = conversationOrder(conversations);
-      const selectorEntries = buildLeftNavSelectorEntries(directories, conversations, orderedIds, {
-        includeHome: SHOW_TASK_PLANNING_UI
-      });
       const direction = globalShortcut === 'mux.conversation.next' ? 'next' : 'previous';
-      let activeKey: string | null = null;
-      if (mainPaneMode === 'home') {
-        activeKey = 'home';
-      } else if (
-        mainPaneMode === 'project' &&
-        activeDirectoryId !== null &&
-        directories.has(activeDirectoryId)
-      ) {
-        activeKey = `directory:${activeDirectoryId}`;
-      } else if (
-        mainPaneMode === 'conversation' &&
-        activeConversationId !== null &&
-        conversations.has(activeConversationId)
-      ) {
-        activeKey = `conversation:${activeConversationId}`;
-      }
-      const targetKey = cycleConversationId(
-        selectorEntries.map((entry) => entry.key),
-        activeKey,
-        direction
-      );
-      const target =
-        targetKey === null
-          ? null
-          : selectorEntries.find((entry) => entry.key === targetKey) ?? null;
-      if (target !== null && target.kind === 'home') {
-        enterHomePane();
-        markDirty();
-        return;
-      }
-      if (target !== null && target.kind === 'directory') {
-        if (directories.has(target.directoryId)) {
-          enterProjectPane(target.directoryId);
-          markDirty();
-          return;
-        }
-        let fallbackConversationId: string | null = null;
-        for (const entry of selectorEntries) {
-          if (entry.kind !== 'conversation' || entry.directoryId !== target.directoryId) {
-            continue;
-          }
-          fallbackConversationId = entry.sessionId;
-          break;
-        }
-        if (fallbackConversationId !== null) {
-          queueControlPlaneOp(async () => {
-            await activateConversation(fallbackConversationId);
-          }, `shortcut-activate-${direction}-directory-fallback`);
-          return;
-        }
-      }
-      if (target !== null && target.kind === 'conversation') {
-        queueControlPlaneOp(async () => {
-          await activateConversation(target.sessionId);
-        }, `shortcut-activate-${direction}`);
-      }
+      cycleLeftNavSelection(direction);
       return;
     }
     if (handleTaskPaneShortcutInput(focusExtraction.sanitized)) {
@@ -5863,10 +6150,22 @@ async function main(): Promise<number> {
           markDirty();
           continue;
         }
+        if (selectedAction === 'repository.toggle') {
+          conversationTitleEditClickState = null;
+          if (selectedRepositoryId !== null) {
+            toggleRepositoryGroup(selectedRepositoryId);
+            selectLeftNavRepository(selectedRepositoryId);
+          }
+          markDirty();
+          continue;
+        }
         if (selectedAction === 'repositories.toggle') {
           conversationTitleEditClickState = null;
-          repositoriesCollapsed = !repositoriesCollapsed;
-          queuePersistMuxUiState();
+          if (repositoriesCollapsed) {
+            expandAllRepositoryGroups();
+          } else {
+            collapseAllRepositoryGroups();
+          }
           markDirty();
           continue;
         }
@@ -5910,6 +6209,7 @@ async function main(): Promise<number> {
         if (selectedConversationId !== null && selectedConversationId === activeConversationId) {
           if (mainPaneMode !== 'conversation') {
             mainPaneMode = 'conversation';
+            selectLeftNavConversation(selectedConversationId);
             projectPaneSnapshot = null;
             projectPaneScrollTop = 0;
             forceFullClear = true;

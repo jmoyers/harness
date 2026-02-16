@@ -13,6 +13,7 @@ interface WorkspaceRailDirectorySummary {
   readonly key: string;
   readonly workspaceId: string;
   readonly worktreeId: string;
+  readonly repositoryId?: string | null;
   readonly git: WorkspaceRailGitSummary;
 }
 
@@ -58,10 +59,13 @@ interface WorkspaceRailModel {
   readonly processes: readonly WorkspaceRailProcessSummary[];
   readonly showTaskPlanningUi?: boolean;
   readonly activeProjectId: string | null;
+  readonly activeRepositoryId?: string | null;
   readonly activeConversationId: string | null;
   readonly projectSelectionEnabled?: boolean;
+  readonly repositorySelectionEnabled?: boolean;
   readonly homeSelectionEnabled?: boolean;
   readonly repositoriesCollapsed?: boolean;
+  readonly collapsedRepositoryGroupIds?: readonly string[];
   readonly shortcutHint?: string;
   readonly shortcutsCollapsed?: boolean;
   readonly nowMs?: number;
@@ -90,8 +94,8 @@ interface WorkspaceRailViewRow {
   readonly conversationStatus: NormalizedConversationStatus | null;
 }
 
-const INTER_DIRECTORY_SPACER_ROWS = 2;
 const NEW_THREAD_INLINE_LABEL = '[+ thread]';
+const UNTRACKED_REPOSITORY_GROUP_ID = 'untracked';
 const ADD_PROJECT_BUTTON_LABEL = formatUiButton({
   label: 'add project',
   prefixIcon: '>'
@@ -107,6 +111,7 @@ type WorkspaceRailAction =
   | 'home.open'
   | 'project.close'
   | 'shortcuts.toggle'
+  | 'repository.toggle'
   | 'repository.add'
   | 'repository.edit'
   | 'repository.archive'
@@ -330,6 +335,82 @@ function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly Wo
   const showTaskPlanningUi = model.showTaskPlanningUi ?? true;
   const homeSelectionEnabled = model.homeSelectionEnabled ?? false;
   const projectSelectionEnabled = model.projectSelectionEnabled ?? false;
+  const repositorySelectionEnabled = model.repositorySelectionEnabled ?? false;
+  const collapsedRepositoryGroupIds = new Set(model.collapsedRepositoryGroupIds ?? []);
+  const repositoryById = new Map(
+    (model.repositories ?? []).map((repository) => [repository.repositoryId, repository] as const)
+  );
+  const repositoryGroups = new Map<
+    string,
+    {
+      readonly name: string;
+      readonly tracked: boolean;
+      readonly directories: WorkspaceRailDirectorySummary[];
+    }
+  >();
+
+  const ensureRepositoryGroup = (
+    repositoryId: string,
+    name: string,
+    tracked: boolean
+  ): {
+    readonly name: string;
+    readonly tracked: boolean;
+    readonly directories: WorkspaceRailDirectorySummary[];
+  } => {
+    const existing = repositoryGroups.get(repositoryId);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const created = {
+      name,
+      tracked,
+      directories: []
+    };
+    repositoryGroups.set(repositoryId, created);
+    return created;
+  };
+
+  for (const directory of model.directories) {
+    const repositoryId = directory.repositoryId;
+    if (repositoryId === undefined || repositoryId === null || !repositoryById.has(repositoryId)) {
+      ensureRepositoryGroup(UNTRACKED_REPOSITORY_GROUP_ID, UNTRACKED_REPOSITORY_GROUP_ID, false).directories.push(
+        directory
+      );
+      continue;
+    }
+    const repository = repositoryById.get(repositoryId)!;
+    ensureRepositoryGroup(repository.repositoryId, repository.name, true).directories.push(directory);
+  }
+
+  const orderedRepositoryGroupIds: string[] = [];
+  for (const repository of model.repositories ?? []) {
+    const group = repositoryGroups.get(repository.repositoryId);
+    if (group === undefined || group.directories.length === 0) {
+      continue;
+    }
+    orderedRepositoryGroupIds.push(repository.repositoryId);
+  }
+  if (repositoryGroups.has(UNTRACKED_REPOSITORY_GROUP_ID)) {
+    orderedRepositoryGroupIds.push(UNTRACKED_REPOSITORY_GROUP_ID);
+  }
+
+  const activeConversationCountByDirectoryId = new Map<string, number>();
+  for (const conversation of model.conversations) {
+    const projection = projectWorkspaceRailConversation(conversation, {
+      nowMs
+    });
+    if (
+      projection.status !== 'working' &&
+      projection.status !== 'starting' &&
+      projection.status !== 'needs-action'
+    ) {
+      continue;
+    }
+    const count = activeConversationCountByDirectoryId.get(conversation.directoryKey) ?? 0;
+    activeConversationCountByDirectoryId.set(conversation.directoryKey, count + 1);
+  }
+
   if (showTaskPlanningUi) {
     pushRow(
       rows,
@@ -341,65 +422,71 @@ function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly Wo
       null,
       'home.open'
     );
-    pushRow(
-      rows,
-      'dir-meta',
-      '│  repositories + tasks',
-      homeSelectionEnabled,
-      null,
-      null,
-      null,
-      'home.open'
-    );
-    pushRow(rows, 'muted', '│', false, null, null, null, 'home.open');
-    if (model.directories.length > 0) {
-      for (let spacerIndex = 0; spacerIndex < INTER_DIRECTORY_SPACER_ROWS; spacerIndex += 1) {
-        pushRow(rows, 'muted', '│');
-      }
-    }
   }
 
-  if (model.directories.length === 0) {
+  if (orderedRepositoryGroupIds.length === 0) {
     pushRow(rows, 'dir-header', '├─ 📁 no projects');
     pushRow(rows, 'muted', '│  create one with ctrl+o');
     return rows;
   }
 
-  for (let directoryIndex = 0; directoryIndex < model.directories.length; directoryIndex += 1) {
-    const directory = model.directories[directoryIndex]!;
-    const projectSelected = projectSelectionEnabled && directory.key === model.activeProjectId;
-    const connector = '├';
+  for (const repositoryId of orderedRepositoryGroupIds) {
+    const group = repositoryGroups.get(repositoryId);
+    if (group === undefined || group.directories.length === 0) {
+      continue;
+    }
+    const activeProjectCount = group.directories.filter(
+      (directory) => (activeConversationCountByDirectoryId.get(directory.key) ?? 0) > 0
+    ).length;
+    const repositorySelected = repositorySelectionEnabled && model.activeRepositoryId === repositoryId;
+    const repositoryCollapsed =
+      model.repositoriesCollapsed === true || collapsedRepositoryGroupIds.has(repositoryId);
     pushRow(
       rows,
-      'dir-header',
-      `${connector}─ 📁 ${directoryDisplayName(directory)} ─ ${directory.git.branch}  ${NEW_THREAD_INLINE_LABEL}`,
-      projectSelected,
+      'repository-header',
+      `├─ 📁 ${group.name} (${String(group.directories.length)} projects, ${String(activeProjectCount)} active) ${
+        repositoryCollapsed ? '[+]' : '[-]'
+      }`,
+      repositorySelected,
       null,
-      directory.key,
       null,
-      null
+      repositoryId,
+      'repository.toggle'
     );
-    pushRow(
-      rows,
-      'dir-meta',
-      `│  +${String(directory.git.additions)} -${String(directory.git.deletions)} │ ${String(directory.git.changedFiles)} files`,
-      projectSelected,
-      null,
-      directory.key,
-      null,
-      null
-    );
-    pushRow(rows, 'muted', '│', false, null, directory.key, null, null);
+    if (repositoryCollapsed) {
+      continue;
+    }
 
-    const conversations = model.conversations.filter(
-      (conversation) => conversation.directoryKey === directory.key
-    );
-    if (conversations.length > 0) {
-      for (let index = 0; index < conversations.length; index += 1) {
-        const conversation = conversations[index]!;
+    for (let directoryIndex = 0; directoryIndex < group.directories.length; directoryIndex += 1) {
+      const directory = group.directories[directoryIndex]!;
+      const projectSelected = projectSelectionEnabled && directory.key === model.activeProjectId;
+      const projectIsLast = directoryIndex + 1 >= group.directories.length;
+      const projectTreePrefix = `│  ${projectIsLast ? '└' : '├'}─ `;
+      const projectChildPrefix = `│  ${projectIsLast ? '   ' : '│  '}`;
+      const projectGitSuffix = group.tracked
+        ? ` (${directory.git.branch}:+${String(directory.git.additions)},-${String(directory.git.deletions)})`
+        : '';
+      pushRow(
+        rows,
+        'dir-header',
+        `${projectTreePrefix}📁 ${directoryDisplayName(directory)}${projectGitSuffix}  ${NEW_THREAD_INLINE_LABEL}`,
+        projectSelected,
+        null,
+        directory.key,
+        repositoryId,
+        null
+      );
+
+      const conversations = model.conversations.filter(
+        (conversation) => conversation.directoryKey === directory.key
+      );
+      for (let conversationIndex = 0; conversationIndex < conversations.length; conversationIndex += 1) {
+        const conversation = conversations[conversationIndex]!;
+        const conversationIsLast = conversationIndex + 1 >= conversations.length;
         const active =
           !projectSelectionEnabled &&
           !homeSelectionEnabled &&
+          !repositorySelectionEnabled &&
           conversation.sessionId === model.activeConversationId;
         const projection = projectWorkspaceRailConversation(conversation, {
           nowMs
@@ -407,52 +494,51 @@ function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly Wo
         pushRow(
           rows,
           'conversation-title',
-          `│  ${active ? '▸' : ' '} ${projection.glyph} ${conversationDisplayTitle(conversation)}`,
+          `${projectChildPrefix}${conversationIsLast ? '└' : '├'}─ ${projection.glyph} ${conversationDisplayTitle(
+            conversation
+          )}`,
           active,
           conversation.sessionId,
           directory.key,
-          null,
+          repositoryId,
           null,
           projection.status
         );
         pushRow(
           rows,
           'conversation-body',
-          `│    ${projection.detailText}`,
+          `${projectChildPrefix}${conversationIsLast ? '     ' : '│    '}${projection.detailText}`,
           active,
           conversation.sessionId,
           directory.key,
-          null,
+          repositoryId,
           null,
           projection.status
         );
-        if (index + 1 < conversations.length) {
-          pushRow(rows, 'muted', '│', false, null, directory.key, null, null);
-        }
       }
-    }
 
-    const processes = model.processes.filter((process) => process.directoryKey === directory.key);
-    if (processes.length > 0) {
-      pushRow(rows, 'muted', '│', false, null, directory.key, null, null);
+      const processes = model.processes.filter((process) => process.directoryKey === directory.key);
       for (const process of processes) {
-        pushRow(rows, 'process-title', `│  ⚙ ${process.label}`, false, null, directory.key, null, null);
         pushRow(
           rows,
-          'process-meta',
-          `│    ${processStatusText(process.status)} · ${formatCpu(process.cpuPercent)} · ${formatMem(process.memoryMb)}`,
+          'process-title',
+          `${projectChildPrefix}⚙ ${process.label}`,
           false,
           null,
           directory.key,
-          null,
+          repositoryId,
           null
         );
-      }
-    }
-
-    if (directoryIndex + 1 < model.directories.length) {
-      for (let spacerIndex = 0; spacerIndex < INTER_DIRECTORY_SPACER_ROWS; spacerIndex += 1) {
-        pushRow(rows, 'muted', '│', false, null, directory.key, null, null);
+        pushRow(
+          rows,
+          'process-meta',
+          `${projectChildPrefix}${processStatusText(process.status)} · ${formatCpu(process.cpuPercent)} · ${formatMem(process.memoryMb)}`,
+          false,
+          null,
+          directory.key,
+          repositoryId,
+          null
+        );
       }
     }
   }
@@ -469,7 +555,11 @@ function shortcutDescriptionRows(shortcutHint: string | undefined): readonly str
       'ctrl+l take over thread',
       'ctrl+o add project',
       'ctrl+w close project',
-      'ctrl+j/k switch nav',
+      'ctrl+j/h switch nav',
+      '→ expand repo',
+      '← collapse repo',
+      'ctrl+k ctrl+j expand all repos',
+      'ctrl+k ctrl+0 collapse all repos',
       'ctrl+c quit mux'
     ];
   }
@@ -492,7 +582,7 @@ function shortcutRows(
   const rows: WorkspaceRailViewRow[] = [
     {
       kind: 'shortcut-header',
-      text: `├─ ⌨ shortcuts ${shortcutsCollapsed ? '[+]' : '[-]'}`,
+      text: `├─ shortcuts ${shortcutsCollapsed ? '[+]' : '[-]'}`,
       active: false,
       conversationSessionId: null,
       directoryKey: null,

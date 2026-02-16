@@ -28,14 +28,16 @@ Harness is built for developers who want to:
 ## Core Capabilities
 
 - Multi-project rail with fast thread switching and live status indicators.
-- `ctrl+j/k` cycles the full left-nav order (Home, project headers, then project threads).
+- `ctrl+j/h` cycles the full left-nav order of visible items (Home, repository groups, project headers, then project threads).
+- `left/right` collapses or expands the selected repository group; `ctrl+k ctrl+0` collapses all groups, `ctrl+k ctrl+j` expands all groups.
 - Projects can remain empty; threads start only via explicit `new thread` actions.
 - Parallel `codex` and `terminal` threads in the same workspace.
 - Fresh context per thread by default (plus persisted continuity when supported).
 - Session control ownership: claim/release/takeover semantics for human-agent handoff.
 - Thread lifecycle management: create, rename, archive, and restore-ready metadata.
-- Tracked repository catalog decoupled from directory projects (many projects can map to one repo).
-- Startup repository scrape from active projects: GitHub remotes are deduped and auto-upserted.
+- Tracked repository catalog is canonical and decoupled from directory projects (many projects can map to one repo).
+- Startup/refresh repository scrape from active projects auto-upserts canonical repository records from normalized GitHub remotes.
+- Left rail groups projects by canonical repository; projects with no detected remote are grouped under `untracked`.
 - Programmatic repository model with full CRUD and archive semantics.
 - Programmatic task lifecycle with full CRUD, explicit ordering, `draft -> ready -> in-progress -> completed`, plus ready/reset transitions.
 - Task records include a typed `linear` compatibility payload (`issueId`, `identifier`, `teamId`, `projectId`, `stateId`, `assigneeId`, `priority`, `estimate`, `dueDate`, `labelIds`) so Linear sync adapters can round-trip without schema translation.

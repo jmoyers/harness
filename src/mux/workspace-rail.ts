@@ -7,8 +7,7 @@ import {
   type UiStyle
 } from '../ui/surface.ts';
 import {
-  paintUiRow,
-  paintUiRowWithTrailingLabel
+  paintUiRow
 } from '../ui/kit.ts';
 import {
   buildWorkspaceRailViewRows
@@ -20,37 +19,22 @@ type WorkspaceRailViewRow = ReturnType<typeof buildWorkspaceRailViewRows>[number
 const NORMAL_STYLE = DEFAULT_UI_STYLE;
 const HEADER_STYLE = {
   fg: { kind: 'indexed', index: 254 },
-  bg: { kind: 'indexed', index: 236 },
+  bg: { kind: 'default' },
   bold: true
 } as const;
-const ACTIVE_DIR_HEADER_STYLE = {
+const ACTIVE_ROW_STYLE = {
   fg: { kind: 'indexed', index: 254 },
-  bg: { kind: 'indexed', index: 238 },
-  bold: true
+  bg: { kind: 'indexed', index: 237 },
+  bold: false
 } as const;
 const META_STYLE = {
   fg: { kind: 'indexed', index: 151 },
   bg: { kind: 'default' },
   bold: false
 } as const;
-const ACTIVE_DIR_META_STYLE = {
-  fg: { kind: 'indexed', index: 153 },
-  bg: { kind: 'indexed', index: 238 },
-  bold: false
-} as const;
-const ACTIVE_CONVERSATION_TITLE_STYLE = {
-  fg: { kind: 'indexed', index: 254 },
-  bg: { kind: 'indexed', index: 237 },
-  bold: false
-} as const;
 const CONVERSATION_BODY_STYLE = {
   fg: { kind: 'indexed', index: 151 },
   bg: { kind: 'default' },
-  bold: false
-} as const;
-const ACTIVE_CONVERSATION_BODY_STYLE = {
-  fg: { kind: 'indexed', index: 153 },
-  bg: { kind: 'indexed', index: 237 },
   bold: false
 } as const;
 const PROCESS_STYLE = {
@@ -68,14 +52,9 @@ const MUTED_STYLE = {
   bg: { kind: 'default' },
   bold: false
 } as const;
-const ACTIVE_CONVERSATION_PREFIX_STYLE = {
-  fg: { kind: 'indexed', index: 245 },
-  bg: { kind: 'indexed', index: 237 },
-  bold: false
-} as const;
 const SHORTCUT_STYLE = {
   fg: { kind: 'indexed', index: 250 },
-  bg: { kind: 'indexed', index: 236 },
+  bg: { kind: 'default' },
   bold: false
 } as const;
 const ACTION_STYLE = {
@@ -108,6 +87,54 @@ function conversationStatusIconStyle(
   };
 }
 
+function treeTextStartColumn(text: string): number {
+  let index = 0;
+  while (index < text.length) {
+    const token = text[index]!;
+    if (token === '│' || token === '├' || token === '└' || token === '─' || token === ' ') {
+      index += 1;
+      continue;
+    }
+    break;
+  }
+  return index;
+}
+
+function drawTreeRow(
+  surface: ReturnType<typeof createUiSurface>,
+  rowIndex: number,
+  row: WorkspaceRailViewRow,
+  contentStyle: UiStyle,
+  activeContentStyle: UiStyle | null,
+  options: {
+    buttonLabel?: string;
+    buttonStyle?: UiStyle;
+  } = {}
+): void {
+  fillUiRow(surface, rowIndex, NORMAL_STYLE);
+  const contentStart = treeTextStartColumn(row.text);
+  const treePrefix = row.text.slice(0, contentStart);
+  const content = row.text.slice(contentStart);
+  drawUiText(surface, 0, rowIndex, treePrefix, MUTED_STYLE);
+  drawUiText(
+    surface,
+    contentStart,
+    rowIndex,
+    content,
+    row.active && activeContentStyle !== null ? activeContentStyle : contentStyle
+  );
+  const buttonLabel = options.buttonLabel;
+  const buttonStyle = options.buttonStyle;
+  if (buttonLabel === undefined || buttonStyle === undefined) {
+    return;
+  }
+  const buttonStart = row.text.lastIndexOf(buttonLabel);
+  if (buttonStart < 0) {
+    return;
+  }
+  drawUiText(surface, buttonStart, rowIndex, buttonLabel, buttonStyle);
+}
+
 function drawActionRow(
   surface: ReturnType<typeof createUiSurface>,
   rowIndex: number,
@@ -137,21 +164,10 @@ function drawDirectoryHeaderRow(
   rowIndex: number,
   row: WorkspaceRailViewRow
 ): void {
-  const style = row.active ? ACTIVE_DIR_HEADER_STYLE : HEADER_STYLE;
-  const buttonStart = row.text.lastIndexOf(INLINE_THREAD_BUTTON_LABEL);
-  if (buttonStart < 0) {
-    paintUiRow(surface, rowIndex, row.text, style);
-    return;
-  }
-  paintUiRowWithTrailingLabel(
-    surface,
-    rowIndex,
-    row.text.slice(0, buttonStart).trimEnd(),
-    INLINE_THREAD_BUTTON_LABEL,
-    style,
-    ACTION_STYLE,
-    style
-  );
+  drawTreeRow(surface, rowIndex, row, HEADER_STYLE, ACTIVE_ROW_STYLE, {
+    buttonLabel: INLINE_THREAD_BUTTON_LABEL,
+    buttonStyle: ACTION_STYLE
+  });
 }
 
 function drawConversationRow(
@@ -159,23 +175,17 @@ function drawConversationRow(
   rowIndex: number,
   row: WorkspaceRailViewRow
 ): void {
-  const rowStyle = row.active
-    ? row.kind === 'conversation-body'
-      ? ACTIVE_CONVERSATION_BODY_STYLE
-      : ACTIVE_CONVERSATION_TITLE_STYLE
-    : row.kind === 'conversation-body'
-      ? CONVERSATION_BODY_STYLE
-      : NORMAL_STYLE;
-  fillUiRow(surface, rowIndex, rowStyle);
-  const prefixStyle = row.active ? ACTIVE_CONVERSATION_PREFIX_STYLE : MUTED_STYLE;
-  drawUiText(surface, 0, rowIndex, '│ ', prefixStyle);
-  const text = row.text.slice(2);
-  const statusStyle = conversationStatusIconStyle(row.conversationStatus, row.active);
-  drawUiText(surface, 2, rowIndex, text, rowStyle);
+  const rowStyle = row.kind === 'conversation-body' ? CONVERSATION_BODY_STYLE : NORMAL_STYLE;
+  drawTreeRow(surface, rowIndex, row, rowStyle, ACTIVE_ROW_STYLE);
   if (row.kind !== 'conversation-title') {
     return;
   }
-  drawUiText(surface, 5, rowIndex, row.text.slice(5, 6), statusStyle);
+  const statusStyle = conversationStatusIconStyle(row.conversationStatus, row.active);
+  const statusMatch = row.text.match(/[▲◔◆○■]/u);
+  if (statusMatch === null || statusMatch.index === undefined) {
+    return;
+  }
+  drawUiText(surface, statusMatch.index, rowIndex, statusMatch[0], statusStyle);
 }
 
 function paintWorkspaceRailRow(
@@ -188,9 +198,7 @@ function paintWorkspaceRailRow(
     return;
   }
   if (row.kind === 'dir-meta') {
-    const textStyle = row.active ? ACTIVE_DIR_META_STYLE : META_STYLE;
-    const fillStyle = row.active ? ACTIVE_DIR_META_STYLE : NORMAL_STYLE;
-    paintUiRow(surface, rowIndex, row.text, textStyle, fillStyle);
+    drawTreeRow(surface, rowIndex, row, META_STYLE, ACTIVE_ROW_STYLE);
     return;
   }
   if (row.kind === 'conversation-title' || row.kind === 'conversation-body') {
@@ -202,7 +210,15 @@ function paintWorkspaceRailRow(
     return;
   }
   if (row.kind === 'repository-header') {
-    paintUiRow(surface, rowIndex, row.text, HEADER_STYLE);
+    const buttonLabel = row.text.endsWith('[+]') ? '[+]' : row.text.endsWith('[-]') ? '[-]' : null;
+    if (buttonLabel === null) {
+      drawTreeRow(surface, rowIndex, row, HEADER_STYLE, ACTIVE_ROW_STYLE);
+    } else {
+      drawTreeRow(surface, rowIndex, row, HEADER_STYLE, ACTIVE_ROW_STYLE, {
+        buttonLabel,
+        buttonStyle: ACTION_STYLE
+      });
+    }
     return;
   }
   if (row.kind === 'repository-row') {
@@ -210,7 +226,15 @@ function paintWorkspaceRailRow(
     return;
   }
   if (row.kind === 'shortcut-header') {
-    paintUiRow(surface, rowIndex, row.text, HEADER_STYLE);
+    const buttonLabel = row.text.endsWith('[+]') ? '[+]' : row.text.endsWith('[-]') ? '[-]' : null;
+    if (buttonLabel === null) {
+      drawTreeRow(surface, rowIndex, row, HEADER_STYLE, ACTIVE_ROW_STYLE);
+    } else {
+      drawTreeRow(surface, rowIndex, row, HEADER_STYLE, ACTIVE_ROW_STYLE, {
+        buttonLabel,
+        buttonStyle: ACTION_STYLE
+      });
+    }
     return;
   }
   if (row.kind === 'shortcut-body') {
