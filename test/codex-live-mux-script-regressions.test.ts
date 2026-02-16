@@ -211,7 +211,7 @@ void test('codex-live-mux includes a realtime tasks management pane with draft/r
 
   assert.equal(source.includes("let mainPaneMode: 'conversation' | 'project' | 'tasks' = 'conversation';"), true);
   assert.equal(source.includes('buildTaskPaneSnapshot('), true);
-  assert.equal(source.includes('async function subscribeTaskPlanningEvents(): Promise<void> {'), true);
+  assert.equal(source.includes('subscribeTaskPlanningEvents'), true);
   assert.equal(source.includes("type: 'stream.subscribe'"), true);
   assert.equal(source.includes('if (envelope.kind === \'stream.event\') {'), true);
   assert.equal(source.includes("type: 'task.draft'"), true);

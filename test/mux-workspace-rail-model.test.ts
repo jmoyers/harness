@@ -1217,6 +1217,32 @@ void test('workspace rail model prefers fresh running activity over stale comple
   assert.equal(projection.detailText, 'working · 0.3% · 20MB');
 });
 
+void test('workspace rail model keeps idle projection when last event does not advance past completion telemetry', () => {
+  const projection = projectWorkspaceRailConversation(
+    {
+      sessionId: 'conversation-idle-equal-event',
+      directoryKey: 'dir',
+      title: 'task',
+      agentLabel: 'codex',
+      cpuPercent: 0.3,
+      memoryMb: 20,
+      lastKnownWork: 'turn complete (812ms)',
+      lastKnownWorkAt: '2026-01-01T00:00:10.000Z',
+      status: 'running',
+      attentionReason: null,
+      startedAt: '2026-01-01T00:00:00.000Z',
+      lastEventAt: '2026-01-01T00:00:10.000Z',
+      controller: null
+    },
+    {
+      nowMs: Date.parse('2026-01-01T00:00:11.000Z')
+    }
+  );
+  assert.equal(projection.status, 'idle');
+  assert.equal(projection.glyph, '○');
+  assert.equal(projection.detailText, 'turn complete (812ms)');
+});
+
 void test('workspace rail model keeps status-line text consistent despite selected-thread output activity', () => {
   const nowMs = Date.parse('2026-01-01T00:00:10.500Z');
   const rows = buildWorkspaceRailViewRows(
@@ -1392,6 +1418,64 @@ void test('workspace rail model infers needs-action and working from last-known-
   assert.notEqual(workingRow, undefined);
   assert.equal(needsActionRow?.text.includes('▲ codex - approval'), true);
   assert.equal(workingRow?.text.includes('◆ codex - streaming'), true);
+});
+
+void test('workspace rail model infers needs-action from approval-denied summary without needs-input marker', () => {
+  const projection = projectWorkspaceRailConversation(
+    {
+      sessionId: 'conversation-approval-only',
+      directoryKey: 'dir',
+      title: 'approval',
+      agentLabel: 'codex',
+      cpuPercent: null,
+      memoryMb: null,
+      lastKnownWork: 'approval denied by policy',
+      lastKnownWorkAt: '2026-01-01T00:00:10.000Z',
+      status: 'running',
+      attentionReason: null,
+      startedAt: '2026-01-01T00:00:00.000Z',
+      lastEventAt: '2026-01-01T00:00:10.000Z',
+      controller: null
+    },
+    {
+      nowMs: Date.parse('2026-01-01T00:00:11.000Z')
+    }
+  );
+  assert.equal(projection.status, 'needs-action');
+  assert.equal(projection.glyph, '▲');
+});
+
+void test('workspace rail model covers status inference keyword variants', () => {
+  const nowMs = Date.parse('2026-01-01T00:00:20.000Z');
+  const project = (lastKnownWork: string): ReturnType<typeof projectWorkspaceRailConversation> =>
+    projectWorkspaceRailConversation(
+      {
+        sessionId: `case-${lastKnownWork}`,
+        directoryKey: 'dir',
+        title: 'task',
+        agentLabel: 'codex',
+        cpuPercent: null,
+        memoryMb: null,
+        lastKnownWork,
+        lastKnownWorkAt: '2026-01-01T00:00:19.000Z',
+        status: 'running',
+        attentionReason: null,
+        startedAt: '2026-01-01T00:00:00.000Z',
+        lastEventAt: '2026-01-01T00:00:19.000Z',
+        controller: null
+      },
+      { nowMs }
+    );
+
+  assert.equal(project('needs input from user').status, 'needs-action');
+  assert.equal(project('attention-required: approval').status, 'needs-action');
+  assert.equal(project('approval denied by policy').status, 'needs-action');
+  assert.equal(project('conversation started').status, 'starting');
+  assert.equal(project('response complete').status, 'idle');
+  assert.equal(project('working: preparing changes').status, 'working');
+  assert.equal(project('thinking through solution').status, 'working');
+  assert.equal(project('tool execute').status, 'working');
+  assert.equal(project('unrecognized status text').status, 'idle');
 });
 
 void test('workspace rail model treats missing lastEventAt as current for last-known-work text', () => {
