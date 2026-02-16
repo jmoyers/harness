@@ -1583,6 +1583,21 @@ export class ControlPlaneStreamServer {
         repositoryId?: string;
         title: string;
         description?: string;
+        linear?: {
+          issueId?: string | null;
+          identifier?: string | null;
+          url?: string | null;
+          teamId?: string | null;
+          projectId?: string | null;
+          projectMilestoneId?: string | null;
+          cycleId?: string | null;
+          stateId?: string | null;
+          assigneeId?: string | null;
+          priority?: number | null;
+          estimate?: number | null;
+          dueDate?: string | null;
+          labelIds?: readonly string[] | null;
+        };
       } = {
         taskId: command.taskId ?? `task-${randomUUID()}`,
         tenantId: command.tenantId ?? DEFAULT_TENANT_ID,
@@ -1595,6 +1610,9 @@ export class ControlPlaneStreamServer {
       }
       if (command.description !== undefined) {
         input.description = command.description;
+      }
+      if (command.linear !== undefined) {
+        input.linear = command.linear;
       }
       const task = this.stateStore.createTask(input);
       this.publishObservedEvent(
@@ -1665,6 +1683,21 @@ export class ControlPlaneStreamServer {
         title?: string;
         description?: string;
         repositoryId?: string | null;
+        linear?: {
+          issueId?: string | null;
+          identifier?: string | null;
+          url?: string | null;
+          teamId?: string | null;
+          projectId?: string | null;
+          projectMilestoneId?: string | null;
+          cycleId?: string | null;
+          stateId?: string | null;
+          assigneeId?: string | null;
+          priority?: number | null;
+          estimate?: number | null;
+          dueDate?: string | null;
+          labelIds?: readonly string[] | null;
+        } | null;
       } = {};
       if (command.title !== undefined) {
         update.title = command.title;
@@ -1674,6 +1707,9 @@ export class ControlPlaneStreamServer {
       }
       if (command.repositoryId !== undefined) {
         update.repositoryId = command.repositoryId;
+      }
+      if (command.linear !== undefined) {
+        update.linear = command.linear;
       }
       const updated = this.stateStore.updateTask(command.taskId, update);
       if (updated === null) {
@@ -2594,6 +2630,21 @@ export class ControlPlaneStreamServer {
       baseBranch: task.baseBranch,
       claimedAt: task.claimedAt,
       completedAt: task.completedAt,
+      linear: {
+        issueId: task.linear.issueId,
+        identifier: task.linear.identifier,
+        url: task.linear.url,
+        teamId: task.linear.teamId,
+        projectId: task.linear.projectId,
+        projectMilestoneId: task.linear.projectMilestoneId,
+        cycleId: task.linear.cycleId,
+        stateId: task.linear.stateId,
+        assigneeId: task.linear.assigneeId,
+        priority: task.linear.priority,
+        estimate: task.linear.estimate,
+        dueDate: task.linear.dueDate,
+        labelIds: [...task.linear.labelIds]
+      },
       createdAt: task.createdAt,
       updatedAt: task.updatedAt
     };

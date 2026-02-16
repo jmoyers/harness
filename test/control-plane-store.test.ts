@@ -1347,7 +1347,19 @@ void test('control-plane store manages repositories and task lifecycle', () => {
       workspaceId: 'workspace-task',
       repositoryId: 'repo-1',
       title: 'task b',
-      description: 'description b'
+      description: 'description b',
+      linear: {
+        issueId: 'linear-issue-1',
+        identifier: 'ENG-42',
+        teamId: 'team-eng',
+        projectId: 'project-roadmap',
+        stateId: 'state-backlog',
+        assigneeId: 'user-123',
+        priority: 2,
+        estimate: 3,
+        dueDate: '2026-03-01',
+        labelIds: ['bug', 'backend']
+      }
     });
     const taskC = store.createTask({
       taskId: 'task-c',
@@ -1360,6 +1372,11 @@ void test('control-plane store manages repositories and task lifecycle', () => {
     assert.equal(taskA.orderIndex, 0);
     assert.equal(taskB.orderIndex, 1);
     assert.equal(taskC.orderIndex, 2);
+    assert.equal(taskA.linear.issueId, null);
+    assert.equal(taskA.linear.labelIds.length, 0);
+    assert.equal(taskB.linear.identifier, 'ENG-42');
+    assert.equal(taskB.linear.priority, 2);
+    assert.deepEqual(taskB.linear.labelIds, ['bug', 'backend']);
 
     assert.throws(
       () =>
@@ -1407,28 +1424,92 @@ void test('control-plane store manages repositories and task lifecycle', () => {
         }),
       /scope mismatch/
     );
+    assert.throws(
+      () =>
+        store.createTask({
+          taskId: 'task-invalid-linear-priority',
+          tenantId: 'tenant-task',
+          userId: 'user-task',
+          workspaceId: 'workspace-task',
+          title: 'bad linear priority',
+          linear: {
+            priority: 7
+          }
+        }),
+      /linear\.priority/
+    );
+    assert.throws(
+      () =>
+        store.createTask({
+          taskId: 'task-invalid-linear-due-date',
+          tenantId: 'tenant-task',
+          userId: 'user-task',
+          workspaceId: 'workspace-task',
+          title: 'bad linear date',
+          linear: {
+            dueDate: '03-01-2026'
+          }
+        }),
+      /YYYY-MM-DD/
+    );
+    assert.throws(
+      () =>
+        store.createTask({
+          taskId: 'task-invalid-linear-estimate',
+          tenantId: 'tenant-task',
+          userId: 'user-task',
+          workspaceId: 'workspace-task',
+          title: 'bad linear estimate',
+          linear: {
+            estimate: -1
+          }
+        }),
+      /linear\.estimate/
+    );
+
+    const taskLinearNullLabels = store.createTask({
+      taskId: 'task-linear-null-labels',
+      tenantId: 'tenant-task',
+      userId: 'user-task',
+      workspaceId: 'workspace-task',
+      title: 'null labels',
+      linear: {
+        labelIds: null
+      }
+    });
+    assert.deepEqual(taskLinearNullLabels.linear.labelIds, []);
 
     assert.equal(store.getTask('missing-task'), null);
-    assert.equal(store.listTasks().length, 3);
+    assert.equal(store.listTasks().length, 4);
     assert.equal(
       store.listTasks({
         tenantId: 'tenant-task',
         userId: 'user-task',
         workspaceId: 'workspace-task'
       }).length,
-      3
+      4
     );
     assert.equal(store.listTasks({ repositoryId: 'repo-1' }).length, 1);
-    assert.equal(store.listTasks({ status: 'draft' }).length, 3);
+    assert.equal(store.listTasks({ status: 'draft' }).length, 4);
 
     assert.equal(store.updateTask('missing-task', { title: 'x' }), null);
     const updateTaskFull = store.updateTask('task-a', {
       title: 'task a updated',
       description: 'description a updated',
-      repositoryId: 'repo-1'
+      repositoryId: 'repo-1',
+      linear: {
+        issueId: 'linear-issue-2',
+        identifier: 'ENG-43',
+        priority: 1,
+        estimate: 5,
+        labelIds: ['feature']
+      }
     });
     assert.equal(updateTaskFull?.title, 'task a updated');
     assert.equal(updateTaskFull?.repositoryId, 'repo-1');
+    assert.equal(updateTaskFull?.linear.identifier, 'ENG-43');
+    assert.equal(updateTaskFull?.linear.priority, 1);
+    assert.deepEqual(updateTaskFull?.linear.labelIds, ['feature']);
 
     const updateTaskNoop = store.updateTask('task-a', {
       title: 'task a renamed only'
@@ -1439,6 +1520,12 @@ void test('control-plane store manages repositories and task lifecycle', () => {
       repositoryId: null
     });
     assert.equal(updateTaskClearRepository?.repositoryId, null);
+    const updateTaskResetLinear = store.updateTask('task-a', {
+      linear: null
+    });
+    assert.equal(updateTaskResetLinear?.linear.issueId, null);
+    assert.equal(updateTaskResetLinear?.linear.priority, null);
+    assert.deepEqual(updateTaskResetLinear?.linear.labelIds, []);
 
     assert.throws(
       () =>
@@ -1453,6 +1540,15 @@ void test('control-plane store manages repositories and task lifecycle', () => {
           repositoryId: 'repo-other-scope'
         }),
       /scope mismatch/
+    );
+    assert.throws(
+      () =>
+        store.updateTask('task-a', {
+          linear: {
+            labelIds: ['ok', '  ']
+          }
+        }),
+      /linear\.labelIds/
     );
 
     assert.throws(
@@ -1674,6 +1770,82 @@ void test('control-plane store repository and task normalization guards are stri
     reopenedInvalidMetadataType.close();
   }
 
+  const dbMalformedTaskLinear = new DatabaseSync(storePath);
+  try {
+    dbMalformedTaskLinear
+      .prepare('UPDATE tasks SET linear_json = ? WHERE task_id = ?')
+      .run('{bad json', 'task-normalize');
+  } finally {
+    dbMalformedTaskLinear.close();
+  }
+  const reopenedMalformedTaskLinear = new SqliteControlPlaneStore(storePath);
+  try {
+    assert.equal(reopenedMalformedTaskLinear.getTask('task-normalize')?.linear.issueId, null);
+    assert.deepEqual(reopenedMalformedTaskLinear.getTask('task-normalize')?.linear.labelIds, []);
+  } finally {
+    reopenedMalformedTaskLinear.close();
+  }
+
+  const dbArrayTaskLinear = new DatabaseSync(storePath);
+  try {
+    dbArrayTaskLinear
+      .prepare('UPDATE tasks SET linear_json = ? WHERE task_id = ?')
+      .run('[]', 'task-normalize');
+  } finally {
+    dbArrayTaskLinear.close();
+  }
+  const reopenedArrayTaskLinear = new SqliteControlPlaneStore(storePath);
+  try {
+    assert.equal(reopenedArrayTaskLinear.getTask('task-normalize')?.linear.priority, null);
+  } finally {
+    reopenedArrayTaskLinear.close();
+  }
+
+  const dbNullLabelsTaskLinear = new DatabaseSync(storePath);
+  try {
+    dbNullLabelsTaskLinear
+      .prepare('UPDATE tasks SET linear_json = ? WHERE task_id = ?')
+      .run('{"labelIds":null}', 'task-normalize');
+  } finally {
+    dbNullLabelsTaskLinear.close();
+  }
+  const reopenedNullLabelsTaskLinear = new SqliteControlPlaneStore(storePath);
+  try {
+    assert.deepEqual(reopenedNullLabelsTaskLinear.getTask('task-normalize')?.linear.labelIds, []);
+  } finally {
+    reopenedNullLabelsTaskLinear.close();
+  }
+
+  const dbInvalidLabelsTaskLinear = new DatabaseSync(storePath);
+  try {
+    dbInvalidLabelsTaskLinear
+      .prepare('UPDATE tasks SET linear_json = ? WHERE task_id = ?')
+      .run('{"labelIds":[1]}', 'task-normalize');
+  } finally {
+    dbInvalidLabelsTaskLinear.close();
+  }
+  const reopenedInvalidLabelsTaskLinear = new SqliteControlPlaneStore(storePath);
+  try {
+    assert.throws(() => reopenedInvalidLabelsTaskLinear.getTask('task-normalize'), /labelIds/);
+  } finally {
+    reopenedInvalidLabelsTaskLinear.close();
+  }
+
+  const dbInvalidTaskLinearType = new DatabaseSync(storePath);
+  try {
+    dbInvalidTaskLinearType
+      .prepare('UPDATE tasks SET linear_json = ? WHERE task_id = ?')
+      .run(Buffer.from([1, 2, 3]), 'task-normalize');
+  } finally {
+    dbInvalidTaskLinearType.close();
+  }
+  const reopenedInvalidTaskLinearType = new SqliteControlPlaneStore(storePath);
+  try {
+    assert.throws(() => reopenedInvalidTaskLinearType.getTask('task-normalize'), /linear_json/);
+  } finally {
+    reopenedInvalidTaskLinearType.close();
+  }
+
   const dbInvalidTaskRows = new DatabaseSync(storePath);
   try {
     dbInvalidTaskRows.prepare('DELETE FROM tasks;').run();
@@ -1755,6 +1927,47 @@ void test('control-plane store repository and task normalization guards are stri
         '2026-02-16T00:00:00.000Z'
       );
     `);
+    dbInvalidTaskRows.exec(`
+      INSERT INTO tasks (
+        task_id,
+        tenant_id,
+        user_id,
+        workspace_id,
+        repository_id,
+        title,
+        description,
+        linear_json,
+        status,
+        order_index,
+        claimed_by_controller_id,
+        claimed_by_directory_id,
+        branch_name,
+        base_branch,
+        claimed_at,
+        completed_at,
+        created_at,
+        updated_at
+      ) VALUES (
+        'task-invalid-linear-priority',
+        'tenant-normalize',
+        'user-normalize',
+        'workspace-normalize',
+        'repo-normalize',
+        'bad linear priority',
+        '',
+        '{"priority": 99}',
+        'ready',
+        1,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        '2026-02-16T00:00:00.000Z',
+        '2026-02-16T00:00:00.000Z'
+      );
+    `);
   } finally {
     dbInvalidTaskRows.close();
   }
@@ -1768,6 +1981,10 @@ void test('control-plane store repository and task normalization guards are stri
     assert.throws(
       () => reopenedInvalidTaskRows.getTask('task-invalid-order-index'),
       /finite number/
+    );
+    assert.throws(
+      () => reopenedInvalidTaskRows.getTask('task-invalid-linear-priority'),
+      /linear\.priority/
     );
   } finally {
     reopenedInvalidTaskRows.close();

@@ -3,6 +3,8 @@ import type { StreamCommand } from './stream-protocol.ts';
 type StreamCommandType = StreamCommand['type'];
 type CommandRecord = Record<string, unknown>;
 type CommandParser = (record: CommandRecord) => StreamCommand | null;
+type ParsedTaskLinearInput = NonNullable<Extract<StreamCommand, { type: 'task.create' }>['linear']>;
+const INVALID_OPTIONAL = Symbol('invalid-optional');
 
 function asRecord(value: unknown): CommandRecord | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
@@ -74,6 +76,132 @@ function readOptionalInteger(
     return undefined;
   }
   return value;
+}
+
+function readOptionalNullableString(
+  record: CommandRecord,
+  field: string
+): string | null | undefined | typeof INVALID_OPTIONAL {
+  const value = record[field];
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return null;
+  }
+  if (typeof value !== 'string') {
+    return INVALID_OPTIONAL;
+  }
+  return value;
+}
+
+function readOptionalNullableNonNegativeInteger(
+  record: CommandRecord,
+  field: string
+): number | null | undefined | typeof INVALID_OPTIONAL {
+  const value = record[field];
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return null;
+  }
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+    return INVALID_OPTIONAL;
+  }
+  return value;
+}
+
+function parseTaskLinearInput(value: unknown): ParsedTaskLinearInput | null {
+  const record = asRecord(value);
+  if (record === null) {
+    return null;
+  }
+  const issueId = readOptionalNullableString(record, 'issueId');
+  const identifier = readOptionalNullableString(record, 'identifier');
+  const url = readOptionalNullableString(record, 'url');
+  const teamId = readOptionalNullableString(record, 'teamId');
+  const projectId = readOptionalNullableString(record, 'projectId');
+  const projectMilestoneId = readOptionalNullableString(record, 'projectMilestoneId');
+  const cycleId = readOptionalNullableString(record, 'cycleId');
+  const stateId = readOptionalNullableString(record, 'stateId');
+  const assigneeId = readOptionalNullableString(record, 'assigneeId');
+  const dueDate = readOptionalNullableString(record, 'dueDate');
+  const priority = readOptionalNullableNonNegativeInteger(record, 'priority');
+  const estimate = readOptionalNullableNonNegativeInteger(record, 'estimate');
+  const labelsRaw = record['labelIds'];
+  let labelIds: string[] | null | undefined;
+  if (labelsRaw !== undefined) {
+    if (labelsRaw === null) {
+      labelIds = null;
+    } else if (Array.isArray(labelsRaw) && labelsRaw.every((entry) => typeof entry === 'string')) {
+      labelIds = [...labelsRaw];
+    } else {
+      return null;
+    }
+  }
+
+  if (
+    issueId === INVALID_OPTIONAL ||
+    identifier === INVALID_OPTIONAL ||
+    url === INVALID_OPTIONAL ||
+    teamId === INVALID_OPTIONAL ||
+    projectId === INVALID_OPTIONAL ||
+    projectMilestoneId === INVALID_OPTIONAL ||
+    cycleId === INVALID_OPTIONAL ||
+    stateId === INVALID_OPTIONAL ||
+    assigneeId === INVALID_OPTIONAL ||
+    dueDate === INVALID_OPTIONAL ||
+    priority === INVALID_OPTIONAL ||
+    estimate === INVALID_OPTIONAL
+  ) {
+    return null;
+  }
+  if (priority !== undefined && priority !== null && priority > 4) {
+    return null;
+  }
+
+  const out: ParsedTaskLinearInput = {};
+  if (issueId !== undefined) {
+    out.issueId = issueId;
+  }
+  if (identifier !== undefined) {
+    out.identifier = identifier;
+  }
+  if (url !== undefined) {
+    out.url = url;
+  }
+  if (teamId !== undefined) {
+    out.teamId = teamId;
+  }
+  if (projectId !== undefined) {
+    out.projectId = projectId;
+  }
+  if (projectMilestoneId !== undefined) {
+    out.projectMilestoneId = projectMilestoneId;
+  }
+  if (cycleId !== undefined) {
+    out.cycleId = cycleId;
+  }
+  if (stateId !== undefined) {
+    out.stateId = stateId;
+  }
+  if (assigneeId !== undefined) {
+    out.assigneeId = assigneeId;
+  }
+  if (priority !== undefined) {
+    out.priority = priority as 0 | 1 | 2 | 3 | 4 | null;
+  }
+  if (estimate !== undefined) {
+    out.estimate = estimate;
+  }
+  if (dueDate !== undefined) {
+    out.dueDate = dueDate;
+  }
+  if (labelIds !== undefined) {
+    out.labelIds = labelIds;
+  }
+  return out;
 }
 
 function parseSessionControllerType(value: unknown): 'human' | 'agent' | 'automation' | null {
@@ -458,6 +586,13 @@ function parseTaskCreate(record: CommandRecord): StreamCommand | null {
   if (description !== null) {
     command.description = description;
   }
+  if (record['linear'] !== undefined) {
+    const linear = parseTaskLinearInput(record['linear']);
+    if (linear === null) {
+      return null;
+    }
+    command.linear = linear;
+  }
   return command;
 }
 
@@ -556,6 +691,17 @@ function parseTaskUpdate(record: CommandRecord): StreamCommand | null {
   }
   if (repositoryId !== undefined) {
     command.repositoryId = repositoryId;
+  }
+  if (record['linear'] !== undefined) {
+    if (record['linear'] === null) {
+      command.linear = null;
+    } else {
+      const linear = parseTaskLinearInput(record['linear']);
+      if (linear === null) {
+        return null;
+      }
+      command.linear = linear;
+    }
   }
   return command;
 }

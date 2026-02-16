@@ -1043,6 +1043,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - repository/task planning primitives are persisted in the same SQLite store:
       - `repositories` (`repository_id`, remote URL, default branch, metadata, archive state)
     - `tasks` (task records with CRUD, explicit ordering, claim, complete, ready, and draft-reset transitions)
+      - task records carry a typed `linear` compatibility block (`issueId`, `identifier`, `teamId`, `projectId`, `projectMilestoneId`, `cycleId`, `stateId`, `assigneeId`, `priority`, `estimate`, `dueDate`, `labelIds`) so future Linear sync can be schema-compatible by default
     - control-plane stream commands now expose this model directly:
       - repositories: `repository.upsert`, `repository.get`, `repository.list`, `repository.update`, `repository.archive`
       - tasks: `task.create`, `task.get`, `task.list`, `task.update`, `task.delete`, `task.claim`, `task.complete`, `task.ready`, `task.draft`, `task.queue` (compat alias), `task.reorder`

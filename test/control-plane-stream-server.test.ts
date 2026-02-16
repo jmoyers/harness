@@ -588,6 +588,49 @@ void test('stream server supports start/attach/io/events/cleanup over one protoc
     ),
     true
   );
+  created[0]!.emitEvent({
+    type: 'notify',
+    record: {
+      ts: '2026-01-01T00:00:03.000Z',
+      payload: {
+        type: 'agent-turn-progress'
+      }
+    }
+  });
+  await delay(10);
+  assert.equal(
+    observedA.some(
+      (envelope) =>
+        envelope.kind === 'pty.event' &&
+        envelope.event.type === 'notify' &&
+        envelope.event.record.payload['type'] === 'agent-turn-progress'
+    ),
+    true
+  );
+  created[0]!.emitEvent({
+    type: 'notify',
+    record: {
+      ts: '2026-01-01T00:00:04.000Z',
+      payload: {
+        type: 42
+      }
+    }
+  });
+  await delay(10);
+  assert.equal(
+    observedA.some(
+      (envelope) =>
+        envelope.kind === 'pty.event' &&
+        envelope.event.type === 'notify' &&
+        envelope.event.record.payload['type'] === 42
+    ),
+    true
+  );
+  const statusAfterProgressNotify = await clientA.sendCommand({
+    type: 'session.status',
+    sessionId: 'session-1'
+  });
+  assert.equal(statusAfterProgressNotify['status'], 'completed');
 
   await writeRaw(
     { host: coldAddress.address, port: coldAddress.port },
@@ -2608,8 +2651,47 @@ void test('stream server internal guard branches remain safe for missing ids', a
       'subscription-cleanup',
       { id: 'subscription-cleanup' } as unknown as { id: string }
     );
+    internals.sessions.set(
+      'controlled-session',
+      {
+        id: 'controlled-session',
+        directoryId: null,
+        tenantId: 'tenant-local',
+        userId: 'user-local',
+        workspaceId: 'workspace-local',
+        worktreeId: 'worktree-local',
+        session: null,
+        eventSubscriberConnectionIds: new Set<string>(),
+        attachmentByConnectionId: new Map<string, string>(),
+        unsubscribe: null,
+        status: 'running',
+        attentionReason: null,
+        lastEventAt: new Date(0).toISOString(),
+        lastExit: null,
+        lastSnapshot: null,
+        startedAt: new Date(0).toISOString(),
+        exitedAt: null,
+        tombstoneTimer: null,
+        lastObservedOutputCursor: 0,
+        latestTelemetry: null,
+        controller: {
+          connectionId: 'cleanup-connection',
+          controllerId: 'agent-cleanup',
+          controllerType: 'agent',
+          controllerLabel: 'Cleanup Agent',
+          claimedAt: new Date(0).toISOString()
+        }
+      } as unknown as (typeof internals.sessions extends Map<string, infer T> ? T : never)
+    );
     internals.cleanupConnection('cleanup-connection');
     assert.equal(internals.streamSubscriptions.has('subscription-cleanup'), false);
+    const controlledAfterCleanup = internals.sessions.get('controlled-session') as
+      | {
+          controller: Record<string, unknown> | null;
+        }
+      | undefined;
+    assert.notEqual(controlledAfterCleanup, undefined);
+    assert.equal(controlledAfterCleanup?.controller, null);
 
     internals.deactivateSession('missing-session', true);
     internals.deactivateSession('fake-session', true);
@@ -3135,7 +3217,7 @@ void test('stream server injects codex telemetry args, ingests otlp payloads, an
       type: 'session.status',
       sessionId: 'conversation-otel'
     });
-    assert.equal(completedStatus['status'], 'needs-input');
+    assert.equal(completedStatus['status'], 'completed');
     assert.equal(
       (completedStatus['telemetry'] as Record<string, unknown>)['source'],
       'otlp-trace'
@@ -3166,7 +3248,7 @@ void test('stream server injects codex telemetry args, ingests otlp payloads, an
       type: 'session.status',
       sessionId: 'conversation-otel'
     });
-    assert.equal(completedAfterInput['status'], 'needs-input');
+    assert.equal(completedAfterInput['status'], 'completed');
 
     const listedConversations = await client.sendCommand({
       type: 'conversation.list',
@@ -3441,7 +3523,7 @@ void test('stream server lifecycle telemetry mode drops verbose codex events by 
       type: 'session.status',
       sessionId: 'conversation-otel-lifecycle'
     });
-    assert.equal(status['status'], 'running');
+    assert.equal(status['status'], 'completed');
     const telemetry = status['telemetry'] as Record<string, unknown> | null;
     assert.notEqual(telemetry, null);
     assert.equal(telemetry?.['eventName'], 'codex.turn.e2e_duration_ms');
@@ -4287,7 +4369,7 @@ void test('stream server exposes repository and task commands', async () => {
     const repositoryRows = listedRepositories['repositories'] as Array<Record<string, unknown>>;
     assert.equal(repositoryRows.length, 1);
 
-    await client.sendCommand({
+    const createdTask = await client.sendCommand({
       type: 'task.create',
       taskId: 'task-1',
       tenantId: 'tenant-task-1',
@@ -4295,8 +4377,21 @@ void test('stream server exposes repository and task commands', async () => {
       workspaceId: 'workspace-task-1',
       repositoryId: 'repository-1',
       title: 'Implement repository API',
-      description: 'Add stream commands for repositories'
+      description: 'Add stream commands for repositories',
+      linear: {
+        issueId: 'linear-1',
+        identifier: 'ENG-10',
+        teamId: 'team-eng',
+        priority: 2,
+        estimate: 3,
+        dueDate: '2026-03-05',
+        labelIds: ['backend']
+      }
     });
+    assert.equal(
+      ((createdTask['task'] as Record<string, unknown>)['linear'] as Record<string, unknown>)['identifier'],
+      'ENG-10'
+    );
     await client.sendCommand({
       type: 'task.create',
       taskId: 'task-2',
@@ -4347,9 +4442,32 @@ void test('stream server exposes repository and task commands', async () => {
       type: 'task.update',
       taskId: 'task-2',
       repositoryId: 'repository-1',
-      title: 'Implement task API v2'
+      title: 'Implement task API v2',
+      linear: {
+        identifier: 'ENG-11',
+        priority: 1
+      }
     });
     assert.equal((updatedTask['task'] as Record<string, unknown>)['repositoryId'], 'repository-1');
+    assert.equal(
+      ((updatedTask['task'] as Record<string, unknown>)['linear'] as Record<string, unknown>)['identifier'],
+      'ENG-11'
+    );
+    const updatedTaskWithoutLinear = await client.sendCommand({
+      type: 'task.update',
+      taskId: 'task-2',
+      description: 'Add stream commands for tasks and linear references'
+    });
+    assert.equal(
+      (updatedTaskWithoutLinear['task'] as Record<string, unknown>)['description'],
+      'Add stream commands for tasks and linear references'
+    );
+    assert.equal(
+      ((updatedTaskWithoutLinear['task'] as Record<string, unknown>)['linear'] as Record<string, unknown>)[
+        'identifier'
+      ],
+      'ENG-11'
+    );
 
     const reordered = await client.sendCommand({
       type: 'task.reorder',
@@ -4387,6 +4505,21 @@ void test('stream server exposes repository and task commands', async () => {
       client.sendCommand({
         type: 'task.get',
         taskId: 'task-2'
+      }),
+      /task not found/
+    );
+    await assert.rejects(
+      client.sendCommand({
+        type: 'task.update',
+        taskId: 'task-missing',
+        title: 'missing'
+      }),
+      /task not found/
+    );
+    await assert.rejects(
+      client.sendCommand({
+        type: 'task.delete',
+        taskId: 'task-missing'
       }),
       /task not found/
     );

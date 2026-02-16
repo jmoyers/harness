@@ -37,6 +37,7 @@ Harness is built for developers who want to:
 - Startup repository scrape from active projects: GitHub remotes are deduped and auto-upserted.
 - Programmatic repository model with full CRUD and archive semantics.
 - Programmatic task lifecycle with full CRUD, explicit ordering, `draft -> ready -> in-progress -> completed`, plus ready/reset transitions.
+- Task records include a typed `linear` compatibility payload (`issueId`, `identifier`, `teamId`, `projectId`, `stateId`, `assigneeId`, `priority`, `estimate`, `dueDate`, `labelIds`) so Linear sync adapters can round-trip without schema translation.
 - Repository/task control-plane stream commands (`repository.*`, `task.*`) for automation and UI clients.
 - Repository/task stream subscriptions, including scoped filters for `repositoryId` and `taskId`.
 - Home planning pane in mux now unifies repository + task workflows with one click target in the left rail.
@@ -93,7 +94,14 @@ const thread = await client.threads.create({
 
 const task = await client.tasks.create({
   repositoryId: repository.repositoryId,
-  title: 'stabilize control-plane tests'
+  title: 'stabilize control-plane tests',
+  linear: {
+    identifier: 'ENG-42',
+    priority: 2,
+    estimate: 3,
+    dueDate: '2026-03-01',
+    labelIds: ['infra']
+  }
 });
 
 await client.tasks.claim({

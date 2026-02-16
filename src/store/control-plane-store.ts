@@ -57,6 +57,39 @@ export interface ControlPlaneTelemetrySummary {
 }
 
 type ControlPlaneTaskStatus = 'draft' | 'ready' | 'in-progress' | 'completed';
+type ControlPlaneTaskLinearPriority = 0 | 1 | 2 | 3 | 4;
+
+export interface ControlPlaneTaskLinearRecord {
+  readonly issueId: string | null;
+  readonly identifier: string | null;
+  readonly url: string | null;
+  readonly teamId: string | null;
+  readonly projectId: string | null;
+  readonly projectMilestoneId: string | null;
+  readonly cycleId: string | null;
+  readonly stateId: string | null;
+  readonly assigneeId: string | null;
+  readonly priority: ControlPlaneTaskLinearPriority | null;
+  readonly estimate: number | null;
+  readonly dueDate: string | null;
+  readonly labelIds: readonly string[];
+}
+
+interface TaskLinearInput {
+  issueId?: string | null;
+  identifier?: string | null;
+  url?: string | null;
+  teamId?: string | null;
+  projectId?: string | null;
+  projectMilestoneId?: string | null;
+  cycleId?: string | null;
+  stateId?: string | null;
+  assigneeId?: string | null;
+  priority?: number | null;
+  estimate?: number | null;
+  dueDate?: string | null;
+  labelIds?: readonly string[] | null;
+}
 
 export interface ControlPlaneRepositoryRecord {
   readonly repositoryId: string;
@@ -87,6 +120,7 @@ export interface ControlPlaneTaskRecord {
   readonly baseBranch: string | null;
   readonly claimedAt: string | null;
   readonly completedAt: string | null;
+  readonly linear: ControlPlaneTaskLinearRecord;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -179,12 +213,14 @@ interface CreateTaskInput {
   repositoryId?: string;
   title: string;
   description?: string;
+  linear?: TaskLinearInput;
 }
 
 interface UpdateTaskInput {
   title?: string;
   description?: string;
   repositoryId?: string | null;
+  linear?: TaskLinearInput | null;
 }
 
 interface ListTaskQuery {
@@ -391,6 +427,219 @@ function normalizeRepositoryMetadata(value: unknown): Record<string, unknown> {
   }
 }
 
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+function defaultTaskLinearRecord(): ControlPlaneTaskLinearRecord {
+  return {
+    issueId: null,
+    identifier: null,
+    url: null,
+    teamId: null,
+    projectId: null,
+    projectMilestoneId: null,
+    cycleId: null,
+    stateId: null,
+    assigneeId: null,
+    priority: null,
+    estimate: null,
+    dueDate: null,
+    labelIds: []
+  };
+}
+
+function normalizeOptionalTaskLinearString(value: string | null, field: string): string | null {
+  if (value === null) {
+    return null;
+  }
+  return normalizeNonEmptyLabel(value, field);
+}
+
+function normalizeTaskLinearPriority(value: number | null, field: string): ControlPlaneTaskLinearPriority | null {
+  if (value === null) {
+    return null;
+  }
+  if (!Number.isInteger(value) || value < 0 || value > 4) {
+    throw new Error(`expected integer [0..4] for ${field}`);
+  }
+  return value as ControlPlaneTaskLinearPriority;
+}
+
+function normalizeTaskLinearEstimate(value: number | null, field: string): number | null {
+  if (value === null) {
+    return null;
+  }
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`expected non-negative integer for ${field}`);
+  }
+  return value;
+}
+
+function normalizeTaskLinearDueDate(value: string | null, field: string): string | null {
+  if (value === null) {
+    return null;
+  }
+  const normalized = value.trim();
+  if (!DATE_ONLY_PATTERN.test(normalized)) {
+    throw new Error(`expected YYYY-MM-DD for ${field}`);
+  }
+  return normalized;
+}
+
+function normalizeTaskLinearLabelIds(value: readonly string[] | null, field: string): readonly string[] {
+  if (value === null) {
+    return [];
+  }
+  return uniqueValues(
+    value.map((entry, idx) => normalizeNonEmptyLabel(entry, `${field}[${String(idx)}]`))
+  );
+}
+
+function parseTaskLinearInputRecord(record: Record<string, unknown>, field: string): TaskLinearInput {
+  const parsed: TaskLinearInput = {};
+  if ('issueId' in record) {
+    parsed.issueId = asStringOrNull(record.issueId, `${field}.issueId`);
+  }
+  if ('identifier' in record) {
+    parsed.identifier = asStringOrNull(record.identifier, `${field}.identifier`);
+  }
+  if ('url' in record) {
+    parsed.url = asStringOrNull(record.url, `${field}.url`);
+  }
+  if ('teamId' in record) {
+    parsed.teamId = asStringOrNull(record.teamId, `${field}.teamId`);
+  }
+  if ('projectId' in record) {
+    parsed.projectId = asStringOrNull(record.projectId, `${field}.projectId`);
+  }
+  if ('projectMilestoneId' in record) {
+    parsed.projectMilestoneId = asStringOrNull(record.projectMilestoneId, `${field}.projectMilestoneId`);
+  }
+  if ('cycleId' in record) {
+    parsed.cycleId = asStringOrNull(record.cycleId, `${field}.cycleId`);
+  }
+  if ('stateId' in record) {
+    parsed.stateId = asStringOrNull(record.stateId, `${field}.stateId`);
+  }
+  if ('assigneeId' in record) {
+    parsed.assigneeId = asStringOrNull(record.assigneeId, `${field}.assigneeId`);
+  }
+  if ('priority' in record) {
+    parsed.priority = asNumberOrNull(record.priority, `${field}.priority`);
+  }
+  if ('estimate' in record) {
+    parsed.estimate = asNumberOrNull(record.estimate, `${field}.estimate`);
+  }
+  if ('dueDate' in record) {
+    parsed.dueDate = asStringOrNull(record.dueDate, `${field}.dueDate`);
+  }
+  if ('labelIds' in record) {
+    const raw = record.labelIds;
+    if (raw === null) {
+      parsed.labelIds = null;
+    } else if (Array.isArray(raw) && raw.every((entry) => typeof entry === 'string')) {
+      parsed.labelIds = raw;
+    } else {
+      throw new Error(`expected string array or null for ${field}.labelIds`);
+    }
+  }
+  return parsed;
+}
+
+function applyTaskLinearInput(
+  base: ControlPlaneTaskLinearRecord,
+  input: TaskLinearInput
+): ControlPlaneTaskLinearRecord {
+  return {
+    issueId:
+      input.issueId === undefined
+        ? base.issueId
+        : normalizeOptionalTaskLinearString(input.issueId, 'linear.issueId'),
+    identifier:
+      input.identifier === undefined
+        ? base.identifier
+        : normalizeOptionalTaskLinearString(input.identifier, 'linear.identifier'),
+    url:
+      input.url === undefined ? base.url : normalizeOptionalTaskLinearString(input.url, 'linear.url'),
+    teamId:
+      input.teamId === undefined
+        ? base.teamId
+        : normalizeOptionalTaskLinearString(input.teamId, 'linear.teamId'),
+    projectId:
+      input.projectId === undefined
+        ? base.projectId
+        : normalizeOptionalTaskLinearString(input.projectId, 'linear.projectId'),
+    projectMilestoneId:
+      input.projectMilestoneId === undefined
+        ? base.projectMilestoneId
+        : normalizeOptionalTaskLinearString(input.projectMilestoneId, 'linear.projectMilestoneId'),
+    cycleId:
+      input.cycleId === undefined
+        ? base.cycleId
+        : normalizeOptionalTaskLinearString(input.cycleId, 'linear.cycleId'),
+    stateId:
+      input.stateId === undefined
+        ? base.stateId
+        : normalizeOptionalTaskLinearString(input.stateId, 'linear.stateId'),
+    assigneeId:
+      input.assigneeId === undefined
+        ? base.assigneeId
+        : normalizeOptionalTaskLinearString(input.assigneeId, 'linear.assigneeId'),
+    priority:
+      input.priority === undefined
+        ? base.priority
+        : normalizeTaskLinearPriority(input.priority, 'linear.priority'),
+    estimate:
+      input.estimate === undefined
+        ? base.estimate
+        : normalizeTaskLinearEstimate(input.estimate, 'linear.estimate'),
+    dueDate:
+      input.dueDate === undefined
+        ? base.dueDate
+        : normalizeTaskLinearDueDate(input.dueDate, 'linear.dueDate'),
+    labelIds:
+      input.labelIds === undefined
+        ? base.labelIds
+        : normalizeTaskLinearLabelIds(input.labelIds, 'linear.labelIds')
+  };
+}
+
+function serializeTaskLinear(linear: ControlPlaneTaskLinearRecord): string {
+  return JSON.stringify({
+    issueId: linear.issueId,
+    identifier: linear.identifier,
+    url: linear.url,
+    teamId: linear.teamId,
+    projectId: linear.projectId,
+    projectMilestoneId: linear.projectMilestoneId,
+    cycleId: linear.cycleId,
+    stateId: linear.stateId,
+    assigneeId: linear.assigneeId,
+    priority: linear.priority,
+    estimate: linear.estimate,
+    dueDate: linear.dueDate,
+    labelIds: [...linear.labelIds]
+  });
+}
+
+function normalizeTaskLinear(value: unknown): ControlPlaneTaskLinearRecord {
+  if (typeof value !== 'string') {
+    throw new Error('expected string for linear_json');
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value) as unknown;
+  } catch {
+    return defaultTaskLinearRecord();
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    return defaultTaskLinearRecord();
+  }
+  return applyTaskLinearInput(
+    defaultTaskLinearRecord(),
+    parseTaskLinearInputRecord(parsed as Record<string, unknown>, 'linear_json')
+  );
+}
+
 function normalizeTaskStatus(value: unknown): ControlPlaneTaskStatus {
   const status = asString(value, 'status');
   if (
@@ -441,6 +690,7 @@ function normalizeTaskRow(value: unknown): ControlPlaneTaskRecord {
     baseBranch: asStringOrNull(row.base_branch, 'base_branch'),
     claimedAt: asStringOrNull(row.claimed_at, 'claimed_at'),
     completedAt: asStringOrNull(row.completed_at, 'completed_at'),
+    linear: normalizeTaskLinear(row.linear_json),
     createdAt: asString(row.created_at, 'created_at'),
     updatedAt: asString(row.updated_at, 'updated_at')
   };
@@ -1362,6 +1612,7 @@ export class SqliteControlPlaneStore {
   createTask(input: CreateTaskInput): ControlPlaneTaskRecord {
     const title = normalizeNonEmptyLabel(input.title, 'title');
     const description = input.description ?? '';
+    const linear = applyTaskLinearInput(defaultTaskLinearRecord(), input.linear ?? {});
     this.db.exec('BEGIN IMMEDIATE TRANSACTION');
     try {
       const existing = this.getTask(input.taskId);
@@ -1385,6 +1636,7 @@ export class SqliteControlPlaneStore {
             repository_id,
             title,
             description,
+            linear_json,
             status,
             order_index,
             claimed_by_controller_id,
@@ -1395,7 +1647,7 @@ export class SqliteControlPlaneStore {
             completed_at,
             created_at,
             updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?)
         `
         )
         .run(
@@ -1406,6 +1658,7 @@ export class SqliteControlPlaneStore {
           input.repositoryId ?? null,
           title,
           description,
+          serializeTaskLinear(linear),
           orderIndex,
           createdAt,
           createdAt
@@ -1434,6 +1687,7 @@ export class SqliteControlPlaneStore {
           repository_id,
           title,
           description,
+          linear_json,
           status,
           order_index,
           claimed_by_controller_id,
@@ -1491,6 +1745,7 @@ export class SqliteControlPlaneStore {
           repository_id,
           title,
           description,
+          linear_json,
           status,
           order_index,
           claimed_by_controller_id,
@@ -1521,6 +1776,12 @@ export class SqliteControlPlaneStore {
     const description = update.description === undefined ? existing.description : update.description;
     const repositoryId =
       update.repositoryId === undefined ? existing.repositoryId : update.repositoryId;
+    const linear =
+      update.linear === undefined
+        ? existing.linear
+        : update.linear === null
+          ? defaultTaskLinearRecord()
+          : applyTaskLinearInput(existing.linear, update.linear);
     if (repositoryId !== null) {
       const repository = this.getActiveRepository(repositoryId);
       this.assertScopeMatch(existing, repository, 'task');
@@ -1534,11 +1795,12 @@ export class SqliteControlPlaneStore {
           repository_id = ?,
           title = ?,
           description = ?,
+          linear_json = ?,
           updated_at = ?
         WHERE task_id = ?
       `
       )
-      .run(repositoryId, title, description, updatedAt, taskId);
+      .run(repositoryId, title, description, serializeTaskLinear(linear), updatedAt, taskId);
     return this.getTask(taskId);
   }
 
@@ -2000,6 +2262,7 @@ export class SqliteControlPlaneStore {
         repository_id TEXT REFERENCES repositories(repository_id),
         title TEXT NOT NULL,
         description TEXT NOT NULL DEFAULT '',
+        linear_json TEXT NOT NULL DEFAULT '{}',
         status TEXT NOT NULL,
         order_index INTEGER NOT NULL,
         claimed_by_controller_id TEXT,
@@ -2020,6 +2283,11 @@ export class SqliteControlPlaneStore {
       CREATE INDEX IF NOT EXISTS idx_tasks_status
       ON tasks (status, updated_at, task_id);
     `);
+    this.ensureColumnExists(
+      'tasks',
+      'linear_json',
+      `linear_json TEXT NOT NULL DEFAULT '{}'`
+    );
   }
 
   private configureConnection(): void {

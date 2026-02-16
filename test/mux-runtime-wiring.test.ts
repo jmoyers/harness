@@ -513,7 +513,7 @@ void test('runtime wiring updates session-status and session-control events', ()
       type: 'session-status',
       sessionId: 'conversation-status',
       status: 'running',
-      attentionReason: null,
+      attentionReason: 'telemetry',
       live: true,
       ts: '2026-02-15T00:00:01.000Z',
       directoryId: 'directory-a',

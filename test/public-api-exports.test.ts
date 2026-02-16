@@ -20,6 +20,9 @@ import type {
   AgentTask,
   AgentTaskClaimInput,
   AgentTaskCreateInput,
+  AgentTaskLinearInput,
+  AgentTaskLinearPriority,
+  AgentTaskLinearRecord,
   AgentTaskListQuery,
   AgentTaskReorderInput,
   AgentTaskStatus,
@@ -36,7 +39,11 @@ import type {
 import type { ControlPlaneKeyEvent } from '../src/control-plane/codex-session-stream.ts';
 import type { CodexStatusHint, CodexTelemetryConfigArgsInput } from '../src/control-plane/codex-telemetry.ts';
 import type { StreamTelemetrySource, StreamTelemetryStatusHint } from '../src/control-plane/stream-protocol.ts';
-import type { ControlPlaneTaskRecord, ControlPlaneTelemetryRecord } from '../src/store/control-plane-store.ts';
+import type {
+  ControlPlaneTaskLinearRecord,
+  ControlPlaneTaskRecord,
+  ControlPlaneTelemetryRecord
+} from '../src/store/control-plane-store.ts';
 
 void test('public api exports stay importable and structurally typed', () => {
   const subscription: AgentRealtimeSubscriptionFilter = {
@@ -174,12 +181,34 @@ void test('public api exports stay importable and structurally typed', () => {
     name: 'harness-updated'
   };
   const taskStatus: AgentTaskStatus = 'ready';
+  const taskLinearPriority: AgentTaskLinearPriority = 2;
+  const taskLinearInput: AgentTaskLinearInput = {
+    identifier: 'ENG-1',
+    priority: taskLinearPriority
+  };
+  const taskLinearRecord: AgentTaskLinearRecord = {
+    issueId: null,
+    identifier: 'ENG-1',
+    url: null,
+    teamId: null,
+    projectId: null,
+    projectMilestoneId: null,
+    cycleId: null,
+    stateId: null,
+    assigneeId: null,
+    priority: taskLinearPriority,
+    estimate: null,
+    dueDate: null,
+    labelIds: []
+  };
+  const storeTaskLinearRecord: ControlPlaneTaskLinearRecord = taskLinearRecord;
   const taskCreateInput: AgentTaskCreateInput = {
     ...scope,
     taskId: 'task-1',
     repositoryId: 'repository-1',
     title: 'Task',
-    description: 'details'
+    description: 'details',
+    linear: taskLinearInput
   };
   const taskListQuery: AgentTaskListQuery = {
     ...scope,
@@ -252,6 +281,21 @@ void test('public api exports stay importable and structurally typed', () => {
     baseBranch: null,
     claimedAt: null,
     completedAt: null,
+    linear: {
+      issueId: null,
+      identifier: null,
+      url: null,
+      teamId: null,
+      projectId: null,
+      projectMilestoneId: null,
+      cycleId: null,
+      stateId: null,
+      assigneeId: null,
+      priority: null,
+      estimate: null,
+      dueDate: null,
+      labelIds: []
+    },
     createdAt: new Date(0).toISOString(),
     updatedAt: new Date(0).toISOString()
   };
@@ -288,6 +332,10 @@ void test('public api exports stay importable and structurally typed', () => {
   assert.equal(repositoryListQuery.limit, 5);
   assert.equal(repositoryUpdateInput.name, 'harness-updated');
   assert.equal(taskStatus, 'ready');
+  assert.equal(taskLinearPriority, 2);
+  assert.equal(taskLinearInput.identifier, 'ENG-1');
+  assert.equal(taskLinearRecord.priority, 2);
+  assert.equal(storeTaskLinearRecord.priority, 2);
   assert.equal(taskCreateInput.taskId, 'task-1');
   assert.equal(taskListQuery.repositoryId, 'repository-1');
   assert.equal(taskUpdateInput.title, 'updated');
