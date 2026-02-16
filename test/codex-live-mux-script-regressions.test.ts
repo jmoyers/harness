@@ -228,6 +228,13 @@ void test('codex-live-mux includes a realtime home planning pane with draft/read
   assert.equal(uiSource.includes('TASKS_PANE_ADD_TASK_BUTTON_LABEL'), true);
 });
 
+void test('codex-live-mux task pane keyboard shortcuts ignore escape-sequence input', () => {
+  const source = readLegacySource();
+
+  assert.equal(source.includes('if (input.includes(0x1b)) {'), true);
+  assert.equal(source.includes("if (mainPaneMode !== 'home') {"), true);
+});
+
 void test('harness-core shim exists and delegates to codex-live-mux implementation', () => {
   const source = readCanonicalSource();
   assert.equal(source.includes("await import('./codex-live-mux.ts');"), true);

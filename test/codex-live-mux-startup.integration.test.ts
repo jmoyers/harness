@@ -90,6 +90,11 @@ interface CaptureMuxBootOutputOptions {
   extraEnv?: Record<string, string>;
 }
 
+interface StartInteractiveMuxOptions extends CaptureMuxBootOutputOptions {
+  cols?: number;
+  rows?: number;
+}
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolveDelay) => {
     setTimeout(resolveDelay, ms);
@@ -193,6 +198,82 @@ async function captureMuxBootOutput(
     output: normalizeTerminalOutput(Buffer.concat(collected).toString('utf8')),
     exit
   };
+}
+
+function startInteractiveMuxSession(
+  workspace: string,
+  options: StartInteractiveMuxOptions = {}
+): {
+  readonly session: ReturnType<typeof startPtySession>;
+  readonly oracle: TerminalSnapshotOracle;
+  readonly waitForExit: Promise<PtyExit>;
+} {
+  const scriptPath = resolve(process.cwd(), 'scripts/codex-live-mux.ts');
+  const commandArgs = ['--experimental-strip-types', scriptPath];
+  if (options.controlPlaneHost !== undefined) {
+    commandArgs.push('--harness-server-host', options.controlPlaneHost);
+  }
+  if (options.controlPlanePort !== undefined) {
+    commandArgs.push('--harness-server-port', String(options.controlPlanePort));
+  }
+  if (options.controlPlaneAuthToken !== undefined) {
+    commandArgs.push('--harness-server-token', options.controlPlaneAuthToken);
+  }
+  const cols = Math.max(40, Math.floor(options.cols ?? 100));
+  const rows = Math.max(10, Math.floor(options.rows ?? 30));
+  const oracle = new TerminalSnapshotOracle(cols, rows);
+  const session = startPtySession({
+    command: process.execPath,
+    commandArgs,
+    cwd: workspace,
+    env: {
+      ...process.env,
+      HARNESS_INVOKE_CWD: workspace,
+      ...(options.extraEnv ?? {})
+    },
+    initialCols: cols,
+    initialRows: rows
+  });
+  session.on('data', (chunk: Buffer) => {
+    oracle.ingest(chunk);
+  });
+  return {
+    session,
+    oracle,
+    waitForExit: waitForExit(session, 12000)
+  };
+}
+
+async function waitForSnapshotLineContaining(
+  oracle: TerminalSnapshotOracle,
+  text: string,
+  timeoutMs: number
+): Promise<{ row: number; col: number }> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const frame = oracle.snapshotWithoutHash();
+    const rowIndex = frame.lines.findIndex((line) => line.includes(text));
+    if (rowIndex >= 0) {
+      const colIndex = frame.lines[rowIndex]!.indexOf(text);
+      return {
+        row: rowIndex + 1,
+        col: colIndex + 1
+      };
+    }
+    await delay(40);
+  }
+  throw new Error(`timed out waiting for snapshot text: ${text}`);
+}
+
+function writeLeftMouseClick(
+  session: ReturnType<typeof startPtySession>,
+  col: number,
+  row: number
+): void {
+  const safeCol = Math.max(1, Math.floor(col));
+  const safeRow = Math.max(1, Math.floor(row));
+  session.write(`\u001b[<0;${String(safeCol)};${String(safeRow)}M`);
+  session.write(`\u001b[<0;${String(safeCol)};${String(safeRow)}m`);
 }
 
 void test(
@@ -369,6 +450,44 @@ void test(
       }
     } finally {
       rmSync(workspace, { recursive: true, force: true });
+    }
+  }
+);
+
+void test(
+  'codex-live-mux keeps rail mouse clicks active after opening home pane',
+  { timeout: 30000 },
+  async () => {
+    const workspace = createWorkspace();
+    const interactive = startInteractiveMuxSession(workspace, {
+      cols: 100,
+      rows: 30
+    });
+
+    try {
+      const homeCell = await waitForSnapshotLineContaining(interactive.oracle, '[ ⌂ home ]', 12000);
+      await waitForSnapshotLineContaining(interactive.oracle, 'shortcuts [-]', 12000);
+
+      writeLeftMouseClick(interactive.session, homeCell.col, homeCell.row);
+      await delay(150);
+
+      const shortcutsCell = await waitForSnapshotLineContaining(
+        interactive.oracle,
+        'shortcuts [-]',
+        12000
+      );
+      writeLeftMouseClick(interactive.session, shortcutsCell.col, shortcutsCell.row);
+
+      await waitForSnapshotLineContaining(interactive.oracle, 'shortcuts [+]', 12000);
+    } finally {
+      try {
+        interactive.session.write('\u0003');
+        const exit = await interactive.waitForExit;
+        assert.equal(exit.signal, null);
+        assert.equal(exit.code, 0);
+      } finally {
+        rmSync(workspace, { recursive: true, force: true });
+      }
     }
   }
 );

@@ -6084,6 +6084,9 @@ async function main(): Promise<number> {
     if (mainPaneMode !== 'home') {
       return false;
     }
+    if (input.includes(0x1b)) {
+      return false;
+    }
     let handled = false;
     for (const byte of input) {
       if (byte === 0x6a) {
