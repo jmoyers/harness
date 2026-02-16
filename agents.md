@@ -31,6 +31,7 @@ This project has two core documents:
 
 ## Architecture Laws
 - Code is strict, actually typed TypeScript. Avoid `any`; type safety is required.
+- Files should not exceed 2000 LOC; crossing that threshold is a design smell and requires factoring into modules.
 - All client actions must go through the Control Plane Stream API (TCP/WS). No privileged client path.
 - Human and agent clients must have parity for all supported operations.
 - Stream transport is primary; request/response wrappers are optional layers over the stream protocol.
