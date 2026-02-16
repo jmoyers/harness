@@ -1853,6 +1853,16 @@ async function main(): Promise<number> {
   });
   const configuredMuxUi = loadedConfig.config.mux.ui;
   const configuredMuxGit = loadedConfig.config.mux.git;
+  const configuredCodexLaunch = loadedConfig.config.codex.launch;
+  const codexLaunchModeByDirectoryPath = new Map<string, 'yolo' | 'standard'>();
+  for (const [directoryPath, mode] of Object.entries(configuredCodexLaunch.directoryModes)) {
+    const normalizedDirectoryPath = resolveWorkspacePathForMux(options.invocationDirectory, directoryPath);
+    codexLaunchModeByDirectoryPath.set(normalizedDirectoryPath, mode);
+  }
+  const resolveCodexLaunchModeForDirectory = (directoryPath: string): 'yolo' | 'standard' => {
+    const normalizedDirectoryPath = resolveWorkspacePathForMux(options.invocationDirectory, directoryPath);
+    return codexLaunchModeByDirectoryPath.get(normalizedDirectoryPath) ?? configuredCodexLaunch.defaultMode;
+  };
   let leftPaneColsOverride: number | null =
     configuredMuxUi.paneWidthPercent === null
       ? null
@@ -2354,11 +2364,6 @@ async function main(): Promise<number> {
       targetConversation.lastOutputCursor = 0;
       const agentType = normalizeThreadAgentType(targetConversation.agentType);
       const baseArgsForAgent = agentType === 'codex' ? options.codexArgs : [];
-      const launchArgs = buildAgentStartArgs(
-        agentType,
-        baseArgsForAgent,
-        targetConversation.adapterState
-      );
       const configuredDirectoryPath =
         targetConversation.directoryId === null
           ? null
@@ -2367,6 +2372,14 @@ async function main(): Promise<number> {
         options.invocationDirectory,
         configuredDirectoryPath ?? options.invocationDirectory
       );
+      const codexLaunchMode =
+        agentType === 'codex' ? resolveCodexLaunchModeForDirectory(sessionCwd) : undefined;
+      const launchArgs =
+        codexLaunchMode === undefined
+          ? buildAgentStartArgs(agentType, baseArgsForAgent, targetConversation.adapterState)
+          : buildAgentStartArgs(agentType, baseArgsForAgent, targetConversation.adapterState, {
+              codexLaunchMode
+            });
       const ptyStartCommand: Parameters<typeof streamClient.sendCommand>[0] = {
         type: 'pty.start',
         sessionId,

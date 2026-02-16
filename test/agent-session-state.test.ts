@@ -144,3 +144,49 @@ void test('buildAgentStartArgs injects codex resume and preserves explicit subco
     ['--print']
   );
 });
+
+void test('buildAgentStartArgs applies configurable codex yolo launch mode for interactive starts', () => {
+  assert.deepEqual(
+    buildAgentStartArgs(
+      'codex',
+      ['--model', 'gpt-5.3-codex-high'],
+      {
+        codex: {}
+      },
+      {
+        codexLaunchMode: 'yolo'
+      }
+    ),
+    ['--model', 'gpt-5.3-codex-high', '--yolo']
+  );
+
+  assert.deepEqual(
+    buildAgentStartArgs(
+      'codex',
+      ['--model', 'gpt-5.3-codex-high', '--yolo'],
+      {
+        codex: {
+          resumeSessionId: 'thread-123'
+        }
+      },
+      {
+        codexLaunchMode: 'yolo'
+      }
+    ),
+    ['resume', 'thread-123', '--model', 'gpt-5.3-codex-high', '--yolo']
+  );
+
+  assert.deepEqual(
+    buildAgentStartArgs(
+      'codex',
+      ['exec', '--json'],
+      {
+        codex: {}
+      },
+      {
+        codexLaunchMode: 'yolo'
+      }
+    ),
+    ['exec', '--json']
+  );
+});

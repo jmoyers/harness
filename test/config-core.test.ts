@@ -370,6 +370,13 @@ void test('parseHarnessConfigText parses codex telemetry and history settings', 
           "enabled": true,
           "filePath": " ~/.codex/custom-history.jsonl ",
           "pollMs": 275
+        },
+        "launch": {
+          "defaultMode": "standard",
+          "directoryModes": {
+            ".": "yolo",
+            "./sandbox": "standard"
+          }
         }
       }
     }
@@ -388,6 +395,13 @@ void test('parseHarnessConfigText parses codex telemetry and history settings', 
       enabled: true,
       filePath: '~/.codex/custom-history.jsonl',
       pollMs: 275
+    },
+    launch: {
+      defaultMode: 'standard',
+      directoryModes: {
+        '.': 'yolo',
+        './sandbox': 'standard'
+      }
     }
   });
 });
@@ -409,11 +423,27 @@ void test('parseHarnessConfigText falls back for invalid codex settings', () => 
           "enabled": "true",
           "filePath": "   ",
           "pollMs": -100
+        },
+        "launch": {
+          "defaultMode": "unsafe",
+          "directoryModes": {
+            ".": "unsafe",
+            "": "yolo",
+            "./safe": "standard"
+          }
         }
       }
     }
   `);
-  assert.deepEqual(parsed.codex, DEFAULT_HARNESS_CONFIG.codex);
+  assert.deepEqual(parsed.codex, {
+    ...DEFAULT_HARNESS_CONFIG.codex,
+    launch: {
+      defaultMode: DEFAULT_HARNESS_CONFIG.codex.launch.defaultMode,
+      directoryModes: {
+        './safe': 'standard'
+      }
+    }
+  });
 
   const parsedWithBadShapes = parseHarnessConfigText(`
     {
@@ -444,6 +474,18 @@ void test('parseHarnessConfigText falls back for invalid codex settings', () => 
   `);
   assert.equal(parsedWithBadHostAndPort.codex.telemetry.host, DEFAULT_HARNESS_CONFIG.codex.telemetry.host);
   assert.equal(parsedWithBadHostAndPort.codex.telemetry.port, DEFAULT_HARNESS_CONFIG.codex.telemetry.port);
+
+  const parsedWithBadLaunchShapes = parseHarnessConfigText(`
+    {
+      "codex": {
+        "launch": {
+          "defaultMode": 7,
+          "directoryModes": null
+        }
+      }
+    }
+  `);
+  assert.deepEqual(parsedWithBadLaunchShapes.codex.launch, DEFAULT_HARNESS_CONFIG.codex.launch);
 });
 
 void test('parseHarnessConfigText parses lifecycle hook connectors and event filters', () => {

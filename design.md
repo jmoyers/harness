@@ -563,6 +563,9 @@ Design constraints:
 - Single configuration abstraction only (`config-core`) used by every subsystem and process.
 - No competing runtime config sources for core behavior (no shadow config files, no duplicate per-module configs).
 - Runtime behavior toggles are config-first; environment variables are reserved for bootstrap/transport wiring and test harness injection, not the primary control surface.
+- Codex launch policy is config-governed under `codex.launch` with:
+  - `defaultMode` (`yolo` or `standard`) as the fallback for all directories
+  - `directoryModes` for per-directory overrides keyed by workspace path
 - Config lifecycle:
   - parse -> validate -> publish immutable runtime snapshot
   - on reload, replace snapshot atomically
@@ -1048,6 +1051,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - session runtime changes and directory/conversation mutations are persisted in `src/store/control-plane-store.ts` (tenanted SQLite state store) and published through the same stream.
     - conversation persistence now includes adapter-scoped state (`adapter_state_json`) so provider-native resume identifiers can survive daemon/client restarts.
     - per-session adapter state is updated from scoped provider events and reused on next launch, enabling conversation continuity (for Codex: `codex resume <session-id>`).
+    - Codex launch mode defaults are config-first and directory-aware (`codex.launch.defaultMode` + `codex.launch.directoryModes`), with repo default set to `yolo`.
   - `src/control-plane/stream-client.ts` provides a typed client used by operators and automation to issue the same control-plane operations.
     - command ids are UUID-based and auth handshake is supported in `connectControlPlaneStreamClient`.
     - remote connect now supports bounded retry windows (`connectRetryWindowMs` + `connectRetryDelayMs`) to tolerate control-plane cold starts without requiring client-side sleep loops.

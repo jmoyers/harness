@@ -1,5 +1,27 @@
 import type { StreamSessionEvent } from '../control-plane/stream-protocol.ts';
 
+const CODEX_EXPLICIT_SUBCOMMANDS = new Set([
+  'exec',
+  'review',
+  'login',
+  'logout',
+  'mcp',
+  'mcp-server',
+  'app-server',
+  'app',
+  'completion',
+  'sandbox',
+  'debug',
+  'apply',
+  'resume',
+  'fork',
+  'cloud',
+  'features',
+  'help'
+]);
+
+type CodexLaunchMode = 'yolo' | 'standard';
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return null;
@@ -70,39 +92,28 @@ export function mergeAdapterStateFromSessionEvent(
 export function buildAgentStartArgs(
   agentType: string,
   baseArgs: readonly string[],
-  adapterState: Record<string, unknown>
+  adapterState: Record<string, unknown>,
+  options?: {
+    codexLaunchMode?: CodexLaunchMode;
+  }
 ): string[] {
   if (agentType !== 'codex') {
     return [...baseArgs];
   }
 
   const firstArg = firstNonOptionArg(baseArgs);
-  if (
-    firstArg === 'exec' ||
-    firstArg === 'review' ||
-    firstArg === 'login' ||
-    firstArg === 'logout' ||
-    firstArg === 'mcp' ||
-    firstArg === 'mcp-server' ||
-    firstArg === 'app-server' ||
-    firstArg === 'app' ||
-    firstArg === 'completion' ||
-    firstArg === 'sandbox' ||
-    firstArg === 'debug' ||
-    firstArg === 'apply' ||
-    firstArg === 'resume' ||
-    firstArg === 'fork' ||
-    firstArg === 'cloud' ||
-    firstArg === 'features' ||
-    firstArg === 'help'
-  ) {
+  if (firstArg !== null && CODEX_EXPLICIT_SUBCOMMANDS.has(firstArg)) {
     return [...baseArgs];
   }
+
+  const codexLaunchMode = options?.codexLaunchMode ?? 'standard';
+  const argsWithLaunchMode =
+    codexLaunchMode === 'yolo' && !baseArgs.includes('--yolo') ? [...baseArgs, '--yolo'] : [...baseArgs];
 
   const resumeSessionId = codexResumeSessionIdFromAdapterState(adapterState);
   if (resumeSessionId === null) {
-    return [...baseArgs];
+    return argsWithLaunchMode;
   }
 
-  return ['resume', resumeSessionId, ...baseArgs];
+  return ['resume', resumeSessionId, ...argsWithLaunchMode];
 }

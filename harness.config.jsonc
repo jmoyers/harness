@@ -58,6 +58,10 @@
       "enabled": true,
       "filePath": "~/.codex/history.jsonl",
       "pollMs": 500
+    },
+    "launch": {
+      "defaultMode": "yolo",
+      "directoryModes": {}
     }
   },
   "hooks": {

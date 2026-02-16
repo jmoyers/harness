@@ -87,9 +87,17 @@ interface HarnessCodexHistoryConfig {
   readonly pollMs: number;
 }
 
+type HarnessCodexLaunchMode = 'yolo' | 'standard';
+
+interface HarnessCodexLaunchConfig {
+  readonly defaultMode: HarnessCodexLaunchMode;
+  readonly directoryModes: Readonly<Record<string, HarnessCodexLaunchMode>>;
+}
+
 interface HarnessCodexConfig {
   readonly telemetry: HarnessCodexTelemetryConfig;
   readonly history: HarnessCodexHistoryConfig;
+  readonly launch: HarnessCodexLaunchConfig;
 }
 
 interface HarnessLifecycleProviderConfig {
@@ -187,6 +195,10 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
       enabled: true,
       filePath: '~/.codex/history.jsonl',
       pollMs: 500
+    },
+    launch: {
+      defaultMode: 'yolo',
+      directoryModes: {}
     }
   },
   hooks: {
@@ -606,6 +618,52 @@ function normalizeCodexHistoryConfig(input: unknown): HarnessCodexHistoryConfig 
   };
 }
 
+function readCodexLaunchMode(value: unknown): HarnessCodexLaunchMode | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'yolo' || normalized === 'standard') {
+    return normalized;
+  }
+  return null;
+}
+
+function normalizeCodexDirectoryModesConfig(
+  input: unknown
+): Readonly<Record<string, HarnessCodexLaunchMode>> {
+  const record = asRecord(input);
+  if (record === null) {
+    return DEFAULT_HARNESS_CONFIG.codex.launch.directoryModes;
+  }
+  const out: Record<string, HarnessCodexLaunchMode> = {};
+  for (const [rawPath, rawMode] of Object.entries(record)) {
+    const path = rawPath.trim();
+    if (path.length === 0) {
+      continue;
+    }
+    const mode = readCodexLaunchMode(rawMode);
+    if (mode === null) {
+      continue;
+    }
+    out[path] = mode;
+  }
+  return out;
+}
+
+function normalizeCodexLaunchConfig(input: unknown): HarnessCodexLaunchConfig {
+  const record = asRecord(input);
+  if (record === null) {
+    return DEFAULT_HARNESS_CONFIG.codex.launch;
+  }
+  const defaultMode =
+    readCodexLaunchMode(record['defaultMode']) ?? DEFAULT_HARNESS_CONFIG.codex.launch.defaultMode;
+  return {
+    defaultMode,
+    directoryModes: normalizeCodexDirectoryModesConfig(record['directoryModes'])
+  };
+}
+
 function normalizeCodexConfig(input: unknown): HarnessCodexConfig {
   const record = asRecord(input);
   if (record === null) {
@@ -613,7 +671,8 @@ function normalizeCodexConfig(input: unknown): HarnessCodexConfig {
   }
   return {
     telemetry: normalizeCodexTelemetryConfig(record['telemetry']),
-    history: normalizeCodexHistoryConfig(record['history'])
+    history: normalizeCodexHistoryConfig(record['history']),
+    launch: normalizeCodexLaunchConfig(record['launch'])
   };
 }
 

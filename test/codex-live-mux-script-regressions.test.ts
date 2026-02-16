@@ -137,6 +137,18 @@ void test('codex-live-mux embedded control-plane server inherits codex telemetry
   assert.equal(source.includes('lifecycleHooks: loadedConfig.config.hooks.lifecycle,'), true);
 });
 
+void test('codex-live-mux resolves codex launch mode from config per directory and passes mode to start args', () => {
+  const scriptPath = resolve(process.cwd(), 'scripts/codex-live-mux.ts');
+  const source = readFileSync(scriptPath, 'utf8');
+
+  assert.equal(source.includes('const configuredCodexLaunch = loadedConfig.config.codex.launch;'), true);
+  assert.equal(source.includes("const codexLaunchModeByDirectoryPath = new Map<string, 'yolo' | 'standard'>();"), true);
+  assert.equal(source.includes("const resolveCodexLaunchModeForDirectory = (directoryPath: string): 'yolo' | 'standard' => {"), true);
+  assert.equal(source.includes('const codexLaunchMode ='), true);
+  assert.equal(source.includes('buildAgentStartArgs(agentType, baseArgsForAgent, targetConversation.adapterState, {'), true);
+  assert.equal(source.includes('codexLaunchMode'), true);
+});
+
 void test('codex-live-mux rail rendering consumes per-project git summary map and removes legacy single-summary path', () => {
   const scriptPath = resolve(process.cwd(), 'scripts/codex-live-mux.ts');
   const source = readFileSync(scriptPath, 'utf8');

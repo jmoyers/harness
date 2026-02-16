@@ -35,6 +35,7 @@ Harness is built for developers who want to:
 - Thread lifecycle management: create, rename, archive, and restore-ready metadata.
 - Real-time typed event stream for status, telemetry, control changes, and output.
 - Lifecycle hook connectors for external integrations (sound packs, webhooks, automation).
+- Directory-scoped Codex launch policy with configurable default mode (`yolo` by default).
 - Config-first behavior through one canonical file: `harness.config.jsonc`.
 
 ## Programmable Interface
@@ -131,6 +132,7 @@ npm run codex:live:mux
 ```
 
 Configuration is file-first via `harness.config.jsonc`.
+Codex launch mode is controlled under `codex.launch` with `defaultMode` and per-directory `directoryModes` overrides.
 
 Inspect the latest selector index snapshot from perf artifacts:
 
