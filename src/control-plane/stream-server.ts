@@ -2264,12 +2264,16 @@ export class ControlPlaneStreamServer {
       };
     }
 
-    const state = this.requireLiveSession(command.sessionId);
-    this.assertConnectionCanMutateSession(connection.id, state);
-    this.destroySession(command.sessionId, true);
-    return {
-      closed: true
-    };
+    if (command.type === 'pty.close') {
+      const state = this.requireLiveSession(command.sessionId);
+      this.assertConnectionCanMutateSession(connection.id, state);
+      this.destroySession(command.sessionId, true);
+      return {
+        closed: true
+      };
+    }
+
+    throw new Error(`unsupported command type: ${(command as { type: string }).type}`);
   }
 
   private handleInput(connectionId: string, sessionId: string, dataBase64: string): void {

@@ -2136,3 +2136,200 @@ void test('agent realtime connect rejects malformed subscribe response and close
     await harness.stop();
   }
 });
+
+void test('agent realtime sessions aliases and draft task helper issue expected control-plane commands', async () => {
+  const mockClient = new MockRealtimeControlPlaneClient();
+  const realtime = createRealtimeClientForTest(mockClient);
+  const timestamp = '2026-02-02T00:00:00.000Z';
+
+  mockClient.queueResult('task.draft', {
+    task: {
+      taskId: 'task-1',
+      tenantId: 'tenant-local',
+      userId: 'user-local',
+      workspaceId: 'workspace-local',
+      repositoryId: null,
+      title: 'Draft task',
+      description: '',
+      status: 'draft',
+      orderIndex: 1,
+      claimedByControllerId: null,
+      claimedByDirectoryId: null,
+      branchName: null,
+      baseBranch: null,
+      claimedAt: null,
+      completedAt: null,
+      linear: {
+        issueId: null,
+        identifier: null,
+        url: null,
+        teamId: null,
+        projectId: null,
+        projectMilestoneId: null,
+        cycleId: null,
+        stateId: null,
+        assigneeId: null,
+        priority: null,
+        estimate: null,
+        dueDate: null,
+        labelIds: []
+      },
+      createdAt: timestamp,
+      updatedAt: timestamp
+    }
+  });
+  mockClient.queueResult('session.list', {
+    sessions: [
+      {
+        sessionId: 'conversation-1',
+        directoryId: null,
+        tenantId: 'tenant-local',
+        userId: 'user-local',
+        workspaceId: 'workspace-local',
+        worktreeId: 'worktree-local',
+        status: 'running',
+        attentionReason: null,
+        latestCursor: 9,
+        processId: 51000,
+        attachedClients: 1,
+        eventSubscribers: 0,
+        startedAt: timestamp,
+        lastEventAt: timestamp,
+        lastExit: null,
+        exitedAt: null,
+        live: true,
+        controller: null,
+        telemetry: null
+      }
+    ]
+  });
+  mockClient.queueResult('session.status', {
+    sessionId: 'conversation-1',
+    directoryId: null,
+    tenantId: 'tenant-local',
+    userId: 'user-local',
+    workspaceId: 'workspace-local',
+    worktreeId: 'worktree-local',
+    status: 'running',
+    attentionReason: null,
+    latestCursor: 9,
+    processId: 51000,
+    attachedClients: 1,
+    eventSubscribers: 0,
+    startedAt: timestamp,
+    lastEventAt: timestamp,
+    lastExit: null,
+    exitedAt: null,
+    live: true,
+    controller: null,
+    telemetry: null
+  });
+  mockClient.queueResult('session.claim', {
+    sessionId: 'conversation-1',
+    action: 'claimed',
+    controller: {
+      controllerId: 'human-1',
+      controllerType: 'human',
+      controllerLabel: 'human',
+      claimedAt: timestamp
+    }
+  });
+  mockClient.queueResult('session.claim', {
+    sessionId: 'conversation-1',
+    action: 'taken-over',
+    controller: {
+      controllerId: 'human-1',
+      controllerType: 'human',
+      controllerLabel: 'human',
+      claimedAt: timestamp
+    }
+  });
+  mockClient.queueResult('session.release', {
+    sessionId: 'conversation-1',
+    released: true
+  });
+  mockClient.queueResult('session.respond', {
+    responded: true,
+    sentBytes: 3
+  });
+  mockClient.queueResult('session.interrupt', {
+    interrupted: true
+  });
+  mockClient.queueResult('session.remove', {
+    removed: true
+  });
+  mockClient.queueResult('pty.start', {
+    sessionId: 'conversation-1'
+  });
+  mockClient.queueResult('pty.attach', {
+    latestCursor: 9
+  });
+  mockClient.queueResult('pty.detach', {
+    detached: true
+  });
+  mockClient.queueResult('pty.subscribe-events', {
+    subscribed: true
+  });
+  mockClient.queueResult('pty.unsubscribe-events', {
+    subscribed: false
+  });
+  mockClient.queueResult('pty.close', {
+    closed: true
+  });
+
+  const drafted = await realtime.client.tasks.draft('task-1');
+  assert.equal(drafted.status, 'draft');
+
+  const listed = await realtime.client.sessions.list();
+  assert.equal(listed.length, 1);
+  const status = await realtime.client.sessions.status('conversation-1');
+  assert.equal(status.sessionId, 'conversation-1');
+  const claimed = await realtime.client.sessions.claim({
+    sessionId: 'conversation-1',
+    controllerId: 'human-1',
+    controllerType: 'human',
+    controllerLabel: 'human'
+  });
+  assert.equal(claimed.action, 'claimed');
+  const takenOver = await realtime.client.sessions.takeover({
+    sessionId: 'conversation-1',
+    controllerId: 'human-1',
+    controllerType: 'human',
+    controllerLabel: 'human'
+  });
+  assert.equal(takenOver.action, 'taken-over');
+  const released = await realtime.client.sessions.release({
+    sessionId: 'conversation-1'
+  });
+  assert.equal(released.released, true);
+  const responded = await realtime.client.sessions.respond('conversation-1', 'ack');
+  assert.equal(responded.sentBytes, 3);
+  const interrupted = await realtime.client.sessions.interrupt('conversation-1');
+  assert.equal(interrupted.interrupted, true);
+  const removed = await realtime.client.sessions.remove('conversation-1');
+  assert.equal(removed.removed, true);
+  const started = await realtime.client.sessions.start({
+    sessionId: 'conversation-1',
+    args: [],
+    initialCols: 120,
+    initialRows: 40
+  });
+  assert.equal(started.sessionId, 'conversation-1');
+  const attached = await realtime.client.sessions.attach('conversation-1', 0);
+  assert.equal(attached.latestCursor, 9);
+  const detached = await realtime.client.sessions.detach('conversation-1');
+  assert.equal(detached.detached, true);
+  const subscribed = await realtime.client.sessions.subscribeEvents('conversation-1');
+  assert.equal(subscribed.subscribed, true);
+  const unsubscribed = await realtime.client.sessions.unsubscribeEvents('conversation-1');
+  assert.equal(unsubscribed.subscribed, false);
+  const closed = await realtime.client.sessions.close('conversation-1');
+  assert.equal(closed.closed, true);
+
+  const sentTypes = mockClient.commands.map((command) => command.type);
+  assert.equal(sentTypes.includes('task.draft'), true);
+  assert.equal(sentTypes.includes('pty.subscribe-events'), true);
+  assert.equal(sentTypes.includes('pty.unsubscribe-events'), true);
+
+  await realtime.client.close();
+});

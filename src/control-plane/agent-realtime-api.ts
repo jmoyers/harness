@@ -987,9 +987,38 @@ export class HarnessAgentRealtimeClient {
     claim: async (input: AgentTaskClaimInput): Promise<AgentTask> => await this.claimTask(input),
     complete: async (taskId: string): Promise<AgentTask> => await this.completeTask(taskId),
     ready: async (taskId: string): Promise<AgentTask> => await this.readyTask(taskId),
+    draft: async (taskId: string): Promise<AgentTask> => await this.draftTask(taskId),
     queue: async (taskId: string): Promise<AgentTask> => await this.queueTask(taskId),
     reorder: async (input: AgentTaskReorderInput): Promise<readonly AgentTask[]> =>
       await this.reorderTasks(input)
+  };
+
+  readonly sessions = {
+    list: async (query: Parameters<HarnessAgentRealtimeClient['listSessions']>[0] = {}): Promise<readonly AgentSessionSummary[]> =>
+      await this.listSessions(query),
+    status: async (sessionId: string): Promise<AgentSessionSummary> => await this.sessionStatus(sessionId),
+    claim: async (input: AgentClaimSessionInput): Promise<AgentSessionClaimResult> =>
+      await this.claimSession(input),
+    takeover: async (
+      input: Omit<AgentClaimSessionInput, 'takeover'>
+    ): Promise<AgentSessionClaimResult> => await this.takeoverSession(input),
+    release: async (input: AgentReleaseSessionInput): Promise<AgentSessionReleaseResult> =>
+      await this.releaseSession(input),
+    respond: async (sessionId: string, text: string): Promise<{ responded: boolean; sentBytes: number }> =>
+      await this.respond(sessionId, text),
+    interrupt: async (sessionId: string): Promise<{ interrupted: boolean }> => await this.interrupt(sessionId),
+    remove: async (sessionId: string): Promise<{ removed: boolean }> => await this.removeSession(sessionId),
+    start: async (
+      input: Parameters<HarnessAgentRealtimeClient['startSession']>[0]
+    ): Promise<{ sessionId: string }> => await this.startSession(input),
+    attach: async (sessionId: string, sinceCursor = 0): Promise<{ latestCursor: number }> =>
+      await this.attachSession(sessionId, sinceCursor),
+    detach: async (sessionId: string): Promise<{ detached: boolean }> => await this.detachSession(sessionId),
+    close: async (sessionId: string): Promise<{ closed: boolean }> => await this.closeSession(sessionId),
+    subscribeEvents: async (sessionId: string): Promise<{ subscribed: boolean }> =>
+      await this.subscribeSessionEvents(sessionId),
+    unsubscribeEvents: async (sessionId: string): Promise<{ subscribed: boolean }> =>
+      await this.unsubscribeSessionEvents(sessionId)
   };
 
   readonly subscriptions = {
@@ -1470,6 +1499,14 @@ export class HarnessAgentRealtimeClient {
     return requireParsed(result['task'], parseTaskRecord, 'control-plane task.ready returned malformed task');
   }
 
+  async draftTask(taskId: string): Promise<AgentTask> {
+    const result = await this.client.sendCommand({
+      type: 'task.draft',
+      taskId
+    });
+    return requireParsed(result['task'], parseTaskRecord, 'control-plane task.draft returned malformed task');
+  }
+
   async queueTask(taskId: string): Promise<AgentTask> {
     const result = await this.client.sendCommand({
       type: 'task.queue',
@@ -1674,6 +1711,34 @@ export class HarnessAgentRealtimeClient {
     }
     return {
       detached
+    };
+  }
+
+  async subscribeSessionEvents(sessionId: string): Promise<{ subscribed: boolean }> {
+    const result = await this.client.sendCommand({
+      type: 'pty.subscribe-events',
+      sessionId
+    });
+    const subscribed = requireBoolean(
+      result['subscribed'],
+      'control-plane pty.subscribe-events returned malformed response'
+    );
+    return {
+      subscribed
+    };
+  }
+
+  async unsubscribeSessionEvents(sessionId: string): Promise<{ subscribed: boolean }> {
+    const result = await this.client.sendCommand({
+      type: 'pty.unsubscribe-events',
+      sessionId
+    });
+    const subscribed = requireBoolean(
+      result['subscribed'],
+      'control-plane pty.unsubscribe-events returned malformed response'
+    );
+    return {
+      subscribed
     };
   }
 

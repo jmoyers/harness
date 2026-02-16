@@ -258,6 +258,32 @@ function makeTempStateStorePath(): string {
   return join(dir, 'control-plane.sqlite');
 }
 
+void test('stream server executeCommand guards unsupported command types', async () => {
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input)
+  });
+  const internal = server as unknown as {
+    executeCommand: (connection: unknown, command: unknown) => Record<string, unknown>;
+  };
+
+  try {
+    assert.throws(
+      () =>
+        internal.executeCommand(
+          {
+            id: 'connection-test'
+          },
+          {
+            type: 'unsupported.command'
+          }
+        ),
+      /unsupported command type/
+    );
+  } finally {
+    await server.close();
+  }
+});
+
 void test('stream server dispatches lifecycle hooks from observed events', async () => {
   const webhookEvents: string[] = [];
   const webhookServer = createServer((request, response) => {

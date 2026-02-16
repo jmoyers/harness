@@ -109,6 +109,9 @@ Design rule:
 Consequence:
 - Programmatic clients can monitor progress, inspect changes over time, interrupt, queue, steer, fork, resume, and archive conversations exactly as a human can.
 - Every action is represented as an auditable command with a corresponding event trail.
+- Parity is continuously enforced by automated tests:
+  - `test/control-plane-api-parity.test.ts` asserts parser registry and stream-server dispatch stay in exact command lockstep.
+  - `test/control-plane-api-parity.test.ts` also asserts every mux-issued command is represented by high-level agent API helpers.
 
 Control-plane boundaries:
 - Clients issue commands.

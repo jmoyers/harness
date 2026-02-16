@@ -59,6 +59,7 @@ Harness is built for developers who want to:
 
 Harness exposes a typed real-time client so you can build automations and integrations without screen-scraping.
 The API is object-model oriented (`projects`, `threads`, `repositories`, `tasks`) and subscription-aware.
+Session controls are available both as direct methods and grouped aliases under `sessions.*` for discoverability.
 
 ```ts
 // Local import path in this repository.
@@ -110,6 +111,12 @@ const task = await client.tasks.create({
   }
 });
 
+await client.tasks.draft(task.taskId);
+
+await client.sessions.subscribeEvents(thread.threadId);
+await client.sessions.respond(thread.threadId, 'continue');
+await client.sessions.unsubscribeEvents(thread.threadId);
+
 await client.tasks.claim({
   taskId: task.taskId,
   controllerId: 'agent-orchestrator',
@@ -130,6 +137,12 @@ console.log('thread runtime', status.status);
 await taskSubscription.unsubscribe();
 await client.close();
 ```
+
+### API/TUI Parity Contract
+
+- `test/control-plane-api-parity.test.ts` enforces exact parser/server command parity and verifies that every command issued by the mux TUI is covered by the high-level agent API helpers.
+- If you add or remove a control-plane command in `scripts/codex-live-mux.ts`, you must update `src/control-plane/agent-realtime-api.ts` helpers in the same change.
+- If you add or remove a parser command in `src/control-plane/stream-command-parser.ts`, you must keep `src/control-plane/stream-server.ts` dispatch in lockstep.
 
 ### What You Can Build On Top
 
