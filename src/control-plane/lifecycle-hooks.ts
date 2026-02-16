@@ -189,14 +189,7 @@ class WebhookLifecycleConnector implements LifecycleConnector {
 }
 
 function providerFromSessionKeyEvent(event: Extract<StreamObservedEvent, { type: 'session-key-event' }>): HarnessLifecycleProvider {
-  const source = event.keyEvent.source;
-  if (OTLP_SOURCES.has(source)) {
-    return 'codex';
-  }
   const eventName = event.keyEvent.eventName?.toLowerCase() ?? '';
-  if (eventName.startsWith('codex.')) {
-    return 'codex';
-  }
   if (
     eventName.startsWith('claude.') ||
     eventName.includes('pretooluse') ||
@@ -204,6 +197,13 @@ function providerFromSessionKeyEvent(event: Extract<StreamObservedEvent, { type:
     eventName.includes('userpromptsubmit')
   ) {
     return 'claude';
+  }
+  if (eventName.startsWith('codex.')) {
+    return 'codex';
+  }
+  const source = event.keyEvent.source;
+  if (OTLP_SOURCES.has(source)) {
+    return 'codex';
   }
   return 'unknown';
 }

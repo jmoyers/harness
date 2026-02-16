@@ -31,7 +31,7 @@ Harness is built for developers who want to:
 - `ctrl+j/k` cycles the full left-nav order of visible items (Home, repository groups, project headers, then project threads).
 - `left/right` collapses or expands the selected repository group; `ctrl+k ctrl+0` collapses all groups, `ctrl+k ctrl+j` expands all groups.
 - Projects can remain empty; threads start only via explicit `new thread` actions.
-- Parallel `codex` and `terminal` threads in the same workspace.
+- Parallel `codex`, `claude`, and `terminal` threads in the same workspace.
 - Fresh context per thread by default (plus persisted continuity when supported).
 - Session control ownership: claim/release/takeover semantics for human-agent handoff.
 - Thread lifecycle management: create, rename, archive, and restore-ready metadata.
@@ -52,6 +52,7 @@ Harness is built for developers who want to:
 - Mux startup hydrates git/repository grouping from the gateway cache via `directory.git-status`, so early startup events cannot strand tracked projects under `untracked`.
 - Codex history enrichment is ingested incrementally from appended bytes (non-blocking) instead of full-file rereads each poll.
 - Codex notify-hook relay support on the same stream (`session-event notify`, including `agent-turn-complete` payloads).
+- Claude Code hook relay support on the same stream (`session-event notify` + derived `session-key-event` status updates from `UserPromptSubmit`/`Stop`/`Notification`).
 - Lifecycle hook connectors for external integrations (sound packs, webhooks, automation).
 - Directory-scoped Codex launch policy with configurable default mode (`yolo` by default).
 - Config-first behavior through one canonical file: `harness.config.jsonc`.
@@ -162,8 +163,8 @@ Harness is built to expose operational truth, not hide it.
 
 - Canonical thread/session lifecycle events.
 - Typed telemetry events for status hints and recent work summaries.
-- Deliberately minimal work-status projection: prompt/SSE progress marks `active`, turn-e2e metrics mark `inactive`, and controller ownership never overrides status text.
-- Lifecycle telemetry is default-first: `codex.telemetry.captureVerboseEvents` defaults to `false`, retaining lifecycle events (`codex.conversation_starts`, `codex.user_prompt`, `codex.turn.e2e_duration_ms`) plus non-verbose high-signal events that carry explicit status hints.
+- Deliberately minimal work-status projection: Codex prompt/SSE progress and Claude `UserPromptSubmit` hooks mark `active`; Codex turn-e2e metrics and Claude `Stop` hooks mark `inactive`; controller ownership never overrides status text.
+- Lifecycle telemetry is default-first: `codex.telemetry.captureVerboseEvents` defaults to `false`, retaining lifecycle events (`codex.conversation_starts`, `codex.user_prompt`, `codex.turn.e2e_duration_ms`) plus non-verbose high-signal events that carry explicit status hints; Claude hook lifecycle events flow through the same typed key-event path.
 - Mux projection instrumentation (`mux.session-projection.transition`) for icon/status-line timeline debugging.
 - Selector index snapshots (`mux.selector.snapshot` + `mux.selector.entry`) so threads can be referenced by visible rail index.
 - Session ownership/control transition events.
@@ -187,6 +188,7 @@ Harness is built to expose operational truth, not hide it.
 - Bun 1.3.9+
 - Rust toolchain (for PTY helper build)
 - Codex CLI (for `codex` thread type)
+- Claude Code CLI (for `claude` thread type)
 
 ### Migrate Older Checkout To Bun
 

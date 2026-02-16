@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
   CONVERSATION_EDIT_ARCHIVE_BUTTON_LABEL,
+  NEW_THREAD_MODAL_CLAUDE_BUTTON,
   NEW_THREAD_MODAL_CODEX_BUTTON,
   NEW_THREAD_MODAL_TERMINAL_BUTTON,
   PROJECT_PANE_CLOSE_PROJECT_BUTTON_LABEL,
@@ -104,6 +105,7 @@ void test('harness-core ui exports remain reachable from test/src import graph',
   assert.equal(TASKS_PANE_FOOTER_REPOSITORY_ARCHIVE_BUTTON_LABEL.length > 0, true);
   assert.equal(CONVERSATION_EDIT_ARCHIVE_BUTTON_LABEL.length > 0, true);
   assert.equal(NEW_THREAD_MODAL_CODEX_BUTTON.length > 0, true);
+  assert.equal(NEW_THREAD_MODAL_CLAUDE_BUTTON.length > 0, true);
   assert.equal(NEW_THREAD_MODAL_TERMINAL_BUTTON.length > 0, true);
 });
 

@@ -147,6 +147,68 @@ void test('codex live session builds bun-native notify command', () => {
   }
 });
 
+void test('codex live session external notify mode skips codex notify cli injection', async () => {
+  const broker = new FakeBroker();
+  let startOptions:
+    | {
+        command?: string;
+        commandArgs?: string[];
+        env?: NodeJS.ProcessEnv;
+        cwd?: string;
+      }
+    | undefined;
+  let notifyContent = '';
+  let pollNotify: () => void = () => undefined;
+  const fakeTimer = {
+    refresh: () => fakeTimer,
+    ref: () => fakeTimer,
+    unref: () => fakeTimer,
+    hasRef: () => false
+  } as unknown as NodeJS.Timeout;
+
+  const session = startCodexLiveSession(
+    {
+      command: 'claude',
+      baseArgs: [],
+      args: ['--settings', '{"hooks":{}}'],
+      useNotifyHook: true,
+      notifyMode: 'external',
+      notifyFilePath: '/tmp/harness-notify-external.jsonl',
+      notifyPollMs: 250
+    },
+    {
+      startBroker: (options) => {
+        startOptions = options;
+        return broker;
+      },
+      readFile: () => notifyContent,
+      setIntervalFn: (callback) => {
+        pollNotify = callback;
+        return fakeTimer;
+      }
+    }
+  );
+
+  const notifyTypes: string[] = [];
+  const removeListener = session.onEvent((event) => {
+    if (event.type === 'notify') {
+      const payloadType = event.record.payload['type'];
+      if (typeof payloadType === 'string') {
+        notifyTypes.push(payloadType);
+      }
+    }
+  });
+
+  assert.equal(startOptions?.commandArgs?.some((arg) => arg.startsWith('notify=[')) ?? false, false);
+  notifyContent = '{"ts":"2026-01-01T00:00:00.000Z","payload":{"type":"claude.stop"}}\n';
+  pollNotify();
+  await delay(0);
+  assert.deepEqual(notifyTypes, ['claude.stop']);
+
+  removeListener();
+  session.close();
+});
+
 void test('codex live session emits notify events when notify hook polling is enabled', async () => {
   const broker = new FakeBroker();
   let startOptions:

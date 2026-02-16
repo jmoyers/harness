@@ -186,6 +186,12 @@ async function main(): Promise<number> {
       if (input.useNotifyHook !== undefined) {
         sessionOptions.useNotifyHook = input.useNotifyHook;
       }
+      if (input.notifyMode !== undefined) {
+        sessionOptions.notifyMode = input.notifyMode;
+      }
+      if (input.notifyFilePath !== undefined) {
+        sessionOptions.notifyFilePath = input.notifyFilePath;
+      }
       if (input.env !== undefined) {
         sessionOptions.env = input.env;
       }

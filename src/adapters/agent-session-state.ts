@@ -20,6 +20,16 @@ const CODEX_EXPLICIT_SUBCOMMANDS = new Set([
   'help'
 ]);
 
+const CLAUDE_EXPLICIT_SUBCOMMANDS = new Set([
+  'doctor',
+  'install',
+  'mcp',
+  'plugin',
+  'setup-token',
+  'update',
+  'help'
+]);
+
 type CodexLaunchMode = 'yolo' | 'standard';
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -31,6 +41,15 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 
 function readString(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
+}
+
+function readNonEmptyString(value: unknown): string | null {
+  const raw = readString(value);
+  if (raw === null) {
+    return null;
+  }
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function firstNonOptionArg(args: readonly string[]): string | null {
@@ -63,15 +82,29 @@ export function codexResumeSessionIdFromAdapterState(
   if (codex === null) {
     return null;
   }
-  const resumeSessionId = readString(codex['resumeSessionId']);
-  if (resumeSessionId !== null && resumeSessionId.length > 0) {
+  const resumeSessionId = readNonEmptyString(codex['resumeSessionId']);
+  if (resumeSessionId !== null) {
     return resumeSessionId;
   }
-  const legacyThreadId = readString(codex['threadId']);
-  if (legacyThreadId !== null && legacyThreadId.length > 0) {
+  const legacyThreadId = readNonEmptyString(codex['threadId']);
+  if (legacyThreadId !== null) {
     return legacyThreadId;
   }
   return null;
+}
+
+export function claudeResumeSessionIdFromAdapterState(
+  adapterState: Record<string, unknown>
+): string | null {
+  const claude = asRecord(adapterState['claude']);
+  if (claude === null) {
+    return null;
+  }
+  const resumeSessionId = readNonEmptyString(claude['resumeSessionId']);
+  if (resumeSessionId !== null) {
+    return resumeSessionId;
+  }
+  return readNonEmptyString(claude['sessionId']);
 }
 
 export function mergeAdapterStateFromSessionEvent(
@@ -80,13 +113,49 @@ export function mergeAdapterStateFromSessionEvent(
   _event?: StreamSessionEvent,
   _observedAt?: string
 ): Record<string, unknown> | null {
-  void _currentState;
-  void _event;
-  void _observedAt;
-  if (agentType !== 'codex') {
+  if (agentType !== 'claude' || _event?.type !== 'notify') {
     return null;
   }
-  return null;
+  const payload = asRecord(_event.record.payload);
+  const sessionId =
+    readNonEmptyString(payload?.['session_id']) ?? readNonEmptyString(payload?.['sessionId']);
+  if (sessionId === null) {
+    return null;
+  }
+
+  const currentState = normalizeAdapterState(_currentState ?? {});
+  const claude = asRecord(currentState['claude']) ?? {};
+  const currentResumeSessionId = readNonEmptyString(claude['resumeSessionId']);
+  const lastObservedAt = readNonEmptyString(claude['lastObservedAt']);
+  const nextObservedAt = readNonEmptyString(_observedAt) ?? lastObservedAt ?? null;
+  if (currentResumeSessionId === sessionId && nextObservedAt === lastObservedAt) {
+    return null;
+  }
+
+  return {
+    ...currentState,
+    claude: {
+      ...claude,
+      resumeSessionId: sessionId,
+      ...(nextObservedAt === null ? {} : { lastObservedAt: nextObservedAt })
+    }
+  };
+}
+
+function hasClaudeResumeArg(args: readonly string[]): boolean {
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (
+      arg === '--resume' ||
+      arg === '-r' ||
+      arg === '--continue' ||
+      arg === '-c' ||
+      arg === '--session-id'
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function buildAgentStartArgs(
@@ -97,23 +166,38 @@ export function buildAgentStartArgs(
     codexLaunchMode?: CodexLaunchMode;
   }
 ): string[] {
-  if (agentType !== 'codex') {
+  if (agentType === 'codex') {
+    const firstArg = firstNonOptionArg(baseArgs);
+    if (firstArg !== null && CODEX_EXPLICIT_SUBCOMMANDS.has(firstArg)) {
+      return [...baseArgs];
+    }
+
+    const codexLaunchMode = options?.codexLaunchMode ?? 'standard';
+    const argsWithLaunchMode =
+      codexLaunchMode === 'yolo' && !baseArgs.includes('--yolo') ? [...baseArgs, '--yolo'] : [...baseArgs];
+
+    const resumeSessionId = codexResumeSessionIdFromAdapterState(adapterState);
+    if (resumeSessionId === null) {
+      return argsWithLaunchMode;
+    }
+
+    return ['resume', resumeSessionId, ...argsWithLaunchMode];
+  }
+
+  if (agentType !== 'claude') {
     return [...baseArgs];
   }
 
   const firstArg = firstNonOptionArg(baseArgs);
-  if (firstArg !== null && CODEX_EXPLICIT_SUBCOMMANDS.has(firstArg)) {
+  if (firstArg !== null && CLAUDE_EXPLICIT_SUBCOMMANDS.has(firstArg)) {
     return [...baseArgs];
   }
-
-  const codexLaunchMode = options?.codexLaunchMode ?? 'standard';
-  const argsWithLaunchMode =
-    codexLaunchMode === 'yolo' && !baseArgs.includes('--yolo') ? [...baseArgs, '--yolo'] : [...baseArgs];
-
-  const resumeSessionId = codexResumeSessionIdFromAdapterState(adapterState);
-  if (resumeSessionId === null) {
-    return argsWithLaunchMode;
+  if (hasClaudeResumeArg(baseArgs)) {
+    return [...baseArgs];
   }
-
-  return ['resume', resumeSessionId, ...argsWithLaunchMode];
+  const resumeSessionId = claudeResumeSessionIdFromAdapterState(adapterState);
+  if (resumeSessionId === null) {
+    return [...baseArgs];
+  }
+  return ['--resume', resumeSessionId, ...baseArgs];
 }

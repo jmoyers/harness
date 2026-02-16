@@ -475,6 +475,12 @@ void test('lifecycle hooks normalize codex and claude key events into unified li
   );
   assert.equal(
     runtimeInternals
+      .normalizeObservedEvent(scope, telemetryEvent('claude.userpromptsubmit.otlp', 'prompt', null, null, 'otlp-log'), 3)
+      .some((event) => event.eventType === 'turn.started' && event.provider === 'claude'),
+    true
+  );
+  assert.equal(
+    runtimeInternals
       .normalizeObservedEvent(scope, telemetryEvent('custom.event', 'turn completed (22ms)', null, null), 3)
       .some((event) => event.eventType === 'turn.completed'),
     true

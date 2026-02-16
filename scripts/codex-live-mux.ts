@@ -66,6 +66,7 @@ import {
   buildProjectPaneRows,
   buildProjectPaneSnapshot,
   CONVERSATION_EDIT_ARCHIVE_BUTTON_LABEL,
+  NEW_THREAD_MODAL_CLAUDE_BUTTON,
   NEW_THREAD_MODAL_CODEX_BUTTON,
   NEW_THREAD_MODAL_TERMINAL_BUTTON,
   projectPaneActionAtRow,
@@ -2769,6 +2770,7 @@ async function main(): Promise<number> {
       title: 'New Thread',
       bodyLines: newThreadPromptBodyLines(newThreadPrompt, {
         codexButtonLabel: NEW_THREAD_MODAL_CODEX_BUTTON,
+        claudeButtonLabel: NEW_THREAD_MODAL_CLAUDE_BUTTON,
         terminalButtonLabel: NEW_THREAD_MODAL_TERMINAL_BUTTON,
       }),
       footer: 'enter create  esc',

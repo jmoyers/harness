@@ -91,6 +91,22 @@ void test('runtime wiring summarizes telemetry text deterministically', () => {
   );
   assert.equal(
     telemetrySummaryText({
+      source: 'otlp-log',
+      eventName: 'claude.userpromptsubmit',
+      summary: null
+    }),
+    'active'
+  );
+  assert.equal(
+    telemetrySummaryText({
+      source: 'otlp-log',
+      eventName: 'claude.stop',
+      summary: null
+    }),
+    'inactive'
+  );
+  assert.equal(
+    telemetrySummaryText({
       source: 'otlp-trace',
       eventName: null,
       summary: null
@@ -1133,6 +1149,25 @@ void test('runtime wiring applies only eligible status hints for telemetry event
       statusHint: 'running'
     },
     ts: '2026-02-15T01:00:00.000Z',
+    directoryId: null,
+    conversationId: 'conversation-status-hints',
+    cursor: 20
+  });
+  assert.equal(conversation.status, 'running');
+
+  conversation.status = 'running';
+  apply({
+    type: 'session-telemetry',
+    sessionId: 'conversation-status-hints',
+    keyEvent: {
+      source: 'otlp-log',
+      eventName: 'claude.userpromptsubmit',
+      severity: null,
+      summary: 'prompt submitted',
+      observedAt: '2026-02-15T01:00:00.500Z',
+      statusHint: 'running'
+    },
+    ts: '2026-02-15T01:00:00.500Z',
     directoryId: null,
     conversationId: 'conversation-status-hints',
     cursor: 20

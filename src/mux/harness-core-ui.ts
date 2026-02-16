@@ -165,6 +165,10 @@ export const NEW_THREAD_MODAL_CODEX_BUTTON = formatUiButton({
   label: 'codex',
   prefixIcon: '◆'
 });
+export const NEW_THREAD_MODAL_CLAUDE_BUTTON = formatUiButton({
+  label: 'claude',
+  prefixIcon: '◇'
+});
 export const NEW_THREAD_MODAL_TERMINAL_BUTTON = formatUiButton({
   label: 'terminal',
   prefixIcon: '▣'

@@ -4181,7 +4181,7 @@ void test('stream server history polling helpers start once and stop cleanly', a
   }
 });
 
-void test('stream server skips codex telemetry arg injection for non-codex agents', async () => {
+void test('stream server launches claude sessions with hook settings and no codex telemetry args', async () => {
   const created: FakeLiveSession[] = [];
   const server = await startControlPlaneStreamServer({
     startSession: (input) => {
@@ -4234,8 +4234,25 @@ void test('stream server skips codex telemetry arg injection for non-codex agent
       initialCols: 80,
       initialRows: 24,
     });
-    const launchedArgs = created[0]!.input.args;
-    assert.deepEqual(launchedArgs, ['--foo', 'bar']);
+    const launchedInput = created[0]!.input;
+    const launchedArgs = launchedInput.args;
+    assert.equal(launchedInput.command, 'claude');
+    assert.deepEqual(launchedInput.baseArgs, []);
+    assert.equal(launchedInput.useNotifyHook, true);
+    assert.equal(launchedInput.notifyMode, 'external');
+    assert.equal(typeof launchedInput.notifyFilePath, 'string');
+    assert.equal(launchedArgs[0], '--settings');
+    assert.equal(launchedArgs[2], '--foo');
+    assert.equal(launchedArgs[3], 'bar');
+    assert.equal(launchedArgs.some((arg) => arg.includes('otel.exporter=')), false);
+    const settingsArg = launchedArgs[1];
+    assert.equal(typeof settingsArg, 'string');
+    const parsedSettings = JSON.parse(settingsArg as string) as Record<string, unknown>;
+    const hooks = parsedSettings['hooks'] as Record<string, unknown>;
+    assert.notEqual(hooks, null);
+    assert.equal(Array.isArray(hooks['UserPromptSubmit']), true);
+    assert.equal(Array.isArray(hooks['Stop']), true);
+    assert.equal(Array.isArray(hooks['Notification']), true);
   } finally {
     client.close();
     await server.close();
@@ -4310,6 +4327,160 @@ void test('stream server launches terminal agents with shell command and no code
     assert.equal(started?.command, expectedTerminalCommand);
     assert.deepEqual(started?.baseArgs, []);
     assert.deepEqual(started?.args, ['-lc', 'echo hello']);
+  } finally {
+    client.close();
+    await server.close();
+  }
+});
+
+void test('stream server maps claude hook notify events into status/key events and adapter state', async () => {
+  const created: FakeLiveSession[] = [];
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => {
+      const session = new FakeLiveSession(input);
+      created.push(session);
+      return session;
+    },
+    codexTelemetry: {
+      enabled: false,
+      host: '127.0.0.1',
+      port: 0,
+      logUserPrompt: true,
+      captureLogs: true,
+      captureMetrics: true,
+      captureTraces: true,
+      captureVerboseEvents: true
+    },
+    codexHistory: {
+      enabled: false,
+      filePath: '~/.codex/history.jsonl',
+      pollMs: 50
+    }
+  });
+  const address = server.address();
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port
+  });
+  const observed = collectEnvelopes(client);
+
+  try {
+    await client.sendCommand({
+      type: 'directory.upsert',
+      directoryId: 'directory-claude-status',
+      tenantId: 'tenant-claude-status',
+      userId: 'user-claude-status',
+      workspaceId: 'workspace-claude-status',
+      path: '/tmp/claude-status'
+    });
+    await client.sendCommand({
+      type: 'conversation.create',
+      conversationId: 'conversation-claude-status',
+      directoryId: 'directory-claude-status',
+      title: 'claude status',
+      agentType: 'claude'
+    });
+    await client.sendCommand({
+      type: 'stream.subscribe',
+      conversationId: 'conversation-claude-status',
+      includeOutput: false
+    });
+    await client.sendCommand({
+      type: 'pty.start',
+      sessionId: 'conversation-claude-status',
+      args: ['--foo', 'bar'],
+      initialCols: 80,
+      initialRows: 24
+    });
+    await delay(10);
+    assert.equal(created.length, 1);
+
+    created[0]!.emitEvent({
+      type: 'notify',
+      record: {
+        ts: '2026-02-16T00:00:00.000Z',
+        payload: {
+          hook_event_name: 'UserPromptSubmit',
+          session_id: 'claude-session-123'
+        }
+      }
+    });
+    await delay(10);
+    const runningStatus = await client.sendCommand({
+      type: 'session.status',
+      sessionId: 'conversation-claude-status'
+    });
+    assert.equal(runningStatus['status'], 'running');
+    assert.equal((runningStatus['telemetry'] as Record<string, unknown>)['eventName'], 'claude.userpromptsubmit');
+
+    created[0]!.emitEvent({
+      type: 'notify',
+      record: {
+        ts: '2026-02-16T00:00:01.000Z',
+        payload: {
+          hook_event_name: 'Stop',
+          session_id: 'claude-session-123'
+        }
+      }
+    });
+    await delay(10);
+    const completedStatus = await client.sendCommand({
+      type: 'session.status',
+      sessionId: 'conversation-claude-status'
+    });
+    assert.equal(completedStatus['status'], 'completed');
+    assert.equal((completedStatus['telemetry'] as Record<string, unknown>)['eventName'], 'claude.stop');
+
+    created[0]!.emitEvent({
+      type: 'notify',
+      record: {
+        ts: '2026-02-16T00:00:02.000Z',
+        payload: {
+          hook_event_name: 'Notification',
+          notification_type: 'permission_request',
+          message: 'approval required',
+          session_id: 'claude-session-123'
+        }
+      }
+    });
+    await delay(10);
+    const needsInputStatus = await client.sendCommand({
+      type: 'session.status',
+      sessionId: 'conversation-claude-status'
+    });
+    assert.equal(needsInputStatus['status'], 'needs-input');
+    assert.equal(needsInputStatus['attentionReason'], 'approval required');
+    assert.equal((needsInputStatus['telemetry'] as Record<string, unknown>)['eventName'], 'claude.notification');
+
+    const listed = await client.sendCommand({
+      type: 'conversation.list',
+      directoryId: 'directory-claude-status',
+      includeArchived: true
+    });
+    const conversationRow = (listed['conversations'] as Array<Record<string, unknown>>)[0]!;
+    const adapterState = conversationRow['adapterState'] as Record<string, unknown>;
+    const claudeState = adapterState['claude'] as Record<string, unknown>;
+    assert.equal(claudeState['resumeSessionId'], 'claude-session-123');
+    assert.equal(typeof claudeState['lastObservedAt'], 'string');
+
+    assert.equal(
+      observed.some(
+        (envelope) =>
+          envelope.kind === 'stream.event' &&
+          envelope.event.type === 'session-key-event' &&
+          envelope.event.keyEvent.eventName === 'claude.userpromptsubmit'
+      ),
+      true
+    );
+    assert.equal(
+      observed.some(
+        (envelope) =>
+          envelope.kind === 'stream.event' &&
+          envelope.event.type === 'session-key-event' &&
+          envelope.event.keyEvent.eventName === 'claude.stop'
+      ),
+      true
+    );
   } finally {
     client.close();
     await server.close();

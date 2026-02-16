@@ -1,4 +1,4 @@
-type ThreadAgentType = 'codex' | 'terminal';
+type ThreadAgentType = 'codex' | 'claude' | 'terminal';
 
 const EMPTY_NEW_THREAD_PROMPT_INPUT = new Uint8Array();
 
@@ -20,11 +20,20 @@ export function createNewThreadPromptState(directoryId: string): NewThreadPrompt
 }
 
 export function normalizeThreadAgentType(value: string): ThreadAgentType {
-  return value === 'terminal' ? 'terminal' : 'codex';
+  if (value === 'terminal' || value === 'claude') {
+    return value;
+  }
+  return 'codex';
 }
 
 export function nextThreadAgentType(value: ThreadAgentType): ThreadAgentType {
-  return value === 'codex' ? 'terminal' : 'codex';
+  if (value === 'codex') {
+    return 'claude';
+  }
+  if (value === 'claude') {
+    return 'terminal';
+  }
+  return 'codex';
 }
 
 function parseEncodedPromptKeyCode(input: Uint8Array): number | null {
@@ -75,7 +84,9 @@ export function reduceNewThreadPromptInput(
       selectedAgentType = nextThreadAgentType(selectedAgentType);
     } else if (byte === 0x31 || byte === 0x63 || byte === 0x43) {
       selectedAgentType = 'codex';
-    } else if (byte === 0x32 || byte === 0x74 || byte === 0x54) {
+    } else if (byte === 0x32 || byte === 0x61 || byte === 0x41) {
+      selectedAgentType = 'claude';
+    } else if (byte === 0x33 || byte === 0x74 || byte === 0x54) {
       selectedAgentType = 'terminal';
     }
   }
@@ -93,9 +104,13 @@ export function resolveNewThreadPromptAgentByRow(
   rowOneBased: number
 ): ThreadAgentType | null {
   const codexRow = overlayTopRowZeroBased + 4;
-  const terminalRow = overlayTopRowZeroBased + 5;
+  const claudeRow = overlayTopRowZeroBased + 5;
+  const terminalRow = overlayTopRowZeroBased + 6;
   if (rowOneBased - 1 === codexRow) {
     return 'codex';
+  }
+  if (rowOneBased - 1 === claudeRow) {
+    return 'claude';
   }
   if (rowOneBased - 1 === terminalRow) {
     return 'terminal';
@@ -107,17 +122,20 @@ export function newThreadPromptBodyLines(
   state: NewThreadPromptState,
   labels: {
     readonly codexButtonLabel: string;
+    readonly claudeButtonLabel: string;
     readonly terminalButtonLabel: string;
   }
 ): readonly string[] {
   const codexSelected = state.selectedAgentType === 'codex';
+  const claudeSelected = state.selectedAgentType === 'claude';
   const terminalSelected = state.selectedAgentType === 'terminal';
   return [
     'choose thread type',
     '',
     `${codexSelected ? '●' : '○'} ${labels.codexButtonLabel}`,
+    `${claudeSelected ? '●' : '○'} ${labels.claudeButtonLabel}`,
     `${terminalSelected ? '●' : '○'} ${labels.terminalButtonLabel}`,
     '',
-    'c/t toggle'
+    'c/a/t toggle'
   ];
 }

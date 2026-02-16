@@ -7,9 +7,10 @@ import {
 } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { open } from 'node:fs/promises';
-import { homedir } from 'node:os';
-import { resolve } from 'node:path';
-import { type CodexLiveEvent } from '../codex/live-session.ts';
+import { homedir, tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { type CodexLiveEvent, type LiveSessionNotifyMode } from '../codex/live-session.ts';
 import type { PtyExit } from '../pty/pty_host.ts';
 import type { TerminalSnapshotFrame } from '../terminal/snapshot-oracle.ts';
 import {
@@ -17,6 +18,7 @@ import {
   encodeStreamEnvelope,
   parseClientEnvelope,
   type StreamObservedEvent,
+  type StreamSessionKeyEventRecord,
   type StreamSessionController,
   type StreamSessionListSort,
   type StreamSessionRuntimeStatus,
@@ -37,6 +39,7 @@ import {
 import {
   buildAgentStartArgs,
   codexResumeSessionIdFromAdapterState,
+  mergeAdapterStateFromSessionEvent,
   normalizeAdapterState,
 } from '../adapters/agent-session-state.ts';
 import { recordPerfEvent, startPerfSpan } from '../perf/perf-core.ts';
@@ -82,6 +85,8 @@ export interface StartControlPlaneSessionInput {
   env?: Record<string, string>;
   cwd?: string;
   useNotifyHook?: boolean;
+  notifyMode?: LiveSessionNotifyMode;
+  notifyFilePath?: string;
   initialCols: number;
   initialRows: number;
   terminalForegroundHex?: string;
@@ -249,7 +254,6 @@ const DEFAULT_MAX_CONNECTION_BUFFERED_BYTES = 4 * 1024 * 1024;
 const DEFAULT_SESSION_EXIT_TOMBSTONE_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_MAX_STREAM_JOURNAL_ENTRIES = 10000;
 const DEFAULT_GIT_STATUS_POLL_MS = 1200;
-const DEFAULT_CODEX_HISTORY_POLL_MS = 5000;
 const HISTORY_POLL_JITTER_RATIO = 0.35;
 const HISTORY_POLL_MAX_DELAY_MS = 60_000;
 const DEFAULT_BOOTSTRAP_SESSION_COLS = 80;
@@ -259,11 +263,34 @@ const DEFAULT_USER_ID = 'user-local';
 const DEFAULT_WORKSPACE_ID = 'workspace-local';
 const DEFAULT_WORKTREE_ID = 'worktree-local';
 const LINE_FEED_BYTE = '\n'.charCodeAt(0);
+const DEFAULT_CLAUDE_HOOK_RELAY_SCRIPT_PATH = fileURLToPath(
+  new URL('../../scripts/codex-notify-relay.ts', import.meta.url)
+);
 const LIFECYCLE_TELEMETRY_EVENT_NAMES = new Set([
   'codex.user_prompt',
   'codex.turn.e2e_duration_ms',
   'codex.conversation_starts',
 ]);
+const CLAUDE_NEEDS_INPUT_NOTIFICATION_MARKERS = ['permission', 'approval', 'idle', 'input'];
+
+function readTrimmedString(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeEventToken(value: string): string {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function shellEscape(value: string): string {
+  if (value.length === 0) {
+    return "''";
+  }
+  return `'${value.replaceAll("'", "'\"'\"'")}'`;
+}
 
 function compareIsoDesc(left: string | null, right: string | null): number {
   if (left === right) {
@@ -813,6 +840,36 @@ export class ControlPlaneStreamServer {
     });
   }
 
+  private claudeHookLaunchConfigForSession(
+    sessionId: string,
+    agentType: string
+  ): {
+    readonly args: readonly string[];
+    readonly notifyFilePath: string;
+  } | null {
+    if (agentType !== 'claude') {
+      return null;
+    }
+    const notifyFilePath = join(tmpdir(), `harness-claude-hook-${process.pid}-${sessionId}-${randomUUID()}.jsonl`);
+    const relayScriptPath = resolve(DEFAULT_CLAUDE_HOOK_RELAY_SCRIPT_PATH);
+    const hookCommand = `/usr/bin/env ${shellEscape(process.execPath)} ${shellEscape(relayScriptPath)} ${shellEscape(notifyFilePath)}`;
+    const hook = {
+      type: 'command',
+      command: hookCommand
+    };
+    const settings = {
+      hooks: {
+        UserPromptSubmit: [{ hooks: [hook] }],
+        Stop: [{ hooks: [hook] }],
+        Notification: [{ hooks: [hook] }]
+      }
+    };
+    return {
+      args: ['--settings', JSON.stringify(settings)],
+      notifyFilePath
+    };
+  }
+
   private resolveTerminalCommand(): string {
     return resolveTerminalCommandForEnvironment(process.env, process.platform);
   }
@@ -821,6 +878,12 @@ export class ControlPlaneStreamServer {
     readonly command?: string;
     readonly baseArgs?: readonly string[];
   } {
+    if (agentType === 'claude') {
+      return {
+        command: 'claude',
+        baseArgs: []
+      };
+    }
     if (agentType !== 'terminal') {
       return {};
     }
@@ -876,13 +939,20 @@ export class ControlPlaneStreamServer {
     const persistedConversation = this.stateStore.getConversation(command.sessionId);
     const agentType = persistedConversation?.agentType ?? 'codex';
     const codexLaunchArgs = this.codexLaunchArgsForSession(command.sessionId, agentType);
+    const claudeHookLaunchConfig = this.claudeHookLaunchConfigForSession(command.sessionId, agentType);
     const launchProfile = this.launchProfileForAgent(agentType);
     const startInput: StartControlPlaneSessionInput = {
-      args: [...codexLaunchArgs, ...command.args],
-      useNotifyHook: agentType === 'codex',
+      args: [...codexLaunchArgs, ...(claudeHookLaunchConfig?.args ?? []), ...command.args],
       initialCols: command.initialCols,
       initialRows: command.initialRows,
     };
+    if (agentType === 'codex' || agentType === 'claude') {
+      startInput.useNotifyHook = true;
+      startInput.notifyMode = (agentType === 'claude' ? 'external' : 'codex') as LiveSessionNotifyMode;
+    }
+    if (claudeHookLaunchConfig !== null) {
+      startInput.notifyFilePath = claudeHookLaunchConfig.notifyFilePath;
+    }
     if (launchProfile.command !== undefined) {
       startInput.command = launchProfile.command;
     }
@@ -2871,26 +2941,55 @@ export class ControlPlaneStreamServer {
           event: mapped,
         });
       }
-      this.publishObservedEvent(this.sessionScope(sessionState), {
-        type: 'session-event',
-        sessionId,
-        event: mapped,
-        ts: new Date().toISOString(),
-        directoryId: sessionState.directoryId,
-        conversationId: sessionState.id,
-      });
+      this.publishObservedEvent(
+        this.sessionScope(sessionState),
+        {
+          type: 'session-event',
+          sessionId,
+          event: mapped,
+          ts: new Date().toISOString(),
+          directoryId: sessionState.directoryId,
+          conversationId: sessionState.id
+        }
+      );
+      const mergedAdapterState = mergeAdapterStateFromSessionEvent(
+        sessionState.agentType,
+        sessionState.adapterState,
+        mapped,
+        observedAt
+      );
+      if (mergedAdapterState !== null) {
+        sessionState.adapterState = mergedAdapterState;
+        this.stateStore.updateConversationAdapterState(sessionState.id, mergedAdapterState);
+      }
       if (mapped.type === 'notify') {
-        const notifyPayloadType =
-          typeof mapped.record.payload['type'] === 'string' ? mapped.record.payload['type'] : '';
-        if (notifyPayloadType === 'agent-turn-complete') {
+        const keyEvent = this.notifyKeyEventFromPayload(
+          sessionState.agentType,
+          mapped.record.payload,
+          observedAt
+        );
+        if (keyEvent !== null) {
           sessionState.latestTelemetry = {
-            source: 'otlp-metric',
-            eventName: 'codex.turn.e2e_duration_ms',
-            severity: null,
-            summary: 'turn complete (notify)',
-            observedAt,
+            source: keyEvent.source,
+            eventName: keyEvent.eventName,
+            severity: keyEvent.severity,
+            summary: keyEvent.summary,
+            observedAt: keyEvent.observedAt
           };
-          this.setSessionStatus(sessionState, 'completed', null, observedAt);
+          this.publishSessionKeyObservedEvent(sessionState, keyEvent);
+          if (keyEvent.statusHint === 'needs-input') {
+            const nextAttentionReason = keyEvent.summary ?? sessionState.attentionReason ?? 'input required';
+            this.setSessionStatus(sessionState, 'needs-input', nextAttentionReason, observedAt);
+          } else if (keyEvent.statusHint !== null) {
+            this.setSessionStatus(sessionState, keyEvent.statusHint, null, observedAt);
+          } else {
+            this.setSessionStatus(
+              sessionState,
+              sessionState.status,
+              sessionState.attentionReason,
+              observedAt
+            );
+          }
         } else {
           this.setSessionStatus(
             sessionState,
@@ -2909,6 +3008,95 @@ export class ControlPlaneStreamServer {
       this.setSessionStatus(sessionState, 'exited', null, exitedAt);
       this.deactivateSession(sessionState.id, true);
     }
+  }
+
+  private notifyKeyEventFromPayload(
+    agentType: string,
+    payload: Record<string, unknown>,
+    observedAt: string
+  ): StreamSessionKeyEventRecord | null {
+    if (agentType === 'codex') {
+      const notifyPayloadType = readTrimmedString(payload['type']);
+      if (notifyPayloadType !== 'agent-turn-complete') {
+        return null;
+      }
+      return {
+        source: 'otlp-metric',
+        eventName: 'codex.turn.e2e_duration_ms',
+        severity: null,
+        summary: 'turn complete (notify)',
+        observedAt,
+        statusHint: 'completed'
+      };
+    }
+    if (agentType !== 'claude') {
+      return null;
+    }
+
+    const hookEventNameRaw = readTrimmedString(payload['hook_event_name']) ?? readTrimmedString(payload['hookEventName']);
+    if (hookEventNameRaw === null) {
+      return null;
+    }
+    const hookEventToken = normalizeEventToken(hookEventNameRaw);
+    if (hookEventToken.length === 0) {
+      return null;
+    }
+    const eventName = `claude.${hookEventToken}`;
+    const summary = readTrimmedString(payload['message']) ?? readTrimmedString(payload['reason']);
+    const notificationType = readTrimmedString(payload['notification_type'])?.toLowerCase() ?? '';
+    const summaryLower = summary?.toLowerCase() ?? '';
+
+    let statusHint: StreamSessionKeyEventRecord['statusHint'] = null;
+    let normalizedSummary = summary;
+    if (hookEventToken === 'userpromptsubmit') {
+      statusHint = 'running';
+      normalizedSummary ??= 'prompt submitted';
+    } else if (hookEventToken === 'stop' || hookEventToken === 'subagentstop' || hookEventToken === 'sessionend') {
+      statusHint = 'completed';
+      normalizedSummary ??= 'turn complete (hook)';
+    } else if (hookEventToken === 'notification') {
+      const needsInput = CLAUDE_NEEDS_INPUT_NOTIFICATION_MARKERS.some(
+        (marker) => notificationType.includes(marker) || summaryLower.includes(marker)
+      );
+      if (needsInput) {
+        statusHint = 'needs-input';
+      }
+      if (normalizedSummary === null) {
+        normalizedSummary = notificationType.length > 0 ? notificationType : hookEventNameRaw;
+      }
+    } else if (normalizedSummary === null) {
+      normalizedSummary = hookEventNameRaw;
+    }
+
+    return {
+      source: 'otlp-log',
+      eventName,
+      severity: null,
+      summary: normalizedSummary,
+      observedAt,
+      statusHint
+    };
+  }
+
+  private publishSessionKeyObservedEvent(state: SessionState, keyEvent: StreamSessionKeyEventRecord): void {
+    this.publishObservedEvent(
+      this.sessionScope(state),
+      {
+        type: 'session-key-event',
+        sessionId: state.id,
+        keyEvent: {
+          source: keyEvent.source,
+          eventName: keyEvent.eventName,
+          severity: keyEvent.severity,
+          summary: keyEvent.summary,
+          observedAt: keyEvent.observedAt,
+          statusHint: keyEvent.statusHint
+        },
+        ts: new Date().toISOString(),
+        directoryId: state.directoryId,
+        conversationId: state.id
+      }
+    );
   }
 
   private setSessionStatus(

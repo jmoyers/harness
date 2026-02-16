@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import {
   buildAgentStartArgs,
+  claudeResumeSessionIdFromAdapterState,
   codexResumeSessionIdFromAdapterState,
   mergeAdapterStateFromSessionEvent,
   normalizeAdapterState
@@ -44,6 +45,32 @@ void test('codexResumeSessionIdFromAdapterState reads canonical and legacy keys'
   );
 });
 
+void test('claudeResumeSessionIdFromAdapterState reads canonical and legacy keys', () => {
+  assert.equal(claudeResumeSessionIdFromAdapterState({}), null);
+  assert.equal(
+    claudeResumeSessionIdFromAdapterState({
+      claude: {}
+    }),
+    null
+  );
+  assert.equal(
+    claudeResumeSessionIdFromAdapterState({
+      claude: {
+        resumeSessionId: 'session-canonical'
+      }
+    }),
+    'session-canonical'
+  );
+  assert.equal(
+    claudeResumeSessionIdFromAdapterState({
+      claude: {
+        sessionId: 'session-legacy'
+      }
+    }),
+    'session-legacy'
+  );
+});
+
 void test('mergeAdapterStateFromSessionEvent returns null for codex session events', () => {
   assert.equal(
     mergeAdapterStateFromSessionEvent(
@@ -62,7 +89,70 @@ void test('mergeAdapterStateFromSessionEvent returns null for codex session even
   );
 });
 
-void test('mergeAdapterStateFromSessionEvent ignores unsupported agents', () => {
+void test('mergeAdapterStateFromSessionEvent updates claude session resume id from notify hooks', () => {
+  assert.deepEqual(
+    mergeAdapterStateFromSessionEvent(
+      'claude',
+      {},
+      {
+        type: 'notify',
+        record: {
+          ts: '2026-02-14T00:00:00.000Z',
+          payload: {
+            hook_event_name: 'UserPromptSubmit',
+            session_id: 'session-claude-1'
+          }
+        }
+      },
+      '2026-02-14T00:00:01.000Z'
+    ),
+    {
+      claude: {
+        resumeSessionId: 'session-claude-1',
+        lastObservedAt: '2026-02-14T00:00:01.000Z'
+      }
+    }
+  );
+  assert.equal(
+    mergeAdapterStateFromSessionEvent(
+      'claude',
+      {
+        claude: {
+          resumeSessionId: 'session-claude-1',
+          lastObservedAt: '2026-02-14T00:00:01.000Z'
+        }
+      },
+      {
+        type: 'notify',
+        record: {
+          ts: '2026-02-14T00:00:02.000Z',
+          payload: {
+            hook_event_name: 'UserPromptSubmit',
+            session_id: 'session-claude-1'
+          }
+        }
+      }
+    ),
+    null
+  );
+});
+
+void test('mergeAdapterStateFromSessionEvent ignores unsupported agents and malformed claude payloads', () => {
+  assert.equal(
+    mergeAdapterStateFromSessionEvent(
+      'terminal',
+      {},
+      {
+        type: 'session-exit',
+        exit: {
+          code: 0,
+          signal: null
+        }
+      },
+      '2026-02-14T00:00:00.000Z'
+    ),
+    null
+  );
   assert.equal(
     mergeAdapterStateFromSessionEvent(
       'claude',
@@ -72,6 +162,23 @@ void test('mergeAdapterStateFromSessionEvent ignores unsupported agents', () => 
         exit: {
           code: 0,
           signal: null
+        }
+      },
+      '2026-02-14T00:00:00.000Z'
+    ),
+    null
+  );
+  assert.equal(
+    mergeAdapterStateFromSessionEvent(
+      'claude',
+      {},
+      {
+        type: 'notify',
+        record: {
+          ts: '2026-02-14T00:00:00.000Z',
+          payload: {
+            hook_event_name: 'UserPromptSubmit'
+          }
         }
       },
       '2026-02-14T00:00:00.000Z'
@@ -136,12 +243,12 @@ void test('buildAgentStartArgs injects codex resume and preserves explicit subco
       'claude',
       ['--print'],
       {
-        codex: {
-          resumeSessionId: 'thread-123'
+        claude: {
+          resumeSessionId: 'session-123'
         }
       }
     ),
-    ['--print']
+    ['--resume', 'session-123', '--print']
   );
 });
 
@@ -188,5 +295,55 @@ void test('buildAgentStartArgs applies configurable codex yolo launch mode for i
       }
     ),
     ['exec', '--json']
+  );
+
+  assert.deepEqual(
+    buildAgentStartArgs(
+      'claude',
+      ['--model', 'haiku'],
+      {
+        claude: {}
+      }
+    ),
+    ['--model', 'haiku']
+  );
+
+  assert.deepEqual(
+    buildAgentStartArgs(
+      'claude',
+      ['--model', 'sonnet'],
+      {
+        claude: {
+          resumeSessionId: 'session-456'
+        }
+      }
+    ),
+    ['--resume', 'session-456', '--model', 'sonnet']
+  );
+
+  assert.deepEqual(
+    buildAgentStartArgs(
+      'claude',
+      ['--resume', 'explicit-session'],
+      {
+        claude: {
+          resumeSessionId: 'session-456'
+        }
+      }
+    ),
+    ['--resume', 'explicit-session']
+  );
+
+  assert.deepEqual(
+    buildAgentStartArgs(
+      'claude',
+      ['mcp', 'list'],
+      {
+        claude: {
+          resumeSessionId: 'session-456'
+        }
+      }
+    ),
+    ['mcp', 'list']
   );
 });

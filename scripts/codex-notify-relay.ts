@@ -1,4 +1,4 @@
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, readFileSync } from 'node:fs';
 
 function asObject(value: unknown): Record<string, unknown> | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
@@ -25,12 +25,20 @@ function parsePayload(input: string): Record<string, unknown> {
 
 function main(): number {
   const outputPath = process.argv[2];
-  const payloadRaw = process.argv[3];
+  const payloadFromArg = process.argv[3];
   if (typeof outputPath !== 'string' || outputPath.length === 0) {
     process.stderr.write('codex-notify-relay: missing output path\n');
     return 2;
   }
+  let payloadRaw = payloadFromArg;
   if (typeof payloadRaw !== 'string' || payloadRaw.length === 0) {
+    try {
+      payloadRaw = readFileSync(0, 'utf8');
+    } catch {
+      payloadRaw = '';
+    }
+  }
+  if (typeof payloadRaw !== 'string' || payloadRaw.trim().length === 0) {
     process.stderr.write('codex-notify-relay: missing notify payload\n');
     return 2;
   }

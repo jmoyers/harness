@@ -220,6 +220,17 @@ void test('parseRepositoryRecord validates metadata and timestamps', () => {
 });
 
 void test('parseDirectoryGitStatusRecord validates gateway git status payloads', () => {
+  assert.equal(parseDirectoryGitStatusRecord(null), null);
+  assert.equal(
+    parseDirectoryGitStatusRecord({
+      directoryId: 'directory-1',
+      repositorySnapshot: {},
+      repositoryId: null,
+      observedAt: '2026-02-16T00:00:00.000Z',
+    }),
+    null,
+  );
+
   assert.deepEqual(
     parseDirectoryGitStatusRecord({
       directoryId: 'directory-1',

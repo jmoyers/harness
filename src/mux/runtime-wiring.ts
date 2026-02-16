@@ -37,7 +37,7 @@ interface ProjectedTelemetrySummary {
   readonly text: string | null;
 }
 
-const RUNNING_STATUS_HINT_EVENT_NAMES = new Set(['codex.user_prompt']);
+const RUNNING_STATUS_HINT_EVENT_NAMES = new Set(['codex.user_prompt', 'claude.userpromptsubmit']);
 
 function parseIsoMs(value: string | null): number {
   if (value === null) {
@@ -84,6 +84,16 @@ function projectTelemetrySummary(telemetry: Omit<MuxTelemetrySummaryInput, 'obse
   if (eventName === 'codex.user_prompt') {
     return {
       text: 'active'
+    };
+  }
+  if (eventName === 'claude.userpromptsubmit' || eventName === 'claude.pretooluse') {
+    return {
+      text: 'active'
+    };
+  }
+  if (eventName === 'claude.stop' || eventName === 'claude.subagentstop' || eventName === 'claude.sessionend') {
+    return {
+      text: 'inactive'
     };
   }
   return {

@@ -35,6 +35,8 @@ interface SessionBrokerLike {
   processId(): number | null;
 }
 
+export type LiveSessionNotifyMode = 'codex' | 'external';
+
 interface StartCodexLiveSessionOptions {
   command?: string;
   args?: string[];
@@ -42,6 +44,7 @@ interface StartCodexLiveSessionOptions {
   cwd?: string;
   baseArgs?: string[];
   useNotifyHook?: boolean;
+  notifyMode?: LiveSessionNotifyMode;
   notifyFilePath?: string;
   notifyPollMs?: number;
   relayScriptPath?: string;
@@ -472,14 +475,16 @@ class CodexLiveSession {
     const command = options.command ?? DEFAULT_COMMAND;
     const useNotifyHook = options.useNotifyHook ?? false;
     this.notifyPollMs = Math.max(25, options.notifyPollMs ?? DEFAULT_NOTIFY_POLL_MS);
+    const notifyMode = options.notifyMode ?? 'codex';
     this.notifyFilePath =
       options.notifyFilePath ??
       join(tmpdir(), `harness-codex-notify-${process.pid}-${randomUUID()}.jsonl`);
     const relayScriptPath = resolve(options.relayScriptPath ?? DEFAULT_RELAY_SCRIPT_PATH);
     const notifyCommand = ['/usr/bin/env', process.execPath, ...tsRuntimeArgs(relayScriptPath, [this.notifyFilePath])];
+    const shouldInjectCodexNotifyConfig = useNotifyHook && notifyMode === 'codex';
     const commandArgs = [
       ...(options.baseArgs ?? DEFAULT_BASE_ARGS),
-      ...(useNotifyHook ? ['-c', `notify=${buildTomlStringArray(notifyCommand)}`] : []),
+      ...(shouldInjectCodexNotifyConfig ? ['-c', `notify=${buildTomlStringArray(notifyCommand)}`] : []),
       ...(options.args ?? [])
     ];
 
