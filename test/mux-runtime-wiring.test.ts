@@ -539,6 +539,28 @@ void test('runtime wiring updates session-status and session-control events', ()
   assert.equal(statusConversation?.lastEventAt, '2026-02-15T00:00:01.000Z');
   assert.equal(statusConversation?.lastKnownWork, 'active');
 
+  const telemetryAttentionConversation = applyMuxControlPlaneKeyEvent(
+    {
+      type: 'session-status',
+      sessionId: 'conversation-status',
+      status: 'needs-input',
+      attentionReason: 'telemetry',
+      live: true,
+      ts: '2026-02-15T00:00:01.500Z',
+      directoryId: 'directory-a',
+      conversationId: 'conversation-status',
+      telemetry: null,
+      controller: null,
+      cursor: 2
+    },
+    {
+      removedConversationIds: new Set(),
+      ensureConversation
+    }
+  );
+  assert.notEqual(telemetryAttentionConversation, null);
+  assert.equal(telemetryAttentionConversation?.attentionReason, null);
+
   const controlConversation = applyMuxControlPlaneKeyEvent(
     {
       type: 'session-control',

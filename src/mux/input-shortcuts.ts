@@ -309,6 +309,118 @@ function decodeInputToKeyStroke(input: Buffer): KeyStroke | null {
   return parseModifyOtherKeysProtocol(text);
 }
 
+function keyStrokeToLegacyBytes(stroke: KeyStroke): Buffer | null {
+  let base: Buffer | null = null;
+  if (stroke.ctrl) {
+    if (stroke.key === 'space') {
+      base = Buffer.from([0x00]);
+    } else if (stroke.key === 'enter') {
+      base = Buffer.from([0x0d]);
+    } else if (stroke.key === 'tab') {
+      base = Buffer.from([0x09]);
+    } else if (stroke.key === 'escape') {
+      base = Buffer.from([0x1b]);
+    } else if (stroke.key.length === 1) {
+      const key = stroke.key.toLowerCase();
+      const code = key.charCodeAt(0);
+      if (code >= 97 && code <= 122) {
+        base = Buffer.from([code - 96]);
+      } else if (key === '@') {
+        base = Buffer.from([0x00]);
+      } else if (key === '[') {
+        base = Buffer.from([0x1b]);
+      } else if (key === '\\') {
+        base = Buffer.from([0x1c]);
+      } else if (key === ']') {
+        base = Buffer.from([0x1d]);
+      } else if (key === '^') {
+        base = Buffer.from([0x1e]);
+      } else if (key === '_') {
+        base = Buffer.from([0x1f]);
+      } else if (key === '?') {
+        base = Buffer.from([0x7f]);
+      }
+    }
+  } else if (stroke.key === 'enter') {
+    base = Buffer.from([0x0d]);
+  } else if (stroke.key === 'tab') {
+    base = Buffer.from([0x09]);
+  } else if (stroke.key === 'escape') {
+    base = Buffer.from([0x1b]);
+  } else if (stroke.key === 'space') {
+    base = Buffer.from([0x20]);
+  } else if (stroke.key.length === 1) {
+    const key =
+      stroke.shift && stroke.key >= 'a' && stroke.key <= 'z'
+        ? stroke.key.toUpperCase()
+        : stroke.key;
+    base = Buffer.from(key, 'utf8');
+  }
+
+  if (base === null) {
+    return null;
+  }
+  if (!stroke.alt && !stroke.meta) {
+    return base;
+  }
+  return Buffer.concat([Buffer.from([0x1b]), base]);
+}
+
+function decodeEncodedKeystrokeSequence(sequence: string): Buffer | null {
+  const decodedStroke =
+    parseKittyKeyboardProtocol(sequence) ?? parseModifyOtherKeysProtocol(sequence);
+  if (decodedStroke === null) {
+    return null;
+  }
+  return keyStrokeToLegacyBytes(decodedStroke);
+}
+
+export function normalizeMuxKeyboardInputForPty(input: Buffer): Buffer {
+  if (!input.includes(0x1b)) {
+    return input;
+  }
+  const text = input.toString('utf8');
+  const parts: Buffer[] = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    const char = text[cursor]!;
+    if (char !== '\u001b' || text[cursor + 1] !== '[') {
+      parts.push(Buffer.from(char, 'utf8'));
+      cursor += 1;
+      continue;
+    }
+
+    let matchedSequence: string | null = null;
+    let idx = cursor + 2;
+    while (idx < text.length) {
+      const tokenChar = text[idx]!;
+      const isDigit = tokenChar >= '0' && tokenChar <= '9';
+      if (isDigit || tokenChar === ';' || tokenChar === ':') {
+        idx += 1;
+        continue;
+      }
+      if (tokenChar === 'u' || tokenChar === '~') {
+        const candidate = text.slice(cursor, idx + 1);
+        const decoded = decodeEncodedKeystrokeSequence(candidate);
+        if (decoded !== null) {
+          parts.push(decoded);
+          matchedSequence = candidate;
+        }
+      }
+      break;
+    }
+
+    if (matchedSequence !== null) {
+      cursor += matchedSequence.length;
+      continue;
+    }
+
+    parts.push(Buffer.from('\u001b', 'utf8'));
+    cursor += 1;
+  }
+  return Buffer.concat(parts);
+}
+
 function normalizeKeyToken(raw: string): string | null {
   const key = raw.trim().toLowerCase();
   if (key.length === 0) {

@@ -47,17 +47,23 @@ async function reservePort(): Promise<number> {
 async function runHarness(
   cwd: string,
   args: readonly string[],
-  extraEnv: Record<string, string> = {}
+  extraEnv: Record<string, string | undefined> = {}
 ): Promise<RunHarnessResult> {
   return await new Promise<RunHarnessResult>((resolveRun, rejectRun) => {
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      HARNESS_INVOKE_CWD: cwd,
+      ...extraEnv
+    };
+    for (const [key, value] of Object.entries(extraEnv)) {
+      if (value === undefined) {
+        delete env[key];
+      }
+    }
     const child = spawn(process.execPath, ['--experimental-strip-types', HARNESS_SCRIPT_PATH, ...args], {
       cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: {
-        ...process.env,
-        HARNESS_INVOKE_CWD: cwd,
-        ...extraEnv
-      }
+      env
     });
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
@@ -358,7 +364,8 @@ void test('harness default client loads .harness/secrets.env and forwards ANTHRO
   const env = {
     HARNESS_CONTROL_PLANE_PORT: String(port),
     HARNESS_MUX_SCRIPT_PATH: muxStubPath,
-    HARNESS_TEST_ANTHROPIC_KEY_PATH: observedKeyPath
+    HARNESS_TEST_ANTHROPIC_KEY_PATH: observedKeyPath,
+    ANTHROPIC_API_KEY: undefined
   };
   try {
     const clientResult = await runHarness(workspace, [], env);

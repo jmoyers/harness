@@ -632,6 +632,46 @@ void test('stream server supports start/attach/io/events/cleanup over one protoc
   });
   assert.equal(statusAfterProgressNotify['status'], 'completed');
 
+  created[0]!.emitEvent({
+    type: 'notify',
+    record: {
+      ts: '2026-01-01T00:00:03.000Z',
+      payload: {
+        type: 'agent-heartbeat'
+      }
+    }
+  });
+  await delay(10);
+  assert.equal(
+    observedA.some(
+      (envelope) =>
+        envelope.kind === 'pty.event' &&
+        envelope.event.type === 'notify' &&
+        envelope.event.record.payload['type'] === 'agent-heartbeat'
+    ),
+    true
+  );
+
+  created[0]!.emitEvent({
+    type: 'notify',
+    record: {
+      ts: '2026-01-01T00:00:04.000Z',
+      payload: {
+        type: 7
+      }
+    }
+  });
+  await delay(10);
+  assert.equal(
+    observedA.some(
+      (envelope) =>
+        envelope.kind === 'pty.event' &&
+        envelope.event.type === 'notify' &&
+        envelope.event.record.payload['type'] === 7
+    ),
+    true
+  );
+
   await writeRaw(
     { host: coldAddress.address, port: coldAddress.port },
     `${encodeStreamEnvelope({

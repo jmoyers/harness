@@ -45,6 +45,7 @@ import { loadHarnessSecrets } from '../src/config/secrets-core.ts';
 import {
   detectMuxGlobalShortcut,
   firstShortcutText,
+  normalizeMuxKeyboardInputForPty,
   resolveMuxShortcutBindings
 } from '../src/mux/input-shortcuts.ts';
 import {
@@ -6706,7 +6707,9 @@ async function main(): Promise<number> {
     for (const token of routedTokens) {
       if (token.kind === 'passthrough') {
         if (mainPaneMode === 'conversation' && token.text.length > 0) {
-          forwardToSession.push(Buffer.from(token.text, 'utf8'));
+          forwardToSession.push(
+            normalizeMuxKeyboardInputForPty(Buffer.from(token.text, 'utf8'))
+          );
         }
         continue;
       }

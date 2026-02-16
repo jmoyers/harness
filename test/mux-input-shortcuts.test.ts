@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   detectMuxGlobalShortcut,
   firstShortcutText,
+  normalizeMuxKeyboardInputForPty,
   resolveMuxShortcutBindings
 } from '../src/mux/input-shortcuts.ts';
 
@@ -188,4 +189,60 @@ void test('shortcut matcher covers modifier mismatch branches for equal keys', (
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[116;7u', 'utf8'), bindings), 'mux.conversation.next');
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[116;8u', 'utf8'), bindings), 'mux.conversation.previous');
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[116;16u', 'utf8'), bindings), 'mux.app.quit');
+});
+
+void test('normalizeMuxKeyboardInputForPty decodes ctrl-r keyboard protocol sequences', () => {
+  assert.deepEqual(
+    normalizeMuxKeyboardInputForPty(Buffer.from('\u001b[114;5u', 'utf8')),
+    Buffer.from([0x12])
+  );
+  assert.deepEqual(
+    normalizeMuxKeyboardInputForPty(Buffer.from('\u001b[27;5;114~', 'utf8')),
+    Buffer.from([0x12])
+  );
+});
+
+void test('normalizeMuxKeyboardInputForPty keeps passthrough bytes and decodes representable keys', () => {
+  assert.deepEqual(
+    normalizeMuxKeyboardInputForPty(Buffer.from('ab\u001b[114;5uc', 'utf8')),
+    Buffer.from('ab\u0012c', 'utf8')
+  );
+  assert.deepEqual(
+    normalizeMuxKeyboardInputForPty(Buffer.from('\u001b[300;5u', 'utf8')),
+    Buffer.from('\u001b[300;5u', 'utf8')
+  );
+});
+
+void test('normalizeMuxKeyboardInputForPty covers legacy key mappings and fallback branches', () => {
+  const matrix: ReadonlyArray<readonly [string, Buffer]> = [
+    ['\u001b[32;5u', Buffer.from([0x00])],
+    ['\u001b[13;5u', Buffer.from([0x0d])],
+    ['\u001b[9;5u', Buffer.from([0x09])],
+    ['\u001b[27;5u', Buffer.from([0x1b])],
+    ['\u001b[64;5u', Buffer.from([0x00])],
+    ['\u001b[91;5u', Buffer.from([0x1b])],
+    ['\u001b[92;5u', Buffer.from([0x1c])],
+    ['\u001b[93;5u', Buffer.from([0x1d])],
+    ['\u001b[94;5u', Buffer.from([0x1e])],
+    ['\u001b[95;5u', Buffer.from([0x1f])],
+    ['\u001b[63;5u', Buffer.from([0x7f])],
+    ['\u001b[13;1u', Buffer.from([0x0d])],
+    ['\u001b[9;1u', Buffer.from([0x09])],
+    ['\u001b[27;1u', Buffer.from([0x1b])],
+    ['\u001b[32;1u', Buffer.from([0x20])],
+    ['\u001b[97;2u', Buffer.from('A', 'utf8')],
+    ['\u001b[114;3u', Buffer.from('\u001br', 'utf8')],
+    ['\u001b[33;5u', Buffer.from('\u001b[33;5u', 'utf8')],
+    ['\u001b[broken', Buffer.from('\u001b[broken', 'utf8')],
+    ['\u001b[27;5;114~', Buffer.from([0x12])]
+  ];
+
+  for (const [encoded, expected] of matrix) {
+    assert.deepEqual(normalizeMuxKeyboardInputForPty(Buffer.from(encoded, 'utf8')), expected);
+  }
+
+  assert.deepEqual(
+    normalizeMuxKeyboardInputForPty(Buffer.from('plain', 'utf8')),
+    Buffer.from('plain', 'utf8')
+  );
 });
