@@ -3,7 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "bin": {
+    "harness": "scripts/harness-bin.js"
+  },
   "scripts": {
+    "harness": "node --experimental-strip-types scripts/harness.ts",
     "build:ptyd": "export PATH=\"$HOME/.cargo/bin:$PATH\" && cargo build --manifest-path native/ptyd/Cargo.toml --release && mkdir -p bin && cp native/ptyd/target/release/ptyd bin/ptyd",
     "codex:live": "node --experimental-strip-types scripts/codex-live.ts",
     "codex:pty:vte:passthrough": "node --experimental-strip-types scripts/codex-pty-vte-passthrough.ts",

@@ -44,6 +44,7 @@ Harness is built for developers who want to:
 - Lifecycle hook connectors for external integrations (sound packs, webhooks, automation).
 - Directory-scoped Codex launch policy with configurable default mode (`yolo` by default).
 - Config-first behavior through one canonical file: `harness.config.jsonc`.
+- Detached gateway runtime: client disconnects do not stop running threads; stop the gateway explicitly when you want all child sessions to shut down.
 
 ## Programmable Interface
 
@@ -126,16 +127,25 @@ npm install
 npm run build:ptyd
 ```
 
-Start the control plane:
+Install the canonical `harness` command from this checkout:
 
 ```bash
-npm run control-plane:daemon
+npm link
+harness --help
 ```
 
-Start the terminal UI in another shell:
+Use `harness` as the default client. It connects to the gateway of record, or starts it in the background first:
 
 ```bash
-npm run codex:live:mux
+harness
+```
+
+Gateway lifecycle control is explicit:
+
+```bash
+harness gateway status
+harness gateway start
+harness gateway stop
 ```
 
 Configuration is file-first via `harness.config.jsonc`.

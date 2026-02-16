@@ -2172,6 +2172,7 @@ async function main(): Promise<number> {
       : {
           mode: 'embedded' as const
         };
+  const closeLiveSessionsOnClientStop = controlPlaneMode.mode === 'embedded';
   const controlPlaneOpenSpan = startPerfSpan('mux.startup.control-plane-open');
   const controlPlaneClient = await openCodexControlPlaneClient(
     controlPlaneMode,
@@ -3311,24 +3312,26 @@ async function main(): Promise<number> {
       stopConversationTitleEdit(true);
     }
     stop = true;
-    queueControlPlaneOp(async () => {
-      for (const sessionId of conversationOrder(conversations)) {
-        const conversation = conversations.get(sessionId);
-        if (conversation === undefined || !conversation.live) {
-          continue;
+    if (closeLiveSessionsOnClientStop) {
+      queueControlPlaneOp(async () => {
+        for (const sessionId of conversationOrder(conversations)) {
+          const conversation = conversations.get(sessionId);
+          if (conversation === undefined || !conversation.live) {
+            continue;
+          }
+          streamClient.sendSignal(sessionId, 'interrupt');
+          streamClient.sendSignal(sessionId, 'terminate');
+          try {
+            await streamClient.sendCommand({
+              type: 'pty.close',
+              sessionId
+            });
+          } catch {
+            // Best-effort shutdown only.
+          }
         }
-        streamClient.sendSignal(sessionId, 'interrupt');
-        streamClient.sendSignal(sessionId, 'terminate');
-        try {
-          await streamClient.sendCommand({
-            type: 'pty.close',
-            sessionId
-          });
-        } catch {
-          // Best-effort shutdown only.
-        }
-      }
-    }, 'shutdown-close-live-sessions');
+      }, 'shutdown-close-live-sessions');
+    }
     markDirty();
   };
 

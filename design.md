@@ -166,7 +166,9 @@ Pass-through stream invariants:
 ## Mux Interaction Rules
 
 - Escape is forwarded to the active PTY session; mux does not reserve it as a quit key.
-- `ctrl+c` handling is single-stage: one press requests mux shutdown and signals all live child PTYs (`interrupt` then `terminate`) before close.
+- `ctrl+c` handling is single-stage: one press requests mux shutdown.
+- In canonical remote/gateway mode, mux exits without closing live sessions so work continues after client disconnect.
+- In embedded/local mode, mux shutdown also closes live PTYs.
 - Thread "delete" in the mux is soft-delete (archive); hard delete remains an explicit control-plane command.
 - Project lifecycle in the mux is first-class: `directory.upsert`, `directory.list`, and `directory.archive` drive add/close behavior through the same control-plane stream API as automation clients.
 - The left rail includes clickable action rows (new thread, archive thread, add project, close project) with keybind parity.
@@ -1070,7 +1072,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - remote connect now supports bounded retry windows (`connectRetryWindowMs` + `connectRetryDelayMs`) to tolerate control-plane cold starts without requiring client-side sleep loops.
     - startup/operation attribution is captured via `perf-core` command RTT + connect-attempt events (`control-plane.command.rtt`, `control-plane.connect.*`) so mux startup command latency is directly measurable.
     - client/server role attribution is explicit in control-plane traces (`role: client|server`) with connection/auth lifecycle events (`control-plane.server.connection.*`, `control-plane.server.auth.*`) for negotiation-stage diagnosis.
-  - `src/control-plane/codex-session-stream.ts` extracts mux/session control-plane wiring into reusable infrastructure (embedded or remote transport).
+  - `src/control-plane/codex-session-stream.ts` extracts mux/session control-plane wiring into reusable infrastructure.
     - includes `subscribeControlPlaneKeyEvents(...)`, a typed internal stream-subscription API that maps `stream.event` envelopes into key status/telemetry updates for UI consumers.
   - `src/control-plane/agent-realtime-api.ts` exposes the public TypeScript realtime automation API.
     - typed event handlers (`client.on(type, handler)`) over stream subscriptions, including wildcard listeners.
@@ -1080,9 +1082,14 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - non-loopback bind now requires an auth token (`--auth-token` or `HARNESS_CONTROL_PLANE_AUTH_TOKEN`).
     - daemon state persistence path is configurable (`--state-db-path` / `HARNESS_CONTROL_PLANE_DB_PATH`).
     - daemon passes `hooks.lifecycle` config through to the control-plane runtime; lifecycle connector behavior is file-configured, not env-configured.
+  - `scripts/harness.ts` is the canonical CLI surface (`harness`).
+    - `harness` (no subcommand) is the canonical client path: it connects to the gateway of record, or starts it detached first, then launches the mux client against that remote gateway.
+    - `harness gateway ...` is the canonical daemon control plane: `start|stop|status|restart|run|call`.
+    - gateway state is persisted as a gateway-of-record file (`.harness/gateway.json`) with host/port/auth/pid metadata; stale records are pruned on startup/stop flows.
+    - client disconnect (including `Ctrl+C` in mux) does not kill the gateway; only explicit gateway stop/shutdown tears down child sessions.
   - `scripts/control-plane-daemon-fixture.ts` provides a deterministic fixture daemon path that runs a local command (default `/bin/sh`) instead of Codex, for startup paint/protocol isolation.
   - `scripts/codex-live-mux-launch.ts` provides a one-command launcher (`npm run codex:live:mux:launch -- ...`) that boots a dedicated daemon and connects the remote mux client for client/server parity without manual multi-terminal setup.
-    - launcher mode sets local-exit policy so `Ctrl+C` cleanly tears down both mux client and daemon.
+    - launcher mode remains a local lifecycle harness for startup/perf measurement where mux + daemon are intentionally co-terminated by the launcher process.
     - launcher now overlaps daemon and mux process startup; remote connect retries bridge daemon readiness instead of serially blocking mux spawn.
     - launcher/daemon/mux startup milestones now emit through `perf-core` only (single JSONL instrumentation stream, no side-channel startup tracer).
   - `scripts/mux-fixture-launch.ts` provides a one-command fixture launch (`npm run mux:fixture:launch`) that boots fixture daemon + mux client with isolated sqlite paths and controlled startup content for render-settle verification without Codex dependency.

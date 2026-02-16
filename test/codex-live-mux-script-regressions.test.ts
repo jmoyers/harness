@@ -137,6 +137,15 @@ void test('codex-live-mux embedded control-plane server inherits codex telemetry
   assert.equal(source.includes('lifecycleHooks: loadedConfig.config.hooks.lifecycle,'), true);
 });
 
+void test('codex-live-mux only closes live sessions on quit in embedded mode', () => {
+  const scriptPath = resolve(process.cwd(), 'scripts/codex-live-mux.ts');
+  const source = readFileSync(scriptPath, 'utf8');
+
+  assert.equal(source.includes('const closeLiveSessionsOnClientStop = controlPlaneMode.mode === \'embedded\';'), true);
+  assert.equal(source.includes('if (closeLiveSessionsOnClientStop) {'), true);
+  assert.equal(source.includes("'shutdown-close-live-sessions'"), true);
+});
+
 void test('codex-live-mux resolves codex launch mode from config per directory and passes mode to start args', () => {
   const scriptPath = resolve(process.cwd(), 'scripts/codex-live-mux.ts');
   const source = readFileSync(scriptPath, 'utf8');
