@@ -451,6 +451,27 @@ export type StreamObservedEvent =
       ts: string;
     }
   | {
+      type: 'directory-git-updated';
+      directoryId: string;
+      summary: {
+        branch: string;
+        changedFiles: number;
+        additions: number;
+        deletions: number;
+      };
+      repositorySnapshot: {
+        normalizedRemoteUrl: string | null;
+        commitCount: number | null;
+        lastCommitAt: string | null;
+        shortCommitHash: string | null;
+        inferredName: string | null;
+        defaultBranch: string | null;
+      };
+      repositoryId: string | null;
+      repository: Record<string, unknown> | null;
+      observedAt: string;
+    }
+  | {
       type: 'conversation-created';
       conversation: Record<string, unknown>;
     }
@@ -969,6 +990,94 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
       type,
       directoryId,
       ts
+    };
+  }
+
+  if (type === 'directory-git-updated') {
+    const directoryId = readString(record['directoryId']);
+    const summaryRecord = asRecord(record['summary']);
+    const repositorySnapshotRecord = asRecord(record['repositorySnapshot']);
+    const repositoryId =
+      record['repositoryId'] === null ? null : readString(record['repositoryId']);
+    const repository =
+      record['repository'] === null ? null : asRecord(record['repository']);
+    const observedAt = readString(record['observedAt']);
+    if (
+      directoryId === null ||
+      summaryRecord === null ||
+      repositorySnapshotRecord === null ||
+      repositoryId === null && record['repositoryId'] !== null ||
+      repository === null && record['repository'] !== null ||
+      observedAt === null
+    ) {
+      return null;
+    }
+    const branch = readString(summaryRecord['branch']);
+    const changedFiles = readNumber(summaryRecord['changedFiles']);
+    const additions = readNumber(summaryRecord['additions']);
+    const deletions = readNumber(summaryRecord['deletions']);
+    if (
+      branch === null ||
+      changedFiles === null ||
+      additions === null ||
+      deletions === null
+    ) {
+      return null;
+    }
+    const normalizedRemoteUrl =
+      repositorySnapshotRecord['normalizedRemoteUrl'] === null
+        ? null
+        : readString(repositorySnapshotRecord['normalizedRemoteUrl']);
+    const commitCount =
+      repositorySnapshotRecord['commitCount'] === null
+        ? null
+        : readNumber(repositorySnapshotRecord['commitCount']);
+    const lastCommitAt =
+      repositorySnapshotRecord['lastCommitAt'] === null
+        ? null
+        : readString(repositorySnapshotRecord['lastCommitAt']);
+    const shortCommitHash =
+      repositorySnapshotRecord['shortCommitHash'] === null
+        ? null
+        : readString(repositorySnapshotRecord['shortCommitHash']);
+    const inferredName =
+      repositorySnapshotRecord['inferredName'] === null
+        ? null
+        : readString(repositorySnapshotRecord['inferredName']);
+    const defaultBranch =
+      repositorySnapshotRecord['defaultBranch'] === null
+        ? null
+        : readString(repositorySnapshotRecord['defaultBranch']);
+    if (
+      normalizedRemoteUrl === null && repositorySnapshotRecord['normalizedRemoteUrl'] !== null ||
+      commitCount === null && repositorySnapshotRecord['commitCount'] !== null ||
+      lastCommitAt === null && repositorySnapshotRecord['lastCommitAt'] !== null ||
+      shortCommitHash === null && repositorySnapshotRecord['shortCommitHash'] !== null ||
+      inferredName === null && repositorySnapshotRecord['inferredName'] !== null ||
+      defaultBranch === null && repositorySnapshotRecord['defaultBranch'] !== null
+    ) {
+      return null;
+    }
+    return {
+      type,
+      directoryId,
+      summary: {
+        branch,
+        changedFiles,
+        additions,
+        deletions
+      },
+      repositorySnapshot: {
+        normalizedRemoteUrl,
+        commitCount,
+        lastCommitAt,
+        shortCommitHash,
+        inferredName,
+        defaultBranch
+      },
+      repositoryId,
+      repository,
+      observedAt
     };
   }
 

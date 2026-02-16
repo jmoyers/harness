@@ -171,8 +171,6 @@ import {
   extractOscColorReplies
 } from '../src/mux/live-mux/palette-parsing.ts';
 import {
-  GIT_REPOSITORY_NONE,
-  readGitDirectorySnapshot,
   readProcessUsageSample
 } from '../src/mux/live-mux/git-snapshot.ts';
 import {
@@ -221,10 +219,23 @@ type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
 type ControlPlaneDirectoryRecord = NonNullable<ReturnType<typeof parseDirectoryRecord>>;
 type ControlPlaneRepositoryRecord = NonNullable<ReturnType<typeof parseRepositoryRecord>>;
 type ControlPlaneTaskRecord = NonNullable<ReturnType<typeof parseTaskRecord>>;
-type GitDirectorySnapshot = Awaited<ReturnType<typeof readGitDirectorySnapshot>>;
+interface GitSummary {
+  readonly branch: string;
+  readonly changedFiles: number;
+  readonly additions: number;
+  readonly deletions: number;
+}
+
+interface GitRepositorySnapshot {
+  readonly normalizedRemoteUrl: string | null;
+  readonly commitCount: number | null;
+  readonly lastCommitAt: string | null;
+  readonly shortCommitHash: string | null;
+  readonly inferredName: string | null;
+  readonly defaultBranch: string | null;
+}
+
 type ProcessUsageSample = Awaited<ReturnType<typeof readProcessUsageSample>>;
-type GitSummary = GitDirectorySnapshot['summary'];
-type GitRepositorySnapshot = GitDirectorySnapshot['repository'];
 
 interface RenderCursorStyle {
   readonly shape: 'block' | 'underline' | 'bar';
@@ -299,13 +310,6 @@ interface ConversationProjectionSnapshot {
   readonly detailText: string;
 }
 
-type GitSummaryRefreshReason = 'startup' | 'interval' | 'focus' | 'trigger';
-
-interface PendingGitSummaryRefresh {
-  readonly dueAtMs: number;
-  readonly reason: GitSummaryRefreshReason;
-}
-
 const DEFAULT_RESIZE_MIN_INTERVAL_MS = 33;
 const DEFAULT_PTY_RESIZE_SETTLE_MS = 75;
 const DEFAULT_STARTUP_SETTLE_QUIET_MS = 300;
@@ -326,6 +330,15 @@ const GIT_SUMMARY_LOADING: GitSummary = {
   changedFiles: 0,
   additions: 0,
   deletions: 0
+};
+
+const GIT_REPOSITORY_NONE: GitRepositorySnapshot = {
+  normalizedRemoteUrl: null,
+  commitCount: null,
+  lastCommitAt: null,
+  shortCommitHash: null,
+  inferredName: null,
+  defaultBranch: null
 };
 
 interface TaskEditorPromptState {
@@ -918,6 +931,12 @@ async function main(): Promise<number> {
         ),
         codexTelemetry: loadedConfig.config.codex.telemetry,
         codexHistory: loadedConfig.config.codex.history,
+        gitStatus: {
+          enabled: loadedConfig.config.mux.git.enabled,
+          pollMs: loadedConfig.config.mux.git.idlePollMs,
+          maxConcurrency: loadedConfig.config.mux.git.maxConcurrency,
+          minDirectoryRefreshMs: Math.max(loadedConfig.config.mux.git.idlePollMs, 30_000)
+        },
         lifecycleHooks: loadedConfig.config.hooks.lifecycle,
         startSession: (input) => {
           const sessionOptions: Parameters<typeof startCodexLiveSession>[0] = {
@@ -1014,7 +1033,6 @@ async function main(): Promise<number> {
   const repositories = new Map<string, ControlPlaneRepositoryRecord>();
   const repositoryIdByNormalizedRemoteUrl = new Map<string, string>();
   const repositoryAssociationByDirectoryId = new Map<string, string>();
-  const repositoryUpsertInFlightByRemoteUrl = new Map<string, Promise<string | null>>();
   const directoryRepositorySnapshotByDirectoryId = new Map<string, GitRepositorySnapshot>();
   const muxControllerId = `human-mux-${process.pid}-${randomUUID()}`;
   const muxControllerLabel = `human mux ${process.pid}`;
@@ -1667,10 +1685,6 @@ async function main(): Promise<number> {
   }
 
   const gitSummaryByDirectoryId = new Map<string, GitSummary>();
-  const gitLastRefreshAtMsByDirectoryId = new Map<string, number>();
-  const gitLastActivityAtMsByDirectoryId = new Map<string, number>();
-  const pendingGitSummaryRefreshByDirectoryId = new Map<string, PendingGitSummaryRefresh>();
-  const gitRefreshInFlightDirectoryIds = new Set<string>();
   const processUsageBySessionId = new Map<string, ProcessUsageSample>();
   const selectorIndexBySessionId = new Map<
     string,
@@ -1822,31 +1836,14 @@ async function main(): Promise<number> {
     left.defaultBranch === right.defaultBranch &&
     left.inferredName === right.inferredName;
 
-  const gitRefreshReasonPriority = (reason: GitSummaryRefreshReason): number => {
-    if (reason === 'startup' || reason === 'focus') {
-      return 3;
-    }
-    if (reason === 'trigger') {
-      return 2;
-    }
-    return 1;
-  };
-
   const ensureDirectoryGitState = (directoryId: string): void => {
     if (!gitSummaryByDirectoryId.has(directoryId)) {
       gitSummaryByDirectoryId.set(directoryId, GIT_SUMMARY_LOADING);
-    }
-    if (!gitLastActivityAtMsByDirectoryId.has(directoryId)) {
-      gitLastActivityAtMsByDirectoryId.set(directoryId, Date.now());
     }
   };
 
   const deleteDirectoryGitState = (directoryId: string): void => {
     gitSummaryByDirectoryId.delete(directoryId);
-    gitLastRefreshAtMsByDirectoryId.delete(directoryId);
-    gitLastActivityAtMsByDirectoryId.delete(directoryId);
-    pendingGitSummaryRefreshByDirectoryId.delete(directoryId);
-    gitRefreshInFlightDirectoryIds.delete(directoryId);
     directoryRepositorySnapshotByDirectoryId.delete(directoryId);
     repositoryAssociationByDirectoryId.delete(directoryId);
   };
@@ -1864,213 +1861,64 @@ async function main(): Promise<number> {
     syncRepositoryAssociationsWithDirectorySnapshots();
   };
 
-  const queueGitSummaryRefresh = (
-    directoryId: string,
-    reason: GitSummaryRefreshReason,
-    debounceMs: number
-  ): void => {
-    if (!directories.has(directoryId)) {
-      return;
-    }
-    ensureDirectoryGitState(directoryId);
-    const nowMs = Date.now();
-    const dueAtMs = nowMs + Math.max(0, debounceMs);
-    const pending = pendingGitSummaryRefreshByDirectoryId.get(directoryId);
-    if (pending === undefined) {
-      pendingGitSummaryRefreshByDirectoryId.set(directoryId, {
-        dueAtMs,
-        reason
-      });
-      return;
-    }
-    pendingGitSummaryRefreshByDirectoryId.set(directoryId, {
-      dueAtMs: Math.min(pending.dueAtMs, dueAtMs),
-      reason:
-        gitRefreshReasonPriority(reason) >= gitRefreshReasonPriority(pending.reason)
-          ? reason
-          : pending.reason
-    });
-  };
-
-  const noteGitActivity = (directoryId: string | null, reason: GitSummaryRefreshReason): void => {
+  const noteGitActivity = (directoryId: string | null): void => {
     if (directoryId === null || !directories.has(directoryId)) {
       return;
     }
-    gitLastActivityAtMsByDirectoryId.set(directoryId, Date.now());
-    queueGitSummaryRefresh(
-      directoryId,
-      reason,
-      reason === 'focus' || reason === 'startup' ? 0 : configuredMuxGit.triggerDebounceMs
+    ensureDirectoryGitState(directoryId);
+  };
+
+  const applyObservedGitStatusEvent = (observed: StreamObservedEvent): void => {
+    if (!configuredMuxGit.enabled) {
+      return;
+    }
+    if (observed.type !== 'directory-git-updated') {
+      return;
+    }
+    const previousSummary = gitSummaryByDirectoryId.get(observed.directoryId) ?? GIT_SUMMARY_LOADING;
+    const summaryChanged = !gitSummaryEqual(previousSummary, observed.summary);
+    gitSummaryByDirectoryId.set(observed.directoryId, observed.summary);
+
+    const previousRepositorySnapshot =
+      directoryRepositorySnapshotByDirectoryId.get(observed.directoryId) ?? GIT_REPOSITORY_NONE;
+    const repositorySnapshotChanged = !gitRepositorySnapshotEqual(
+      previousRepositorySnapshot,
+      observed.repositorySnapshot
     );
-    if (reason === 'focus' || reason === 'startup') {
-      drainPendingGitSummaryRefreshes();
-    }
-  };
+    directoryRepositorySnapshotByDirectoryId.set(observed.directoryId, observed.repositorySnapshot);
 
-  const gitPollIntervalMsForDirectory = (directoryId: string, nowMs: number): number => {
-    const isActiveDirectory = activeDirectoryId !== null && directoryId === activeDirectoryId;
-    const basePollMs = isActiveDirectory ? configuredMuxGit.activePollMs : configuredMuxGit.idlePollMs;
-    const lastActivityAtMs = gitLastActivityAtMsByDirectoryId.get(directoryId) ?? 0;
-    if (nowMs - lastActivityAtMs <= configuredMuxGit.burstWindowMs) {
-      return Math.min(basePollMs, configuredMuxGit.burstPollMs);
+    let associationChanged = false;
+    if (observed.repositoryId === null) {
+      associationChanged = repositoryAssociationByDirectoryId.delete(observed.directoryId);
+    } else {
+      const previousRepositoryId = repositoryAssociationByDirectoryId.get(observed.directoryId) ?? null;
+      repositoryAssociationByDirectoryId.set(observed.directoryId, observed.repositoryId);
+      associationChanged = previousRepositoryId !== observed.repositoryId;
     }
-    return basePollMs;
-  };
 
-  const ensureRepositoryForNormalizedRemoteUrl = async (
-    normalizedRemoteUrl: string,
-    seed: {
-      readonly inferredName: string | null;
-      readonly defaultBranch: string | null;
-    }
-  ): Promise<string | null> => {
-    const existingId = repositoryIdByNormalizedRemoteUrl.get(normalizedRemoteUrl);
-    if (existingId !== undefined && repositories.has(existingId)) {
-      return existingId;
-    }
-    const inFlight = repositoryUpsertInFlightByRemoteUrl.get(normalizedRemoteUrl);
-    if (inFlight !== undefined) {
-      return await inFlight;
-    }
-    const task = (async (): Promise<string | null> => {
-      const upserted = await streamClient.sendCommand({
-        type: 'repository.upsert',
-        repositoryId: `repository-${randomUUID()}`,
-        tenantId: options.scope.tenantId,
-        userId: options.scope.userId,
-        workspaceId: options.scope.workspaceId,
-        name: seed.inferredName ?? repositoryNameFromGitHubRemoteUrl(normalizedRemoteUrl),
-        remoteUrl: normalizedRemoteUrl,
-        defaultBranch: seed.defaultBranch ?? 'main',
-        metadata: {
-          source: 'mux-active-project-scan'
-        }
-      });
-      const repository = parseRepositoryRecord(upserted['repository']);
-      if (repository === null) {
-        return null;
+    let repositoryRecordChanged = false;
+    if (observed.repository !== null) {
+      const repository = parseRepositoryRecord(observed.repository);
+      if (repository !== null) {
+        const previous = repositories.get(repository.repositoryId);
+        repositories.set(repository.repositoryId, repository);
+        repositoryRecordChanged =
+          previous === undefined ||
+          previous.name !== repository.name ||
+          previous.remoteUrl !== repository.remoteUrl ||
+          previous.defaultBranch !== repository.defaultBranch ||
+          previous.archivedAt !== repository.archivedAt;
       }
-      repositories.set(repository.repositoryId, repository);
+    }
+
+    if (repositoryRecordChanged) {
       rebuildRepositoryRemoteIndex();
       syncRepositoryAssociationsWithDirectorySnapshots();
-      return repository.repositoryId;
-    })();
-    repositoryUpsertInFlightByRemoteUrl.set(normalizedRemoteUrl, task);
-    try {
-      return await task;
-    } finally {
-      repositoryUpsertInFlightByRemoteUrl.delete(normalizedRemoteUrl);
-    }
-  };
-
-  const refreshGitSummaryForDirectory = async (
-    directoryId: string,
-    reason: GitSummaryRefreshReason
-  ): Promise<void> => {
-    if (gitRefreshInFlightDirectoryIds.has(directoryId)) {
-      return;
-    }
-    const directory = directories.get(directoryId);
-    if (directory === undefined) {
-      deleteDirectoryGitState(directoryId);
-      return;
-    }
-    ensureDirectoryGitState(directoryId);
-    gitRefreshInFlightDirectoryIds.add(directoryId);
-    const gitSpan = startPerfSpan('mux.background.git-summary', {
-      reason,
-      directoryId
-    });
-    try {
-      const next = await readGitDirectorySnapshot(directory.path);
-      if (!directories.has(directoryId)) {
-        deleteDirectoryGitState(directoryId);
-        gitSpan.end({
-          reason,
-          directoryId,
-          dropped: true
-        });
-        return;
-      }
-      const previousSummary = gitSummaryByDirectoryId.get(directoryId) ?? GIT_SUMMARY_LOADING;
-      const summaryChanged = !gitSummaryEqual(previousSummary, next.summary);
-      gitSummaryByDirectoryId.set(directoryId, next.summary);
-      const previousRepositorySnapshot =
-        directoryRepositorySnapshotByDirectoryId.get(directoryId) ?? GIT_REPOSITORY_NONE;
-      const repositoryChanged = !gitRepositorySnapshotEqual(previousRepositorySnapshot, next.repository);
-      directoryRepositorySnapshotByDirectoryId.set(directoryId, next.repository);
-      let associationChanged = false;
-      if (next.repository.normalizedRemoteUrl === null) {
-        associationChanged = repositoryAssociationByDirectoryId.delete(directoryId);
-      } else {
-        const repositoryId = await ensureRepositoryForNormalizedRemoteUrl(
-          next.repository.normalizedRemoteUrl,
-          {
-            inferredName: next.repository.inferredName,
-            defaultBranch: next.repository.defaultBranch
-          }
-        );
-        if (repositoryId === null) {
-          associationChanged = repositoryAssociationByDirectoryId.delete(directoryId);
-        } else {
-          const previousRepositoryId = repositoryAssociationByDirectoryId.get(directoryId) ?? null;
-          repositoryAssociationByDirectoryId.set(directoryId, repositoryId);
-          associationChanged = previousRepositoryId !== repositoryId;
-        }
-      }
-      gitLastRefreshAtMsByDirectoryId.set(directoryId, Date.now());
-      if (summaryChanged || repositoryChanged || associationChanged) {
-        markDirty();
-      }
-      gitSpan.end({
-        reason,
-        directoryId,
-        changed: summaryChanged || repositoryChanged || associationChanged,
-        branch: next.summary.branch,
-        changedFiles: next.summary.changedFiles,
-        repositoryLinked: next.repository.normalizedRemoteUrl === null ? 0 : 1
-      });
-    } finally {
-      gitRefreshInFlightDirectoryIds.delete(directoryId);
-      setImmediate(() => {
-        drainPendingGitSummaryRefreshes();
-      });
-    }
-  };
-
-  const drainPendingGitSummaryRefreshes = (): void => {
-    if (shuttingDown || !configuredMuxGit.enabled) {
-      return;
-    }
-    syncGitStateWithDirectories();
-    const nowMs = Date.now();
-    for (const directoryId of directories.keys()) {
-      const lastRefreshAtMs = gitLastRefreshAtMsByDirectoryId.get(directoryId) ?? 0;
-      const pollIntervalMs = gitPollIntervalMsForDirectory(directoryId, nowMs);
-      if (nowMs - lastRefreshAtMs >= pollIntervalMs) {
-        queueGitSummaryRefresh(directoryId, 'interval', 0);
-      }
+      syncTaskPaneRepositorySelection();
     }
 
-    let availableSlots =
-      Math.max(1, configuredMuxGit.maxConcurrency) - gitRefreshInFlightDirectoryIds.size;
-    if (availableSlots <= 0) {
-      return;
-    }
-    const dueEntries = [...pendingGitSummaryRefreshByDirectoryId.entries()]
-      .filter((entry) => entry[1].dueAtMs <= nowMs)
-      .sort((left, right) => left[1].dueAtMs - right[1].dueAtMs);
-    for (const [directoryId, pending] of dueEntries) {
-      if (availableSlots <= 0) {
-        break;
-      }
-      if (!directories.has(directoryId) || gitRefreshInFlightDirectoryIds.has(directoryId)) {
-        pendingGitSummaryRefreshByDirectoryId.delete(directoryId);
-        continue;
-      }
-      pendingGitSummaryRefreshByDirectoryId.delete(directoryId);
-      void refreshGitSummaryForDirectory(directoryId, pending.reason);
-      availableSlots -= 1;
+    if (summaryChanged || repositorySnapshotChanged || associationChanged || repositoryRecordChanged) {
+      markDirty();
     }
   };
 
@@ -2325,7 +2173,6 @@ async function main(): Promise<number> {
   };
 
   let processUsageTimer: NodeJS.Timeout | null = null;
-  let gitSummaryWorkerTimer: NodeJS.Timeout | null = null;
   let backgroundProbesStarted = false;
   const startBackgroundProbes = (timedOut: boolean): void => {
     if (shuttingDown || backgroundProbesStarted || !backgroundProbesEnabled) {
@@ -2343,17 +2190,9 @@ async function main(): Promise<number> {
   };
   if (configuredMuxGit.enabled) {
     syncGitStateWithDirectories();
-    for (const directoryId of directories.keys()) {
-      queueGitSummaryRefresh(directoryId, 'startup', 0);
-    }
     if (activeDirectoryId !== null) {
-      noteGitActivity(activeDirectoryId, 'focus');
+      noteGitActivity(activeDirectoryId);
     }
-    drainPendingGitSummaryRefreshes();
-    gitSummaryWorkerTimer = setInterval(() => {
-      drainPendingGitSummaryRefreshes();
-    }, 120);
-    gitSummaryWorkerTimer.unref?.();
   } else {
     recordPerfEvent('mux.background.git-summary.skipped', {
       reason: 'disabled'
@@ -3157,7 +2996,7 @@ async function main(): Promise<number> {
     }
     activeDirectoryId = directoryId;
     selectLeftNavProject(directoryId);
-    noteGitActivity(directoryId, 'focus');
+    noteGitActivity(directoryId);
     mainPaneMode = 'project';
     homePaneDragState = null;
     taskPaneTaskEditClickState = null;
@@ -3608,7 +3447,7 @@ async function main(): Promise<number> {
     previousRows = [];
     const targetConversation = conversations.get(sessionId);
     if (targetConversation?.directoryId !== undefined) {
-      noteGitActivity(targetConversation.directoryId, 'focus');
+      noteGitActivity(targetConversation.directoryId);
     }
     if (
       targetConversation !== undefined &&
@@ -4089,7 +3928,7 @@ async function main(): Promise<number> {
       agentType,
       adapterState: {}
     });
-    noteGitActivity(directoryId, 'trigger');
+    noteGitActivity(directoryId);
     await startConversation(sessionId);
     await activateConversation(sessionId);
   };
@@ -4202,7 +4041,7 @@ async function main(): Promise<number> {
     directories.set(directory.directoryId, directory);
     activeDirectoryId = directory.directoryId;
     syncGitStateWithDirectories();
-    noteGitActivity(directory.directoryId, 'startup');
+    noteGitActivity(directory.directoryId);
 
     await hydratePersistedConversationsForDirectory(directory.directoryId);
     const targetConversationId = conversationOrder(conversations).find((sessionId) => {
@@ -4269,7 +4108,7 @@ async function main(): Promise<number> {
       activeDirectoryId = firstDirectoryId();
     }
     if (activeDirectoryId !== null) {
-      noteGitActivity(activeDirectoryId, 'focus');
+      noteGitActivity(activeDirectoryId);
     }
 
     const fallbackDirectoryId = resolveActiveDirectoryId();
@@ -4616,7 +4455,7 @@ async function main(): Promise<number> {
         return;
       }
       const conversation = ensureConversation(envelope.sessionId);
-      noteGitActivity(conversation.directoryId, 'trigger');
+      noteGitActivity(conversation.directoryId);
       const chunk = Buffer.from(envelope.chunkBase64, 'base64');
       outputSampleSessionIds.add(envelope.sessionId);
       if (activeConversationId === envelope.sessionId) {
@@ -4686,7 +4525,7 @@ async function main(): Promise<number> {
         return;
       }
       const conversation = ensureConversation(envelope.sessionId);
-      noteGitActivity(conversation.directoryId, 'trigger');
+      noteGitActivity(conversation.directoryId);
       const observedAt = observedAtFromSessionEvent(envelope.event);
       const updatedAdapterState = mergeAdapterStateFromSessionEvent(
         conversation.agentType,
@@ -4721,7 +4560,7 @@ async function main(): Promise<number> {
       }
       const conversation = conversations.get(envelope.sessionId);
       if (conversation !== undefined) {
-        noteGitActivity(conversation.directoryId, 'trigger');
+        noteGitActivity(conversation.directoryId);
         exit = envelope.exit;
         conversation.status = 'exited';
         conversation.live = false;
@@ -4736,6 +4575,7 @@ async function main(): Promise<number> {
     }
 
     if (envelope.kind === 'stream.event') {
+      applyObservedGitStatusEvent(envelope.event);
       applyObservedTaskPlanningEvent(envelope.event);
     }
   };
@@ -6371,7 +6211,7 @@ async function main(): Promise<number> {
       streamClient.sendInput(inputConversation.sessionId, forwardChunk);
     }
     if (forwardToSession.length > 0) {
-      noteGitActivity(inputConversation.directoryId, 'trigger');
+      noteGitActivity(inputConversation.directoryId);
     }
 
   };
@@ -6428,10 +6268,6 @@ async function main(): Promise<number> {
     if (processUsageTimer !== null) {
       clearInterval(processUsageTimer);
       processUsageTimer = null;
-    }
-    if (gitSummaryWorkerTimer !== null) {
-      clearInterval(gitSummaryWorkerTimer);
-      gitSummaryWorkerTimer = null;
     }
     if (resizeTimer !== null) {
       clearTimeout(resizeTimer);

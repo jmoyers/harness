@@ -167,6 +167,12 @@ async function main(): Promise<number> {
     stateStorePath: options.stateDbPath,
     codexTelemetry: loadedConfig.config.codex.telemetry,
     codexHistory: loadedConfig.config.codex.history,
+    gitStatus: {
+      enabled: loadedConfig.config.mux.git.enabled,
+      pollMs: loadedConfig.config.mux.git.idlePollMs,
+      maxConcurrency: loadedConfig.config.mux.git.maxConcurrency,
+      minDirectoryRefreshMs: Math.max(loadedConfig.config.mux.git.idlePollMs, 30_000)
+    },
     lifecycleHooks: loadedConfig.config.hooks.lifecycle,
     startSession: (input) => {
       const sessionOptions: Parameters<typeof startCodexLiveSession>[0] = {

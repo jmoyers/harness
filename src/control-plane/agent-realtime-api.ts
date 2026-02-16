@@ -35,6 +35,7 @@ export interface AgentRealtimeConnectOptions {
 interface AgentEventTypeMap {
   'directory.upserted': Extract<StreamObservedEvent, { type: 'directory-upserted' }>;
   'directory.archived': Extract<StreamObservedEvent, { type: 'directory-archived' }>;
+  'directory.git-updated': Extract<StreamObservedEvent, { type: 'directory-git-updated' }>;
   'conversation.created': Extract<StreamObservedEvent, { type: 'conversation-created' }>;
   'conversation.updated': Extract<StreamObservedEvent, { type: 'conversation-updated' }>;
   'conversation.archived': Extract<StreamObservedEvent, { type: 'conversation-archived' }>;
@@ -777,6 +778,9 @@ function mapObservedEventType(observed: StreamObservedEvent): AgentRealtimeEvent
   }
   if (observed.type === 'directory-archived') {
     return 'directory.archived';
+  }
+  if (observed.type === 'directory-git-updated') {
+    return 'directory.git-updated';
   }
   if (observed.type === 'conversation-created') {
     return 'conversation.created';

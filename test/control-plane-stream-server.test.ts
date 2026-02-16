@@ -284,6 +284,85 @@ void test('stream server executeCommand guards unsupported command types', async
   }
 });
 
+void test('stream server publishes directory git updates from control-plane monitor', async () => {
+  const workspace = mkdtempSync(join(tmpdir(), 'harness-git-status-'));
+  let pollCalls = 0;
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input),
+    gitStatus: {
+      enabled: true,
+      pollMs: 25,
+      maxConcurrency: 1,
+      minDirectoryRefreshMs: 25
+    },
+    readGitDirectorySnapshot: () => {
+      pollCalls += 1;
+      return Promise.resolve({
+        summary: {
+          branch: 'main',
+          changedFiles: 1,
+          additions: 2,
+          deletions: 0
+        },
+        repository: {
+          normalizedRemoteUrl: 'https://github.com/example/harness',
+          commitCount: 10,
+          lastCommitAt: '2026-02-16T00:00:00.000Z',
+          shortCommitHash: 'abc1234',
+          inferredName: 'harness',
+          defaultBranch: 'main'
+        }
+      });
+    }
+  });
+  const address = server.address();
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port
+  });
+
+  const observed = collectEnvelopes(client);
+  try {
+    await client.sendCommand({
+      type: 'directory.upsert',
+      directoryId: 'directory-git-1',
+      tenantId: 'tenant-git-1',
+      userId: 'user-git-1',
+      workspaceId: 'workspace-git-1',
+      path: workspace
+    });
+    await client.sendCommand({
+      type: 'stream.subscribe',
+      tenantId: 'tenant-git-1',
+      userId: 'user-git-1',
+      workspaceId: 'workspace-git-1'
+    });
+
+    await delay(120);
+
+    const gitEvents = observed.flatMap((envelope) => {
+      if (envelope.kind !== 'stream.event') {
+        return [];
+      }
+      if (envelope.event.type !== 'directory-git-updated') {
+        return [];
+      }
+      return [envelope.event];
+    });
+    assert.equal(gitEvents.length > 0, true);
+    const latest = gitEvents.at(-1)!;
+    assert.equal(latest.directoryId, 'directory-git-1');
+    assert.equal(latest.summary.branch, 'main');
+    assert.equal(latest.repositoryId !== null, true);
+    assert.equal(typeof latest.repository?.['repositoryId'], 'string');
+    assert.equal(pollCalls > 0, true);
+  } finally {
+    client.close();
+    await server.close();
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 void test('stream server dispatches lifecycle hooks from observed events', async () => {
   const webhookEvents: string[] = [];
   const webhookServer = createServer((request, response) => {
@@ -3997,7 +4076,7 @@ void test('stream server telemetry/history private guard branches are stable', a
           payload: Record<string, unknown>;
         }
       ) => void;
-      pollHistoryFileUnsafe: () => void;
+      pollHistoryFileUnsafe: () => Promise<void>;
       startTelemetryServer: () => Promise<void>;
     };
     const coldServer = new ControlPlaneStreamServer({
@@ -4159,7 +4238,7 @@ void test('stream server telemetry/history private guard branches are stable', a
       lastObservedAt: '2026-02-15T00:00:00.000Z'
     });
 
-    internals.pollHistoryFileUnsafe();
+    await internals.pollHistoryFileUnsafe();
   } finally {
     await server.close();
   }
@@ -4184,7 +4263,7 @@ void test('stream server telemetry/history private guard branches are stable', a
   });
   try {
     const internals = historyErrorServer as unknown as {
-      pollHistoryFile: () => void;
+      pollHistoryFile: () => Promise<void>;
       codexLaunchArgsForSession: (
         sessionId: string,
         agentType: string,
@@ -4195,7 +4274,7 @@ void test('stream server telemetry/history private guard branches are stable', a
       '-c',
       'history.persistence="save-all"'
     ]);
-    internals.pollHistoryFile();
+    await internals.pollHistoryFile();
   } finally {
     await historyErrorServer.close();
   }
@@ -4252,9 +4331,9 @@ void test('stream server telemetry/history private guard branches are stable', a
   });
   try {
     const internals = historyTildeServer as unknown as {
-      pollHistoryFile: () => void;
+      pollHistoryFile: () => Promise<void>;
     };
-    internals.pollHistoryFile();
+    await internals.pollHistoryFile();
   } finally {
     await historyTildeServer.close();
   }

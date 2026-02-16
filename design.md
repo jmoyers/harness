@@ -1036,6 +1036,9 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - session summaries now include PTY `processId` for per-session telemetry in operator clients.
     - when enabled in `harness.config.jsonc`, the server hosts a local OTLP HTTP receiver and appends Codex `-c` overrides on launch so logs/metrics/traces (including optional prompt text) stream directly into Harness.
     - Codex `history.jsonl` tail ingestion is supported as a parallel enrichment path, with thread-id correlation into conversation ids and shared SQLite persistence.
+    - history ingestion uses non-blocking incremental reads from the last byte offset; the gateway no longer rereads the full history file each poll.
+    - git status monitoring runs in the control-plane runtime and emits `directory-git-updated` observed events; client-side git polling workers are removed.
+    - control-plane git monitoring is throttled by config (`pollMs`, `maxConcurrency`, and per-directory refresh floor) to bound background polling cost under large directory sets.
     - exited sessions are tombstoned with TTL-based cleanup to avoid unbounded daemon memory growth while preserving short-lived post-exit status/snapshot queries.
     - control-plane wrappers now include `attention.list`, `session.respond`, `session.interrupt`, and `session.remove` to provide parity-safe steering and explicit tombstone cleanup.
     - stream subscriptions support scope filters (`tenant/user/workspace/directory/conversation`), optional output inclusion, and cursor replay backed by an in-memory bounded journal.

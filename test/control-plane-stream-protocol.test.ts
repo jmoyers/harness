@@ -1341,6 +1341,35 @@ void test('parseServerEnvelope accepts valid server envelopes', () => {
     {
       kind: 'stream.event',
       subscriptionId: 'subscription-1',
+      cursor: 14.75,
+      event: {
+        type: 'directory-git-updated',
+        directoryId: 'directory-1',
+        summary: {
+          branch: 'main',
+          changedFiles: 3,
+          additions: 10,
+          deletions: 2
+        },
+        repositorySnapshot: {
+          normalizedRemoteUrl: 'https://github.com/example/harness',
+          commitCount: 42,
+          lastCommitAt: new Date(0).toISOString(),
+          shortCommitHash: 'abc1234',
+          inferredName: 'harness',
+          defaultBranch: 'main'
+        },
+        repositoryId: 'repository-1',
+        repository: {
+          repositoryId: 'repository-1',
+          name: 'harness'
+        },
+        observedAt: new Date(0).toISOString()
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
       cursor: 15,
       event: {
         type: 'conversation-created',
@@ -1740,6 +1769,30 @@ void test('parseServerEnvelope rejects malformed envelopes', () => {
       event: {
         type: 'directory-archived',
         directoryId: 'directory-1'
+      }
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-1',
+      cursor: 1,
+      event: {
+        type: 'directory-git-updated',
+        directoryId: 'directory-1',
+        summary: {
+          branch: 'main',
+          changedFiles: 1,
+          additions: 1,
+          deletions: 1
+        },
+        repositorySnapshot: {
+          normalizedRemoteUrl: null,
+          commitCount: null,
+          lastCommitAt: null,
+          shortCommitHash: null,
+          inferredName: null,
+          defaultBranch: null
+        },
+        repositoryId: null
       }
     },
     {

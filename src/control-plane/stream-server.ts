@@ -6,7 +6,7 @@ import {
   type ServerResponse
 } from 'node:http';
 import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { open } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { type CodexLiveEvent } from '../codex/live-session.ts';
@@ -51,6 +51,7 @@ import {
 } from './codex-telemetry.ts';
 import type { HarnessLifecycleHooksConfig } from '../config/config-core.ts';
 import { LifecycleHooksRuntime } from './lifecycle-hooks.ts';
+import { readGitDirectorySnapshot } from '../mux/live-mux/git-snapshot.ts';
 
 interface SessionDataEvent {
   cursor: number;
@@ -121,6 +122,16 @@ interface CodexHistoryIngestConfig {
   readonly pollMs: number;
 }
 
+interface GitStatusMonitorConfig {
+  readonly enabled: boolean;
+  readonly pollMs: number;
+  readonly maxConcurrency: number;
+  readonly minDirectoryRefreshMs: number;
+}
+
+type GitDirectorySnapshot = Awaited<ReturnType<typeof readGitDirectorySnapshot>>;
+type GitDirectorySnapshotReader = (cwd: string) => Promise<GitDirectorySnapshot>;
+
 interface StartControlPlaneStreamServerOptions {
   host?: string;
   port?: number;
@@ -133,6 +144,8 @@ interface StartControlPlaneStreamServerOptions {
   stateStore?: SqliteControlPlaneStore;
   codexTelemetry?: CodexTelemetryServerConfig;
   codexHistory?: CodexHistoryIngestConfig;
+  gitStatus?: GitStatusMonitorConfig;
+  readGitDirectorySnapshot?: GitDirectorySnapshotReader;
   lifecycleHooks?: HarnessLifecycleHooksConfig;
 }
 
@@ -210,6 +223,13 @@ interface StreamJournalEntry {
   event: StreamObservedEvent;
 }
 
+interface DirectoryGitStatusCacheEntry {
+  readonly summary: GitDirectorySnapshot['summary'];
+  readonly repositorySnapshot: GitDirectorySnapshot['repository'];
+  readonly repositoryId: string | null;
+  readonly lastRefreshedAtMs: number;
+}
+
 interface OtlpEndpointTarget {
   readonly kind: 'logs' | 'metrics' | 'traces';
   readonly token: string;
@@ -218,6 +238,7 @@ interface OtlpEndpointTarget {
 const DEFAULT_MAX_CONNECTION_BUFFERED_BYTES = 4 * 1024 * 1024;
 const DEFAULT_SESSION_EXIT_TOMBSTONE_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_MAX_STREAM_JOURNAL_ENTRIES = 10000;
+const DEFAULT_GIT_STATUS_POLL_MS = 1200;
 const DEFAULT_BOOTSTRAP_SESSION_COLS = 80;
 const DEFAULT_BOOTSTRAP_SESSION_ROWS = 24;
 const DEFAULT_TENANT_ID = 'tenant-local';
@@ -289,6 +310,50 @@ function normalizeCodexHistoryConfig(
   };
 }
 
+function normalizeGitStatusMonitorConfig(input: GitStatusMonitorConfig | undefined): GitStatusMonitorConfig {
+  const pollMs = Math.max(100, input?.pollMs ?? DEFAULT_GIT_STATUS_POLL_MS);
+  const rawMaxConcurrency = input?.maxConcurrency;
+  const maxConcurrency =
+    typeof rawMaxConcurrency === 'number' && Number.isFinite(rawMaxConcurrency)
+      ? Math.max(1, Math.floor(rawMaxConcurrency))
+      : 1;
+  const rawMinDirectoryRefreshMs = input?.minDirectoryRefreshMs;
+  const minDirectoryRefreshMs =
+    typeof rawMinDirectoryRefreshMs === 'number' && Number.isFinite(rawMinDirectoryRefreshMs)
+      ? Math.max(pollMs, Math.floor(rawMinDirectoryRefreshMs))
+      : Math.max(pollMs, 30_000);
+  return {
+    enabled: input?.enabled ?? false,
+    pollMs,
+    maxConcurrency,
+    minDirectoryRefreshMs
+  };
+}
+
+async function runWithConcurrencyLimit<T>(
+  values: readonly T[],
+  concurrency: number,
+  worker: (value: T) => Promise<void>
+): Promise<void> {
+  if (values.length === 0) {
+    return;
+  }
+  const workerCount = Math.min(values.length, Math.max(1, Math.floor(concurrency)));
+  let index = 0;
+  const runners = Array.from({ length: workerCount }, async () => {
+    while (index < values.length) {
+      const nextIndex = index;
+      index += 1;
+      const value = values[nextIndex];
+      if (value === undefined) {
+        continue;
+      }
+      await worker(value);
+    }
+  });
+  await Promise.all(runners);
+}
+
 function parseOtlpEndpoint(urlPath: string): OtlpEndpointTarget | null {
   const [pathPart = ''] = urlPath.trim().split('?');
   const match = /^\/v1\/(logs|metrics|traces)\/([^/]+)$/u.exec(pathPart);
@@ -336,6 +401,32 @@ function mapSessionEvent(event: CodexLiveEvent): StreamSessionEvent | null {
   }
 
   return null;
+}
+
+function gitSummaryEqual(
+  left: GitDirectorySnapshot['summary'],
+  right: GitDirectorySnapshot['summary']
+): boolean {
+  return (
+    left.branch === right.branch &&
+    left.changedFiles === right.changedFiles &&
+    left.additions === right.additions &&
+    left.deletions === right.deletions
+  );
+}
+
+function gitRepositorySnapshotEqual(
+  left: GitDirectorySnapshot['repository'],
+  right: GitDirectorySnapshot['repository']
+): boolean {
+  return (
+    left.normalizedRemoteUrl === right.normalizedRemoteUrl &&
+    left.commitCount === right.commitCount &&
+    left.lastCommitAt === right.lastCommitAt &&
+    left.shortCommitHash === right.shortCommitHash &&
+    left.inferredName === right.inferredName &&
+    left.defaultBranch === right.defaultBranch
+  );
 }
 
 function toPublicSessionController(
@@ -387,14 +478,22 @@ export class ControlPlaneStreamServer {
   private readonly ownsStateStore: boolean;
   private readonly codexTelemetry: CodexTelemetryServerConfig;
   private readonly codexHistory: CodexHistoryIngestConfig;
+  private readonly gitStatusMonitor: GitStatusMonitorConfig;
+  private readonly readGitDirectorySnapshot: GitDirectorySnapshotReader;
   private readonly server: Server;
   private readonly telemetryServer: HttpServer | null;
   private telemetryAddress: AddressInfo | null = null;
   private readonly telemetryTokenToSessionId = new Map<string, string>();
   private readonly lifecycleHooks: LifecycleHooksRuntime;
   private historyPollTimer: NodeJS.Timeout | null = null;
+  private historyPollInFlight = false;
   private historyOffset = 0;
   private historyRemainder = '';
+  private gitStatusPollTimer: NodeJS.Timeout | null = null;
+  private gitStatusPollInFlight = false;
+  private readonly gitStatusRefreshInFlightDirectoryIds = new Set<string>();
+  private readonly gitStatusByDirectoryId = new Map<string, DirectoryGitStatusCacheEntry>();
+  private readonly gitStatusDirectoriesById = new Map<string, ControlPlaneDirectoryRecord>();
   private readonly connections = new Map<string, ConnectionState>();
   private readonly sessions = new Map<string, SessionState>();
   private readonly streamSubscriptions = new Map<string, StreamSubscriptionState>();
@@ -426,6 +525,8 @@ export class ControlPlaneStreamServer {
     }
     this.codexTelemetry = normalizeCodexTelemetryConfig(options.codexTelemetry);
     this.codexHistory = normalizeCodexHistoryConfig(options.codexHistory);
+    this.gitStatusMonitor = normalizeGitStatusMonitorConfig(options.gitStatus);
+    this.readGitDirectorySnapshot = options.readGitDirectorySnapshot ?? readGitDirectorySnapshot;
     this.lifecycleHooks = new LifecycleHooksRuntime(
       options.lifecycleHooks ?? {
         enabled: false,
@@ -479,6 +580,7 @@ export class ControlPlaneStreamServer {
     }
     this.autoStartPersistedConversationsOnStartup();
     this.startHistoryPollingIfEnabled();
+    this.startGitStatusPollingIfEnabled();
   }
 
   address(): AddressInfo {
@@ -502,6 +604,7 @@ export class ControlPlaneStreamServer {
 
   async close(): Promise<void> {
     this.stopHistoryPolling();
+    this.stopGitStatusPolling();
 
     for (const sessionId of [...this.sessions.keys()]) {
       this.destroySession(sessionId, true);
@@ -583,7 +686,7 @@ export class ControlPlaneStreamServer {
       return;
     }
     this.historyPollTimer = setInterval(() => {
-      this.pollHistoryFile();
+      void this.pollHistoryFile();
     }, this.codexHistory.pollMs);
     this.historyPollTimer.unref();
   }
@@ -594,6 +697,42 @@ export class ControlPlaneStreamServer {
     }
     clearInterval(this.historyPollTimer);
     this.historyPollTimer = null;
+  }
+
+  private startGitStatusPollingIfEnabled(): void {
+    if (!this.gitStatusMonitor.enabled || this.gitStatusPollTimer !== null) {
+      return;
+    }
+    this.reloadGitStatusDirectoriesFromStore();
+    void this.pollGitStatus();
+    this.gitStatusPollTimer = setInterval(() => {
+      void this.pollGitStatus();
+    }, this.gitStatusMonitor.pollMs);
+    this.gitStatusPollTimer.unref();
+  }
+
+  private stopGitStatusPolling(): void {
+    if (this.gitStatusPollTimer === null) {
+      return;
+    }
+    clearInterval(this.gitStatusPollTimer);
+    this.gitStatusPollTimer = null;
+  }
+
+  private reloadGitStatusDirectoriesFromStore(): void {
+    const directories = this.stateStore.listDirectories({
+      includeArchived: false,
+      limit: 1000
+    });
+    this.gitStatusDirectoriesById.clear();
+    for (const directory of directories) {
+      this.gitStatusDirectoriesById.set(directory.directoryId, directory);
+    }
+    for (const directoryId of this.gitStatusByDirectoryId.keys()) {
+      if (!this.gitStatusDirectoriesById.has(directoryId)) {
+        this.gitStatusByDirectoryId.delete(directoryId);
+      }
+    }
   }
 
   private codexLaunchArgsForSession(sessionId: string, agentType: string): readonly string[] {
@@ -1004,22 +1143,28 @@ export class ControlPlaneStreamServer {
     return this.stateStore.findConversationIdByCodexThreadId(normalized);
   }
 
-  private pollHistoryFile(): void {
+  private async pollHistoryFile(): Promise<void> {
+    if (this.historyPollInFlight) {
+      return;
+    }
+    this.historyPollInFlight = true;
     try {
-      this.pollHistoryFileUnsafe();
+      await this.pollHistoryFileUnsafe();
     } catch {
       // History ingestion is best-effort and should never crash the control-plane runtime.
+    } finally {
+      this.historyPollInFlight = false;
     }
   }
 
-  private pollHistoryFileUnsafe(): void {
+  private async pollHistoryFileUnsafe(): Promise<void> {
     if (!this.codexHistory.enabled) {
       return;
     }
     const resolvedHistoryPath = expandTildePath(this.codexHistory.filePath);
-    let content: string;
+    let handle: Awaited<ReturnType<typeof open>>;
     try {
-      content = readFileSync(resolvedHistoryPath, 'utf8');
+      handle = await open(resolvedHistoryPath, 'r');
     } catch (error) {
       const errorWithCode = error as { code?: unknown };
       if (errorWithCode.code === 'ENOENT') {
@@ -1027,16 +1172,47 @@ export class ControlPlaneStreamServer {
       }
       throw error;
     }
-
-    if (content.length < this.historyOffset) {
-      this.historyOffset = 0;
-      this.historyRemainder = '';
+    let delta = '';
+    try {
+      const stats = await handle.stat();
+      const fileSize = Number(stats.size);
+      if (!Number.isFinite(fileSize)) {
+        return;
+      }
+      if (fileSize < this.historyOffset) {
+        this.historyOffset = 0;
+        this.historyRemainder = '';
+      }
+      const remainingBytes = fileSize - this.historyOffset;
+      if (remainingBytes <= 0) {
+        return;
+      }
+      const buffer = Buffer.allocUnsafe(remainingBytes);
+      let bytesReadTotal = 0;
+      while (bytesReadTotal < remainingBytes) {
+        const { bytesRead } = await handle.read(
+          buffer,
+          bytesReadTotal,
+          remainingBytes - bytesReadTotal,
+          this.historyOffset + bytesReadTotal
+        );
+        if (bytesRead <= 0) {
+          break;
+        }
+        bytesReadTotal += bytesRead;
+      }
+      if (bytesReadTotal <= 0) {
+        return;
+      }
+      this.historyOffset += bytesReadTotal;
+      delta = buffer.toString('utf8', 0, bytesReadTotal);
+    } finally {
+      await handle.close();
     }
-    const delta = content.slice(this.historyOffset);
+
     if (delta.length === 0) {
       return;
     }
-    this.historyOffset = content.length;
 
     const buffered = `${this.historyRemainder}${delta}`;
     const lines = buffered.split('\n');
@@ -1053,6 +1229,124 @@ export class ControlPlaneStreamServer {
       const sessionId =
         parsed.providerThreadId === null ? null : this.resolveSessionIdByThreadId(parsed.providerThreadId);
       this.ingestParsedTelemetryEvent(sessionId, parsed);
+    }
+  }
+
+  private async pollGitStatus(): Promise<void> {
+    if (this.gitStatusPollInFlight) {
+      return;
+    }
+    this.gitStatusPollInFlight = true;
+    try {
+      const directories = [...this.gitStatusDirectoriesById.values()];
+      if (directories.length === 0) {
+        return;
+      }
+      const nowMs = Date.now();
+      const dueDirectories = directories.filter((directory) => {
+        const previous = this.gitStatusByDirectoryId.get(directory.directoryId);
+        if (previous === undefined) {
+          return true;
+        }
+        return nowMs - previous.lastRefreshedAtMs >= this.gitStatusMonitor.minDirectoryRefreshMs;
+      });
+      await runWithConcurrencyLimit(
+        dueDirectories,
+        this.gitStatusMonitor.maxConcurrency,
+        async (directory) => await this.refreshGitStatusForDirectory(directory)
+      );
+    } finally {
+      this.gitStatusPollInFlight = false;
+    }
+  }
+
+  private async refreshGitStatusForDirectory(directory: ControlPlaneDirectoryRecord): Promise<void> {
+    if (this.gitStatusRefreshInFlightDirectoryIds.has(directory.directoryId)) {
+      return;
+    }
+    this.gitStatusRefreshInFlightDirectoryIds.add(directory.directoryId);
+    const gitSpan = startPerfSpan('control-plane.background.git-status', {
+      directoryId: directory.directoryId
+    });
+    try {
+      const snapshot = await this.readGitDirectorySnapshot(directory.path);
+      let repositoryId: string | null = null;
+      let repositoryRecord: Record<string, unknown> | null = null;
+      if (snapshot.repository.normalizedRemoteUrl !== null) {
+        const upserted = this.stateStore.upsertRepository({
+          repositoryId: `repository-${randomUUID()}`,
+          tenantId: directory.tenantId,
+          userId: directory.userId,
+          workspaceId: directory.workspaceId,
+          name: snapshot.repository.inferredName ?? 'repository',
+          remoteUrl: snapshot.repository.normalizedRemoteUrl,
+          defaultBranch: snapshot.repository.defaultBranch ?? 'main',
+          metadata: {
+            source: 'control-plane-git-status'
+          }
+        });
+        repositoryId = upserted.repositoryId;
+        repositoryRecord = this.repositoryRecord(upserted);
+      }
+      const previous = this.gitStatusByDirectoryId.get(directory.directoryId) ?? null;
+      const next: DirectoryGitStatusCacheEntry = {
+        summary: snapshot.summary,
+        repositorySnapshot: snapshot.repository,
+        repositoryId,
+        lastRefreshedAtMs: Date.now()
+      };
+      this.gitStatusByDirectoryId.set(directory.directoryId, next);
+      const changed =
+        previous === null ||
+        !gitSummaryEqual(previous.summary, next.summary) ||
+        !gitRepositorySnapshotEqual(previous.repositorySnapshot, next.repositorySnapshot) ||
+        previous.repositoryId !== next.repositoryId;
+      if (changed) {
+        this.publishObservedEvent(
+          {
+            tenantId: directory.tenantId,
+            userId: directory.userId,
+            workspaceId: directory.workspaceId,
+            directoryId: directory.directoryId,
+            conversationId: null
+          },
+          {
+            type: 'directory-git-updated',
+            directoryId: directory.directoryId,
+            summary: {
+              branch: snapshot.summary.branch,
+              changedFiles: snapshot.summary.changedFiles,
+              additions: snapshot.summary.additions,
+              deletions: snapshot.summary.deletions
+            },
+            repositorySnapshot: {
+              normalizedRemoteUrl: snapshot.repository.normalizedRemoteUrl,
+              commitCount: snapshot.repository.commitCount,
+              lastCommitAt: snapshot.repository.lastCommitAt,
+              shortCommitHash: snapshot.repository.shortCommitHash,
+              inferredName: snapshot.repository.inferredName,
+              defaultBranch: snapshot.repository.defaultBranch
+            },
+            repositoryId,
+            repository: repositoryRecord,
+            observedAt: new Date().toISOString()
+          }
+        );
+      }
+      gitSpan.end({
+        directoryId: directory.directoryId,
+        changed,
+        repositoryLinked: repositoryId === null ? 0 : 1
+      });
+    } catch {
+      // Git status polling is best-effort and should not interrupt control-plane operations.
+      gitSpan.end({
+        directoryId: directory.directoryId,
+        changed: false,
+        failed: true
+      });
+    } finally {
+      this.gitStatusRefreshInFlightDirectoryIds.delete(directory.directoryId);
     }
   }
 
@@ -1230,6 +1524,7 @@ export class ControlPlaneStreamServer {
         path: command.path
       });
       const record = this.directoryRecord(directory);
+      this.gitStatusDirectoriesById.set(directory.directoryId, directory);
       this.publishObservedEvent(
         {
           tenantId: directory.tenantId,
@@ -1243,6 +1538,9 @@ export class ControlPlaneStreamServer {
           directory: record
         }
       );
+      if (this.gitStatusMonitor.enabled) {
+        void this.refreshGitStatusForDirectory(directory);
+      }
       return {
         directory: record
       };
@@ -1296,6 +1594,8 @@ export class ControlPlaneStreamServer {
           ts: archived.archivedAt as string
         }
       );
+      this.gitStatusByDirectoryId.delete(archived.directoryId);
+      this.gitStatusDirectoriesById.delete(archived.directoryId);
       return {
         directory: record
       };
@@ -2476,6 +2776,9 @@ export class ControlPlaneStreamServer {
   }
 
   private eventIncludesRepositoryId(event: StreamObservedEvent, repositoryId: string): boolean {
+    if (event.type === 'directory-git-updated') {
+      return event.repositoryId === repositoryId;
+    }
     if (event.type === 'repository-upserted' || event.type === 'repository-updated') {
       return event.repository['repositoryId'] === repositoryId;
     }

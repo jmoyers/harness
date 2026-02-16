@@ -662,6 +662,30 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
       ts: timestamp
     },
     {
+      type: 'directory-git-updated',
+      directoryId: 'directory-1',
+      summary: {
+        branch: 'main',
+        changedFiles: 2,
+        additions: 5,
+        deletions: 1
+      },
+      repositorySnapshot: {
+        normalizedRemoteUrl: 'https://github.com/example/harness',
+        commitCount: 10,
+        lastCommitAt: timestamp,
+        shortCommitHash: 'abc1234',
+        inferredName: 'harness',
+        defaultBranch: 'main'
+      },
+      repositoryId: 'repository-1',
+      repository: {
+        repositoryId: 'repository-1',
+        name: 'harness'
+      },
+      observedAt: timestamp
+    },
+    {
       type: 'conversation-created',
       conversation: conversationPayload
     },
@@ -785,6 +809,7 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
   assert.deepEqual(wildcardTypes, [
     'directory.upserted',
     'directory.archived',
+    'directory.git-updated',
     'conversation.created',
     'conversation.updated',
     'conversation.archived',
