@@ -15,6 +15,7 @@ import {
 
 const DEFAULT_UI = {
   paneWidthPercent: null,
+  repositoriesCollapsed: false,
   shortcutsCollapsed: false
 } as const;
 const DEFAULT_GIT = DEFAULT_HARNESS_CONFIG.mux.git;
@@ -80,6 +81,7 @@ void test('parseHarnessConfigText normalizes mux ui and falls back for invalid v
       "mux": {
         "ui": {
           "paneWidthPercent": 37.375,
+          "repositoriesCollapsed": true,
           "shortcutsCollapsed": true
         }
       }
@@ -87,6 +89,7 @@ void test('parseHarnessConfigText normalizes mux ui and falls back for invalid v
   `);
   assert.deepEqual(parsed.mux.ui, {
     paneWidthPercent: 37.375,
+    repositoriesCollapsed: true,
     shortcutsCollapsed: true
   });
 
@@ -154,6 +157,7 @@ void test('loadHarnessConfig reads valid config file', () => {
         },
         ui: {
           paneWidthPercent: 41,
+          repositoriesCollapsed: false,
           shortcutsCollapsed: true
         }
       }
@@ -170,6 +174,7 @@ void test('loadHarnessConfig reads valid config file', () => {
     },
     ui: {
       paneWidthPercent: 41,
+      repositoriesCollapsed: false,
       shortcutsCollapsed: true
     },
     git: DEFAULT_GIT
@@ -193,6 +198,7 @@ void test('loadHarnessConfig falls back atomically on parse errors', () => {
         },
         ui: {
           paneWidthPercent: 30,
+          repositoriesCollapsed: false,
           shortcutsCollapsed: true
         },
         git: DEFAULT_GIT
@@ -211,6 +217,7 @@ void test('loadHarnessConfig falls back atomically on parse errors', () => {
       },
       ui: {
         paneWidthPercent: 30,
+        repositoriesCollapsed: false,
         shortcutsCollapsed: true
       },
       git: DEFAULT_GIT
@@ -768,6 +775,7 @@ void test('updateHarnessMuxUiConfig persists mux ui state and rounds percentage'
   const updated = updateHarnessMuxUiConfig(
     {
       paneWidthPercent: 33.3333,
+      repositoriesCollapsed: false,
       shortcutsCollapsed: true
     },
     {
@@ -776,6 +784,7 @@ void test('updateHarnessMuxUiConfig persists mux ui state and rounds percentage'
   );
   assert.deepEqual(updated.mux.ui, {
     paneWidthPercent: 33.33,
+    repositoriesCollapsed: false,
     shortcutsCollapsed: true
   });
   assert.deepEqual(updated.mux.keybindings, {
@@ -785,6 +794,7 @@ void test('updateHarnessMuxUiConfig persists mux ui state and rounds percentage'
   const reloaded = loadHarnessConfig({ filePath, cwd: baseDir });
   assert.deepEqual(reloaded.config.mux.ui, {
     paneWidthPercent: 33.33,
+    repositoriesCollapsed: false,
     shortcutsCollapsed: true
   });
 });
@@ -798,6 +808,7 @@ void test('updateHarnessMuxUiConfig rejects invalid percent and preserves existi
       mux: {
         ui: {
           paneWidthPercent: 44,
+          repositoriesCollapsed: false,
           shortcutsCollapsed: false
         }
       }
@@ -814,6 +825,7 @@ void test('updateHarnessMuxUiConfig rejects invalid percent and preserves existi
     }
   );
   assert.equal(updatedInvalid.mux.ui.paneWidthPercent, null);
+  assert.equal(updatedInvalid.mux.ui.repositoriesCollapsed, false);
   assert.equal(updatedInvalid.mux.ui.shortcutsCollapsed, false);
 
   const updatedPartial = updateHarnessMuxUiConfig(
@@ -825,6 +837,7 @@ void test('updateHarnessMuxUiConfig rejects invalid percent and preserves existi
     }
   );
   assert.equal(updatedPartial.mux.ui.paneWidthPercent, null);
+  assert.equal(updatedPartial.mux.ui.repositoriesCollapsed, false);
   assert.equal(updatedPartial.mux.ui.shortcutsCollapsed, true);
 });
 
@@ -842,6 +855,7 @@ void test('updateHarnessConfig writes new config file when absent', () => {
         },
         ui: {
           paneWidthPercent: 25,
+          repositoriesCollapsed: false,
           shortcutsCollapsed: true
         }
       }
@@ -853,6 +867,7 @@ void test('updateHarnessConfig writes new config file when absent', () => {
     },
     ui: {
       paneWidthPercent: 25,
+      repositoriesCollapsed: false,
       shortcutsCollapsed: true
     },
     git: DEFAULT_GIT
@@ -919,6 +934,7 @@ void test('updateHarnessMuxUiConfig supports cwd-only config path resolution', (
       mux: {
         ui: {
           paneWidthPercent: 35,
+          repositoriesCollapsed: false,
           shortcutsCollapsed: false
         }
       }
@@ -935,6 +951,7 @@ void test('updateHarnessMuxUiConfig supports cwd-only config path resolution', (
   );
   assert.deepEqual(updated.mux.ui, {
     paneWidthPercent: 35,
+    repositoriesCollapsed: false,
     shortcutsCollapsed: true
   });
 });

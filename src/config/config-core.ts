@@ -37,6 +37,7 @@ interface HarnessMuxConfig {
 
 interface HarnessMuxUiConfig {
   readonly paneWidthPercent: number | null;
+  readonly repositoriesCollapsed: boolean;
   readonly shortcutsCollapsed: boolean;
 }
 
@@ -153,6 +154,7 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
     keybindings: {},
     ui: {
       paneWidthPercent: null,
+      repositoriesCollapsed: false,
       shortcutsCollapsed: false
     },
     git: {
@@ -409,8 +411,13 @@ function normalizeMuxUiConfig(input: unknown): HarnessMuxUiConfig {
     typeof record['shortcutsCollapsed'] === 'boolean'
       ? record['shortcutsCollapsed']
       : DEFAULT_HARNESS_CONFIG.mux.ui.shortcutsCollapsed;
+  const repositoriesCollapsed =
+    typeof record['repositoriesCollapsed'] === 'boolean'
+      ? record['repositoriesCollapsed']
+      : DEFAULT_HARNESS_CONFIG.mux.ui.repositoriesCollapsed;
   return {
     paneWidthPercent,
+    repositoriesCollapsed,
     shortcutsCollapsed
   };
 }
@@ -953,6 +960,7 @@ export function updateHarnessConfig(options: {
 export function updateHarnessMuxUiConfig(
   update: Partial<{
     paneWidthPercent: number | null;
+    repositoriesCollapsed: boolean;
     shortcutsCollapsed: boolean;
   }>,
   options?: {
@@ -974,6 +982,10 @@ export function updateHarnessMuxUiConfig(
         update.shortcutsCollapsed === undefined
           ? current.mux.ui.shortcutsCollapsed
           : update.shortcutsCollapsed;
+      const nextRepositoriesCollapsed =
+        update.repositoriesCollapsed === undefined
+          ? current.mux.ui.repositoriesCollapsed
+          : update.repositoriesCollapsed;
       return {
         ...current,
         mux: {
@@ -981,6 +993,7 @@ export function updateHarnessMuxUiConfig(
           ui: {
             paneWidthPercent:
               nextPaneWidthPercent === null ? null : roundUiPercent(nextPaneWidthPercent),
+            repositoriesCollapsed: nextRepositoriesCollapsed,
             shortcutsCollapsed: nextShortcutsCollapsed
           }
         }

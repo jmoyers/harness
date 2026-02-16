@@ -32,6 +32,16 @@ interface WorkspaceRailConversationSummary {
   readonly controller?: StreamSessionController | null;
 }
 
+interface WorkspaceRailRepositorySummary {
+  readonly repositoryId: string;
+  readonly name: string;
+  readonly remoteUrl: string;
+  readonly associatedProjectCount: number;
+  readonly commitCount: number | null;
+  readonly lastCommitAt: string | null;
+  readonly shortCommitHash: string | null;
+}
+
 interface WorkspaceRailProcessSummary {
   readonly key: string;
   readonly directoryKey: string;
@@ -42,6 +52,7 @@ interface WorkspaceRailProcessSummary {
 }
 
 interface WorkspaceRailModel {
+  readonly repositories?: readonly WorkspaceRailRepositorySummary[];
   readonly directories: readonly WorkspaceRailDirectorySummary[];
   readonly conversations: readonly WorkspaceRailConversationSummary[];
   readonly processes: readonly WorkspaceRailProcessSummary[];
@@ -49,6 +60,7 @@ interface WorkspaceRailModel {
   readonly activeConversationId: string | null;
   readonly localControllerId?: string | null;
   readonly projectSelectionEnabled?: boolean;
+  readonly repositoriesCollapsed?: boolean;
   readonly shortcutHint?: string;
   readonly shortcutsCollapsed?: boolean;
   readonly nowMs?: number;
@@ -62,6 +74,8 @@ interface WorkspaceRailViewRow {
     | 'conversation-body'
     | 'process-title'
     | 'process-meta'
+    | 'repository-header'
+    | 'repository-row'
     | 'shortcut-header'
     | 'shortcut-body'
     | 'action'
@@ -70,6 +84,7 @@ interface WorkspaceRailViewRow {
   readonly active: boolean;
   readonly conversationSessionId: string | null;
   readonly directoryKey: string | null;
+  readonly repositoryId: string | null;
   readonly railAction: WorkspaceRailAction | null;
   readonly conversationStatus: NormalizedConversationStatus | null;
 }
@@ -80,16 +95,29 @@ const ADD_PROJECT_BUTTON_LABEL = formatUiButton({
   label: 'add project',
   prefixIcon: '>'
 });
+const ADD_REPOSITORY_BUTTON_LABEL = formatUiButton({
+  label: 'add repository',
+  prefixIcon: '>'
+});
+const ARCHIVE_REPOSITORY_BUTTON_LABEL = formatUiButton({
+  label: 'archive repository',
+  prefixIcon: '<'
+});
 const STARTING_TEXT_STALE_MS = 2_000;
 const WORKING_TEXT_STALE_MS = 5_000;
 const NEEDS_ACTION_TEXT_STALE_MS = 60_000;
+const RUNNING_ACTIVITY_STALE_MS = 15_000;
 
 type WorkspaceRailAction =
   | 'conversation.new'
   | 'conversation.delete'
   | 'project.add'
   | 'project.close'
-  | 'shortcuts.toggle';
+  | 'shortcuts.toggle'
+  | 'repository.add'
+  | 'repository.edit'
+  | 'repository.archive'
+  | 'repositories.toggle';
 
 type NormalizedConversationStatus = 'needs-action' | 'starting' | 'working' | 'idle' | 'exited';
 
@@ -176,7 +204,13 @@ function normalizeConversationStatus(
   }
   const inferred = inferStatusFromLastKnownWork(conversation.lastKnownWork);
   if (inferred !== null && isLastKnownWorkCurrent(conversation, nowMs)) {
+    if (inferred === 'idle' && hasFreshRunningActivity(conversation, nowMs)) {
+      return 'working';
+    }
     return inferred;
+  }
+  if (hasFreshRunningActivity(conversation, nowMs)) {
+    return 'working';
   }
   return 'idle';
 }
@@ -227,10 +261,32 @@ function statusLineLabel(status: NormalizedConversationStatus): string {
   if (status === 'needs-action') {
     return 'needs input';
   }
+  if (status === 'working') {
+    return 'working';
+  }
   if (status === 'exited') {
     return 'exited';
   }
   return 'idle';
+}
+
+function hasFreshRunningActivity(
+  conversation: WorkspaceRailConversationSummary,
+  nowMs: number
+): boolean {
+  if (conversation.status !== 'running') {
+    return false;
+  }
+  const lastEventAtMs = parseIsoMs(conversation.lastEventAt);
+  if (!Number.isFinite(lastEventAtMs)) {
+    return false;
+  }
+  const lastKnownWorkAtMs = parseIsoMs(conversation.lastKnownWorkAt ?? null);
+  if (Number.isFinite(lastKnownWorkAtMs) && lastEventAtMs <= lastKnownWorkAtMs) {
+    return false;
+  }
+  const ageMs = Math.max(0, nowMs - lastEventAtMs);
+  return ageMs <= RUNNING_ACTIVITY_STALE_MS;
 }
 
 function controllerDisplayText(
@@ -262,7 +318,16 @@ function conversationDetailText(
     return controllerText;
   }
   const lastKnownWork = summaryText(conversation.lastKnownWork);
-  if (lastKnownWork !== null && isLastKnownWorkCurrent(conversation, nowMs)) {
+  const inferredStatus = inferStatusFromLastKnownWork(lastKnownWork);
+  if (
+    lastKnownWork !== null &&
+    isLastKnownWorkCurrent(conversation, nowMs) &&
+    !(
+      normalizedStatus === 'working' &&
+      inferredStatus === 'idle' &&
+      hasFreshRunningActivity(conversation, nowMs)
+    )
+  ) {
     return lastKnownWork;
   }
   const attentionReason = summaryText(conversation.attentionReason);
@@ -316,6 +381,7 @@ function pushRow(
   active = false,
   conversationSessionId: string | null = null,
   directoryKey: string | null = null,
+  repositoryId: string | null = null,
   railAction: WorkspaceRailAction | null = null,
   conversationStatus: NormalizedConversationStatus | null = null
 ): void {
@@ -325,14 +391,115 @@ function pushRow(
     active,
     conversationSessionId,
     directoryKey,
+    repositoryId,
     railAction,
     conversationStatus
   });
 }
 
+function repositoryDisplayName(repository: WorkspaceRailRepositorySummary): string {
+  const name = repository.name.trim();
+  if (name.length > 0) {
+    return name;
+  }
+  return '(unnamed repository)';
+}
+
+function repositoryPathFromUrl(remoteUrl: string): string | null {
+  const normalized = remoteUrl.trim();
+  if (normalized.length === 0) {
+    return null;
+  }
+  const match = /github\.com[/:]([^/\s]+\/[^/\s]+?)(?:\.git)?(?:\/)?$/iu.exec(normalized);
+  if (match === null) {
+    return null;
+  }
+  return match[1] as string;
+}
+
+function formatRepositoryCommitCount(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) {
+    return '· commits';
+  }
+  const rounded = Math.max(0, Math.floor(value));
+  return `${String(rounded)} commits`;
+}
+
+function formatRepositoryLastUpdated(lastCommitAt: string | null, nowMs: number): string {
+  const commitAtMs = parseIsoMs(lastCommitAt);
+  if (!Number.isFinite(commitAtMs)) {
+    return 'unknown';
+  }
+  const diffMs = Math.max(0, nowMs - commitAtMs);
+  const minuteMs = 60_000;
+  const hourMs = 60 * minuteMs;
+  const dayMs = 24 * hourMs;
+  if (diffMs < minuteMs) {
+    return 'just now';
+  }
+  if (diffMs < hourMs) {
+    return `${String(Math.floor(diffMs / minuteMs))}m ago`;
+  }
+  if (diffMs < dayMs) {
+    return `${String(Math.floor(diffMs / hourMs))}h ago`;
+  }
+  return `${String(Math.floor(diffMs / dayMs))}d ago`;
+}
+
+function repositoryStatLine(repository: WorkspaceRailRepositorySummary, nowMs: number): string {
+  const commitCount = formatRepositoryCommitCount(repository.commitCount);
+  const updated = formatRepositoryLastUpdated(repository.lastCommitAt, nowMs);
+  const hash =
+    repository.shortCommitHash === null || repository.shortCommitHash.trim().length === 0
+      ? '·'
+      : repository.shortCommitHash.trim();
+  const path = repositoryPathFromUrl(repository.remoteUrl);
+  const projectCountLabel = repository.associatedProjectCount === 1 ? 'project' : 'projects';
+  const pathSuffix = path === null ? '' : ` (${path})`;
+  return `${repositoryDisplayName(repository)}${pathSuffix} · ${String(repository.associatedProjectCount)} ${projectCountLabel} · ${commitCount} · ${updated} · ${hash}`;
+}
+
 function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly WorkspaceRailViewRow[] {
   const rows: WorkspaceRailViewRow[] = [];
-  pushRow(rows, 'action', `│  ${ADD_PROJECT_BUTTON_LABEL}`, false, null, null, 'project.add');
+  const showRepositorySection =
+    model.repositories !== undefined || model.repositoriesCollapsed !== undefined;
+  if (showRepositorySection) {
+    const repositories = model.repositories ?? [];
+    const repositoriesCollapsed = model.repositoriesCollapsed ?? false;
+    pushRow(rows, 'repository-header', `├─ ⎇ repositories ${repositoriesCollapsed ? '[+]' : '[-]'}`, false, null, null, null, 'repositories.toggle');
+    if (!repositoriesCollapsed) {
+      pushRow(rows, 'action', `│  ${ADD_REPOSITORY_BUTTON_LABEL}`, false, null, null, null, 'repository.add');
+      if (repositories.length === 0) {
+        pushRow(rows, 'muted', '│  no repositories');
+      } else {
+        for (const repository of repositories) {
+          pushRow(
+            rows,
+            'repository-row',
+            `│  ⎇ ${repositoryStatLine(repository, nowMs)}`,
+            false,
+            null,
+            null,
+            repository.repositoryId,
+            'repository.edit'
+          );
+          pushRow(
+            rows,
+            'action',
+            `│    ${ARCHIVE_REPOSITORY_BUTTON_LABEL}`,
+            false,
+            null,
+            null,
+            repository.repositoryId,
+            'repository.archive'
+          );
+          pushRow(rows, 'muted', '│');
+        }
+      }
+    }
+  }
+
+  pushRow(rows, 'action', `│  ${ADD_PROJECT_BUTTON_LABEL}`, false, null, null, null, 'project.add');
   pushRow(rows, 'muted', '│');
 
   if (model.directories.length === 0) {
@@ -352,7 +519,9 @@ function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly Wo
       `${connector}─ 📁 ${directoryDisplayName(directory)} ─ ${directory.git.branch}  ${NEW_THREAD_INLINE_LABEL}`,
       projectSelected,
       null,
-      directory.key
+      directory.key,
+      null,
+      null
     );
     pushRow(
       rows,
@@ -360,9 +529,11 @@ function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly Wo
       `│  +${String(directory.git.additions)} -${String(directory.git.deletions)} │ ${String(directory.git.changedFiles)} files`,
       projectSelected,
       null,
-      directory.key
+      directory.key,
+      null,
+      null
     );
-    pushRow(rows, 'muted', '│', false, null, directory.key);
+    pushRow(rows, 'muted', '│', false, null, directory.key, null, null);
 
     const conversations = model.conversations.filter(
       (conversation) => conversation.directoryKey === directory.key
@@ -384,6 +555,7 @@ function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly Wo
           conversation.sessionId,
           directory.key,
           null,
+          null,
           projection.status
         );
         pushRow(
@@ -394,33 +566,36 @@ function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly Wo
           conversation.sessionId,
           directory.key,
           null,
+          null,
           projection.status
         );
         if (index + 1 < conversations.length) {
-          pushRow(rows, 'muted', '│', false, null, directory.key);
+          pushRow(rows, 'muted', '│', false, null, directory.key, null, null);
         }
       }
     }
 
     const processes = model.processes.filter((process) => process.directoryKey === directory.key);
     if (processes.length > 0) {
-      pushRow(rows, 'muted', '│', false, null, directory.key);
+      pushRow(rows, 'muted', '│', false, null, directory.key, null, null);
       for (const process of processes) {
-        pushRow(rows, 'process-title', `│  ⚙ ${process.label}`, false, null, directory.key);
+        pushRow(rows, 'process-title', `│  ⚙ ${process.label}`, false, null, directory.key, null, null);
         pushRow(
           rows,
           'process-meta',
           `│    ${processStatusText(process.status)} · ${formatCpu(process.cpuPercent)} · ${formatMem(process.memoryMb)}`,
           false,
           null,
-          directory.key
+          directory.key,
+          null,
+          null
         );
       }
     }
 
     if (directoryIndex + 1 < model.directories.length) {
       for (let spacerIndex = 0; spacerIndex < INTER_DIRECTORY_SPACER_ROWS; spacerIndex += 1) {
-        pushRow(rows, 'muted', '│', false, null, directory.key);
+        pushRow(rows, 'muted', '│', false, null, directory.key, null, null);
       }
     }
   }
@@ -464,6 +639,7 @@ function shortcutRows(
       active: false,
       conversationSessionId: null,
       directoryKey: null,
+      repositoryId: null,
       railAction: 'shortcuts.toggle',
       conversationStatus: null
     }
@@ -477,6 +653,7 @@ function shortcutRows(
         active: false,
         conversationSessionId: null,
         directoryKey: null,
+        repositoryId: null,
         railAction: null,
         conversationStatus: null
       });
@@ -568,6 +745,17 @@ export function projectIdAtWorkspaceRailRow(
     return null;
   }
   return row.directoryKey;
+}
+
+export function repositoryIdAtWorkspaceRailRow(
+  rows: readonly WorkspaceRailViewRow[],
+  rowIndex: number
+): string | null {
+  const row = rows[rowIndex];
+  if (row === undefined) {
+    return null;
+  }
+  return row.repositoryId;
 }
 
 export function kindAtWorkspaceRailRow(

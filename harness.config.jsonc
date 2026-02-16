@@ -16,6 +16,7 @@
     },
     "ui": {
       "paneWidthPercent": 35.71,
+      "repositoriesCollapsed": false,
       "shortcutsCollapsed": true
     },
     "git": {

@@ -56,7 +56,7 @@ export interface ControlPlaneTelemetrySummary {
   readonly observedAt: string;
 }
 
-export type ControlPlaneTaskStatus = 'draft' | 'ready' | 'in-progress' | 'completed';
+type ControlPlaneTaskStatus = 'draft' | 'ready' | 'in-progress' | 'completed';
 
 export interface ControlPlaneRepositoryRecord {
   readonly repositoryId: string;

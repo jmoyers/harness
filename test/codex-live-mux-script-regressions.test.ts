@@ -177,3 +177,16 @@ void test('codex-live-mux modal sizing uses golden-ratio dimensions instead of w
   assert.equal(source.includes('width: Math.min(Math.max(24, layout.cols - 2), 52)'), false);
   assert.equal(source.includes('width: Math.min(modalMaxWidth, 96)'), false);
 });
+
+void test('codex-live-mux wires repository rail section and control-plane repository commands', () => {
+  const scriptPath = resolve(process.cwd(), 'scripts/codex-live-mux.ts');
+  const source = readFileSync(scriptPath, 'utf8');
+
+  assert.equal(source.includes('repositoriesCollapsed'), true);
+  assert.equal(source.includes("type: 'repository.list'"), true);
+  assert.equal(source.includes("type: 'repository.upsert'"), true);
+  assert.equal(source.includes("type: 'repository.update'"), true);
+  assert.equal(source.includes("type: 'repository.archive'"), true);
+  assert.equal(source.includes('openRepositoryPromptForCreate'), true);
+  assert.equal(source.includes('openRepositoryPromptForEdit'), true);
+});

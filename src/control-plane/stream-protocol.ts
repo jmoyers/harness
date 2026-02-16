@@ -90,7 +90,7 @@ interface ConversationDeleteCommand {
   conversationId: string;
 }
 
-export type StreamTaskStatus = 'draft' | 'ready' | 'in-progress' | 'completed';
+type StreamTaskStatus = 'draft' | 'ready' | 'in-progress' | 'completed';
 
 interface RepositoryUpsertCommand {
   type: 'repository.upsert';

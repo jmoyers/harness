@@ -91,9 +91,9 @@ void test('workspace rail renders project-centric rows with icon-only thread sta
   assert.equal(plainRows.some((row) => row.includes('📁 ~/dev/harness ─ main')), true);
   assert.equal(plainRows.some((row) => row.includes('+12 -3 │ 4 files')), true);
   assert.equal(plainRows.some((row) => row.includes('codex - untitled task 1')), true);
-  assert.equal(plainRows.some((row) => row.includes('○ codex - untitled task 1')), true);
+  assert.equal(plainRows.some((row) => row.includes('◆ codex - untitled task 1')), true);
   assert.equal(plainRows.some((row) => row.includes('○ codex - untitled task 2')), true);
-  assert.equal(plainRows.some((row) => row.includes('idle · 0.2% · 12MB')), true);
+  assert.equal(plainRows.some((row) => row.includes('working · 0.2% · 12MB')), true);
   assert.equal(plainRows.some((row) => row.includes('⚙ npm run dev')), true);
   assert.equal(plainRows.some((row) => row.includes('running · 3.4% · 180MB')), true);
   assert.equal(rows.some((row) => row.includes('[+ thread]')), true);
@@ -209,8 +209,8 @@ void test('workspace rail render keeps explicit completion text stable despite n
     80,
     16
   ).map((row) => stripAnsi(row));
-  assert.equal(workingRows.some((row) => row.includes('○ codex - task')), true);
-  assert.equal(workingRows.some((row) => row.includes('turn complete (812ms)')), true);
+  assert.equal(workingRows.some((row) => row.includes('◆ codex - task')), true);
+  assert.equal(workingRows.some((row) => row.includes('working · 0.4% · 16MB')), true);
 });
 
 void test('workspace rail renders no-title conversations without dash separator', () => {
@@ -475,6 +475,40 @@ void test('workspace rail collapses shortcut descriptions while retaining toggle
   assert.equal(rows.some((row) => row.includes('add project')), true);
 });
 
+void test('workspace rail renders repository section rows and actions', () => {
+  const rows = renderWorkspaceRailAnsiRows(
+    {
+      repositories: [
+        {
+          repositoryId: 'repository-1',
+          name: 'harness',
+          remoteUrl: 'https://github.com/jmoyers/harness.git',
+          associatedProjectCount: 1,
+          commitCount: 10,
+          lastCommitAt: '2026-01-01T00:00:00.000Z',
+          shortCommitHash: 'abc1234'
+        }
+      ],
+      repositoriesCollapsed: false,
+      directories: [],
+      conversations: [],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: null,
+      nowMs: Date.parse('2026-01-01T00:30:00.000Z')
+    },
+    96,
+    14
+  ).map((row) => stripAnsi(row));
+
+  assert.equal(rows.some((row) => row.includes('repositories [-]')), true);
+  assert.equal(rows.some((row) => row.includes('add repository')), true);
+  assert.equal(rows.some((row) => row.includes('harness (jmoyers/harness)')), true);
+  assert.equal(rows.some((row) => row.includes('10 commits')), true);
+  assert.equal(rows.some((row) => row.includes('30m ago')), true);
+  assert.equal(rows.some((row) => row.includes('archive repository')), true);
+});
+
 void test('workspace rail row renderer tolerates malformed action and null-status title rows', () => {
   const malformedActionRowAnsi = renderWorkspaceRailRowAnsiForTest(
     {
@@ -483,6 +517,7 @@ void test('workspace rail row renderer tolerates malformed action and null-statu
       active: false,
       conversationSessionId: null,
       directoryKey: null,
+      repositoryId: null,
       railAction: 'project.add',
       conversationStatus: null
     },
@@ -497,6 +532,7 @@ void test('workspace rail row renderer tolerates malformed action and null-statu
       active: false,
       conversationSessionId: 'edge',
       directoryKey: 'd',
+      repositoryId: null,
       railAction: null,
       conversationStatus: null
     },
@@ -513,6 +549,7 @@ void test('workspace rail row renderer covers active project rows muted rows and
       active: true,
       conversationSessionId: null,
       directoryKey: 'harness:local',
+      repositoryId: null,
       railAction: null,
       conversationStatus: null
     },
@@ -527,6 +564,7 @@ void test('workspace rail row renderer covers active project rows muted rows and
       active: true,
       conversationSessionId: null,
       directoryKey: 'harness:local',
+      repositoryId: null,
       railAction: null,
       conversationStatus: null
     },
@@ -541,6 +579,7 @@ void test('workspace rail row renderer covers active project rows muted rows and
       active: false,
       conversationSessionId: null,
       directoryKey: null,
+      repositoryId: null,
       railAction: null,
       conversationStatus: null
     },
@@ -555,6 +594,7 @@ void test('workspace rail row renderer covers active project rows muted rows and
       active: false,
       conversationSessionId: null,
       directoryKey: null,
+      repositoryId: null,
       railAction: null,
       conversationStatus: null
     },
@@ -571,6 +611,7 @@ void test('workspace rail row renderer paints working status icon style for thre
       active: false,
       conversationSessionId: 'working-row',
       directoryKey: 'd',
+      repositoryId: null,
       railAction: null,
       conversationStatus: 'working'
     },

@@ -1075,6 +1075,8 @@ void test('agent realtime connect forwards optional filters and ignores unrelate
       assert.equal(envelope.command.tenantId, 'tenant-local');
       assert.equal(envelope.command.userId, 'user-local');
       assert.equal(envelope.command.workspaceId, 'workspace-local');
+      assert.equal(envelope.command.repositoryId, 'repository-local');
+      assert.equal(envelope.command.taskId, 'task-local');
       assert.equal(envelope.command.directoryId, 'directory-local');
       assert.equal(envelope.command.conversationId, 'conversation-local');
       assert.equal(envelope.command.afterCursor, 22);
@@ -1162,6 +1164,8 @@ void test('agent realtime connect forwards optional filters and ignores unrelate
       tenantId: 'tenant-local',
       userId: 'user-local',
       workspaceId: 'workspace-local',
+      repositoryId: 'repository-local',
+      taskId: 'task-local',
       directoryId: 'directory-local',
       conversationId: 'conversation-local',
       includeOutput: true,

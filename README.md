@@ -34,6 +34,8 @@ Harness is built for developers who want to:
 - Session control ownership: claim/release/takeover semantics for human-agent handoff.
 - Thread lifecycle management: create, rename, archive, and restore-ready metadata.
 - Tracked repository catalog decoupled from directory projects (many projects can map to one repo).
+- Collapsible repository rail section with inline stats (commit count, last update age, short hash).
+- Startup repository scrape from active projects: GitHub remotes are deduped and auto-upserted.
 - Programmatic repository model with full CRUD and archive semantics.
 - Programmatic task lifecycle with full CRUD, explicit ordering, `draft -> ready -> in-progress -> completed`, plus ready/reset transitions.
 - Repository/task control-plane stream commands (`repository.*`, `task.*`) for automation and UI clients.

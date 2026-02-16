@@ -58,6 +58,11 @@ const PROCESS_STYLE = {
   bg: { kind: 'default' },
   bold: false
 } as const;
+const REPOSITORY_ROW_STYLE = {
+  fg: { kind: 'indexed', index: 181 },
+  bg: { kind: 'default' },
+  bold: false
+} as const;
 const MUTED_STYLE = {
   fg: { kind: 'indexed', index: 245 },
   bg: { kind: 'default' },
@@ -189,6 +194,14 @@ function paintWorkspaceRailRow(
   }
   if (row.kind === 'process-title' || row.kind === 'process-meta') {
     paintUiRow(surface, rowIndex, row.text, PROCESS_STYLE, NORMAL_STYLE);
+    return;
+  }
+  if (row.kind === 'repository-header') {
+    paintUiRow(surface, rowIndex, row.text, HEADER_STYLE);
+    return;
+  }
+  if (row.kind === 'repository-row') {
+    paintUiRow(surface, rowIndex, row.text, REPOSITORY_ROW_STYLE, NORMAL_STYLE);
     return;
   }
   if (row.kind === 'shortcut-header') {

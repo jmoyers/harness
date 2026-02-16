@@ -7,6 +7,7 @@ import {
   conversationIdAtWorkspaceRailRow,
   projectWorkspaceRailConversation,
   projectIdAtWorkspaceRailRow,
+  repositoryIdAtWorkspaceRailRow,
   kindAtWorkspaceRailRow
 } from '../src/mux/workspace-rail-model.ts';
 
@@ -136,7 +137,7 @@ void test('workspace rail model handles empty projects and blank workspace name'
       activeConversationId: null,
       nowMs: Date.parse('2026-01-01T00:00:00.000Z')
     },
-    16
+    40
   );
   assert.equal(noDirectoryRows.some((row) => row.text.includes('no projects')), true);
   assert.equal(noDirectoryRows[0]?.railAction, 'project.add');
@@ -161,7 +162,7 @@ void test('workspace rail model handles empty projects and blank workspace name'
       activeProjectId: null,
       activeConversationId: null
     },
-    16
+    40
   );
   assert.equal(blankNameRows.some((row) => row.text.includes('(unnamed)')), true);
 });
@@ -611,6 +612,231 @@ void test('workspace rail model supports collapsed shortcut descriptions with cl
   assert.equal(rows.some((row) => row.kind === 'action' && row.text.includes('add project')), true);
 });
 
+void test('workspace rail model renders repository rows with stats and repository actions', () => {
+  const rows = buildWorkspaceRailViewRows(
+    {
+      repositories: [
+        {
+          repositoryId: 'repository-1',
+          name: 'harness',
+          remoteUrl: 'https://github.com/jmoyers/harness.git',
+          associatedProjectCount: 2,
+          commitCount: 321,
+          lastCommitAt: '2026-01-01T00:00:00.000Z',
+          shortCommitHash: 'abc1234'
+        }
+      ],
+      repositoriesCollapsed: false,
+      directories: [],
+      conversations: [],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: null,
+      nowMs: Date.parse('2026-01-01T03:00:00.000Z')
+    },
+    18
+  );
+
+  const repositoryRowIndex = rows.findIndex((row) => row.kind === 'repository-row');
+  assert.equal(repositoryRowIndex >= 0, true);
+  assert.equal(rows.some((row) => row.kind === 'repository-header' && row.text.includes('repositories [-]')), true);
+  assert.equal(rows.some((row) => row.kind === 'repository-row' && row.text.includes('321 commits')), true);
+  assert.equal(rows.some((row) => row.kind === 'repository-row' && row.text.includes('3h ago')), true);
+  assert.equal(rows.some((row) => row.kind === 'repository-row' && row.text.includes('abc1234')), true);
+  assert.equal(rows.some((row) => row.kind === 'action' && row.text.includes('add repository')), true);
+  assert.equal(rows.some((row) => row.kind === 'action' && row.text.includes('archive repository')), true);
+  assert.equal(repositoryIdAtWorkspaceRailRow(rows, repositoryRowIndex), 'repository-1');
+  assert.equal(repositoryIdAtWorkspaceRailRow(rows, -1), null);
+  assert.equal(repositoryIdAtWorkspaceRailRow(rows, 10_000), null);
+  assert.equal(actionAtWorkspaceRailRow(rows, repositoryRowIndex), 'repository.edit');
+  assert.equal(actionAtWorkspaceRailCell(rows, repositoryRowIndex, 0), 'repository.edit');
+});
+
+void test('workspace rail model formats repository fallback stats and relative age branches', () => {
+  const rows = buildWorkspaceRailViewRows(
+    {
+      repositories: [
+        {
+          repositoryId: 'repository-empty',
+          name: '',
+          remoteUrl: '',
+          associatedProjectCount: 1,
+          commitCount: null,
+          lastCommitAt: null,
+          shortCommitHash: ''
+        },
+        {
+          repositoryId: 'repository-now',
+          name: 'external',
+          remoteUrl: 'https://example.com/acme/external.git',
+          associatedProjectCount: 2,
+          commitCount: Number.NaN,
+          lastCommitAt: '2026-01-05T00:00:10.000Z',
+          shortCommitHash: '   '
+        },
+        {
+          repositoryId: 'repository-old',
+          name: 'legacy',
+          remoteUrl: 'https://github.com/acme/legacy.git',
+          associatedProjectCount: 3,
+          commitCount: 5,
+          lastCommitAt: '2026-01-02T00:00:30.000Z',
+          shortCommitHash: 'deadbee'
+        }
+      ],
+      repositoriesCollapsed: false,
+      directories: [],
+      conversations: [],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: null,
+      nowMs: Date.parse('2026-01-05T00:00:30.000Z')
+    },
+    40
+  );
+  const repositoryRows = rows.filter((row) => row.kind === 'repository-row').map((row) => row.text);
+  assert.equal(repositoryRows.some((text) => text.includes('(unnamed repository)')), true);
+  assert.equal(repositoryRows.some((text) => text.includes('· commits')), true);
+  assert.equal(repositoryRows.some((text) => text.includes('unknown')), true);
+  assert.equal(repositoryRows.some((text) => text.includes('just now')), true);
+  assert.equal(repositoryRows.some((text) => text.includes('3d ago')), true);
+  assert.equal(repositoryRows.some((text) => text.includes('(acme/legacy)')), true);
+});
+
+void test('workspace rail model supports collapsed repository section with clickable toggle row', () => {
+  const rows = buildWorkspaceRailViewRows(
+    {
+      repositories: [],
+      repositoriesCollapsed: true,
+      directories: [],
+      conversations: [],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: null
+    },
+    12
+  );
+  const headerIndex = rows.findIndex((row) => row.kind === 'repository-header');
+  assert.equal(headerIndex >= 0, true);
+  assert.equal(rows[headerIndex]?.text.includes('repositories [+]'), true);
+  assert.equal(rows.some((row) => row.text.includes('add repository')), false);
+  assert.equal(actionAtWorkspaceRailRow(rows, headerIndex), 'repositories.toggle');
+});
+
+void test('workspace rail model repository stat formatting covers minute unknown and non-github branches', () => {
+  const rows = buildWorkspaceRailViewRows(
+    {
+      repositories: [
+        {
+          repositoryId: 'repository-minute',
+          name: 'repo-minute',
+          remoteUrl: 'https://github.com/acme/repo-minute.git',
+          associatedProjectCount: 1,
+          commitCount: 7,
+          lastCommitAt: '2026-01-01T00:30:00.000Z',
+          shortCommitHash: 'deadbee'
+        },
+        {
+          repositoryId: 'repository-unknown',
+          name: '',
+          remoteUrl: 'https://example.com/not-github',
+          associatedProjectCount: 0,
+          commitCount: null,
+          lastCommitAt: null,
+          shortCommitHash: ''
+        },
+        {
+          repositoryId: 'repository-empty-url',
+          name: 'repo-empty-url',
+          remoteUrl: '   ',
+          associatedProjectCount: 3,
+          commitCount: 1,
+          lastCommitAt: '2025-12-30T00:00:00.000Z',
+          shortCommitHash: 'cafebabe'
+        }
+      ],
+      directories: [],
+      conversations: [],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: null,
+      nowMs: Date.parse('2026-01-01T01:00:00.000Z')
+    },
+    30
+  );
+
+  assert.equal(rows.some((row) => row.kind === 'repository-row' && row.text.includes('30m ago')), true);
+  assert.equal(rows.some((row) => row.kind === 'repository-row' && row.text.includes('(unnamed repository)')), true);
+  assert.equal(rows.some((row) => row.kind === 'repository-row' && row.text.includes('· commits')), true);
+  assert.equal(rows.some((row) => row.kind === 'repository-row' && row.text.includes('unknown')), true);
+  assert.equal(rows.some((row) => row.kind === 'repository-row' && row.text.includes('2d ago')), true);
+});
+
+void test('workspace rail model repository id row helper and working fallback status line are covered', () => {
+  const rows = buildWorkspaceRailViewRows(
+    {
+      directories: [
+        {
+          key: 'dir',
+          workspaceId: 'harness',
+          worktreeId: 'none',
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0
+          }
+        }
+      ],
+      conversations: [
+        {
+          sessionId: 'conversation-working-fallback',
+          directoryKey: 'dir',
+          title: 'task',
+          agentLabel: 'codex',
+          cpuPercent: 4.2,
+          memoryMb: 16,
+          lastKnownWork: null,
+          status: 'running',
+          attentionReason: null,
+          startedAt: '2026-01-01T00:00:00.000Z',
+          lastEventAt: '2026-01-01T00:00:10.000Z'
+        }
+      ],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: 'conversation-working-fallback',
+      nowMs: Date.parse('2026-01-01T00:00:12.000Z')
+    },
+    18
+  );
+  const repositoryRows = buildWorkspaceRailViewRows(
+    {
+      repositories: [
+        {
+          repositoryId: 'repository-row-id',
+          name: 'harness',
+          remoteUrl: 'https://github.com/jmoyers/harness.git',
+          associatedProjectCount: 1,
+          commitCount: 5,
+          lastCommitAt: '2026-01-01T00:00:00.000Z',
+          shortCommitHash: 'abc1234'
+        }
+      ],
+      directories: [],
+      conversations: [],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: null
+    },
+    16
+  );
+  const repositoryRowIndex = repositoryRows.findIndex((row) => row.kind === 'repository-row');
+  assert.equal(rows.some((row) => row.kind === 'conversation-body' && row.text.includes('working · 4.2% · 16MB')), true);
+  assert.equal(repositoryIdAtWorkspaceRailRow(repositoryRows, repositoryRowIndex), 'repository-row-id');
+  assert.equal(repositoryIdAtWorkspaceRailRow(repositoryRows, -1), null);
+});
+
 void test('workspace rail model does not expose thread action for headers without inline button label', () => {
   const rows = buildWorkspaceRailViewRows(
     {
@@ -939,102 +1165,54 @@ void test('workspace rail model shows controller ownership hints for non-local c
 });
 
 void test('workspace rail model derives idle status icon from completion telemetry text when runtime status lags', () => {
-  const rows = buildWorkspaceRailViewRows(
+  const projection = projectWorkspaceRailConversation(
     {
-      directories: [
-        {
-          key: 'dir',
-          workspaceId: 'harness',
-          worktreeId: 'none',
-          git: {
-            branch: 'main',
-            additions: 0,
-            deletions: 0,
-            changedFiles: 0
-          }
-        }
-      ],
-      conversations: [
-        {
-          sessionId: 'conversation-lagging-complete',
-          directoryKey: 'dir',
-          title: 'task',
-          agentLabel: 'codex',
-          cpuPercent: null,
-          memoryMb: null,
-          lastKnownWork: 'stream response.completed',
-          lastKnownWorkAt: '2026-01-01T00:00:03.000Z',
-          status: 'running',
-          attentionReason: null,
-          startedAt: '2026-01-01T00:00:00.000Z',
-          lastEventAt: '2026-01-01T00:00:03.000Z'
-        }
-      ],
-      processes: [],
-      activeProjectId: null,
-      activeConversationId: 'conversation-lagging-complete',
-      nowMs: Date.parse('2026-01-01T00:00:05.000Z')
+      sessionId: 'conversation-lagging-complete',
+      directoryKey: 'dir',
+      title: 'task',
+      agentLabel: 'codex',
+      cpuPercent: null,
+      memoryMb: null,
+      lastKnownWork: 'stream response.completed',
+      lastKnownWorkAt: '2026-01-01T00:00:03.000Z',
+      status: 'running',
+      attentionReason: null,
+      startedAt: '2026-01-01T00:00:00.000Z',
+      lastEventAt: '2026-01-01T00:00:03.000Z',
+      controller: null
     },
-    16
+    {
+      nowMs: Date.parse('2026-01-01T00:00:05.000Z')
+    }
   );
-
-  const titleRow = rows.find(
-    (row) => row.kind === 'conversation-title' && row.conversationSessionId === 'conversation-lagging-complete'
-  );
-  assert.notEqual(titleRow, undefined);
-  assert.equal(titleRow?.text.includes('○ codex - task'), true);
+  assert.equal(projection.status, 'idle');
+  assert.equal(projection.glyph, '○');
 });
 
-void test('workspace rail model keeps explicit completion telemetry text over last-event recency', () => {
-  const rows = buildWorkspaceRailViewRows(
+void test('workspace rail model prefers fresh running activity over stale completion telemetry text', () => {
+  const projection = projectWorkspaceRailConversation(
     {
-      directories: [
-        {
-          key: 'dir',
-          workspaceId: 'harness',
-          worktreeId: 'none',
-          git: {
-            branch: 'main',
-            additions: 0,
-            deletions: 0,
-            changedFiles: 0
-          }
-        }
-      ],
-      conversations: [
-        {
-          sessionId: 'conversation-stale-complete',
-          directoryKey: 'dir',
-          title: 'task',
-          agentLabel: 'codex',
-          cpuPercent: 0.3,
-          memoryMb: 20,
-          lastKnownWork: 'turn complete (812ms)',
-          lastKnownWorkAt: '2026-01-01T00:00:03.000Z',
-          status: 'running',
-          attentionReason: null,
-          startedAt: '2026-01-01T00:00:00.000Z',
-          lastEventAt: '2026-01-01T00:00:08.000Z'
-        }
-      ],
-      processes: [],
-      activeProjectId: null,
-      activeConversationId: 'conversation-stale-complete',
-      nowMs: Date.parse('2026-01-01T00:00:09.000Z')
+      sessionId: 'conversation-stale-complete',
+      directoryKey: 'dir',
+      title: 'task',
+      agentLabel: 'codex',
+      cpuPercent: 0.3,
+      memoryMb: 20,
+      lastKnownWork: 'turn complete (812ms)',
+      lastKnownWorkAt: '2026-01-01T00:00:03.000Z',
+      status: 'running',
+      attentionReason: null,
+      startedAt: '2026-01-01T00:00:00.000Z',
+      lastEventAt: '2026-01-01T00:00:08.000Z',
+      controller: null
     },
-    16
+    {
+      nowMs: Date.parse('2026-01-01T00:00:09.000Z')
+    }
   );
-
-  const titleRow = rows.find(
-    (row) => row.kind === 'conversation-title' && row.conversationSessionId === 'conversation-stale-complete'
-  );
-  const bodyRow = rows.find(
-    (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-stale-complete'
-  );
-  assert.notEqual(titleRow, undefined);
-  assert.notEqual(bodyRow, undefined);
-  assert.equal(titleRow?.text.includes('○ codex - task'), true);
-  assert.equal(bodyRow?.text.includes('turn complete'), true);
+  assert.equal(projection.status, 'working');
+  assert.equal(projection.glyph, '◆');
+  assert.equal(projection.detailText, 'working · 0.3% · 20MB');
 });
 
 void test('workspace rail model keeps status-line text consistent despite selected-thread output activity', () => {

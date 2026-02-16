@@ -67,6 +67,7 @@ import {
   conversationIdAtWorkspaceRailRow,
   projectWorkspaceRailConversation,
   projectIdAtWorkspaceRailRow,
+  repositoryIdAtWorkspaceRailRow,
   kindAtWorkspaceRailRow
 } from '../src/mux/workspace-rail-model.ts';
 import { buildSelectorIndexEntries } from '../src/mux/selector-index.ts';
@@ -190,6 +191,13 @@ interface ConversationTitleEditState {
   debounceTimer: NodeJS.Timeout | null;
 }
 
+interface RepositoryPromptState {
+  readonly mode: 'add' | 'edit';
+  readonly repositoryId: string | null;
+  readonly value: string;
+  readonly error: string | null;
+}
+
 interface ConversationState {
   readonly sessionId: string;
   directoryId: string | null;
@@ -249,11 +257,38 @@ interface ControlPlaneConversationRecord {
   readonly runtimeLive: boolean;
 }
 
+interface ControlPlaneRepositoryRecord {
+  readonly repositoryId: string;
+  readonly tenantId: string;
+  readonly userId: string;
+  readonly workspaceId: string;
+  readonly name: string;
+  readonly remoteUrl: string;
+  readonly defaultBranch: string;
+  readonly metadata: Record<string, unknown>;
+  readonly createdAt: string | null;
+  readonly archivedAt: string | null;
+}
+
 interface GitSummary {
   readonly branch: string;
   readonly changedFiles: number;
   readonly additions: number;
   readonly deletions: number;
+}
+
+interface GitRepositorySnapshot {
+  readonly normalizedRemoteUrl: string | null;
+  readonly commitCount: number | null;
+  readonly lastCommitAt: string | null;
+  readonly shortCommitHash: string | null;
+  readonly inferredName: string | null;
+  readonly defaultBranch: string | null;
+}
+
+interface GitDirectorySnapshot {
+  readonly summary: GitSummary;
+  readonly repository: GitRepositorySnapshot;
 }
 
 type GitSummaryRefreshReason = 'startup' | 'interval' | 'focus' | 'trigger';
@@ -290,6 +325,14 @@ const GIT_SUMMARY_NOT_REPOSITORY: GitSummary = {
   changedFiles: 0,
   additions: 0,
   deletions: 0
+};
+const GIT_REPOSITORY_NONE: GitRepositorySnapshot = {
+  normalizedRemoteUrl: null,
+  commitCount: null,
+  lastCommitAt: null,
+  shortCommitHash: null,
+  inferredName: null,
+  defaultBranch: null
 };
 
 interface ProjectPaneSnapshot {
@@ -651,6 +694,49 @@ function parseConversationRecord(value: unknown): ControlPlaneConversationRecord
   };
 }
 
+function parseRepositoryRecord(value: unknown): ControlPlaneRepositoryRecord | null {
+  const record = asRecord(value);
+  if (record === null) {
+    return null;
+  }
+  const repositoryId = record['repositoryId'];
+  const tenantId = record['tenantId'];
+  const userId = record['userId'];
+  const workspaceId = record['workspaceId'];
+  const name = record['name'];
+  const remoteUrl = record['remoteUrl'];
+  const defaultBranch = record['defaultBranch'];
+  const metadataRaw = record['metadata'];
+  const createdAtRaw = record['createdAt'];
+  const archivedAtRaw = record['archivedAt'];
+  if (
+    typeof repositoryId !== 'string' ||
+    typeof tenantId !== 'string' ||
+    typeof userId !== 'string' ||
+    typeof workspaceId !== 'string' ||
+    typeof name !== 'string' ||
+    typeof remoteUrl !== 'string' ||
+    typeof defaultBranch !== 'string' ||
+    (typeof metadataRaw !== 'object' || metadataRaw === null || Array.isArray(metadataRaw)) ||
+    (createdAtRaw !== undefined && createdAtRaw !== null && typeof createdAtRaw !== 'string') ||
+    (archivedAtRaw !== undefined && archivedAtRaw !== null && typeof archivedAtRaw !== 'string')
+  ) {
+    return null;
+  }
+  return {
+    repositoryId,
+    tenantId,
+    userId,
+    workspaceId,
+    name,
+    remoteUrl,
+    defaultBranch,
+    metadata: metadataRaw as Record<string, unknown>,
+    createdAt: typeof createdAtRaw === 'string' ? createdAtRaw : null,
+    archivedAt: typeof archivedAtRaw === 'string' ? archivedAtRaw : null
+  };
+}
+
 function parseSessionControllerRecord(value: unknown): StreamSessionController | null {
   const record = asRecord(value);
   if (record === null) {
@@ -888,12 +974,88 @@ function parseGitShortstatCounts(output: string): { additions: number; deletions
   };
 }
 
-async function readGitSummary(cwd: string): Promise<GitSummary> {
+function normalizeGitHubRemoteUrl(value: string): string | null {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+  const patterns = [
+    /^https?:\/\/github\.com\/([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/iu,
+    /^git@github\.com:([^/\s]+)\/([^/\s]+?)(?:\.git)?$/iu,
+    /^ssh:\/\/git@github\.com\/([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/iu,
+    /^git:\/\/github\.com\/([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/iu
+  ];
+  for (const pattern of patterns) {
+    const match = pattern.exec(trimmed);
+    if (match === null) {
+      continue;
+    }
+    const owner = match[1] ?? '';
+    const repository = match[2] ?? '';
+    if (owner.length === 0 || repository.length === 0) {
+      return null;
+    }
+    return `https://github.com/${owner}/${repository}`;
+  }
+  return null;
+}
+
+function repositoryNameFromGitHubRemoteUrl(remoteUrl: string): string {
+  const normalized = normalizeGitHubRemoteUrl(remoteUrl);
+  if (normalized === null) {
+    return 'repository';
+  }
+  const parts = normalized.split('/');
+  return parts[parts.length - 1] ?? 'repository';
+}
+
+function parseCommitCount(output: string): number | null {
+  const parsed = Number.parseInt(output.trim(), 10);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  return Math.max(0, parsed);
+}
+
+function parseLastCommitLine(output: string): { lastCommitAt: string | null; shortCommitHash: string | null } {
+  const normalized = output.trim();
+  if (normalized.length === 0) {
+    return {
+      lastCommitAt: null,
+      shortCommitHash: null
+    };
+  }
+  const [epochRaw, shortHashRaw] = normalized.split(/\s+/u);
+  const epochSeconds = Number.parseInt(epochRaw ?? '', 10);
+  const lastCommitAt =
+    Number.isFinite(epochSeconds) && epochSeconds > 0
+      ? new Date(epochSeconds * 1000).toISOString()
+      : null;
+  const shortCommitHash =
+    typeof shortHashRaw === 'string' && shortHashRaw.trim().length > 0
+      ? shortHashRaw.trim()
+      : null;
+  return {
+    lastCommitAt,
+    shortCommitHash
+  };
+}
+
+async function readGitDirectorySnapshot(cwd: string): Promise<GitDirectorySnapshot> {
   const insideWorkTree = await runGitCommand(cwd, ['rev-parse', '--is-inside-work-tree']);
   if (insideWorkTree !== 'true') {
-    return GIT_SUMMARY_NOT_REPOSITORY;
+    return {
+      summary: GIT_SUMMARY_NOT_REPOSITORY,
+      repository: GIT_REPOSITORY_NONE
+    };
   }
-  const statusOutput = await runGitCommand(cwd, ['status', '--porcelain=1', '--branch']);
+  const statusOutputPromise = runGitCommand(cwd, ['status', '--porcelain=1', '--branch']);
+  const unstagedShortstatPromise = runGitCommand(cwd, ['diff', '--shortstat']);
+  const stagedShortstatPromise = runGitCommand(cwd, ['diff', '--cached', '--shortstat']);
+  const remoteUrlPromise = runGitCommand(cwd, ['remote', 'get-url', 'origin']);
+  const commitCountPromise = runGitCommand(cwd, ['rev-list', '--count', 'HEAD']);
+  const lastCommitPromise = runGitCommand(cwd, ['log', '-1', '--format=%ct %h']);
+  const statusOutput = await statusOutputPromise;
   const statusLines = statusOutput.split('\n').filter((line) => line.trim().length > 0);
   const firstStatusLine = statusLines[0];
   const headerLine =
@@ -902,18 +1064,33 @@ async function readGitSummary(cwd: string): Promise<GitSummary> {
       : null;
   const branch = parseGitBranchFromStatusHeader(headerLine);
   const changedFiles = statusLines.length;
-  const [unstagedShortstat, stagedShortstat] = await Promise.all([
-    runGitCommand(cwd, ['diff', '--shortstat']),
-    runGitCommand(cwd, ['diff', '--cached', '--shortstat'])
+  const [unstagedShortstat, stagedShortstat, remoteUrlRaw, commitCountRaw, lastCommitRaw] = await Promise.all([
+    unstagedShortstatPromise,
+    stagedShortstatPromise,
+    remoteUrlPromise,
+    commitCountPromise,
+    lastCommitPromise
   ]);
   const unstaged = parseGitShortstatCounts(unstagedShortstat);
   const staged = parseGitShortstatCounts(stagedShortstat);
-
+  const normalizedRemoteUrl = normalizeGitHubRemoteUrl(remoteUrlRaw);
+  const commitCount = parseCommitCount(commitCountRaw);
+  const lastCommit = parseLastCommitLine(lastCommitRaw);
   return {
-    branch,
-    changedFiles,
-    additions: unstaged.additions + staged.additions,
-    deletions: unstaged.deletions + staged.deletions
+    summary: {
+      branch,
+      changedFiles,
+      additions: unstaged.additions + staged.additions,
+      deletions: unstaged.deletions + staged.deletions
+    },
+    repository: {
+      normalizedRemoteUrl,
+      commitCount,
+      lastCommitAt: lastCommit.lastCommitAt,
+      shortCommitHash: lastCommit.shortCommitHash,
+      inferredName: normalizedRemoteUrl === null ? null : repositoryNameFromGitHubRemoteUrl(normalizedRemoteUrl),
+      defaultBranch: branch === '(detached)' ? null : branch
+    }
   };
 }
 
@@ -1413,18 +1590,60 @@ function shortcutHintText(bindings: ResolvedMuxShortcutBindings): string {
 type WorkspaceRailModel = Parameters<typeof renderWorkspaceRailAnsiRows>[0];
 
 function buildRailModel(
+  repositories: ReadonlyMap<string, ControlPlaneRepositoryRecord>,
+  repositoryAssociationByDirectoryId: ReadonlyMap<string, string>,
+  directoryRepositorySnapshotByDirectoryId: ReadonlyMap<string, GitRepositorySnapshot>,
   directories: ReadonlyMap<string, ControlPlaneDirectoryRecord>,
   conversations: ReadonlyMap<string, ConversationState>,
   orderedIds: readonly string[],
   activeProjectId: string | null,
   activeConversationId: string | null,
   projectSelectionEnabled: boolean,
+  repositoriesCollapsed: boolean,
   shortcutsCollapsed: boolean,
   gitSummaryByDirectoryId: ReadonlyMap<string, GitSummary>,
   processUsageBySessionId: ReadonlyMap<string, ProcessUsageSample>,
   shortcutBindings: ResolvedMuxShortcutBindings,
   localControllerId: string
 ): WorkspaceRailModel {
+  const repositoryRows = [...repositories.values()].map((repository) => {
+    let associatedProjectCount = 0;
+    let commitCount: number | null = null;
+    let lastCommitAt: string | null = null;
+    let shortCommitHash: string | null = null;
+    for (const [directoryId, repositoryId] of repositoryAssociationByDirectoryId.entries()) {
+      if (repositoryId !== repository.repositoryId) {
+        continue;
+      }
+      associatedProjectCount += 1;
+      const snapshot = directoryRepositorySnapshotByDirectoryId.get(directoryId);
+      if (snapshot === undefined) {
+        continue;
+      }
+      if (snapshot.commitCount !== null && (commitCount === null || snapshot.commitCount > commitCount)) {
+        commitCount = snapshot.commitCount;
+      }
+      const snapshotCommitAtMs =
+        snapshot.lastCommitAt === null ? Number.NaN : Date.parse(snapshot.lastCommitAt);
+      const currentCommitAtMs = lastCommitAt === null ? Number.NaN : Date.parse(lastCommitAt);
+      if (
+        snapshot.lastCommitAt !== null &&
+        (!Number.isFinite(currentCommitAtMs) || snapshotCommitAtMs >= currentCommitAtMs)
+      ) {
+        lastCommitAt = snapshot.lastCommitAt;
+        shortCommitHash = snapshot.shortCommitHash;
+      }
+    }
+    return {
+      repositoryId: repository.repositoryId,
+      name: repository.name,
+      remoteUrl: repository.remoteUrl,
+      associatedProjectCount,
+      commitCount,
+      lastCommitAt,
+      shortCommitHash
+    };
+  });
   const directoryRows = [...directories.values()].map((directory) => ({
     key: directory.directoryId,
     workspaceId: basename(directory.path) || directory.path,
@@ -1448,6 +1667,7 @@ function buildRailModel(
   }
 
   return {
+    repositories: repositoryRows,
     directories: directoryRows,
     conversations: orderedIds
       .map((sessionId) => {
@@ -1473,6 +1693,7 @@ function buildRailModel(
     activeConversationId,
     localControllerId,
     projectSelectionEnabled,
+    repositoriesCollapsed,
     processes: [],
     shortcutHint: shortcutHintText(shortcutBindings),
     shortcutsCollapsed,
@@ -1482,12 +1703,16 @@ function buildRailModel(
 
 function buildRailRows(
   layout: ReturnType<typeof computeDualPaneLayout>,
+  repositories: ReadonlyMap<string, ControlPlaneRepositoryRecord>,
+  repositoryAssociationByDirectoryId: ReadonlyMap<string, string>,
+  directoryRepositorySnapshotByDirectoryId: ReadonlyMap<string, GitRepositorySnapshot>,
   directories: ReadonlyMap<string, ControlPlaneDirectoryRecord>,
   conversations: ReadonlyMap<string, ConversationState>,
   orderedIds: readonly string[],
   activeProjectId: string | null,
   activeConversationId: string | null,
   projectSelectionEnabled: boolean,
+  repositoriesCollapsed: boolean,
   shortcutsCollapsed: boolean,
   gitSummaryByDirectoryId: ReadonlyMap<string, GitSummary>,
   processUsageBySessionId: ReadonlyMap<string, ProcessUsageSample>,
@@ -1495,12 +1720,16 @@ function buildRailRows(
   localControllerId: string
 ): { ansiRows: readonly string[]; viewRows: ReturnType<typeof buildWorkspaceRailViewRows> } {
   const railModel = buildRailModel(
+    repositories,
+    repositoryAssociationByDirectoryId,
+    directoryRepositorySnapshotByDirectoryId,
     directories,
     conversations,
     orderedIds,
     activeProjectId,
     activeConversationId,
     projectSelectionEnabled,
+    repositoriesCollapsed,
     shortcutsCollapsed,
     gitSummaryByDirectoryId,
     processUsageBySessionId,
@@ -2013,6 +2242,11 @@ async function main(): Promise<number> {
   const directories = new Map<string, ControlPlaneDirectoryRecord>([
     [persistedDirectory.directoryId, persistedDirectory]
   ]);
+  const repositories = new Map<string, ControlPlaneRepositoryRecord>();
+  const repositoryIdByNormalizedRemoteUrl = new Map<string, string>();
+  const repositoryAssociationByDirectoryId = new Map<string, string>();
+  const repositoryUpsertInFlightByRemoteUrl = new Map<string, Promise<string | null>>();
+  const directoryRepositorySnapshotByDirectoryId = new Map<string, GitRepositorySnapshot>();
   const muxControllerId = `human-mux-${process.pid}-${randomUUID()}`;
   const muxControllerLabel = `human mux ${process.pid}`;
   const conversations = new Map<string, ConversationState>();
@@ -2279,6 +2513,60 @@ async function main(): Promise<number> {
     }
   };
 
+  const rebuildRepositoryRemoteIndex = (): void => {
+    repositoryIdByNormalizedRemoteUrl.clear();
+    for (const repository of repositories.values()) {
+      const normalized = normalizeGitHubRemoteUrl(repository.remoteUrl);
+      if (normalized !== null) {
+        repositoryIdByNormalizedRemoteUrl.set(normalized, repository.repositoryId);
+      }
+    }
+  };
+
+  const syncRepositoryAssociationsWithDirectorySnapshots = (): void => {
+    for (const [directoryId, repositoryId] of repositoryAssociationByDirectoryId.entries()) {
+      if (!directories.has(directoryId) || !repositories.has(repositoryId)) {
+        repositoryAssociationByDirectoryId.delete(directoryId);
+      }
+    }
+    for (const [directoryId, snapshot] of directoryRepositorySnapshotByDirectoryId.entries()) {
+      if (!directories.has(directoryId)) {
+        directoryRepositorySnapshotByDirectoryId.delete(directoryId);
+        repositoryAssociationByDirectoryId.delete(directoryId);
+        continue;
+      }
+      if (snapshot.normalizedRemoteUrl === null) {
+        repositoryAssociationByDirectoryId.delete(directoryId);
+        continue;
+      }
+      const matchedRepositoryId = repositoryIdByNormalizedRemoteUrl.get(snapshot.normalizedRemoteUrl);
+      if (matchedRepositoryId === undefined) {
+        continue;
+      }
+      repositoryAssociationByDirectoryId.set(directoryId, matchedRepositoryId);
+    }
+  };
+
+  const hydrateRepositoryList = async (): Promise<void> => {
+    const listed = await streamClient.sendCommand({
+      type: 'repository.list',
+      tenantId: options.scope.tenantId,
+      userId: options.scope.userId,
+      workspaceId: options.scope.workspaceId
+    });
+    const rows = Array.isArray(listed['repositories']) ? listed['repositories'] : [];
+    repositories.clear();
+    for (const row of rows) {
+      const record = parseRepositoryRecord(row);
+      if (record === null) {
+        continue;
+      }
+      repositories.set(record.repositoryId, record);
+    }
+    rebuildRepositoryRemoteIndex();
+    syncRepositoryAssociationsWithDirectorySnapshots();
+  };
+
   const hydratePersistedConversationsForDirectory = async (directoryId: string): Promise<number> => {
     const listedPersisted = await streamClient.sendCommand({
       type: 'conversation.list',
@@ -2503,6 +2791,7 @@ async function main(): Promise<number> {
   };
 
   await hydrateConversationList();
+  await hydrateRepositoryList();
   if (activeConversationId === null) {
     const ordered = conversationOrder(conversations);
     activeConversationId = ordered[0] ?? null;
@@ -2657,6 +2946,17 @@ async function main(): Promise<number> {
     left.additions === right.additions &&
     left.deletions === right.deletions;
 
+  const gitRepositorySnapshotEqual = (
+    left: GitRepositorySnapshot,
+    right: GitRepositorySnapshot
+  ): boolean =>
+    left.normalizedRemoteUrl === right.normalizedRemoteUrl &&
+    left.commitCount === right.commitCount &&
+    left.lastCommitAt === right.lastCommitAt &&
+    left.shortCommitHash === right.shortCommitHash &&
+    left.defaultBranch === right.defaultBranch &&
+    left.inferredName === right.inferredName;
+
   const gitRefreshReasonPriority = (reason: GitSummaryRefreshReason): number => {
     if (reason === 'startup' || reason === 'focus') {
       return 3;
@@ -2682,6 +2982,8 @@ async function main(): Promise<number> {
     gitLastActivityAtMsByDirectoryId.delete(directoryId);
     pendingGitSummaryRefreshByDirectoryId.delete(directoryId);
     gitRefreshInFlightDirectoryIds.delete(directoryId);
+    directoryRepositorySnapshotByDirectoryId.delete(directoryId);
+    repositoryAssociationByDirectoryId.delete(directoryId);
   };
 
   const syncGitStateWithDirectories = (): void => {
@@ -2694,6 +2996,7 @@ async function main(): Promise<number> {
     for (const directoryId of staleDirectoryIds) {
       deleteDirectoryGitState(directoryId);
     }
+    syncRepositoryAssociationsWithDirectorySnapshots();
   };
 
   const queueGitSummaryRefresh = (
@@ -2749,6 +3052,52 @@ async function main(): Promise<number> {
     return basePollMs;
   };
 
+  const ensureRepositoryForNormalizedRemoteUrl = async (
+    normalizedRemoteUrl: string,
+    seed: {
+      readonly inferredName: string | null;
+      readonly defaultBranch: string | null;
+    }
+  ): Promise<string | null> => {
+    const existingId = repositoryIdByNormalizedRemoteUrl.get(normalizedRemoteUrl);
+    if (existingId !== undefined && repositories.has(existingId)) {
+      return existingId;
+    }
+    const inFlight = repositoryUpsertInFlightByRemoteUrl.get(normalizedRemoteUrl);
+    if (inFlight !== undefined) {
+      return await inFlight;
+    }
+    const task = (async (): Promise<string | null> => {
+      const upserted = await streamClient.sendCommand({
+        type: 'repository.upsert',
+        repositoryId: `repository-${randomUUID()}`,
+        tenantId: options.scope.tenantId,
+        userId: options.scope.userId,
+        workspaceId: options.scope.workspaceId,
+        name: seed.inferredName ?? repositoryNameFromGitHubRemoteUrl(normalizedRemoteUrl),
+        remoteUrl: normalizedRemoteUrl,
+        defaultBranch: seed.defaultBranch ?? 'main',
+        metadata: {
+          source: 'mux-active-project-scan'
+        }
+      });
+      const repository = parseRepositoryRecord(upserted['repository']);
+      if (repository === null) {
+        return null;
+      }
+      repositories.set(repository.repositoryId, repository);
+      rebuildRepositoryRemoteIndex();
+      syncRepositoryAssociationsWithDirectorySnapshots();
+      return repository.repositoryId;
+    })();
+    repositoryUpsertInFlightByRemoteUrl.set(normalizedRemoteUrl, task);
+    try {
+      return await task;
+    } finally {
+      repositoryUpsertInFlightByRemoteUrl.delete(normalizedRemoteUrl);
+    }
+  };
+
   const refreshGitSummaryForDirectory = async (
     directoryId: string,
     reason: GitSummaryRefreshReason
@@ -2768,7 +3117,7 @@ async function main(): Promise<number> {
       directoryId
     });
     try {
-      const next = await readGitSummary(directory.path);
+      const next = await readGitDirectorySnapshot(directory.path);
       if (!directories.has(directoryId)) {
         deleteDirectoryGitState(directoryId);
         gitSpan.end({
@@ -2778,19 +3127,43 @@ async function main(): Promise<number> {
         });
         return;
       }
-      const previous = gitSummaryByDirectoryId.get(directoryId) ?? GIT_SUMMARY_LOADING;
-      const changed = !gitSummaryEqual(previous, next);
-      gitSummaryByDirectoryId.set(directoryId, next);
+      const previousSummary = gitSummaryByDirectoryId.get(directoryId) ?? GIT_SUMMARY_LOADING;
+      const summaryChanged = !gitSummaryEqual(previousSummary, next.summary);
+      gitSummaryByDirectoryId.set(directoryId, next.summary);
+      const previousRepositorySnapshot =
+        directoryRepositorySnapshotByDirectoryId.get(directoryId) ?? GIT_REPOSITORY_NONE;
+      const repositoryChanged = !gitRepositorySnapshotEqual(previousRepositorySnapshot, next.repository);
+      directoryRepositorySnapshotByDirectoryId.set(directoryId, next.repository);
+      let associationChanged = false;
+      if (next.repository.normalizedRemoteUrl === null) {
+        associationChanged = repositoryAssociationByDirectoryId.delete(directoryId);
+      } else {
+        const repositoryId = await ensureRepositoryForNormalizedRemoteUrl(
+          next.repository.normalizedRemoteUrl,
+          {
+            inferredName: next.repository.inferredName,
+            defaultBranch: next.repository.defaultBranch
+          }
+        );
+        if (repositoryId === null) {
+          associationChanged = repositoryAssociationByDirectoryId.delete(directoryId);
+        } else {
+          const previousRepositoryId = repositoryAssociationByDirectoryId.get(directoryId) ?? null;
+          repositoryAssociationByDirectoryId.set(directoryId, repositoryId);
+          associationChanged = previousRepositoryId !== repositoryId;
+        }
+      }
       gitLastRefreshAtMsByDirectoryId.set(directoryId, Date.now());
-      if (changed) {
+      if (summaryChanged || repositoryChanged || associationChanged) {
         markDirty();
       }
       gitSpan.end({
         reason,
         directoryId,
-        changed,
-        branch: next.branch,
-        changedFiles: next.changedFiles
+        changed: summaryChanged || repositoryChanged || associationChanged,
+        branch: next.summary.branch,
+        changedFiles: next.summary.changedFiles,
+        repositoryLinked: next.repository.normalizedRemoteUrl === null ? 0 : 1
       });
     } finally {
       gitRefreshInFlightDirectoryIds.delete(directoryId);
@@ -2896,13 +3269,16 @@ async function main(): Promise<number> {
   let renderedBracketedPaste: boolean | null = null;
   let previousSelectionRows: readonly number[] = [];
   let latestRailViewRows: ReturnType<typeof buildWorkspaceRailViewRows> = [];
+  let repositoriesCollapsed = configuredMuxUi.repositoriesCollapsed;
   let shortcutsCollapsed = configuredMuxUi.shortcutsCollapsed;
   let persistedMuxUiState = {
     paneWidthPercent: paneWidthPercentFromLayout(layout),
+    repositoriesCollapsed: configuredMuxUi.repositoriesCollapsed,
     shortcutsCollapsed: configuredMuxUi.shortcutsCollapsed
   };
   let pendingMuxUiStatePersist: {
     paneWidthPercent: number;
+    repositoriesCollapsed: boolean;
     shortcutsCollapsed: boolean;
   } | null = null;
   let muxUiStatePersistTimer: NodeJS.Timeout | null = null;
@@ -2913,6 +3289,7 @@ async function main(): Promise<number> {
   let selection: PaneSelection | null = null;
   let selectionDrag: PaneSelectionDrag | null = null;
   let selectionPinnedFollowOutput: boolean | null = null;
+  let repositoryPrompt: RepositoryPromptState | null = null;
   let newThreadPrompt: NewThreadPromptState | null = null;
   let addDirectoryPrompt: { value: string; error: string | null } | null = null;
   let conversationTitleEdit: ConversationTitleEditState | null = null;
@@ -3027,6 +3404,7 @@ async function main(): Promise<number> {
     pendingMuxUiStatePersist = null;
     if (
       pending.paneWidthPercent === persistedMuxUiState.paneWidthPercent &&
+      pending.repositoriesCollapsed === persistedMuxUiState.repositoriesCollapsed &&
       pending.shortcutsCollapsed === persistedMuxUiState.shortcutsCollapsed
     ) {
       return;
@@ -3040,6 +3418,7 @@ async function main(): Promise<number> {
           updated.mux.ui.paneWidthPercent === null
             ? paneWidthPercentFromLayout(layout)
             : updated.mux.ui.paneWidthPercent,
+        repositoriesCollapsed: updated.mux.ui.repositoriesCollapsed,
         shortcutsCollapsed: updated.mux.ui.shortcutsCollapsed
       };
     } catch (error: unknown) {
@@ -3054,6 +3433,7 @@ async function main(): Promise<number> {
     }
     pendingMuxUiStatePersist = {
       paneWidthPercent: paneWidthPercentFromLayout(layout),
+      repositoriesCollapsed,
       shortcutsCollapsed
     };
     if (muxUiStatePersistTimer !== null) {
@@ -3670,6 +4050,38 @@ async function main(): Promise<number> {
     });
   };
 
+  const buildRepositoryModalOverlay = (viewportRows: number): ReturnType<typeof buildUiModalOverlay> | null => {
+    if (repositoryPrompt === null) {
+      return null;
+    }
+    const modalSize = resolveGoldenModalSize(layout.cols, viewportRows, {
+      preferredHeight: 15,
+      minWidth: 28,
+      maxWidth: 56
+    });
+    const promptValue = repositoryPrompt.value.length > 0 ? repositoryPrompt.value : 'https://github.com/org/repo';
+    const bodyLines = [`github url: ${promptValue}_`];
+    if (repositoryPrompt.error !== null && repositoryPrompt.error.length > 0) {
+      bodyLines.push(`error: ${repositoryPrompt.error}`);
+    } else if (repositoryPrompt.mode === 'add') {
+      bodyLines.push('add a repository and link matching projects');
+    } else {
+      bodyLines.push('update repository github url');
+    }
+    return buildUiModalOverlay({
+      viewportCols: layout.cols,
+      viewportRows,
+      width: modalSize.width,
+      height: modalSize.height,
+      anchor: 'center',
+      marginRows: 1,
+      title: repositoryPrompt.mode === 'add' ? 'Add Repository' : 'Edit Repository',
+      bodyLines,
+      footer: 'enter save  esc',
+      theme: MUX_MODAL_THEME
+    });
+  };
+
   const buildConversationTitleModalOverlay = (viewportRows: number): ReturnType<typeof buildUiModalOverlay> | null => {
     if (conversationTitleEdit === null) {
       return null;
@@ -3716,6 +4128,10 @@ async function main(): Promise<number> {
     const addDirectoryOverlay = buildAddDirectoryModalOverlay(layout.rows);
     if (addDirectoryOverlay !== null) {
       return addDirectoryOverlay;
+    }
+    const repositoryOverlay = buildRepositoryModalOverlay(layout.rows);
+    if (repositoryOverlay !== null) {
+      return repositoryOverlay;
     }
     return buildConversationTitleModalOverlay(layout.rows);
   };
@@ -3902,11 +4318,95 @@ async function main(): Promise<number> {
       return;
     }
     addDirectoryPrompt = null;
+    repositoryPrompt = null;
     if (conversationTitleEdit !== null) {
       stopConversationTitleEdit(true);
     }
     conversationTitleEditClickState = null;
     newThreadPrompt = createNewThreadPromptState(directoryId);
+    markDirty();
+  };
+
+  const openRepositoryPromptForCreate = (): void => {
+    newThreadPrompt = null;
+    addDirectoryPrompt = null;
+    if (conversationTitleEdit !== null) {
+      stopConversationTitleEdit(true);
+    }
+    conversationTitleEditClickState = null;
+    repositoryPrompt = {
+      mode: 'add',
+      repositoryId: null,
+      value: '',
+      error: null
+    };
+    markDirty();
+  };
+
+  const openRepositoryPromptForEdit = (repositoryId: string): void => {
+    const repository = repositories.get(repositoryId);
+    if (repository === undefined) {
+      return;
+    }
+    newThreadPrompt = null;
+    addDirectoryPrompt = null;
+    if (conversationTitleEdit !== null) {
+      stopConversationTitleEdit(true);
+    }
+    conversationTitleEditClickState = null;
+    repositoryPrompt = {
+      mode: 'edit',
+      repositoryId,
+      value: repository.remoteUrl,
+      error: null
+    };
+    markDirty();
+  };
+
+  const upsertRepositoryByRemoteUrl = async (remoteUrl: string, existingRepositoryId?: string): Promise<void> => {
+    const normalizedRemoteUrl = normalizeGitHubRemoteUrl(remoteUrl);
+    if (normalizedRemoteUrl === null) {
+      throw new Error('github url required');
+    }
+    const result =
+      existingRepositoryId === undefined
+        ? await streamClient.sendCommand({
+            type: 'repository.upsert',
+            repositoryId: `repository-${randomUUID()}`,
+            tenantId: options.scope.tenantId,
+            userId: options.scope.userId,
+            workspaceId: options.scope.workspaceId,
+            name: repositoryNameFromGitHubRemoteUrl(normalizedRemoteUrl),
+            remoteUrl: normalizedRemoteUrl,
+            defaultBranch: 'main',
+            metadata: {
+              source: 'mux-manual'
+            }
+          })
+        : await streamClient.sendCommand({
+            type: 'repository.update',
+            repositoryId: existingRepositoryId,
+            name: repositoryNameFromGitHubRemoteUrl(normalizedRemoteUrl),
+            remoteUrl: normalizedRemoteUrl
+          });
+    const repository = parseRepositoryRecord(result['repository']);
+    if (repository === null) {
+      throw new Error('control-plane repository command returned malformed repository record');
+    }
+    repositories.set(repository.repositoryId, repository);
+    rebuildRepositoryRemoteIndex();
+    syncRepositoryAssociationsWithDirectorySnapshots();
+    markDirty();
+  };
+
+  const archiveRepositoryById = async (repositoryId: string): Promise<void> => {
+    await streamClient.sendCommand({
+      type: 'repository.archive',
+      repositoryId
+    });
+    repositories.delete(repositoryId);
+    rebuildRepositoryRemoteIndex();
+    syncRepositoryAssociationsWithDirectorySnapshots();
     markDirty();
   };
 
@@ -4200,12 +4700,16 @@ async function main(): Promise<number> {
     refreshSelectorInstrumentation('render');
     const rail = buildRailRows(
       layout,
+      repositories,
+      repositoryAssociationByDirectoryId,
+      directoryRepositorySnapshotByDirectoryId,
       directories,
       conversations,
       orderedIds,
       activeDirectoryId,
       activeConversationId,
       mainPaneMode === 'project',
+      repositoriesCollapsed,
       shortcutsCollapsed,
       gitSummaryByDirectoryId,
       processUsageBySessionId,
@@ -4820,6 +5324,88 @@ async function main(): Promise<number> {
     return true;
   };
 
+  const handleRepositoryPromptInput = (input: Buffer): boolean => {
+    if (repositoryPrompt === null) {
+      return false;
+    }
+    if (input.length === 1 && input[0] === 0x03) {
+      return false;
+    }
+    const dismissAction = detectMuxGlobalShortcut(input, modalDismissShortcutBindings);
+    if (dismissAction === 'mux.app.quit') {
+      repositoryPrompt = null;
+      markDirty();
+      return true;
+    }
+    if (
+      dismissModalOnOutsideClick(input, () => {
+        repositoryPrompt = null;
+        markDirty();
+      })
+    ) {
+      return true;
+    }
+
+    let value = repositoryPrompt.value;
+    let submit = false;
+    for (const byte of input) {
+      if (byte === 0x0d || byte === 0x0a) {
+        submit = true;
+        break;
+      }
+      if (byte === 0x7f || byte === 0x08) {
+        value = value.slice(0, -1);
+        continue;
+      }
+      if (byte >= 32 && byte <= 126) {
+        value += String.fromCharCode(byte);
+      }
+    }
+
+    if (!submit) {
+      repositoryPrompt = {
+        ...repositoryPrompt,
+        value,
+        error: null
+      };
+      markDirty();
+      return true;
+    }
+
+    const trimmed = value.trim();
+    if (trimmed.length === 0) {
+      repositoryPrompt = {
+        ...repositoryPrompt,
+        value,
+        error: 'github url required'
+      };
+      markDirty();
+      return true;
+    }
+    if (normalizeGitHubRemoteUrl(trimmed) === null) {
+      repositoryPrompt = {
+        ...repositoryPrompt,
+        value,
+        error: 'github url required'
+      };
+      markDirty();
+      return true;
+    }
+
+    const mode = repositoryPrompt.mode;
+    const repositoryId = repositoryPrompt.repositoryId;
+    repositoryPrompt = null;
+    if (mode === 'edit' && (repositoryId === null || !repositories.has(repositoryId))) {
+      markDirty();
+      return true;
+    }
+    queueControlPlaneOp(async () => {
+      await upsertRepositoryByRemoteUrl(trimmed, mode === 'edit' ? (repositoryId ?? undefined) : undefined);
+    }, mode === 'edit' ? 'prompt-edit-repository' : 'prompt-add-repository');
+    markDirty();
+    return true;
+  };
+
   const onInput = (chunk: Buffer): void => {
     if (shuttingDown) {
       return;
@@ -4831,6 +5417,9 @@ async function main(): Promise<number> {
       return;
     }
     if (handleAddDirectoryPromptInput(chunk)) {
+      return;
+    }
+    if (handleRepositoryPromptInput(chunk)) {
       return;
     }
 
@@ -4910,6 +5499,7 @@ async function main(): Promise<number> {
       return;
     }
     if (globalShortcut === 'mux.directory.add') {
+      repositoryPrompt = null;
       addDirectoryPrompt = {
         value: '',
         error: null
@@ -5057,6 +5647,7 @@ async function main(): Promise<number> {
         const colIndex = Math.max(0, Math.min(layout.leftCols - 1, token.event.col - 1));
         const selectedConversationId = conversationIdAtWorkspaceRailRow(latestRailViewRows, rowIndex);
         const selectedProjectId = projectIdAtWorkspaceRailRow(latestRailViewRows, rowIndex);
+        const selectedRepositoryId = repositoryIdAtWorkspaceRailRow(latestRailViewRows, rowIndex);
         const selectedAction = actionAtWorkspaceRailCell(
           latestRailViewRows,
           rowIndex,
@@ -5100,10 +5691,41 @@ async function main(): Promise<number> {
         }
         if (selectedAction === 'project.add') {
           conversationTitleEditClickState = null;
+          repositoryPrompt = null;
           addDirectoryPrompt = {
             value: '',
             error: null
           };
+          markDirty();
+          continue;
+        }
+        if (selectedAction === 'repository.add') {
+          conversationTitleEditClickState = null;
+          openRepositoryPromptForCreate();
+          continue;
+        }
+        if (selectedAction === 'repository.edit') {
+          conversationTitleEditClickState = null;
+          if (selectedRepositoryId !== null && repositories.has(selectedRepositoryId)) {
+            openRepositoryPromptForEdit(selectedRepositoryId);
+          }
+          markDirty();
+          continue;
+        }
+        if (selectedAction === 'repository.archive') {
+          conversationTitleEditClickState = null;
+          if (selectedRepositoryId !== null && repositories.has(selectedRepositoryId)) {
+            queueControlPlaneOp(async () => {
+              await archiveRepositoryById(selectedRepositoryId);
+            }, 'mouse-archive-repository');
+          }
+          markDirty();
+          continue;
+        }
+        if (selectedAction === 'repositories.toggle') {
+          conversationTitleEditClickState = null;
+          repositoriesCollapsed = !repositoriesCollapsed;
+          queuePersistMuxUiState();
           markDirty();
           continue;
         }
