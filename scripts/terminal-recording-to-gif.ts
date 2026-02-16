@@ -83,7 +83,7 @@ function parseArgs(argv: string[]): CliOptions {
 
   if (inputPath.length === 0 || outputPath.length === 0) {
     process.stderr.write(
-      'usage: npm run terminal:recording:gif -- --input <recording.jsonl> --output <out.gif> [--cell-width 9 --cell-height 18 --font-size 14 --font-family "Menlo, monospace" --frame-ms 66 --max-colors 256 --no-cursor]\n'
+      'usage: bun run terminal:recording:gif -- --input <recording.jsonl> --output <out.gif> [--cell-width 9 --cell-height 18 --font-size 14 --font-family "Menlo, monospace" --frame-ms 66 --max-colors 256 --no-cursor]\n'
     );
     process.exit(2);
   }

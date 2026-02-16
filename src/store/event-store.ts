@@ -1,4 +1,4 @@
-import { DatabaseSync } from 'node:sqlite';
+import { DatabaseSync } from './sqlite.ts';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { NormalizedEventEnvelope } from '../events/normalized-events.ts';

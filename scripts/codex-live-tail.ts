@@ -101,7 +101,7 @@ function parseArgs(argv: string[]): TailOptions {
 
   if (typeof conversationId !== 'string' || conversationId.length === 0) {
     process.stderr.write(
-      'usage: npm run codex:live:tail -- --conversation-id <id> [--json] [--include-text-deltas] [--from-now|--from-start]\n'
+      'usage: bun run codex:live:tail -- --conversation-id <id> [--json] [--include-text-deltas] [--from-now|--from-start]\n'
     );
     process.exitCode = 2;
     process.exit(2);

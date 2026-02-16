@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'bun:test';
 import { findAnsiIntegrityIssues } from '../src/mux/ansi-integrity.ts';
 import { padOrTrimDisplay } from '../src/mux/dual-pane-core.ts';
 import { renderWorkspaceRailAnsiRows } from '../src/mux/workspace-rail.ts';

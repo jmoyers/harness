@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -15,6 +15,10 @@ interface RunHarnessResult {
 }
 
 const HARNESS_SCRIPT_PATH = resolve(process.cwd(), 'scripts/harness.ts');
+
+function tsRuntimeArgs(scriptPath: string, args: readonly string[] = []): string[] {
+  return [scriptPath, ...args];
+}
 
 function createWorkspace(): string {
   return mkdtempSync(join(tmpdir(), 'harness-cli-test-'));
@@ -60,7 +64,7 @@ async function runHarness(
         delete env[key];
       }
     }
-    const child = spawn(process.execPath, ['--experimental-strip-types', HARNESS_SCRIPT_PATH, ...args], {
+    const child = spawn(process.execPath, tsRuntimeArgs(HARNESS_SCRIPT_PATH, args), {
       cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
       env

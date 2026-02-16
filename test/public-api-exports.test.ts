@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'bun:test';
 import { buildCodexTelemetryConfigArgs } from '../src/control-plane/codex-telemetry.ts';
 import { HarnessAgentRealtimeClient } from '../src/control-plane/agent-realtime-api.ts';
 import type {

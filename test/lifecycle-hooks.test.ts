@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import test from 'node:test';
+import type { Socket } from 'node:net';
+import { test } from 'bun:test';
 import { LifecycleHooksRuntime } from '../src/control-plane/lifecycle-hooks.ts';
 import type { HarnessLifecycleHooksConfig } from '../src/config/config-core.ts';
 import type { StreamObservedEvent } from '../src/control-plane/stream-protocol.ts';
@@ -783,8 +784,15 @@ void test('lifecycle hooks drain restart branch executes when pending work remai
 });
 
 void test('lifecycle hooks timeout path aborts stalled connector requests', async () => {
+  const sockets = new Set<Socket>();
   const stalledServer = createServer(() => {
     // Intentionally keep request open so connector timeout path triggers AbortController.abort().
+  });
+  stalledServer.on('connection', (socket) => {
+    sockets.add(socket);
+    socket.on('close', () => {
+      sockets.delete(socket);
+    });
   });
   await new Promise<void>((resolveListen, rejectListen) => {
     stalledServer.once('error', rejectListen);
@@ -814,13 +822,21 @@ void test('lifecycle hooks timeout path aborts stalled connector requests', asyn
     })
   );
   const scope = makeScope();
-  runtime.publish(scope, makeSessionStatusEvent(scope, 'running'), 1);
-
-  await runtime.close();
-  await new Promise<void>((resolveClose) => {
-    stalledServer.close(() => resolveClose());
-  });
-});
+  try {
+    runtime.publish(scope, makeSessionStatusEvent(scope, 'running'), 1);
+    await new Promise<void>((resolveWait) => {
+      setTimeout(resolveWait, 50);
+    });
+  } finally {
+    for (const socket of sockets) {
+      socket.destroy();
+    }
+    await new Promise<void>((resolveClose) => {
+      stalledServer.close(() => resolveClose());
+    });
+    await runtime.close();
+  }
+}, { timeout: 15000 });
 
 void test('lifecycle hooks no-op when all connectors are disabled', async () => {
   const runtime = new LifecycleHooksRuntime(

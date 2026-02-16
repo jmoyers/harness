@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { chmodSync, mkdtempSync, readdirSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import test from 'node:test';
+import { test } from 'bun:test';
 import {
   DEFAULT_HARNESS_CONFIG,
   HARNESS_CONFIG_FILE_NAME,
@@ -924,7 +924,7 @@ void test('updateHarnessConfig throws when existing config cannot be parsed', ()
         filePath,
         update: (current) => current
       }),
-    /Unexpected end of JSON input/
+    /Unexpected end of JSON input|Unexpected EOF|JSON Parse error/i
   );
   assert.equal(readFileSync(filePath, 'utf8'), '{ "mux": ');
 });

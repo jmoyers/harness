@@ -97,6 +97,10 @@ function normalizeSignalExitCode(signal: NodeJS.Signals | null): number {
   return 1;
 }
 
+function tsRuntimeArgs(scriptPath: string, args: readonly string[] = []): string[] {
+  return [scriptPath, ...args];
+}
+
 function readCliValue(argv: readonly string[], index: number, flag: string): string {
   const value = argv[index + 1];
   if (value === undefined) {
@@ -577,16 +581,14 @@ async function startDetachedGateway(
 ): Promise<GatewayRecord> {
   mkdirSync(dirname(logPath), { recursive: true });
   const logFd = openSync(logPath, 'a');
-  const daemonArgs = [
-    '--experimental-strip-types',
-    daemonScriptPath,
+  const daemonArgs = tsRuntimeArgs(daemonScriptPath, [
     '--host',
     settings.host,
     '--port',
     String(settings.port),
     '--state-db-path',
     settings.stateDbPath
-  ];
+  ]);
   if (settings.authToken !== null) {
     daemonArgs.push('--auth-token', settings.authToken);
   }
@@ -758,16 +760,14 @@ async function runMuxClient(
   gateway: GatewayRecord,
   passthroughArgs: readonly string[]
 ): Promise<number> {
-  const args = [
-    '--experimental-strip-types',
-    muxScriptPath,
+  const args = tsRuntimeArgs(muxScriptPath, [
     '--harness-server-host',
     gateway.host,
     '--harness-server-port',
     String(gateway.port),
     ...(gateway.authToken === null ? [] : ['--harness-server-token', gateway.authToken]),
     ...passthroughArgs
-  ];
+  ]);
 
   const child = spawn(process.execPath, args, {
     stdio: 'inherit',
@@ -800,16 +800,14 @@ async function runGatewayForeground(
     removeGatewayRecord(recordPath);
   }
 
-  const daemonArgs = [
-    '--experimental-strip-types',
-    daemonScriptPath,
+  const daemonArgs = tsRuntimeArgs(daemonScriptPath, [
     '--host',
     settings.host,
     '--port',
     String(settings.port),
     '--state-db-path',
     settings.stateDbPath
-  ];
+  ]);
   if (settings.authToken !== null) {
     daemonArgs.push('--auth-token', settings.authToken);
   }

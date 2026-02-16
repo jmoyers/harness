@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'bun:test';
 import {
   DEFAULT_GATEWAY_DB_PATH,
   DEFAULT_GATEWAY_HOST,

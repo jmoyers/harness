@@ -679,11 +679,11 @@ Subsystems that remain first-party for quality and latency control:
 Subsystems where mature dependencies are acceptable because they are outside direct interaction hot paths:
 
 - SQLite access and migrations:
-  - Use: `better-sqlite3` or `sqlite3` plus simple migration tooling.
+  - Use: runtime-native SQLite bindings behind one shared wrapper (`bun:sqlite`) plus simple migration tooling.
   - Rationale: avoid rebuilding storage engines/bindings.
 
 - Testing framework and assertions:
-  - Use: `node:test`, `jest`, or `vitest`.
+  - Use: `bun test` plus strict assertion/type tooling.
   - Rationale: avoid rebuilding test runners and assertion ecosystems.
 
 - Networking and protocol helpers:
@@ -1003,7 +1003,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
   - interactive `vim` self-hosting e2e
   - terminal control-sequence pass-through test coverage (alternate screen, cursor, bracketed paste, mouse mode, color sequences)
 - Single-session attach/detach/reconnect baseline is implemented via `src/pty/session-broker.ts` with cursor-based replay for reattached clients.
-- Latency benchmark gate is implemented and runnable via `npm run benchmark:latency`, reporting direct-framed vs harness overhead at p50/p95/p99 with configurable thresholds.
+- Latency benchmark gate is implemented and runnable via `bun run benchmark:latency`, reporting direct-framed vs harness overhead at p50/p95/p99 with configurable thresholds.
 - Canonical event envelope in `src/events/normalized-events.ts`.
 - Transactional append-only SQLite `events` persistence in `src/store/event-store.ts` (tenant/user scoped reads).
   - Milestone 2 live-steered checkpoint is implemented:
@@ -1013,7 +1013,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
   - `src/terminal/snapshot-oracle.ts` provides deterministic pseudo-snapshots (`rows`, `cols`, `activeScreen`, `cursor`, `lines`, `frameHash`) from live PTY output, including DEC scroll-region/origin handling required for pinned-footer UIs.
   - Supported terminal semantics now include `DECSTBM` (`CSI t;b r`), `DECOM` (`CSI ? 6 h/l`), `IND`/`NEL`/`RI`, and region-scoped `IL`/`DL` behavior.
   - `src/terminal/parity-suite.ts` defines codex/vim/core parity scenes and a deterministic matrix runner with scene-level failures and frame-hash output.
-  - `scripts/codex-live.ts` provides a direct live entrypoint (`npm run codex:live -- ...`) with persisted normalized events.
+  - `scripts/codex-live.ts` provides a direct live entrypoint (`bun run codex:live -- ...`) with persisted normalized events.
   - `scripts/codex-live.ts` enforces terminal stream isolation: PTY output remains on stdout while events persist to SQLite (no event JSON mixed into terminal output).
   - `scripts/codex-live-tail.ts` tails persisted live events by conversation in real time.
   - `scripts/codex-live-snapshot.ts` renders PTY deltas into textual snapshot frames for deterministic integration/e2e assertions (`--json`).
@@ -1063,7 +1063,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - dynamic subscription lifecycle wrappers (`client.subscribe`, `client.unsubscribe`, `client.subscriptions.*`) so automations can scope feeds at runtime (for example by `repositoryId` / `taskId`) without reconnecting.
     - wrapper methods for steering, PTY transport, and ownership claim/release/takeover flows.
     - intended as the canonical API surface for external adapters while preserving control-plane parity with the human mux.
-  - `scripts/control-plane-daemon.ts` provides a standalone control-plane process (`npm run control-plane:daemon`) for split client/server operation.
+  - `scripts/control-plane-daemon.ts` provides a standalone control-plane process (`bun run control-plane:daemon`) for split client/server operation.
     - non-loopback bind now requires an auth token (`--auth-token` or `HARNESS_CONTROL_PLANE_AUTH_TOKEN`).
     - daemon state persistence path is configurable (`--state-db-path` / `HARNESS_CONTROL_PLANE_DB_PATH`).
     - daemon passes `hooks.lifecycle` config through to the control-plane runtime; lifecycle connector behavior is file-configured, not env-configured.
@@ -1074,14 +1074,14 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - `harness animate` is a first-party high-FPS terminal benchmark scene (ASCII tunnel/starfield) for stressing render throughput independent of gateway lifecycle.
     - gateway state is persisted as a gateway-of-record file (`.harness/gateway.json`) with host/port/auth/pid metadata; stale records are pruned on startup/stop flows.
     - client disconnect (including `Ctrl+C` in mux) does not kill the gateway; only explicit gateway stop/shutdown tears down child sessions.
-  - `scripts/harness-core.ts` is the canonical mux client entrypoint (`npm run harness:core`).
+  - `scripts/harness-core.ts` is the canonical mux client entrypoint (`bun run harness:core`).
     - legacy `scripts/codex-live-mux.ts` remains as a compatibility implementation path while canonical invocation shifts to `harness-core`.
   - `scripts/control-plane-daemon-fixture.ts` provides a deterministic fixture daemon path that runs a local command (default `/bin/sh`) instead of Codex, for startup paint/protocol isolation.
-  - `scripts/codex-live-mux-launch.ts` provides a one-command launcher (`npm run codex:live:mux:launch -- ...`) that boots a dedicated daemon and connects the remote mux client for client/server parity without manual multi-terminal setup.
+  - `scripts/codex-live-mux-launch.ts` provides a one-command launcher (`bun run codex:live:mux:launch -- ...`) that boots a dedicated daemon and connects the remote mux client for client/server parity without manual multi-terminal setup.
     - launcher mode remains a local lifecycle harness for startup/perf measurement where mux + daemon are intentionally co-terminated by the launcher process.
     - launcher now overlaps daemon and mux process startup; remote connect retries bridge daemon readiness instead of serially blocking mux spawn.
     - launcher/daemon/mux startup milestones now emit through `perf-core` only (single JSONL instrumentation stream, no side-channel startup tracer).
-  - `scripts/mux-fixture-launch.ts` provides a one-command fixture launch (`npm run mux:fixture:launch`) that boots fixture daemon + mux client with isolated sqlite paths and controlled startup content for render-settle verification without Codex dependency.
+  - `scripts/mux-fixture-launch.ts` provides a one-command fixture launch (`bun run mux:fixture:launch`) that boots fixture daemon + mux client with isolated sqlite paths and controlled startup content for render-settle verification without Codex dependency.
   - `scripts/codex-live-mux.ts` provides the first-party split UI (left: workspace rail, right: live steerable Codex session rendered via shared snapshot oracle) with:
     - control operations routed over the control-plane stream (`pty.start`, `pty.attach`, `pty.input`, `pty.resize`, `pty.signal`, `pty.close`) instead of direct in-process session calls
     - remote-server mode via `--harness-server-host` and `--harness-server-port` for exact two-pane behavior against an external daemon
@@ -1110,7 +1110,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - active-session attach now resumes from the last observed PTY cursor; inactive live conversations keep event subscriptions after detach so status/telemetry stays fresh while PTY output replay remains bounded by cursor-based attach
     - key-event subscription wiring (`session-status` + `session-key-event`) that drives thread bubble status and second-line "last known work" text from provider/telemetry signals rather than local keystroke heuristics
     - Codex OTEL normalization now uses a minimal active/inactive contract: prompt + SSE progress marks active, turn-e2e marks inactive, explicit needs-input tokens raise attention, and severity/error keyword fallbacks are disabled to prevent false telemetry errors.
-    - telemetry capture is lifecycle-first by default: `codex.telemetry.captureVerboseEvents=false` stores/publishes only lifecycle events (`codex.user_prompt`, `codex.turn.e2e_duration_ms`); verbose event families are opt-in.
+    - telemetry capture is lifecycle-first by default: `codex.telemetry.captureVerboseEvents=false` stores/publishes lifecycle events (`codex.conversation_starts`, `codex.user_prompt`, `codex.turn.e2e_duration_ms`) plus non-verbose high-signal events with explicit status hints; verbose event families remain opt-in.
     - Codex notify hook relay support streams `session-event notify` records (for example `agent-turn-complete`) without introducing side-channel status heuristics.
     - mux status reduction now separates high-signal status transitions from noisy telemetry chatter: trace spans are status-neutral, non-turn metrics are status-neutral, stream deltas collapse into stable human-readable progress text, and the working glyph is static (non-blinking) to reduce visual noise while preserving live progress detail in the second line.
     - OTLP timestamp normalization now treats zero/invalid nano timestamps as fallback wall-clock observations (instead of epoch `1970`), keeping telemetry timelines orderable and reducing false recency artifacts.
@@ -1143,7 +1143,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
   - `test/mux-runtime-wiring.integration.test.ts` exercises the full path (OTLP ingest -> stream subscription -> mux wiring reducer -> rail rows) so icon/status-line regressions are caught outside isolated unit layers.
   - source-fragment regression tests were removed; mux/daemon regressions are validated via behavior-level tests over typed module APIs instead of brittle file-content assertions.
   - terminal parity now includes footer background persistence checks via `codex-footer-background-persistence`.
-  - `scripts/terminal-parity.ts` exposes the parity matrix gate (`npm run terminal:parity`).
+  - `scripts/terminal-parity.ts` exposes the parity matrix gate (`bun run terminal:parity`).
 
 ## Codex Telemetry Completion TODO (Claude Parity Deferred)
 

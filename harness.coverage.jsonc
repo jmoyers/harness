@@ -1,0 +1,15 @@
+{
+  "include": ["src/**/*.ts"],
+  "exclude": [],
+  "global": {
+    "lines": 100,
+    "functions": 100,
+    "branches": 100
+  },
+  "perFileDefault": {
+    "lines": 100,
+    "functions": 100,
+    "branches": 100
+  },
+  "perFile": {}
+}

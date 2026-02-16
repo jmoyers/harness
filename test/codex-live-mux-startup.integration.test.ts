@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -95,6 +95,10 @@ interface StartInteractiveMuxOptions extends CaptureMuxBootOutputOptions {
   rows?: number;
 }
 
+function tsRuntimeArgs(scriptPath: string, args: readonly string[] = []): string[] {
+  return [scriptPath, ...args];
+}
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolveDelay) => {
     setTimeout(resolveDelay, ms);
@@ -159,7 +163,7 @@ async function captureMuxBootOutput(
 ): Promise<{ output: string; exit: PtyExit }> {
   const scriptPath = resolve(process.cwd(), 'scripts/codex-live-mux.ts');
   const collected: Buffer[] = [];
-  const commandArgs = ['--experimental-strip-types', scriptPath];
+  const commandArgs = tsRuntimeArgs(scriptPath);
   if (options.controlPlaneHost !== undefined) {
     commandArgs.push('--harness-server-host', options.controlPlaneHost);
   }
@@ -214,7 +218,7 @@ function startInteractiveMuxSession(
   readonly waitForExit: Promise<PtyExit>;
 } {
   const scriptPath = resolve(process.cwd(), 'scripts/codex-live-mux.ts');
-  const commandArgs = ['--experimental-strip-types', scriptPath];
+  const commandArgs = tsRuntimeArgs(scriptPath);
   if (options.controlPlaneHost !== undefined) {
     commandArgs.push('--harness-server-host', options.controlPlaneHost);
   }
@@ -283,7 +287,6 @@ function writeLeftMouseClick(
 
 void test(
   'codex-live-mux startup bootstraps task hydration without temporal dead zone fatal errors',
-  { timeout: 20000 },
   async () => {
     const workspace = createWorkspace();
 
@@ -297,12 +300,12 @@ void test(
     } finally {
       rmSync(workspace, { recursive: true, force: true });
     }
-  }
+  },
+  { timeout: 20000 }
 );
 
 void test(
   'codex-live-mux startup does not resurrect archived project threads from stream replay',
-  { timeout: 20000 },
   async () => {
     const workspace = createWorkspace();
     mkdirSync(join(workspace, 'project-a'), { recursive: true });
@@ -410,12 +413,12 @@ void test(
       await server.close();
       rmSync(workspace, { recursive: true, force: true });
     }
-  }
+  },
+  { timeout: 20000 }
 );
 
 void test(
   'codex-live-mux shows home and project controls on the rail',
-  { timeout: 20000 },
   async () => {
     const workspace = createWorkspace();
 
@@ -431,12 +434,12 @@ void test(
     } finally {
       rmSync(workspace, { recursive: true, force: true });
     }
-  }
+  },
+  { timeout: 20000 }
 );
 
 void test(
   'codex-live-mux startup does not auto-create conversation records before explicit thread creation',
-  { timeout: 20000 },
   async () => {
     const workspace = createWorkspace();
 
@@ -454,12 +457,12 @@ void test(
     } finally {
       rmSync(workspace, { recursive: true, force: true });
     }
-  }
+  },
+  { timeout: 20000 }
 );
 
 void test(
   'codex-live-mux keeps rail mouse clicks active after opening home pane',
-  { timeout: 30000 },
   async () => {
     const workspace = createWorkspace();
     const interactive = startInteractiveMuxSession(workspace, {
@@ -492,5 +495,6 @@ void test(
         rmSync(workspace, { recursive: true, force: true });
       }
     }
-  }
+  },
+  { timeout: 30000 }
 );

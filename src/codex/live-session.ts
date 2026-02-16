@@ -167,6 +167,10 @@ const DEFAULT_DA2_REPLY = '\u001b[>1;10;0c';
 const CELL_PIXEL_HEIGHT = 16;
 const CELL_PIXEL_WIDTH = 8;
 
+function tsRuntimeArgs(scriptPath: string, args: readonly string[] = []): string[] {
+  return [scriptPath, ...args];
+}
+
 export function buildTomlStringArray(values: string[]): string {
   const escaped = values.map((value) => {
     const withBackslashEscaped = value.replaceAll('\\', '\\\\');
@@ -467,13 +471,7 @@ class CodexLiveSession {
       options.notifyFilePath ??
       join(tmpdir(), `harness-codex-notify-${process.pid}-${randomUUID()}.jsonl`);
     const relayScriptPath = resolve(options.relayScriptPath ?? DEFAULT_RELAY_SCRIPT_PATH);
-    const notifyCommand = [
-      '/usr/bin/env',
-      process.execPath,
-      '--experimental-strip-types',
-      relayScriptPath,
-      this.notifyFilePath
-    ];
+    const notifyCommand = ['/usr/bin/env', process.execPath, ...tsRuntimeArgs(relayScriptPath, [this.notifyFilePath])];
     const commandArgs = [
       ...(options.baseArgs ?? DEFAULT_BASE_ARGS),
       ...(useNotifyHook ? ['-c', `notify=${buildTomlStringArray(notifyCommand)}`] : []),

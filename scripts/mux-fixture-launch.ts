@@ -21,6 +21,10 @@ const DEFAULT_HOST = '127.0.0.1';
 const START_TIMEOUT_MS = 5000;
 const STOP_TIMEOUT_MS = 1500;
 
+function tsRuntimeArgs(scriptPath: string, args: readonly string[] = []): string[] {
+  return [scriptPath, ...args];
+}
+
 function normalizeSignalExitCode(signal: NodeJS.Signals | null): number {
   if (signal === null) {
     return 1;
@@ -154,7 +158,7 @@ function spawnDaemon(
 ): ChildProcess {
   return spawn(
     process.execPath,
-    ['--experimental-strip-types', DAEMON_SCRIPT, '--host', host, '--port', String(port)],
+    tsRuntimeArgs(DAEMON_SCRIPT, ['--host', host, '--port', String(port)]),
     {
       stdio: ['ignore', 'pipe', 'inherit'],
       env: {
@@ -244,15 +248,13 @@ function spawnMuxClient(
 ): ChildProcess {
   return spawn(
     process.execPath,
-    [
-      '--experimental-strip-types',
-      MUX_SCRIPT,
+    tsRuntimeArgs(MUX_SCRIPT, [
       '--harness-server-host',
       host,
       '--harness-server-port',
       String(port),
       ...fixtureArgs
-    ],
+    ]),
     {
       stdio: 'inherit',
       env: {

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import test from 'node:test';
+import { test } from 'bun:test';
 import {
   buildTomlStringArray,
   normalizeTerminalColorHex,
@@ -77,9 +77,11 @@ void test('terminal color normalization and OSC formatting are deterministic', (
 });
 
 void test('notify helpers format TOML arrays and parse relay records', () => {
+  const expectedNotifyCommand = ['/usr/bin/env', process.execPath, '/tmp/relay.ts'];
+
   assert.equal(
-    buildTomlStringArray(['/usr/bin/env', process.execPath, '--experimental-strip-types', '/tmp/relay.ts']),
-    `["/usr/bin/env","${process.execPath.replaceAll('\\', '\\\\')}","--experimental-strip-types","/tmp/relay.ts"]`
+    buildTomlStringArray(expectedNotifyCommand),
+    `[${expectedNotifyCommand.map((value) => JSON.stringify(value)).join(',')}]`
   );
   assert.equal(parseNotifyRecordLine('not-json'), null);
   assert.equal(parseNotifyRecordLine('null'), null);
@@ -101,6 +103,47 @@ void test('notify helpers format TOML arrays and parse relay records', () => {
       ?.payload['type'],
     'agent-turn-complete'
   );
+});
+
+void test('codex live session builds bun-native notify command', () => {
+  const broker = new FakeBroker();
+  let startOptions:
+    | {
+        command?: string;
+        commandArgs?: string[];
+        env?: NodeJS.ProcessEnv;
+        cwd?: string;
+      }
+    | undefined;
+  const fakeTimer = {
+    refresh: () => fakeTimer,
+    ref: () => fakeTimer,
+    unref: () => fakeTimer,
+    hasRef: () => false
+  } as unknown as NodeJS.Timeout;
+  const session = startCodexLiveSession(
+    {
+      useNotifyHook: true,
+      notifyFilePath: '/tmp/harness-notify-bun.jsonl',
+      relayScriptPath: '/tmp/relay.ts'
+    },
+    {
+      startBroker: (options) => {
+        startOptions = options;
+        return broker;
+      },
+      readFile: () => '',
+      setIntervalFn: () => fakeTimer
+    }
+  );
+  try {
+    const notifyArg = startOptions?.commandArgs?.find((arg) => arg.startsWith('notify=['));
+    assert.notEqual(notifyArg, undefined);
+    assert.equal(notifyArg?.includes(`"${process.execPath}"`), true);
+    assert.equal(notifyArg?.includes('"/tmp/relay.ts"'), true);
+  } finally {
+    session.close();
+  }
 });
 
 void test('codex live session emits notify events when notify hook polling is enabled', () => {

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'bun:test';
 import {
   actionAtWorkspaceRailCell,
   actionAtWorkspaceRailRow,
@@ -70,7 +70,7 @@ void test('workspace rail model builds rows with conversation spacing and proces
         {
           key: 'proc',
           directoryKey: 'a:b',
-          label: 'npm run dev',
+          label: 'bun run dev',
           cpuPercent: Number.NaN,
           memoryMb: Number.NaN,
           status: 'exited'

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import test from 'node:test';
+import { afterEach, test } from 'bun:test';
 import { configurePerfCore, shutdownPerfCore } from '../src/perf/perf-core.ts';
 import { resolvePtyHelperPath, startPtySession, type PtyExit } from '../src/pty/pty_host.ts';
 
@@ -149,7 +149,7 @@ function readPerfRecords(filePath: string): PerfRecord[] {
     .map(parsePerfRecord);
 }
 
-test.afterEach(() => {
+afterEach(() => {
   configurePerfCore({ enabled: false });
   shutdownPerfCore();
 });
@@ -305,7 +305,7 @@ void test('pty-host emits error when helper executable cannot be launched', asyn
   assert.match(error.message, /ENOENT/);
 });
 
-void test('pty-host supports interactive vim editing flow', { timeout: 20000 }, async () => {
+void test('pty-host supports interactive vim editing flow', async () => {
   const tempPath = mkdtempSync(join(tmpdir(), 'harness-vim-'));
   const notePath = join(tempPath, 'note.txt');
 
@@ -338,7 +338,7 @@ void test('pty-host supports interactive vim editing flow', { timeout: 20000 }, 
   } finally {
     rmSync(tempPath, { recursive: true, force: true });
   }
-});
+}, { timeout: 20000 });
 
 void test('pty-host preserves terminal control sequences in output stream', async () => {
   const expectedSequences = [
@@ -375,7 +375,6 @@ void test('pty-host preserves terminal control sequences in output stream', asyn
 
 void test(
   'pty-host perf emits stdout chunk events when no write probe is pending',
-  { timeout: 10000 },
   async () => {
     const tempPath = mkdtempSync(join(tmpdir(), 'harness-perf-empty-'));
     const perfFilePath = join(tempPath, 'perf.jsonl');
@@ -413,12 +412,12 @@ void test(
       shutdownPerfCore();
       rmSync(tempPath, { recursive: true, force: true });
     }
-  }
+  },
+  { timeout: 10000 }
 );
 
 void test(
   'pty-host trims roundtrip output window when buffered stdout exceeds max bytes',
-  { timeout: 10000 },
   async () => {
     const tempPath = mkdtempSync(join(tmpdir(), 'harness-perf-window-'));
     const perfFilePath = join(tempPath, 'perf.jsonl');
@@ -468,12 +467,12 @@ void test(
       shutdownPerfCore();
       rmSync(tempPath, { recursive: true, force: true });
     }
-  }
+  },
+  { timeout: 10000 }
 );
 
 void test(
   'pty-host emits keystroke roundtrip instrumentation with low latency',
-  { timeout: 30000 },
   async () => {
     const tempPath = mkdtempSync(join(tmpdir(), 'harness-perf-'));
     const perfFilePath = join(tempPath, 'perf.jsonl');
@@ -533,5 +532,6 @@ void test(
       shutdownPerfCore();
       rmSync(tempPath, { recursive: true, force: true });
     }
-  }
+  },
+  { timeout: 30000 }
 );

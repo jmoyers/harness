@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'bun:test';
 import {
   createNewThreadPromptState,
   newThreadPromptBodyLines,
@@ -92,6 +92,13 @@ void test('new thread prompt decodes encoded key protocols and ignores unrelated
   );
   assert.equal(newlineSubmit.nextState.selectedAgentType, 'codex');
   assert.equal(newlineSubmit.submit, true);
+});
+
+void test('new thread prompt accepts numeric terminal shortcut key', () => {
+  const initial = createNewThreadPromptState('directory-numeric');
+  const selected = reduceNewThreadPromptInput(initial, Uint8Array.from([0x32]));
+  assert.equal(selected.nextState.selectedAgentType, 'terminal');
+  assert.equal(selected.submit, false);
 });
 
 void test('new thread prompt row mapping and body lines remain deterministic', () => {

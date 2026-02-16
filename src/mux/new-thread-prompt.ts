@@ -71,18 +71,12 @@ export function reduceNewThreadPromptInput(
     if (byte === 0x0d || byte === 0x0a) {
       submit = true;
       break;
-    }
-    if (byte === 0x09 || byte === 0x20) {
+    } else if (byte === 0x09 || byte === 0x20) {
       selectedAgentType = nextThreadAgentType(selectedAgentType);
-      continue;
-    }
-    if (byte === 0x31 || byte === 0x63 || byte === 0x43) {
+    } else if (byte === 0x31 || byte === 0x63 || byte === 0x43) {
       selectedAgentType = 'codex';
-      continue;
-    }
-    if (byte === 0x32 || byte === 0x74 || byte === 0x54) {
+    } else if (byte === 0x32 || byte === 0x74 || byte === 0x54) {
       selectedAgentType = 'terminal';
-      continue;
     }
   }
   return {

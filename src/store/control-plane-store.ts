@@ -1,4 +1,4 @@
-import { DatabaseSync } from 'node:sqlite';
+import { DatabaseSync } from './sqlite.ts';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { PtyExit } from '../pty/pty_host.ts';
@@ -289,6 +289,14 @@ function asBooleanFromInt(value: unknown, field: string): boolean {
     return true;
   }
   throw new Error(`unexpected flag value for ${field}`);
+}
+
+function sqliteStatementChanges(value: unknown): number {
+  if (typeof value !== 'object' || value === null) {
+    return 0;
+  }
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.changes === 'number' ? candidate.changes : 0;
 }
 
 function normalizeAdapterState(value: unknown): Record<string, unknown> {
@@ -1225,7 +1233,7 @@ export class SqliteControlPlaneStore {
         JSON.stringify(input.payload),
         input.fingerprint
       );
-    return Number(result.changes) > 0;
+    return sqliteStatementChanges(result) > 0;
   }
 
   latestTelemetrySummary(sessionId: string): ControlPlaneTelemetrySummary | null {

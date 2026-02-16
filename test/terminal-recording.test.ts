@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
-import test from 'node:test';
+import { test } from 'bun:test';
 import { TerminalSnapshotOracle } from '../src/terminal/snapshot-oracle.ts';
 import {
   createTerminalRecordingWriter,

@@ -198,7 +198,8 @@ async function main(): Promise<void> {
 
   const conversations = new Map<string, RuntimeConversationState>();
   const timeline: StatusTimelineEntry[] = [];
-  let promptSentAtMs = 0;
+  const observedStatusTelemetryEventNames = new Set<string>();
+  const observedKeyEventNames = new Set<string>();
   const remainingTimeoutMs = (): number => {
     const elapsedMs = Date.now() - startedAtMs;
     return Math.max(200, options.timeoutMs - elapsedMs);
@@ -229,17 +230,21 @@ async function main(): Promise<void> {
     });
   };
 
-  const currentPhase = (): string | null => {
-    const conversation = conversations.get(conversationId);
-    if (conversation === undefined) {
-      return null;
-    }
-    return projectedPhase(conversation, Date.now()).phase;
-  };
-
   const subscription = await subscribeControlPlaneKeyEvents(client, {
     conversationId,
     onEvent: (event) => {
+      if (event.type === 'session-status') {
+        const telemetryEventName = event.telemetry?.eventName;
+        if (typeof telemetryEventName === 'string' && telemetryEventName.trim().length > 0) {
+          observedStatusTelemetryEventNames.add(telemetryEventName);
+        }
+      }
+      if (event.type === 'session-telemetry') {
+        const eventName = event.keyEvent.eventName;
+        if (typeof eventName === 'string' && eventName.trim().length > 0) {
+          observedKeyEventNames.add(eventName);
+        }
+      }
       const updated = applyMuxControlPlaneKeyEvent(event, {
         removedConversationIds: new Set<string>(),
         ensureConversation: (sessionId, seed) => {
@@ -277,10 +282,11 @@ async function main(): Promise<void> {
       title: 'status integration',
       agentType: 'codex'
     });
-    const startArgs: string[] = [];
+    const startArgs: string[] = ['exec', '--skip-git-repo-check'];
     if (options.model !== null) {
       startArgs.push('--model', options.model);
     }
+    startArgs.push(options.prompt);
     await client.sendCommand({
       type: 'pty.start',
       sessionId: conversationId,
@@ -298,18 +304,6 @@ async function main(): Promise<void> {
       return timeline.some((entry) => entry.phase === 'active');
     });
 
-    promptSentAtMs = Date.now();
-    await client.sendCommand({
-      type: 'session.respond',
-      sessionId: conversationId,
-      text: `${options.prompt}\n`
-    });
-
-    await waitFor('active phase after prompt', remainingTimeoutMs(), () => {
-      emitPhase('poll');
-      return currentPhase() === 'active';
-    });
-
     await waitFor('inactive phase after prompt completion', remainingTimeoutMs(), () => {
       emitPhase('poll');
       const activeIndex = timeline.findIndex((entry) => entry.phase === 'active');
@@ -323,16 +317,12 @@ async function main(): Promise<void> {
     });
 
     const startupActiveIndex = timeline.findIndex((entry) => entry.phase === 'active');
-    const promptInactiveIndex = timeline.findIndex((entry) => entry.atMs >= promptSentAtMs && entry.phase === 'inactive');
+    const promptInactiveIndex = timeline.findIndex((entry) => entry.phase === 'inactive');
 
     assert.equal(startupActiveIndex >= 0, true);
     assert.equal(promptInactiveIndex >= 0, true);
     assert.equal(
       timeline.some((entry) => entry.phase === 'active' && (entry.icon === '◔' || entry.icon === '◆')),
-      true
-    );
-    assert.equal(
-      timeline.some((entry) => entry.atMs >= promptSentAtMs && entry.phase === 'active'),
       true
     );
     assert.equal(
@@ -344,10 +334,22 @@ async function main(): Promise<void> {
       ),
       true
     );
+    assert.equal(
+      timeline.some(
+        (entry, index) => index > promptInactiveIndex && entry.phase === 'active'
+      ),
+      false
+    );
     assert.equal(timeline.every((entry) => entry.statusText.trim().length > 0), true);
     assert.equal(
       timeline.some((entry) => entry.phase === 'needs-action' || entry.statusText.toLowerCase().includes('telemetry')),
       false
+    );
+    assert.equal(observedStatusTelemetryEventNames.has('codex.conversation_starts'), true);
+    assert.equal(
+      observedStatusTelemetryEventNames.has('codex.user_prompt') ||
+        observedKeyEventNames.has('codex.user_prompt'),
+      true
     );
 
     process.stdout.write('codex status integration sequence verified\n');

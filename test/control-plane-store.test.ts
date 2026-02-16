@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { DatabaseSync } from 'node:sqlite';
+import { DatabaseSync } from '../src/store/sqlite.ts';
 import {
   SqliteControlPlaneStore,
   normalizeStoredConversationRow,
@@ -408,6 +408,78 @@ void test('control-plane store persists telemetry, deduplicates fingerprints, an
     assert.equal(store.findConversationIdByCodexThreadId('   '), null);
     assert.equal(store.latestTelemetrySummary('missing-conversation'), null);
     assert.deepEqual(store.listTelemetryForSession('missing-conversation', 5), []);
+  } finally {
+    store.close();
+  }
+});
+
+void test('control-plane telemetry append returns false when sqlite run result is non-object', () => {
+  const store = new SqliteControlPlaneStore(':memory:');
+  const internals = store as unknown as {
+    db: {
+      prepare: (sql: string) => {
+        run: (...args: unknown[]) => unknown;
+      };
+    };
+  };
+  const originalPrepare = internals.db.prepare.bind(internals.db);
+  internals.db.prepare = ((sql: string) => {
+    if (sql.includes('INSERT INTO session_telemetry')) {
+      return {
+        run: () => null
+      };
+    }
+    return originalPrepare(sql);
+  }) as typeof internals.db.prepare;
+  try {
+    const inserted = store.appendTelemetry({
+      source: 'otlp-log',
+      sessionId: 'conversation-non-object-result',
+      providerThreadId: null,
+      eventName: 'event',
+      severity: null,
+      summary: null,
+      observedAt: '2026-02-15T00:00:00.000Z',
+      payload: {},
+      fingerprint: 'fingerprint-non-object-result'
+    });
+    assert.equal(inserted, false);
+  } finally {
+    store.close();
+  }
+});
+
+void test('control-plane telemetry append returns false when sqlite run changes is non-numeric', () => {
+  const store = new SqliteControlPlaneStore(':memory:');
+  const internals = store as unknown as {
+    db: {
+      prepare: (sql: string) => {
+        run: (...args: unknown[]) => unknown;
+      };
+    };
+  };
+  const originalPrepare = internals.db.prepare.bind(internals.db);
+  internals.db.prepare = ((sql: string) => {
+    if (sql.includes('INSERT INTO session_telemetry')) {
+      return {
+        run: () => ({ changes: 'bad-value' })
+      };
+    }
+    return originalPrepare(sql);
+  }) as typeof internals.db.prepare;
+  try {
+    const inserted = store.appendTelemetry({
+      source: 'otlp-log',
+      sessionId: 'conversation-non-numeric-changes',
+      providerThreadId: null,
+      eventName: 'event',
+      severity: null,
+      summary: null,
+      observedAt: '2026-02-15T00:00:00.000Z',
+      payload: {},
+      fingerprint: 'fingerprint-non-numeric-changes'
+    });
+    assert.equal(inserted, false);
   } finally {
     store.close();
   }

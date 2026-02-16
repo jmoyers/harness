@@ -174,15 +174,15 @@ class ActivePerfSpan {
   }
 }
 
-class NoopPerfSpan {
-  end(): void {}
-}
-
 interface PerfSpan {
   end(extraAttrs?: PerfAttrs): void;
 }
 
-const NOOP_PERF_SPAN: PerfSpan = new NoopPerfSpan();
+const NOOP_PERF_SPAN: PerfSpan = {
+  end(): void {
+    return;
+  }
+};
 
 export function configurePerfCore(config: PerfCoreConfig): void {
   const nextFilePath = config.filePath ?? state.filePath;

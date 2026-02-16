@@ -141,7 +141,7 @@ Harness is built to expose operational truth, not hide it.
 - Canonical thread/session lifecycle events.
 - Typed telemetry events for status hints and recent work summaries.
 - Deliberately minimal work-status projection: prompt/SSE progress marks `active`, turn-e2e metrics mark `inactive`, and controller ownership never overrides status text.
-- Lifecycle telemetry is default-first: `codex.telemetry.captureVerboseEvents` defaults to `false`, so non-lifecycle telemetry is opt-in.
+- Lifecycle telemetry is default-first: `codex.telemetry.captureVerboseEvents` defaults to `false`, retaining lifecycle events (`codex.conversation_starts`, `codex.user_prompt`, `codex.turn.e2e_duration_ms`) plus non-verbose high-signal events that carry explicit status hints.
 - Mux projection instrumentation (`mux.session-projection.transition`) for icon/status-line timeline debugging.
 - Selector index snapshots (`mux.selector.snapshot` + `mux.selector.entry`) so threads can be referenced by visible rail index.
 - Session ownership/control transition events.
@@ -162,21 +162,21 @@ Harness is built to expose operational truth, not hide it.
 
 ### Prerequisites
 
-- Node.js 22+
+- Bun 1.3.9+
 - Rust toolchain (for PTY helper build)
 - Codex CLI (for `codex` thread type)
 
 ### Run
 
 ```bash
-npm install
-npm run build:ptyd
+bun install
+bun run build:ptyd
 ```
 
 Install the canonical `harness` command from this checkout:
 
 ```bash
-npm link
+bun link
 harness --help
 ```
 
@@ -189,7 +189,7 @@ harness
 Record an optional GIF artifact by passing mux recording flags explicitly:
 
 ```bash
-npm run harness -- --record-output .harness/mux-recording.gif
+bun run harness -- --record-output .harness/mux-recording.gif
 ```
 
 Run a high-FPS terminal animation scene (vibe-tunnel style) to stress rendering paths:
@@ -198,7 +198,7 @@ Run a high-FPS terminal animation scene (vibe-tunnel style) to stress rendering 
 harness animate
 ```
 
-Direct mux entrypoint is `npm run harness:core` (legacy alias `npm run codex:live:mux`).
+Direct mux entrypoint is `bun run harness:core` (legacy alias `bun run codex:live:mux`).
 
 Gateway lifecycle control is explicit:
 
@@ -216,7 +216,19 @@ Process-bootstrap secrets can be stored in `.harness/secrets.env` (for example `
 Inspect the latest selector index snapshot from perf artifacts:
 
 ```bash
-npm run perf:mux:selector -- --file .harness/perf-startup.jsonl
+bun run perf:mux:selector -- --file .harness/perf-startup.jsonl
+```
+
+Run strict quality gates (lint, typecheck, dead-code, Bun test coverage with global + per-file 100% thresholds):
+
+```bash
+bun run verify
+```
+
+Run the on-demand long Codex status stability scenario (3 poems + tool actions, extended timeout) to validate no premature `inactive` transitions under non-verbose telemetry:
+
+```bash
+bun run test:integration:codex-status:long
 ```
 
 ## Documentation

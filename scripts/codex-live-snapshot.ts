@@ -109,7 +109,7 @@ function parseArgs(argv: string[]): SnapshotOptions {
 
   if (typeof conversationId !== 'string' || conversationId.length === 0) {
     process.stderr.write(
-      'usage: npm run codex:live:snapshot -- --conversation-id <id> [--follow] [--from-now] [--json]\n'
+      'usage: bun run codex:live:snapshot -- --conversation-id <id> [--follow] [--from-now] [--json]\n'
     );
     process.exit(2);
   }

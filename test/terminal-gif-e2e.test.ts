@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import test from 'node:test';
+import { test } from 'bun:test';
 import { TerminalSnapshotOracle } from '../src/terminal/snapshot-oracle.ts';
 import {
   createTerminalRecordingWriter,
@@ -29,6 +29,10 @@ function gifSize(buffer: Buffer): { width: number; height: number } {
     width: buffer.readUInt16LE(6),
     height: buffer.readUInt16LE(8)
   };
+}
+
+function tsRuntimeArgs(scriptPath: string, args: readonly string[] = []): string[] {
+  return [scriptPath, ...args];
 }
 
 void test('terminal recording to gif pipeline renders an animated gif artifact', async () => {
@@ -510,9 +514,7 @@ void test('terminal recording to gif cli script works end-to-end', async () => {
 
     const stdout = execFileSync(
       process.execPath,
-      [
-        '--experimental-strip-types',
-        'scripts/terminal-recording-to-gif.ts',
+      tsRuntimeArgs('scripts/terminal-recording-to-gif.ts', [
         '--input',
         recordingPath,
         '--output',
@@ -530,7 +532,7 @@ void test('terminal recording to gif cli script works end-to-end', async () => {
         '--max-colors',
         '120',
         '--no-cursor'
-      ],
+      ]),
       {
         cwd: process.cwd(),
         encoding: 'utf8'

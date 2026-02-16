@@ -78,7 +78,7 @@ const SUPPORTED_EXTENSIONS = new Set<string>(Object.keys(LANGUAGE_BY_EXTENSION))
 
 function usage(): string {
   return [
-    'Usage: node --experimental-strip-types scripts/loc-report.ts [--json] [--root <path>]',
+    'Usage: bun scripts/loc-report.ts [--json] [--root <path>]',
     '',
     'Reports code volume split by regular/tests/language.',
     'Only known code extensions are counted.'

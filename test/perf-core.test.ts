@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import test from 'node:test';
+import { afterEach, test } from 'bun:test';
 import {
   configurePerfCore,
   isPerfCoreEnabled,
@@ -43,7 +43,7 @@ function readRecords(path: string): ParsedPerfRecord[] {
     });
 }
 
-test.afterEach(() => {
+afterEach(() => {
   configurePerfCore({ enabled: false });
   shutdownPerfCore();
 });

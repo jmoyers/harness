@@ -95,6 +95,10 @@ function nsToMs(value: bigint): number {
   return Number(value) / 1_000_000;
 }
 
+function tsRuntimeArgs(scriptPath: string, args: readonly string[] = []): string[] {
+  return [scriptPath, ...args];
+}
+
 function readPerfEvents(filePath: string): readonly PerfEventRecord[] {
   if (!existsSync(filePath)) {
     return [];
@@ -232,7 +236,7 @@ async function measureMuxLaunchToSettled(
   const startedNs = nowNs();
   const session = startPtySession({
     command: process.execPath,
-    commandArgs: ['--experimental-strip-types', launchScriptPath, ...codexArgs],
+    commandArgs: tsRuntimeArgs(launchScriptPath, codexArgs),
     env: {
       ...process.env,
       TERM: process.env.TERM ?? 'xterm-256color',

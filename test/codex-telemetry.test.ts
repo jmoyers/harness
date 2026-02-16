@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'bun:test';
 import {
   buildCodexTelemetryConfigArgs,
   extractCodexThreadId,
@@ -138,7 +138,7 @@ void test('parseOtlpLogEvents parses records, thread ids, summaries, and status 
   assert.equal(events[0]?.statusHint, 'running');
   assert.equal(events[0]?.summary, 'prompt: prompt accepted');
   assert.equal(events[1]?.observedAt, '2023-11-14T22:13:21.000Z');
-  assert.equal(events[1]?.statusHint, null);
+  assert.equal(events[1]?.statusHint, 'completed');
   assert.equal(events[2]?.eventName, null);
   assert.equal(events[2]?.summary, null);
   assert.equal(events[2]?.statusHint, null);
@@ -185,6 +185,62 @@ void test('parseOtlpLogEvents falls back to provided timestamp when nanos are mi
   assert.equal(events[1]?.observedAt, '2026-02-15T00:00:00.000Z');
   assert.equal(events[2]?.observedAt, '2026-02-15T00:00:00.000Z');
   assert.equal(events[3]?.observedAt, '2026-02-15T00:00:00.000Z');
+});
+
+void test('parseOtlpLogEvents preserves non-numeric intValue attributes as strings', () => {
+  const events = parseOtlpLogEvents(
+    {
+      resourceLogs: [
+        {
+          scopeLogs: [
+            {
+              logRecords: [
+                {
+                  attributes: [
+                    { key: 'event.name', value: { stringValue: 'custom.event' } },
+                    { key: 'attempt', value: { intValue: 'not-a-number' } }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    '2026-02-15T00:00:00.000Z'
+  );
+
+  assert.equal(events.length, 1);
+  const attributes = events[0]?.payload['attributes'] as Record<string, unknown>;
+  assert.equal(attributes['attempt'], 'not-a-number');
+});
+
+void test('parseOtlpLogEvents preserves malformed intValue payload objects', () => {
+  const events = parseOtlpLogEvents(
+    {
+      resourceLogs: [
+        {
+          scopeLogs: [
+            {
+              logRecords: [
+                {
+                  attributes: [
+                    { key: 'event.name', value: { stringValue: 'custom.event' } },
+                    { key: 'bad-int', value: { intValue: true } }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    '2026-02-15T00:00:00.000Z'
+  );
+
+  assert.equal(events.length, 1);
+  const attributes = events[0]?.payload['attributes'] as Record<string, unknown>;
+  assert.deepEqual(attributes['bad-int'], { intValue: true });
 });
 
 void test('parseOtlpLogEvents marks turn metric event names as completed status hints', () => {
@@ -473,7 +529,7 @@ void test('parseOtlpLogEvents derives status hints through nested payload and fa
   assert.equal(events[1]?.statusHint, null);
   assert.equal(events[2]?.statusHint, null);
   assert.equal(events[3]?.summary, 'stream response.completed');
-  assert.equal(events[3]?.statusHint, null);
+  assert.equal(events[3]?.statusHint, 'completed');
   assert.equal(events[4]?.statusHint, 'needs-input');
   assert.equal(events[5]?.statusHint, null);
   assert.equal(events[6]?.summary?.endsWith('…'), true);

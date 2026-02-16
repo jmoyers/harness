@@ -23,6 +23,10 @@ const STOP_TIMEOUT_MS = 1500;
 const DEFAULT_CONNECT_RETRY_WINDOW_MS = 6000;
 const DEFAULT_CONNECT_RETRY_DELAY_MS = 40;
 
+function tsRuntimeArgs(scriptPath: string, args: readonly string[] = []): string[] {
+  return [scriptPath, ...args];
+}
+
 function normalizeSignalExitCode(signal: NodeJS.Signals | null): number {
   if (signal === null) {
     return 1;
@@ -158,7 +162,7 @@ function spawnDaemon(
 ): ChildProcess {
   return spawn(
     process.execPath,
-    ['--experimental-strip-types', DAEMON_SCRIPT, '--host', host, '--port', String(port)],
+    tsRuntimeArgs(DAEMON_SCRIPT, ['--host', host, '--port', String(port)]),
     {
       stdio: ['ignore', 'pipe', 'inherit'],
       env: {
@@ -248,15 +252,13 @@ function spawnMuxClient(
 ): ChildProcess {
   return spawn(
     process.execPath,
-    [
-      '--experimental-strip-types',
-      MUX_SCRIPT,
+    tsRuntimeArgs(MUX_SCRIPT, [
       '--harness-server-host',
       host,
       '--harness-server-port',
       String(port),
       ...codexArgs
-    ],
+    ]),
     {
       stdio: 'inherit',
       env: {

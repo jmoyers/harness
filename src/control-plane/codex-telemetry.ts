@@ -142,12 +142,15 @@ function parseAnyValue(value: unknown): unknown {
   }
   if (record['intValue'] !== undefined) {
     const intValue = record['intValue'];
+    let parsedIntValue: number | string | null = null;
     if (typeof intValue === 'number') {
-      return intValue;
-    }
-    if (typeof intValue === 'string') {
+      parsedIntValue = intValue;
+    } else if (typeof intValue === 'string') {
       const parsed = Number.parseInt(intValue, 10);
-      return Number.isFinite(parsed) ? parsed : intValue;
+      parsedIntValue = Number.isFinite(parsed) ? parsed : intValue;
+    }
+    if (parsedIntValue !== null) {
+      return parsedIntValue;
     }
   }
   if (record['doubleValue'] !== undefined) {
@@ -442,6 +445,19 @@ function deriveStatusHint(
 
   const payloadAttributes = asRecord(payload['attributes']) ?? {};
   const payloadBody = payload['body'];
+  if (normalizedEventName === 'codex.sse_event') {
+    const kindHint =
+      pickFieldText(payloadAttributes, payloadBody, [
+        'kind',
+        'event.kind',
+        'event_type',
+        'event.type',
+        'type'
+      ])?.toLowerCase() ?? '';
+    if (kindHint.includes('response.completed')) {
+      return 'completed';
+    }
+  }
   const outcomeHint = statusFromOutcomeText(
     pickFieldText(payloadAttributes, payloadBody, [
       'status',

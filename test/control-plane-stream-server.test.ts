@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'bun:test';
 import { connect, type Socket } from 'node:net';
 import { createServer, request as httpRequest } from 'node:http';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -3306,7 +3306,7 @@ void test('stream server injects codex telemetry args, ingests otlp payloads, an
   }
 });
 
-void test('stream server lifecycle telemetry mode drops verbose codex events by default', async () => {
+void test('stream server lifecycle telemetry mode drops verbose codex events while retaining high-signal events', async () => {
   const created: FakeLiveSession[] = [];
   const server = await startControlPlaneStreamServer({
     startSession: (input) => {
@@ -3582,7 +3582,7 @@ void test('stream server lifecycle telemetry mode drops verbose codex events by 
           : null
       )
       .filter((value): value is string => typeof value === 'string');
-    assert.deepEqual(observedEventNames, ['codex.user_prompt', 'codex.turn.e2e_duration_ms']);
+    assert.deepEqual(observedEventNames, ['codex.user_prompt', 'needs-input', 'codex.turn.e2e_duration_ms']);
   } finally {
     client.close();
     await server.close();
@@ -4297,7 +4297,16 @@ void test('stream server telemetry listener handles close-before-start and port 
   });
 
   try {
-    await assert.rejects(conflict.start(), /EADDRINUSE|address already in use/i);
+    await assert.rejects(conflict.start(), (error: unknown) => {
+      if (!(error instanceof Error)) {
+        return false;
+      }
+      const withCode = error as Error & { code?: string };
+      return (
+        withCode.code === 'EADDRINUSE' ||
+        /EADDRINUSE|address already in use|port .* in use/i.test(error.message)
+      );
+    });
   } finally {
     await conflict.close();
     await first.close();

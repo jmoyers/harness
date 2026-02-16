@@ -95,17 +95,26 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
     return await fetch(url, init);
   }
   const controller = new AbortController();
-  const timeout = setTimeout(() => {
-    controller.abort();
-  }, timeoutMs);
-  timeout.unref();
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => {
+      controller.abort();
+      reject(new Error(`request timed out after ${String(timeoutMs)}ms`));
+    }, timeoutMs);
+    timeout.unref();
+  });
   try {
-    return await fetch(url, {
-      ...init,
-      signal: controller.signal
-    });
+    return await Promise.race([
+      fetch(url, {
+        ...init,
+        signal: controller.signal
+      }),
+      timeoutPromise
+    ]);
   } finally {
-    clearTimeout(timeout);
+    if (timeout !== null) {
+      clearTimeout(timeout);
+    }
   }
 }
 

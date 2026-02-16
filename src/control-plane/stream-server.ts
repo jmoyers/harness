@@ -224,7 +224,11 @@ const DEFAULT_TENANT_ID = 'tenant-local';
 const DEFAULT_USER_ID = 'user-local';
 const DEFAULT_WORKSPACE_ID = 'workspace-local';
 const DEFAULT_WORKTREE_ID = 'worktree-local';
-const LIFECYCLE_TELEMETRY_EVENT_NAMES = new Set(['codex.user_prompt', 'codex.turn.e2e_duration_ms']);
+const LIFECYCLE_TELEMETRY_EVENT_NAMES = new Set([
+  'codex.user_prompt',
+  'codex.turn.e2e_duration_ms',
+  'codex.conversation_starts'
+]);
 
 function compareIsoDesc(left: string | null, right: string | null): number {
   if (left === right) {
@@ -860,7 +864,9 @@ export class ControlPlaneStreamServer {
       fallbackSessionId ??
       (event.providerThreadId === null ? null : this.resolveSessionIdByThreadId(event.providerThreadId));
     const captureVerboseEvents = this.codexTelemetry.captureVerboseEvents === true;
-    if (!captureVerboseEvents && !isLifecycleTelemetryEventName(event.eventName)) {
+    const shouldRetainHighSignalEvent =
+      isLifecycleTelemetryEventName(event.eventName) || event.statusHint !== null;
+    if (!captureVerboseEvents && !shouldRetainHighSignalEvent) {
       if (resolvedSessionId !== null && event.providerThreadId !== null) {
         const sessionState = this.sessions.get(resolvedSessionId);
         if (sessionState !== undefined) {

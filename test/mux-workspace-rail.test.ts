@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'bun:test';
 import { renderWorkspaceRailAnsiRows, renderWorkspaceRailRowAnsiForTest } from '../src/mux/workspace-rail.ts';
 
 function stripAnsi(value: string): string {
@@ -71,7 +71,7 @@ void test('workspace rail renders project-centric rows with icon-only thread sta
         {
           key: 'proc-dev',
           directoryKey: 'harness:local',
-          label: 'npm run dev',
+          label: 'bun run dev',
           cpuPercent: 3.4,
           memoryMb: 180,
           status: 'running'
@@ -94,7 +94,7 @@ void test('workspace rail renders project-centric rows with icon-only thread sta
   assert.equal(plainRows.some((row) => row.includes('◔ codex - untitled task 1')), true);
   assert.equal(plainRows.some((row) => row.includes('○ codex - untitled task 2')), true);
   assert.equal(plainRows.some((row) => row.includes('starting')), true);
-  assert.equal(plainRows.some((row) => row.includes('⚙ npm run dev')), true);
+  assert.equal(plainRows.some((row) => row.includes('⚙ bun run dev')), true);
   assert.equal(plainRows.some((row) => row.includes('running · 3.4% · 180MB')), true);
   assert.equal(rows.some((row) => row.includes('[+ thread]')), true);
   assert.equal(

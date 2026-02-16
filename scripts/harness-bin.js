@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 
 import { spawn } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const scriptPath = resolve(here, './harness.ts');
-const child = spawn(process.execPath, ['--experimental-strip-types', scriptPath, ...process.argv.slice(2)], {
+const runtimeArgs = [scriptPath, ...process.argv.slice(2)];
+const child = spawn(process.execPath, runtimeArgs, {
   stdio: 'inherit'
 });
 

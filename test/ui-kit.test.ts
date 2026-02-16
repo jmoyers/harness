@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'bun:test';
 import {
   buildUiModalOverlay,
   DEFAULT_UI_MODAL_THEME,
