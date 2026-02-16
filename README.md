@@ -28,6 +28,7 @@ Harness is built for developers who want to:
 ## Core Capabilities
 
 - Multi-project rail with fast thread switching and live status indicators.
+- `ctrl+j/k` cycles the full left-nav order (Home, project headers, then project threads).
 - Projects can remain empty; threads start only via explicit `new thread` actions.
 - Parallel `codex` and `terminal` threads in the same workspace.
 - Fresh context per thread by default (plus persisted continuity when supported).

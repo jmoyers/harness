@@ -83,11 +83,11 @@ void test('workspace rail renders project-centric rows with icon-only thread sta
       nowMs: Date.parse('2026-01-01T00:03:00.000Z')
     },
     100,
-    24
+    25
   );
 
   const plainRows = rows.map((row) => stripAnsi(row));
-  assert.equal(rows.length, 24);
+  assert.equal(rows.length, 25);
   assert.equal(plainRows.some((row) => row.includes('📁 ~/dev/harness ─ main')), true);
   assert.equal(plainRows.some((row) => row.includes('+12 -3 │ 4 files')), true);
   assert.equal(plainRows.some((row) => row.includes('codex - untitled task 1')), true);
@@ -121,9 +121,10 @@ void test('workspace rail renders project-centric rows with icon-only thread sta
   const addProjectRowPlain = stripAnsi(addProjectRow ?? '');
   assert.equal(addProjectRowPlain.trimStart().startsWith('[ > add project ]'), true);
   assert.equal(addProjectRowPlain.indexOf('[ > add project ]') > 35, true);
-  const homeRow = rows.find((row) => row.includes('[ ⌂ home ]'));
+  const homeRow = rows.find((row) => row.includes('🏠 home'));
   assert.notEqual(homeRow, undefined);
-  assert.equal(homeRow?.includes('\u001b[0;38;5;230;48;5;237m[ ⌂ home ]'), true);
+  assert.equal(homeRow?.includes('38;5;254;48;5;236m'), true);
+  assert.equal(homeRow?.includes('\u001b[0;38;5;230;48;5;237m[ ⌂ home ]'), false);
   const threadButtonRow = rows.find((row) => row.includes('[+ thread]'));
   assert.notEqual(threadButtonRow, undefined);
   assert.equal(threadButtonRow?.includes('\u001b[0;38;5;230;48;5;237m[+ thread]'), true);
@@ -171,7 +172,7 @@ void test('workspace rail render keeps explicit completion text stable despite n
       nowMs: Date.parse('2026-01-01T00:00:04.000Z')
     },
     80,
-    18
+    22
   ).map((row) => stripAnsi(row));
   assert.equal(completeRows.some((row) => row.includes('○ codex - task')), true);
   assert.equal(completeRows.some((row) => row.includes('turn complete (812ms)')), true);
@@ -213,7 +214,7 @@ void test('workspace rail render keeps explicit completion text stable despite n
       nowMs: Date.parse('2026-01-01T00:00:09.000Z')
     },
     80,
-    18
+    22
   ).map((row) => stripAnsi(row));
   assert.equal(workingRows.some((row) => row.includes('○ codex - task')), true);
   assert.equal(workingRows.some((row) => row.includes('turn complete (812ms)')), true);
@@ -256,7 +257,7 @@ void test('workspace rail renders no-title conversations without dash separator'
       nowMs: Date.parse('2026-01-01T00:00:03.000Z')
     },
     80,
-    16
+    20
   );
 
   assert.equal(rows.some((row) => row.includes('codex - ')), false);
@@ -292,7 +293,7 @@ void test('workspace rail keeps shortcut actions pinned to bottom rows when vert
   assert.equal(rows.length, 6);
   assert.equal(rows[0]?.includes('ctrl+x archive thread'), true);
   assert.equal(rows[1]?.includes('ctrl+l take over thread'), true);
-  assert.equal(rows[4]?.includes('ctrl+j/k switch thread'), true);
+  assert.equal(rows[4]?.includes('ctrl+j/k switch nav'), true);
   assert.equal(rows[5]?.includes('ctrl+c quit mux'), true);
 });
 
@@ -387,7 +388,7 @@ void test('workspace rail renders icon colors for needs-action exited starting a
       nowMs: Date.parse('2026-01-01T00:01:00.000Z')
     },
     80,
-    26
+    32
   );
 
   const plainRows = rows.map((row) => stripAnsi(row));
@@ -527,6 +528,21 @@ void test('workspace rail row renderer tolerates malformed action and null-statu
     32
   );
   assert.equal(stripAnsi(malformedActionRowAnsi).includes('add project'), true);
+
+  const genericActionRowAnsi = renderWorkspaceRailRowAnsiForTest(
+    {
+      kind: 'action',
+      text: '│  [home]',
+      active: false,
+      conversationSessionId: null,
+      directoryKey: null,
+      repositoryId: null,
+      railAction: 'home.open',
+      conversationStatus: null
+    },
+    24
+  );
+  assert.equal(stripAnsi(genericActionRowAnsi).includes('[home]'), true);
 
   const nullStatusTitleRowAnsi = renderWorkspaceRailRowAnsiForTest(
     {

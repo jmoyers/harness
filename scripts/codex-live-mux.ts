@@ -71,7 +71,10 @@ import {
   repositoryIdAtWorkspaceRailRow,
   kindAtWorkspaceRailRow
 } from '../src/mux/workspace-rail-model.ts';
-import { buildSelectorIndexEntries, visualConversationOrder } from '../src/mux/selector-index.ts';
+import {
+  buildLeftNavSelectorEntries,
+  buildSelectorIndexEntries
+} from '../src/mux/selector-index.ts';
 import {
   resolveWorkspacePath
 } from '../src/mux/workspace-path.ts';
@@ -1553,7 +1556,7 @@ function shortcutHintText(bindings: ResolvedMuxShortcutBindings): string {
   const previous = firstShortcutText(bindings, 'mux.conversation.previous') || 'ctrl+k';
   const interrupt = firstShortcutText(bindings, 'mux.app.interrupt-all') || 'ctrl+c';
   const switchHint = next === previous ? next : `${next}/${previous}`;
-  return `${newConversation} new  ${deleteConversation} archive  ${takeoverConversation} takeover  ${addProject}/${closeProject} projects  ${switchHint} switch  ${interrupt} quit`;
+  return `${newConversation} new  ${deleteConversation} archive  ${takeoverConversation} takeover  ${addProject}/${closeProject} projects  ${switchHint} switch nav  ${interrupt} quit`;
 }
 
 type WorkspaceRailModel = Parameters<typeof renderWorkspaceRailAnsiRows>[0];
@@ -1569,6 +1572,7 @@ function buildRailModel(
   activeProjectId: string | null,
   activeConversationId: string | null,
   projectSelectionEnabled: boolean,
+  homeSelectionEnabled: boolean,
   repositoriesCollapsed: boolean,
   shortcutsCollapsed: boolean,
   gitSummaryByDirectoryId: ReadonlyMap<string, GitSummary>,
@@ -1662,6 +1666,7 @@ function buildRailModel(
     activeConversationId,
     showTaskPlanningUi: SHOW_TASK_PLANNING_UI,
     projectSelectionEnabled,
+    homeSelectionEnabled,
     repositoriesCollapsed,
     processes: [],
     shortcutHint: shortcutHintText(shortcutBindings),
@@ -1681,6 +1686,7 @@ function buildRailRows(
   activeProjectId: string | null,
   activeConversationId: string | null,
   projectSelectionEnabled: boolean,
+  homeSelectionEnabled: boolean,
   repositoriesCollapsed: boolean,
   shortcutsCollapsed: boolean,
   gitSummaryByDirectoryId: ReadonlyMap<string, GitSummary>,
@@ -1697,6 +1703,7 @@ function buildRailRows(
     activeProjectId,
     activeConversationId,
     projectSelectionEnabled,
+    homeSelectionEnabled,
     repositoriesCollapsed,
     shortcutsCollapsed,
     gitSummaryByDirectoryId,
@@ -5196,6 +5203,7 @@ async function main(): Promise<number> {
       activeDirectoryId,
       activeConversationId,
       mainPaneMode === 'project',
+      mainPaneMode === 'home',
       repositoriesCollapsed,
       shortcutsCollapsed,
       gitSummaryByDirectoryId,
@@ -6298,16 +6306,65 @@ async function main(): Promise<number> {
       globalShortcut === 'mux.conversation.next' ||
       globalShortcut === 'mux.conversation.previous'
     ) {
-      const orderedIds = visualConversationOrder(
-        directories,
-        conversations,
-        conversationOrder(conversations)
-      );
+      const orderedIds = conversationOrder(conversations);
+      const selectorEntries = buildLeftNavSelectorEntries(directories, conversations, orderedIds, {
+        includeHome: SHOW_TASK_PLANNING_UI
+      });
       const direction = globalShortcut === 'mux.conversation.next' ? 'next' : 'previous';
-      const targetId = cycleConversationId(orderedIds, activeConversationId, direction);
-      if (targetId !== null) {
+      let activeKey: string | null = null;
+      if (mainPaneMode === 'home') {
+        activeKey = 'home';
+      } else if (
+        mainPaneMode === 'project' &&
+        activeDirectoryId !== null &&
+        directories.has(activeDirectoryId)
+      ) {
+        activeKey = `directory:${activeDirectoryId}`;
+      } else if (
+        mainPaneMode === 'conversation' &&
+        activeConversationId !== null &&
+        conversations.has(activeConversationId)
+      ) {
+        activeKey = `conversation:${activeConversationId}`;
+      }
+      const targetKey = cycleConversationId(
+        selectorEntries.map((entry) => entry.key),
+        activeKey,
+        direction
+      );
+      const target =
+        targetKey === null
+          ? null
+          : selectorEntries.find((entry) => entry.key === targetKey) ?? null;
+      if (target !== null && target.kind === 'home') {
+        enterHomePane();
+        markDirty();
+        return;
+      }
+      if (target !== null && target.kind === 'directory') {
+        if (directories.has(target.directoryId)) {
+          enterProjectPane(target.directoryId);
+          markDirty();
+          return;
+        }
+        let fallbackConversationId: string | null = null;
+        for (const entry of selectorEntries) {
+          if (entry.kind !== 'conversation' || entry.directoryId !== target.directoryId) {
+            continue;
+          }
+          fallbackConversationId = entry.sessionId;
+          break;
+        }
+        if (fallbackConversationId !== null) {
+          queueControlPlaneOp(async () => {
+            await activateConversation(fallbackConversationId);
+          }, `shortcut-activate-${direction}-directory-fallback`);
+          return;
+        }
+      }
+      if (target !== null && target.kind === 'conversation') {
         queueControlPlaneOp(async () => {
-          await activateConversation(targetId);
+          await activateConversation(target.sessionId);
         }, `shortcut-activate-${direction}`);
       }
       return;

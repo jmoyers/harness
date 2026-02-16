@@ -176,11 +176,13 @@ void test('codex-live-mux rail rendering consumes per-project git summary map an
   assert.equal(source.includes('const refreshGitSummary = async'), false);
 });
 
-void test('codex-live-mux cycles next/previous shortcuts using visual rail order', () => {
+void test('codex-live-mux cycles next/previous shortcuts using full left-nav order', () => {
   const source = readLegacySource();
 
-  assert.equal(source.includes('visualConversationOrder'), true);
-  assert.equal(source.includes('const orderedIds = visualConversationOrder('), true);
+  assert.equal(source.includes('buildLeftNavSelectorEntries'), true);
+  assert.equal(source.includes('includeHome: SHOW_TASK_PLANNING_UI'), true);
+  assert.equal(source.includes("activeKey = 'home';"), true);
+  assert.equal(source.includes('switch nav'), true);
 });
 
 void test('codex-live-mux does not forward raw mouse SGR sequences into sessions', () => {

@@ -419,7 +419,7 @@ void test(
     try {
       const result = await captureMuxBootOutput(workspace, 1800);
       const output = result.output;
-      assert.equal(output.includes('[ ⌂ home ]'), true);
+      assert.equal(output.includes('🏠 home'), true);
       assert.equal(output.includes('repositories [-]'), false);
       assert.equal(output.includes('[ > add repository ]'), false);
       assert.equal(output.includes('[ > add project ]'), true);
@@ -465,7 +465,7 @@ void test(
     });
 
     try {
-      const homeCell = await waitForSnapshotLineContaining(interactive.oracle, '[ ⌂ home ]', 12000);
+      const homeCell = await waitForSnapshotLineContaining(interactive.oracle, '🏠 home', 12000);
       await waitForSnapshotLineContaining(interactive.oracle, 'shortcuts [-]', 12000);
 
       writeLeftMouseClick(interactive.session, homeCell.col, homeCell.row);

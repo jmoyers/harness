@@ -60,6 +60,7 @@ interface WorkspaceRailModel {
   readonly activeProjectId: string | null;
   readonly activeConversationId: string | null;
   readonly projectSelectionEnabled?: boolean;
+  readonly homeSelectionEnabled?: boolean;
   readonly repositoriesCollapsed?: boolean;
   readonly shortcutHint?: string;
   readonly shortcutsCollapsed?: boolean;
@@ -94,10 +95,6 @@ const NEW_THREAD_INLINE_LABEL = '[+ thread]';
 const ADD_PROJECT_BUTTON_LABEL = formatUiButton({
   label: 'add project',
   prefixIcon: '>'
-});
-const HOME_BUTTON_LABEL = formatUiButton({
-  label: 'home',
-  prefixIcon: '⌂'
 });
 const STARTING_TEXT_STALE_MS = 2_000;
 const WORKING_TEXT_STALE_MS = 5_000;
@@ -331,8 +328,35 @@ function pushRow(
 function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly WorkspaceRailViewRow[] {
   const rows: WorkspaceRailViewRow[] = [];
   const showTaskPlanningUi = model.showTaskPlanningUi ?? true;
+  const homeSelectionEnabled = model.homeSelectionEnabled ?? false;
+  const projectSelectionEnabled = model.projectSelectionEnabled ?? false;
   if (showTaskPlanningUi) {
-    pushRow(rows, 'action', `│  ${HOME_BUTTON_LABEL}`, false, null, null, null, 'home.open');
+    pushRow(
+      rows,
+      'dir-header',
+      '├─ 🏠 home',
+      homeSelectionEnabled,
+      null,
+      null,
+      null,
+      'home.open'
+    );
+    pushRow(
+      rows,
+      'dir-meta',
+      '│  repositories + tasks',
+      homeSelectionEnabled,
+      null,
+      null,
+      null,
+      'home.open'
+    );
+    pushRow(rows, 'muted', '│', false, null, null, null, 'home.open');
+    if (model.directories.length > 0) {
+      for (let spacerIndex = 0; spacerIndex < INTER_DIRECTORY_SPACER_ROWS; spacerIndex += 1) {
+        pushRow(rows, 'muted', '│');
+      }
+    }
   }
 
   if (model.directories.length === 0) {
@@ -343,8 +367,7 @@ function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly Wo
 
   for (let directoryIndex = 0; directoryIndex < model.directories.length; directoryIndex += 1) {
     const directory = model.directories[directoryIndex]!;
-    const projectSelected =
-      (model.projectSelectionEnabled ?? false) && directory.key === model.activeProjectId;
+    const projectSelected = projectSelectionEnabled && directory.key === model.activeProjectId;
     const connector = '├';
     pushRow(
       rows,
@@ -375,7 +398,9 @@ function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly Wo
       for (let index = 0; index < conversations.length; index += 1) {
         const conversation = conversations[index]!;
         const active =
-          !(model.projectSelectionEnabled ?? false) && conversation.sessionId === model.activeConversationId;
+          !projectSelectionEnabled &&
+          !homeSelectionEnabled &&
+          conversation.sessionId === model.activeConversationId;
         const projection = projectWorkspaceRailConversation(conversation, {
           nowMs
         });
@@ -444,7 +469,7 @@ function shortcutDescriptionRows(shortcutHint: string | undefined): readonly str
       'ctrl+l take over thread',
       'ctrl+o add project',
       'ctrl+w close project',
-      'ctrl+j/k switch thread',
+      'ctrl+j/k switch nav',
       'ctrl+c quit mux'
     ];
   }

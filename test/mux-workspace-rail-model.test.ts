@@ -289,7 +289,7 @@ void test('workspace rail model makes project header thread action clickable', (
       activeProjectId: null,
       activeConversationId: null
     },
-    20
+    26
   );
 
   const emptyStateActionRowIndex = rows.findIndex(
@@ -323,7 +323,7 @@ void test('workspace rail model truncates content before pinned shortcuts and su
   assert.equal(twoRows.length, 2);
   assert.equal(twoRows[0]?.kind, 'shortcut-body');
   assert.equal(twoRows[1]?.kind, 'shortcut-body');
-  assert.equal(twoRows[0]?.text.includes('switch thread'), true);
+  assert.equal(twoRows[0]?.text.includes('switch nav'), true);
   assert.equal(twoRows[1]?.text.includes('quit mux'), true);
 
   const truncated = buildWorkspaceRailViewRows(
@@ -365,7 +365,7 @@ void test('workspace rail model truncates content before pinned shortcuts and su
   );
   assert.equal(truncated.length, 3);
   assert.equal(truncated[0]?.text.includes('close project'), true);
-  assert.equal(truncated[1]?.text.includes('switch thread'), true);
+  assert.equal(truncated[1]?.text.includes('switch nav'), true);
   assert.equal(truncated[2]?.text.includes('quit mux'), true);
 });
 
@@ -512,8 +512,8 @@ void test('workspace rail model limits active project styling to header and git 
     },
     18
   );
-  const header = rows.find((row) => row.kind === 'dir-header');
-  const meta = rows.find((row) => row.kind === 'dir-meta');
+  const header = rows.find((row) => row.kind === 'dir-header' && row.text.includes('📁 alpha'));
+  const meta = rows.find((row) => row.kind === 'dir-meta' && row.directoryKey === 'dir-a');
   const divider = rows.find((row) => row.kind === 'muted' && row.text === '│');
   const newThreadAction = rows.find(
     (row) => row.kind === 'dir-header' && row.text.includes('[+ thread]')
@@ -564,7 +564,7 @@ void test('workspace rail model does not mark project active while selection mod
     18
   );
 
-  const header = rows.find((row) => row.kind === 'dir-header');
+  const header = rows.find((row) => row.kind === 'dir-header' && row.text.includes('📁 alpha'));
   const meta = rows.find((row) => row.kind === 'dir-meta');
   assert.equal(header?.active, false);
   assert.equal(meta?.active, false);
@@ -607,16 +607,74 @@ void test('workspace rail model does not mark conversation active while project 
       projectSelectionEnabled: true,
       nowMs: Date.parse('2026-01-01T00:00:05.000Z')
     },
-    18
+    24
   );
 
-  const header = rows.find((row) => row.kind === 'dir-header');
+  const header = rows.find((row) => row.kind === 'dir-header' && row.text.includes('📁 alpha'));
   const conversationTitle = rows.find((row) => row.kind === 'conversation-title');
   const conversationBody = rows.find((row) => row.kind === 'conversation-body');
   assert.equal(header?.active, true);
   assert.equal(conversationTitle?.active, false);
   assert.equal(conversationBody?.active, false);
   assert.equal(rows.some((row) => row.kind === 'conversation-title' && row.conversationStatus === null), false);
+});
+
+void test('workspace rail model renders home as a selectable directory-style block', () => {
+  const rows = buildWorkspaceRailViewRows(
+    {
+      directories: [
+        {
+          key: 'dir-a',
+          workspaceId: 'alpha',
+          worktreeId: 'none',
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0
+          }
+        }
+      ],
+      conversations: [
+        {
+          sessionId: 'conversation-a',
+          directoryKey: 'dir-a',
+          title: 'task',
+          agentLabel: 'codex',
+          cpuPercent: 0,
+          memoryMb: 0,
+          lastKnownWork: null,
+          status: 'running',
+          attentionReason: null,
+          startedAt: '2026-01-01T00:00:00.000Z',
+          lastEventAt: '2026-01-01T00:00:01.000Z'
+        }
+      ],
+      processes: [],
+      activeProjectId: 'dir-a',
+      activeConversationId: 'conversation-a',
+      projectSelectionEnabled: false,
+      homeSelectionEnabled: true,
+      nowMs: Date.parse('2026-01-01T00:00:05.000Z')
+    },
+    24
+  );
+
+  const homeHeaderIndex = rows.findIndex((row) => row.kind === 'dir-header' && row.text.includes('🏠 home'));
+  assert.equal(homeHeaderIndex >= 0, true);
+  assert.equal(rows[homeHeaderIndex]?.active, true);
+  assert.equal(rows[homeHeaderIndex]?.railAction, 'home.open');
+  assert.equal(rows[homeHeaderIndex + 1]?.kind, 'dir-meta');
+  assert.equal(rows[homeHeaderIndex + 1]?.active, true);
+  assert.equal(rows[homeHeaderIndex + 2]?.kind, 'muted');
+  assert.equal(rows.some((row) => row.kind === 'conversation-title' && row.active), false);
+
+  const firstProjectHeaderIndex = rows.findIndex(
+    (row) => row.kind === 'dir-header' && row.text.includes('📁 alpha')
+  );
+  assert.equal(firstProjectHeaderIndex - homeHeaderIndex > 2, true);
+  assert.equal(rows[firstProjectHeaderIndex - 1]?.kind, 'muted');
+  assert.equal(rows[firstProjectHeaderIndex - 2]?.kind, 'muted');
 });
 
 void test('workspace rail model overrides default shortcut text when custom hint is set', () => {
@@ -690,7 +748,7 @@ void test('workspace rail model treats running sessions with missing last event 
       activeConversationId: null,
       nowMs: Date.parse('2026-01-01T00:00:20.000Z')
     },
-    20
+    26
   );
 
   assert.equal(rows.some((row) => row.text.includes('◔ codex - task')), true);
@@ -784,7 +842,7 @@ void test('workspace rail model repository id helper returns null and starting f
       activeConversationId: 'conversation-working-fallback',
       nowMs: Date.parse('2026-01-01T00:00:12.000Z')
     },
-    18
+    24
   );
   assert.equal(rows.some((row) => row.kind === 'conversation-body' && row.text.includes('starting')), true);
   assert.equal(repositoryIdAtWorkspaceRailRow(rows, 0), null);
@@ -846,7 +904,7 @@ void test('workspace rail model maps both thread rows to the same conversation i
       activeConversationId: 'conversation-a',
       nowMs: Date.parse('2026-01-01T00:00:02.000Z')
     },
-    20
+    26
   );
 
   const titleRowIndex = rows.findIndex(
@@ -1294,7 +1352,7 @@ void test('workspace rail model includes normalized status in fallback detail te
       activeConversationId: 'conversation-no-telemetry',
       nowMs: Date.parse('2026-01-01T00:00:30.000Z')
     },
-    18
+    24
   );
   const bodyRow = rows.find(
     (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-no-telemetry'
@@ -1354,7 +1412,7 @@ void test('workspace rail model infers needs-action and keeps unknown running te
       activeConversationId: null,
       nowMs: Date.parse('2026-01-01T00:00:13.000Z')
     },
-    20
+    26
   );
   const needsActionRow = rows.find(
     (row) => row.kind === 'conversation-title' && row.conversationSessionId === 'conversation-needs-action'
@@ -1487,7 +1545,7 @@ void test('workspace rail model treats missing lastEventAt as current for last-k
       activeConversationId: 'conversation-no-last-event',
       nowMs: Date.parse('2026-01-01T00:00:10.000Z')
     },
-    18
+    24
   );
   const titleRow = rows.find(
     (row) => row.kind === 'conversation-title' && row.conversationSessionId === 'conversation-no-last-event'

@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { cycleConversationId } from '../src/mux/conversation-rail.ts';
-import { buildSelectorIndexEntries, visualConversationOrder } from '../src/mux/selector-index.ts';
+import {
+  buildLeftNavSelectorEntries,
+  buildSelectorIndexEntries,
+  visualConversationOrder
+} from '../src/mux/selector-index.ts';
 
 void test('selector index follows directory order then per-directory session order', () => {
   const directories = new Map<string, { directoryId: string }>([
@@ -164,4 +168,94 @@ void test('visual conversation order matches rendered project grouping for threa
 
   assert.deepEqual(visualOrder, ['session-a-1', 'session-b-1', 'session-b-2']);
   assert.equal(cycleConversationId(visualOrder, 'session-a-1', 'next'), 'session-b-1');
+});
+
+void test('left nav selector order starts with home then directory headers then threads', () => {
+  const directories = new Map<string, { directoryId: string }>([
+    ['dir-a', { directoryId: 'dir-a' }],
+    ['dir-b', { directoryId: 'dir-b' }]
+  ]);
+  const conversations = new Map<string, {
+    sessionId: string;
+    directoryId: string | null;
+    title: string;
+    agentType: string;
+  }>([
+    ['session-b-1', { sessionId: 'session-b-1', directoryId: 'dir-b', title: 'b-1', agentType: 'codex' }],
+    ['session-a-1', { sessionId: 'session-a-1', directoryId: 'dir-a', title: 'a-1', agentType: 'codex' }],
+    ['session-b-2', { sessionId: 'session-b-2', directoryId: 'dir-b', title: 'b-2', agentType: 'terminal' }]
+  ]);
+  const insertionOrder = ['session-b-1', 'session-a-1', 'session-b-2'] as const;
+
+  const navEntries = buildLeftNavSelectorEntries(directories, conversations, insertionOrder, {
+    includeHome: true
+  });
+
+  assert.deepEqual(
+    navEntries.map((entry) => entry.key),
+    [
+      'home',
+      'directory:dir-a',
+      'conversation:session-a-1',
+      'directory:dir-b',
+      'conversation:session-b-1',
+      'conversation:session-b-2'
+    ]
+  );
+  const nextFromFirstThread = cycleConversationId(
+    navEntries.map((entry) => entry.key),
+    'conversation:session-a-1',
+    'next'
+  );
+  assert.equal(nextFromFirstThread, 'directory:dir-b');
+});
+
+void test('left nav selector order skips missing session ids in the ordered list', () => {
+  const directories = new Map<string, { directoryId: string }>([
+    ['dir-a', { directoryId: 'dir-a' }]
+  ]);
+  const conversations = new Map<string, {
+    sessionId: string;
+    directoryId: string | null;
+    title: string;
+    agentType: string;
+  }>([
+    ['session-a', { sessionId: 'session-a', directoryId: 'dir-a', title: 'a', agentType: 'codex' }]
+  ]);
+
+  const navEntries = buildLeftNavSelectorEntries(
+    directories,
+    conversations,
+    ['session-missing', 'session-a'],
+    {
+      includeHome: true
+    }
+  );
+
+  assert.deepEqual(
+    navEntries.map((entry) => entry.key),
+    ['home', 'directory:dir-a', 'conversation:session-a']
+  );
+});
+
+void test('left nav selector order omits home when includeHome is false or omitted', () => {
+  const directories = new Map<string, { directoryId: string }>([
+    ['dir-a', { directoryId: 'dir-a' }]
+  ]);
+  const conversations = new Map<string, {
+    sessionId: string;
+    directoryId: string | null;
+    title: string;
+    agentType: string;
+  }>([
+    ['session-a', { sessionId: 'session-a', directoryId: 'dir-a', title: 'a', agentType: 'codex' }]
+  ]);
+
+  const omitted = buildLeftNavSelectorEntries(directories, conversations, ['session-a']);
+  const explicitFalse = buildLeftNavSelectorEntries(directories, conversations, ['session-a'], {
+    includeHome: false
+  });
+
+  assert.deepEqual(omitted.map((entry) => entry.key), ['directory:dir-a', 'conversation:session-a']);
+  assert.deepEqual(explicitFalse.map((entry) => entry.key), ['directory:dir-a', 'conversation:session-a']);
 });

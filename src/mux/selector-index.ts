@@ -18,6 +18,26 @@ interface SelectorIndexEntry {
   readonly agentType: string;
 }
 
+type LeftNavSelectorEntry =
+  | {
+      readonly selectorIndex: number;
+      readonly key: 'home';
+      readonly kind: 'home';
+    }
+  | {
+      readonly selectorIndex: number;
+      readonly key: `directory:${string}`;
+      readonly kind: 'directory';
+      readonly directoryId: string;
+    }
+  | {
+      readonly selectorIndex: number;
+      readonly key: `conversation:${string}`;
+      readonly kind: 'conversation';
+      readonly directoryId: string;
+      readonly sessionId: string;
+    };
+
 function normalizedDirectoryId(directoryId: string | null): string {
   if (directoryId === null) {
     return 'directory-missing';
@@ -26,11 +46,11 @@ function normalizedDirectoryId(directoryId: string | null): string {
   return trimmed.length === 0 ? 'directory-missing' : trimmed;
 }
 
-export function buildSelectorIndexEntries(
+function orderedDirectoryIds(
   directories: ReadonlyMap<string, SelectorIndexDirectory>,
   conversationById: ReadonlyMap<string, SelectorIndexConversation>,
   orderedSessionIds: readonly string[]
-): readonly SelectorIndexEntry[] {
+): readonly string[] {
   const orderedDirectoryIds: string[] = [...directories.keys()];
   const seenDirectoryIds = new Set(orderedDirectoryIds);
 
@@ -47,9 +67,17 @@ export function buildSelectorIndexEntries(
     orderedDirectoryIds.push(directoryId);
   }
 
+  return orderedDirectoryIds;
+}
+
+export function buildSelectorIndexEntries(
+  directories: ReadonlyMap<string, SelectorIndexDirectory>,
+  conversationById: ReadonlyMap<string, SelectorIndexConversation>,
+  orderedSessionIds: readonly string[]
+): readonly SelectorIndexEntry[] {
   const entries: SelectorIndexEntry[] = [];
   let selectorIndex = 1;
-  for (const directoryId of orderedDirectoryIds) {
+  for (const directoryId of orderedDirectoryIds(directories, conversationById, orderedSessionIds)) {
     let directoryIndex = 0;
     for (const sessionId of orderedSessionIds) {
       const conversation = conversationById.get(sessionId);
@@ -82,4 +110,51 @@ export function visualConversationOrder(
   return buildSelectorIndexEntries(directories, conversationById, orderedSessionIds).map(
     (entry) => entry.sessionId
   );
+}
+
+export function buildLeftNavSelectorEntries(
+  directories: ReadonlyMap<string, SelectorIndexDirectory>,
+  conversationById: ReadonlyMap<string, SelectorIndexConversation>,
+  orderedSessionIds: readonly string[],
+  options: {
+    readonly includeHome?: boolean;
+  } = {}
+): readonly LeftNavSelectorEntry[] {
+  const entries: LeftNavSelectorEntry[] = [];
+  let selectorIndex = 1;
+  if (options.includeHome ?? false) {
+    entries.push({
+      selectorIndex,
+      key: 'home',
+      kind: 'home'
+    });
+    selectorIndex += 1;
+  }
+  for (const directoryId of orderedDirectoryIds(directories, conversationById, orderedSessionIds)) {
+    entries.push({
+      selectorIndex,
+      key: `directory:${directoryId}`,
+      kind: 'directory',
+      directoryId
+    });
+    selectorIndex += 1;
+    for (const sessionId of orderedSessionIds) {
+      const conversation = conversationById.get(sessionId);
+      if (conversation === undefined) {
+        continue;
+      }
+      if (normalizedDirectoryId(conversation.directoryId) !== directoryId) {
+        continue;
+      }
+      entries.push({
+        selectorIndex,
+        key: `conversation:${conversation.sessionId}`,
+        kind: 'conversation',
+        directoryId,
+        sessionId: conversation.sessionId
+      });
+      selectorIndex += 1;
+    }
+  }
+  return entries;
 }
