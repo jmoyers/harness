@@ -52,6 +52,8 @@ Harness is built for developers who want to:
 - Config-first behavior through one canonical file: `harness.config.jsonc`.
 - Detached gateway runtime: client disconnects do not stop running threads; gateway startup eagerly restores non-archived thread runtimes, and `harness gateway stop` is the explicit shutdown boundary for child sessions.
 - `harness gateway stop` also performs workspace-scoped orphan `sqlite3` cleanup for the configured state DB path by default (`--no-cleanup-orphans` disables it).
+- Named gateway sessions (`harness --session <name> ...`) isolate record/log/state paths under `.harness/sessions/<name>/...` so perf/test sessions do not mutate the default gateway state.
+- Built-in CPU profiling workflow (`harness [--session <name>] profile`) captures Bun CPU profiles for both mux client and gateway at `.harness/profiles[/<session>]/{client,gateway}.cpuprofile`.
 
 ## Programmable Interface
 
@@ -208,6 +210,12 @@ Use `harness` as the default client. It connects to the gateway of record, or st
 harness
 ```
 
+Use an isolated named session when you need a separate gateway state (projects, threads, repositories) from the default session:
+
+```bash
+harness --session perf-a
+```
+
 Record an optional GIF artifact by passing mux recording flags explicitly:
 
 ```bash
@@ -229,6 +237,12 @@ harness gateway status
 harness gateway start
 harness gateway stop
 harness gateway stop --no-cleanup-orphans
+```
+
+Capture a programmatic Bun CPU profile for both gateway and client in one run (gateway is auto-stopped so both profiles flush):
+
+```bash
+harness --session perf-a profile
 ```
 
 Configuration is file-first via `harness.config.jsonc`.

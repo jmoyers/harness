@@ -1069,10 +1069,12 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - daemon passes `hooks.lifecycle` config through to the control-plane runtime; lifecycle connector behavior is file-configured, not env-configured.
   - `scripts/harness.ts` is the canonical CLI surface (`harness`).
     - `harness` (no subcommand) is the canonical client path: it connects to the gateway of record, or starts it detached first, then launches the mux client against that remote gateway.
+    - `harness --session <name> ...` scopes gateway record/log/state to an isolated named session (`.harness/sessions/<name>/...`) so concurrent named environments do not mutate the default gateway state.
     - `harness gateway ...` is the canonical daemon control plane: `start|stop|status|restart|run|call`.
+    - `harness profile ...` runs a dedicated profiled client+gateway lifecycle, writes Bun CPU profiles to `.harness/profiles[/<session>]/{client,gateway}.cpuprofile`, and auto-stops the profiled gateway so both artifacts are flushed.
     - `harness gateway stop` performs best-effort workspace-scoped orphan `sqlite3` cleanup for the gateway state DB path by default; `--no-cleanup-orphans` disables this defensive cleanup.
     - `harness animate` is a first-party high-FPS terminal benchmark scene (ASCII tunnel/starfield) for stressing render throughput independent of gateway lifecycle.
-    - gateway state is persisted as a gateway-of-record file (`.harness/gateway.json`) with host/port/auth/pid metadata; stale records are pruned on startup/stop flows.
+    - default gateway state is persisted as a gateway-of-record file (`.harness/gateway.json`) with host/port/auth/pid metadata; stale records are pruned on startup/stop flows.
     - client disconnect (including `Ctrl+C` in mux) does not kill the gateway; only explicit gateway stop/shutdown tears down child sessions.
   - `scripts/harness-core.ts` is the canonical mux client entrypoint (`bun run harness:core`).
     - legacy `scripts/codex-live-mux.ts` remains as a compatibility implementation path while canonical invocation shifts to `harness-core`.

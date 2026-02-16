@@ -7,6 +7,7 @@ import { execFileSync, spawn } from 'node:child_process';
 import { createServer } from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
 import { parseGatewayRecordText } from '../src/cli/gateway-record.ts';
+import { connectControlPlaneStreamClient } from '../src/control-plane/stream-client.ts';
 
 interface RunHarnessResult {
   code: number;
@@ -90,6 +91,23 @@ async function runHarness(
       });
     });
   });
+}
+
+async function waitForCondition(
+  check: () => boolean,
+  timeoutMs: number,
+  failureMessage: string
+): Promise<void> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (check()) {
+      return;
+    }
+    await delay(25);
+  }
+  if (!check()) {
+    throw new Error(failureMessage);
+  }
 }
 
 function isPidRunning(pid: number): boolean {
@@ -201,6 +219,17 @@ void test('harness gateway status reports stopped when no record exists', async 
     const result = await runHarness(workspace, ['gateway', 'status']);
     assert.equal(result.code, 0);
     assert.equal(result.stdout.includes('gateway status: stopped'), true);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('harness rejects invalid session names', async () => {
+  const workspace = createWorkspace();
+  try {
+    const result = await runHarness(workspace, ['--session', '../bad', 'gateway', 'status']);
+    assert.equal(result.code, 1);
+    assert.equal(result.stderr.includes('invalid --session value'), true);
   } finally {
     rmSync(workspace, { recursive: true, force: true });
   }
@@ -381,6 +410,189 @@ void test('harness default client loads .harness/secrets.env and forwards ANTHRO
     rmSync(workspace, { recursive: true, force: true });
   }
 });
+
+void test('harness profile writes client and gateway CPU profiles in isolated session paths', async () => {
+  const workspace = createWorkspace();
+  const sessionName = 'profile-session-a';
+  const muxStubPath = join(workspace, 'mux-profile-stub.js');
+  const defaultRecordPath = join(workspace, '.harness/gateway.json');
+  const sessionRecordPath = join(workspace, `.harness/sessions/${sessionName}/gateway.json`);
+  const profileDir = join(workspace, `.harness/profiles/${sessionName}`);
+  const clientProfilePath = join(profileDir, 'client.cpuprofile');
+  const gatewayProfilePath = join(profileDir, 'gateway.cpuprofile');
+  writeFileSync(
+    muxStubPath,
+    [
+      "const noop = '';",
+      'void noop;'
+    ].join('\n'),
+    'utf8'
+  );
+  const env = {
+    HARNESS_MUX_SCRIPT_PATH: muxStubPath
+  };
+
+  try {
+    const profileResult = await runHarness(workspace, ['--session', sessionName, 'profile'], env);
+    assert.equal(profileResult.code, 0);
+    assert.equal(profileResult.stdout.includes('profiles: client='), true);
+    assert.equal(existsSync(clientProfilePath), true);
+    assert.equal(existsSync(gatewayProfilePath), true);
+    assert.equal(existsSync(sessionRecordPath), false);
+    assert.equal(existsSync(defaultRecordPath), false);
+
+    const statusResult = await runHarness(workspace, ['--session', sessionName, 'gateway', 'status'], env);
+    assert.equal(statusResult.code, 0);
+    assert.equal(statusResult.stdout.includes('gateway status: stopped'), true);
+  } finally {
+    void runHarness(workspace, ['--session', sessionName, 'gateway', 'stop', '--force'], env).catch(() => undefined);
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test(
+  'named session can run two terminal threads that execute harness animate for throughput load',
+  async () => {
+    const workspace = createWorkspace();
+    const sessionName = 'perf-throughput-a';
+    const port = await reservePort();
+    const env = {
+      HARNESS_CONTROL_PLANE_PORT: String(port)
+    };
+    const sessionRecordPath = join(workspace, `.harness/sessions/${sessionName}/gateway.json`);
+    const defaultRecordPath = join(workspace, '.harness/gateway.json');
+
+    let client: Awaited<ReturnType<typeof connectControlPlaneStreamClient>> | null = null;
+    try {
+      const startResult = await runHarness(
+        workspace,
+        ['--session', sessionName, 'gateway', 'start', '--port', String(port)],
+        env
+      );
+      assert.equal(startResult.code, 0);
+      assert.equal(existsSync(sessionRecordPath), true);
+      assert.equal(existsSync(defaultRecordPath), false);
+
+      const recordRaw = readFileSync(sessionRecordPath, 'utf8');
+      const record = parseGatewayRecordText(recordRaw);
+      assert.notEqual(record, null);
+
+      client = await connectControlPlaneStreamClient({
+        host: record?.host ?? '127.0.0.1',
+        port: record?.port ?? port,
+        ...(record?.authToken === null || record?.authToken === undefined
+          ? {}
+          : {
+              authToken: record.authToken
+            })
+      });
+
+      const sessionIds = ['terminal-throughput-a', 'terminal-throughput-b'] as const;
+      const outputBytesBySession = new Map<string, number>();
+
+      client.onEnvelope((envelope) => {
+        if (envelope.kind !== 'pty.output') {
+          return;
+        }
+        const chunk = Buffer.from(envelope.chunkBase64, 'base64');
+        outputBytesBySession.set(
+          envelope.sessionId,
+          (outputBytesBySession.get(envelope.sessionId) ?? 0) + chunk.length
+        );
+      });
+
+      await client.sendCommand({
+        type: 'directory.upsert',
+        directoryId: 'directory-throughput',
+        path: workspace
+      });
+
+      for (const sessionId of sessionIds) {
+        await client.sendCommand({
+          type: 'conversation.create',
+          conversationId: sessionId,
+          directoryId: 'directory-throughput',
+          title: sessionId,
+          agentType: 'terminal'
+        });
+        await client.sendCommand({
+          type: 'pty.start',
+          sessionId,
+          args: [],
+          initialCols: 120,
+          initialRows: 40,
+          cwd: workspace
+        });
+        await client.sendCommand({
+          type: 'pty.attach',
+          sessionId
+        });
+      }
+
+      for (const sessionId of sessionIds) {
+        await client.sendCommand({
+          type: 'session.respond',
+          sessionId,
+          text: `printf "ready-${sessionId}\\n"\n`
+        });
+      }
+      await waitForCondition(
+        () => sessionIds.every((sessionId) => (outputBytesBySession.get(sessionId) ?? 0) >= 20),
+        5_000,
+        'timed out waiting for baseline terminal output on both sessions'
+      );
+      const baselineBytes = new Map<string, number>();
+      for (const sessionId of sessionIds) {
+        baselineBytes.set(sessionId, outputBytesBySession.get(sessionId) ?? 0);
+      }
+
+      for (const sessionId of sessionIds) {
+        await client.sendCommand({
+          type: 'session.respond',
+          sessionId,
+          text: 'bun run harness animate --duration-ms 1200 --fps 120 --no-color\n'
+        });
+      }
+
+      await waitForCondition(
+        () =>
+          sessionIds.every(
+            (sessionId) =>
+              (outputBytesBySession.get(sessionId) ?? 0) - (baselineBytes.get(sessionId) ?? 0) >= 400
+          ),
+        12_000,
+        'timed out waiting for animate throughput output on both terminal sessions'
+      );
+
+      const listResult = await client.sendCommand({
+        type: 'session.list'
+      });
+      const sessions = listResult['sessions'];
+      assert.equal(Array.isArray(sessions), true);
+      const activeIds = new Set<string>();
+      if (Array.isArray(sessions)) {
+        for (const session of sessions) {
+          if (typeof session !== 'object' || session === null) {
+            continue;
+          }
+          const typed = session as Record<string, unknown>;
+          if (typeof typed['sessionId'] === 'string') {
+            activeIds.add(typed['sessionId']);
+          }
+        }
+      }
+      assert.equal(activeIds.has('terminal-throughput-a'), true);
+      assert.equal(activeIds.has('terminal-throughput-b'), true);
+    } finally {
+      client?.close();
+      void runHarness(workspace, ['--session', sessionName, 'gateway', 'stop', '--force'], env).catch(
+        () => undefined
+      );
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  },
+  { timeout: 30_000 }
+);
 
 void test('harness gateway stop cleans up orphan sqlite processes for the workspace db', async () => {
   const workspace = createWorkspace();
