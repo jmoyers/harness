@@ -902,13 +902,12 @@ export class ControlPlaneStreamServer {
       let statusPublished = false;
       const shouldApplyStatusHint =
         event.statusHint !== null &&
-        event.statusHint !== 'completed' &&
         event.source !== 'history' &&
         sessionState.status !== 'exited' &&
         sessionState.session !== null;
       if (shouldApplyStatusHint) {
         if (event.statusHint === 'needs-input') {
-          this.setSessionStatus(sessionState, 'needs-input', 'telemetry', event.observedAt);
+          this.setSessionStatus(sessionState, 'needs-input', null, event.observedAt);
         } else {
           this.setSessionStatus(sessionState, event.statusHint, null, event.observedAt);
         }
@@ -2320,12 +2319,27 @@ export class ControlPlaneStreamServer {
         }
       );
       if (mapped.type === 'notify') {
-        this.setSessionStatus(
-          sessionState,
-          sessionState.status,
-          sessionState.attentionReason,
-          observedAt
-        );
+        const notifyPayloadType =
+          typeof mapped.record.payload['type'] === 'string'
+            ? mapped.record.payload['type']
+            : '';
+        if (notifyPayloadType === 'agent-turn-complete') {
+          sessionState.latestTelemetry = {
+            source: 'otlp-metric',
+            eventName: 'codex.turn.e2e_duration_ms',
+            severity: null,
+            summary: 'turn complete (notify)',
+            observedAt
+          };
+          this.setSessionStatus(sessionState, 'completed', null, observedAt);
+        } else {
+          this.setSessionStatus(
+            sessionState,
+            sessionState.status,
+            sessionState.attentionReason,
+            observedAt
+          );
+        }
       }
     }
 

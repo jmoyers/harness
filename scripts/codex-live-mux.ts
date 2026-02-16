@@ -1572,8 +1572,7 @@ function buildRailModel(
   shortcutsCollapsed: boolean,
   gitSummaryByDirectoryId: ReadonlyMap<string, GitSummary>,
   processUsageBySessionId: ReadonlyMap<string, ProcessUsageSample>,
-  shortcutBindings: ResolvedMuxShortcutBindings,
-  localControllerId: string
+  shortcutBindings: ResolvedMuxShortcutBindings
 ): WorkspaceRailModel {
   const repositoryRows = [...repositories.values()].map((repository) => {
     let associatedProjectCount = 0;
@@ -1661,7 +1660,6 @@ function buildRailModel(
     activeProjectId,
     activeConversationId,
     showTaskPlanningUi: SHOW_TASK_PLANNING_UI,
-    localControllerId,
     projectSelectionEnabled,
     repositoriesCollapsed,
     processes: [],
@@ -1686,8 +1684,7 @@ function buildRailRows(
   shortcutsCollapsed: boolean,
   gitSummaryByDirectoryId: ReadonlyMap<string, GitSummary>,
   processUsageBySessionId: ReadonlyMap<string, ProcessUsageSample>,
-  shortcutBindings: ResolvedMuxShortcutBindings,
-  localControllerId: string
+  shortcutBindings: ResolvedMuxShortcutBindings
 ): { ansiRows: readonly string[]; viewRows: ReturnType<typeof buildWorkspaceRailViewRows> } {
   const railModel = buildRailModel(
     repositories,
@@ -1703,8 +1700,7 @@ function buildRailRows(
     shortcutsCollapsed,
     gitSummaryByDirectoryId,
     processUsageBySessionId,
-    shortcutBindings,
-    localControllerId
+    shortcutBindings
   );
   const viewRows = buildWorkspaceRailViewRows(railModel, layout.paneRows);
   return {
@@ -2828,7 +2824,6 @@ async function main(): Promise<number> {
         controller: conversation.controller
       },
       {
-        localControllerId: muxControllerId,
         nowMs: Date.now()
       }
     );
@@ -5204,8 +5199,7 @@ async function main(): Promise<number> {
       shortcutsCollapsed,
       gitSummaryByDirectoryId,
       processUsageBySessionId,
-      shortcutBindings,
-      muxControllerId
+      shortcutBindings
     );
     latestRailViewRows = rail.viewRows;
     let rightRows: readonly string[] = [];

@@ -272,31 +272,32 @@ Control-plane runtime statuses:
 
 Workspace rail display statuses:
 - `starting`
-- `working` (`working: thinking`)
-- `idle`
+- `working` (`active`)
+- `idle` (`inactive`)
 - `needs-action`
 - `exited`
 
 Display transition contract:
 
 ```txt
-session start -> starting -> idle
-user prompt -> working: thinking
-turn e2e metric -> turn complete (...) | idle
-needs-input/error -> needs-action
+session start -> active (or starting fallback when no fresh work signal is available)
+user prompt / stream progress -> active
+turn e2e metric -> inactive
+needs-input -> needs-action
 session exit -> exited
 ```
 
 High-signal classification rules:
-- Start-work signal: `codex.user_prompt` only.
-- Turn-complete signal: `otlp-metric` `codex.turn.e2e_duration_ms` only.
-- Attention signal: explicit `needs-input` / failed / error-like outcomes from structured payload fields, summary text, or severity.
+- Start-work signal: `codex.user_prompt` plus `codex.sse_event` progress kinds (`response.created`, `response.in_progress`, `response.output_text.delta`, `response.output_item.added`, `response.function_call_arguments.delta`).
+- Turn-complete signal: `otlp-metric` `codex.turn.e2e_duration_ms`.
+- Attention signal: explicit `needs-input`/approval-required tokens from structured payload fields or summary text (severity/error-like fallbacks are intentionally disabled).
 - Notify signal transport: Codex notify-hook records are surfaced as `session-event notify` on the same stream (for example payload type `agent-turn-complete`), currently informational unless a downstream consumer maps them.
-- Status-neutral noise: `codex.sse_event` `response.*`, tool/api/websocket chatter, trace churn, and task-complete fallback text do not mutate the status line.
+- Status-neutral noise: tool/api/websocket chatter, trace churn, and task-complete fallback text do not mutate the status line.
 
 Invariant:
 - No foreground/background or controller-specific status heuristics are used for telemetry classification.
 - Fallback completion formats are intentionally disabled; only explicit turn-e2e telemetry completes a turn.
+- Session ownership is orthogonal to status mapping; controller metadata never overrides rail status text.
 
 Notification policy:
 - Trigger sound/desktop notifications on transitions to `needs-input`, `idle` after `working:*`, or `exited`.
@@ -1106,7 +1107,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - terminal-output persistence is buffered and flushed in batches (`mux.events.flush`) so per-chunk SQLite writes do not execute directly in the PTY output hot path
     - active-session attach now resumes from the last observed PTY cursor; inactive live conversations keep event subscriptions after detach so status/telemetry stays fresh while PTY output replay remains bounded by cursor-based attach
     - key-event subscription wiring (`session-status` + `session-key-event`) that drives thread bubble status and second-line "last known work" text from provider/telemetry signals rather than local keystroke heuristics
-    - Codex OTEL normalization now uses a minimal status contract: `codex.user_prompt` starts work, `codex.turn.e2e_duration_ms` completes turns, explicit needs-input/error semantics raise attention, and other telemetry families are status-neutral.
+    - Codex OTEL normalization now uses a minimal active/inactive contract: prompt + SSE progress marks active, turn-e2e marks inactive, explicit needs-input tokens raise attention, and severity/error keyword fallbacks are disabled to prevent false telemetry errors.
     - telemetry capture is lifecycle-first by default: `codex.telemetry.captureVerboseEvents=false` stores/publishes only lifecycle events (`codex.user_prompt`, `codex.turn.e2e_duration_ms`); verbose event families are opt-in.
     - Codex notify hook relay support streams `session-event notify` records (for example `agent-turn-complete`) without introducing side-channel status heuristics.
     - mux status reduction now separates high-signal status transitions from noisy telemetry chatter: trace spans are status-neutral, non-turn metrics are status-neutral, stream deltas collapse into stable human-readable progress text, and the working glyph is static (non-blinking) to reduce visual noise while preserving live progress detail in the second line.

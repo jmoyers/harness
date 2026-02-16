@@ -228,7 +228,7 @@ void test('mux runtime wiring integration updates rail status line and icon from
     });
 
     try {
-      const telemetryBaseMs = Date.now() + 1_000;
+      const telemetryBaseMs = Date.now() - 1_000;
       const unixNanoAtOffset = (offsetMs: number): string =>
         `${BigInt(telemetryBaseMs + offsetMs) * 1_000_000n}`;
       const runningResponse = await postJson(
@@ -270,7 +270,7 @@ void test('mux runtime wiring integration updates rail status line and icon from
       const runningConversation = conversations.get('conversation-runtime');
       assert.notEqual(runningConversation, undefined);
       assert.equal(runningConversation?.status, 'running');
-      assert.equal(runningConversation?.lastKnownWork, 'working: thinking');
+      assert.equal(runningConversation?.lastKnownWork, 'active');
 
       const noisyTraceResponse = await postJson(
         {
@@ -308,7 +308,7 @@ void test('mux runtime wiring integration updates rail status line and icon from
       const noisyConversation = conversations.get('conversation-runtime');
       assert.notEqual(noisyConversation, undefined);
       assert.equal(noisyConversation?.status, 'running');
-      assert.equal(noisyConversation?.lastKnownWork, 'working: thinking');
+      assert.equal(noisyConversation?.lastKnownWork, 'active');
 
       const runningRows = buildWorkspaceRailViewRows(
         {
@@ -353,7 +353,7 @@ void test('mux runtime wiring integration updates rail status line and icon from
       const runningBodyRow = runningRows.find((row) => row.kind === 'conversation-body');
       assert.notEqual(runningTitleRow, undefined);
       assert.equal(runningTitleRow?.text.includes('◆'), true);
-      assert.equal(runningBodyRow?.text.includes('working: thinking'), true);
+      assert.equal(runningBodyRow?.text.includes('active'), true);
 
       const completedResponse = await postJson(
         {
@@ -394,7 +394,7 @@ void test('mux runtime wiring integration updates rail status line and icon from
       const completedConversation = conversations.get('conversation-runtime');
       assert.notEqual(completedConversation, undefined);
       assert.equal(completedConversation?.status, 'running');
-      assert.equal(completedConversation?.lastKnownWork, 'working: thinking');
+      assert.equal(completedConversation?.lastKnownWork, 'active');
 
       const delayedMetricResponse = await postJson(
         {
@@ -431,8 +431,8 @@ void test('mux runtime wiring integration updates rail status line and icon from
 
       const delayedMetricConversation = conversations.get('conversation-runtime');
       assert.notEqual(delayedMetricConversation, undefined);
-      assert.equal(delayedMetricConversation?.status, 'running');
-      assert.equal(delayedMetricConversation?.lastKnownWork, 'working: thinking');
+      assert.equal(delayedMetricConversation?.status, 'completed');
+      assert.equal(delayedMetricConversation?.lastKnownWork, 'inactive');
 
       const postCompleteTraceResponse = await postJson(
         {
@@ -461,8 +461,8 @@ void test('mux runtime wiring integration updates rail status line and icon from
       await delay(25);
       const postCompleteConversation = conversations.get('conversation-runtime');
       assert.notEqual(postCompleteConversation, undefined);
-      assert.equal(postCompleteConversation?.status, 'running');
-      assert.equal(postCompleteConversation?.lastKnownWork, 'working: thinking');
+      assert.equal(postCompleteConversation?.status, 'completed');
+      assert.equal(postCompleteConversation?.lastKnownWork, 'inactive');
 
       const resumedResponse = await postJson(
         {
@@ -503,7 +503,7 @@ void test('mux runtime wiring integration updates rail status line and icon from
       const resumedConversation = conversations.get('conversation-runtime');
       assert.notEqual(resumedConversation, undefined);
       assert.equal(resumedConversation?.status, 'running');
-      assert.equal(resumedConversation?.lastKnownWork, 'working: thinking');
+      assert.equal(resumedConversation?.lastKnownWork, 'active');
       assert.equal(dirtyMarks > 0, true);
     } finally {
       await subscription.close();
@@ -514,7 +514,7 @@ void test('mux runtime wiring integration updates rail status line and icon from
   }
 });
 
-void test('mux runtime wiring integration keeps active agent sessions non-idle until task terminal telemetry', async () => {
+void test('mux runtime wiring integration applies completion projection regardless of controller ownership', async () => {
   const launchedSessions: FakeLiveSession[] = [];
   const server = await startControlPlaneStreamServer({
     codexTelemetry: {
@@ -604,7 +604,7 @@ void test('mux runtime wiring integration keeps active agent sessions non-idle u
     });
 
     try {
-      const telemetryBaseMs = Date.now() + 1_000;
+      const telemetryBaseMs = Date.now() - 1_000;
       const unixNanoAtOffset = (offsetMs: number): string =>
         `${BigInt(telemetryBaseMs + offsetMs) * 1_000_000n}`;
 
@@ -657,7 +657,7 @@ void test('mux runtime wiring integration keeps active agent sessions non-idle u
       assert.notEqual(runningConversation, undefined);
       assert.equal(runningConversation?.status, 'running');
       assert.equal(runningConversation?.controller?.controllerType, 'agent');
-      assert.equal(runningConversation?.lastKnownWork, 'working: thinking');
+      assert.equal(runningConversation?.lastKnownWork, 'active');
 
       const completedTurnResponse = await postJson(
         {
@@ -730,7 +730,7 @@ void test('mux runtime wiring integration keeps active agent sessions non-idle u
 
       const afterTurnCompletion = conversations.get('conversation-runtime-agent');
       assert.notEqual(afterTurnCompletion, undefined);
-      assert.equal(afterTurnCompletion?.lastKnownWork, 'working: thinking');
+      assert.equal(afterTurnCompletion?.lastKnownWork, 'inactive');
 
       const rowsWhileAgentActive = buildWorkspaceRailViewRows(
         {
@@ -774,8 +774,8 @@ void test('mux runtime wiring integration keeps active agent sessions non-idle u
       const titleRowWhileAgentActive = rowsWhileAgentActive.find((row) => row.kind === 'conversation-title');
       const bodyRowWhileAgentActive = rowsWhileAgentActive.find((row) => row.kind === 'conversation-body');
       assert.notEqual(titleRowWhileAgentActive, undefined);
-      assert.equal(titleRowWhileAgentActive?.text.includes('◆'), true);
-      assert.equal(bodyRowWhileAgentActive?.text.includes('idle'), false);
+      assert.equal(titleRowWhileAgentActive?.text.includes('○'), true);
+      assert.equal(bodyRowWhileAgentActive?.text.includes('inactive'), true);
 
       const taskTerminalResponse = await postJson(
         {
@@ -815,7 +815,7 @@ void test('mux runtime wiring integration keeps active agent sessions non-idle u
 
       const afterTaskTerminal = conversations.get('conversation-runtime-agent');
       assert.notEqual(afterTaskTerminal, undefined);
-      assert.equal(afterTaskTerminal?.lastKnownWork, 'working: thinking');
+      assert.equal(afterTaskTerminal?.lastKnownWork, 'inactive');
 
       const rowsAfterTaskTerminal = buildWorkspaceRailViewRows(
         {
@@ -859,8 +859,8 @@ void test('mux runtime wiring integration keeps active agent sessions non-idle u
       const titleRowAfterTaskTerminal = rowsAfterTaskTerminal.find((row) => row.kind === 'conversation-title');
       const bodyRowAfterTaskTerminal = rowsAfterTaskTerminal.find((row) => row.kind === 'conversation-body');
       assert.notEqual(titleRowAfterTaskTerminal, undefined);
-      assert.equal(titleRowAfterTaskTerminal?.text.includes('◆'), true);
-      assert.equal(bodyRowAfterTaskTerminal?.text.includes('idle'), false);
+      assert.equal(titleRowAfterTaskTerminal?.text.includes('○'), true);
+      assert.equal(bodyRowAfterTaskTerminal?.text.includes('inactive'), true);
     } finally {
       await subscription.close();
     }

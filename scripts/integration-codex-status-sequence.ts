@@ -28,15 +28,16 @@ interface RuntimeConversationState extends MuxRuntimeConversationState {
 interface StatusTimelineEntry {
   readonly atMs: number;
   readonly label: string;
+  readonly icon: string;
   readonly phase: string;
-  readonly detail: string;
+  readonly statusText: string;
 }
 
 function parseArgs(argv: readonly string[]): ScriptOptions {
   let cwd = process.cwd();
-  let prompt = 'write a short poem about the moon';
+  let prompt = 'say hi in one sentence';
   let model: string | null = null;
-  let timeoutMs = 120_000;
+  let timeoutMs = 8_000;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index] ?? '';
@@ -99,7 +100,10 @@ function createConversationState(sessionId: string): RuntimeConversationState {
   };
 }
 
-function projectedPhase(conversation: RuntimeConversationState, nowMs: number): { phase: string; detail: string } {
+function projectedPhase(
+  conversation: RuntimeConversationState,
+  nowMs: number
+): { icon: string; phase: string; statusText: string } {
   const projected = projectWorkspaceRailConversation(
     {
       sessionId: conversation.sessionId,
@@ -120,19 +124,16 @@ function projectedPhase(conversation: RuntimeConversationState, nowMs: number): 
       nowMs
     }
   );
-  if (projected.status === 'working') {
-    const normalizedDetail = projected.detailText.toLowerCase();
-    if (normalizedDetail.includes('working: writing')) {
-      return { phase: 'working: writing', detail: projected.detailText };
-    }
-    if (normalizedDetail.includes('working: tool')) {
-      return { phase: 'working: tool', detail: projected.detailText };
-    }
-    return { phase: 'working: thinking', detail: projected.detailText };
+  if (projected.status === 'working' || projected.status === 'starting') {
+    return { icon: projected.glyph, phase: 'active', statusText: projected.detailText };
+  }
+  if (projected.status === 'idle' || projected.status === 'exited') {
+    return { icon: projected.glyph, phase: 'inactive', statusText: projected.detailText };
   }
   return {
+    icon: projected.glyph,
     phase: projected.status,
-    detail: projected.detailText
+    statusText: projected.detailText
   };
 }
 
@@ -154,12 +155,13 @@ async function waitFor(
 function printTimeline(timeline: readonly StatusTimelineEntry[]): void {
   for (const entry of timeline) {
     const iso = new Date(entry.atMs).toISOString();
-    process.stdout.write(`${iso} [${entry.label}] ${entry.phase} | ${entry.detail}\n`);
+    process.stdout.write(`${iso} [${entry.label}] ${entry.icon} ${entry.phase} | ${entry.statusText}\n`);
   }
 }
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
+  const startedAtMs = Date.now();
   const runId = Date.now().toString(36);
   const tmpDir = mkdtempSync(join(tmpdir(), `harness-codex-status-${runId}-`));
   const stateStorePath = join(tmpDir, 'control-plane.sqlite');
@@ -197,6 +199,10 @@ async function main(): Promise<void> {
   const conversations = new Map<string, RuntimeConversationState>();
   const timeline: StatusTimelineEntry[] = [];
   let promptSentAtMs = 0;
+  const remainingTimeoutMs = (): number => {
+    const elapsedMs = Date.now() - startedAtMs;
+    return Math.max(200, options.timeoutMs - elapsedMs);
+  };
 
   const emitPhase = (label: string): void => {
     const conversation = conversations.get(conversationId);
@@ -206,15 +212,29 @@ async function main(): Promise<void> {
     const nowMs = Date.now();
     const phase = projectedPhase(conversation, nowMs);
     const previous = timeline[timeline.length - 1];
-    if (previous !== undefined && previous.phase === phase.phase && previous.detail === phase.detail) {
+    if (
+      previous !== undefined &&
+      previous.icon === phase.icon &&
+      previous.phase === phase.phase &&
+      previous.statusText === phase.statusText
+    ) {
       return;
     }
     timeline.push({
       atMs: nowMs,
       label,
+      icon: phase.icon,
       phase: phase.phase,
-      detail: phase.detail
+      statusText: phase.statusText
     });
+  };
+
+  const currentPhase = (): string | null => {
+    const conversation = conversations.get(conversationId);
+    if (conversation === undefined) {
+      return null;
+    }
+    return projectedPhase(conversation, Date.now()).phase;
   };
 
   const subscription = await subscribeControlPlaneKeyEvents(client, {
@@ -270,17 +290,12 @@ async function main(): Promise<void> {
       initialRows: 32
     });
 
-    await waitFor('initial status event', options.timeoutMs, () => conversations.has(conversationId));
+    await waitFor('initial status event', remainingTimeoutMs(), () => conversations.has(conversationId));
     emitPhase('poll');
 
-    await waitFor('starting phase', options.timeoutMs, () => {
+    await waitFor('active startup phase', remainingTimeoutMs(), () => {
       emitPhase('poll');
-      return timeline.some((entry) => entry.phase === 'starting');
-    });
-
-    await waitFor('idle phase after startup', options.timeoutMs, () => {
-      emitPhase('poll');
-      return timeline.some((entry) => entry.phase === 'idle');
+      return timeline.some((entry) => entry.phase === 'active');
     });
 
     promptSentAtMs = Date.now();
@@ -290,40 +305,50 @@ async function main(): Promise<void> {
       text: `${options.prompt}\n`
     });
 
-    await waitFor('working phase after prompt', options.timeoutMs, () => {
+    await waitFor('active phase after prompt', remainingTimeoutMs(), () => {
       emitPhase('poll');
-      return timeline.some(
-        (entry) => entry.atMs >= promptSentAtMs && entry.phase.startsWith('working:')
-      );
+      return currentPhase() === 'active';
     });
 
-    await waitFor('idle phase after prompt completion', options.timeoutMs, () => {
+    await waitFor('inactive phase after prompt completion', remainingTimeoutMs(), () => {
       emitPhase('poll');
-      const workingIndex = timeline.findIndex(
-        (entry) => entry.atMs >= promptSentAtMs && entry.phase.startsWith('working:')
-      );
-      if (workingIndex < 0) {
+      const activeIndex = timeline.findIndex((entry) => entry.phase === 'active');
+      if (activeIndex < 0) {
         return false;
       }
-      const idleAfterWorking = timeline.findIndex(
-        (entry, index) => index > workingIndex && entry.phase === 'idle'
+      const inactiveAfterActive = timeline.findIndex(
+        (entry, index) => index > activeIndex && entry.phase === 'inactive'
       );
-      return idleAfterWorking >= 0;
+      return inactiveAfterActive >= 0;
     });
 
-    const startupIndex = timeline.findIndex((entry) => entry.phase === 'starting');
-    const startupIdleIndex = timeline.findIndex((entry) => entry.phase === 'idle');
-    const firstWorkingAfterPrompt = timeline.findIndex(
-      (entry) => entry.atMs >= promptSentAtMs && entry.phase.startsWith('working:')
-    );
-    const firstIdleAfterPrompt = timeline.findIndex(
-      (entry, index) => index > firstWorkingAfterPrompt && entry.phase === 'idle'
-    );
+    const startupActiveIndex = timeline.findIndex((entry) => entry.phase === 'active');
+    const promptInactiveIndex = timeline.findIndex((entry) => entry.atMs >= promptSentAtMs && entry.phase === 'inactive');
 
-    assert.equal(startupIndex >= 0, true);
-    assert.equal(startupIdleIndex > startupIndex, true);
-    assert.equal(firstWorkingAfterPrompt >= 0, true);
-    assert.equal(firstIdleAfterPrompt > firstWorkingAfterPrompt, true);
+    assert.equal(startupActiveIndex >= 0, true);
+    assert.equal(promptInactiveIndex >= 0, true);
+    assert.equal(
+      timeline.some((entry) => entry.phase === 'active' && (entry.icon === '◔' || entry.icon === '◆')),
+      true
+    );
+    assert.equal(
+      timeline.some((entry) => entry.atMs >= promptSentAtMs && entry.phase === 'active'),
+      true
+    );
+    assert.equal(
+      timeline.some(
+        (entry, index) =>
+          index > startupActiveIndex &&
+          entry.phase === 'inactive' &&
+          (entry.icon === '○' || entry.icon === '■')
+      ),
+      true
+    );
+    assert.equal(timeline.every((entry) => entry.statusText.trim().length > 0), true);
+    assert.equal(
+      timeline.some((entry) => entry.phase === 'needs-action' || entry.statusText.toLowerCase().includes('telemetry')),
+      false
+    );
 
     process.stdout.write('codex status integration sequence verified\n');
     printTimeline(timeline);

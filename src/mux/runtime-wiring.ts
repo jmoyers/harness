@@ -57,19 +57,33 @@ function normalizeSummary(value: string | null): string {
 function projectTelemetrySummary(telemetry: Omit<MuxTelemetrySummaryInput, 'observedAt'>): ProjectedTelemetrySummary {
   const eventName = normalizeEventName(telemetry.eventName);
   const summary = normalizeSummary(telemetry.summary);
+  const summaryLower = summary.toLowerCase();
   if (telemetry.source === 'otlp-metric') {
     if (eventName === 'codex.turn.e2e_duration_ms') {
       return {
-        text: summary.length > 0 ? summary : 'idle'
+        text: 'inactive'
       };
     }
     return {
       text: null
     };
   }
+  if (telemetry.source === 'otlp-log' && eventName === 'codex.sse_event') {
+    if (
+      summaryLower.includes('response.created') ||
+      summaryLower.includes('response.in_progress') ||
+      summaryLower.includes('response.output_text.delta') ||
+      summaryLower.includes('response.output_item.added') ||
+      summaryLower.includes('response.function_call_arguments.delta')
+    ) {
+      return {
+        text: 'active'
+      };
+    }
+  }
   if (eventName === 'codex.user_prompt') {
     return {
-      text: 'working: thinking'
+      text: 'active'
     };
   }
   return {
@@ -111,7 +125,7 @@ function shouldApplyTelemetryStatusHint(keyEvent: StreamSessionKeyEventRecord): 
   }
   const eventName = normalizeEventName(keyEvent.eventName);
   if (keyEvent.statusHint === 'needs-input') {
-    return true;
+    return false;
   }
   if (keyEvent.statusHint === 'completed') {
     return false;
@@ -135,18 +149,10 @@ export function applyMuxControlPlaneKeyEvent<TConversation extends MuxRuntimeCon
 
   if (event.type === 'session-status') {
     conversation.status = event.status;
-    conversation.attentionReason = event.attentionReason;
+    conversation.attentionReason = event.attentionReason === 'telemetry' ? null : event.attentionReason;
     conversation.live = event.live;
     conversation.controller = event.controller;
     conversation.lastEventAt = event.ts;
-    if (
-      event.status === 'running' &&
-      (conversation.lastKnownWork === null || conversation.lastKnownWork.trim().length === 0)
-    ) {
-      conversation.lastKnownWork = 'starting';
-      conversation.lastKnownWorkAt = event.ts;
-      conversation.lastTelemetrySource = 'control-plane';
-    }
     applyTelemetrySummaryToConversation(conversation, event.telemetry);
     return conversation;
   }
@@ -165,11 +171,6 @@ export function applyMuxControlPlaneKeyEvent<TConversation extends MuxRuntimeCon
   });
   conversation.lastEventAt = event.keyEvent.observedAt;
   if (!shouldApplyTelemetryStatusHint(event.keyEvent)) {
-    return conversation;
-  }
-  if (event.keyEvent.statusHint === 'needs-input') {
-    conversation.status = 'needs-input';
-    conversation.attentionReason = 'telemetry';
     return conversation;
   }
   if (event.keyEvent.statusHint === 'running' && conversation.status !== 'exited') {

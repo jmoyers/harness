@@ -71,7 +71,7 @@ void test('runtime wiring summarizes telemetry text deterministically', () => {
       eventName: 'codex.user_prompt',
       summary: 'prompt submitted'
     }),
-    'working: thinking'
+    'active'
   );
   assert.equal(
     telemetrySummaryText({
@@ -79,7 +79,7 @@ void test('runtime wiring summarizes telemetry text deterministically', () => {
       eventName: 'codex.user_prompt',
       summary: 'codex.user_prompt: prompt submitted'
     }),
-    'working: thinking'
+    'active'
   );
   assert.equal(
     telemetrySummaryText({
@@ -87,7 +87,7 @@ void test('runtime wiring summarizes telemetry text deterministically', () => {
       eventName: 'codex.user_prompt',
       summary: null
     }),
-    'working: thinking'
+    'active'
   );
   assert.equal(
     telemetrySummaryText({
@@ -119,7 +119,7 @@ void test('runtime wiring summarizes telemetry text deterministically', () => {
       eventName: 'codex.sse_event',
       summary: 'stream response.output_text.delta'
     }),
-    null
+    'active'
   );
   assert.equal(
     telemetrySummaryText({
@@ -151,7 +151,7 @@ void test('runtime wiring summarizes telemetry text deterministically', () => {
       eventName: 'codex.sse_event',
       summary: 'stream response.created'
     }),
-    null
+    'active'
   );
   assert.equal(
     telemetrySummaryText({
@@ -159,7 +159,7 @@ void test('runtime wiring summarizes telemetry text deterministically', () => {
       eventName: 'codex.sse_event',
       summary: 'stream response.in_progress'
     }),
-    null
+    'active'
   );
   assert.equal(
     telemetrySummaryText({
@@ -167,7 +167,7 @@ void test('runtime wiring summarizes telemetry text deterministically', () => {
       eventName: 'codex.sse_event',
       summary: 'stream response.output_item.added'
     }),
-    null
+    'active'
   );
   assert.equal(
     telemetrySummaryText({
@@ -183,7 +183,7 @@ void test('runtime wiring summarizes telemetry text deterministically', () => {
       eventName: 'codex.user_prompt',
       summary: 'write me a very long poem'
     }),
-    'working: thinking'
+    'active'
   );
   assert.equal(
     telemetrySummaryText({
@@ -199,7 +199,7 @@ void test('runtime wiring summarizes telemetry text deterministically', () => {
       eventName: 'codex.user_prompt',
       summary: 'prompt: already prefixed'
     }),
-    'working: thinking'
+    'active'
   );
   assert.equal(
     telemetrySummaryText({
@@ -303,7 +303,7 @@ void test('runtime wiring summarizes telemetry text deterministically', () => {
       eventName: 'codex.turn.e2e_duration_ms',
       summary: null
     }),
-    'idle'
+    'inactive'
   );
   assert.equal(
     telemetrySummaryText({
@@ -336,12 +336,12 @@ void test('runtime wiring applies telemetry summary to conversation state', () =
     summary: 'prompt submitted',
     observedAt: '2026-02-15T00:00:00.000Z'
   });
-  assert.equal(conversation.lastKnownWork, 'working: thinking');
+  assert.equal(conversation.lastKnownWork, 'active');
   assert.equal(conversation.lastKnownWorkAt, '2026-02-15T00:00:00.000Z');
   assert.equal(conversation.lastTelemetrySource, 'otlp-log');
 });
 
-void test('runtime wiring ignores non-turn telemetry during startup and only responds to prompt', () => {
+void test('runtime wiring uses codex sse progress events for startup/working text and keeps prompt semantics', () => {
   const conversation = createConversationState('conversation-startup-noise', {
     status: 'running',
     lastKnownWork: 'starting',
@@ -355,8 +355,8 @@ void test('runtime wiring ignores non-turn telemetry during startup and only res
     summary: 'stream response.in_progress',
     observedAt: '2026-02-16T00:00:00.100Z'
   });
-  assert.equal(conversation.lastKnownWork, 'starting');
-  assert.equal(conversation.lastKnownWorkAt, '2026-02-16T00:00:00.000Z');
+  assert.equal(conversation.lastKnownWork, 'active');
+  assert.equal(conversation.lastKnownWorkAt, '2026-02-16T00:00:00.100Z');
 
   applyTelemetrySummaryToConversation(conversation, {
     source: 'otlp-log',
@@ -364,7 +364,7 @@ void test('runtime wiring ignores non-turn telemetry during startup and only res
     summary: 'prompt submitted',
     observedAt: '2026-02-16T00:00:01.000Z'
   });
-  assert.equal(conversation.lastKnownWork, 'working: thinking');
+  assert.equal(conversation.lastKnownWork, 'active');
   assert.equal(conversation.lastKnownWorkAt, '2026-02-16T00:00:01.000Z');
 
   applyTelemetrySummaryToConversation(conversation, {
@@ -373,8 +373,8 @@ void test('runtime wiring ignores non-turn telemetry during startup and only res
     summary: 'stream response.output_text.delta',
     observedAt: '2026-02-16T00:00:01.100Z'
   });
-  assert.equal(conversation.lastKnownWork, 'working: thinking');
-  assert.equal(conversation.lastKnownWorkAt, '2026-02-16T00:00:01.000Z');
+  assert.equal(conversation.lastKnownWork, 'active');
+  assert.equal(conversation.lastKnownWorkAt, '2026-02-16T00:00:01.100Z');
 });
 
 void test('runtime wiring ignores stale telemetry summaries that arrive out of order', () => {
@@ -537,7 +537,7 @@ void test('runtime wiring updates session-status and session-control events', ()
   assert.equal(statusConversation?.status, 'running');
   assert.equal(statusConversation?.directoryId, 'directory-a');
   assert.equal(statusConversation?.lastEventAt, '2026-02-15T00:00:01.000Z');
-  assert.equal(statusConversation?.lastKnownWork, 'working: thinking');
+  assert.equal(statusConversation?.lastKnownWork, 'active');
 
   const controlConversation = applyMuxControlPlaneKeyEvent(
     {
@@ -622,8 +622,8 @@ void test('runtime wiring handles telemetry status hints and preserves exited st
     }
   );
   assert.notEqual(needsInputConversation, null);
-  assert.equal(needsInputConversation?.status, 'needs-input');
-  assert.equal(needsInputConversation?.attentionReason, 'telemetry');
+  assert.equal(needsInputConversation?.status, 'completed');
+  assert.equal(needsInputConversation?.attentionReason, null);
 
   const runningConversation = applyMuxControlPlaneKeyEvent(
     {
@@ -893,7 +893,25 @@ void test('runtime wiring sqlite-derived sequence stays prompt-driven with expli
   });
   pushTransition('2026-02-15T21:42:29.259Z');
 
-  assert.deepEqual(transitions, ['starting', 'working: thinking', 'starting']);
+  apply({
+    type: 'session-telemetry',
+    sessionId: 'conversation-sqlite-sequence',
+    keyEvent: {
+      source: 'otlp-metric',
+      eventName: 'codex.turn.e2e_duration_ms',
+      severity: null,
+      summary: 'turn complete (611ms)',
+      observedAt: '2026-02-15T21:42:29.900Z',
+      statusHint: 'completed'
+    },
+    ts: '2026-02-15T21:42:29.900Z',
+    directoryId: 'directory-sqlite',
+    conversationId: 'conversation-sqlite-sequence',
+    cursor: 7
+  });
+  pushTransition('2026-02-15T21:42:29.900Z');
+
+  assert.deepEqual(transitions, ['starting', 'active', 'idle']);
 });
 
 void test('runtime wiring poem-like sequence keeps status high-signal and status line readable', () => {
@@ -926,7 +944,7 @@ void test('runtime wiring poem-like sequence keeps status high-signal and status
     cursor: 10
   });
   assert.equal(conversation.status, 'running');
-  assert.equal(conversation.lastKnownWork, 'working: thinking');
+  assert.equal(conversation.lastKnownWork, 'active');
 
   apply({
     type: 'session-telemetry',
@@ -945,7 +963,7 @@ void test('runtime wiring poem-like sequence keeps status high-signal and status
     cursor: 11
   });
   assert.equal(conversation.status, 'running');
-  assert.equal(conversation.lastKnownWork, 'working: thinking');
+  assert.equal(conversation.lastKnownWork, 'active');
 
   apply({
     type: 'session-telemetry',
@@ -964,7 +982,7 @@ void test('runtime wiring poem-like sequence keeps status high-signal and status
     cursor: 12
   });
   assert.equal(conversation.status, 'running');
-  assert.equal(conversation.lastKnownWork, 'working: thinking');
+  assert.equal(conversation.lastKnownWork, 'active');
 
   apply({
     type: 'session-telemetry',
@@ -983,7 +1001,7 @@ void test('runtime wiring poem-like sequence keeps status high-signal and status
     cursor: 13
   });
   assert.equal(conversation.status, 'running');
-  assert.equal(conversation.lastKnownWork, 'working: thinking');
+  assert.equal(conversation.lastKnownWork, 'active');
 
   apply({
     type: 'session-telemetry',
@@ -1002,13 +1020,13 @@ void test('runtime wiring poem-like sequence keeps status high-signal and status
     cursor: 14
   });
   assert.equal(conversation.status, 'running');
-  assert.equal(conversation.lastKnownWork, 'turn complete (18260ms)');
+  assert.equal(conversation.lastKnownWork, 'inactive');
 });
 
-void test('runtime wiring applies delayed turn metric text when it is the explicit completion signal', () => {
+void test('runtime wiring applies delayed turn metric text as inactive', () => {
   const conversation = createConversationState('conversation-delayed-metric', {
     status: 'running',
-    lastKnownWork: 'idle',
+    lastKnownWork: 'inactive',
     lastKnownWorkAt: '2026-02-15T00:00:04.000Z',
     lastTelemetrySource: 'otlp-log'
   });
@@ -1020,7 +1038,7 @@ void test('runtime wiring applies delayed turn metric text when it is the explic
     observedAt: '2026-02-15T00:00:24.000Z'
   });
 
-  assert.equal(conversation.lastKnownWork, 'turn complete (31644ms)');
+  assert.equal(conversation.lastKnownWork, 'inactive');
   assert.equal(conversation.lastKnownWorkAt, '2026-02-15T00:00:24.000Z');
   assert.equal(conversation.lastTelemetrySource, 'otlp-metric');
 });
@@ -1054,7 +1072,7 @@ void test('runtime wiring applies turn metric completion summaries regardless of
     summary: 'turn complete (611ms)',
     observedAt: '2026-02-15T00:00:03.000Z'
   });
-  assert.equal(conversation.lastKnownWork, 'turn complete (611ms)');
+  assert.equal(conversation.lastKnownWork, 'inactive');
   assert.equal(conversation.lastKnownWorkAt, '2026-02-15T00:00:03.000Z');
 
   applyTelemetrySummaryToConversation(conversation, {
@@ -1063,7 +1081,7 @@ void test('runtime wiring applies turn metric completion summaries regardless of
     summary: 'task completed',
     observedAt: '2026-02-15T00:00:04.000Z'
   });
-  assert.equal(conversation.lastKnownWork, 'turn complete (611ms)');
+  assert.equal(conversation.lastKnownWork, 'inactive');
   assert.equal(conversation.lastKnownWorkAt, '2026-02-15T00:00:03.000Z');
   assert.equal(conversation.lastTelemetrySource, 'otlp-metric');
 });

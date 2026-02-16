@@ -470,7 +470,7 @@ void test('parseOtlpLogEvents derives status hints through nested payload and fa
 
   assert.equal(events.length, 9);
   assert.equal(events[0]?.statusHint, null);
-  assert.equal(events[1]?.statusHint, 'needs-input');
+  assert.equal(events[1]?.statusHint, null);
   assert.equal(events[2]?.statusHint, null);
   assert.equal(events[3]?.summary, 'stream response.completed');
   assert.equal(events[3]?.statusHint, null);
@@ -483,7 +483,43 @@ void test('parseOtlpLogEvents derives status hints through nested payload and fa
   assert.equal(events[8]?.statusHint, null);
 });
 
-void test('parseOtlpLogEvents covers statusHint fallback branches for needs-input summary text and api status fields', () => {
+void test('parseOtlpLogEvents does not infer needs-input from arbitrary payload text when structured status is successful', () => {
+  const events = parseOtlpLogEvents(
+    {
+      resourceLogs: [
+        {
+          scopeLogs: [
+            {
+              logRecords: [
+                {
+                  attributes: [
+                    { key: 'event.name', value: { stringValue: 'codex.tool_result' } },
+                    { key: 'tool_name', value: { stringValue: 'exec_command' } },
+                    { key: 'success', value: { stringValue: 'true' } },
+                    {
+                      key: 'output',
+                      value: {
+                        stringValue: "error: failed to push refs, but this is raw tool output text"
+                      }
+                    }
+                  ],
+                  body: null
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    '2026-02-15T00:00:00.000Z'
+  );
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.summary, 'tool exec_command');
+  assert.equal(events[0]?.statusHint, null);
+});
+
+void test('parseOtlpLogEvents only derives needs-input from explicit summary/status tokens', () => {
   const events = parseOtlpLogEvents(
     {
       resourceLogs: [
@@ -512,11 +548,11 @@ void test('parseOtlpLogEvents covers statusHint fallback branches for needs-inpu
   );
 
   assert.equal(events.length, 2);
-  assert.equal(events[0]?.statusHint, 'needs-input');
+  assert.equal(events[0]?.statusHint, null);
   assert.equal(events[1]?.statusHint, 'needs-input');
 });
 
-void test('parseOtlpLogEvents derives needs-input status from severity when other hints are absent', () => {
+void test('parseOtlpLogEvents does not derive needs-input status from severity-only signals', () => {
   const events = parseOtlpLogEvents(
     {
       resourceLogs: [
@@ -539,7 +575,7 @@ void test('parseOtlpLogEvents derives needs-input status from severity when othe
 
   assert.equal(events.length, 1);
   assert.equal(events[0]?.summary, 'custom.event');
-  assert.equal(events[0]?.statusHint, 'needs-input');
+  assert.equal(events[0]?.statusHint, null);
 });
 
 void test('parseOtlpLogEvents returns empty on invalid root shape', () => {

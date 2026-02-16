@@ -909,7 +909,7 @@ void test('workspace rail model prefers last-known-work text over cpu or attenti
   assert.equal(bodyRow?.text.includes('approval'), false);
 });
 
-void test('workspace rail model shows controller ownership hints for non-local controllers', () => {
+void test('workspace rail model keeps status detail independent from controller ownership', () => {
   const rows = buildWorkspaceRailViewRows(
     {
       directories: [
@@ -949,7 +949,6 @@ void test('workspace rail model shows controller ownership hints for non-local c
       processes: [],
       activeProjectId: null,
       activeConversationId: 'conversation-a',
-      localControllerId: 'human-local',
       nowMs: Date.parse('2026-01-01T00:00:05.000Z')
     },
     20
@@ -959,7 +958,7 @@ void test('workspace rail model shows controller ownership hints for non-local c
     (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-a'
   );
   assert.notEqual(bodyRow, undefined);
-  assert.equal(bodyRow?.text.includes('controlled by openclaw'), true);
+  assert.equal(bodyRow?.text.includes('working'), true);
 
   const localRows = buildWorkspaceRailViewRows(
     {
@@ -1000,7 +999,6 @@ void test('workspace rail model shows controller ownership hints for non-local c
       processes: [],
       activeProjectId: null,
       activeConversationId: 'conversation-a',
-      localControllerId: 'human-local',
       nowMs: Date.parse('2026-01-01T00:00:05.000Z')
     },
     20
@@ -1010,7 +1008,6 @@ void test('workspace rail model shows controller ownership hints for non-local c
     (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-a'
   );
   assert.notEqual(localBodyRow, undefined);
-  assert.equal(localBodyRow?.text.includes('controlled by'), false);
   assert.equal(localBodyRow?.text.includes('working'), true);
 
   const unlabeledRows = buildWorkspaceRailViewRows(
@@ -1052,7 +1049,6 @@ void test('workspace rail model shows controller ownership hints for non-local c
       processes: [],
       activeProjectId: null,
       activeConversationId: 'conversation-a',
-      localControllerId: 'human-local',
       nowMs: Date.parse('2026-01-01T00:00:05.000Z')
     },
     20
@@ -1061,7 +1057,7 @@ void test('workspace rail model shows controller ownership hints for non-local c
     (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-a'
   );
   assert.notEqual(unlabeledBodyRow, undefined);
-  assert.equal(unlabeledBodyRow?.text.includes('controlled by automation:robot-7'), true);
+  assert.equal(unlabeledBodyRow?.text.includes('working'), true);
 
   const undefinedLabelRows = buildWorkspaceRailViewRows(
     {
@@ -1107,7 +1103,6 @@ void test('workspace rail model shows controller ownership hints for non-local c
       processes: [],
       activeProjectId: null,
       activeConversationId: 'conversation-a',
-      localControllerId: 'human-local',
       nowMs: Date.parse('2026-01-01T00:00:05.000Z')
     },
     20
@@ -1116,7 +1111,7 @@ void test('workspace rail model shows controller ownership hints for non-local c
     (row) => row.kind === 'conversation-body' && row.conversationSessionId === 'conversation-a'
   );
   assert.notEqual(undefinedLabelBodyRow, undefined);
-  assert.equal(undefinedLabelBodyRow?.text.includes('controlled by agent:agent-raw'), true);
+  assert.equal(undefinedLabelBodyRow?.text.includes('working'), true);
 });
 
 void test('workspace rail model keeps running sessions in starting when completion text is not canonical', () => {
@@ -1532,7 +1527,7 @@ void test('workspace rail conversation projection exposes glyph and detail text'
   assert.equal(projected.detailText, 'writing response…');
 });
 
-void test('workspace rail conversation projection surfaces controller lock text', () => {
+void test('workspace rail conversation projection keeps detail text independent from controller metadata', () => {
   const projected = projectWorkspaceRailConversation(
     {
       sessionId: 'conversation-1',
@@ -1555,13 +1550,12 @@ void test('workspace rail conversation projection surfaces controller lock text'
       }
     },
     {
-      localControllerId: 'human-me',
       nowMs: Date.parse('2026-01-01T00:00:01.000Z')
     }
   );
   assert.equal(projected.status, 'idle');
   assert.equal(projected.glyph, '○');
-  assert.equal(projected.detailText, 'controlled by Build Bot');
+  assert.equal(projected.detailText, 'inactive');
 });
 
 void test('workspace rail conversation projection supports default option branches', () => {
@@ -1587,5 +1581,5 @@ void test('workspace rail conversation projection supports default option branch
   });
   assert.equal(projected.status, 'starting');
   assert.equal(projected.glyph, '◔');
-  assert.equal(projected.detailText.includes('controlled by'), true);
+  assert.equal(projected.detailText, 'starting');
 });

@@ -59,7 +59,6 @@ interface WorkspaceRailModel {
   readonly showTaskPlanningUi?: boolean;
   readonly activeProjectId: string | null;
   readonly activeConversationId: string | null;
-  readonly localControllerId?: string | null;
   readonly projectSelectionEnabled?: boolean;
   readonly repositoriesCollapsed?: boolean;
   readonly shortcutHint?: string;
@@ -170,13 +169,14 @@ function inferStatusFromLastKnownWork(lastKnownWork: string | null): NormalizedC
     return 'starting';
   }
   if (
+    normalized === 'inactive' ||
     normalized === 'idle' ||
     normalized.includes('turn complete') ||
     normalized.includes('turn completed')
   ) {
     return 'idle';
   }
-  if (normalized.startsWith('working:') || normalized === 'working') {
+  if (normalized === 'active' || normalized.startsWith('working:') || normalized === 'working') {
     return 'working';
   }
   return null;
@@ -193,6 +193,9 @@ function normalizeConversationStatus(
     return 'exited';
   }
   const inferred = inferStatusFromLastKnownWork(conversation.lastKnownWork);
+  if (inferred === 'working') {
+    return 'working';
+  }
   if (inferred !== null && isLastKnownWorkCurrent(conversation, nowMs)) {
     return inferred;
   }
@@ -248,41 +251,18 @@ function statusLineLabel(status: NormalizedConversationStatus): string {
   const labels: Record<NormalizedConversationStatus, string> = {
     'needs-action': 'needs input',
     starting: 'starting',
-    working: 'working',
-    idle: 'idle',
+    working: 'active',
+    idle: 'inactive',
     exited: 'exited'
   };
   return labels[status];
 }
 
-function controllerDisplayText(
-  conversation: WorkspaceRailConversationSummary,
-  localControllerId: string | null
-): string | null {
-  const controller = conversation.controller;
-  if (controller === null || controller === undefined) {
-    return null;
-  }
-  if (controller.controllerType === 'human' && controller.controllerId === localControllerId) {
-    return null;
-  }
-  const label = controller.controllerLabel?.trim() ?? '';
-  if (label.length > 0) {
-    return `controlled by ${label}`;
-  }
-  return `controlled by ${controller.controllerType}:${controller.controllerId}`;
-}
-
 function conversationDetailText(
   conversation: WorkspaceRailConversationSummary,
-  localControllerId: string | null,
   normalizedStatus: NormalizedConversationStatus,
   nowMs: number
 ): string {
-  const controllerText = controllerDisplayText(conversation, localControllerId);
-  if (controllerText !== null) {
-    return controllerText;
-  }
   const lastKnownWork = summaryText(conversation.lastKnownWork);
   if (lastKnownWork !== null && isLastKnownWorkCurrent(conversation, nowMs)) {
     return lastKnownWork;
@@ -297,7 +277,6 @@ function conversationDetailText(
 export function projectWorkspaceRailConversation(
   conversation: WorkspaceRailConversationSummary,
   options: {
-    readonly localControllerId?: string | null;
     readonly nowMs?: number;
   } = {}
 ): WorkspaceRailConversationProjection {
@@ -306,12 +285,7 @@ export function projectWorkspaceRailConversation(
   return {
     status: normalizedStatus,
     glyph: statusGlyph(normalizedStatus),
-    detailText: conversationDetailText(
-      conversation,
-      options.localControllerId ?? null,
-      normalizedStatus,
-      nowMs
-    )
+    detailText: conversationDetailText(conversation, normalizedStatus, nowMs)
   };
 }
 
@@ -403,7 +377,6 @@ function buildContentRows(model: WorkspaceRailModel, nowMs: number): readonly Wo
         const active =
           !(model.projectSelectionEnabled ?? false) && conversation.sessionId === model.activeConversationId;
         const projection = projectWorkspaceRailConversation(conversation, {
-          localControllerId: model.localControllerId ?? null,
           nowMs
         });
         pushRow(

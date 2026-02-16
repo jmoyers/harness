@@ -315,12 +315,7 @@ const NEEDS_INPUT_HINT_TOKENS = [
   'attention_required',
   'input-required',
   'approval-required',
-  'approval_required',
-  'denied',
-  'reject',
-  'abort',
-  'error',
-  'failed'
+  'approval_required'
 ] as const;
 
 function statusFromOutcomeText(value: string | null): CodexStatusHint | null {
@@ -469,11 +464,7 @@ function deriveStatusHint(
       return fromSummary;
     }
   }
-  const severityHint = statusFromOutcomeText(severity);
-  if (severityHint !== null) {
-    return severityHint;
-  }
-  return statusFromOutcomeText(JSON.stringify(payload));
+  return null;
 }
 
 function buildLogSummary(
