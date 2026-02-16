@@ -24,7 +24,7 @@ import {
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_DAEMON_SCRIPT_PATH = resolve(SCRIPT_DIR, 'control-plane-daemon.ts');
-const DEFAULT_MUX_SCRIPT_PATH = resolve(SCRIPT_DIR, 'codex-live-mux.ts');
+const DEFAULT_MUX_SCRIPT_PATH = resolve(SCRIPT_DIR, 'harness-core.ts');
 const DEFAULT_GATEWAY_START_RETRY_WINDOW_MS = 6000;
 const DEFAULT_GATEWAY_START_RETRY_DELAY_MS = 40;
 const DEFAULT_GATEWAY_STOP_TIMEOUT_MS = 5000;

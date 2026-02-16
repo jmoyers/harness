@@ -171,6 +171,8 @@ Use `harness` as the default client. It connects to the gateway of record, or st
 harness
 ```
 
+Direct mux entrypoint is `npm run harness:core` (legacy alias `npm run codex:live:mux`).
+
 Gateway lifecycle control is explicit:
 
 ```bash

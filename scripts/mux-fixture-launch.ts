@@ -15,7 +15,7 @@ import {
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const DAEMON_SCRIPT = resolve(SCRIPT_DIR, 'control-plane-daemon-fixture.ts');
-const MUX_SCRIPT = resolve(SCRIPT_DIR, 'codex-live-mux.ts');
+const MUX_SCRIPT = resolve(SCRIPT_DIR, 'harness-core.ts');
 const DEFAULT_HOST = '127.0.0.1';
 const START_TIMEOUT_MS = 5000;
 const STOP_TIMEOUT_MS = 1500;

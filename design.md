@@ -1092,6 +1092,8 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - `harness gateway ...` is the canonical daemon control plane: `start|stop|status|restart|run|call`.
     - gateway state is persisted as a gateway-of-record file (`.harness/gateway.json`) with host/port/auth/pid metadata; stale records are pruned on startup/stop flows.
     - client disconnect (including `Ctrl+C` in mux) does not kill the gateway; only explicit gateway stop/shutdown tears down child sessions.
+  - `scripts/harness-core.ts` is the canonical mux client entrypoint (`npm run harness:core`).
+    - legacy `scripts/codex-live-mux.ts` remains as a compatibility implementation path while canonical invocation shifts to `harness-core`.
   - `scripts/control-plane-daemon-fixture.ts` provides a deterministic fixture daemon path that runs a local command (default `/bin/sh`) instead of Codex, for startup paint/protocol isolation.
   - `scripts/codex-live-mux-launch.ts` provides a one-command launcher (`npm run codex:live:mux:launch -- ...`) that boots a dedicated daemon and connects the remote mux client for client/server parity without manual multi-terminal setup.
     - launcher mode remains a local lifecycle harness for startup/perf measurement where mux + daemon are intentionally co-terminated by the launcher process.
@@ -1136,6 +1138,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - runtime output-load checkpoints (`mux.output-load.sample`) attribute active vs inactive output pressure, render cost, and event-loop lag to diagnose interactivity starvation
     - background resume checkpointing now records explicit begin/skip events (`mux.startup.background-start.begin` / `mux.startup.background-start.skipped`) for startup tradeoff diagnosis
     - archive/delete controls wired through the same control-plane path used by human and automation clients
+    - project/task pane and modal sizing UI internals are factored into `src/mux/harness-core-ui.ts` so UI-only changes land outside the launcher script and reduce merge-conflict hotspots
   - recording timestamps are monotonic relative wall-clock samples with footer close-time; GIF frame delays are quantized with drift compensation to preserve elapsed timing semantics.
   - `scripts/terminal-recording-gif-lib.ts` + `scripts/terminal-recording-to-gif.ts` provide offline recording-to-GIF export, enabling visual regression artifacts from mux render captures.
   - `scripts/perf-mux-startup-report.ts` provides a deterministic visual startup timeline report over captured `perf-core` JSONL traces, including launch/daemon/mux/client/server negotiation checkpoints and startup terminal-query handled/unhandled cataloging.
