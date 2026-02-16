@@ -8,6 +8,7 @@
     "harness": "scripts/harness-bin.js"
   },
   "scripts": {
+    "migrate:bun": "bash ./scripts/migrate-to-bun.sh",
     "harness": "bun scripts/harness.ts",
     "harness:core": "bun scripts/harness-core.ts",
     "build:ptyd": "export PATH=\"$HOME/.cargo/bin:$PATH\" && cargo build --manifest-path native/ptyd/Cargo.toml --release && mkdir -p bin && cp native/ptyd/target/release/ptyd bin/ptyd",

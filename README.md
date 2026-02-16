@@ -166,6 +166,26 @@ Harness is built to expose operational truth, not hide it.
 - Rust toolchain (for PTY helper build)
 - Codex CLI (for `codex` thread type)
 
+### Migrate Older Checkout To Bun
+
+If you pulled latest in an older checkout and want one command to clean legacy package-manager artifacts and reinstall with Bun:
+
+```bash
+bun run migrate:bun
+```
+
+What it does:
+- removes legacy root lockfiles (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `npm-shrinkwrap.json`) if present
+- reinstalls dependencies from `bun.lock` (`bun install --frozen-lockfile`)
+- rebuilds native PTY helper (`bun run build:ptyd`)
+- preserves existing SQLite runtime state (`.harness/*.sqlite`)
+
+When `harness` starts in a Bun-managed checkout, it now warns if legacy lockfiles are still present and prompts:
+
+```bash
+bun run migrate:bun
+```
+
 ### Run
 
 ```bash
