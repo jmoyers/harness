@@ -3214,7 +3214,7 @@ async function main(): Promise<number> {
     await hydrateConversationList();
     await hydrateRepositoryList();
     await hydrateTaskPlanningState();
-    await subscribeTaskPlanningEvents();
+    await subscribeTaskPlanningEvents(startupObservedCursor);
     if (activeConversationId === null) {
       const ordered = conversationOrder(conversations);
       activeConversationId = ordered[0] ?? null;
@@ -3805,10 +3805,17 @@ async function main(): Promise<number> {
     scheduleRender();
   };
 
+  const startupObservedCursor = await readStreamCursorBaseline();
+
   keyEventSubscription = await subscribeControlPlaneKeyEvents(streamClient, {
     tenantId: options.scope.tenantId,
     userId: options.scope.userId,
     workspaceId: options.scope.workspaceId,
+    ...(startupObservedCursor === null
+      ? {}
+      : {
+          afterCursor: startupObservedCursor
+        }),
     onEvent: (event) => {
       applyControlPlaneKeyEvent(event);
       markDirty();
@@ -4844,16 +4851,56 @@ async function main(): Promise<number> {
     }
   };
 
-  async function subscribeTaskPlanningEvents(): Promise<void> {
-    if (observedStreamSubscriptionId !== null) {
-      return;
-    }
+  async function readStreamCursorBaseline(): Promise<number | null> {
     const subscribed = await streamClient.sendCommand({
       type: 'stream.subscribe',
       tenantId: options.scope.tenantId,
       userId: options.scope.userId,
-      workspaceId: options.scope.workspaceId
+      workspaceId: options.scope.workspaceId,
+      conversationId: `cursor-probe-${randomUUID()}`
     });
+    const subscriptionId = subscribed['subscriptionId'];
+    if (typeof subscriptionId !== 'string' || subscriptionId.length === 0) {
+      throw new Error('control-plane stream.subscribe returned malformed subscription id');
+    }
+    try {
+      const cursor = subscribed['cursor'];
+      if (typeof cursor !== 'number' || !Number.isInteger(cursor) || cursor < 0) {
+        return null;
+      }
+      return cursor;
+    } finally {
+      try {
+        await streamClient.sendCommand({
+          type: 'stream.unsubscribe',
+          subscriptionId
+        });
+      } catch {
+        // Best-effort unsubscribe only.
+      }
+    }
+  }
+
+  async function subscribeTaskPlanningEvents(afterCursor: number | null): Promise<void> {
+    if (observedStreamSubscriptionId !== null) {
+      return;
+    }
+    const command: {
+      type: 'stream.subscribe';
+      tenantId: string;
+      userId: string;
+      workspaceId: string;
+      afterCursor?: number;
+    } = {
+      type: 'stream.subscribe',
+      tenantId: options.scope.tenantId,
+      userId: options.scope.userId,
+      workspaceId: options.scope.workspaceId
+    };
+    if (afterCursor !== null) {
+      command.afterCursor = afterCursor;
+    }
+    const subscribed = await streamClient.sendCommand(command);
     const subscriptionId = subscribed['subscriptionId'];
     if (typeof subscriptionId !== 'string') {
       throw new Error('control-plane stream.subscribe returned malformed subscription id');

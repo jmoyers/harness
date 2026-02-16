@@ -1,10 +1,94 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { connectControlPlaneStreamClient } from '../src/control-plane/stream-client.ts';
+import {
+  startControlPlaneStreamServer,
+  type StartControlPlaneSessionInput
+} from '../src/control-plane/stream-server.ts';
+import type { CodexLiveEvent } from '../src/codex/live-session.ts';
 import { startPtySession, type PtyExit } from '../src/pty/pty_host.ts';
 import { SqliteControlPlaneStore } from '../src/store/control-plane-store.ts';
+import { TerminalSnapshotOracle } from '../src/terminal/snapshot-oracle.ts';
+
+interface SessionDataEvent {
+  cursor: number;
+  chunk: Buffer;
+}
+
+interface SessionAttachHandlers {
+  onData: (event: SessionDataEvent) => void;
+  onExit: (exit: PtyExit) => void;
+}
+
+class StartupTestLiveSession {
+  private readonly snapshotOracle: TerminalSnapshotOracle;
+  private readonly attachments = new Map<string, SessionAttachHandlers>();
+  private readonly listeners = new Set<(event: CodexLiveEvent) => void>();
+  private nextAttachmentId = 1;
+  private latestCursor = 0;
+
+  constructor(input: StartControlPlaneSessionInput) {
+    this.snapshotOracle = new TerminalSnapshotOracle(input.initialCols, input.initialRows);
+  }
+
+  attach(handlers: SessionAttachHandlers): string {
+    const attachmentId = `attach-${this.nextAttachmentId}`;
+    this.nextAttachmentId += 1;
+    this.attachments.set(attachmentId, handlers);
+    return attachmentId;
+  }
+
+  detach(attachmentId: string): void {
+    this.attachments.delete(attachmentId);
+  }
+
+  latestCursorValue(): number {
+    return this.latestCursor;
+  }
+
+  processId(): number | null {
+    return null;
+  }
+
+  write(data: string | Uint8Array): void {
+    const chunk = Buffer.isBuffer(data) ? Buffer.from(data) : Buffer.from(data);
+    this.snapshotOracle.ingest(chunk);
+    this.latestCursor += 1;
+    for (const handlers of this.attachments.values()) {
+      handlers.onData({
+        cursor: this.latestCursor,
+        chunk
+      });
+    }
+  }
+
+  resize(cols: number, rows: number): void {
+    this.snapshotOracle.resize(cols, rows);
+  }
+
+  snapshot() {
+    return this.snapshotOracle.snapshot();
+  }
+
+  close(): void {}
+
+  onEvent(listener: (event: CodexLiveEvent) => void): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+}
+
+interface CaptureMuxBootOutputOptions {
+  controlPlaneHost?: string;
+  controlPlanePort?: number;
+  controlPlaneAuthToken?: string;
+  extraEnv?: Record<string, string>;
+}
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolveDelay) => {
@@ -60,17 +144,29 @@ function normalizeTerminalOutput(value: string): string {
 
 async function captureMuxBootOutput(
   workspace: string,
-  durationMs: number
+  durationMs: number,
+  options: CaptureMuxBootOutputOptions = {}
 ): Promise<{ output: string; exit: PtyExit }> {
   const scriptPath = resolve(process.cwd(), 'scripts/codex-live-mux.ts');
   const collected: Buffer[] = [];
+  const commandArgs = ['--experimental-strip-types', scriptPath];
+  if (options.controlPlaneHost !== undefined) {
+    commandArgs.push('--harness-server-host', options.controlPlaneHost);
+  }
+  if (options.controlPlanePort !== undefined) {
+    commandArgs.push('--harness-server-port', String(options.controlPlanePort));
+  }
+  if (options.controlPlaneAuthToken !== undefined) {
+    commandArgs.push('--harness-server-token', options.controlPlaneAuthToken);
+  }
   const session = startPtySession({
     command: process.execPath,
-    commandArgs: ['--experimental-strip-types', scriptPath],
+    commandArgs,
     cwd: workspace,
     env: {
       ...process.env,
-      HARNESS_INVOKE_CWD: workspace
+      HARNESS_INVOKE_CWD: workspace,
+      ...(options.extraEnv ?? {})
     }
   });
   let exitResult: PtyExit | null = null;
@@ -114,6 +210,120 @@ void test(
       assert.equal(output.includes('Cannot access'), false);
       assert.equal(output.includes('ReferenceError'), false);
     } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  }
+);
+
+void test(
+  'codex-live-mux startup does not resurrect archived project threads from stream replay',
+  { timeout: 20000 },
+  async () => {
+    const workspace = createWorkspace();
+    mkdirSync(join(workspace, 'project-a'), { recursive: true });
+    mkdirSync(join(workspace, 'project-b'), { recursive: true });
+
+    const tenantId = 'tenant-replay';
+    const userId = 'user-replay';
+    const workspaceId = 'workspace-replay';
+    const worktreeId = 'worktree-replay';
+    const startedSessionInputs: StartControlPlaneSessionInput[] = [];
+
+    const server = await startControlPlaneStreamServer({
+      stateStorePath: join(workspace, '.harness', 'control-plane.sqlite'),
+      startSession: (input) => {
+        startedSessionInputs.push(input);
+        return new StartupTestLiveSession(input);
+      }
+    });
+    const address = server.address();
+    const client = await connectControlPlaneStreamClient({
+      host: address.address,
+      port: address.port
+    });
+
+    try {
+      await client.sendCommand({
+        type: 'directory.upsert',
+        directoryId: 'directory-project-a',
+        tenantId,
+        userId,
+        workspaceId,
+        path: join(workspace, 'project-a')
+      });
+      await client.sendCommand({
+        type: 'directory.upsert',
+        directoryId: 'directory-project-b',
+        tenantId,
+        userId,
+        workspaceId,
+        path: join(workspace, 'project-b')
+      });
+
+      for (const [conversationId, directoryId] of [
+        ['conversation-project-a', 'directory-project-a'],
+        ['conversation-project-b', 'directory-project-b']
+      ] as const) {
+        await client.sendCommand({
+          type: 'conversation.create',
+          conversationId,
+          directoryId,
+          title: '',
+          agentType: 'codex',
+          adapterState: {}
+        });
+        await client.sendCommand({
+          type: 'pty.start',
+          sessionId: conversationId,
+          args: ['resume', `thread-${conversationId}`],
+          env: {
+            TERM: 'xterm-256color'
+          },
+          initialCols: 80,
+          initialRows: 24,
+          tenantId,
+          userId,
+          workspaceId,
+          worktreeId
+        });
+        await client.sendCommand({
+          type: 'session.remove',
+          sessionId: conversationId
+        });
+        await client.sendCommand({
+          type: 'conversation.archive',
+          conversationId
+        });
+      }
+
+      const startsBeforeMux = startedSessionInputs.length;
+      const result = await captureMuxBootOutput(workspace, 1800, {
+        controlPlaneHost: address.address,
+        controlPlanePort: address.port,
+        extraEnv: {
+          HARNESS_TENANT_ID: tenantId,
+          HARNESS_USER_ID: userId,
+          HARNESS_WORKSPACE_ID: workspaceId,
+          HARNESS_WORKTREE_ID: worktreeId,
+          HARNESS_MUX_BACKGROUND_RESUME: '1'
+        }
+      });
+      assert.equal(result.exit.signal, null);
+      assert.equal(result.exit.code, 0);
+      assert.equal(startedSessionInputs.length, startsBeforeMux);
+
+      const listedSessions = await client.sendCommand({
+        type: 'session.list',
+        tenantId,
+        userId,
+        workspaceId,
+        worktreeId
+      });
+      const sessions = Array.isArray(listedSessions['sessions']) ? listedSessions['sessions'] : [];
+      assert.equal(sessions.length, 0);
+    } finally {
+      client.close();
+      await server.close();
       rmSync(workspace, { recursive: true, force: true });
     }
   }
