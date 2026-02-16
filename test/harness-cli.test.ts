@@ -231,6 +231,18 @@ void test('harness animate renders bounded frames without starting gateway', asy
   }
 });
 
+void test('harness animate default color output uses muted palette', async () => {
+  const workspace = createWorkspace();
+  try {
+    const result = await runHarness(workspace, ['animate', '--frames', '1', '--seed', '7']);
+    assert.equal(result.code, 0);
+    assert.equal(result.stdout.includes('\u001b[38;5;109m'), true);
+    assert.equal(result.stdout.includes('\u001b[38;5;46m'), false);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 void test('harness gateway start/status/call/stop manages daemon lifecycle', async () => {
   const workspace = createWorkspace();
   const port = await reservePort();

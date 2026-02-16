@@ -5,6 +5,7 @@ const DEFAULT_FPS = 60;
 const DEFAULT_SEED = 1337;
 const MIN_WIDTH = 40;
 const MIN_HEIGHT = 16;
+const ANIMATE_COLOR_INDEX = 109;
 const SHADING_CHARS = ' .,:;irsXA253hMHGS#9B&@';
 const HARNESS_LOGO_LINES = [
   ' _   _    _    ____  _   _ _____ ____ ____ ',
@@ -358,7 +359,7 @@ function renderFrame(state: TunnelState, elapsedSeconds: number, color: boolean,
     const start = y * width;
     lines.push(chars.slice(start, start + width).join(''));
   }
-  const prefix = color ? '\u001b[H\u001b[38;5;46m' : '\u001b[H';
+  const prefix = color ? `\u001b[H\u001b[38;5;${String(ANIMATE_COLOR_INDEX)}m` : '\u001b[H';
   return `${prefix}${lines.join('\n')}${color ? '\u001b[0m' : ''}`;
 }
 
