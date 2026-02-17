@@ -24,6 +24,7 @@ interface StreamSessionSummary {
   readonly lastExit: PtyExit | null;
   readonly exitedAt: string | null;
   readonly live: boolean;
+  readonly launchCommand: string | null;
   readonly telemetry: StreamTelemetrySummary | null;
   readonly controller: StreamSessionController | null;
 }
@@ -227,6 +228,7 @@ export function parseSessionSummaryRecord(value: unknown): StreamSessionSummary 
   const lastExit = readExit(record['lastExit']);
   const exitedAt = readNullableString(record['exitedAt']);
   const live = readBoolean(record['live']);
+  const launchCommand = readNullableString(record['launchCommand']);
   const telemetry = readTelemetrySummary(record['telemetry']);
   const controller = readSessionController(record['controller']);
   if (attentionReason === undefined) {
@@ -259,6 +261,9 @@ export function parseSessionSummaryRecord(value: unknown): StreamSessionSummary 
   if (live === null) {
     return null;
   }
+  if (launchCommand === undefined) {
+    return null;
+  }
   if (telemetry === undefined) {
     return null;
   }
@@ -283,6 +288,7 @@ export function parseSessionSummaryRecord(value: unknown): StreamSessionSummary 
     lastExit,
     exitedAt,
     live,
+    launchCommand,
     telemetry: telemetry ?? null,
     controller: controller ?? null
   };

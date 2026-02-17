@@ -8,7 +8,6 @@ import {
   type ControlPlaneKeyEvent,
 } from '../src/control-plane/codex-session-stream.ts';
 import {
-  resolveTerminalCommandForEnvironment,
   startControlPlaneStreamServer,
 } from '../src/control-plane/stream-server.ts';
 import type {
@@ -511,6 +510,7 @@ function applySummaryToConversation(
   target.lastExit = summary.lastExit;
   target.processId = summary.processId;
   target.live = summary.live;
+  target.launchCommand = summary.launchCommand;
   target.controller = summary.controller;
   applyTelemetrySummaryToConversation(target, summary.telemetry);
 }
@@ -541,32 +541,6 @@ function compactDebugText(value: string | null): string {
     return normalized;
   }
   return `${normalized.slice(0, 159)}…`;
-}
-
-function shellQuoteToken(token: string): string {
-  if (token.length === 0) {
-    return "''";
-  }
-  if (/^[A-Za-z0-9_./:@%+=,-]+$/u.test(token)) {
-    return token;
-  }
-  return `'${token.replaceAll("'", "'\"'\"'")}'`;
-}
-
-function formatCommandForDebugBar(command: string, args: readonly string[]): string {
-  const tokens = [command, ...args].map(shellQuoteToken);
-  return tokens.join(' ');
-}
-
-function launchCommandForAgent(agentType: string): string {
-  const normalized = normalizeThreadAgentType(agentType);
-  if (normalized === 'claude') {
-    return 'claude';
-  }
-  if (normalized === 'terminal') {
-    return resolveTerminalCommandForEnvironment(process.env, process.platform);
-  }
-  return 'codex';
 }
 
 function debugFooterForConversation(conversation: ConversationState): string {
@@ -1593,10 +1567,6 @@ async function main(): Promise<number> {
           claudeLaunchDefaultMode: configuredClaudeLaunch.defaultMode,
           claudeLaunchModeByDirectoryPath: claudeLaunchModeByDirectoryPath,
         },
-      );
-      targetConversation.launchCommand = formatCommandForDebugBar(
-        launchCommandForAgent(agentType),
-        launchArgs,
       );
 
       if (existing?.live === true) {

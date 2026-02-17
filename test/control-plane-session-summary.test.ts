@@ -23,6 +23,7 @@ const validSummary = {
   lastExit: null,
   exitedAt: null,
   live: true,
+  launchCommand: 'codex resume thread-1 --yolo',
   controller: null,
   telemetry: {
     source: 'otlp-log',
@@ -40,6 +41,7 @@ void test('parseSessionSummaryRecord accepts valid summary and nullable fields',
   assert.equal(parsed?.directoryId, 'directory-1');
   assert.equal(parsed?.live, true);
   assert.equal(parsed?.processId, 51000);
+  assert.equal(parsed?.launchCommand, 'codex resume thread-1 --yolo');
   assert.equal(parsed?.telemetry?.source, 'otlp-log');
 
   const exited = parseSessionSummaryRecord({
@@ -103,6 +105,13 @@ void test('parseSessionSummaryRecord rejects malformed summaries', () => {
     parseSessionSummaryRecord({
       ...validSummary,
       live: 'yes'
+    }),
+    null
+  );
+  assert.equal(
+    parseSessionSummaryRecord({
+      ...validSummary,
+      launchCommand: 123
     }),
     null
   );
@@ -282,6 +291,13 @@ void test('parseSessionSummaryRecord rejects missing nullable fields when absent
     parseSessionSummaryRecord({
       ...validSummary,
       exitedAt: undefined
+    }),
+    null
+  );
+  assert.equal(
+    parseSessionSummaryRecord({
+      ...validSummary,
+      launchCommand: undefined
     }),
     null
   );

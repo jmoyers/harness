@@ -1278,6 +1278,7 @@ void test('stream server supports session.list, session.status, and session.snap
     assert.equal(sessionEntries[0]?.['workspaceId'], 'workspace-a');
     assert.equal(sessionEntries[0]?.['status'], 'running');
     assert.equal(typeof sessionEntries[0]?.['processId'], 'number');
+    assert.equal(sessionEntries[0]?.['launchCommand'], 'codex');
     assert.equal(sessionEntries[1]?.['sessionId'], 'session-list-2');
 
     const limited = await client.sendCommand({
@@ -1328,6 +1329,7 @@ void test('stream server supports session.list, session.status, and session.snap
     assert.equal(status['sessionId'], 'session-list');
     assert.equal(status['status'], 'running');
     assert.equal(typeof status['processId'], 'number');
+    assert.equal(status['launchCommand'], 'codex');
 
     const snapshot = await client.sendCommand({
       type: 'session.snapshot',
