@@ -427,3 +427,18 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass
 - LOC delta:
   - `scripts/codex-live-mux-runtime.ts`: 4960 -> 4943 LOC
+
+### Checkpoint 20 (2026-02-17): shutdown request helper extraction
+
+- Added `src/mux/live-mux/runtime-shutdown.ts`:
+  - request-stop reducer handling title/task autosave flushes
+  - optional live-session shutdown queue behavior
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate stop-request branching through the helper.
+- Verification after checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass
+- LOC delta:
+  - `scripts/codex-live-mux-runtime.ts`: 4943 -> 4936 LOC

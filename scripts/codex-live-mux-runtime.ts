@@ -227,6 +227,7 @@ import {
   resolveActiveDirectoryId as resolveActiveDirectoryIdHelper,
   resolveDirectoryForAction as resolveDirectoryForActionHelper,
 } from '../src/mux/live-mux/directory-resolution.ts';
+import { requestStop as requestStopHelper } from '../src/mux/live-mux/runtime-shutdown.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -1544,40 +1545,32 @@ async function main(): Promise<number> {
   const ptySizeByConversationId = new Map<string, { cols: number; rows: number }>();
 
   const requestStop = (): void => {
-    if (stop) {
-      return;
-    }
-    if (conversationTitleEdit !== null) {
-      stopConversationTitleEdit(true);
-    }
-    if ('taskId' in taskEditorTarget && typeof taskEditorTarget.taskId === 'string') {
-      flushTaskComposerPersist(taskEditorTarget.taskId);
-    }
-    for (const taskId of taskAutosaveTimerByTaskId.keys()) {
-      flushTaskComposerPersist(taskId);
-    }
-    stop = true;
-    if (closeLiveSessionsOnClientStop) {
-      queueControlPlaneOp(async () => {
-        for (const sessionId of conversationOrder(conversations)) {
-          const conversation = conversations.get(sessionId);
-          if (conversation === undefined || !conversation.live) {
-            continue;
-          }
-          streamClient.sendSignal(sessionId, 'interrupt');
-          streamClient.sendSignal(sessionId, 'terminate');
-          try {
-            await streamClient.sendCommand({
-              type: 'pty.close',
-              sessionId,
-            });
-          } catch {
-            // Best-effort shutdown only.
-          }
-        }
-      }, 'shutdown-close-live-sessions');
-    }
-    markDirty();
+    requestStopHelper({
+      stop,
+      hasConversationTitleEdit: conversationTitleEdit !== null,
+      stopConversationTitleEdit: () => stopConversationTitleEdit(true),
+      activeTaskEditorTaskId:
+        'taskId' in taskEditorTarget && typeof taskEditorTarget.taskId === 'string'
+          ? taskEditorTarget.taskId
+          : null,
+      autosaveTaskIds: [...taskAutosaveTimerByTaskId.keys()],
+      flushTaskComposerPersist,
+      closeLiveSessionsOnClientStop,
+      orderedConversationIds: conversationOrder(conversations),
+      conversations,
+      queueControlPlaneOp,
+      sendSignal: (sessionId, signal) => {
+        streamClient.sendSignal(sessionId, signal);
+      },
+      closeSession: async (sessionId) => {
+        await streamClient.sendCommand({
+          type: 'pty.close',
+          sessionId,
+        });
+      },
+      markDirty,
+      setStop: (next) => { stop = next; },
+    });
   };
 
   const handleRuntimeFatal = (origin: string, error: unknown): void => {
