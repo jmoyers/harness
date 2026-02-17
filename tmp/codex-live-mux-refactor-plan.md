@@ -500,3 +500,18 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass
 - LOC delta:
   - `scripts/codex-live-mux-runtime.ts`: 4873 -> 4829 LOC
+
+### Checkpoint 25 (2026-02-17): left-rail conversation click helper extraction
+
+- Added `src/mux/live-mux/left-rail-conversation-click.ts`:
+  - left-rail conversation click/double-click handler for activation, title-edit, and project fallback routing
+  - click-state transition handling via callback setters
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate remaining left-rail conversation click branching through the helper.
+- Verification after checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass
+- LOC delta:
+  - `scripts/codex-live-mux-runtime.ts`: 4829 -> 4810 LOC

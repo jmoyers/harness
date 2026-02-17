@@ -34,7 +34,7 @@ import {
 import { createMuxInputModeManager } from '../src/mux/terminal-input-modes.ts';
 import { findAnsiIntegrityIssues } from '../src/mux/ansi-integrity.ts';
 import { ControlPlaneOpQueue } from '../src/mux/control-plane-op-queue.ts';
-import { detectConversationDoubleClick, detectEntityDoubleClick } from '../src/mux/double-click.ts';
+import { detectEntityDoubleClick } from '../src/mux/double-click.ts';
 import {
   actionAtWorkspaceRailCell,
   conversationIdAtWorkspaceRailRow,
@@ -232,6 +232,7 @@ import { requestStop as requestStopHelper } from '../src/mux/live-mux/runtime-sh
 import { routeInputTokensForConversation as routeInputTokensForConversationHelper } from '../src/mux/live-mux/input-forwarding.ts';
 import { handleProjectPaneActionClick as handleProjectPaneActionClickHelper } from '../src/mux/live-mux/project-pane-pointer.ts';
 import { handleLeftRailActionClick as handleLeftRailActionClickHelper } from '../src/mux/live-mux/left-rail-actions.ts';
+import { handleLeftRailConversationClick as handleLeftRailConversationClickHelper } from '../src/mux/live-mux/left-rail-conversation-click.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -4769,62 +4770,42 @@ async function main(): Promise<number> {
         ) {
           continue;
         }
-        const clickNowMs = Date.now();
-        const conversationClick =
-          selectedConversationId !== null && supportsConversationTitleEditClick
-            ? detectConversationDoubleClick(
-                conversationTitleEditClickState,
-                selectedConversationId,
-                clickNowMs,
-                CONVERSATION_TITLE_EDIT_DOUBLE_CLICK_WINDOW_MS,
-              )
-            : {
-                doubleClick: false,
-                nextState: null,
-              };
-        conversationTitleEditClickState = conversationClick.nextState;
-        if (selectedConversationId !== null && selectedConversationId === activeConversationId) {
-          if (mainPaneMode !== 'conversation') {
+        handleLeftRailConversationClickHelper({
+          selectedConversationId,
+          selectedProjectId,
+          supportsConversationTitleEditClick,
+          previousClickState: conversationTitleEditClickState,
+          nowMs: Date.now(),
+          conversationTitleEditDoubleClickWindowMs: CONVERSATION_TITLE_EDIT_DOUBLE_CLICK_WINDOW_MS,
+          activeConversationId,
+          isConversationPaneActive: mainPaneMode === 'conversation',
+          setConversationClickState: (next) => {
+            conversationTitleEditClickState = next;
+          },
+          ensureConversationPaneActive: (conversationId) => {
             mainPaneMode = 'conversation';
-            selectLeftNavConversation(selectedConversationId);
+            selectLeftNavConversation(conversationId);
             projectPaneSnapshot = null;
             projectPaneScrollTop = 0;
             forceFullClear = true;
             previousRows = [];
-          }
-          if (conversationClick.doubleClick) {
-            beginConversationTitleEdit(selectedConversationId);
-          }
-          markDirty();
-          continue;
-        }
-        if (selectedConversationId !== null) {
-          if (conversationClick.doubleClick) {
+          },
+          beginConversationTitleEdit,
+          queueActivateConversation: (conversationId) => {
             queueControlPlaneOp(async () => {
-              await activateConversation(selectedConversationId);
-              beginConversationTitleEdit(selectedConversationId);
+              await activateConversation(conversationId);
+            }, 'mouse-activate-conversation');
+          },
+          queueActivateConversationAndEdit: (conversationId) => {
+            queueControlPlaneOp(async () => {
+              await activateConversation(conversationId);
+              beginConversationTitleEdit(conversationId);
             }, 'mouse-activate-edit-conversation');
-            markDirty();
-            continue;
-          }
-          queueControlPlaneOp(async () => {
-            await activateConversation(selectedConversationId);
-          }, 'mouse-activate-conversation');
-          markDirty();
-          continue;
-        }
-        if (
-          selectedConversationId === null &&
-          selectedProjectId !== null &&
-          directories.has(selectedProjectId)
-        ) {
-          conversationTitleEditClickState = null;
-          enterProjectPane(selectedProjectId);
-          markDirty();
-          continue;
-        }
-        conversationTitleEditClickState = null;
-        markDirty();
+          },
+          directoriesHas: (directoryId) => directories.has(directoryId),
+          enterProjectPane,
+          markDirty,
+        });
         continue;
       }
       if (snapshotForInput === null || mainPaneMode !== 'conversation') {
