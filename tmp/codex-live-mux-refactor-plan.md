@@ -162,3 +162,16 @@ bun run loc:verify:enforce
 - LOC state:
   - `scripts/codex-live-mux.ts`: thin wrapper
   - `scripts/codex-live-mux-runtime.ts`: 5894 LOC (current primary target)
+
+### Checkpoint 3 (2026-02-17): terminal palette probe extraction
+
+- Added `src/mux/live-mux/terminal-palette.ts` and moved `probeTerminalPalette` into it.
+- Updated `scripts/codex-live-mux-runtime.ts` to import `probeTerminalPalette` from the new module.
+- Verification after checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass
+- LOC delta:
+  - `scripts/codex-live-mux-runtime.ts`: 5894 -> 5823 LOC
