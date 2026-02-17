@@ -210,9 +210,6 @@ import {
   writeTextToClipboard,
 } from '../src/mux/live-mux/selection.ts';
 import {
-  reduceTaskEditorPromptInput as reduceTaskEditorModalInput,
-} from '../src/mux/live-mux/modal-input-reducers.ts';
-import {
   handleConversationTitleEditInput as handleConversationTitleEditInputHelper,
   handleNewThreadPromptInput as handleNewThreadPromptInputHelper,
 } from '../src/mux/live-mux/modal-conversation-handlers.ts';
@@ -220,6 +217,7 @@ import {
   handleAddDirectoryPromptInput as handleAddDirectoryPromptInputHelper,
   handleRepositoryPromptInput as handleRepositoryPromptInputHelper,
 } from '../src/mux/live-mux/modal-prompt-handlers.ts';
+import { handleTaskEditorPromptInput as handleTaskEditorPromptInputHelper } from '../src/mux/live-mux/modal-task-editor-handler.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -4137,107 +4135,52 @@ async function main(): Promise<number> {
   })();
 
   const handleTaskEditorPromptInput = (input: Buffer): boolean => {
-    if (taskEditorPrompt === null) {
+    const handled = handleTaskEditorPromptInputHelper({
+      input,
+      prompt: taskEditorPrompt,
+      isQuitShortcut: (rawInput) =>
+        detectMuxGlobalShortcut(rawInput, modalDismissShortcutBindings) === 'mux.app.quit',
+      dismissOnOutsideClick: (rawInput, dismiss) => dismissModalOnOutsideClick(rawInput, dismiss),
+    });
+    if (!handled.handled) {
       return false;
     }
-    if (input.length === 1 && input[0] === 0x03) {
-      return false;
+    if (handled.nextPrompt !== undefined) {
+      taskEditorPrompt = handled.nextPrompt;
     }
-    const dismissAction = detectMuxGlobalShortcut(input, modalDismissShortcutBindings);
-    if (dismissAction === 'mux.app.quit') {
-      taskEditorPrompt = null;
-      markDirty();
-      return true;
-    }
-    if (
-      dismissModalOnOutsideClick(input, () => {
-        taskEditorPrompt = null;
-        markDirty();
-      })
-    ) {
-      return true;
-    }
-    const prompt = taskEditorPrompt;
-    const reduced = reduceTaskEditorModalInput(prompt, input);
-    const nextTitle = reduced.title;
-    const nextDescription = reduced.description;
-    const nextFieldIndex = reduced.fieldIndex;
-    const nextRepositoryIndex = reduced.repositoryIndex;
-    const submit = reduced.submit;
-    const changed =
-      nextTitle !== prompt.title ||
-      nextDescription !== prompt.description ||
-      nextFieldIndex !== prompt.fieldIndex ||
-      nextRepositoryIndex !== prompt.repositoryIndex;
-    if (changed) {
-      taskEditorPrompt = {
-        ...prompt,
-        title: nextTitle,
-        description: nextDescription,
-        fieldIndex: nextFieldIndex,
-        repositoryIndex: nextRepositoryIndex,
-        error: null,
-      };
+    if (handled.markDirty) {
       markDirty();
     }
-    if (!submit) {
+    if (handled.submitPayload === undefined) {
       return true;
     }
-    const repositoryId = prompt.repositoryIds[nextRepositoryIndex] ?? null;
-    const title = nextTitle.trim();
-    if (title.length === 0) {
-      taskEditorPrompt = {
-        ...prompt,
-        title: nextTitle,
-        description: nextDescription,
-        fieldIndex: nextFieldIndex,
-        repositoryIndex: nextRepositoryIndex,
-        error: 'title required',
-      };
-      markDirty();
-      return true;
-    }
-    if (repositoryId === null) {
-      taskEditorPrompt = {
-        ...prompt,
-        title: nextTitle,
-        description: nextDescription,
-        fieldIndex: nextFieldIndex,
-        repositoryIndex: nextRepositoryIndex,
-        error: 'repository required',
-      };
-      markDirty();
-      return true;
-    }
-    const commandLabel = prompt.mode === 'create' ? 'tasks-create' : 'tasks-edit';
-    const promptMode = prompt.mode;
-    const promptTaskId = prompt.taskId;
+    const payload = handled.submitPayload;
     queueControlPlaneOp(async () => {
       try {
-        if (promptMode === 'create') {
+        if (payload.mode === 'create') {
           const result = await streamClient.sendCommand({
             type: 'task.create',
             tenantId: options.scope.tenantId,
             userId: options.scope.userId,
             workspaceId: options.scope.workspaceId,
-            repositoryId,
-            title,
-            description: nextDescription,
+            repositoryId: payload.repositoryId,
+            title: payload.title,
+            description: payload.description,
           });
           const parsed = applyTaskFromCommandResult(result);
           if (parsed === null) {
             throw new Error('control-plane task.create returned malformed task record');
           }
         } else {
-          if (promptTaskId === null) {
+          if (payload.taskId === null) {
             throw new Error('task edit state missing task id');
           }
           const result = await streamClient.sendCommand({
             type: 'task.update',
-            taskId: promptTaskId,
-            repositoryId,
-            title,
-            description: nextDescription,
+            taskId: payload.taskId,
+            repositoryId: payload.repositoryId,
+            title: payload.title,
+            description: payload.description,
           });
           const parsed = applyTaskFromCommandResult(result);
           if (parsed === null) {
@@ -4255,7 +4198,7 @@ async function main(): Promise<number> {
       } finally {
         markDirty();
       }
-    }, commandLabel);
+    }, payload.commandLabel);
     return true;
   };
 

@@ -302,3 +302,18 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass
 - LOC delta:
   - `scripts/codex-live-mux-runtime.ts`: 5388 -> 5296 LOC
+
+### Checkpoint 12 (2026-02-17): modal task-editor handler extraction
+
+- Added `src/mux/live-mux/modal-task-editor-handler.ts`:
+  - task editor modal input handler with structured submit payload
+  - validation for required title/repository before submit
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate task editor modal input decisions and keep runtime focused on command execution.
+- Verification after checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass
+- LOC delta:
+  - `scripts/codex-live-mux-runtime.ts`: 5296 -> 5239 LOC
