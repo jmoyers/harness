@@ -35,12 +35,7 @@ import { createMuxInputModeManager } from '../src/mux/terminal-input-modes.ts';
 import { findAnsiIntegrityIssues } from '../src/mux/ansi-integrity.ts';
 import { ControlPlaneOpQueue } from '../src/mux/control-plane-op-queue.ts';
 import {
-  actionAtWorkspaceRailCell,
-  conversationIdAtWorkspaceRailRow,
   projectWorkspaceRailConversation,
-  projectIdAtWorkspaceRailRow,
-  repositoryIdAtWorkspaceRailRow,
-  kindAtWorkspaceRailRow,
 } from '../src/mux/workspace-rail-model.ts';
 import type { buildWorkspaceRailViewRows } from '../src/mux/workspace-rail-model.ts';
 import { buildRailRows } from '../src/mux/live-mux/rail-layout.ts';
@@ -234,6 +229,10 @@ import { handleLeftRailActionClick as handleLeftRailActionClickHelper } from '..
 import { handleLeftRailConversationClick as handleLeftRailConversationClickHelper } from '../src/mux/live-mux/left-rail-conversation-click.ts';
 import { handleHomePaneActionClick as handleHomePaneActionClickHelper } from '../src/mux/live-mux/home-pane-actions.ts';
 import { handleHomePaneEntityClick as handleHomePaneEntityClickHelper } from '../src/mux/live-mux/home-pane-entity-click.ts';
+import {
+  handleLeftRailPointerClick as handleLeftRailPointerClickHelper,
+  type LeftRailPointerContext,
+} from '../src/mux/live-mux/left-rail-pointer.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -4652,124 +4651,118 @@ async function main(): Promise<number> {
         isLeftButtonPress(token.event.code, token.event.final) &&
         !hasAltModifier(token.event.code) &&
         !isMotionMouseCode(token.event.code);
-      if (leftPaneConversationSelect) {
-        const rowIndex = Math.max(0, Math.min(layout.paneRows - 1, token.event.row - 1));
-        const colIndex = Math.max(0, Math.min(layout.leftCols - 1, token.event.col - 1));
-        const selectedConversationId = conversationIdAtWorkspaceRailRow(
-          latestRailViewRows,
-          rowIndex,
-        );
-        const selectedProjectId = projectIdAtWorkspaceRailRow(latestRailViewRows, rowIndex);
-        const selectedRepositoryId = repositoryIdAtWorkspaceRailRow(latestRailViewRows, rowIndex);
-        const selectedAction = actionAtWorkspaceRailCell(
-          latestRailViewRows,
-          rowIndex,
-          colIndex,
-          layout.leftCols,
-        );
-        const selectedRowKind = kindAtWorkspaceRailRow(latestRailViewRows, rowIndex);
-        const supportsConversationTitleEditClick =
-          selectedRowKind === 'conversation-title' || selectedRowKind === 'conversation-body';
-        const keepTitleEditActive =
-          conversationTitleEdit !== null &&
-          selectedConversationId === conversationTitleEdit.conversationId &&
-          supportsConversationTitleEditClick;
-        if (!keepTitleEditActive && conversationTitleEdit !== null) {
-          stopConversationTitleEdit(true);
-        }
-        if (selection !== null || selectionDrag !== null) {
-          selection = null;
-          selectionDrag = null;
-          releaseViewportPinForSelection();
-        }
-        if (
-          handleLeftRailActionClickHelper({
-            action: selectedAction,
+      if (
+        handleLeftRailPointerClickHelper({
+          clickEligible: leftPaneConversationSelect,
+          rows: latestRailViewRows,
+          paneRows: layout.paneRows,
+          leftCols: layout.leftCols,
+          pointerRow: token.event.row,
+          pointerCol: token.event.col,
+          hasConversationTitleEdit: conversationTitleEdit !== null,
+          conversationTitleEditConversationId: conversationTitleEdit?.conversationId ?? null,
+          stopConversationTitleEdit: () => {
+            stopConversationTitleEdit(true);
+          },
+          hasSelection: selection !== null || selectionDrag !== null,
+          clearSelection: () => {
+            selection = null;
+            selectionDrag = null;
+            releaseViewportPinForSelection();
+          },
+          handleAction: ({ selectedAction, selectedProjectId, selectedRepositoryId }: LeftRailPointerContext) =>
+            handleLeftRailActionClickHelper({
+              action: selectedAction,
+              selectedProjectId,
+              selectedRepositoryId,
+              activeConversationId,
+              repositoriesCollapsed,
+              clearConversationTitleEditClickState: () => {
+                conversationTitleEditClickState = null;
+              },
+              resolveDirectoryForAction,
+              openNewThreadPrompt,
+              queueArchiveConversation: (conversationId) => {
+                queueControlPlaneOp(async () => {
+                  await archiveConversation(conversationId);
+                }, 'mouse-archive-conversation');
+              },
+              openAddDirectoryPrompt: () => {
+                repositoryPrompt = null;
+                addDirectoryPrompt = {
+                  value: '',
+                  error: null,
+                };
+              },
+              openRepositoryPromptForCreate,
+              repositoryExists: (repositoryId) => repositories.has(repositoryId),
+              openRepositoryPromptForEdit,
+              queueArchiveRepository: (repositoryId) => {
+                queueControlPlaneOp(async () => {
+                  await archiveRepositoryById(repositoryId);
+                }, 'mouse-archive-repository');
+              },
+              toggleRepositoryGroup,
+              selectLeftNavRepository,
+              expandAllRepositoryGroups,
+              collapseAllRepositoryGroups,
+              enterHomePane,
+              queueCloseDirectory: (directoryId) => {
+                queueControlPlaneOp(async () => {
+                  await closeDirectory(directoryId);
+                }, 'mouse-close-directory');
+              },
+              toggleShortcutsCollapsed: () => {
+                shortcutsCollapsed = !shortcutsCollapsed;
+                queuePersistMuxUiState();
+              },
+              markDirty,
+            }),
+          handleConversation: ({
+            selectedConversationId,
             selectedProjectId,
-            selectedRepositoryId,
-            activeConversationId,
-            repositoriesCollapsed,
-            clearConversationTitleEditClickState: () => {
-              conversationTitleEditClickState = null;
-            },
-            resolveDirectoryForAction,
-            openNewThreadPrompt,
-            queueArchiveConversation: (conversationId) => {
-              queueControlPlaneOp(async () => {
-                await archiveConversation(conversationId);
-              }, 'mouse-archive-conversation');
-            },
-            openAddDirectoryPrompt: () => {
-              repositoryPrompt = null;
-              addDirectoryPrompt = {
-                value: '',
-                error: null,
-              };
-            },
-            openRepositoryPromptForCreate,
-            repositoryExists: (repositoryId) => repositories.has(repositoryId),
-            openRepositoryPromptForEdit,
-            queueArchiveRepository: (repositoryId) => {
-              queueControlPlaneOp(async () => {
-                await archiveRepositoryById(repositoryId);
-              }, 'mouse-archive-repository');
-            },
-            toggleRepositoryGroup,
-            selectLeftNavRepository,
-            expandAllRepositoryGroups,
-            collapseAllRepositoryGroups,
-            enterHomePane,
-            queueCloseDirectory: (directoryId) => {
-              queueControlPlaneOp(async () => {
-                await closeDirectory(directoryId);
-              }, 'mouse-close-directory');
-            },
-            toggleShortcutsCollapsed: () => {
-              shortcutsCollapsed = !shortcutsCollapsed;
-              queuePersistMuxUiState();
-            },
-            markDirty,
-          })
-        ) {
+            supportsConversationTitleEditClick,
+          }: LeftRailPointerContext) => {
+            handleLeftRailConversationClickHelper({
+              selectedConversationId,
+              selectedProjectId,
+              supportsConversationTitleEditClick,
+              previousClickState: conversationTitleEditClickState,
+              nowMs: Date.now(),
+              conversationTitleEditDoubleClickWindowMs: CONVERSATION_TITLE_EDIT_DOUBLE_CLICK_WINDOW_MS,
+              activeConversationId,
+              isConversationPaneActive: mainPaneMode === 'conversation',
+              setConversationClickState: (next) => {
+                conversationTitleEditClickState = next;
+              },
+              ensureConversationPaneActive: (conversationId) => {
+                mainPaneMode = 'conversation';
+                selectLeftNavConversation(conversationId);
+                projectPaneSnapshot = null;
+                projectPaneScrollTop = 0;
+                forceFullClear = true;
+                previousRows = [];
+              },
+              beginConversationTitleEdit,
+              queueActivateConversation: (conversationId) => {
+                queueControlPlaneOp(async () => {
+                  await activateConversation(conversationId);
+                }, 'mouse-activate-conversation');
+              },
+              queueActivateConversationAndEdit: (conversationId) => {
+                queueControlPlaneOp(async () => {
+                  await activateConversation(conversationId);
+                  beginConversationTitleEdit(conversationId);
+                }, 'mouse-activate-edit-conversation');
+              },
+              directoriesHas: (directoryId) => directories.has(directoryId),
+              enterProjectPane,
+              markDirty,
+            });
+          },
+        })
+      ) {
           continue;
-        }
-        handleLeftRailConversationClickHelper({
-          selectedConversationId,
-          selectedProjectId,
-          supportsConversationTitleEditClick,
-          previousClickState: conversationTitleEditClickState,
-          nowMs: Date.now(),
-          conversationTitleEditDoubleClickWindowMs: CONVERSATION_TITLE_EDIT_DOUBLE_CLICK_WINDOW_MS,
-          activeConversationId,
-          isConversationPaneActive: mainPaneMode === 'conversation',
-          setConversationClickState: (next) => {
-            conversationTitleEditClickState = next;
-          },
-          ensureConversationPaneActive: (conversationId) => {
-            mainPaneMode = 'conversation';
-            selectLeftNavConversation(conversationId);
-            projectPaneSnapshot = null;
-            projectPaneScrollTop = 0;
-            forceFullClear = true;
-            previousRows = [];
-          },
-          beginConversationTitleEdit,
-          queueActivateConversation: (conversationId) => {
-            queueControlPlaneOp(async () => {
-              await activateConversation(conversationId);
-            }, 'mouse-activate-conversation');
-          },
-          queueActivateConversationAndEdit: (conversationId) => {
-            queueControlPlaneOp(async () => {
-              await activateConversation(conversationId);
-              beginConversationTitleEdit(conversationId);
-            }, 'mouse-activate-edit-conversation');
-          },
-          directoriesHas: (directoryId) => directories.has(directoryId),
-          enterProjectPane,
-          markDirty,
-        });
-        continue;
       }
       if (snapshotForInput === null || mainPaneMode !== 'conversation') {
         routedTokens.push(token);

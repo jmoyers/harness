@@ -544,3 +544,20 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass
 - LOC delta:
   - `scripts/codex-live-mux-runtime.ts`: 4800 -> 4773 LOC
+
+### Checkpoint 28 (2026-02-17): left-rail pointer orchestration extraction
+
+- Added `src/mux/live-mux/left-rail-pointer.ts`:
+  - left-rail row/column target resolution
+  - title-edit keep/stop decision
+  - selection clear orchestration
+  - action-vs-conversation dispatch hook points
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate left-rail pointer orchestration through the helper while preserving existing action and conversation handlers.
+- Verification after checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass
+- LOC delta:
+  - `scripts/codex-live-mux-runtime.ts`: 4773 -> 4766 LOC
