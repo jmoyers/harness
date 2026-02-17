@@ -613,3 +613,24 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass
 - LOC delta:
   - `scripts/codex-live-mux-runtime.ts`: 4695 -> 4683 LOC
+
+### Checkpoint 32 (2026-02-17): conversation/directory action domain extraction
+
+- Added `src/mux/live-mux/actions-conversation.ts`:
+  - new-thread prompt open handler
+  - create+activate conversation action
+  - archive conversation action
+  - takeover conversation action
+  - add-directory action
+  - close-directory action
+- Updated `src/mux/live-mux/actions-repository.ts`:
+  - repository upsert/archive command helpers
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate the above conversation/directory/repository action flows through domain action modules.
+- Verification after checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass
+- LOC delta:
+  - `scripts/codex-live-mux-runtime.ts`: 4683 -> 4678 LOC

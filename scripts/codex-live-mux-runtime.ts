@@ -241,11 +241,21 @@ import { handleHomePaneDragRelease as handleHomePaneDragReleaseHelper } from '..
 import { handleHomePanePointerClick as handleHomePanePointerClickHelper } from '../src/mux/live-mux/home-pane-pointer.ts';
 import { runTaskPaneAction as runTaskPaneActionHelper } from '../src/mux/live-mux/actions-task.ts';
 import {
+  archiveRepositoryById as archiveRepositoryByIdHelper,
   openRepositoryPromptForCreate as openRepositoryPromptForCreateHelper,
   openRepositoryPromptForEdit as openRepositoryPromptForEditHelper,
   queueRepositoryPriorityOrder as queueRepositoryPriorityOrderHelper,
   reorderRepositoryByDrop as reorderRepositoryByDropHelper,
+  upsertRepositoryByRemoteUrl as upsertRepositoryByRemoteUrlHelper,
 } from '../src/mux/live-mux/actions-repository.ts';
+import {
+  addDirectoryByPath as addDirectoryByPathHelper,
+  archiveConversation as archiveConversationHelper,
+  closeDirectory as closeDirectoryHelper,
+  createAndActivateConversationInDirectory as createAndActivateConversationInDirectoryHelper,
+  openNewThreadPrompt as openNewThreadPromptHelper,
+  takeoverConversation as takeoverConversationHelper,
+} from '../src/mux/live-mux/actions-conversation.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -3078,17 +3088,28 @@ async function main(): Promise<number> {
   };
 
   const openNewThreadPrompt = (directoryId: string): void => {
-    if (!directories.has(directoryId)) {
-      return;
-    }
-    addDirectoryPrompt = null;
-    repositoryPrompt = null;
-    if (conversationTitleEdit !== null) {
-      stopConversationTitleEdit(true);
-    }
-    conversationTitleEditClickState = null;
-    newThreadPrompt = createNewThreadPromptState(directoryId);
-    markDirty();
+    openNewThreadPromptHelper({
+      directoryId,
+      directoriesHas: (nextDirectoryId) => directories.has(nextDirectoryId),
+      clearAddDirectoryPrompt: () => {
+        addDirectoryPrompt = null;
+      },
+      clearRepositoryPrompt: () => {
+        repositoryPrompt = null;
+      },
+      hasConversationTitleEdit: conversationTitleEdit !== null,
+      stopConversationTitleEdit: () => {
+        stopConversationTitleEdit(true);
+      },
+      clearConversationTitleEditClickState: () => {
+        conversationTitleEditClickState = null;
+      },
+      createNewThreadPromptState,
+      setNewThreadPrompt: (prompt) => {
+        newThreadPrompt = prompt;
+      },
+      markDirty,
+    });
   };
 
   const openRepositoryPromptForCreate = (): void => {
@@ -3144,278 +3165,240 @@ async function main(): Promise<number> {
     remoteUrl: string,
     existingRepositoryId?: string,
   ): Promise<void> => {
-    const normalizedRemoteUrl = normalizeGitHubRemoteUrl(remoteUrl);
-    if (normalizedRemoteUrl === null) {
-      throw new Error('github url required');
-    }
-    const result =
-      existingRepositoryId === undefined
-        ? await streamClient.sendCommand({
-            type: 'repository.upsert',
-            repositoryId: `repository-${randomUUID()}`,
-            tenantId: options.scope.tenantId,
-            userId: options.scope.userId,
-            workspaceId: options.scope.workspaceId,
-            name: repositoryNameFromGitHubRemoteUrl(normalizedRemoteUrl),
-            remoteUrl: normalizedRemoteUrl,
-            defaultBranch: 'main',
-            metadata: {
-              source: 'mux-manual',
-            },
-          })
-        : await streamClient.sendCommand({
-            type: 'repository.update',
-            repositoryId: existingRepositoryId,
-            name: repositoryNameFromGitHubRemoteUrl(normalizedRemoteUrl),
-            remoteUrl: normalizedRemoteUrl,
-          });
-    const repository = parseRepositoryRecord(result['repository']);
-    if (repository === null) {
-      throw new Error('control-plane repository command returned malformed repository record');
-    }
-    repositories.set(repository.repositoryId, repository);
-    syncRepositoryAssociationsWithDirectorySnapshots();
-    syncTaskPaneRepositorySelection();
-    markDirty();
+    await upsertRepositoryByRemoteUrlHelper({
+      remoteUrl,
+      existingRepositoryId: existingRepositoryId ?? null,
+      normalizeGitHubRemoteUrl,
+      repositoryNameFromGitHubRemoteUrl,
+      createRepositoryId: () => `repository-${randomUUID()}`,
+      scope: options.scope,
+      createRepository: (payload) =>
+        streamClient.sendCommand({
+          type: 'repository.upsert',
+          ...payload,
+        }),
+      updateRepository: (payload) =>
+        streamClient.sendCommand({
+          type: 'repository.update',
+          ...payload,
+        }),
+      parseRepositoryRecord,
+      upsertRepository: (repository) => {
+        repositories.set(repository.repositoryId, repository);
+      },
+      syncRepositoryAssociationsWithDirectorySnapshots,
+      syncTaskPaneRepositorySelection,
+      markDirty,
+    });
   };
 
   const archiveRepositoryById = async (repositoryId: string): Promise<void> => {
-    await streamClient.sendCommand({
-      type: 'repository.archive',
+    await archiveRepositoryByIdHelper({
       repositoryId,
+      archiveRepository: (targetRepositoryId) =>
+        streamClient.sendCommand({
+          type: 'repository.archive',
+          repositoryId: targetRepositoryId,
+        }),
+      deleteRepository: (targetRepositoryId) => {
+        repositories.delete(targetRepositoryId);
+      },
+      syncRepositoryAssociationsWithDirectorySnapshots,
+      syncTaskPaneRepositorySelection,
+      markDirty,
     });
-    repositories.delete(repositoryId);
-    syncRepositoryAssociationsWithDirectorySnapshots();
-    syncTaskPaneRepositorySelection();
-    markDirty();
   };
 
   const createAndActivateConversationInDirectory = async (
     directoryId: string,
     agentType: ThreadAgentType,
   ): Promise<void> => {
-    const sessionId = `conversation-${randomUUID()}`;
-    const title = '';
-    await streamClient.sendCommand({
-      type: 'conversation.create',
-      conversationId: sessionId,
+    await createAndActivateConversationInDirectoryHelper({
       directoryId,
-      title,
       agentType,
-      adapterState: {},
+      createConversationId: () => `conversation-${randomUUID()}`,
+      createConversationRecord: async (sessionId, targetDirectoryId, targetAgentType) => {
+        await streamClient.sendCommand({
+          type: 'conversation.create',
+          conversationId: sessionId,
+          directoryId: targetDirectoryId,
+          title: '',
+          agentType: targetAgentType,
+          adapterState: {},
+        });
+      },
+      ensureConversation: (sessionId, seed) => {
+        ensureConversation(sessionId, seed);
+      },
+      noteGitActivity,
+      startConversation,
+      activateConversation,
     });
-    ensureConversation(sessionId, {
-      directoryId,
-      title,
-      agentType,
-      adapterState: {},
-    });
-    noteGitActivity(directoryId);
-    await startConversation(sessionId);
-    await activateConversation(sessionId);
   };
 
   const archiveConversation = async (sessionId: string): Promise<void> => {
-    const target = conversations.get(sessionId);
-    if (target === undefined) {
-      return;
-    }
-    if (target.live) {
-      try {
+    await archiveConversationHelper({
+      sessionId,
+      conversations,
+      closePtySession: async (targetSessionId) => {
+        await streamClient.sendCommand({
+          type: 'pty.close',
+          sessionId: targetSessionId,
+        });
+      },
+      removeSession: async (targetSessionId) => {
+        await streamClient.sendCommand({
+          type: 'session.remove',
+          sessionId: targetSessionId,
+        });
+      },
+      isSessionNotFoundError,
+      archiveConversationRecord: async (targetSessionId) => {
+        await streamClient.sendCommand({
+          type: 'conversation.archive',
+          conversationId: targetSessionId,
+        });
+      },
+      isConversationNotFoundError,
+      unsubscribeConversationEvents,
+      removeConversationState,
+      activeConversationId,
+      setActiveConversationId: (next) => {
+        activeConversationId = next;
+      },
+      orderedConversationIds: () => conversationOrder(conversations),
+      conversationDirectoryId: (targetSessionId) =>
+        conversations.get(targetSessionId)?.directoryId ?? null,
+      resolveActiveDirectoryId,
+      enterProjectPane,
+      activateConversation,
+      markDirty,
+    });
+  };
+
+  const takeoverConversation = async (sessionId: string): Promise<void> => {
+    await takeoverConversationHelper({
+      sessionId,
+      conversationsHas: (targetSessionId) => conversations.has(targetSessionId),
+      claimSession: async (targetSessionId) => {
+        const result = await streamClient.sendCommand({
+          type: 'session.claim',
+          sessionId: targetSessionId,
+          controllerId: muxControllerId,
+          controllerType: 'human',
+          controllerLabel: muxControllerLabel,
+          reason: 'human takeover',
+          takeover: true,
+        });
+        return parseSessionControllerRecord(result['controller']);
+      },
+      applyController: (targetSessionId, controller) => {
+        const target = conversations.get(targetSessionId);
+        if (target !== undefined) {
+          target.controller = controller;
+        }
+      },
+      setLastEventNow: (targetSessionId) => {
+        const target = conversations.get(targetSessionId);
+        if (target !== undefined) {
+          target.lastEventAt = new Date().toISOString();
+        }
+      },
+      markDirty,
+    });
+  };
+
+  const addDirectoryByPath = async (rawPath: string): Promise<void> => {
+    await addDirectoryByPathHelper({
+      rawPath,
+      resolveWorkspacePathForMux: (value) =>
+        resolveWorkspacePathForMux(options.invocationDirectory, value),
+      upsertDirectory: async (path) => {
+        const directoryResult = await streamClient.sendCommand({
+          type: 'directory.upsert',
+          directoryId: `directory-${randomUUID()}`,
+          tenantId: options.scope.tenantId,
+          userId: options.scope.userId,
+          workspaceId: options.scope.workspaceId,
+          path,
+        });
+        return parseDirectoryRecord(directoryResult['directory']);
+      },
+      setDirectory: (directory) => {
+        directories.set(directory.directoryId, directory);
+      },
+      directoryIdOf: (directory) => directory.directoryId,
+      setActiveDirectoryId: (directoryId) => {
+        activeDirectoryId = directoryId;
+      },
+      syncGitStateWithDirectories,
+      noteGitActivity,
+      hydratePersistedConversationsForDirectory,
+      findConversationIdByDirectory: (directoryId) =>
+        conversationOrder(conversations).find((sessionId) => {
+          const conversation = conversations.get(sessionId);
+          return conversation?.directoryId === directoryId;
+        }) ?? null,
+      activateConversation,
+      enterProjectPane,
+      markDirty,
+    });
+  };
+
+  const closeDirectory = async (directoryId: string): Promise<void> => {
+    await closeDirectoryHelper({
+      directoryId,
+      directoriesHas: (targetDirectoryId) => directories.has(targetDirectoryId),
+      orderedConversationIds: () => conversationOrder(conversations),
+      conversationDirectoryId: (sessionId) => conversations.get(sessionId)?.directoryId ?? null,
+      conversationLive: (sessionId) => conversations.get(sessionId)?.live === true,
+      closePtySession: async (sessionId) => {
         await streamClient.sendCommand({
           type: 'pty.close',
           sessionId,
         });
-      } catch {
-        // Best-effort close only.
-      }
-    }
-
-    try {
-      await streamClient.sendCommand({
-        type: 'session.remove',
-        sessionId,
-      });
-    } catch (error: unknown) {
-      if (!isSessionNotFoundError(error)) {
-        throw error;
-      }
-    }
-
-    try {
-      await streamClient.sendCommand({
-        type: 'conversation.archive',
-        conversationId: sessionId,
-      });
-    } catch (error: unknown) {
-      if (!isConversationNotFoundError(error)) {
-        throw error;
-      }
-    }
-    await unsubscribeConversationEvents(sessionId);
-
-    removeConversationState(sessionId);
-
-    if (activeConversationId === sessionId) {
-      const archivedDirectoryId = target.directoryId;
-      const ordered = conversationOrder(conversations);
-      const nextConversationId =
-        ordered.find((candidateId) => {
-          const candidate = conversations.get(candidateId);
-          return candidate?.directoryId === archivedDirectoryId;
-        }) ??
-        ordered[0] ??
-        null;
-      activeConversationId = null;
-      if (nextConversationId !== null) {
-        await activateConversation(nextConversationId);
-        return;
-      }
-      const fallbackDirectoryId = resolveActiveDirectoryId();
-      if (fallbackDirectoryId !== null) {
-        enterProjectPane(fallbackDirectoryId);
-        markDirty();
-        return;
-      }
-      markDirty();
-      return;
-    }
-
-    markDirty();
-  };
-
-  const takeoverConversation = async (sessionId: string): Promise<void> => {
-    const target = conversations.get(sessionId);
-    if (target === undefined) {
-      return;
-    }
-    const result = await streamClient.sendCommand({
-      type: 'session.claim',
-      sessionId,
-      controllerId: muxControllerId,
-      controllerType: 'human',
-      controllerLabel: muxControllerLabel,
-      reason: 'human takeover',
-      takeover: true,
+      },
+      archiveConversationRecord: async (sessionId) => {
+        await streamClient.sendCommand({
+          type: 'conversation.archive',
+          conversationId: sessionId,
+        });
+      },
+      unsubscribeConversationEvents,
+      removeConversationState,
+      activeConversationId,
+      setActiveConversationId: (sessionId) => {
+        activeConversationId = sessionId;
+      },
+      archiveDirectory: async (targetDirectoryId) => {
+        await streamClient.sendCommand({
+          type: 'directory.archive',
+          directoryId: targetDirectoryId,
+        });
+      },
+      deleteDirectory: (targetDirectoryId) => {
+        directories.delete(targetDirectoryId);
+      },
+      deleteDirectoryGitState,
+      projectPaneSnapshotDirectoryId: projectPaneSnapshot?.directoryId ?? null,
+      clearProjectPaneSnapshot: () => {
+        projectPaneSnapshot = null;
+        projectPaneScrollTop = 0;
+      },
+      directoriesSize: () => directories.size,
+      addDirectoryByPath,
+      invocationDirectory: options.invocationDirectory,
+      activeDirectoryId,
+      setActiveDirectoryId: (targetDirectoryId) => {
+        activeDirectoryId = targetDirectoryId;
+      },
+      firstDirectoryId: () => firstDirectoryIdHelper(directories),
+      noteGitActivity,
+      resolveActiveDirectoryId,
+      activateConversation,
+      enterProjectPane,
+      markDirty,
     });
-    const controller = parseSessionControllerRecord(result['controller']);
-    if (controller !== null) {
-      target.controller = controller;
-    }
-    target.lastEventAt = new Date().toISOString();
-    markDirty();
-  };
-
-  const addDirectoryByPath = async (rawPath: string): Promise<void> => {
-    const normalizedPath = resolveWorkspacePathForMux(options.invocationDirectory, rawPath);
-    const directoryResult = await streamClient.sendCommand({
-      type: 'directory.upsert',
-      directoryId: `directory-${randomUUID()}`,
-      tenantId: options.scope.tenantId,
-      userId: options.scope.userId,
-      workspaceId: options.scope.workspaceId,
-      path: normalizedPath,
-    });
-    const directory = parseDirectoryRecord(directoryResult['directory']);
-    if (directory === null) {
-      throw new Error('control-plane directory.upsert returned malformed directory record');
-    }
-    directories.set(directory.directoryId, directory);
-    activeDirectoryId = directory.directoryId;
-    syncGitStateWithDirectories();
-    noteGitActivity(directory.directoryId);
-
-    await hydratePersistedConversationsForDirectory(directory.directoryId);
-    const targetConversationId = conversationOrder(conversations).find((sessionId) => {
-      const conversation = conversations.get(sessionId);
-      return conversation?.directoryId === directory.directoryId;
-    });
-    if (targetConversationId !== undefined) {
-      await activateConversation(targetConversationId);
-      return;
-    }
-    enterProjectPane(directory.directoryId);
-    markDirty();
-  };
-
-  const closeDirectory = async (directoryId: string): Promise<void> => {
-    if (!directories.has(directoryId)) {
-      return;
-    }
-    const sessionIds = conversationOrder(conversations).filter((sessionId) => {
-      const conversation = conversations.get(sessionId);
-      return conversation?.directoryId === directoryId;
-    });
-
-    for (const sessionId of sessionIds) {
-      const target = conversations.get(sessionId);
-      if (target?.live === true) {
-        try {
-          await streamClient.sendCommand({
-            type: 'pty.close',
-            sessionId,
-          });
-        } catch {
-          // Best-effort close only.
-        }
-      }
-      await streamClient.sendCommand({
-        type: 'conversation.archive',
-        conversationId: sessionId,
-      });
-      await unsubscribeConversationEvents(sessionId);
-      removeConversationState(sessionId);
-      if (activeConversationId === sessionId) {
-        activeConversationId = null;
-      }
-    }
-
-    await streamClient.sendCommand({
-      type: 'directory.archive',
-      directoryId,
-    });
-    directories.delete(directoryId);
-    deleteDirectoryGitState(directoryId);
-    if (projectPaneSnapshot?.directoryId === directoryId) {
-      projectPaneSnapshot = null;
-      projectPaneScrollTop = 0;
-    }
-
-    if (directories.size === 0) {
-      await addDirectoryByPath(options.invocationDirectory);
-      return;
-    }
-
-    if (
-      activeDirectoryId === directoryId ||
-      activeDirectoryId === null ||
-      !directories.has(activeDirectoryId)
-    ) {
-      activeDirectoryId = firstDirectoryIdHelper(directories);
-    }
-    if (activeDirectoryId !== null) {
-      noteGitActivity(activeDirectoryId);
-    }
-
-    const fallbackDirectoryId = resolveActiveDirectoryId();
-    const fallbackConversationId =
-      conversationOrder(conversations).find((sessionId) => {
-        const conversation = conversations.get(sessionId);
-        return conversation?.directoryId === fallbackDirectoryId;
-      }) ??
-      conversationOrder(conversations)[0] ??
-      null;
-    if (fallbackConversationId !== null) {
-      await activateConversation(fallbackConversationId);
-      return;
-    }
-    if (fallbackDirectoryId !== null) {
-      enterProjectPane(fallbackDirectoryId);
-      markDirty();
-      return;
-    }
-
-    markDirty();
   };
 
   const pinViewportForSelection = (): void => {
