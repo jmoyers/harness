@@ -3,7 +3,7 @@ import {
   createServer as createHttpServer,
   type IncomingMessage,
   type Server as HttpServer,
-  type ServerResponse
+  type ServerResponse,
 } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { open } from 'node:fs/promises';
@@ -24,7 +24,7 @@ import {
   type StreamCommand,
   type StreamServerEnvelope,
   type StreamSessionEvent,
-  type StreamSignal
+  type StreamSignal,
 } from './stream-protocol.ts';
 import {
   SqliteControlPlaneStore,
@@ -32,12 +32,12 @@ import {
   type ControlPlaneDirectoryRecord,
   type ControlPlaneRepositoryRecord,
   type ControlPlaneTaskRecord,
-  type ControlPlaneTelemetrySummary
+  type ControlPlaneTelemetrySummary,
 } from '../store/control-plane-store.ts';
 import {
   buildAgentStartArgs,
   codexResumeSessionIdFromAdapterState,
-  normalizeAdapterState
+  normalizeAdapterState,
 } from '../adapters/agent-session-state.ts';
 import { recordPerfEvent, startPerfSpan } from '../perf/perf-core.ts';
 import {
@@ -47,7 +47,7 @@ import {
   parseOtlpMetricEvents,
   parseOtlpTraceEvents,
   telemetryFingerprint,
-  type ParsedCodexTelemetryEvent
+  type ParsedCodexTelemetryEvent,
 } from './codex-telemetry.ts';
 import type { HarnessLifecycleHooksConfig } from '../config/config-core.ts';
 import { LifecycleHooksRuntime } from './lifecycle-hooks.ts';
@@ -262,7 +262,7 @@ const LINE_FEED_BYTE = '\n'.charCodeAt(0);
 const LIFECYCLE_TELEMETRY_EVENT_NAMES = new Set([
   'codex.user_prompt',
   'codex.turn.e2e_duration_ms',
-  'codex.conversation_starts'
+  'codex.conversation_starts',
 ]);
 
 function compareIsoDesc(left: string | null, right: string | null): number {
@@ -292,7 +292,7 @@ function sessionPriority(status: StreamSessionRuntimeStatus): number {
 }
 
 function normalizeCodexTelemetryConfig(
-  input: CodexTelemetryServerConfig | undefined
+  input: CodexTelemetryServerConfig | undefined,
 ): CodexTelemetryServerConfig {
   return {
     enabled: input?.enabled ?? false,
@@ -302,7 +302,7 @@ function normalizeCodexTelemetryConfig(
     captureLogs: input?.captureLogs ?? true,
     captureMetrics: input?.captureMetrics ?? true,
     captureTraces: input?.captureTraces ?? true,
-    captureVerboseEvents: input?.captureVerboseEvents ?? false
+    captureVerboseEvents: input?.captureVerboseEvents ?? false,
   };
 }
 
@@ -315,23 +315,27 @@ function isLifecycleTelemetryEventName(eventName: string | null): boolean {
 }
 
 function normalizeCodexHistoryConfig(
-  input: CodexHistoryIngestConfig | undefined
+  input: CodexHistoryIngestConfig | undefined,
 ): CodexHistoryIngestConfig {
   return {
     enabled: input?.enabled ?? false,
     filePath: input?.filePath ?? '~/.codex/history.jsonl',
-    pollMs: Math.max(25, input?.pollMs ?? DEFAULT_CODEX_HISTORY_POLL_MS)
+    pollMs: Math.max(25, input?.pollMs ?? 500),
   };
 }
 
 function jitterDelayMs(baseMs: number): number {
   const clampedBaseMs = Math.max(25, Math.floor(baseMs));
   const jitterWindowMs = Math.max(1, Math.floor(clampedBaseMs * HISTORY_POLL_JITTER_RATIO));
-  const jitterOffsetMs = Math.floor((Math.random() * (2 * jitterWindowMs + 1)) - jitterWindowMs);
+  const jitterOffsetMs = Math.floor(
+    Math.random() * (2 * jitterWindowMs + 1) - jitterWindowMs,
+  );
   return Math.max(25, clampedBaseMs + jitterOffsetMs);
 }
 
-function normalizeGitStatusMonitorConfig(input: GitStatusMonitorConfig | undefined): GitStatusMonitorConfig {
+function normalizeGitStatusMonitorConfig(
+  input: GitStatusMonitorConfig | undefined,
+): GitStatusMonitorConfig {
   const pollMs = Math.max(100, input?.pollMs ?? DEFAULT_GIT_STATUS_POLL_MS);
   const rawMaxConcurrency = input?.maxConcurrency;
   const maxConcurrency =
@@ -347,14 +351,14 @@ function normalizeGitStatusMonitorConfig(input: GitStatusMonitorConfig | undefin
     enabled: input?.enabled ?? false,
     pollMs,
     maxConcurrency,
-    minDirectoryRefreshMs
+    minDirectoryRefreshMs,
   };
 }
 
 async function runWithConcurrencyLimit<T>(
   values: readonly T[],
   concurrency: number,
-  worker: (value: T) => Promise<void>
+  worker: (value: T) => Promise<void>,
 ): Promise<void> {
   if (values.length === 0) {
     return;
@@ -397,7 +401,7 @@ function parseOtlpEndpoint(urlPath: string): OtlpEndpointTarget | null {
   }
   return {
     kind: match[1] as 'logs' | 'metrics' | 'traces',
-    token: decodedToken
+    token: decodedToken,
   };
 }
 
@@ -417,15 +421,15 @@ function mapSessionEvent(event: CodexLiveEvent): StreamSessionEvent | null {
       type: 'notify',
       record: {
         ts: event.record.ts,
-        payload: event.record.payload
-      }
+        payload: event.record.payload,
+      },
     };
   }
 
   if (event.type === 'session-exit') {
     return {
       type: 'session-exit',
-      exit: event.exit
+      exit: event.exit,
     };
   }
 
@@ -434,7 +438,7 @@ function mapSessionEvent(event: CodexLiveEvent): StreamSessionEvent | null {
 
 function gitSummaryEqual(
   left: GitDirectorySnapshot['summary'],
-  right: GitDirectorySnapshot['summary']
+  right: GitDirectorySnapshot['summary'],
 ): boolean {
   return (
     left.branch === right.branch &&
@@ -446,7 +450,7 @@ function gitSummaryEqual(
 
 function gitRepositorySnapshotEqual(
   left: GitDirectorySnapshot['repository'],
-  right: GitDirectorySnapshot['repository']
+  right: GitDirectorySnapshot['repository'],
 ): boolean {
   return (
     left.normalizedRemoteUrl === right.normalizedRemoteUrl &&
@@ -461,12 +465,12 @@ function gitRepositorySnapshotEqual(
 const streamServerInternals = {
   runWithConcurrencyLimit,
   gitSummaryEqual,
-  gitRepositorySnapshotEqual
+  gitRepositorySnapshotEqual,
 };
 export const streamServerTestInternals = streamServerInternals;
 
 function toPublicSessionController(
-  controller: SessionControllerState | null | undefined
+  controller: SessionControllerState | null | undefined,
 ): StreamSessionController | null {
   if (controller === null || controller === undefined) {
     return null;
@@ -475,7 +479,7 @@ function toPublicSessionController(
     controllerId: controller.controllerId,
     controllerType: controller.controllerType,
     controllerLabel: controller.controllerLabel,
-    claimedAt: controller.claimedAt
+    claimedAt: controller.claimedAt,
   };
 }
 
@@ -489,7 +493,7 @@ function controllerDisplayName(controller: SessionControllerState): string {
 
 export function resolveTerminalCommandForEnvironment(
   env: NodeJS.ProcessEnv,
-  platform: NodeJS.Platform
+  platform: NodeJS.Platform,
 ): string {
   const shellCommand = env.SHELL?.trim();
   if (shellCommand !== undefined && shellCommand.length > 0) {
@@ -576,16 +580,16 @@ export class ControlPlaneStreamServer {
         providers: {
           codex: true,
           claude: true,
-          controlPlane: true
+          controlPlane: true,
         },
         peonPing: {
           enabled: false,
           baseUrl: 'http://127.0.0.1:19998',
           timeoutMs: 1200,
-          eventCategoryMap: {}
+          eventCategoryMap: {},
         },
-        webhooks: []
-      }
+        webhooks: [],
+      },
     );
     this.server = createServer((socket) => {
       this.handleConnection(socket);
@@ -641,7 +645,7 @@ export class ControlPlaneStreamServer {
     return {
       address: this.telemetryAddress.address,
       family: this.telemetryAddress.family,
-      port: this.telemetryAddress.port
+      port: this.telemetryAddress.port,
     };
   }
 
@@ -772,7 +776,7 @@ export class ControlPlaneStreamServer {
   private reloadGitStatusDirectoriesFromStore(): void {
     const directories = this.stateStore.listDirectories({
       includeArchived: false,
-      limit: 1000
+      limit: 1000,
     });
     this.gitStatusDirectoriesById.clear();
     for (const directory of directories) {
@@ -805,7 +809,7 @@ export class ControlPlaneStreamServer {
       captureLogs: this.codexTelemetry.captureLogs,
       captureMetrics: this.codexTelemetry.captureMetrics,
       captureTraces: this.codexTelemetry.captureTraces,
-      historyPersistence: this.codexHistory.enabled ? 'save-all' : 'none'
+      historyPersistence: this.codexHistory.enabled ? 'save-all' : 'none',
     });
   }
 
@@ -822,7 +826,7 @@ export class ControlPlaneStreamServer {
     }
     return {
       command: this.resolveTerminalCommand(),
-      baseArgs: []
+      baseArgs: [],
     };
   }
 
@@ -844,7 +848,7 @@ export class ControlPlaneStreamServer {
           userId: conversation.userId,
           workspaceId: conversation.workspaceId,
           worktreeId: DEFAULT_WORKTREE_ID,
-          ...(directory?.path !== undefined ? { cwd: directory.path } : {})
+          ...(directory?.path !== undefined ? { cwd: directory.path } : {}),
         };
         this.startSessionRuntime(bootstrapInput);
         started += 1;
@@ -855,7 +859,7 @@ export class ControlPlaneStreamServer {
     recordPerfEvent('control-plane.startup.sessions-auto-start', {
       conversations: conversations.length,
       started,
-      failed
+      failed,
     });
   }
 
@@ -877,7 +881,7 @@ export class ControlPlaneStreamServer {
       args: [...codexLaunchArgs, ...command.args],
       useNotifyHook: agentType === 'codex',
       initialCols: command.initialCols,
-      initialRows: command.initialRows
+      initialRows: command.initialRows,
     };
     if (launchProfile.command !== undefined) {
       startInput.command = launchProfile.command;
@@ -914,7 +918,9 @@ export class ControlPlaneStreamServer {
         ? 'running'
         : persistedRuntimeStatus;
     const initialAttentionReason =
-      initialStatus === 'needs-input' ? persistedConversation?.runtimeAttentionReason ?? null : null;
+      initialStatus === 'needs-input'
+        ? (persistedConversation?.runtimeAttentionReason ?? null)
+        : null;
     this.sessions.set(command.sessionId, {
       id: command.sessionId,
       directoryId: persistedConversation?.directoryId ?? null,
@@ -922,7 +928,8 @@ export class ControlPlaneStreamServer {
       adapterState: normalizeAdapterState(persistedConversation?.adapterState ?? {}),
       tenantId: persistedConversation?.tenantId ?? command.tenantId ?? DEFAULT_TENANT_ID,
       userId: persistedConversation?.userId ?? command.userId ?? DEFAULT_USER_ID,
-      workspaceId: persistedConversation?.workspaceId ?? command.workspaceId ?? DEFAULT_WORKSPACE_ID,
+      workspaceId:
+        persistedConversation?.workspaceId ?? command.workspaceId ?? DEFAULT_WORKSPACE_ID,
       worktreeId: command.worktreeId ?? DEFAULT_WORKTREE_ID,
       session,
       eventSubscriberConnectionIds: new Set<string>(),
@@ -938,7 +945,7 @@ export class ControlPlaneStreamServer {
       tombstoneTimer: null,
       lastObservedOutputCursor: session.latestCursorValue(),
       latestTelemetry: this.stateStore.latestTelemetrySummary(command.sessionId),
-      controller: null
+      controller: null,
     });
 
     const state = this.sessions.get(command.sessionId);
@@ -974,7 +981,7 @@ export class ControlPlaneStreamServer {
 
   private async handleTelemetryHttpRequestAsync(
     request: IncomingMessage,
-    response: ServerResponse
+    response: ServerResponse,
   ): Promise<void> {
     if (request.method !== 'POST') {
       response.statusCode = 405;
@@ -1020,7 +1027,11 @@ export class ControlPlaneStreamServer {
     return Buffer.concat(chunks).toString('utf8');
   }
 
-  private ingestOtlpPayload(kind: 'logs' | 'metrics' | 'traces', sessionId: string, payload: unknown): void {
+  private ingestOtlpPayload(
+    kind: 'logs' | 'metrics' | 'traces',
+    sessionId: string,
+    payload: unknown,
+  ): void {
     const now = new Date().toISOString();
     const parsed =
       kind === 'logs'
@@ -1029,10 +1040,13 @@ export class ControlPlaneStreamServer {
           ? parseOtlpMetricEvents(payload, now)
           : parseOtlpTraceEvents(payload, now);
     if (parsed.length === 0) {
-      const sourceByKind: Record<'logs' | 'metrics' | 'traces', 'otlp-log' | 'otlp-metric' | 'otlp-trace'> = {
+      const sourceByKind: Record<
+        'logs' | 'metrics' | 'traces',
+        'otlp-log' | 'otlp-metric' | 'otlp-trace'
+      > = {
         logs: 'otlp-log',
         metrics: 'otlp-metric',
-        traces: 'otlp-trace'
+        traces: 'otlp-trace',
       };
       const source = sourceByKind[kind];
       this.ingestParsedTelemetryEvent(sessionId, {
@@ -1044,8 +1058,8 @@ export class ControlPlaneStreamServer {
         providerThreadId: null,
         statusHint: null,
         payload: {
-          batch: payload
-        }
+          batch: payload,
+        },
       });
       return;
     }
@@ -1056,11 +1070,13 @@ export class ControlPlaneStreamServer {
 
   private ingestParsedTelemetryEvent(
     fallbackSessionId: string | null,
-    event: ParsedCodexTelemetryEvent
+    event: ParsedCodexTelemetryEvent,
   ): void {
     const resolvedSessionId =
       fallbackSessionId ??
-      (event.providerThreadId === null ? null : this.resolveSessionIdByThreadId(event.providerThreadId));
+      (event.providerThreadId === null
+        ? null
+        : this.resolveSessionIdByThreadId(event.providerThreadId));
     const captureVerboseEvents = this.codexTelemetry.captureVerboseEvents === true;
     const shouldRetainHighSignalEvent =
       isLifecycleTelemetryEventName(event.eventName) || event.statusHint !== null;
@@ -1079,7 +1095,7 @@ export class ControlPlaneStreamServer {
       providerThreadId: event.providerThreadId,
       eventName: event.eventName,
       observedAt: event.observedAt,
-      payload: event.payload
+      payload: event.payload,
     });
 
     const inserted = this.stateStore.appendTelemetry({
@@ -1091,7 +1107,7 @@ export class ControlPlaneStreamServer {
       summary: event.summary,
       observedAt: event.observedAt,
       payload: event.payload,
-      fingerprint
+      fingerprint,
     });
     if (!inserted || resolvedSessionId === null) {
       return;
@@ -1124,24 +1140,21 @@ export class ControlPlaneStreamServer {
 
     const observedScope = this.observedScopeForSessionId(resolvedSessionId);
     if (observedScope !== null) {
-      this.publishObservedEvent(
-        observedScope,
-        {
-          type: 'session-key-event',
-          sessionId: resolvedSessionId,
-          keyEvent: {
-            source: event.source,
-            eventName: event.eventName,
-            severity: event.severity,
-            summary: event.summary,
-            observedAt: event.observedAt,
-            statusHint: event.statusHint
-          },
-          ts: new Date().toISOString(),
-          directoryId: observedScope.directoryId,
-          conversationId: observedScope.conversationId
-        }
-      );
+      this.publishObservedEvent(observedScope, {
+        type: 'session-key-event',
+        sessionId: resolvedSessionId,
+        keyEvent: {
+          source: event.source,
+          eventName: event.eventName,
+          severity: event.severity,
+          summary: event.summary,
+          observedAt: event.observedAt,
+          statusHint: event.statusHint,
+        },
+        ts: new Date().toISOString(),
+        directoryId: observedScope.directoryId,
+        conversationId: observedScope.conversationId,
+      });
     }
   }
 
@@ -1159,7 +1172,7 @@ export class ControlPlaneStreamServer {
       userId: persisted.userId,
       workspaceId: persisted.workspaceId,
       directoryId: persisted.directoryId,
-      conversationId: persisted.conversationId
+      conversationId: persisted.conversationId,
     };
   }
 
@@ -1182,8 +1195,8 @@ export class ControlPlaneStreamServer {
       codex: {
         ...currentCodex,
         resumeSessionId: threadId,
-        lastObservedAt: observedAt
-      }
+        lastObservedAt: observedAt,
+      },
     };
     this.stateStore.updateConversationAdapterState(state.id, state.adapterState);
   }
@@ -1286,7 +1299,7 @@ export class ControlPlaneStreamServer {
           buffer,
           bytesReadTotal,
           remainingBytes - bytesReadTotal,
-          this.historyOffset + bytesReadTotal
+          this.historyOffset + bytesReadTotal,
         );
         if (bytesRead <= 0) {
           break;
@@ -1319,7 +1332,9 @@ export class ControlPlaneStreamServer {
         continue;
       }
       const sessionId =
-        parsed.providerThreadId === null ? null : this.resolveSessionIdByThreadId(parsed.providerThreadId);
+        parsed.providerThreadId === null
+          ? null
+          : this.resolveSessionIdByThreadId(parsed.providerThreadId);
       this.ingestParsedTelemetryEvent(sessionId, parsed);
     }
     return true;
@@ -1350,20 +1365,22 @@ export class ControlPlaneStreamServer {
       await runWithConcurrencyLimit(
         dueDirectories,
         this.gitStatusMonitor.maxConcurrency,
-        async (directory) => await this.refreshGitStatusForDirectory(directory)
+        async (directory) => await this.refreshGitStatusForDirectory(directory),
       );
     } finally {
       this.gitStatusPollInFlight = false;
     }
   }
 
-  private async refreshGitStatusForDirectory(directory: ControlPlaneDirectoryRecord): Promise<void> {
+  private async refreshGitStatusForDirectory(
+    directory: ControlPlaneDirectoryRecord,
+  ): Promise<void> {
     if (this.gitStatusRefreshInFlightDirectoryIds.has(directory.directoryId)) {
       return;
     }
     this.gitStatusRefreshInFlightDirectoryIds.add(directory.directoryId);
     const gitSpan = startPerfSpan('control-plane.background.git-status', {
-      directoryId: directory.directoryId
+      directoryId: directory.directoryId,
     });
     const startedAtMs = Date.now();
     const previous = this.gitStatusByDirectoryId.get(directory.directoryId) ?? null;
@@ -1400,8 +1417,8 @@ export class ControlPlaneStreamServer {
             remoteUrl: repositorySnapshot.normalizedRemoteUrl,
             defaultBranch: repositorySnapshot.defaultBranch ?? 'main',
             metadata: {
-              source: 'control-plane-git-status'
-            }
+              source: 'control-plane-git-status',
+            },
           });
           repositoryId = upserted.repositoryId;
           repositoryRecord = this.repositoryRecord(upserted);
@@ -1412,7 +1429,7 @@ export class ControlPlaneStreamServer {
         repositorySnapshot,
         repositoryId,
         lastRefreshedAtMs: Date.now(),
-        lastRefreshDurationMs: Math.max(1, Date.now() - startedAtMs)
+        lastRefreshDurationMs: Math.max(1, Date.now() - startedAtMs),
       };
       this.gitStatusByDirectoryId.set(directory.directoryId, next);
       const changed =
@@ -1433,7 +1450,7 @@ export class ControlPlaneStreamServer {
             userId: directory.userId,
             workspaceId: directory.workspaceId,
             directoryId: directory.directoryId,
-            conversationId: null
+            conversationId: null,
           },
           {
             type: 'directory-git-updated',
@@ -1442,7 +1459,7 @@ export class ControlPlaneStreamServer {
               branch: snapshot.summary.branch,
               changedFiles: snapshot.summary.changedFiles,
               additions: snapshot.summary.additions,
-              deletions: snapshot.summary.deletions
+              deletions: snapshot.summary.deletions,
             },
             repositorySnapshot: {
               normalizedRemoteUrl: repositorySnapshot.normalizedRemoteUrl,
@@ -1450,18 +1467,18 @@ export class ControlPlaneStreamServer {
               lastCommitAt: repositorySnapshot.lastCommitAt,
               shortCommitHash: repositorySnapshot.shortCommitHash,
               inferredName: repositorySnapshot.inferredName,
-              defaultBranch: repositorySnapshot.defaultBranch
+              defaultBranch: repositorySnapshot.defaultBranch,
             },
             repositoryId,
             repository: repositoryRecord,
-            observedAt: new Date().toISOString()
-          }
+            observedAt: new Date().toISOString(),
+          },
         );
       }
       gitSpan.end({
         directoryId: directory.directoryId,
         changed,
-        repositoryLinked: repositoryId === null ? 0 : 1
+        repositoryLinked: repositoryId === null ? 0 : 1,
       });
     } catch {
       // Git status polling is best-effort and should not interrupt control-plane operations.
@@ -1475,7 +1492,7 @@ export class ControlPlaneStreamServer {
       gitSpan.end({
         directoryId: directory.directoryId,
         changed: false,
-        failed: true
+        failed: true,
       });
     } finally {
       this.gitStatusRefreshInFlightDirectoryIds.delete(directory.directoryId);
@@ -1494,14 +1511,14 @@ export class ControlPlaneStreamServer {
       streamSubscriptionIds: new Set<string>(),
       queuedPayloads: [],
       queuedPayloadBytes: 0,
-      writeBlocked: false
+      writeBlocked: false,
     };
 
     this.connections.set(connectionId, state);
     recordPerfEvent('control-plane.server.connection.open', {
       role: 'server',
       connectionId,
-      authRequired: this.authToken !== null
+      authRequired: this.authToken !== null,
     });
 
     socket.on('data', (chunk: Buffer) => {
@@ -1545,11 +1562,11 @@ export class ControlPlaneStreamServer {
     if (!connection.authenticated) {
       this.sendToConnection(connection.id, {
         kind: 'auth.error',
-        error: 'authentication required'
+        error: 'authentication required',
       });
       recordPerfEvent('control-plane.server.auth.required', {
         role: 'server',
-        connectionId: connection.id
+        connectionId: connection.id,
       });
       connection.socket.destroy();
       return;
@@ -1577,12 +1594,12 @@ export class ControlPlaneStreamServer {
     if (this.authToken === null) {
       connection.authenticated = true;
       this.sendToConnection(connection.id, {
-        kind: 'auth.ok'
+        kind: 'auth.ok',
       });
       recordPerfEvent('control-plane.server.auth.ok', {
         role: 'server',
         connectionId: connection.id,
-        authRequired: false
+        authRequired: false,
       });
       return;
     }
@@ -1590,11 +1607,11 @@ export class ControlPlaneStreamServer {
     if (token !== this.authToken) {
       this.sendToConnection(connection.id, {
         kind: 'auth.error',
-        error: 'invalid auth token'
+        error: 'invalid auth token',
       });
       recordPerfEvent('control-plane.server.auth.failed', {
         role: 'server',
-        connectionId: connection.id
+        connectionId: connection.id,
       });
       connection.socket.destroy();
       return;
@@ -1602,58 +1619,65 @@ export class ControlPlaneStreamServer {
 
     connection.authenticated = true;
     this.sendToConnection(connection.id, {
-      kind: 'auth.ok'
+      kind: 'auth.ok',
     });
     recordPerfEvent('control-plane.server.auth.ok', {
       role: 'server',
       connectionId: connection.id,
-      authRequired: true
+      authRequired: true,
     });
   }
 
-  private handleCommand(connection: ConnectionState, commandId: string, command: StreamCommand): void {
+  private handleCommand(
+    connection: ConnectionState,
+    commandId: string,
+    command: StreamCommand,
+  ): void {
     this.sendToConnection(connection.id, {
       kind: 'command.accepted',
-      commandId
+      commandId,
     });
 
     const commandSpan = startPerfSpan('control-plane.server.command', {
       role: 'server',
-      type: command.type
+      type: command.type,
     });
     try {
       const result = this.executeCommand(connection, command);
       commandSpan.end({
         type: command.type,
-        status: 'completed'
+        status: 'completed',
       });
       this.sendToConnection(connection.id, {
         kind: 'command.completed',
         commandId,
-        result
+        result,
       });
     } catch (error) {
       commandSpan.end({
         type: command.type,
         status: 'failed',
-        message: String(error)
+        message: String(error),
       });
       this.sendToConnection(connection.id, {
         kind: 'command.failed',
         commandId,
-        error: String(error)
+        error: String(error),
       });
     }
   }
 
-  private executeCommand(connection: ConnectionState, command: StreamCommand): Record<string, unknown> {
+  private executeCommand(
+    connection: ConnectionState,
+    command: StreamCommand,
+  ): Record<string, unknown> {
     if (command.type === 'directory.upsert') {
       const directory = this.stateStore.upsertDirectory({
         directoryId: command.directoryId ?? `directory-${randomUUID()}`,
         tenantId: command.tenantId ?? DEFAULT_TENANT_ID,
         userId: command.userId ?? DEFAULT_USER_ID,
         workspaceId: command.workspaceId ?? DEFAULT_WORKSPACE_ID,
-        path: command.path
+        path: command.path,
       });
       const record = this.directoryRecord(directory);
       this.gitStatusDirectoriesById.set(directory.directoryId, directory);
@@ -1663,18 +1687,18 @@ export class ControlPlaneStreamServer {
           userId: directory.userId,
           workspaceId: directory.workspaceId,
           directoryId: directory.directoryId,
-          conversationId: null
+          conversationId: null,
         },
         {
           type: 'directory-upserted',
-          directory: record
-        }
+          directory: record,
+        },
       );
       if (this.gitStatusMonitor.enabled) {
         void this.refreshGitStatusForDirectory(directory);
       }
       return {
-        directory: record
+        directory: record,
       };
     }
 
@@ -1705,7 +1729,7 @@ export class ControlPlaneStreamServer {
         .listDirectories(query)
         .map((directory) => this.directoryRecord(directory));
       return {
-        directories
+        directories,
       };
     }
 
@@ -1718,18 +1742,89 @@ export class ControlPlaneStreamServer {
           userId: archived.userId,
           workspaceId: archived.workspaceId,
           directoryId: archived.directoryId,
-          conversationId: null
+          conversationId: null,
         },
         {
           type: 'directory-archived',
           directoryId: archived.directoryId,
-          ts: archived.archivedAt as string
-        }
+          ts: archived.archivedAt as string,
+        },
       );
       this.gitStatusByDirectoryId.delete(archived.directoryId);
       this.gitStatusDirectoriesById.delete(archived.directoryId);
       return {
-        directory: record
+        directory: record,
+      };
+    }
+
+    if (command.type === 'directory.git-status') {
+      const query: {
+        tenantId?: string;
+        userId?: string;
+        workspaceId?: string;
+        includeArchived: boolean;
+        limit: number;
+      } = {
+        includeArchived: false,
+        limit: 1000,
+      };
+      if (command.tenantId !== undefined) {
+        query.tenantId = command.tenantId;
+      }
+      if (command.userId !== undefined) {
+        query.userId = command.userId;
+      }
+      if (command.workspaceId !== undefined) {
+        query.workspaceId = command.workspaceId;
+      }
+      const listedDirectories = this.stateStore
+        .listDirectories(query)
+        .filter((directory) =>
+          command.directoryId === undefined ? true : directory.directoryId === command.directoryId,
+        );
+      for (const directory of listedDirectories) {
+        this.gitStatusDirectoriesById.set(directory.directoryId, directory);
+      }
+      const gitStatuses = listedDirectories.flatMap((directory) => {
+        const cached = this.gitStatusByDirectoryId.get(directory.directoryId);
+        if (cached === undefined) {
+          return [];
+        }
+        const repositoryRecord =
+          cached.repositoryId === null
+            ? null
+            : (() => {
+                const repository = this.stateStore.getRepository(cached.repositoryId);
+                if (repository === null || repository.archivedAt !== null) {
+                  return null;
+                }
+                return this.repositoryRecord(repository);
+              })();
+        return [
+          {
+            directoryId: directory.directoryId,
+            summary: {
+              branch: cached.summary.branch,
+              changedFiles: cached.summary.changedFiles,
+              additions: cached.summary.additions,
+              deletions: cached.summary.deletions,
+            },
+            repositorySnapshot: {
+              normalizedRemoteUrl: cached.repositorySnapshot.normalizedRemoteUrl,
+              commitCount: cached.repositorySnapshot.commitCount,
+              lastCommitAt: cached.repositorySnapshot.lastCommitAt,
+              shortCommitHash: cached.repositorySnapshot.shortCommitHash,
+              inferredName: cached.repositorySnapshot.inferredName,
+              defaultBranch: cached.repositorySnapshot.defaultBranch,
+            },
+            repositoryId: cached.repositoryId,
+            repository: repositoryRecord,
+            observedAt: new Date(cached.lastRefreshedAtMs).toISOString(),
+          },
+        ];
+      });
+      return {
+        gitStatuses,
       };
     }
 
@@ -1739,7 +1834,7 @@ export class ControlPlaneStreamServer {
         directoryId: command.directoryId,
         title: command.title,
         agentType: command.agentType,
-        adapterState: normalizeAdapterState(command.adapterState)
+        adapterState: normalizeAdapterState(command.adapterState),
       });
       const record = this.conversationRecord(conversation);
       this.publishObservedEvent(
@@ -1748,15 +1843,15 @@ export class ControlPlaneStreamServer {
           userId: conversation.userId,
           workspaceId: conversation.workspaceId,
           directoryId: conversation.directoryId,
-          conversationId: conversation.conversationId
+          conversationId: conversation.conversationId,
         },
         {
           type: 'conversation-created',
-          conversation: record
-        }
+          conversation: record,
+        },
       );
       return {
-        conversation: record
+        conversation: record,
       };
     }
 
@@ -1791,7 +1886,7 @@ export class ControlPlaneStreamServer {
         .listConversations(query)
         .map((conversation) => this.conversationRecord(conversation));
       return {
-        conversations
+        conversations,
       };
     }
 
@@ -1803,21 +1898,24 @@ export class ControlPlaneStreamServer {
           userId: archived.userId,
           workspaceId: archived.workspaceId,
           directoryId: archived.directoryId,
-          conversationId: archived.conversationId
+          conversationId: archived.conversationId,
         },
         {
           type: 'conversation-archived',
           conversationId: archived.conversationId,
-          ts: archived.archivedAt as string
-        }
+          ts: archived.archivedAt as string,
+        },
       );
       return {
-        conversation: this.conversationRecord(archived)
+        conversation: this.conversationRecord(archived),
       };
     }
 
     if (command.type === 'conversation.update') {
-      const updated = this.stateStore.updateConversationTitle(command.conversationId, command.title);
+      const updated = this.stateStore.updateConversationTitle(
+        command.conversationId,
+        command.title,
+      );
       if (updated === null) {
         throw new Error(`conversation not found: ${command.conversationId}`);
       }
@@ -1828,15 +1926,15 @@ export class ControlPlaneStreamServer {
           userId: updated.userId,
           workspaceId: updated.workspaceId,
           directoryId: updated.directoryId,
-          conversationId: updated.conversationId
+          conversationId: updated.conversationId,
         },
         {
           type: 'conversation-updated',
-          conversation: record
-        }
+          conversation: record,
+        },
       );
       return {
-        conversation: record
+        conversation: record,
       };
     }
 
@@ -1853,16 +1951,16 @@ export class ControlPlaneStreamServer {
           userId: existing.userId,
           workspaceId: existing.workspaceId,
           directoryId: existing.directoryId,
-          conversationId: existing.conversationId
+          conversationId: existing.conversationId,
         },
         {
           type: 'conversation-deleted',
           conversationId: existing.conversationId,
-          ts: new Date().toISOString()
-        }
+          ts: new Date().toISOString(),
+        },
       );
       return {
-        deleted: true
+        deleted: true,
       };
     }
 
@@ -1882,7 +1980,7 @@ export class ControlPlaneStreamServer {
         userId: command.userId ?? DEFAULT_USER_ID,
         workspaceId: command.workspaceId ?? DEFAULT_WORKSPACE_ID,
         name: command.name,
-        remoteUrl: command.remoteUrl
+        remoteUrl: command.remoteUrl,
       };
       if (command.defaultBranch !== undefined) {
         input.defaultBranch = command.defaultBranch;
@@ -1897,15 +1995,15 @@ export class ControlPlaneStreamServer {
           userId: repository.userId,
           workspaceId: repository.workspaceId,
           directoryId: null,
-          conversationId: null
+          conversationId: null,
         },
         {
           type: 'repository-upserted',
-          repository: this.repositoryRecord(repository)
-        }
+          repository: this.repositoryRecord(repository),
+        },
       );
       return {
-        repository: this.repositoryRecord(repository)
+        repository: this.repositoryRecord(repository),
       };
     }
 
@@ -1915,7 +2013,7 @@ export class ControlPlaneStreamServer {
         throw new Error(`repository not found: ${command.repositoryId}`);
       }
       return {
-        repository: this.repositoryRecord(repository)
+        repository: this.repositoryRecord(repository),
       };
     }
 
@@ -1946,7 +2044,7 @@ export class ControlPlaneStreamServer {
         .listRepositories(query)
         .map((repository) => this.repositoryRecord(repository));
       return {
-        repositories
+        repositories,
       };
     }
 
@@ -1979,15 +2077,15 @@ export class ControlPlaneStreamServer {
           userId: updated.userId,
           workspaceId: updated.workspaceId,
           directoryId: null,
-          conversationId: null
+          conversationId: null,
         },
         {
           type: 'repository-updated',
-          repository: this.repositoryRecord(updated)
-        }
+          repository: this.repositoryRecord(updated),
+        },
       );
       return {
-        repository: this.repositoryRecord(updated)
+        repository: this.repositoryRecord(updated),
       };
     }
 
@@ -1999,16 +2097,16 @@ export class ControlPlaneStreamServer {
           userId: archived.userId,
           workspaceId: archived.workspaceId,
           directoryId: null,
-          conversationId: null
+          conversationId: null,
         },
         {
           type: 'repository-archived',
           repositoryId: archived.repositoryId,
-          ts: archived.archivedAt as string
-        }
+          ts: archived.archivedAt as string,
+        },
       );
       return {
-        repository: this.repositoryRecord(archived)
+        repository: this.repositoryRecord(archived),
       };
     }
 
@@ -2041,7 +2139,7 @@ export class ControlPlaneStreamServer {
         tenantId: command.tenantId ?? DEFAULT_TENANT_ID,
         userId: command.userId ?? DEFAULT_USER_ID,
         workspaceId: command.workspaceId ?? DEFAULT_WORKSPACE_ID,
-        title: command.title
+        title: command.title,
       };
       if (command.repositoryId !== undefined) {
         input.repositoryId = command.repositoryId;
@@ -2059,15 +2157,15 @@ export class ControlPlaneStreamServer {
           userId: task.userId,
           workspaceId: task.workspaceId,
           directoryId: null,
-          conversationId: null
+          conversationId: null,
         },
         {
           type: 'task-created',
-          task: this.taskRecord(task)
-        }
+          task: this.taskRecord(task),
+        },
       );
       return {
-        task: this.taskRecord(task)
+        task: this.taskRecord(task),
       };
     }
 
@@ -2077,7 +2175,7 @@ export class ControlPlaneStreamServer {
         throw new Error(`task not found: ${command.taskId}`);
       }
       return {
-        task: this.taskRecord(task)
+        task: this.taskRecord(task),
       };
     }
 
@@ -2108,11 +2206,9 @@ export class ControlPlaneStreamServer {
       if (command.limit !== undefined) {
         query.limit = command.limit;
       }
-      const tasks = this.stateStore
-        .listTasks(query)
-        .map((task) => this.taskRecord(task));
+      const tasks = this.stateStore.listTasks(query).map((task) => this.taskRecord(task));
       return {
-        tasks
+        tasks,
       };
     }
 
@@ -2159,15 +2255,15 @@ export class ControlPlaneStreamServer {
           userId: updated.userId,
           workspaceId: updated.workspaceId,
           directoryId: null,
-          conversationId: null
+          conversationId: null,
         },
         {
           type: 'task-updated',
-          task: this.taskRecord(updated)
-        }
+          task: this.taskRecord(updated),
+        },
       );
       return {
-        task: this.taskRecord(updated)
+        task: this.taskRecord(updated),
       };
     }
 
@@ -2183,16 +2279,16 @@ export class ControlPlaneStreamServer {
           userId: existing.userId,
           workspaceId: existing.workspaceId,
           directoryId: null,
-          conversationId: null
+          conversationId: null,
         },
         {
           type: 'task-deleted',
           taskId: existing.taskId,
-          ts: new Date().toISOString()
-        }
+          ts: new Date().toISOString(),
+        },
       );
       return {
-        deleted: true
+        deleted: true,
       };
     }
 
@@ -2205,7 +2301,7 @@ export class ControlPlaneStreamServer {
         baseBranch?: string;
       } = {
         taskId: command.taskId,
-        controllerId: command.controllerId
+        controllerId: command.controllerId,
       };
       if (command.directoryId !== undefined) {
         input.directoryId = command.directoryId;
@@ -2223,15 +2319,15 @@ export class ControlPlaneStreamServer {
           userId: task.userId,
           workspaceId: task.workspaceId,
           directoryId: null,
-          conversationId: null
+          conversationId: null,
         },
         {
           type: 'task-updated',
-          task: this.taskRecord(task)
-        }
+          task: this.taskRecord(task),
+        },
       );
       return {
-        task: this.taskRecord(task)
+        task: this.taskRecord(task),
       };
     }
 
@@ -2243,15 +2339,15 @@ export class ControlPlaneStreamServer {
           userId: task.userId,
           workspaceId: task.workspaceId,
           directoryId: null,
-          conversationId: null
+          conversationId: null,
         },
         {
           type: 'task-updated',
-          task: this.taskRecord(task)
-        }
+          task: this.taskRecord(task),
+        },
       );
       return {
-        task: this.taskRecord(task)
+        task: this.taskRecord(task),
       };
     }
 
@@ -2263,15 +2359,15 @@ export class ControlPlaneStreamServer {
           userId: task.userId,
           workspaceId: task.workspaceId,
           directoryId: null,
-          conversationId: null
+          conversationId: null,
         },
         {
           type: 'task-updated',
-          task: this.taskRecord(task)
-        }
+          task: this.taskRecord(task),
+        },
       );
       return {
-        task: this.taskRecord(task)
+        task: this.taskRecord(task),
       };
     }
 
@@ -2283,15 +2379,15 @@ export class ControlPlaneStreamServer {
           userId: task.userId,
           workspaceId: task.workspaceId,
           directoryId: null,
-          conversationId: null
+          conversationId: null,
         },
         {
           type: 'task-updated',
-          task: this.taskRecord(task)
-        }
+          task: this.taskRecord(task),
+        },
       );
       return {
-        task: this.taskRecord(task)
+        task: this.taskRecord(task),
       };
     }
 
@@ -2303,15 +2399,15 @@ export class ControlPlaneStreamServer {
           userId: task.userId,
           workspaceId: task.workspaceId,
           directoryId: null,
-          conversationId: null
+          conversationId: null,
         },
         {
           type: 'task-updated',
-          task: this.taskRecord(task)
-        }
+          task: this.taskRecord(task),
+        },
       );
       return {
-        task: this.taskRecord(task)
+        task: this.taskRecord(task),
       };
     }
 
@@ -2321,7 +2417,7 @@ export class ControlPlaneStreamServer {
           tenantId: command.tenantId,
           userId: command.userId,
           workspaceId: command.workspaceId,
-          orderedTaskIds: command.orderedTaskIds
+          orderedTaskIds: command.orderedTaskIds,
         })
         .map((task) => this.taskRecord(task));
       this.publishObservedEvent(
@@ -2330,23 +2426,23 @@ export class ControlPlaneStreamServer {
           userId: command.userId,
           workspaceId: command.workspaceId,
           directoryId: null,
-          conversationId: null
+          conversationId: null,
         },
         {
           type: 'task-reordered',
           tasks,
-          ts: new Date().toISOString()
-        }
+          ts: new Date().toISOString(),
+        },
       );
       return {
-        tasks
+        tasks,
       };
     }
 
     if (command.type === 'stream.subscribe') {
       const subscriptionId = `subscription-${randomUUID()}`;
       const filter: StreamSubscriptionFilter = {
-        includeOutput: command.includeOutput ?? false
+        includeOutput: command.includeOutput ?? false,
       };
       if (command.tenantId !== undefined) {
         filter.tenantId = command.tenantId;
@@ -2373,7 +2469,7 @@ export class ControlPlaneStreamServer {
       this.streamSubscriptions.set(subscriptionId, {
         id: subscriptionId,
         connectionId: connection.id,
-        filter
+        filter,
       });
       connection.streamSubscriptionIds.add(subscriptionId);
 
@@ -2389,13 +2485,13 @@ export class ControlPlaneStreamServer {
           kind: 'stream.event',
           subscriptionId,
           cursor: entry.cursor,
-          event: entry.event
+          event: entry.event,
         });
       }
 
       return {
         subscriptionId,
-        cursor: this.streamCursor
+        cursor: this.streamCursor,
       };
     }
 
@@ -2407,7 +2503,7 @@ export class ControlPlaneStreamServer {
         this.streamSubscriptions.delete(command.subscriptionId);
       }
       return {
-        unsubscribed: true
+        unsubscribed: true,
       };
     }
 
@@ -2437,7 +2533,7 @@ export class ControlPlaneStreamServer {
       const sessions = this.sortSessionSummaries(filtered, sort);
       const limited = command.limit === undefined ? sessions : sessions.slice(0, command.limit);
       return {
-        sessions: limited
+        sessions: limited,
       };
     }
 
@@ -2445,8 +2541,8 @@ export class ControlPlaneStreamServer {
       return {
         sessions: this.sortSessionSummaries(
           [...this.sessions.values()].filter((state) => state.status === 'needs-input'),
-          'attention-first'
-        )
+          'attention-first',
+        ),
       };
     }
 
@@ -2464,7 +2560,7 @@ export class ControlPlaneStreamServer {
         return {
           sessionId: command.sessionId,
           snapshot: state.lastSnapshot,
-          stale: true
+          stale: true,
         };
       }
       const snapshot = this.snapshotRecordFromFrame(state.session.snapshot());
@@ -2472,7 +2568,7 @@ export class ControlPlaneStreamServer {
       return {
         sessionId: command.sessionId,
         snapshot,
-        stale: false
+        stale: false,
       };
     }
 
@@ -2485,7 +2581,7 @@ export class ControlPlaneStreamServer {
         controllerType: command.controllerType,
         controllerLabel: command.controllerLabel ?? null,
         claimedAt,
-        connectionId: connection.id
+        connectionId: connection.id,
       };
       if (previousController === null) {
         state.controller = nextController;
@@ -2494,21 +2590,18 @@ export class ControlPlaneStreamServer {
           'claimed',
           toPublicSessionController(nextController),
           null,
-          command.reason ?? null
+          command.reason ?? null,
         );
         this.publishStatusObservedEvent(state);
         return {
           sessionId: command.sessionId,
           action: 'claimed',
-          controller: toPublicSessionController(nextController)
+          controller: toPublicSessionController(nextController),
         };
       }
-      if (
-        previousController.connectionId !== connection.id &&
-        command.takeover !== true
-      ) {
+      if (previousController.connectionId !== connection.id && command.takeover !== true) {
         throw new Error(
-          `session is already claimed by ${controllerDisplayName(previousController)}`
+          `session is already claimed by ${controllerDisplayName(previousController)}`,
         );
       }
       state.controller = nextController;
@@ -2518,13 +2611,13 @@ export class ControlPlaneStreamServer {
         action,
         toPublicSessionController(nextController),
         toPublicSessionController(previousController),
-        command.reason ?? null
+        command.reason ?? null,
       );
       this.publishStatusObservedEvent(state);
       return {
         sessionId: command.sessionId,
         action,
-        controller: toPublicSessionController(nextController)
+        controller: toPublicSessionController(nextController),
       };
     }
 
@@ -2534,13 +2627,11 @@ export class ControlPlaneStreamServer {
         return {
           sessionId: command.sessionId,
           released: false,
-          controller: null
+          controller: null,
         };
       }
       if (state.controller.connectionId !== connection.id) {
-        throw new Error(
-          `session is claimed by ${controllerDisplayName(state.controller)}`
-        );
+        throw new Error(`session is claimed by ${controllerDisplayName(state.controller)}`);
       }
       const previousController = state.controller;
       state.controller = null;
@@ -2549,13 +2640,13 @@ export class ControlPlaneStreamServer {
         'released',
         null,
         toPublicSessionController(previousController),
-        command.reason ?? null
+        command.reason ?? null,
       );
       this.publishStatusObservedEvent(state);
       return {
         sessionId: command.sessionId,
         released: true,
-        controller: null
+        controller: null,
       };
     }
 
@@ -2566,7 +2657,7 @@ export class ControlPlaneStreamServer {
       this.setSessionStatus(state, 'running', null, new Date().toISOString());
       return {
         responded: true,
-        sentBytes: Buffer.byteLength(command.text)
+        sentBytes: Buffer.byteLength(command.text),
       };
     }
 
@@ -2576,7 +2667,7 @@ export class ControlPlaneStreamServer {
       state.session.write('\u0003');
       this.setSessionStatus(state, 'running', null, new Date().toISOString());
       return {
-        interrupted: true
+        interrupted: true,
       };
     }
 
@@ -2585,7 +2676,7 @@ export class ControlPlaneStreamServer {
       this.assertConnectionCanMutateSession(connection.id, state);
       this.destroySession(command.sessionId, true);
       return {
-        removed: true
+        removed: true,
       };
     }
 
@@ -2606,12 +2697,12 @@ export class ControlPlaneStreamServer {
           : {}),
         ...(command.terminalBackgroundHex !== undefined
           ? { terminalBackgroundHex: command.terminalBackgroundHex }
-          : {})
+          : {}),
       };
       this.startSessionRuntime(startInput);
 
       return {
-        sessionId: command.sessionId
+        sessionId: command.sessionId,
       };
     }
 
@@ -2629,7 +2720,7 @@ export class ControlPlaneStreamServer {
               kind: 'pty.output',
               sessionId: command.sessionId,
               cursor: event.cursor,
-              chunkBase64: Buffer.from(event.chunk).toString('base64')
+              chunkBase64: Buffer.from(event.chunk).toString('base64'),
             });
             const sessionState = this.sessions.get(command.sessionId);
             if (sessionState !== undefined) {
@@ -2637,36 +2728,33 @@ export class ControlPlaneStreamServer {
                 return;
               }
               sessionState.lastObservedOutputCursor = event.cursor;
-              this.publishObservedEvent(
-                this.sessionScope(sessionState),
-                {
-                  type: 'session-output',
-                  sessionId: command.sessionId,
-                  outputCursor: event.cursor,
-                  chunkBase64: Buffer.from(event.chunk).toString('base64'),
-                  ts: new Date().toISOString(),
-                  directoryId: sessionState.directoryId,
-                  conversationId: sessionState.id
-                }
-              );
+              this.publishObservedEvent(this.sessionScope(sessionState), {
+                type: 'session-output',
+                sessionId: command.sessionId,
+                outputCursor: event.cursor,
+                chunkBase64: Buffer.from(event.chunk).toString('base64'),
+                ts: new Date().toISOString(),
+                directoryId: sessionState.directoryId,
+                conversationId: sessionState.id,
+              });
             }
           },
           onExit: (exit) => {
             this.sendToConnection(connection.id, {
               kind: 'pty.exit',
               sessionId: command.sessionId,
-              exit
+              exit,
             });
-          }
+          },
         },
-        command.sinceCursor ?? 0
+        command.sinceCursor ?? 0,
       );
 
       state.attachmentByConnectionId.set(connection.id, attachmentId);
       connection.attachedSessionIds.add(command.sessionId);
 
       return {
-        latestCursor: state.session.latestCursorValue()
+        latestCursor: state.session.latestCursorValue(),
       };
     }
 
@@ -2674,7 +2762,7 @@ export class ControlPlaneStreamServer {
       this.detachConnectionFromSession(connection.id, command.sessionId);
       connection.attachedSessionIds.delete(command.sessionId);
       return {
-        detached: true
+        detached: true,
       };
     }
 
@@ -2683,7 +2771,7 @@ export class ControlPlaneStreamServer {
       state.eventSubscriberConnectionIds.add(connection.id);
       connection.eventSessionIds.add(command.sessionId);
       return {
-        subscribed: true
+        subscribed: true,
       };
     }
 
@@ -2692,7 +2780,7 @@ export class ControlPlaneStreamServer {
       state.eventSubscriberConnectionIds.delete(connection.id);
       connection.eventSessionIds.delete(command.sessionId);
       return {
-        subscribed: false
+        subscribed: false,
       };
     }
 
@@ -2701,7 +2789,7 @@ export class ControlPlaneStreamServer {
       this.assertConnectionCanMutateSession(connection.id, state);
       this.destroySession(command.sessionId, true);
       return {
-        closed: true
+        closed: true,
       };
     }
 
@@ -2775,39 +2863,32 @@ export class ControlPlaneStreamServer {
     const mapped = mapSessionEvent(event);
     if (mapped !== null && event.type !== 'terminal-output') {
       const observedAt =
-        mapped.type === 'session-exit'
-          ? new Date().toISOString()
-          : mapped.record.ts;
+        mapped.type === 'session-exit' ? new Date().toISOString() : mapped.record.ts;
       for (const connectionId of sessionState.eventSubscriberConnectionIds) {
         this.sendToConnection(connectionId, {
           kind: 'pty.event',
           sessionId,
-          event: mapped
+          event: mapped,
         });
       }
-      this.publishObservedEvent(
-        this.sessionScope(sessionState),
-        {
-          type: 'session-event',
-          sessionId,
-          event: mapped,
-          ts: new Date().toISOString(),
-          directoryId: sessionState.directoryId,
-          conversationId: sessionState.id
-        }
-      );
+      this.publishObservedEvent(this.sessionScope(sessionState), {
+        type: 'session-event',
+        sessionId,
+        event: mapped,
+        ts: new Date().toISOString(),
+        directoryId: sessionState.directoryId,
+        conversationId: sessionState.id,
+      });
       if (mapped.type === 'notify') {
         const notifyPayloadType =
-          typeof mapped.record.payload['type'] === 'string'
-            ? mapped.record.payload['type']
-            : '';
+          typeof mapped.record.payload['type'] === 'string' ? mapped.record.payload['type'] : '';
         if (notifyPayloadType === 'agent-turn-complete') {
           sessionState.latestTelemetry = {
             source: 'otlp-metric',
             eventName: 'codex.turn.e2e_duration_ms',
             severity: null,
             summary: 'turn complete (notify)',
-            observedAt
+            observedAt,
           };
           this.setSessionStatus(sessionState, 'completed', null, observedAt);
         } else {
@@ -2815,7 +2896,7 @@ export class ControlPlaneStreamServer {
             sessionState,
             sessionState.status,
             sessionState.attentionReason,
-            observedAt
+            observedAt,
           );
         }
       }
@@ -2834,7 +2915,7 @@ export class ControlPlaneStreamServer {
     state: SessionState,
     status: StreamSessionRuntimeStatus,
     attentionReason: string | null,
-    lastEventAt: string | null
+    lastEventAt: string | null,
   ): void {
     state.status = status;
     state.attentionReason = attentionReason;
@@ -2852,26 +2933,23 @@ export class ControlPlaneStreamServer {
       attentionReason: state.attentionReason,
       processId: state.session?.processId() ?? null,
       lastEventAt: state.lastEventAt,
-      lastExit: state.lastExit
+      lastExit: state.lastExit,
     });
   }
 
   private publishStatusObservedEvent(state: SessionState): void {
-    this.publishObservedEvent(
-      this.sessionScope(state),
-      {
-        type: 'session-status',
-        sessionId: state.id,
-        status: state.status,
-        attentionReason: state.attentionReason,
-        live: state.session !== null,
-        ts: new Date().toISOString(),
-        directoryId: state.directoryId,
-        conversationId: state.id,
-        telemetry: state.latestTelemetry,
-        controller: toPublicSessionController(state.controller)
-      }
-    );
+    this.publishObservedEvent(this.sessionScope(state), {
+      type: 'session-status',
+      sessionId: state.id,
+      status: state.status,
+      attentionReason: state.attentionReason,
+      live: state.session !== null,
+      ts: new Date().toISOString(),
+      directoryId: state.directoryId,
+      conversationId: state.id,
+      telemetry: state.latestTelemetry,
+      controller: toPublicSessionController(state.controller),
+    });
   }
 
   private publishSessionControlObservedEvent(
@@ -2879,22 +2957,19 @@ export class ControlPlaneStreamServer {
     action: 'claimed' | 'released' | 'taken-over',
     controller: StreamSessionController | null,
     previousController: StreamSessionController | null,
-    reason: string | null
+    reason: string | null,
   ): void {
-    this.publishObservedEvent(
-      this.sessionScope(state),
-      {
-        type: 'session-control',
-        sessionId: state.id,
-        action,
-        controller,
-        previousController,
-        reason,
-        ts: new Date().toISOString(),
-        directoryId: state.directoryId,
-        conversationId: state.id
-      }
-    );
+    this.publishObservedEvent(this.sessionScope(state), {
+      type: 'session-control',
+      sessionId: state.id,
+      action,
+      controller,
+      previousController,
+      reason,
+      ts: new Date().toISOString(),
+      directoryId: state.directoryId,
+      conversationId: state.id,
+    });
   }
 
   private sessionScope(state: SessionState): StreamObservedScope {
@@ -2903,7 +2978,7 @@ export class ControlPlaneStreamServer {
       userId: state.userId,
       workspaceId: state.workspaceId,
       directoryId: state.directoryId,
-      conversationId: state.id
+      conversationId: state.id,
     };
   }
 
@@ -2952,7 +3027,7 @@ export class ControlPlaneStreamServer {
   private matchesObservedFilter(
     scope: StreamObservedScope,
     event: StreamObservedEvent,
-    filter: StreamSubscriptionFilter
+    filter: StreamSubscriptionFilter,
   ): boolean {
     if (!filter.includeOutput && event.type === 'session-output') {
       return false;
@@ -2989,7 +3064,7 @@ export class ControlPlaneStreamServer {
     const entry: StreamJournalEntry = {
       cursor: this.streamCursor,
       scope,
-      event
+      event,
     };
     this.streamJournal.push(entry);
     if (this.streamJournal.length > this.maxStreamJournalEntries) {
@@ -3004,7 +3079,7 @@ export class ControlPlaneStreamServer {
         kind: 'stream.event',
         subscriptionId: subscription.id,
         cursor: entry.cursor,
-        event: entry.event
+        event: entry.event,
       });
     }
     this.lifecycleHooks.publish(scope, event, entry.cursor);
@@ -3018,11 +3093,13 @@ export class ControlPlaneStreamServer {
       workspaceId: directory.workspaceId,
       path: directory.path,
       createdAt: directory.createdAt,
-      archivedAt: directory.archivedAt
+      archivedAt: directory.archivedAt,
     };
   }
 
-  private conversationRecord(conversation: ControlPlaneConversationRecord): Record<string, unknown> {
+  private conversationRecord(
+    conversation: ControlPlaneConversationRecord,
+  ): Record<string, unknown> {
     return {
       conversationId: conversation.conversationId,
       directoryId: conversation.directoryId,
@@ -3039,7 +3116,7 @@ export class ControlPlaneStreamServer {
       runtimeProcessId: conversation.runtimeProcessId,
       runtimeLastEventAt: conversation.runtimeLastEventAt,
       runtimeLastExit: conversation.runtimeLastExit,
-      adapterState: conversation.adapterState
+      adapterState: conversation.adapterState,
     };
   }
 
@@ -3054,7 +3131,7 @@ export class ControlPlaneStreamServer {
       defaultBranch: repository.defaultBranch,
       metadata: repository.metadata,
       createdAt: repository.createdAt,
-      archivedAt: repository.archivedAt
+      archivedAt: repository.archivedAt,
     };
   }
 
@@ -3088,10 +3165,10 @@ export class ControlPlaneStreamServer {
         priority: task.linear.priority,
         estimate: task.linear.estimate,
         dueDate: task.linear.dueDate,
-        labelIds: [...task.linear.labelIds]
+        labelIds: [...task.linear.labelIds],
       },
       createdAt: task.createdAt,
-      updatedAt: task.updatedAt
+      updatedAt: task.updatedAt,
     };
   }
 
@@ -3175,7 +3252,7 @@ export class ControlPlaneStreamServer {
         'released',
         null,
         toPublicSessionController(previousController),
-        'controller-disconnected'
+        'controller-disconnected',
       );
       this.publishStatusObservedEvent(state);
     }
@@ -3183,7 +3260,7 @@ export class ControlPlaneStreamServer {
     this.connections.delete(connectionId);
     recordPerfEvent('control-plane.server.connection.closed', {
       role: 'server',
-      connectionId
+      connectionId,
     });
   }
 
@@ -3283,7 +3360,7 @@ export class ControlPlaneStreamServer {
 
   private sortSessionSummaries(
     sessions: readonly SessionState[],
-    sort: StreamSessionListSort
+    sort: StreamSessionListSort,
   ): readonly Record<string, unknown>[] {
     const sorted = [...sessions];
     sorted.sort((left, right) => {
@@ -3341,7 +3418,7 @@ export class ControlPlaneStreamServer {
       exitedAt: state.exitedAt,
       live: state.session !== null,
       telemetry: state.latestTelemetry,
-      controller: toPublicSessionController(state.controller)
+      controller: toPublicSessionController(state.controller),
     };
   }
 
@@ -3354,7 +3431,7 @@ export class ControlPlaneStreamServer {
       cursor: frame.cursor,
       viewport: frame.viewport,
       lines: frame.lines,
-      frameHash: frame.frameHash
+      frameHash: frame.frameHash,
     };
   }
 
@@ -3403,7 +3480,7 @@ export class ControlPlaneStreamServer {
 }
 
 export async function startControlPlaneStreamServer(
-  options: StartControlPlaneStreamServerOptions
+  options: StartControlPlaneStreamServerOptions,
 ): Promise<ControlPlaneStreamServer> {
   const server = new ControlPlaneStreamServer(options);
   await server.start();

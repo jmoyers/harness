@@ -11,15 +11,15 @@ import {
   resolveTerminalCommandForEnvironment,
   streamServerTestInternals,
   startControlPlaneStreamServer,
-  type StartControlPlaneSessionInput
+  type StartControlPlaneSessionInput,
 } from '../src/control-plane/stream-server.ts';
 import {
   connectControlPlaneStreamClient,
-  type ControlPlaneStreamClient
+  type ControlPlaneStreamClient,
 } from '../src/control-plane/stream-client.ts';
 import {
   encodeStreamEnvelope,
-  type StreamServerEnvelope
+  type StreamServerEnvelope,
 } from '../src/control-plane/stream-protocol.ts';
 import type { CodexLiveEvent } from '../src/codex/live-session.ts';
 import type { PtyExit } from '../src/pty/pty_host.ts';
@@ -59,12 +59,12 @@ class FakeLiveSession {
     this.backlog = [
       {
         cursor: 1,
-        chunk: Buffer.from('warmup-1', 'utf8')
+        chunk: Buffer.from('warmup-1', 'utf8'),
       },
       {
         cursor: 2,
-        chunk: Buffer.from('warmup-2', 'utf8')
-      }
+        chunk: Buffer.from('warmup-2', 'utf8'),
+      },
     ];
     this.latestCursor = 2;
     for (const entry of this.backlog) {
@@ -83,7 +83,7 @@ class FakeLiveSession {
       }
       handlers.onData({
         cursor: event.cursor,
-        chunk: Buffer.from(event.chunk)
+        chunk: Buffer.from(event.chunk),
       });
     }
 
@@ -110,7 +110,7 @@ class FakeLiveSession {
     this.latestCursor += 1;
     const event = {
       cursor: this.latestCursor,
-      chunk
+      chunk,
     };
     for (const handlers of this.attachments.values()) {
       handlers.onData(event);
@@ -157,7 +157,7 @@ class FakeLiveSession {
     }
     this.emitEvent({
       type: 'session-exit',
-      exit
+      exit,
     });
   }
 }
@@ -183,7 +183,7 @@ async function writeRaw(address: { host: string; port: number }, lines: string):
 async function postJson(
   address: { host: string; port: number },
   path: string,
-  payload: unknown
+  payload: unknown,
 ): Promise<{ statusCode: number; body: string }> {
   return await new Promise((resolve, reject) => {
     const body = JSON.stringify(payload);
@@ -195,8 +195,8 @@ async function postJson(
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          'content-length': Buffer.byteLength(body)
-        }
+          'content-length': Buffer.byteLength(body),
+        },
       },
       (res) => {
         const chunks: Buffer[] = [];
@@ -206,10 +206,10 @@ async function postJson(
         res.on('end', () => {
           resolve({
             statusCode: res.statusCode ?? 0,
-            body: Buffer.concat(chunks).toString('utf8')
+            body: Buffer.concat(chunks).toString('utf8'),
           });
         });
-      }
+      },
     );
     req.once('error', reject);
     req.write(body);
@@ -221,7 +221,7 @@ async function postRaw(
   address: { host: string; port: number },
   path: string,
   method: string,
-  body: string
+  body: string,
 ): Promise<{ statusCode: number; body: string }> {
   return await new Promise((resolve, reject) => {
     const req = httpRequest(
@@ -232,8 +232,8 @@ async function postRaw(
         method,
         headers: {
           'content-type': 'application/json',
-          'content-length': Buffer.byteLength(body)
-        }
+          'content-length': Buffer.byteLength(body),
+        },
       },
       (res) => {
         const chunks: Buffer[] = [];
@@ -243,10 +243,10 @@ async function postRaw(
         res.on('end', () => {
           resolve({
             statusCode: res.statusCode ?? 0,
-            body: Buffer.concat(chunks).toString('utf8')
+            body: Buffer.concat(chunks).toString('utf8'),
           });
         });
-      }
+      },
     );
     req.once('error', reject);
     req.write(body);
@@ -261,7 +261,7 @@ function makeTempStateStorePath(): string {
 
 void test('stream server executeCommand guards unsupported command types', async () => {
   const server = await startControlPlaneStreamServer({
-    startSession: (input) => new FakeLiveSession(input)
+    startSession: (input) => new FakeLiveSession(input),
   });
   const internal = server as unknown as {
     executeCommand: (connection: unknown, command: unknown) => Record<string, unknown>;
@@ -272,13 +272,13 @@ void test('stream server executeCommand guards unsupported command types', async
       () =>
         internal.executeCommand(
           {
-            id: 'connection-test'
+            id: 'connection-test',
           },
           {
-            type: 'unsupported.command'
-          }
+            type: 'unsupported.command',
+          },
         ),
-      /unsupported command type/
+      /unsupported command type/,
     );
   } finally {
     await server.close();
@@ -294,7 +294,7 @@ void test('stream server publishes directory git updates from control-plane moni
       enabled: true,
       pollMs: 25,
       maxConcurrency: 1,
-      minDirectoryRefreshMs: 25
+      minDirectoryRefreshMs: 25,
     },
     readGitDirectorySnapshot: () => {
       pollCalls += 1;
@@ -303,7 +303,7 @@ void test('stream server publishes directory git updates from control-plane moni
           branch: 'main',
           changedFiles: 1,
           additions: 2,
-          deletions: 0
+          deletions: 0,
         },
         repository: {
           normalizedRemoteUrl: 'https://github.com/example/harness',
@@ -311,15 +311,15 @@ void test('stream server publishes directory git updates from control-plane moni
           lastCommitAt: '2026-02-16T00:00:00.000Z',
           shortCommitHash: 'abc1234',
           inferredName: 'harness',
-          defaultBranch: 'main'
-        }
+          defaultBranch: 'main',
+        },
       });
-    }
+    },
   });
   const address = server.address();
   const client = await connectControlPlaneStreamClient({
     host: address.address,
-    port: address.port
+    port: address.port,
   });
 
   const observed = collectEnvelopes(client);
@@ -330,13 +330,13 @@ void test('stream server publishes directory git updates from control-plane moni
       tenantId: 'tenant-git-1',
       userId: 'user-git-1',
       workspaceId: 'workspace-git-1',
-      path: workspace
+      path: workspace,
     });
     await client.sendCommand({
       type: 'stream.subscribe',
       tenantId: 'tenant-git-1',
       userId: 'user-git-1',
-      workspaceId: 'workspace-git-1'
+      workspaceId: 'workspace-git-1',
     });
 
     await delay(120);
@@ -372,13 +372,13 @@ void test('stream server deduplicates unchanged git snapshots when using default
       enabled: false,
       pollMs: 100,
       maxConcurrency: 2,
-      minDirectoryRefreshMs: 100
-    }
+      minDirectoryRefreshMs: 100,
+    },
   });
   const address = server.address();
   const client = await connectControlPlaneStreamClient({
     host: address.address,
-    port: address.port
+    port: address.port,
   });
   const observed = collectEnvelopes(client);
 
@@ -389,13 +389,13 @@ void test('stream server deduplicates unchanged git snapshots when using default
       tenantId: 'tenant-git-default',
       userId: 'user-git-default',
       workspaceId: 'workspace-git-default',
-      path: workspace
+      path: workspace,
     });
     await client.sendCommand({
       type: 'stream.subscribe',
       tenantId: 'tenant-git-default',
       userId: 'user-git-default',
-      workspaceId: 'workspace-git-default'
+      workspaceId: 'workspace-git-default',
     });
 
     const internals = server as unknown as {
@@ -433,6 +433,85 @@ void test('stream server deduplicates unchanged git snapshots when using default
     rmSync(workspace, { recursive: true, force: true });
   }
 });
+
+void test(
+  'stream server lists cached directory git status snapshots for startup hydration',
+  async () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'harness-git-status-list-'));
+    const server = await startControlPlaneStreamServer({
+      startSession: (input) => new FakeLiveSession(input),
+      gitStatus: {
+        enabled: true,
+        pollMs: 60_000,
+        maxConcurrency: 1,
+        minDirectoryRefreshMs: 60_000,
+      },
+      readGitDirectorySnapshot: () =>
+        Promise.resolve({
+          summary: {
+            branch: 'main',
+            changedFiles: 3,
+            additions: 4,
+            deletions: 1,
+          },
+          repository: {
+            normalizedRemoteUrl: 'https://github.com/example/harness',
+            commitCount: 42,
+            lastCommitAt: '2026-02-16T00:00:00.000Z',
+            shortCommitHash: '1a2b3c4',
+            inferredName: 'harness',
+            defaultBranch: 'main',
+          },
+        }),
+    });
+    const address = server.address();
+    const client = await connectControlPlaneStreamClient({
+      host: address.address,
+      port: address.port,
+    });
+
+    try {
+      await client.sendCommand({
+        type: 'directory.upsert',
+        directoryId: 'directory-git-status-list-1',
+        tenantId: 'tenant-git-status-list-1',
+        userId: 'user-git-status-list-1',
+        workspaceId: 'workspace-git-status-list-1',
+        path: workspace,
+      });
+      await delay(100);
+      const listed = await client.sendCommand({
+        type: 'directory.git-status',
+        tenantId: 'tenant-git-status-list-1',
+        userId: 'user-git-status-list-1',
+        workspaceId: 'workspace-git-status-list-1',
+      });
+      const rowsRaw = listed['gitStatuses'];
+      assert.equal(Array.isArray(rowsRaw), true);
+      if (!Array.isArray(rowsRaw)) {
+        throw new Error('expected gitStatuses array');
+      }
+      assert.equal(rowsRaw.length, 1);
+      const row = rowsRaw[0] as Record<string, unknown>;
+      assert.equal(row['directoryId'], 'directory-git-status-list-1');
+      const summary = row['summary'] as Record<string, unknown>;
+      assert.equal(summary['branch'], 'main');
+      assert.equal(summary['changedFiles'], 3);
+      const repositorySnapshot = row['repositorySnapshot'] as Record<string, unknown>;
+      assert.equal(repositorySnapshot['normalizedRemoteUrl'], 'https://github.com/example/harness');
+      assert.equal(repositorySnapshot['commitCount'], 42);
+      assert.equal(typeof row['repositoryId'], 'string');
+      const repository = row['repository'] as Record<string, unknown>;
+      assert.equal(typeof repository['repositoryId'], 'string');
+      assert.equal(repository['name'], 'harness');
+      assert.equal(typeof row['observedAt'], 'string');
+    } finally {
+      client.close();
+      await server.close();
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  },
+);
 
 void test('stream server dispatches lifecycle hooks from observed events', async () => {
   const webhookEvents: string[] = [];
@@ -472,13 +551,13 @@ void test('stream server dispatches lifecycle hooks from observed events', async
       providers: {
         codex: true,
         claude: true,
-        controlPlane: true
+        controlPlane: true,
       },
       peonPing: {
         enabled: false,
         baseUrl: 'http://127.0.0.1:19998',
         timeoutMs: 1200,
-        eventCategoryMap: {}
+        eventCategoryMap: {},
       },
       webhooks: [
         {
@@ -488,36 +567,36 @@ void test('stream server dispatches lifecycle hooks from observed events', async
           method: 'POST',
           timeoutMs: 1200,
           headers: {},
-          eventTypes: []
-        }
-      ]
-    }
+          eventTypes: [],
+        },
+      ],
+    },
   });
   const address = server.address();
   const client = await connectControlPlaneStreamClient({
     host: address.address,
-    port: address.port
+    port: address.port,
   });
 
   try {
     await client.sendCommand({
       type: 'directory.upsert',
       directoryId: 'directory-hooks',
-      path: '/tmp/hooks'
+      path: '/tmp/hooks',
     });
     await client.sendCommand({
       type: 'conversation.create',
       conversationId: 'conversation-hooks',
       directoryId: 'directory-hooks',
       title: 'hooks',
-      agentType: 'codex'
+      agentType: 'codex',
     });
     await client.sendCommand({
       type: 'pty.start',
       sessionId: 'conversation-hooks',
       args: [],
       initialCols: 80,
-      initialRows: 24
+      initialRows: 24,
     });
     await delay(25);
   } finally {
@@ -540,21 +619,21 @@ void test('stream server auto-starts persisted conversations during gateway star
     tenantId: 'tenant-bootstrap',
     userId: 'user-bootstrap',
     workspaceId: 'workspace-bootstrap',
-    path: '/tmp/bootstrap-codex'
+    path: '/tmp/bootstrap-codex',
   });
   seededStore.upsertDirectory({
     directoryId: 'directory-bootstrap-terminal',
     tenantId: 'tenant-bootstrap',
     userId: 'user-bootstrap',
     workspaceId: 'workspace-bootstrap',
-    path: '/tmp/bootstrap-terminal'
+    path: '/tmp/bootstrap-terminal',
   });
   seededStore.upsertDirectory({
     directoryId: 'directory-bootstrap-archived',
     tenantId: 'tenant-bootstrap',
     userId: 'user-bootstrap',
     workspaceId: 'workspace-bootstrap',
-    path: '/tmp/bootstrap-archived'
+    path: '/tmp/bootstrap-archived',
   });
   seededStore.createConversation({
     conversationId: 'conversation-bootstrap-codex',
@@ -563,15 +642,15 @@ void test('stream server auto-starts persisted conversations during gateway star
     agentType: 'codex',
     adapterState: {
       codex: {
-        resumeSessionId: 'thread-bootstrap-codex'
-      }
-    }
+        resumeSessionId: 'thread-bootstrap-codex',
+      },
+    },
   });
   seededStore.createConversation({
     conversationId: 'conversation-bootstrap-terminal',
     directoryId: 'directory-bootstrap-terminal',
     title: 'terminal bootstrap',
-    agentType: 'terminal'
+    agentType: 'terminal',
   });
   seededStore.createConversation({
     conversationId: 'conversation-bootstrap-archived',
@@ -580,9 +659,9 @@ void test('stream server auto-starts persisted conversations during gateway star
     agentType: 'codex',
     adapterState: {
       codex: {
-        resumeSessionId: 'thread-bootstrap-archived'
-      }
-    }
+        resumeSessionId: 'thread-bootstrap-archived',
+      },
+    },
   });
   seededStore.archiveConversation('conversation-bootstrap-archived');
   seededStore.close();
@@ -594,12 +673,12 @@ void test('stream server auto-starts persisted conversations during gateway star
       const session = new FakeLiveSession(input);
       sessions.push(session);
       return session;
-    }
+    },
   });
   const address = server.address();
   const client = await connectControlPlaneStreamClient({
     host: address.address,
-    port: address.port
+    port: address.port,
   });
   try {
     assert.equal(sessions.length, 2);
@@ -617,7 +696,7 @@ void test('stream server auto-starts persisted conversations during gateway star
     }
     assert.equal(
       terminal.input.command,
-      resolveTerminalCommandForEnvironment(process.env, process.platform)
+      resolveTerminalCommandForEnvironment(process.env, process.platform),
     );
     assert.deepEqual(terminal.input.baseArgs, []);
     assert.deepEqual(terminal.input.args, []);
@@ -626,7 +705,7 @@ void test('stream server auto-starts persisted conversations during gateway star
 
     assert.equal(
       sessions.some((session) => session.input.args.includes('thread-bootstrap-archived')),
-      false
+      false,
     );
 
     const listed = await client.sendCommand({
@@ -634,15 +713,18 @@ void test('stream server auto-starts persisted conversations during gateway star
       tenantId: 'tenant-bootstrap',
       userId: 'user-bootstrap',
       workspaceId: 'workspace-bootstrap',
-      sort: 'started-asc'
+      sort: 'started-asc',
     });
     const listedRows = listed['sessions'] as Array<Record<string, unknown>>;
     assert.equal(listedRows.length, 2);
-    assert.deepEqual(
-      listedRows.map((row) => row['sessionId']).sort(),
-      ['conversation-bootstrap-codex', 'conversation-bootstrap-terminal']
+    assert.deepEqual(listedRows.map((row) => row['sessionId']).sort(), [
+      'conversation-bootstrap-codex',
+      'conversation-bootstrap-terminal',
+    ]);
+    assert.equal(
+      listedRows.every((row) => row['live'] === true),
+      true,
     );
-    assert.equal(listedRows.every((row) => row['live'] === true), true);
   } finally {
     client.close();
     await server.close();
@@ -664,7 +746,7 @@ void test('stream server supports start/attach/io/events/cleanup over one protoc
   }, /startSession is required/);
 
   const coldServer = new ControlPlaneStreamServer({
-    startSession
+    startSession,
   });
   assert.throws(() => {
     coldServer.address();
@@ -676,11 +758,11 @@ void test('stream server supports start/attach/io/events/cleanup over one protoc
 
   const clientA = await connectControlPlaneStreamClient({
     host: coldAddress.address,
-    port: coldAddress.port
+    port: coldAddress.port,
   });
   const clientB = await connectControlPlaneStreamClient({
     host: coldAddress.address,
-    port: coldAddress.port
+    port: coldAddress.port,
   });
 
   try {
@@ -689,280 +771,302 @@ void test('stream server supports start/attach/io/events/cleanup over one protoc
     const observedA = collectEnvelopes(clientA);
     const observedB = collectEnvelopes(clientB);
 
-    await writeRaw({ host: coldAddress.address, port: coldAddress.port }, 'not-json\n{"kind":"unknown"}\n');
+    await writeRaw(
+      { host: coldAddress.address, port: coldAddress.port },
+      'not-json\n{"kind":"unknown"}\n',
+    );
 
     await clientA.sendCommand({
-    type: 'pty.start',
-    sessionId: 'session-1',
-    args: ['--model', 'gpt-5.3-codex'],
-    cwd: '/tmp/session-1',
-    initialCols: 90,
-    initialRows: 30,
-    env: {
-      TERM: 'xterm-256color'
-    },
-    terminalForegroundHex: 'd0d7de',
-    terminalBackgroundHex: '0f1419'
-  });
+      type: 'pty.start',
+      sessionId: 'session-1',
+      args: ['--model', 'gpt-5.3-codex'],
+      cwd: '/tmp/session-1',
+      initialCols: 90,
+      initialRows: 30,
+      env: {
+        TERM: 'xterm-256color',
+      },
+      terminalForegroundHex: 'd0d7de',
+      terminalBackgroundHex: '0f1419',
+    });
 
-  assert.equal(created.length, 1);
-  assert.equal(created[0]!.input.initialCols, 90);
-  assert.equal(created[0]!.input.cwd, '/tmp/session-1');
+    assert.equal(created.length, 1);
+    assert.equal(created[0]!.input.initialCols, 90);
+    assert.equal(created[0]!.input.cwd, '/tmp/session-1');
 
-  await clientA.sendCommand({
-    type: 'pty.subscribe-events',
-    sessionId: 'session-1'
-  });
+    await clientA.sendCommand({
+      type: 'pty.subscribe-events',
+      sessionId: 'session-1',
+    });
 
-  const attachResult = await clientB.sendCommand({
-    type: 'pty.attach',
-    sessionId: 'session-1',
-    sinceCursor: 1
-  });
-  assert.deepEqual(attachResult, {
-    latestCursor: 2
-  });
+    const attachResult = await clientB.sendCommand({
+      type: 'pty.attach',
+      sessionId: 'session-1',
+      sinceCursor: 1,
+    });
+    assert.deepEqual(attachResult, {
+      latestCursor: 2,
+    });
 
-  await delay(10);
-  assert.equal(
-    observedB.some(
-      (envelope) => envelope.kind === 'pty.output' && Buffer.from(envelope.chunkBase64, 'base64').toString('utf8') === 'warmup-2'
-    ),
-    true
-  );
+    await delay(10);
+    assert.equal(
+      observedB.some(
+        (envelope) =>
+          envelope.kind === 'pty.output' &&
+          Buffer.from(envelope.chunkBase64, 'base64').toString('utf8') === 'warmup-2',
+      ),
+      true,
+    );
 
-  clientB.sendInput('session-1', Buffer.from('typed', 'utf8'));
-  await delay(5);
-  assert.equal(created[0]!.writes.some((chunk) => chunk.toString('utf8') === 'typed'), true);
+    clientB.sendInput('session-1', Buffer.from('typed', 'utf8'));
+    await delay(5);
+    assert.equal(
+      created[0]!.writes.some((chunk) => chunk.toString('utf8') === 'typed'),
+      true,
+    );
 
     clientB.sendResize('session-1', 120, 40);
     await delay(5);
     assert.deepEqual(created[0]!.resizeCalls, [{ cols: 120, rows: 40 }]);
 
-  clientB.sendSignal('session-1', 'interrupt');
-  clientB.sendSignal('session-1', 'eof');
-  await delay(5);
-  assert.equal(created[0]!.writes.some((chunk) => chunk.toString('utf8') === '\u0003'), true);
-  assert.equal(created[0]!.writes.some((chunk) => chunk.toString('utf8') === '\u0004'), true);
+    clientB.sendSignal('session-1', 'interrupt');
+    clientB.sendSignal('session-1', 'eof');
+    await delay(5);
+    assert.equal(
+      created[0]!.writes.some((chunk) => chunk.toString('utf8') === '\u0003'),
+      true,
+    );
+    assert.equal(
+      created[0]!.writes.some((chunk) => chunk.toString('utf8') === '\u0004'),
+      true,
+    );
 
-  created[0]!.emitEvent({
-    type: 'notify',
-    record: {
-      ts: '2026-01-01T00:00:02.000Z',
-      payload: {
-        type: 'agent-turn-complete'
-      }
-    }
-  });
-  await delay(10);
-  assert.equal(
-    observedA.some(
-      (envelope) =>
-        envelope.kind === 'pty.event' &&
-        envelope.event.type === 'notify' &&
-        envelope.event.record.payload['type'] === 'agent-turn-complete'
-    ),
-    true
-  );
-  created[0]!.emitEvent({
-    type: 'notify',
-    record: {
-      ts: '2026-01-01T00:00:03.000Z',
-      payload: {
-        type: 'agent-turn-progress'
-      }
-    }
-  });
-  await delay(10);
-  assert.equal(
-    observedA.some(
-      (envelope) =>
-        envelope.kind === 'pty.event' &&
-        envelope.event.type === 'notify' &&
-        envelope.event.record.payload['type'] === 'agent-turn-progress'
-    ),
-    true
-  );
-  created[0]!.emitEvent({
-    type: 'notify',
-    record: {
-      ts: '2026-01-01T00:00:04.000Z',
-      payload: {
-        type: 42
-      }
-    }
-  });
-  await delay(10);
-  assert.equal(
-    observedA.some(
-      (envelope) =>
-        envelope.kind === 'pty.event' &&
-        envelope.event.type === 'notify' &&
-        envelope.event.record.payload['type'] === 42
-    ),
-    true
-  );
-  const statusAfterProgressNotify = await clientA.sendCommand({
-    type: 'session.status',
-    sessionId: 'session-1'
-  });
-  assert.equal(statusAfterProgressNotify['status'], 'completed');
-
-  created[0]!.emitEvent({
-    type: 'notify',
-    record: {
-      ts: '2026-01-01T00:00:03.000Z',
-      payload: {
-        type: 'agent-heartbeat'
-      }
-    }
-  });
-  await delay(10);
-  assert.equal(
-    observedA.some(
-      (envelope) =>
-        envelope.kind === 'pty.event' &&
-        envelope.event.type === 'notify' &&
-        envelope.event.record.payload['type'] === 'agent-heartbeat'
-    ),
-    true
-  );
-
-  created[0]!.emitEvent({
-    type: 'notify',
-    record: {
-      ts: '2026-01-01T00:00:04.000Z',
-      payload: {
-        type: 7
-      }
-    }
-  });
-  await delay(10);
-  assert.equal(
-    observedA.some(
-      (envelope) =>
-        envelope.kind === 'pty.event' &&
-        envelope.event.type === 'notify' &&
-        envelope.event.record.payload['type'] === 7
-    ),
-    true
-  );
-
-  await writeRaw(
-    { host: coldAddress.address, port: coldAddress.port },
-    `${encodeStreamEnvelope({
-      kind: 'pty.input',
-      sessionId: 'session-1',
-      dataBase64: '%%%'
-    })}`
-  );
-
-  await clientB.sendCommand({
-    type: 'pty.detach',
-    sessionId: 'session-1'
-  });
-  assert.equal(created[0]!.attachmentCount(), 0);
-
-  await clientB.sendCommand({
-    type: 'pty.unsubscribe-events',
-    sessionId: 'session-1'
-  });
-  const ptyEventCountA = observedA.filter((envelope) => envelope.kind === 'pty.event').length;
-  const ptyEventCountB = observedB.filter((envelope) => envelope.kind === 'pty.event').length;
-
-  created[0]!.emitEvent({
-    type: 'terminal-output',
-    cursor: 99,
-    chunk: Buffer.from('ignored', 'utf8')
-  });
-
-  await delay(10);
-  assert.equal(observedA.filter((envelope) => envelope.kind === 'pty.event').length, ptyEventCountA);
-  assert.equal(observedB.filter((envelope) => envelope.kind === 'pty.event').length, ptyEventCountB);
-
-  created[0]!.emitExit({
-    code: 0,
-    signal: null
-  });
-  await delay(10);
-
-  assert.equal(
-    observedA.some((envelope) => envelope.kind === 'pty.event' && envelope.event.type === 'session-exit'),
-    true
-  );
-
-  const statusAfterExit = await clientA.sendCommand({
-    type: 'session.status',
-    sessionId: 'session-1'
-  });
-  assert.equal(statusAfterExit['status'], 'exited');
-
-  const writesBeforeExitedInput = created[0]!.writes.length;
-  const resizeBeforeExitedInput = created[0]!.resizeCalls.length;
-  clientA.sendInput('session-1', Buffer.from('ignored-after-exit', 'utf8'));
-  clientA.sendResize('session-1', 200, 50);
-  clientA.sendSignal('session-1', 'interrupt');
-  await delay(10);
-  assert.equal(created[0]!.writes.length, writesBeforeExitedInput);
-  assert.equal(created[0]!.resizeCalls.length, resizeBeforeExitedInput);
-
-  await assert.rejects(
-    clientA.sendCommand({
-      type: 'pty.close',
-      sessionId: 'session-1'
-    }),
-    /session is not live/
-  );
-  const removedAfterExit = await clientA.sendCommand({
-    type: 'session.remove',
-    sessionId: 'session-1'
-  });
-  assert.equal(removedAfterExit['removed'], true);
-
-  await clientA.sendCommand({
-    type: 'pty.start',
-    sessionId: 'session-2',
-    args: [],
-    initialCols: 80,
-    initialRows: 24
-  });
-  assert.equal(created.length, 2);
-  clientA.sendSignal('session-2', 'terminate');
-  for (let attempt = 0; attempt < 20 && !created[1]!.isClosed(); attempt += 1) {
+    created[0]!.emitEvent({
+      type: 'notify',
+      record: {
+        ts: '2026-01-01T00:00:02.000Z',
+        payload: {
+          type: 'agent-turn-complete',
+        },
+      },
+    });
     await delay(10);
-  }
-  assert.equal(created[1]!.isClosed(), true);
+    assert.equal(
+      observedA.some(
+        (envelope) =>
+          envelope.kind === 'pty.event' &&
+          envelope.event.type === 'notify' &&
+          envelope.event.record.payload['type'] === 'agent-turn-complete',
+      ),
+      true,
+    );
+    created[0]!.emitEvent({
+      type: 'notify',
+      record: {
+        ts: '2026-01-01T00:00:03.000Z',
+        payload: {
+          type: 'agent-turn-progress',
+        },
+      },
+    });
+    await delay(10);
+    assert.equal(
+      observedA.some(
+        (envelope) =>
+          envelope.kind === 'pty.event' &&
+          envelope.event.type === 'notify' &&
+          envelope.event.record.payload['type'] === 'agent-turn-progress',
+      ),
+      true,
+    );
+    created[0]!.emitEvent({
+      type: 'notify',
+      record: {
+        ts: '2026-01-01T00:00:04.000Z',
+        payload: {
+          type: 42,
+        },
+      },
+    });
+    await delay(10);
+    assert.equal(
+      observedA.some(
+        (envelope) =>
+          envelope.kind === 'pty.event' &&
+          envelope.event.type === 'notify' &&
+          envelope.event.record.payload['type'] === 42,
+      ),
+      true,
+    );
+    const statusAfterProgressNotify = await clientA.sendCommand({
+      type: 'session.status',
+      sessionId: 'session-1',
+    });
+    assert.equal(statusAfterProgressNotify['status'], 'completed');
 
-  await assert.rejects(
-    clientA.sendCommand({
-      type: 'pty.attach',
+    created[0]!.emitEvent({
+      type: 'notify',
+      record: {
+        ts: '2026-01-01T00:00:03.000Z',
+        payload: {
+          type: 'agent-heartbeat',
+        },
+      },
+    });
+    await delay(10);
+    assert.equal(
+      observedA.some(
+        (envelope) =>
+          envelope.kind === 'pty.event' &&
+          envelope.event.type === 'notify' &&
+          envelope.event.record.payload['type'] === 'agent-heartbeat',
+      ),
+      true,
+    );
+
+    created[0]!.emitEvent({
+      type: 'notify',
+      record: {
+        ts: '2026-01-01T00:00:04.000Z',
+        payload: {
+          type: 7,
+        },
+      },
+    });
+    await delay(10);
+    assert.equal(
+      observedA.some(
+        (envelope) =>
+          envelope.kind === 'pty.event' &&
+          envelope.event.type === 'notify' &&
+          envelope.event.record.payload['type'] === 7,
+      ),
+      true,
+    );
+
+    await writeRaw(
+      { host: coldAddress.address, port: coldAddress.port },
+      `${encodeStreamEnvelope({
+        kind: 'pty.input',
+        sessionId: 'session-1',
+        dataBase64: '%%%',
+      })}`,
+    );
+
+    await clientB.sendCommand({
+      type: 'pty.detach',
+      sessionId: 'session-1',
+    });
+    assert.equal(created[0]!.attachmentCount(), 0);
+
+    await clientB.sendCommand({
+      type: 'pty.unsubscribe-events',
+      sessionId: 'session-1',
+    });
+    const ptyEventCountA = observedA.filter((envelope) => envelope.kind === 'pty.event').length;
+    const ptyEventCountB = observedB.filter((envelope) => envelope.kind === 'pty.event').length;
+
+    created[0]!.emitEvent({
+      type: 'terminal-output',
+      cursor: 99,
+      chunk: Buffer.from('ignored', 'utf8'),
+    });
+
+    await delay(10);
+    assert.equal(
+      observedA.filter((envelope) => envelope.kind === 'pty.event').length,
+      ptyEventCountA,
+    );
+    assert.equal(
+      observedB.filter((envelope) => envelope.kind === 'pty.event').length,
+      ptyEventCountB,
+    );
+
+    created[0]!.emitExit({
+      code: 0,
+      signal: null,
+    });
+    await delay(10);
+
+    assert.equal(
+      observedA.some(
+        (envelope) => envelope.kind === 'pty.event' && envelope.event.type === 'session-exit',
+      ),
+      true,
+    );
+
+    const statusAfterExit = await clientA.sendCommand({
+      type: 'session.status',
+      sessionId: 'session-1',
+    });
+    assert.equal(statusAfterExit['status'], 'exited');
+
+    const writesBeforeExitedInput = created[0]!.writes.length;
+    const resizeBeforeExitedInput = created[0]!.resizeCalls.length;
+    clientA.sendInput('session-1', Buffer.from('ignored-after-exit', 'utf8'));
+    clientA.sendResize('session-1', 200, 50);
+    clientA.sendSignal('session-1', 'interrupt');
+    await delay(10);
+    assert.equal(created[0]!.writes.length, writesBeforeExitedInput);
+    assert.equal(created[0]!.resizeCalls.length, resizeBeforeExitedInput);
+
+    await assert.rejects(
+      clientA.sendCommand({
+        type: 'pty.close',
+        sessionId: 'session-1',
+      }),
+      /session is not live/,
+    );
+    const removedAfterExit = await clientA.sendCommand({
+      type: 'session.remove',
+      sessionId: 'session-1',
+    });
+    assert.equal(removedAfterExit['removed'], true);
+
+    await clientA.sendCommand({
+      type: 'pty.start',
+      sessionId: 'session-2',
+      args: [],
+      initialCols: 80,
+      initialRows: 24,
+    });
+    assert.equal(created.length, 2);
+    clientA.sendSignal('session-2', 'terminate');
+    for (let attempt = 0; attempt < 20 && !created[1]!.isClosed(); attempt += 1) {
+      await delay(10);
+    }
+    assert.equal(created[1]!.isClosed(), true);
+
+    await assert.rejects(
+      clientA.sendCommand({
+        type: 'pty.attach',
+        sessionId: 'missing-session',
+        sinceCursor: 0,
+      }),
+      /session not found/,
+    );
+
+    await clientA.sendCommand({
+      type: 'pty.detach',
       sessionId: 'missing-session',
-      sinceCursor: 0
-    }),
-    /session not found/
-  );
+    });
 
-  await clientA.sendCommand({
-    type: 'pty.detach',
-    sessionId: 'missing-session'
-  });
-
-  await clientA.sendCommand({
-    type: 'pty.start',
-    sessionId: 'session-3',
-    args: [],
-    initialCols: 80,
-    initialRows: 24
-  });
+    await clientA.sendCommand({
+      type: 'pty.start',
+      sessionId: 'session-3',
+      args: [],
+      initialCols: 80,
+      initialRows: 24,
+    });
     await assert.rejects(
       clientA.sendCommand({
         type: 'pty.start',
         sessionId: 'session-3',
         args: [],
         initialCols: 80,
-        initialRows: 24
+        initialRows: 24,
       }),
-      /session already exists/
+      /session already exists/,
     );
   } finally {
     clientA.close();
@@ -974,7 +1078,7 @@ void test('stream server supports start/attach/io/events/cleanup over one protoc
 
 void test('startControlPlaneStreamServer helper starts a ready server', async () => {
   const server = await startControlPlaneStreamServer({
-    startSession: (input) => new FakeLiveSession(input)
+    startSession: (input) => new FakeLiveSession(input),
   });
   const address = server.address();
   assert.equal(typeof address.port, 'number');
@@ -990,17 +1094,17 @@ void test('startControlPlaneStreamServer helper starts a ready server', async ()
 
 void test('stream server supports session.list, session.status, and session.snapshot', async () => {
   const server = await startControlPlaneStreamServer({
-    startSession: (input) => new FakeLiveSession(input)
+    startSession: (input) => new FakeLiveSession(input),
   });
   const address = server.address();
   const client = await connectControlPlaneStreamClient({
     host: address.address,
-    port: address.port
+    port: address.port,
   });
 
   try {
     const initialList = await client.sendCommand({
-      type: 'session.list'
+      type: 'session.list',
     });
     assert.deepEqual(initialList['sessions'], []);
 
@@ -1013,7 +1117,7 @@ void test('stream server supports session.list, session.status, and session.snap
       tenantId: 'tenant-a',
       userId: 'user-a',
       workspaceId: 'workspace-a',
-      worktreeId: 'worktree-a'
+      worktreeId: 'worktree-a',
     });
     await delay(2);
 
@@ -1026,7 +1130,7 @@ void test('stream server supports session.list, session.status, and session.snap
       tenantId: 'tenant-a',
       userId: 'user-a',
       workspaceId: 'workspace-a',
-      worktreeId: 'worktree-b'
+      worktreeId: 'worktree-b',
     });
     await delay(2);
 
@@ -1039,7 +1143,7 @@ void test('stream server supports session.list, session.status, and session.snap
       tenantId: 'tenant-b',
       userId: 'user-b',
       workspaceId: 'workspace-b',
-      worktreeId: 'worktree-c'
+      worktreeId: 'worktree-c',
     });
 
     const listed = await client.sendCommand({
@@ -1047,7 +1151,7 @@ void test('stream server supports session.list, session.status, and session.snap
       tenantId: 'tenant-a',
       userId: 'user-a',
       workspaceId: 'workspace-a',
-      sort: 'started-asc'
+      sort: 'started-asc',
     });
     assert.equal(Array.isArray(listed['sessions']), true);
     const sessionEntries = listed['sessions'] as Array<Record<string, unknown>>;
@@ -1062,7 +1166,7 @@ void test('stream server supports session.list, session.status, and session.snap
     const limited = await client.sendCommand({
       type: 'session.list',
       sort: 'started-desc',
-      limit: 1
+      limit: 1,
     });
     const limitedEntries = limited['sessions'] as Array<Record<string, unknown>>;
     assert.equal(limitedEntries.length, 1);
@@ -1070,7 +1174,7 @@ void test('stream server supports session.list, session.status, and session.snap
 
     const filteredByWorktree = await client.sendCommand({
       type: 'session.list',
-      worktreeId: 'worktree-b'
+      worktreeId: 'worktree-b',
     });
     const worktreeEntries = filteredByWorktree['sessions'] as Array<Record<string, unknown>>;
     assert.equal(worktreeEntries.length, 1);
@@ -1078,31 +1182,31 @@ void test('stream server supports session.list, session.status, and session.snap
 
     const filteredByUser = await client.sendCommand({
       type: 'session.list',
-      userId: 'missing-user'
+      userId: 'missing-user',
     });
     assert.deepEqual(filteredByUser['sessions'], []);
 
     const filteredByWorkspace = await client.sendCommand({
       type: 'session.list',
-      workspaceId: 'missing-workspace'
+      workspaceId: 'missing-workspace',
     });
     assert.deepEqual(filteredByWorkspace['sessions'], []);
 
     const filteredByStatus = await client.sendCommand({
       type: 'session.list',
-      status: 'exited'
+      status: 'exited',
     });
     assert.deepEqual(filteredByStatus['sessions'], []);
 
     const filteredByLive = await client.sendCommand({
       type: 'session.list',
-      live: false
+      live: false,
     });
     assert.deepEqual(filteredByLive['sessions'], []);
 
     const status = await client.sendCommand({
       type: 'session.status',
-      sessionId: 'session-list'
+      sessionId: 'session-list',
     });
     assert.equal(status['sessionId'], 'session-list');
     assert.equal(status['status'], 'running');
@@ -1110,7 +1214,7 @@ void test('stream server supports session.list, session.status, and session.snap
 
     const snapshot = await client.sendCommand({
       type: 'session.snapshot',
-      sessionId: 'session-list'
+      sessionId: 'session-list',
     });
     assert.equal(snapshot['sessionId'], 'session-list');
     const snapshotRecord = snapshot['snapshot'] as Record<string, unknown>;
@@ -1122,292 +1226,289 @@ void test('stream server supports session.list, session.status, and session.snap
   }
 });
 
-void test(
-  'stream server list/query options apply tenant scoping and snapshot replay covers stale/null branches',
-  async () => {
-    const server = await startControlPlaneStreamServer({
-      startSession: (input) => new FakeLiveSession(input)
+void test('stream server list/query options apply tenant scoping and snapshot replay covers stale/null branches', async () => {
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input),
+  });
+  const address = server.address();
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port,
+  });
+  const observed = collectEnvelopes(client);
+
+  try {
+    await client.sendCommand({
+      type: 'directory.upsert',
+      directoryId: 'directory-scope-a',
+      tenantId: 'tenant-scope',
+      userId: 'user-scope',
+      workspaceId: 'workspace-scope',
+      path: '/tmp/scope-a',
     });
-    const address = server.address();
-    const client = await connectControlPlaneStreamClient({
-      host: address.address,
-      port: address.port
+    await client.sendCommand({
+      type: 'directory.upsert',
+      directoryId: 'directory-scope-b',
+      tenantId: 'tenant-other',
+      userId: 'user-other',
+      workspaceId: 'workspace-other',
+      path: '/tmp/scope-b',
     });
-    const observed = collectEnvelopes(client);
 
-    try {
-      await client.sendCommand({
-        type: 'directory.upsert',
-        directoryId: 'directory-scope-a',
-        tenantId: 'tenant-scope',
-        userId: 'user-scope',
-        workspaceId: 'workspace-scope',
-        path: '/tmp/scope-a'
-      });
-      await client.sendCommand({
-        type: 'directory.upsert',
-        directoryId: 'directory-scope-b',
-        tenantId: 'tenant-other',
-        userId: 'user-other',
-        workspaceId: 'workspace-other',
-        path: '/tmp/scope-b'
-      });
+    await client.sendCommand({
+      type: 'conversation.create',
+      conversationId: 'conversation-scope-a',
+      directoryId: 'directory-scope-a',
+      title: 'scope-a',
+      agentType: 'codex',
+    });
+    await client.sendCommand({
+      type: 'conversation.create',
+      conversationId: 'conversation-scope-b',
+      directoryId: 'directory-scope-b',
+      title: 'scope-b',
+      agentType: 'codex',
+    });
+    const generatedDirectory = await client.sendCommand({
+      type: 'directory.upsert',
+      path: '/tmp/scope-generated',
+    });
+    const generatedDirectoryId = (generatedDirectory['directory'] as Record<string, unknown>)[
+      'directoryId'
+    ] as string;
+    assert.equal(generatedDirectoryId.startsWith('directory-'), true);
+    const generatedConversation = await client.sendCommand({
+      type: 'conversation.create',
+      directoryId: generatedDirectoryId,
+      title: 'scope-generated',
+      agentType: 'codex',
+    });
+    const generatedConversationId = (
+      generatedConversation['conversation'] as Record<string, unknown>
+    )['conversationId'] as string;
+    assert.equal(generatedConversationId.startsWith('conversation-'), true);
 
-      await client.sendCommand({
-        type: 'conversation.create',
-        conversationId: 'conversation-scope-a',
-        directoryId: 'directory-scope-a',
-        title: 'scope-a',
-        agentType: 'codex'
-      });
-      await client.sendCommand({
-        type: 'conversation.create',
-        conversationId: 'conversation-scope-b',
-        directoryId: 'directory-scope-b',
-        title: 'scope-b',
-        agentType: 'codex'
-      });
-      const generatedDirectory = await client.sendCommand({
-        type: 'directory.upsert',
-        path: '/tmp/scope-generated'
-      });
-      const generatedDirectoryId = (generatedDirectory['directory'] as Record<string, unknown>)[
-        'directoryId'
-      ] as string;
-      assert.equal(generatedDirectoryId.startsWith('directory-'), true);
-      const generatedConversation = await client.sendCommand({
-        type: 'conversation.create',
-        directoryId: generatedDirectoryId,
-        title: 'scope-generated',
-        agentType: 'codex'
-      });
-      const generatedConversationId = (generatedConversation['conversation'] as Record<string, unknown>)[
-        'conversationId'
-      ] as string;
-      assert.equal(generatedConversationId.startsWith('conversation-'), true);
+    const scopedDirectories = await client.sendCommand({
+      type: 'directory.list',
+      tenantId: 'tenant-scope',
+      userId: 'user-scope',
+      workspaceId: 'workspace-scope',
+      limit: 1,
+    });
+    const directoryRows = scopedDirectories['directories'] as Array<Record<string, unknown>>;
+    assert.equal(directoryRows.length, 1);
+    assert.equal(directoryRows[0]?.['directoryId'], 'directory-scope-a');
 
-      const scopedDirectories = await client.sendCommand({
-        type: 'directory.list',
-        tenantId: 'tenant-scope',
-        userId: 'user-scope',
-        workspaceId: 'workspace-scope',
-        limit: 1
-      });
-      const directoryRows = scopedDirectories['directories'] as Array<Record<string, unknown>>;
-      assert.equal(directoryRows.length, 1);
-      assert.equal(directoryRows[0]?.['directoryId'], 'directory-scope-a');
+    const scopedConversations = await client.sendCommand({
+      type: 'conversation.list',
+      directoryId: 'directory-scope-a',
+      tenantId: 'tenant-scope',
+      userId: 'user-scope',
+      workspaceId: 'workspace-scope',
+      limit: 1,
+    });
+    const conversationRows = scopedConversations['conversations'] as Array<Record<string, unknown>>;
+    assert.equal(conversationRows.length, 1);
+    assert.equal(conversationRows[0]?.['conversationId'], 'conversation-scope-a');
 
-      const scopedConversations = await client.sendCommand({
-        type: 'conversation.list',
-        directoryId: 'directory-scope-a',
-        tenantId: 'tenant-scope',
-        userId: 'user-scope',
-        workspaceId: 'workspace-scope',
-        limit: 1
-      });
-      const conversationRows = scopedConversations['conversations'] as Array<Record<string, unknown>>;
-      assert.equal(conversationRows.length, 1);
-      assert.equal(conversationRows[0]?.['conversationId'], 'conversation-scope-a');
+    const replaySubscription = await client.sendCommand({
+      type: 'stream.subscribe',
+      includeOutput: false,
+      directoryId: 'directory-scope-a',
+      afterCursor: Number.MAX_SAFE_INTEGER,
+    });
+    const replaySubscriptionId = replaySubscription['subscriptionId'];
+    assert.equal(typeof replaySubscriptionId, 'string');
+    await delay(20);
+    assert.equal(
+      observed.some(
+        (envelope) =>
+          envelope.kind === 'stream.event' && envelope.subscriptionId === replaySubscriptionId,
+      ),
+      false,
+    );
+    const defaultSubscription = await client.sendCommand({
+      type: 'stream.subscribe',
+      conversationId: 'conversation-scope-a',
+    });
+    const defaultSubscriptionId = defaultSubscription['subscriptionId'];
+    assert.equal(typeof defaultSubscriptionId, 'string');
+    await client.sendCommand({
+      type: 'stream.unsubscribe',
+      subscriptionId: defaultSubscriptionId as string,
+    });
 
-      const replaySubscription = await client.sendCommand({
-        type: 'stream.subscribe',
-        includeOutput: false,
-        directoryId: 'directory-scope-a',
-        afterCursor: Number.MAX_SAFE_INTEGER
-      });
-      const replaySubscriptionId = replaySubscription['subscriptionId'];
-      assert.equal(typeof replaySubscriptionId, 'string');
-      await delay(20);
-      assert.equal(
-        observed.some(
-          (envelope) =>
-            envelope.kind === 'stream.event' && envelope.subscriptionId === replaySubscriptionId
-        ),
-        false
-      );
-      const defaultSubscription = await client.sendCommand({
-        type: 'stream.subscribe',
-        conversationId: 'conversation-scope-a'
-      });
-      const defaultSubscriptionId = defaultSubscription['subscriptionId'];
-      assert.equal(typeof defaultSubscriptionId, 'string');
-      await client.sendCommand({
-        type: 'stream.unsubscribe',
-        subscriptionId: defaultSubscriptionId as string
-      });
+    await client.sendCommand({
+      type: 'pty.start',
+      sessionId: 'session-duplicate-running',
+      args: [],
+      initialCols: 80,
+      initialRows: 24,
+    });
+    await assert.rejects(
+      () =>
+        client.sendCommand({
+          type: 'pty.start',
+          sessionId: 'session-duplicate-running',
+          args: [],
+          initialCols: 80,
+          initialRows: 24,
+        }),
+      /session already exists: session-duplicate-running/,
+    );
 
-      await client.sendCommand({
-        type: 'pty.start',
-        sessionId: 'session-duplicate-running',
-        args: [],
-        initialCols: 80,
-        initialRows: 24
-      });
-      await assert.rejects(
-        () =>
-          client.sendCommand({
-            type: 'pty.start',
-            sessionId: 'session-duplicate-running',
-            args: [],
-            initialCols: 80,
-            initialRows: 24
-          }),
-        /session already exists: session-duplicate-running/
-      );
-
-      await client.sendCommand({
-        type: 'conversation.create',
-        conversationId: 'conversation-needs-input-seed',
-        directoryId: 'directory-scope-a',
-        title: 'needs-input seed',
-        agentType: 'codex'
-      });
-      const statefulInternals = server as unknown as {
-        stateStore: {
-          updateConversationRuntime: (
-            conversationId: string,
-            runtime: {
-              status: 'needs-input';
-              live: boolean;
-              attentionReason: string | null;
-              processId: number | null;
-              lastEventAt: string | null;
-              lastExit: null;
-            }
-          ) => void;
-        };
-      };
-      statefulInternals.stateStore.updateConversationRuntime('conversation-needs-input-seed', {
-        status: 'needs-input',
-        live: false,
-        attentionReason: 'approval needed',
-        processId: null,
-        lastEventAt: null,
-        lastExit: null
-      });
-      await client.sendCommand({
-        type: 'pty.start',
-        sessionId: 'conversation-needs-input-seed',
-        args: [],
-        initialCols: 80,
-        initialRows: 24
-      });
-      const seededNeedsInputStatus = await client.sendCommand({
-        type: 'session.status',
-        sessionId: 'conversation-needs-input-seed'
-      });
-      assert.equal(seededNeedsInputStatus['status'], 'needs-input');
-      assert.equal(seededNeedsInputStatus['attentionReason'], 'approval needed');
-
-      await client.sendCommand({
-        type: 'conversation.create',
-        conversationId: 'conversation-needs-input-null-reason',
-        directoryId: 'directory-scope-a',
-        title: 'needs-input null reason',
-        agentType: 'codex'
-      });
-      statefulInternals.stateStore.updateConversationRuntime('conversation-needs-input-null-reason', {
-        status: 'needs-input',
-        live: false,
-        attentionReason: null,
-        processId: null,
-        lastEventAt: null,
-        lastExit: null
-      });
-      await client.sendCommand({
-        type: 'pty.start',
-        sessionId: 'conversation-needs-input-null-reason',
-        args: [],
-        initialCols: 80,
-        initialRows: 24
-      });
-      const seededNeedsInputNullReason = await client.sendCommand({
-        type: 'session.status',
-        sessionId: 'conversation-needs-input-null-reason'
-      });
-      assert.equal(seededNeedsInputNullReason['status'], 'needs-input');
-      assert.equal(seededNeedsInputNullReason['attentionReason'], null);
-
-      const internals = server as unknown as {
-        sessions: Map<
-          string,
-          {
-            id: string;
-            directoryId: string | null;
-            agentType: string;
-            adapterState: Record<string, unknown>;
-            tenantId: string;
-            userId: string;
-            workspaceId: string;
-            worktreeId: string;
-            session: null;
-            eventSubscriberConnectionIds: Set<string>;
-            attachmentByConnectionId: Map<string, string>;
-            unsubscribe: null;
-            status: 'completed';
-            attentionReason: null;
+    await client.sendCommand({
+      type: 'conversation.create',
+      conversationId: 'conversation-needs-input-seed',
+      directoryId: 'directory-scope-a',
+      title: 'needs-input seed',
+      agentType: 'codex',
+    });
+    const statefulInternals = server as unknown as {
+      stateStore: {
+        updateConversationRuntime: (
+          conversationId: string,
+          runtime: {
+            status: 'needs-input';
+            live: boolean;
+            attentionReason: string | null;
+            processId: number | null;
             lastEventAt: string | null;
             lastExit: null;
-            lastSnapshot: Record<string, unknown> | null;
-            startedAt: string;
-            exitedAt: string | null;
-            tombstoneTimer: NodeJS.Timeout | null;
-            lastObservedOutputCursor: number;
-            latestTelemetry: null;
-          }
-        >;
+          },
+        ) => void;
       };
-      internals.sessions.set('session-snapshot-missing', {
-        id: 'session-snapshot-missing',
-        directoryId: 'directory-scope-a',
-        agentType: 'codex',
-        adapterState: {},
-        tenantId: 'tenant-scope',
-        userId: 'user-scope',
-        workspaceId: 'workspace-scope',
-        worktreeId: 'worktree-scope',
-        session: null,
-        eventSubscriberConnectionIds: new Set<string>(),
-        attachmentByConnectionId: new Map<string, string>(),
-        unsubscribe: null,
-        status: 'completed',
-        attentionReason: null,
-        lastEventAt: null,
-        lastExit: null,
-        lastSnapshot: null,
-        startedAt: new Date(0).toISOString(),
-        exitedAt: new Date(0).toISOString(),
-        tombstoneTimer: null,
-        lastObservedOutputCursor: 0,
-        latestTelemetry: null
-      });
-      await assert.rejects(
-        () =>
-          client.sendCommand({
-            type: 'session.snapshot',
-            sessionId: 'session-snapshot-missing'
-          }),
-        /session snapshot unavailable: session-snapshot-missing/
-      );
+    };
+    statefulInternals.stateStore.updateConversationRuntime('conversation-needs-input-seed', {
+      status: 'needs-input',
+      live: false,
+      attentionReason: 'approval needed',
+      processId: null,
+      lastEventAt: null,
+      lastExit: null,
+    });
+    await client.sendCommand({
+      type: 'pty.start',
+      sessionId: 'conversation-needs-input-seed',
+      args: [],
+      initialCols: 80,
+      initialRows: 24,
+    });
+    const seededNeedsInputStatus = await client.sendCommand({
+      type: 'session.status',
+      sessionId: 'conversation-needs-input-seed',
+    });
+    assert.equal(seededNeedsInputStatus['status'], 'needs-input');
+    assert.equal(seededNeedsInputStatus['attentionReason'], 'approval needed');
 
-      internals.sessions.get('session-snapshot-missing')!.lastSnapshot = {
-        lines: [],
-        frameHash: 'stale-hash',
-        cursorRow: 0,
-        cursorCol: 0
-      };
-      const staleSnapshot = await client.sendCommand({
-        type: 'session.snapshot',
-        sessionId: 'session-snapshot-missing'
-      });
-      assert.equal(staleSnapshot['sessionId'], 'session-snapshot-missing');
-      assert.equal(staleSnapshot['stale'], true);
-    } finally {
-      client.close();
-      await server.close();
-    }
+    await client.sendCommand({
+      type: 'conversation.create',
+      conversationId: 'conversation-needs-input-null-reason',
+      directoryId: 'directory-scope-a',
+      title: 'needs-input null reason',
+      agentType: 'codex',
+    });
+    statefulInternals.stateStore.updateConversationRuntime('conversation-needs-input-null-reason', {
+      status: 'needs-input',
+      live: false,
+      attentionReason: null,
+      processId: null,
+      lastEventAt: null,
+      lastExit: null,
+    });
+    await client.sendCommand({
+      type: 'pty.start',
+      sessionId: 'conversation-needs-input-null-reason',
+      args: [],
+      initialCols: 80,
+      initialRows: 24,
+    });
+    const seededNeedsInputNullReason = await client.sendCommand({
+      type: 'session.status',
+      sessionId: 'conversation-needs-input-null-reason',
+    });
+    assert.equal(seededNeedsInputNullReason['status'], 'needs-input');
+    assert.equal(seededNeedsInputNullReason['attentionReason'], null);
+
+    const internals = server as unknown as {
+      sessions: Map<
+        string,
+        {
+          id: string;
+          directoryId: string | null;
+          agentType: string;
+          adapterState: Record<string, unknown>;
+          tenantId: string;
+          userId: string;
+          workspaceId: string;
+          worktreeId: string;
+          session: null;
+          eventSubscriberConnectionIds: Set<string>;
+          attachmentByConnectionId: Map<string, string>;
+          unsubscribe: null;
+          status: 'completed';
+          attentionReason: null;
+          lastEventAt: string | null;
+          lastExit: null;
+          lastSnapshot: Record<string, unknown> | null;
+          startedAt: string;
+          exitedAt: string | null;
+          tombstoneTimer: NodeJS.Timeout | null;
+          lastObservedOutputCursor: number;
+          latestTelemetry: null;
+        }
+      >;
+    };
+    internals.sessions.set('session-snapshot-missing', {
+      id: 'session-snapshot-missing',
+      directoryId: 'directory-scope-a',
+      agentType: 'codex',
+      adapterState: {},
+      tenantId: 'tenant-scope',
+      userId: 'user-scope',
+      workspaceId: 'workspace-scope',
+      worktreeId: 'worktree-scope',
+      session: null,
+      eventSubscriberConnectionIds: new Set<string>(),
+      attachmentByConnectionId: new Map<string, string>(),
+      unsubscribe: null,
+      status: 'completed',
+      attentionReason: null,
+      lastEventAt: null,
+      lastExit: null,
+      lastSnapshot: null,
+      startedAt: new Date(0).toISOString(),
+      exitedAt: new Date(0).toISOString(),
+      tombstoneTimer: null,
+      lastObservedOutputCursor: 0,
+      latestTelemetry: null,
+    });
+    await assert.rejects(
+      () =>
+        client.sendCommand({
+          type: 'session.snapshot',
+          sessionId: 'session-snapshot-missing',
+        }),
+      /session snapshot unavailable: session-snapshot-missing/,
+    );
+
+    internals.sessions.get('session-snapshot-missing')!.lastSnapshot = {
+      lines: [],
+      frameHash: 'stale-hash',
+      cursorRow: 0,
+      cursorCol: 0,
+    };
+    const staleSnapshot = await client.sendCommand({
+      type: 'session.snapshot',
+      sessionId: 'session-snapshot-missing',
+    });
+    assert.equal(staleSnapshot['sessionId'], 'session-snapshot-missing');
+    assert.equal(staleSnapshot['stale'], true);
+  } finally {
+    client.close();
+    await server.close();
   }
-);
+});
 
 void test('stream server persists directories and conversations and replays scoped stream subscriptions', async () => {
   const stateStorePath = makeTempStateStorePath();
@@ -1418,12 +1519,12 @@ void test('stream server persists directories and conversations and replays scop
       const session = new FakeLiveSession(input);
       sessions.push(session);
       return session;
-    }
+    },
   });
   const address = server.address();
   const client = await connectControlPlaneStreamClient({
     host: address.address,
-    port: address.port
+    port: address.port,
   });
   const observed = collectEnvelopes(client);
 
@@ -1434,7 +1535,7 @@ void test('stream server persists directories and conversations and replays scop
       tenantId: 'tenant-1',
       userId: 'user-1',
       workspaceId: 'workspace-1',
-      path: '/tmp/workspace-1'
+      path: '/tmp/workspace-1',
     });
     const directory = upsertDirectory['directory'] as Record<string, unknown>;
     assert.equal(directory['directoryId'], 'directory-1');
@@ -1447,23 +1548,23 @@ void test('stream server persists directories and conversations and replays scop
       agentType: 'codex',
       adapterState: {
         codex: {
-          resumeSessionId: 'thread-seed'
-        }
-      }
+          resumeSessionId: 'thread-seed',
+        },
+      },
     });
     const conversation = createdConversation['conversation'] as Record<string, unknown>;
     assert.equal(conversation['conversationId'], 'conversation-1');
     assert.deepEqual(conversation['adapterState'], {
       codex: {
-        resumeSessionId: 'thread-seed'
-      }
+        resumeSessionId: 'thread-seed',
+      },
     });
 
     const subscribedWithoutOutput = await client.sendCommand({
       type: 'stream.subscribe',
       conversationId: 'conversation-1',
       includeOutput: false,
-      afterCursor: 0
+      afterCursor: 0,
     });
     const subscriptionWithoutOutput = subscribedWithoutOutput['subscriptionId'];
     assert.equal(typeof subscriptionWithoutOutput, 'string');
@@ -1471,9 +1572,12 @@ void test('stream server persists directories and conversations and replays scop
     const updatedConversation = await client.sendCommand({
       type: 'conversation.update',
       conversationId: 'conversation-1',
-      title: 'renamed task 1'
+      title: 'renamed task 1',
     });
-    const updatedConversationRecord = updatedConversation['conversation'] as Record<string, unknown>;
+    const updatedConversationRecord = updatedConversation['conversation'] as Record<
+      string,
+      unknown
+    >;
     assert.equal(updatedConversationRecord['title'], 'renamed task 1');
     await delay(20);
 
@@ -1486,12 +1590,12 @@ void test('stream server persists directories and conversations and replays scop
       tenantId: 'tenant-1',
       userId: 'user-1',
       workspaceId: 'workspace-1',
-      worktreeId: 'worktree-1'
+      worktreeId: 'worktree-1',
     });
     await client.sendCommand({
       type: 'pty.attach',
       sessionId: 'conversation-1',
-      sinceCursor: 2
+      sinceCursor: 2,
     });
     client.sendInput('conversation-1', Buffer.from('hello-stream', 'utf8'));
     await delay(20);
@@ -1501,34 +1605,34 @@ void test('stream server persists directories and conversations and replays scop
         (envelope) =>
           envelope.kind === 'stream.event' &&
           envelope.subscriptionId === subscriptionWithoutOutput &&
-          envelope.event.type === 'session-output'
+          envelope.event.type === 'session-output',
       ),
-      false
+      false,
     );
     assert.equal(
       observed.some(
         (envelope) =>
           envelope.kind === 'stream.event' &&
           envelope.subscriptionId === subscriptionWithoutOutput &&
-          envelope.event.type === 'conversation-updated'
+          envelope.event.type === 'conversation-updated',
       ),
-      true
+      true,
     );
     assert.equal(
       observed.some(
         (envelope) =>
           envelope.kind === 'stream.event' &&
           envelope.subscriptionId === subscriptionWithoutOutput &&
-          envelope.event.type === 'session-status'
+          envelope.event.type === 'session-status',
       ),
-      true
+      true,
     );
 
     const subscribedWithOutput = await client.sendCommand({
       type: 'stream.subscribe',
       conversationId: 'conversation-1',
       includeOutput: true,
-      afterCursor: 0
+      afterCursor: 0,
     });
     const subscriptionWithOutput = subscribedWithOutput['subscriptionId'];
     assert.equal(typeof subscriptionWithOutput, 'string');
@@ -1538,14 +1642,14 @@ void test('stream server persists directories and conversations and replays scop
         (envelope) =>
           envelope.kind === 'stream.event' &&
           envelope.subscriptionId === subscriptionWithOutput &&
-          envelope.event.type === 'session-output'
+          envelope.event.type === 'session-output',
       ),
-      true
+      true,
     );
 
     await client.sendCommand({
       type: 'stream.unsubscribe',
-      subscriptionId: subscriptionWithOutput as string
+      subscriptionId: subscriptionWithOutput as string,
     });
     const previousObservedCount = observed.length;
     client.sendInput('conversation-1', Buffer.from('after-unsubscribe', 'utf8'));
@@ -1555,58 +1659,57 @@ void test('stream server persists directories and conversations and replays scop
         .slice(previousObservedCount)
         .some(
           (envelope) =>
-            envelope.kind === 'stream.event' &&
-            envelope.subscriptionId === subscriptionWithOutput
+            envelope.kind === 'stream.event' && envelope.subscriptionId === subscriptionWithOutput,
         ),
-      false
+      false,
     );
 
     await client.sendCommand({
       type: 'conversation.archive',
-      conversationId: 'conversation-1'
+      conversationId: 'conversation-1',
     });
     const listedAfterUpdate = await client.sendCommand({
       type: 'conversation.list',
       directoryId: 'directory-1',
-      includeArchived: true
+      includeArchived: true,
     });
     const updatedRows = listedAfterUpdate['conversations'] as Array<Record<string, unknown>>;
     assert.deepEqual(updatedRows[0]?.['adapterState'], {
       codex: {
-        resumeSessionId: 'thread-seed'
-      }
+        resumeSessionId: 'thread-seed',
+      },
     });
 
     await client.sendCommand({
       type: 'conversation.delete',
-      conversationId: 'conversation-1'
+      conversationId: 'conversation-1',
     });
     await assert.rejects(
       client.sendCommand({
         type: 'conversation.delete',
-        conversationId: 'conversation-1'
+        conversationId: 'conversation-1',
       }),
-      /conversation not found/
+      /conversation not found/,
     );
     await assert.rejects(
       client.sendCommand({
         type: 'conversation.update',
         conversationId: 'conversation-1',
-        title: 'missing'
+        title: 'missing',
       }),
-      /conversation not found/
+      /conversation not found/,
     );
     const listedAfterDelete = await client.sendCommand({
       type: 'conversation.list',
       directoryId: 'directory-1',
-      includeArchived: true
+      includeArchived: true,
     });
     assert.deepEqual(listedAfterDelete['conversations'], []);
 
     const listedArchived = await client.sendCommand({
       type: 'conversation.list',
       directoryId: 'directory-1',
-      includeArchived: true
+      includeArchived: true,
     });
     assert.deepEqual(listedArchived['conversations'], []);
   } finally {
@@ -1616,12 +1719,12 @@ void test('stream server persists directories and conversations and replays scop
 
   const reopened = await startControlPlaneStreamServer({
     stateStorePath,
-    startSession: (input) => new FakeLiveSession(input)
+    startSession: (input) => new FakeLiveSession(input),
   });
   const reopenedAddress = reopened.address();
   const reopenedClient = await connectControlPlaneStreamClient({
     host: reopenedAddress.address,
-    port: reopenedAddress.port
+    port: reopenedAddress.port,
   });
   try {
     const directories = await reopenedClient.sendCommand({
@@ -1629,7 +1732,7 @@ void test('stream server persists directories and conversations and replays scop
       tenantId: 'tenant-1',
       userId: 'user-1',
       workspaceId: 'workspace-1',
-      includeArchived: true
+      includeArchived: true,
     });
     const directoryRows = directories['directories'] as Array<Record<string, unknown>>;
     assert.equal(directoryRows.length, 1);
@@ -1638,7 +1741,7 @@ void test('stream server persists directories and conversations and replays scop
     const conversations = await reopenedClient.sendCommand({
       type: 'conversation.list',
       directoryId: 'directory-1',
-      includeArchived: true
+      includeArchived: true,
     });
     const conversationRows = conversations['conversations'] as Array<Record<string, unknown>>;
     assert.equal(conversationRows.length, 0);
@@ -1652,12 +1755,12 @@ void test('stream server persists directories and conversations and replays scop
 
 void test('stream server archives directories and excludes archived rows from default list', async () => {
   const server = await startControlPlaneStreamServer({
-    startSession: (input) => new FakeLiveSession(input)
+    startSession: (input) => new FakeLiveSession(input),
   });
   const address = server.address();
   const client = await connectControlPlaneStreamClient({
     host: address.address,
-    port: address.port
+    port: address.port,
   });
   const observed = collectEnvelopes(client);
 
@@ -1668,7 +1771,7 @@ void test('stream server archives directories and excludes archived rows from de
       userId: 'user-archive',
       workspaceId: 'workspace-archive',
       includeOutput: false,
-      afterCursor: 0
+      afterCursor: 0,
     });
 
     await client.sendCommand({
@@ -1677,12 +1780,12 @@ void test('stream server archives directories and excludes archived rows from de
       tenantId: 'tenant-archive',
       userId: 'user-archive',
       workspaceId: 'workspace-archive',
-      path: '/tmp/archive-me'
+      path: '/tmp/archive-me',
     });
 
     const archived = await client.sendCommand({
       type: 'directory.archive',
-      directoryId: 'directory-archive'
+      directoryId: 'directory-archive',
     });
     const archivedDirectory = archived['directory'] as Record<string, unknown>;
     assert.equal(archivedDirectory['directoryId'], 'directory-archive');
@@ -1692,7 +1795,7 @@ void test('stream server archives directories and excludes archived rows from de
       type: 'directory.list',
       tenantId: 'tenant-archive',
       userId: 'user-archive',
-      workspaceId: 'workspace-archive'
+      workspaceId: 'workspace-archive',
     });
     assert.deepEqual(defaultListed['directories'], []);
 
@@ -1701,7 +1804,7 @@ void test('stream server archives directories and excludes archived rows from de
       tenantId: 'tenant-archive',
       userId: 'user-archive',
       workspaceId: 'workspace-archive',
-      includeArchived: true
+      includeArchived: true,
     });
     const rows = listedWithArchived['directories'] as Array<Record<string, unknown>>;
     assert.equal(rows.length, 1);
@@ -1714,17 +1817,17 @@ void test('stream server archives directories and excludes archived rows from de
         conversationId: 'conversation-archived-directory',
         directoryId: 'directory-archive',
         title: 'should fail',
-        agentType: 'codex'
+        agentType: 'codex',
       }),
-      /directory not found/
+      /directory not found/,
     );
 
     assert.equal(
       observed.some(
         (envelope) =>
-          envelope.kind === 'stream.event' && envelope.event.type === 'directory-archived'
+          envelope.kind === 'stream.event' && envelope.event.type === 'directory-archived',
       ),
-      true
+      true,
     );
   } finally {
     client.close();
@@ -1739,12 +1842,12 @@ void test('stream server attention-first sorting falls back to recency when stat
       const session = new FakeLiveSession(input);
       sessions.push(session);
       return session;
-    }
+    },
   });
   const address = server.address();
   const client = await connectControlPlaneStreamClient({
     host: address.address,
-    port: address.port
+    port: address.port,
   });
 
   try {
@@ -1753,7 +1856,7 @@ void test('stream server attention-first sorting falls back to recency when stat
       sessionId: 'conversation-a',
       args: [],
       initialCols: 80,
-      initialRows: 24
+      initialRows: 24,
     });
     await delay(2);
     await client.sendCommand({
@@ -1761,12 +1864,12 @@ void test('stream server attention-first sorting falls back to recency when stat
       sessionId: 'conversation-b',
       args: [],
       initialCols: 80,
-      initialRows: 24
+      initialRows: 24,
     });
 
     const listed = await client.sendCommand({
       type: 'session.list',
-      sort: 'attention-first'
+      sort: 'attention-first',
     });
     const entries = listed['sessions'] as Array<Record<string, unknown>>;
     assert.equal(entries.length, 2);
@@ -1781,7 +1884,7 @@ void test('stream server attention-first sorting falls back to recency when stat
 
 void test('stream server internal sort helper covers tie-break branches', async () => {
   const server = await startControlPlaneStreamServer({
-    startSession: (input) => new FakeLiveSession(input)
+    startSession: (input) => new FakeLiveSession(input),
   });
   try {
     interface InternalSessionState {
@@ -1809,7 +1912,7 @@ void test('stream server internal sort helper covers tie-break branches', async 
     const internals = server as unknown as {
       sortSessionSummaries: (
         sessions: readonly InternalSessionState[],
-        sort: 'attention-first' | 'started-desc' | 'started-asc'
+        sort: 'attention-first' | 'started-desc' | 'started-asc',
       ) => ReadonlyArray<Record<string, unknown>>;
     };
 
@@ -1828,7 +1931,7 @@ void test('stream server internal sort helper covers tie-break branches', async 
       lastSnapshot: null,
       exitedAt: null,
       tombstoneTimer: null,
-      lastObservedOutputCursor: 0
+      lastObservedOutputCursor: 0,
     };
 
     const rows: readonly InternalSessionState[] = [
@@ -1837,54 +1940,54 @@ void test('stream server internal sort helper covers tie-break branches', async 
         id: 'session-c',
         status: 'completed',
         startedAt: '2026-01-01T00:00:00.000Z',
-        lastEventAt: null
+        lastEventAt: null,
       },
       {
         ...base,
         id: 'session-a',
         status: 'completed',
         startedAt: '2026-01-01T00:00:00.000Z',
-        lastEventAt: null
+        lastEventAt: null,
       },
       {
         ...base,
         id: 'session-b',
         status: 'exited',
         startedAt: '2026-01-02T00:00:00.000Z',
-        lastEventAt: '2026-01-02T00:00:00.000Z'
+        lastEventAt: '2026-01-02T00:00:00.000Z',
       },
       {
         ...base,
         id: 'session-d',
         status: 'running',
         startedAt: '2026-01-03T00:00:00.000Z',
-        lastEventAt: null
+        lastEventAt: null,
       },
       {
         ...base,
         id: 'session-e',
         status: 'needs-input',
         startedAt: '2026-01-04T00:00:00.000Z',
-        lastEventAt: '2026-01-04T00:00:00.000Z'
-      }
+        lastEventAt: '2026-01-04T00:00:00.000Z',
+      },
     ];
 
     const startedAsc = internals.sortSessionSummaries(rows, 'started-asc');
     assert.deepEqual(
       startedAsc.map((entry) => entry['sessionId']),
-      ['session-a', 'session-c', 'session-b', 'session-d', 'session-e']
+      ['session-a', 'session-c', 'session-b', 'session-d', 'session-e'],
     );
 
     const startedDesc = internals.sortSessionSummaries(rows, 'started-desc');
     assert.deepEqual(
       startedDesc.map((entry) => entry['sessionId']),
-      ['session-e', 'session-d', 'session-b', 'session-a', 'session-c']
+      ['session-e', 'session-d', 'session-b', 'session-a', 'session-c'],
     );
 
     const attentionFirst = internals.sortSessionSummaries(rows, 'attention-first');
     assert.deepEqual(
       attentionFirst.map((entry) => entry['sessionId']),
-      ['session-e', 'session-d', 'session-a', 'session-c', 'session-b']
+      ['session-e', 'session-d', 'session-a', 'session-c', 'session-b'],
     );
 
     const byLastEventRows: readonly InternalSessionState[] = [
@@ -1893,20 +1996,20 @@ void test('stream server internal sort helper covers tie-break branches', async 
         id: 'session-last-a',
         status: 'completed',
         startedAt: '2026-01-01T00:00:00.000Z',
-        lastEventAt: '2026-01-01T00:10:00.000Z'
+        lastEventAt: '2026-01-01T00:10:00.000Z',
       },
       {
         ...base,
         id: 'session-last-b',
         status: 'completed',
         startedAt: '2026-01-01T00:00:00.000Z',
-        lastEventAt: '2026-01-01T00:09:00.000Z'
-      }
+        lastEventAt: '2026-01-01T00:09:00.000Z',
+      },
     ];
     const byLastEvent = internals.sortSessionSummaries(byLastEventRows, 'attention-first');
     assert.deepEqual(
       byLastEvent.map((entry) => entry['sessionId']),
-      ['session-last-a', 'session-last-b']
+      ['session-last-a', 'session-last-b'],
     );
 
     const byStartedRows: readonly InternalSessionState[] = [
@@ -1915,20 +2018,20 @@ void test('stream server internal sort helper covers tie-break branches', async 
         id: 'session-start-a',
         status: 'completed',
         startedAt: '2026-01-01T00:10:00.000Z',
-        lastEventAt: '2026-01-01T00:10:00.000Z'
+        lastEventAt: '2026-01-01T00:10:00.000Z',
       },
       {
         ...base,
         id: 'session-start-b',
         status: 'completed',
         startedAt: '2026-01-01T00:09:00.000Z',
-        lastEventAt: '2026-01-01T00:10:00.000Z'
-      }
+        lastEventAt: '2026-01-01T00:10:00.000Z',
+      },
     ];
     const byStarted = internals.sortSessionSummaries(byStartedRows, 'attention-first');
     assert.deepEqual(
       byStarted.map((entry) => entry['sessionId']),
-      ['session-start-a', 'session-start-b']
+      ['session-start-a', 'session-start-b'],
     );
 
     const nullVsNonNullA: readonly InternalSessionState[] = [
@@ -1937,20 +2040,20 @@ void test('stream server internal sort helper covers tie-break branches', async 
         id: 'null-last-event',
         status: 'running',
         startedAt: '2026-01-01T00:00:00.000Z',
-        lastEventAt: null
+        lastEventAt: null,
       },
       {
         ...base,
         id: 'non-null-last-event',
         status: 'running',
         startedAt: '2026-01-01T00:00:00.000Z',
-        lastEventAt: '2026-01-01T00:00:01.000Z'
-      }
+        lastEventAt: '2026-01-01T00:00:01.000Z',
+      },
     ];
     const nullVsNonNullSortedA = internals.sortSessionSummaries(nullVsNonNullA, 'attention-first');
     assert.deepEqual(
       nullVsNonNullSortedA.map((entry) => entry['sessionId']),
-      ['non-null-last-event', 'null-last-event']
+      ['non-null-last-event', 'null-last-event'],
     );
 
     const nullVsNonNullB: readonly InternalSessionState[] = [
@@ -1959,20 +2062,20 @@ void test('stream server internal sort helper covers tie-break branches', async 
         id: 'non-null-last-event-2',
         status: 'running',
         startedAt: '2026-01-01T00:00:00.000Z',
-        lastEventAt: '2026-01-01T00:00:01.000Z'
+        lastEventAt: '2026-01-01T00:00:01.000Z',
       },
       {
         ...base,
         id: 'null-last-event-2',
         status: 'running',
         startedAt: '2026-01-01T00:00:00.000Z',
-        lastEventAt: null
-      }
+        lastEventAt: null,
+      },
     ];
     const nullVsNonNullSortedB = internals.sortSessionSummaries(nullVsNonNullB, 'attention-first');
     assert.deepEqual(
       nullVsNonNullSortedB.map((entry) => entry['sessionId']),
-      ['non-null-last-event-2', 'null-last-event-2']
+      ['non-null-last-event-2', 'null-last-event-2'],
     );
   } finally {
     await server.close();
@@ -1986,12 +2089,12 @@ void test('stream server exposes attention list and respond/interrupt wrappers',
       const session = new FakeLiveSession(input);
       sessions.push(session);
       return session;
-    }
+    },
   });
   const address = server.address();
   const client = await connectControlPlaneStreamClient({
     host: address.address,
-    port: address.port
+    port: address.port,
   });
 
   try {
@@ -2000,11 +2103,11 @@ void test('stream server exposes attention list and respond/interrupt wrappers',
       sessionId: 'session-attention',
       args: [],
       initialCols: 80,
-      initialRows: 24
+      initialRows: 24,
     });
 
     const attention = await client.sendCommand({
-      type: 'attention.list'
+      type: 'attention.list',
     });
     const attentionSessions = attention['sessions'] as Array<Record<string, unknown>>;
     assert.equal(attentionSessions.length, 0);
@@ -2012,18 +2115,24 @@ void test('stream server exposes attention list and respond/interrupt wrappers',
     const responded = await client.sendCommand({
       type: 'session.respond',
       sessionId: 'session-attention',
-      text: 'approved'
+      text: 'approved',
     });
     assert.equal(responded['responded'], true);
     assert.equal(responded['sentBytes'], Buffer.byteLength('approved'));
-    assert.equal(sessions[0]!.writes.some((chunk) => chunk.toString('utf8') === 'approved'), true);
+    assert.equal(
+      sessions[0]!.writes.some((chunk) => chunk.toString('utf8') === 'approved'),
+      true,
+    );
 
     const interrupted = await client.sendCommand({
       type: 'session.interrupt',
-      sessionId: 'session-attention'
+      sessionId: 'session-attention',
     });
     assert.equal(interrupted['interrupted'], true);
-    assert.equal(sessions[0]!.writes.some((chunk) => chunk.toString('utf8') === '\u0003'), true);
+    assert.equal(
+      sessions[0]!.writes.some((chunk) => chunk.toString('utf8') === '\u0003'),
+      true,
+    );
   } finally {
     client.close();
     await server.close();
@@ -2037,16 +2146,16 @@ void test('stream server blocks non-controller mutations until takeover claim su
       const session = new FakeLiveSession(input);
       sessions.push(session);
       return session;
-    }
+    },
   });
   const address = server.address();
   const ownerClient = await connectControlPlaneStreamClient({
     host: address.address,
-    port: address.port
+    port: address.port,
   });
   const otherClient = await connectControlPlaneStreamClient({
     host: address.address,
-    port: address.port
+    port: address.port,
   });
 
   try {
@@ -2055,13 +2164,13 @@ void test('stream server blocks non-controller mutations until takeover claim su
       sessionId: 'session-claimed',
       args: [],
       initialCols: 80,
-      initialRows: 24
+      initialRows: 24,
     });
     await ownerClient.sendCommand({
       type: 'session.claim',
       sessionId: 'session-claimed',
       controllerId: 'agent-owner',
-      controllerType: 'agent'
+      controllerType: 'agent',
     });
 
     otherClient.sendInput('session-claimed', Buffer.from('blocked-input', 'utf8'));
@@ -2069,26 +2178,32 @@ void test('stream server blocks non-controller mutations until takeover claim su
     otherClient.sendSignal('session-claimed', 'interrupt');
     otherClient.sendSignal('session-claimed', 'terminate');
     await delay(10);
-    assert.equal(sessions[0]!.writes.some((chunk) => chunk.toString('utf8') === 'blocked-input'), false);
+    assert.equal(
+      sessions[0]!.writes.some((chunk) => chunk.toString('utf8') === 'blocked-input'),
+      false,
+    );
     assert.equal(sessions[0]!.resizeCalls.length, 0);
     assert.equal(sessions[0]!.isClosed(), false);
-    assert.equal(sessions[0]!.writes.some((chunk) => chunk.toString('utf8') === '\u0003'), false);
+    assert.equal(
+      sessions[0]!.writes.some((chunk) => chunk.toString('utf8') === '\u0003'),
+      false,
+    );
 
     await assert.rejects(
       otherClient.sendCommand({
         type: 'session.respond',
         sessionId: 'session-claimed',
-        text: 'blocked-command'
+        text: 'blocked-command',
       }),
-      /session is claimed by agent:agent-owner/
+      /session is claimed by agent:agent-owner/,
     );
 
     await assert.rejects(
       otherClient.sendCommand({
         type: 'session.release',
-        sessionId: 'session-claimed'
+        sessionId: 'session-claimed',
       }),
-      /session is claimed by agent:agent-owner/
+      /session is claimed by agent:agent-owner/,
     );
 
     await otherClient.sendCommand({
@@ -2097,22 +2212,25 @@ void test('stream server blocks non-controller mutations until takeover claim su
       controllerId: 'human-owner',
       controllerType: 'human',
       controllerLabel: 'human owner',
-      takeover: true
+      takeover: true,
     });
     otherClient.sendInput('session-claimed', Buffer.from('allowed-input', 'utf8'));
     await delay(10);
-    assert.equal(sessions[0]!.writes.some((chunk) => chunk.toString('utf8') === 'allowed-input'), true);
+    assert.equal(
+      sessions[0]!.writes.some((chunk) => chunk.toString('utf8') === 'allowed-input'),
+      true,
+    );
 
     const releaseResult = await otherClient.sendCommand({
       type: 'session.release',
       sessionId: 'session-claimed',
-      reason: 'manual done'
+      reason: 'manual done',
     });
     assert.equal(releaseResult['released'], true);
 
     const releaseAgainResult = await otherClient.sendCommand({
       type: 'session.release',
-      sessionId: 'session-claimed'
+      sessionId: 'session-claimed',
     });
     assert.equal(releaseAgainResult['released'], false);
   } finally {
@@ -2124,7 +2242,7 @@ void test('stream server blocks non-controller mutations until takeover claim su
 
 void test('stream server assertConnectionCanMutateSession tolerates stale null-controller branch', async () => {
   const server = new ControlPlaneStreamServer({
-    startSession: (input) => new FakeLiveSession(input)
+    startSession: (input) => new FakeLiveSession(input),
   });
   try {
     const mutableServer = server as unknown as {
@@ -2135,7 +2253,7 @@ void test('stream server assertConnectionCanMutateSession tolerates stale null-c
     mutableServer.connectionCanMutateSession = () => false;
     assert.doesNotThrow(() => {
       mutableServer.assertConnectionCanMutateSession('connection-local', {
-        controller: null
+        controller: null,
       });
     });
     mutableServer.connectionCanMutateSession = original;
@@ -2151,12 +2269,12 @@ void test('stream server keeps status running while typing until runtime events 
       const session = new FakeLiveSession(input);
       sessions.push(session);
       return session;
-    }
+    },
   });
   const address = server.address();
   const client = await connectControlPlaneStreamClient({
     host: address.address,
-    port: address.port
+    port: address.port,
   });
 
   try {
@@ -2165,13 +2283,13 @@ void test('stream server keeps status running while typing until runtime events 
       sessionId: 'session-typing',
       args: [],
       initialCols: 80,
-      initialRows: 24
+      initialRows: 24,
     });
     assert.equal(sessions.length, 1);
 
     const initial = await client.sendCommand({
       type: 'session.status',
-      sessionId: 'session-typing'
+      sessionId: 'session-typing',
     });
     assert.equal(initial['status'], 'running');
 
@@ -2179,7 +2297,7 @@ void test('stream server keeps status running while typing until runtime events 
     await delay(10);
     const afterTyping = await client.sendCommand({
       type: 'session.status',
-      sessionId: 'session-typing'
+      sessionId: 'session-typing',
     });
     assert.equal(afterTyping['status'], 'running');
 
@@ -2187,7 +2305,7 @@ void test('stream server keeps status running while typing until runtime events 
     await delay(10);
     const afterSubmit = await client.sendCommand({
       type: 'session.status',
-      sessionId: 'session-typing'
+      sessionId: 'session-typing',
     });
     assert.equal(afterSubmit['status'], 'running');
   } finally {
@@ -2203,12 +2321,12 @@ void test('stream server emits session-exit events for subscribed non-attached s
       const session = new FakeLiveSession(input);
       sessions.push(session);
       return session;
-    }
+    },
   });
   const address = server.address();
   const client = await connectControlPlaneStreamClient({
     host: address.address,
-    port: address.port
+    port: address.port,
   });
   const observed = collectEnvelopes(client);
 
@@ -2218,52 +2336,52 @@ void test('stream server emits session-exit events for subscribed non-attached s
       sessionId: 'session-active',
       args: [],
       initialCols: 80,
-      initialRows: 24
+      initialRows: 24,
     });
     await client.sendCommand({
       type: 'pty.start',
       sessionId: 'session-background',
       args: [],
       initialCols: 80,
-      initialRows: 24
+      initialRows: 24,
     });
     assert.equal(sessions.length, 2);
 
     await client.sendCommand({
       type: 'pty.subscribe-events',
-      sessionId: 'session-active'
+      sessionId: 'session-active',
     });
     await client.sendCommand({
       type: 'pty.subscribe-events',
-      sessionId: 'session-background'
+      sessionId: 'session-background',
     });
 
     await client.sendCommand({
       type: 'pty.attach',
       sessionId: 'session-active',
-      sinceCursor: 0
+      sinceCursor: 0,
     });
     await client.sendCommand({
       type: 'pty.attach',
       sessionId: 'session-background',
-      sinceCursor: 0
+      sinceCursor: 0,
     });
     await client.sendCommand({
       type: 'pty.detach',
-      sessionId: 'session-background'
+      sessionId: 'session-background',
     });
 
     client.sendInput('session-background', Buffer.from('\r', 'utf8'));
     await delay(10);
     const runningStatus = await client.sendCommand({
       type: 'session.status',
-      sessionId: 'session-background'
+      sessionId: 'session-background',
     });
     assert.equal(runningStatus['status'], 'running');
 
     sessions[1]!.emitExit({
       code: 0,
-      signal: null
+      signal: null,
     });
     await delay(10);
 
@@ -2272,13 +2390,13 @@ void test('stream server emits session-exit events for subscribed non-attached s
         (envelope) =>
           envelope.kind === 'pty.event' &&
           envelope.sessionId === 'session-background' &&
-          envelope.event.type === 'session-exit'
+          envelope.event.type === 'session-exit',
       ),
-      true
+      true,
     );
     const completedStatus = await client.sendCommand({
       type: 'session.status',
-      sessionId: 'session-background'
+      sessionId: 'session-background',
     });
     assert.equal(completedStatus['status'], 'exited');
   } finally {
@@ -2288,11 +2406,12 @@ void test('stream server emits session-exit events for subscribed non-attached s
 });
 
 void test('stream server surfaces listen failures', async () => {
-  const startSession = (input: StartControlPlaneSessionInput): FakeLiveSession => new FakeLiveSession(input);
+  const startSession = (input: StartControlPlaneSessionInput): FakeLiveSession =>
+    new FakeLiveSession(input);
   const first = new ControlPlaneStreamServer({
     host: '127.0.0.1',
     port: 0,
-    startSession
+    startSession,
   });
   await first.start();
   const collisionPort = first.address().port;
@@ -2300,7 +2419,7 @@ void test('stream server surfaces listen failures', async () => {
   const second = new ControlPlaneStreamServer({
     host: '127.0.0.1',
     port: collisionPort,
-    startSession
+    startSession,
   });
 
   await assert.rejects(second.start());
@@ -2310,40 +2429,40 @@ void test('stream server surfaces listen failures', async () => {
 void test('stream server enforces optional auth token on all operations', async () => {
   const server = await startControlPlaneStreamServer({
     authToken: 'secret-token',
-    startSession: (input) => new FakeLiveSession(input)
+    startSession: (input) => new FakeLiveSession(input),
   });
   const address = server.address();
 
   const unauthenticatedClient = await connectControlPlaneStreamClient({
     host: address.address,
-    port: address.port
+    port: address.port,
   });
 
   try {
     await assert.rejects(
       unauthenticatedClient.sendCommand({
-        type: 'session.list'
+        type: 'session.list',
       }),
-      /authentication required|closed/
+      /authentication required|closed/,
     );
 
     await assert.rejects(
       connectControlPlaneStreamClient({
         host: address.address,
         port: address.port,
-        authToken: 'wrong-token'
+        authToken: 'wrong-token',
       }),
-      /invalid auth token|closed/
+      /invalid auth token|closed/,
     );
 
     const authenticatedClient = await connectControlPlaneStreamClient({
       host: address.address,
       port: address.port,
-      authToken: 'secret-token'
+      authToken: 'secret-token',
     });
     try {
       const listed = await authenticatedClient.sendCommand({
-        type: 'session.list'
+        type: 'session.list',
       });
       assert.deepEqual(listed['sessions'], []);
     } finally {
@@ -2363,12 +2482,12 @@ void test('stream server retains exited tombstones briefly then auto-removes by 
       const session = new FakeLiveSession(input);
       sessions.push(session);
       return session;
-    }
+    },
   });
   const address = server.address();
   const client = await connectControlPlaneStreamClient({
     host: address.address,
-    port: address.port
+    port: address.port,
   });
 
   try {
@@ -2377,36 +2496,36 @@ void test('stream server retains exited tombstones briefly then auto-removes by 
       sessionId: 'session-ttl',
       args: [],
       initialCols: 80,
-      initialRows: 24
+      initialRows: 24,
     });
 
     sessions[0]!.emitExit({
       code: 0,
-      signal: null
+      signal: null,
     });
     await delay(5);
 
     const exited = await client.sendCommand({
       type: 'session.status',
-      sessionId: 'session-ttl'
+      sessionId: 'session-ttl',
     });
     assert.equal(exited['status'], 'exited');
     assert.equal(exited['live'], false);
     await assert.rejects(
       client.sendCommand({
         type: 'session.interrupt',
-        sessionId: 'session-ttl'
+        sessionId: 'session-ttl',
       }),
-      /session is not live/
+      /session is not live/,
     );
 
     await delay(40);
     await assert.rejects(
       client.sendCommand({
         type: 'session.status',
-        sessionId: 'session-ttl'
+        sessionId: 'session-ttl',
       }),
-      /session not found/
+      /session not found/,
     );
   } finally {
     client.close();
@@ -2422,12 +2541,12 @@ void test('stream server allows restarting a session id from exited tombstone', 
       const session = new FakeLiveSession(input);
       sessions.push(session);
       return session;
-    }
+    },
   });
   const address = server.address();
   const client = await connectControlPlaneStreamClient({
     host: address.address,
-    port: address.port
+    port: address.port,
   });
 
   try {
@@ -2436,11 +2555,11 @@ void test('stream server allows restarting a session id from exited tombstone', 
       sessionId: 'session-restart',
       args: [],
       initialCols: 80,
-      initialRows: 24
+      initialRows: 24,
     });
     sessions[0]!.emitExit({
       code: 0,
-      signal: null
+      signal: null,
     });
     await delay(5);
     await client.sendCommand({
@@ -2448,7 +2567,7 @@ void test('stream server allows restarting a session id from exited tombstone', 
       sessionId: 'session-restart',
       args: [],
       initialCols: 90,
-      initialRows: 30
+      initialRows: 30,
     });
     assert.equal(sessions.length, 2);
   } finally {
@@ -2465,12 +2584,12 @@ void test('stream server can remove exited tombstones before ttl callback', asyn
       const session = new FakeLiveSession(input);
       sessions.push(session);
       return session;
-    }
+    },
   });
   const address = server.address();
   const client = await connectControlPlaneStreamClient({
     host: address.address,
-    port: address.port
+    port: address.port,
   });
 
   try {
@@ -2479,24 +2598,24 @@ void test('stream server can remove exited tombstones before ttl callback', asyn
       sessionId: 'session-remove-tombstone',
       args: [],
       initialCols: 80,
-      initialRows: 24
+      initialRows: 24,
     });
     sessions[0]!.emitExit({
       code: 0,
-      signal: null
+      signal: null,
     });
     await delay(5);
     await client.sendCommand({
       type: 'session.remove',
-      sessionId: 'session-remove-tombstone'
+      sessionId: 'session-remove-tombstone',
     });
     await delay(40);
     await assert.rejects(
       client.sendCommand({
         type: 'session.status',
-        sessionId: 'session-remove-tombstone'
+        sessionId: 'session-remove-tombstone',
       }),
-      /session not found/
+      /session not found/,
     );
   } finally {
     client.close();
@@ -2512,12 +2631,12 @@ void test('stream server ttl zero removes exited session immediately', async () 
       const session = new FakeLiveSession(input);
       sessions.push(session);
       return session;
-    }
+    },
   });
   const address = server.address();
   const client = await connectControlPlaneStreamClient({
     host: address.address,
-    port: address.port
+    port: address.port,
   });
 
   try {
@@ -2526,19 +2645,19 @@ void test('stream server ttl zero removes exited session immediately', async () 
       sessionId: 'session-zero-ttl',
       args: [],
       initialCols: 80,
-      initialRows: 24
+      initialRows: 24,
     });
     sessions[0]!.emitExit({
       code: 0,
-      signal: null
+      signal: null,
     });
     await delay(5);
     await assert.rejects(
       client.sendCommand({
         type: 'session.status',
-        sessionId: 'session-zero-ttl'
+        sessionId: 'session-zero-ttl',
       }),
-      /session not found/
+      /session not found/,
     );
   } finally {
     client.close();
@@ -2553,13 +2672,13 @@ void test('stream server covers detach/cleanup and missing-session stream operat
       const session = new FakeLiveSession(input);
       sessions.push(session);
       return session;
-    }
+    },
   });
   const address = server.address();
 
   const client = await connectControlPlaneStreamClient({
     host: address.address,
-    port: address.port
+    port: address.port,
   });
   const observed = collectEnvelopes(client);
 
@@ -2569,33 +2688,33 @@ void test('stream server covers detach/cleanup and missing-session stream operat
       sessionId: 'session-x',
       args: [],
       initialCols: 80,
-      initialRows: 24
+      initialRows: 24,
     });
     await client.sendCommand({
       type: 'pty.subscribe-events',
-      sessionId: 'session-x'
+      sessionId: 'session-x',
     });
     await client.sendCommand({
       type: 'pty.attach',
       sessionId: 'session-x',
-      sinceCursor: 0
-    });
-    await client.sendCommand({
-      type: 'pty.attach',
-      sessionId: 'session-x'
+      sinceCursor: 0,
     });
     await client.sendCommand({
       type: 'pty.attach',
       sessionId: 'session-x',
-      sinceCursor: 0
+    });
+    await client.sendCommand({
+      type: 'pty.attach',
+      sessionId: 'session-x',
+      sinceCursor: 0,
     });
     await client.sendCommand({
       type: 'pty.detach',
-      sessionId: 'session-x'
+      sessionId: 'session-x',
     });
     await client.sendCommand({
       type: 'pty.detach',
-      sessionId: 'session-x'
+      sessionId: 'session-x',
     });
 
     client.sendInput('missing-session', Buffer.from('ignored', 'utf8'));
@@ -2606,45 +2725,47 @@ void test('stream server covers detach/cleanup and missing-session stream operat
     await client.sendCommand({
       type: 'pty.attach',
       sessionId: 'session-x',
-      sinceCursor: 0
+      sinceCursor: 0,
     });
     sessions[0]!.emitExit({
       code: 0,
-      signal: null
+      signal: null,
     });
     await delay(10);
     assert.equal(
-      observed.some((envelope) => envelope.kind === 'pty.exit' && envelope.sessionId === 'session-x'),
-      true
+      observed.some(
+        (envelope) => envelope.kind === 'pty.exit' && envelope.sessionId === 'session-x',
+      ),
+      true,
     );
 
     sessions[0]!.emitEvent({
       type: 'session-exit',
       exit: {
         code: 0,
-        signal: null
-      }
+        signal: null,
+      },
     });
 
     const cleanupClient = await connectControlPlaneStreamClient({
       host: address.address,
-      port: address.port
+      port: address.port,
     });
     await cleanupClient.sendCommand({
       type: 'pty.start',
       sessionId: 'session-y',
       args: [],
       initialCols: 80,
-      initialRows: 24
+      initialRows: 24,
     });
     await cleanupClient.sendCommand({
       type: 'pty.subscribe-events',
-      sessionId: 'session-y'
+      sessionId: 'session-y',
     });
     await cleanupClient.sendCommand({
       type: 'pty.attach',
       sessionId: 'session-y',
-      sinceCursor: 0
+      sinceCursor: 0,
     });
     cleanupClient.close();
     await delay(10);
@@ -2658,12 +2779,12 @@ void test('stream server command failure serializes thrown errors', async () => 
   const server = await startControlPlaneStreamServer({
     startSession: () => {
       throw new Error('start-session-failed');
-    }
+    },
   });
   const address = server.address();
   const client = await connectControlPlaneStreamClient({
     host: address.address,
-    port: address.port
+    port: address.port,
   });
 
   try {
@@ -2673,9 +2794,9 @@ void test('stream server command failure serializes thrown errors', async () => 
         sessionId: 'session-fail',
         args: [],
         initialCols: 80,
-        initialRows: 24
+        initialRows: 24,
       }),
-      /Error: start-session-failed/
+      /Error: start-session-failed/,
     );
   } finally {
     client.close();
@@ -2686,12 +2807,12 @@ void test('stream server command failure serializes thrown errors', async () => 
 void test('stream server bounds per-connection output buffering under backpressure', async () => {
   const server = await startControlPlaneStreamServer({
     maxConnectionBufferedBytes: 256,
-    startSession: (input) => new FakeLiveSession(input)
+    startSession: (input) => new FakeLiveSession(input),
   });
   const address = server.address();
   const client = await connectControlPlaneStreamClient({
     host: address.address,
-    port: address.port
+    port: address.port,
   });
 
   try {
@@ -2700,12 +2821,12 @@ void test('stream server bounds per-connection output buffering under backpressu
       sessionId: 'session-buffer',
       args: [],
       initialCols: 80,
-      initialRows: 24
+      initialRows: 24,
     });
     await client.sendCommand({
       type: 'pty.attach',
       sessionId: 'session-buffer',
-      sinceCursor: 2
+      sinceCursor: 2,
     });
 
     const internals = server as unknown as {
@@ -2717,7 +2838,10 @@ void test('stream server bounds per-connection output buffering under backpressu
     connectionState!.socket.emit('drain');
 
     for (let idx = 0; idx < 20; idx += 1) {
-      client.sendInput('session-buffer', Buffer.from(`payload-${String(idx).padStart(2, '0')}`, 'utf8'));
+      client.sendInput(
+        'session-buffer',
+        Buffer.from(`payload-${String(idx).padStart(2, '0')}`, 'utf8'),
+      );
     }
 
     await delay(20);
@@ -2731,7 +2855,7 @@ void test('stream server bounds per-connection output buffering under backpressu
 void test('stream server internal guard branches remain safe for missing ids', async () => {
   const server = await startControlPlaneStreamServer({
     startSession: (input) => new FakeLiveSession(input),
-    sessionExitTombstoneTtlMs: 5
+    sessionExitTombstoneTtlMs: 5,
   });
   try {
     interface InternalSessionState {
@@ -2790,7 +2914,7 @@ void test('stream server internal guard branches remain safe for missing ids', a
       write: () => true,
       destroy: () => {
         destroyed = true;
-      }
+      },
     } as unknown as Socket;
     internals.connections.set('fake-connection', {
       id: 'fake-connection',
@@ -2802,19 +2926,19 @@ void test('stream server internal guard branches remain safe for missing ids', a
       streamSubscriptionIds: new Set<string>(),
       queuedPayloads: [],
       queuedPayloadBytes: 0,
-      writeBlocked: false
+      writeBlocked: false,
     });
 
     internals.handleSessionEvent('missing-session', {
       type: 'session-exit',
       exit: {
         code: 0,
-        signal: null
-      }
+        signal: null,
+      },
     });
     internals.destroySession('missing-session', true);
     internals.sendToConnection('missing-connection', {
-      kind: 'auth.ok'
+      kind: 'auth.ok',
     });
 
     const fakeConnection = internals.connections.get('fake-connection')!;
@@ -2842,14 +2966,14 @@ void test('stream server internal guard branches remain safe for missing ids', a
       startedAt: new Date(0).toISOString(),
       exitedAt: new Date(0).toISOString(),
       tombstoneTimer: null,
-      lastObservedOutputCursor: 0
-    } as unknown as (typeof internals.sessions extends Map<string, infer T> ? T : never));
+      lastObservedOutputCursor: 0,
+    } as unknown as typeof internals.sessions extends Map<string, infer T> ? T : never);
     internals.detachConnectionFromSession('fake-connection', 'fake-session');
 
     const cleanupSocket = {
       writableLength: 0,
       write: () => true,
-      destroy: () => undefined
+      destroy: () => undefined,
     } as unknown as Socket;
     internals.connections.set('cleanup-connection', {
       id: 'cleanup-connection',
@@ -2861,44 +2985,40 @@ void test('stream server internal guard branches remain safe for missing ids', a
       streamSubscriptionIds: new Set<string>(['subscription-cleanup']),
       queuedPayloads: [],
       queuedPayloadBytes: 0,
-      writeBlocked: false
+      writeBlocked: false,
     });
-    internals.streamSubscriptions.set(
-      'subscription-cleanup',
-      { id: 'subscription-cleanup' } as unknown as { id: string }
-    );
-    internals.sessions.set(
-      'controlled-session',
-      {
-        id: 'controlled-session',
-        directoryId: null,
-        tenantId: 'tenant-local',
-        userId: 'user-local',
-        workspaceId: 'workspace-local',
-        worktreeId: 'worktree-local',
-        session: null,
-        eventSubscriberConnectionIds: new Set<string>(),
-        attachmentByConnectionId: new Map<string, string>(),
-        unsubscribe: null,
-        status: 'running',
-        attentionReason: null,
-        lastEventAt: new Date(0).toISOString(),
-        lastExit: null,
-        lastSnapshot: null,
-        startedAt: new Date(0).toISOString(),
-        exitedAt: null,
-        tombstoneTimer: null,
-        lastObservedOutputCursor: 0,
-        latestTelemetry: null,
-        controller: {
-          connectionId: 'cleanup-connection',
-          controllerId: 'agent-cleanup',
-          controllerType: 'agent',
-          controllerLabel: 'Cleanup Agent',
-          claimedAt: new Date(0).toISOString()
-        }
-      } as unknown as (typeof internals.sessions extends Map<string, infer T> ? T : never)
-    );
+    internals.streamSubscriptions.set('subscription-cleanup', {
+      id: 'subscription-cleanup',
+    } as unknown as { id: string });
+    internals.sessions.set('controlled-session', {
+      id: 'controlled-session',
+      directoryId: null,
+      tenantId: 'tenant-local',
+      userId: 'user-local',
+      workspaceId: 'workspace-local',
+      worktreeId: 'worktree-local',
+      session: null,
+      eventSubscriberConnectionIds: new Set<string>(),
+      attachmentByConnectionId: new Map<string, string>(),
+      unsubscribe: null,
+      status: 'running',
+      attentionReason: null,
+      lastEventAt: new Date(0).toISOString(),
+      lastExit: null,
+      lastSnapshot: null,
+      startedAt: new Date(0).toISOString(),
+      exitedAt: null,
+      tombstoneTimer: null,
+      lastObservedOutputCursor: 0,
+      latestTelemetry: null,
+      controller: {
+        connectionId: 'cleanup-connection',
+        controllerId: 'agent-cleanup',
+        controllerType: 'agent',
+        controllerLabel: 'Cleanup Agent',
+        claimedAt: new Date(0).toISOString(),
+      },
+    } as unknown as typeof internals.sessions extends Map<string, infer T> ? T : never);
     internals.cleanupConnection('cleanup-connection');
     assert.equal(internals.streamSubscriptions.has('subscription-cleanup'), false);
     const controlledAfterCleanup = internals.sessions.get('controlled-session') as
@@ -2939,7 +3059,7 @@ void test('stream server internal guard branches remain safe for missing ids', a
       startedAt: new Date(0).toISOString(),
       exitedAt: new Date(0).toISOString(),
       tombstoneTimer: null,
-      lastObservedOutputCursor: 0
+      lastObservedOutputCursor: 0,
     });
     internals.scheduleTombstoneRemoval('timer-guard-session');
     const timerGuardState = internals.sessions.get('timer-guard-session');
@@ -2958,7 +3078,7 @@ void test('stream server supports injected state store and observed filter/journ
   const server = new ControlPlaneStreamServer({
     maxStreamJournalEntries: 1,
     stateStore: injectedStore,
-    startSession: (input) => new FakeLiveSession(input)
+    startSession: (input) => new FakeLiveSession(input),
   });
   try {
     const internals = server as unknown as {
@@ -2981,7 +3101,7 @@ void test('stream server supports injected state store and observed filter/journ
           taskId?: string;
           directoryId?: string;
           conversationId?: string;
-        }
+        },
       ) => boolean;
       publishObservedEvent: (
         scope: {
@@ -2991,7 +3111,7 @@ void test('stream server supports injected state store and observed filter/journ
           directoryId: string | null;
           conversationId: string;
         },
-        event: Record<string, unknown>
+        event: Record<string, unknown>,
       ) => void;
     };
 
@@ -3000,7 +3120,7 @@ void test('stream server supports injected state store and observed filter/journ
       userId: 'user-a',
       workspaceId: 'workspace-a',
       directoryId: 'directory-a',
-      conversationId: 'conversation-a'
+      conversationId: 'conversation-a',
     };
     const statusEvent = {
       type: 'session-status',
@@ -3010,7 +3130,7 @@ void test('stream server supports injected state store and observed filter/journ
       live: true,
       ts: new Date(0).toISOString(),
       directoryId: 'directory-a',
-      conversationId: 'conversation-a'
+      conversationId: 'conversation-a',
     };
     const outputEvent = {
       type: 'session-output',
@@ -3019,70 +3139,70 @@ void test('stream server supports injected state store and observed filter/journ
       chunkBase64: Buffer.from('x').toString('base64'),
       ts: new Date(0).toISOString(),
       directoryId: 'directory-a',
-      conversationId: 'conversation-a'
+      conversationId: 'conversation-a',
     };
     const reorderedEvent = {
       type: 'task-reordered',
       tasks: [
         {
           taskId: 'task-a',
-          repositoryId: 'repository-a'
-        }
-      ]
+          repositoryId: 'repository-a',
+        },
+      ],
     };
 
     assert.equal(
       internals.matchesObservedFilter(baseScope, outputEvent, { includeOutput: false }),
-      false
+      false,
     );
     assert.equal(
       internals.matchesObservedFilter(baseScope, statusEvent, {
         includeOutput: true,
-        tenantId: 'tenant-b'
+        tenantId: 'tenant-b',
       }),
-      false
+      false,
     );
     assert.equal(
       internals.matchesObservedFilter(baseScope, statusEvent, {
         includeOutput: true,
-        userId: 'user-b'
+        userId: 'user-b',
       }),
-      false
+      false,
     );
     assert.equal(
       internals.matchesObservedFilter(baseScope, statusEvent, {
         includeOutput: true,
-        workspaceId: 'workspace-b'
+        workspaceId: 'workspace-b',
       }),
-      false
+      false,
     );
     assert.equal(
       internals.matchesObservedFilter(baseScope, statusEvent, {
         includeOutput: true,
-        directoryId: 'directory-b'
+        directoryId: 'directory-b',
       }),
-      false
+      false,
     );
     assert.equal(
       internals.matchesObservedFilter(baseScope, statusEvent, {
         includeOutput: true,
-        conversationId: 'conversation-b'
+        conversationId: 'conversation-b',
       }),
-      false
+      false,
     );
     assert.equal(
       internals.matchesObservedFilter(baseScope, reorderedEvent, {
         includeOutput: true,
-        repositoryId: 'repository-b'
+        repositoryId: 'repository-b',
       }),
-      false
+      false,
     );
     assert.equal(
       internals.matchesObservedFilter(baseScope, reorderedEvent, {
         includeOutput: true,
-        taskId: 'task-b'
+        taskId: 'task-b',
       }),
-      false
+      false,
     );
     assert.equal(
       internals.matchesObservedFilter(baseScope, statusEvent, {
@@ -3091,23 +3211,23 @@ void test('stream server supports injected state store and observed filter/journ
         userId: 'user-a',
         workspaceId: 'workspace-a',
         directoryId: 'directory-a',
-        conversationId: 'conversation-a'
+        conversationId: 'conversation-a',
       }),
-      true
+      true,
     );
     assert.equal(
       internals.matchesObservedFilter(baseScope, reorderedEvent, {
         includeOutput: true,
-        repositoryId: 'repository-missing'
+        repositoryId: 'repository-missing',
       }),
-      false
+      false,
     );
     assert.equal(
       internals.matchesObservedFilter(baseScope, reorderedEvent, {
         includeOutput: true,
-        taskId: 'task-missing'
+        taskId: 'task-missing',
       }),
-      false
+      false,
     );
 
     internals.publishObservedEvent(baseScope, statusEvent);
@@ -3118,12 +3238,12 @@ void test('stream server supports injected state store and observed filter/journ
     await server.close();
   }
 
-injectedStore.upsertDirectory({
+  injectedStore.upsertDirectory({
     directoryId: 'after-close-directory',
     tenantId: 'tenant-after',
     userId: 'user-after',
     workspaceId: 'workspace-after',
-    path: '/tmp/after-close'
+    path: '/tmp/after-close',
   });
   injectedStore.close();
 });
@@ -3144,24 +3264,24 @@ void test('stream server injects codex telemetry args, ingests otlp payloads, an
       captureLogs: true,
       captureMetrics: true,
       captureTraces: true,
-      captureVerboseEvents: true
+      captureVerboseEvents: true,
     },
     codexHistory: {
       enabled: false,
       filePath: '~/.codex/history.jsonl',
-      pollMs: 50
-    }
+      pollMs: 50,
+    },
   });
   const address = server.address();
   const telemetryAddress = server.telemetryAddressInfo();
   assert.notEqual(telemetryAddress, null);
   const telemetryTarget = {
     host: '127.0.0.1',
-    port: telemetryAddress!.port
+    port: telemetryAddress!.port,
   };
   const client = await connectControlPlaneStreamClient({
     host: address.address,
-    port: address.port
+    port: address.port,
   });
   const observedTelemetry = collectEnvelopes(client);
 
@@ -3172,21 +3292,21 @@ void test('stream server injects codex telemetry args, ingests otlp payloads, an
       tenantId: 'tenant-otel',
       userId: 'user-otel',
       workspaceId: 'workspace-otel',
-      path: '/tmp/workspace-otel'
+      path: '/tmp/workspace-otel',
     });
     await client.sendCommand({
       type: 'conversation.create',
       conversationId: 'conversation-otel',
       directoryId: 'directory-otel',
       title: 'otlp status',
-      agentType: 'codex'
+      agentType: 'codex',
     });
     await client.sendCommand({
       type: 'pty.start',
       sessionId: 'conversation-otel',
       args: ['--model', 'test-model'],
       initialCols: 80,
-      initialRows: 24
+      initialRows: 24,
     });
     const subscribed = await client.sendCommand({
       type: 'stream.subscribe',
@@ -3194,7 +3314,7 @@ void test('stream server injects codex telemetry args, ingests otlp payloads, an
       userId: 'user-otel',
       workspaceId: 'workspace-otel',
       conversationId: 'conversation-otel',
-      includeOutput: false
+      includeOutput: false,
     });
     const telemetrySubscriptionId = subscribed['subscriptionId'];
     assert.equal(typeof telemetrySubscriptionId, 'string');
@@ -3222,91 +3342,103 @@ void test('stream server injects codex telemetry args, ingests otlp payloads, an
       telemetryTarget,
       `/v1/logs/${encodeURIComponent(token)}`,
       'GET',
-      ''
+      '',
     );
     assert.equal(wrongMethodResponse.statusCode, 405);
     const invalidJsonResponse = await postRaw(
       telemetryTarget,
       `/v1/logs/${encodeURIComponent(token)}`,
       'POST',
-      '{'
+      '{',
     );
     assert.equal(invalidJsonResponse.statusCode, 400);
 
-    const batchResponse = await postJson(telemetryTarget, `/v1/logs/${encodeURIComponent(token)}`, {});
+    const batchResponse = await postJson(
+      telemetryTarget,
+      `/v1/logs/${encodeURIComponent(token)}`,
+      {},
+    );
     assert.equal(batchResponse.statusCode, 200);
 
-    const runningResponse = await postJson(telemetryTarget, `/v1/logs/${encodeURIComponent(token)}`, {
-      resourceLogs: [
-        {
-          scopeLogs: [
-            {
-              logRecords: [
-                {
-                  timeUnixNano: '1700000000000000000',
-                  attributes: [
-                    {
-                      key: 'event.name',
-                      value: {
-                        stringValue: 'codex.user_prompt'
-                      }
+    const runningResponse = await postJson(
+      telemetryTarget,
+      `/v1/logs/${encodeURIComponent(token)}`,
+      {
+        resourceLogs: [
+          {
+            scopeLogs: [
+              {
+                logRecords: [
+                  {
+                    timeUnixNano: '1700000000000000000',
+                    attributes: [
+                      {
+                        key: 'event.name',
+                        value: {
+                          stringValue: 'codex.user_prompt',
+                        },
+                      },
+                      {
+                        key: 'thread-id',
+                        value: {
+                          stringValue: 'thread-otel',
+                        },
+                      },
+                    ],
+                    body: {
+                      stringValue: 'prompt accepted',
                     },
-                    {
-                      key: 'thread-id',
-                      value: {
-                        stringValue: 'thread-otel'
-                      }
-                    }
-                  ],
-                  body: {
-                    stringValue: 'prompt accepted'
-                  }
-                }
-              ]
-            }
-          ]
-        }
-      ]
-    });
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    );
     assert.equal(runningResponse.statusCode, 200);
-    const runningDuplicateResponse = await postJson(telemetryTarget, `/v1/logs/${encodeURIComponent(token)}`, {
-      resourceLogs: [
-        {
-          scopeLogs: [
-            {
-              logRecords: [
-                {
-                  timeUnixNano: '1700000000000000000',
-                  attributes: [
-                    {
-                      key: 'event.name',
-                      value: {
-                        stringValue: 'codex.user_prompt'
-                      }
+    const runningDuplicateResponse = await postJson(
+      telemetryTarget,
+      `/v1/logs/${encodeURIComponent(token)}`,
+      {
+        resourceLogs: [
+          {
+            scopeLogs: [
+              {
+                logRecords: [
+                  {
+                    timeUnixNano: '1700000000000000000',
+                    attributes: [
+                      {
+                        key: 'event.name',
+                        value: {
+                          stringValue: 'codex.user_prompt',
+                        },
+                      },
+                      {
+                        key: 'thread-id',
+                        value: {
+                          stringValue: 'thread-otel',
+                        },
+                      },
+                    ],
+                    body: {
+                      stringValue: 'prompt accepted',
                     },
-                    {
-                      key: 'thread-id',
-                      value: {
-                        stringValue: 'thread-otel'
-                      }
-                    }
-                  ],
-                  body: {
-                    stringValue: 'prompt accepted'
-                  }
-                }
-              ]
-            }
-          ]
-        }
-      ]
-    });
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    );
     assert.equal(runningDuplicateResponse.statusCode, 200);
 
     await delay(20);
     const runningStatus = await client.sendCommand({
       type: 'session.status',
-      sessionId: 'conversation-otel'
+      sessionId: 'conversation-otel',
     });
     assert.equal(runningStatus['status'], 'running');
 
@@ -3314,147 +3446,164 @@ void test('stream server injects codex telemetry args, ingests otlp payloads, an
     await delay(10);
     const stillRunning = await client.sendCommand({
       type: 'session.status',
-      sessionId: 'conversation-otel'
+      sessionId: 'conversation-otel',
     });
     assert.equal(stillRunning['status'], 'running');
 
-    const completedResponse = await postJson(telemetryTarget, `/v1/logs/${encodeURIComponent(token)}`, {
-      resourceLogs: [
-        {
-          scopeLogs: [
-            {
-              logRecords: [
-                {
-                  attributes: [
-                    {
-                      key: 'event.name',
-                      value: {
-                        stringValue: 'codex.sse_event'
-                      }
+    const completedResponse = await postJson(
+      telemetryTarget,
+      `/v1/logs/${encodeURIComponent(token)}`,
+      {
+        resourceLogs: [
+          {
+            scopeLogs: [
+              {
+                logRecords: [
+                  {
+                    attributes: [
+                      {
+                        key: 'event.name',
+                        value: {
+                          stringValue: 'codex.sse_event',
+                        },
+                      },
+                      {
+                        key: 'kind',
+                        value: {
+                          stringValue: 'response.completed',
+                        },
+                      },
+                      {
+                        key: 'thread_id',
+                        value: {
+                          stringValue: 'thread-otel',
+                        },
+                      },
+                    ],
+                    body: {
+                      stringValue: 'response.completed',
                     },
-                    {
-                      key: 'kind',
-                      value: {
-                        stringValue: 'response.completed'
-                      }
-                    },
-                    {
-                      key: 'thread_id',
-                      value: {
-                        stringValue: 'thread-otel'
-                      }
-                    }
-                  ],
-                  body: {
-                    stringValue: 'response.completed'
-                  }
-                }
-              ]
-            }
-          ]
-        }
-      ]
-    });
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    );
     assert.equal(completedResponse.statusCode, 200);
-    const needsInputResponse = await postJson(telemetryTarget, `/v1/logs/${encodeURIComponent(token)}`, {
-      resourceLogs: [
-        {
-          scopeLogs: [
-            {
-              logRecords: [
-                {
-                  attributes: [
-                    {
-                      key: 'event.name',
-                      value: {
-                        stringValue: 'needs-input'
-                      }
-                    }
-                  ],
-                  body: {
-                    stringValue: 'needs-input'
-                  }
-                }
-              ]
-            }
-          ]
-        }
-      ]
-    });
+    const needsInputResponse = await postJson(
+      telemetryTarget,
+      `/v1/logs/${encodeURIComponent(token)}`,
+      {
+        resourceLogs: [
+          {
+            scopeLogs: [
+              {
+                logRecords: [
+                  {
+                    attributes: [
+                      {
+                        key: 'event.name',
+                        value: {
+                          stringValue: 'needs-input',
+                        },
+                      },
+                    ],
+                    body: {
+                      stringValue: 'needs-input',
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    );
     assert.equal(needsInputResponse.statusCode, 200);
 
-    const metricsResponse = await postJson(telemetryTarget, `/v1/metrics/${encodeURIComponent(token)}`, {
-      resourceMetrics: [
-        {
-          scopeMetrics: [
-            {
-              metrics: [
-                {
-                  name: 'codex.turn.e2e_duration_ms',
-                  sum: {
-                    dataPoints: [{}]
-                  }
-                }
-              ]
-            }
-          ]
-        }
-      ]
-    });
+    const metricsResponse = await postJson(
+      telemetryTarget,
+      `/v1/metrics/${encodeURIComponent(token)}`,
+      {
+        resourceMetrics: [
+          {
+            scopeMetrics: [
+              {
+                metrics: [
+                  {
+                    name: 'codex.turn.e2e_duration_ms',
+                    sum: {
+                      dataPoints: [{}],
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    );
     assert.equal(metricsResponse.statusCode, 200);
 
-    const tracesResponse = await postJson(telemetryTarget, `/v1/traces/${encodeURIComponent(token)}`, {
-      resourceSpans: [
-        {
-          scopeSpans: [
-            {
-              spans: [
-                {
-                  name: 'codex.websocket_event',
-                  attributes: [
-                    {
-                      key: 'thread-id',
-                      value: {
-                        stringValue: 'thread-otel'
-                      }
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
-      ]
-    });
+    const tracesResponse = await postJson(
+      telemetryTarget,
+      `/v1/traces/${encodeURIComponent(token)}`,
+      {
+        resourceSpans: [
+          {
+            scopeSpans: [
+              {
+                spans: [
+                  {
+                    name: 'codex.websocket_event',
+                    attributes: [
+                      {
+                        key: 'thread-id',
+                        value: {
+                          stringValue: 'thread-otel',
+                        },
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    );
     assert.equal(tracesResponse.statusCode, 200);
 
     await delay(20);
     const completedStatus = await client.sendCommand({
       type: 'session.status',
-      sessionId: 'conversation-otel'
+      sessionId: 'conversation-otel',
     });
     assert.equal(completedStatus['status'], 'completed');
-    assert.equal(
-      (completedStatus['telemetry'] as Record<string, unknown>)['source'],
-      'otlp-trace'
-    );
+    assert.equal((completedStatus['telemetry'] as Record<string, unknown>)['source'], 'otlp-trace');
     const observedKeyEvents = observedTelemetry.filter(
       (envelope) =>
         envelope.kind === 'stream.event' &&
         envelope.subscriptionId === telemetrySubscriptionId &&
-        envelope.event.type === 'session-key-event'
+        envelope.event.type === 'session-key-event',
     );
     assert.equal(observedKeyEvents.length > 0, true);
     const observedStatusEvents = observedTelemetry.filter(
       (envelope) =>
         envelope.kind === 'stream.event' &&
         envelope.subscriptionId === telemetrySubscriptionId &&
-        envelope.event.type === 'session-status'
+        envelope.event.type === 'session-status',
     );
     assert.equal(observedStatusEvents.length > 0, true);
     const latestStatus = observedStatusEvents[observedStatusEvents.length - 1];
     assert.notEqual(latestStatus, undefined);
-    if (latestStatus !== undefined && latestStatus.kind === 'stream.event' && latestStatus.event.type === 'session-status') {
+    if (
+      latestStatus !== undefined &&
+      latestStatus.kind === 'stream.event' &&
+      latestStatus.event.type === 'session-status'
+    ) {
       assert.equal(latestStatus.event.telemetry?.source, 'otlp-trace');
     }
 
@@ -3462,16 +3611,18 @@ void test('stream server injects codex telemetry args, ingests otlp payloads, an
     await delay(10);
     const completedAfterInput = await client.sendCommand({
       type: 'session.status',
-      sessionId: 'conversation-otel'
+      sessionId: 'conversation-otel',
     });
     assert.equal(completedAfterInput['status'], 'completed');
 
     const listedConversations = await client.sendCommand({
       type: 'conversation.list',
       directoryId: 'directory-otel',
-      includeArchived: true
+      includeArchived: true,
     });
-    const conversationRow = (listedConversations['conversations'] as Array<Record<string, unknown>>)[0]!;
+    const conversationRow = (
+      listedConversations['conversations'] as Array<Record<string, unknown>>
+    )[0]!;
     const adapterState = conversationRow['adapterState'] as Record<string, unknown>;
     const codexState = adapterState['codex'] as Record<string, unknown>;
     assert.equal(codexState['resumeSessionId'], 'thread-otel');
@@ -3497,24 +3648,24 @@ void test('stream server lifecycle telemetry mode drops verbose codex events whi
       logUserPrompt: true,
       captureLogs: true,
       captureMetrics: true,
-      captureTraces: true
+      captureTraces: true,
     },
     codexHistory: {
       enabled: false,
       filePath: '~/.codex/history.jsonl',
-      pollMs: 50
-    }
+      pollMs: 50,
+    },
   });
   const address = server.address();
   const telemetryAddress = server.telemetryAddressInfo();
   assert.notEqual(telemetryAddress, null);
   const telemetryTarget = {
     host: '127.0.0.1',
-    port: telemetryAddress!.port
+    port: telemetryAddress!.port,
   };
   const client = await connectControlPlaneStreamClient({
     host: address.address,
-    port: address.port
+    port: address.port,
   });
   const observedTelemetry = collectEnvelopes(client);
   const internals = server as unknown as {
@@ -3529,7 +3680,7 @@ void test('stream server lifecycle telemetry mode drops verbose codex events whi
         providerThreadId: string | null;
         statusHint: 'running' | 'completed' | 'needs-input' | null;
         payload: Record<string, unknown>;
-      }
+      },
     ) => void;
   };
 
@@ -3542,7 +3693,7 @@ void test('stream server lifecycle telemetry mode drops verbose codex events whi
       summary: 'stream response.in_progress',
       providerThreadId: 'thread-missing-lifecycle',
       statusHint: 'running',
-      payload: {}
+      payload: {},
     });
 
     await client.sendCommand({
@@ -3551,21 +3702,21 @@ void test('stream server lifecycle telemetry mode drops verbose codex events whi
       tenantId: 'tenant-otel-lifecycle',
       userId: 'user-otel-lifecycle',
       workspaceId: 'workspace-otel-lifecycle',
-      path: '/tmp/workspace-otel-lifecycle'
+      path: '/tmp/workspace-otel-lifecycle',
     });
     await client.sendCommand({
       type: 'conversation.create',
       conversationId: 'conversation-otel-lifecycle',
       directoryId: 'directory-otel-lifecycle',
       title: 'otlp lifecycle',
-      agentType: 'codex'
+      agentType: 'codex',
     });
     await client.sendCommand({
       type: 'pty.start',
       sessionId: 'conversation-otel-lifecycle',
       args: ['--model', 'test-model'],
       initialCols: 80,
-      initialRows: 24
+      initialRows: 24,
     });
     const subscribed = await client.sendCommand({
       type: 'stream.subscribe',
@@ -3573,7 +3724,7 @@ void test('stream server lifecycle telemetry mode drops verbose codex events whi
       userId: 'user-otel-lifecycle',
       workspaceId: 'workspace-otel-lifecycle',
       conversationId: 'conversation-otel-lifecycle',
-      includeOutput: false
+      includeOutput: false,
     });
     const telemetrySubscriptionId = subscribed['subscriptionId'];
     assert.equal(typeof telemetrySubscriptionId, 'string');
@@ -3587,157 +3738,181 @@ void test('stream server lifecycle telemetry mode drops verbose codex events whi
     const token = decodeURIComponent(tokenMatch?.[1] ?? '');
     assert.notEqual(token.length, 0);
 
-    const emptyBatchResponse = await postJson(telemetryTarget, `/v1/logs/${encodeURIComponent(token)}`, {});
+    const emptyBatchResponse = await postJson(
+      telemetryTarget,
+      `/v1/logs/${encodeURIComponent(token)}`,
+      {},
+    );
     assert.equal(emptyBatchResponse.statusCode, 200);
 
-    const promptResponse = await postJson(telemetryTarget, `/v1/logs/${encodeURIComponent(token)}`, {
-      resourceLogs: [
-        {
-          scopeLogs: [
-            {
-              logRecords: [
-                {
-                  attributes: [
-                    {
-                      key: 'event.name',
-                      value: {
-                        stringValue: 'codex.user_prompt'
-                      }
+    const promptResponse = await postJson(
+      telemetryTarget,
+      `/v1/logs/${encodeURIComponent(token)}`,
+      {
+        resourceLogs: [
+          {
+            scopeLogs: [
+              {
+                logRecords: [
+                  {
+                    attributes: [
+                      {
+                        key: 'event.name',
+                        value: {
+                          stringValue: 'codex.user_prompt',
+                        },
+                      },
+                      {
+                        key: 'thread-id',
+                        value: {
+                          stringValue: 'thread-otel-lifecycle',
+                        },
+                      },
+                    ],
+                    body: {
+                      stringValue: 'prompt accepted',
                     },
-                    {
-                      key: 'thread-id',
-                      value: {
-                        stringValue: 'thread-otel-lifecycle'
-                      }
-                    }
-                  ],
-                  body: {
-                    stringValue: 'prompt accepted'
-                  }
-                }
-              ]
-            }
-          ]
-        }
-      ]
-    });
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    );
     assert.equal(promptResponse.statusCode, 200);
 
-    const verboseLogResponse = await postJson(telemetryTarget, `/v1/logs/${encodeURIComponent(token)}`, {
-      resourceLogs: [
-        {
-          scopeLogs: [
-            {
-              logRecords: [
-                {
-                  attributes: [
-                    {
-                      key: 'event.name',
-                      value: {
-                        stringValue: 'codex.sse_event'
-                      }
+    const verboseLogResponse = await postJson(
+      telemetryTarget,
+      `/v1/logs/${encodeURIComponent(token)}`,
+      {
+        resourceLogs: [
+          {
+            scopeLogs: [
+              {
+                logRecords: [
+                  {
+                    attributes: [
+                      {
+                        key: 'event.name',
+                        value: {
+                          stringValue: 'codex.sse_event',
+                        },
+                      },
+                      {
+                        key: 'kind',
+                        value: {
+                          stringValue: 'response.in_progress',
+                        },
+                      },
+                      {
+                        key: 'thread-id',
+                        value: {
+                          stringValue: 'thread-otel-lifecycle',
+                        },
+                      },
+                    ],
+                    body: {
+                      stringValue: 'response.in_progress',
                     },
-                    {
-                      key: 'kind',
-                      value: {
-                        stringValue: 'response.in_progress'
-                      }
-                    },
-                    {
-                      key: 'thread-id',
-                      value: {
-                        stringValue: 'thread-otel-lifecycle'
-                      }
-                    }
-                  ],
-                  body: {
-                    stringValue: 'response.in_progress'
-                  }
-                }
-              ]
-            }
-          ]
-        }
-      ]
-    });
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    );
     assert.equal(verboseLogResponse.statusCode, 200);
 
-    const needsInputResponse = await postJson(telemetryTarget, `/v1/logs/${encodeURIComponent(token)}`, {
-      resourceLogs: [
-        {
-          scopeLogs: [
-            {
-              logRecords: [
-                {
-                  attributes: [
-                    {
-                      key: 'event.name',
-                      value: {
-                        stringValue: 'needs-input'
-                      }
-                    }
-                  ],
-                  body: {
-                    stringValue: 'needs-input'
-                  }
-                }
-              ]
-            }
-          ]
-        }
-      ]
-    });
+    const needsInputResponse = await postJson(
+      telemetryTarget,
+      `/v1/logs/${encodeURIComponent(token)}`,
+      {
+        resourceLogs: [
+          {
+            scopeLogs: [
+              {
+                logRecords: [
+                  {
+                    attributes: [
+                      {
+                        key: 'event.name',
+                        value: {
+                          stringValue: 'needs-input',
+                        },
+                      },
+                    ],
+                    body: {
+                      stringValue: 'needs-input',
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    );
     assert.equal(needsInputResponse.statusCode, 200);
 
-    const metricResponse = await postJson(telemetryTarget, `/v1/metrics/${encodeURIComponent(token)}`, {
-      resourceMetrics: [
-        {
-          scopeMetrics: [
-            {
-              metrics: [
-                {
-                  name: 'codex.turn.e2e_duration_ms',
-                  sum: {
-                    dataPoints: [{}]
-                  }
-                }
-              ]
-            }
-          ]
-        }
-      ]
-    });
+    const metricResponse = await postJson(
+      telemetryTarget,
+      `/v1/metrics/${encodeURIComponent(token)}`,
+      {
+        resourceMetrics: [
+          {
+            scopeMetrics: [
+              {
+                metrics: [
+                  {
+                    name: 'codex.turn.e2e_duration_ms',
+                    sum: {
+                      dataPoints: [{}],
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    );
     assert.equal(metricResponse.statusCode, 200);
 
-    const traceResponse = await postJson(telemetryTarget, `/v1/traces/${encodeURIComponent(token)}`, {
-      resourceSpans: [
-        {
-          scopeSpans: [
-            {
-              spans: [
-                {
-                  name: 'codex.websocket_event',
-                  attributes: [
-                    {
-                      key: 'thread-id',
-                      value: {
-                        stringValue: 'thread-otel-lifecycle'
-                      }
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
-      ]
-    });
+    const traceResponse = await postJson(
+      telemetryTarget,
+      `/v1/traces/${encodeURIComponent(token)}`,
+      {
+        resourceSpans: [
+          {
+            scopeSpans: [
+              {
+                spans: [
+                  {
+                    name: 'codex.websocket_event',
+                    attributes: [
+                      {
+                        key: 'thread-id',
+                        value: {
+                          stringValue: 'thread-otel-lifecycle',
+                        },
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    );
     assert.equal(traceResponse.statusCode, 200);
 
     await delay(20);
     const status = await client.sendCommand({
       type: 'session.status',
-      sessionId: 'conversation-otel-lifecycle'
+      sessionId: 'conversation-otel-lifecycle',
     });
     assert.equal(status['status'], 'completed');
     const telemetry = status['telemetry'] as Record<string, unknown> | null;
@@ -3749,16 +3924,20 @@ void test('stream server lifecycle telemetry mode drops verbose codex events whi
       (envelope) =>
         envelope.kind === 'stream.event' &&
         envelope.subscriptionId === telemetrySubscriptionId &&
-        envelope.event.type === 'session-key-event'
+        envelope.event.type === 'session-key-event',
     );
     const observedEventNames = observedKeyEvents
       .map((envelope) =>
         envelope.kind === 'stream.event' && envelope.event.type === 'session-key-event'
           ? envelope.event.keyEvent.eventName
-          : null
+          : null,
       )
       .filter((value): value is string => typeof value === 'string');
-    assert.deepEqual(observedEventNames, ['codex.user_prompt', 'needs-input', 'codex.turn.e2e_duration_ms']);
+    assert.deepEqual(observedEventNames, [
+      'codex.user_prompt',
+      'needs-input',
+      'codex.turn.e2e_duration_ms',
+    ]);
   } finally {
     client.close();
     await server.close();
@@ -3778,18 +3957,18 @@ void test('stream server ingests codex history lines and supports reset when fil
       captureLogs: true,
       captureMetrics: true,
       captureTraces: true,
-      captureVerboseEvents: true
+      captureVerboseEvents: true,
     },
     codexHistory: {
       enabled: true,
       filePath: historyPath,
-      pollMs: 25
-    }
+      pollMs: 25,
+    },
   });
   const address = server.address();
   const client = await connectControlPlaneStreamClient({
     host: address.address,
-    port: address.port
+    port: address.port,
   });
   const internals = server as unknown as {
     pollHistoryFileUnsafe: () => Promise<boolean>;
@@ -3803,7 +3982,7 @@ void test('stream server ingests codex history lines and supports reset when fil
       tenantId: 'tenant-history',
       userId: 'user-history',
       workspaceId: 'workspace-history',
-      path: '/tmp/workspace-history'
+      path: '/tmp/workspace-history',
     });
     await client.sendCommand({
       type: 'conversation.create',
@@ -3813,9 +3992,9 @@ void test('stream server ingests codex history lines and supports reset when fil
       agentType: 'codex',
       adapterState: {
         codex: {
-          resumeSessionId: 'thread-history'
-        }
-      }
+          resumeSessionId: 'thread-history',
+        },
+      },
     });
     writeFileSync(
       historyPath,
@@ -3823,9 +4002,9 @@ void test('stream server ingests codex history lines and supports reset when fil
         timestamp: '2026-02-15T11:59:59.000Z',
         type: 'response.completed',
         message: 'seed',
-        session_id: 'thread-history'
+        session_id: 'thread-history',
       })}\n`,
-      'utf8'
+      'utf8',
     );
     await internals.pollHistoryFileUnsafe();
 
@@ -3834,17 +4013,17 @@ void test('stream server ingests codex history lines and supports reset when fil
       sessionId: 'conversation-history',
       args: [],
       initialCols: 80,
-      initialRows: 24
+      initialRows: 24,
     });
 
     const seededStatus = await client.sendCommand({
       type: 'session.status',
-      sessionId: 'conversation-history'
+      sessionId: 'conversation-history',
     });
     assert.equal((seededStatus['telemetry'] as Record<string, unknown>)['source'], 'history');
     assert.equal(
       (seededStatus['telemetry'] as Record<string, unknown>)['eventName'],
-      'response.completed'
+      'response.completed',
     );
 
     writeFileSync(
@@ -3853,15 +4032,15 @@ void test('stream server ingests codex history lines and supports reset when fil
         timestamp: '2026-02-15T12:00:00.000Z',
         type: 'user_prompt',
         message: 'first',
-        session_id: 'thread-history'
+        session_id: 'thread-history',
       })}\n`,
-      'utf8'
+      'utf8',
     );
     await internals.pollHistoryFileUnsafe();
 
     const firstStatus = await client.sendCommand({
       type: 'session.status',
-      sessionId: 'conversation-history'
+      sessionId: 'conversation-history',
     });
     assert.equal(firstStatus['status'], 'running');
     assert.equal((firstStatus['telemetry'] as Record<string, unknown>)['source'], 'history');
@@ -3871,9 +4050,9 @@ void test('stream server ingests codex history lines and supports reset when fil
       `${JSON.stringify({
         timestamp: '2026-02-15T12:00:00.500Z',
         type: 'heartbeat',
-        message: 'no-thread-id'
+        message: 'no-thread-id',
       })}\n`,
-      'utf8'
+      'utf8',
     );
     await internals.pollHistoryFileUnsafe();
 
@@ -3885,20 +4064,20 @@ void test('stream server ingests codex history lines and supports reset when fil
         timestamp: '2026-02-15T12:00:01.000Z',
         type: 'response.completed',
         message: rewrittenMessage,
-        session_id: 'thread-history'
+        session_id: 'thread-history',
       })}\n`,
-      'utf8'
+      'utf8',
     );
     await internals.pollHistoryFileUnsafe();
 
     const secondStatus = await client.sendCommand({
       type: 'session.status',
-      sessionId: 'conversation-history'
+      sessionId: 'conversation-history',
     });
     assert.equal(secondStatus['status'], 'running');
     assert.equal(
       (secondStatus['telemetry'] as Record<string, unknown>)['eventName'],
-      'response.completed'
+      'response.completed',
     );
   } finally {
     client.close();
@@ -4018,18 +4197,18 @@ void test('stream server skips codex telemetry arg injection for non-codex agent
       captureLogs: true,
       captureMetrics: true,
       captureTraces: true,
-      captureVerboseEvents: true
+      captureVerboseEvents: true,
     },
     codexHistory: {
       enabled: true,
       filePath: '~/.codex/history.jsonl',
-      pollMs: 50
-    }
+      pollMs: 50,
+    },
   });
   const address = server.address();
   const client = await connectControlPlaneStreamClient({
     host: address.address,
-    port: address.port
+    port: address.port,
   });
 
   try {
@@ -4039,21 +4218,21 @@ void test('stream server skips codex telemetry arg injection for non-codex agent
       tenantId: 'tenant-non-codex',
       userId: 'user-non-codex',
       workspaceId: 'workspace-non-codex',
-      path: '/tmp/non-codex'
+      path: '/tmp/non-codex',
     });
     await client.sendCommand({
       type: 'conversation.create',
       conversationId: 'conversation-non-codex',
       directoryId: 'directory-non-codex',
       title: 'non-codex',
-      agentType: 'claude'
+      agentType: 'claude',
     });
     await client.sendCommand({
       type: 'pty.start',
       sessionId: 'conversation-non-codex',
       args: ['--foo', 'bar'],
       initialCols: 80,
-      initialRows: 24
+      initialRows: 24,
     });
     const launchedArgs = created[0]!.input.args;
     assert.deepEqual(launchedArgs, ['--foo', 'bar']);
@@ -4079,25 +4258,29 @@ void test('stream server launches terminal agents with shell command and no code
       captureLogs: true,
       captureMetrics: true,
       captureTraces: true,
-      captureVerboseEvents: true
+      captureVerboseEvents: true,
     },
     codexHistory: {
       enabled: true,
       filePath: '~/.codex/history.jsonl',
-      pollMs: 50
-    }
+      pollMs: 50,
+    },
   });
   const address = server.address();
   const client = await connectControlPlaneStreamClient({
     host: address.address,
-    port: address.port
+    port: address.port,
   });
   const comSpec = process.env.ComSpec?.trim();
   const shell = process.env.SHELL?.trim();
   const expectedTerminalCommand =
     process.platform === 'win32'
-      ? (comSpec !== undefined && comSpec.length > 0 ? comSpec : 'cmd.exe')
-      : (shell !== undefined && shell.length > 0 ? shell : 'sh');
+      ? comSpec !== undefined && comSpec.length > 0
+        ? comSpec
+        : 'cmd.exe'
+      : shell !== undefined && shell.length > 0
+        ? shell
+        : 'sh';
 
   try {
     await client.sendCommand({
@@ -4106,21 +4289,21 @@ void test('stream server launches terminal agents with shell command and no code
       tenantId: 'tenant-terminal',
       userId: 'user-terminal',
       workspaceId: 'workspace-terminal',
-      path: '/tmp/terminal'
+      path: '/tmp/terminal',
     });
     await client.sendCommand({
       type: 'conversation.create',
       conversationId: 'conversation-terminal',
       directoryId: 'directory-terminal',
       title: 'terminal',
-      agentType: 'terminal'
+      agentType: 'terminal',
     });
     await client.sendCommand({
       type: 'pty.start',
       sessionId: 'conversation-terminal',
       args: ['-lc', 'echo hello'],
       initialCols: 80,
-      initialRows: 24
+      initialRows: 24,
     });
     const started = created[0]?.input;
     assert.notEqual(started, undefined);
@@ -4138,41 +4321,41 @@ void test('resolveTerminalCommandForEnvironment prefers shell then ComSpec then 
     resolveTerminalCommandForEnvironment(
       {
         SHELL: '/bin/zsh',
-        ComSpec: 'C:\\Windows\\System32\\cmd.exe'
+        ComSpec: 'C:\\Windows\\System32\\cmd.exe',
       },
-      'linux'
+      'linux',
     ),
-    '/bin/zsh'
+    '/bin/zsh',
   );
   assert.equal(
     resolveTerminalCommandForEnvironment(
       {
         SHELL: '   ',
-        ComSpec: 'C:\\Windows\\System32\\cmd.exe'
+        ComSpec: 'C:\\Windows\\System32\\cmd.exe',
       },
-      'linux'
+      'linux',
     ),
-    'C:\\Windows\\System32\\cmd.exe'
+    'C:\\Windows\\System32\\cmd.exe',
   );
   assert.equal(
     resolveTerminalCommandForEnvironment(
       {
         SHELL: '',
-        ComSpec: ' '
+        ComSpec: ' ',
       },
-      'win32'
+      'win32',
     ),
-    'cmd.exe'
+    'cmd.exe',
   );
   assert.equal(
     resolveTerminalCommandForEnvironment(
       {
         SHELL: '',
-        ComSpec: ''
+        ComSpec: '',
       },
-      'darwin'
+      'darwin',
     ),
-    'sh'
+    'sh',
   );
 });
 
@@ -4185,7 +4368,7 @@ void test('stream server helper internals cover concurrency and git snapshot equ
       if (value !== undefined) {
         processed.add(value);
       }
-    }
+    },
   );
   assert.deepEqual([...processed].sort(), ['first', 'second']);
 
@@ -4195,16 +4378,16 @@ void test('stream server helper internals cover concurrency and git snapshot equ
         branch: 'main',
         changedFiles: 2,
         additions: 5,
-        deletions: 1
+        deletions: 1,
       },
       {
         branch: 'main',
         changedFiles: 2,
         additions: 5,
-        deletions: 1
-      }
+        deletions: 1,
+      },
     ),
-    true
+    true,
   );
   assert.equal(
     streamServerTestInternals.gitSummaryEqual(
@@ -4212,16 +4395,16 @@ void test('stream server helper internals cover concurrency and git snapshot equ
         branch: 'main',
         changedFiles: 2,
         additions: 5,
-        deletions: 1
+        deletions: 1,
       },
       {
         branch: 'dev',
         changedFiles: 2,
         additions: 5,
-        deletions: 1
-      }
+        deletions: 1,
+      },
     ),
-    false
+    false,
   );
 
   assert.equal(
@@ -4232,7 +4415,7 @@ void test('stream server helper internals cover concurrency and git snapshot equ
         lastCommitAt: '2026-02-16T00:00:00.000Z',
         shortCommitHash: 'abcdef1',
         inferredName: 'harness',
-        defaultBranch: 'main'
+        defaultBranch: 'main',
       },
       {
         normalizedRemoteUrl: 'https://github.com/example/harness',
@@ -4240,10 +4423,10 @@ void test('stream server helper internals cover concurrency and git snapshot equ
         lastCommitAt: '2026-02-16T00:00:00.000Z',
         shortCommitHash: 'abcdef1',
         inferredName: 'harness',
-        defaultBranch: 'main'
-      }
+        defaultBranch: 'main',
+      },
     ),
-    true
+    true,
   );
   assert.equal(
     streamServerTestInternals.gitRepositorySnapshotEqual(
@@ -4253,7 +4436,7 @@ void test('stream server helper internals cover concurrency and git snapshot equ
         lastCommitAt: '2026-02-16T00:00:00.000Z',
         shortCommitHash: 'abcdef1',
         inferredName: 'harness',
-        defaultBranch: 'main'
+        defaultBranch: 'main',
       },
       {
         normalizedRemoteUrl: 'https://github.com/example/harness-2',
@@ -4261,10 +4444,10 @@ void test('stream server helper internals cover concurrency and git snapshot equ
         lastCommitAt: '2026-02-16T00:00:00.000Z',
         shortCommitHash: 'abcdef1',
         inferredName: 'harness',
-        defaultBranch: 'main'
-      }
+        defaultBranch: 'main',
+      },
     ),
-    false
+    false,
   );
 });
 
@@ -4279,13 +4462,13 @@ void test('stream server telemetry/history private guard branches are stable', a
       captureLogs: true,
       captureMetrics: true,
       captureTraces: true,
-      captureVerboseEvents: true
+      captureVerboseEvents: true,
     },
     codexHistory: {
       enabled: false,
       filePath: '~/unused-history.jsonl',
-      pollMs: 25
-    }
+      pollMs: 25,
+    },
   });
 
   try {
@@ -4299,21 +4482,19 @@ void test('stream server telemetry/history private guard branches are stable', a
           adapterState: Record<string, unknown>;
         },
         threadId: string,
-        observedAt: string
+        observedAt: string,
       ) => void;
       codexLaunchArgsForSession: (
         sessionId: string,
         agentType: string,
-        existingArgs: readonly string[]
+        existingArgs: readonly string[],
       ) => string[];
       telemetryEndpointBaseUrl: () => string | null;
-      telemetryAddress:
-        | {
-            address: string;
-            family: 'IPv4' | 'IPv6';
-            port: number;
-          }
-        | null;
+      telemetryAddress: {
+        address: string;
+        family: 'IPv4' | 'IPv6';
+        port: number;
+      } | null;
       handleTelemetryHttpRequestAsync: (
         request: {
           method?: string;
@@ -4322,7 +4503,7 @@ void test('stream server telemetry/history private guard branches are stable', a
         response: {
           statusCode: number;
           end: () => void;
-        }
+        },
       ) => Promise<void>;
       handleTelemetryHttpRequest: (
         request: {
@@ -4335,10 +4516,14 @@ void test('stream server telemetry/history private guard branches are stable', a
           writableEnded?: boolean;
           setHeader?: (name: string, value: string) => void;
           end: () => void;
-        }
+        },
       ) => void;
       telemetryTokenToSessionId: Map<string, string>;
-      ingestOtlpPayload: (kind: 'logs' | 'metrics' | 'traces', sessionId: string, payload: unknown) => void;
+      ingestOtlpPayload: (
+        kind: 'logs' | 'metrics' | 'traces',
+        sessionId: string,
+        payload: unknown,
+      ) => void;
       ingestParsedTelemetryEvent: (
         fallbackSessionId: string | null,
         event: {
@@ -4350,7 +4535,7 @@ void test('stream server telemetry/history private guard branches are stable', a
           providerThreadId: string | null;
           statusHint: 'running' | 'completed' | 'needs-input' | null;
           payload: Record<string, unknown>;
-        }
+        },
       ) => void;
       pollHistoryFileUnsafe: () => Promise<boolean>;
       startTelemetryServer: () => Promise<void>;
@@ -4365,20 +4550,20 @@ void test('stream server telemetry/history private guard branches are stable', a
         captureLogs: true,
         captureMetrics: true,
         captureTraces: true,
-        captureVerboseEvents: true
+        captureVerboseEvents: true,
       },
       codexHistory: {
         enabled: false,
         filePath: '~/unused-history.jsonl',
-        pollMs: 25
-      }
+        pollMs: 25,
+      },
     });
     try {
       const coldInternals = coldServer as unknown as {
         codexLaunchArgsForSession: (
           sessionId: string,
           agentType: string,
-          existingArgs: readonly string[]
+          existingArgs: readonly string[],
         ) => string[];
         telemetryEndpointBaseUrl: () => string | null;
       };
@@ -4388,20 +4573,22 @@ void test('stream server telemetry/history private guard branches are stable', a
       await coldServer.close();
     }
     await internals.startTelemetryServer();
-    const codexArgsWithOtel = internals.codexLaunchArgsForSession('session-with-otel', 'codex', ['--foo']);
+    const codexArgsWithOtel = internals.codexLaunchArgsForSession('session-with-otel', 'codex', [
+      '--foo',
+    ]);
     assert.equal(codexArgsWithOtel.includes('history.persistence="none"'), true);
     const originalTelemetryAddress = internals.telemetryAddress;
     internals.telemetryAddress = {
       address: '::1',
       family: 'IPv6',
-      port: 4318
+      port: 4318,
     };
     assert.equal(internals.telemetryEndpointBaseUrl(), 'http://[::1]:4318');
     internals.telemetryAddress = originalTelemetryAddress;
     const responseRecord = { statusCode: 0, ended: false };
     await internals.handleTelemetryHttpRequestAsync(
       {
-        method: 'POST'
+        method: 'POST',
       },
       {
         get statusCode() {
@@ -4412,8 +4599,8 @@ void test('stream server telemetry/history private guard branches are stable', a
         },
         end() {
           responseRecord.ended = true;
-        }
-      }
+        },
+      },
     );
     assert.equal(responseRecord.statusCode, 404);
     assert.equal(responseRecord.ended, true);
@@ -4491,7 +4678,7 @@ void test('stream server telemetry/history private guard branches are stable', a
       summary: null,
       providerThreadId: null,
       statusHint: null,
-      payload: {}
+      payload: {},
     });
     internals.ingestParsedTelemetryEvent(null, {
       source: 'otlp-log',
@@ -4501,14 +4688,14 @@ void test('stream server telemetry/history private guard branches are stable', a
       summary: null,
       providerThreadId: 'thread-missing',
       statusHint: null,
-      payload: {}
+      payload: {},
     });
     internals.stateStore.upsertDirectory({
       directoryId: 'directory-archived-thread',
       tenantId: 'tenant-archived-thread',
       userId: 'user-archived-thread',
       workspaceId: 'workspace-archived-thread',
-      path: '/tmp/archived-thread'
+      path: '/tmp/archived-thread',
     });
     internals.stateStore.createConversation({
       conversationId: 'conversation-archived-thread',
@@ -4517,9 +4704,9 @@ void test('stream server telemetry/history private guard branches are stable', a
       agentType: 'codex',
       adapterState: {
         codex: {
-          resumeSessionId: 'thread-archived'
-        }
-      }
+          resumeSessionId: 'thread-archived',
+        },
+      },
     });
     internals.stateStore.archiveConversation('conversation-archived-thread');
     assert.equal(internals.resolveSessionIdByThreadId('thread-archived'), null);
@@ -4531,7 +4718,7 @@ void test('stream server telemetry/history private guard branches are stable', a
       summary: 'archived telemetry should not republish',
       providerThreadId: 'thread-archived',
       statusHint: 'running',
-      payload: {}
+      payload: {},
     });
     assert.equal(internals.resolveSessionIdByThreadId('   '), null);
     const nonCodexState = {
@@ -4539,42 +4726,42 @@ void test('stream server telemetry/history private guard branches are stable', a
       agentType: 'claude',
       adapterState: {
         codex: {
-          resumeSessionId: 'thread-keep'
-        }
-      }
+          resumeSessionId: 'thread-keep',
+        },
+      },
     };
     internals.updateSessionThreadId(nonCodexState, 'thread-new', '2026-02-15T00:00:00.000Z');
     assert.equal(
-      ((nonCodexState.adapterState['codex'] as Record<string, unknown>)['resumeSessionId'] as string),
-      'thread-keep'
+      (nonCodexState.adapterState['codex'] as Record<string, unknown>)['resumeSessionId'] as string,
+      'thread-keep',
     );
 
     const codexArrayState = {
       id: 'missing-conversation-id-2',
       agentType: 'codex',
       adapterState: {
-        codex: []
-      }
+        codex: [],
+      },
     };
     internals.updateSessionThreadId(codexArrayState, 'thread-array', '2026-02-15T00:00:00.000Z');
     assert.deepEqual(codexArrayState.adapterState['codex'], {
       resumeSessionId: 'thread-array',
-      lastObservedAt: '2026-02-15T00:00:00.000Z'
+      lastObservedAt: '2026-02-15T00:00:00.000Z',
     });
     const codexObjectState = {
       id: 'missing-conversation-id-3',
       agentType: 'codex',
       adapterState: {
         codex: {
-          existing: 'value'
-        }
-      }
+          existing: 'value',
+        },
+      },
     };
     internals.updateSessionThreadId(codexObjectState, 'thread-object', '2026-02-15T00:00:00.000Z');
     assert.deepEqual(codexObjectState.adapterState['codex'], {
       existing: 'value',
       resumeSessionId: 'thread-object',
-      lastObservedAt: '2026-02-15T00:00:00.000Z'
+      lastObservedAt: '2026-02-15T00:00:00.000Z',
     });
 
     await internals.pollHistoryFileUnsafe();
@@ -4592,13 +4779,13 @@ void test('stream server telemetry/history private guard branches are stable', a
       captureLogs: true,
       captureMetrics: true,
       captureTraces: true,
-      captureVerboseEvents: true
+      captureVerboseEvents: true,
     },
     codexHistory: {
       enabled: true,
       filePath: '~',
-      pollMs: 25
-    }
+      pollMs: 25,
+    },
   });
   try {
     const internals = historyErrorServer as unknown as {
@@ -4606,12 +4793,12 @@ void test('stream server telemetry/history private guard branches are stable', a
       codexLaunchArgsForSession: (
         sessionId: string,
         agentType: string,
-        existingArgs: readonly string[]
+        existingArgs: readonly string[],
       ) => string[];
     };
     assert.deepEqual(internals.codexLaunchArgsForSession('history-only-session', 'codex', []), [
       '-c',
-      'history.persistence="save-all"'
+      'history.persistence="save-all"',
     ]);
     await internals.pollHistoryFile();
   } finally {
@@ -4628,20 +4815,20 @@ void test('stream server telemetry/history private guard branches are stable', a
       captureLogs: true,
       captureMetrics: true,
       captureTraces: true,
-      captureVerboseEvents: true
+      captureVerboseEvents: true,
     },
     codexHistory: {
       enabled: true,
       filePath: '~/unused-history-with-otel.jsonl',
-      pollMs: 25
-    }
+      pollMs: 25,
+    },
   });
   try {
     const internals = historyAndTelemetryServer as unknown as {
       codexLaunchArgsForSession: (
         sessionId: string,
         agentType: string,
-        existingArgs: readonly string[]
+        existingArgs: readonly string[],
       ) => string[];
     };
     const args = internals.codexLaunchArgsForSession('history-and-otel-session', 'codex', []);
@@ -4660,13 +4847,13 @@ void test('stream server telemetry/history private guard branches are stable', a
       captureLogs: true,
       captureMetrics: true,
       captureTraces: true,
-      captureVerboseEvents: true
+      captureVerboseEvents: true,
     },
     codexHistory: {
       enabled: true,
       filePath: '~/harness-missing-history-file.jsonl',
-      pollMs: 25
-    }
+      pollMs: 25,
+    },
   });
   try {
     const internals = historyTildeServer as unknown as {
@@ -4689,13 +4876,13 @@ void test('stream server telemetry listener handles close-before-start and port 
       captureLogs: true,
       captureMetrics: true,
       captureTraces: true,
-      captureVerboseEvents: true
+      captureVerboseEvents: true,
     },
     codexHistory: {
       enabled: false,
       filePath: '~/.codex/history.jsonl',
-      pollMs: 25
-    }
+      pollMs: 25,
+    },
   });
   await cold.close();
 
@@ -4709,13 +4896,13 @@ void test('stream server telemetry listener handles close-before-start and port 
       captureLogs: true,
       captureMetrics: true,
       captureTraces: true,
-      captureVerboseEvents: true
+      captureVerboseEvents: true,
     },
     codexHistory: {
       enabled: false,
       filePath: '~/.codex/history.jsonl',
-      pollMs: 25
-    }
+      pollMs: 25,
+    },
   });
 
   const telemetryAddress = first.telemetryAddressInfo();
@@ -4731,13 +4918,13 @@ void test('stream server telemetry listener handles close-before-start and port 
       captureLogs: true,
       captureMetrics: true,
       captureTraces: true,
-      captureVerboseEvents: true
+      captureVerboseEvents: true,
     },
     codexHistory: {
       enabled: false,
       filePath: '~/.codex/history.jsonl',
-      pollMs: 25
-    }
+      pollMs: 25,
+    },
   });
 
   try {
@@ -4759,12 +4946,12 @@ void test('stream server telemetry listener handles close-before-start and port 
 
 void test('stream server exposes repository and task commands', async () => {
   const server = await startControlPlaneStreamServer({
-    startSession: (input) => new FakeLiveSession(input)
+    startSession: (input) => new FakeLiveSession(input),
   });
   const address = server.address();
   const client = await connectControlPlaneStreamClient({
     host: address.address,
-    port: address.port
+    port: address.port,
   });
   const observed = collectEnvelopes(client);
 
@@ -4775,7 +4962,7 @@ void test('stream server exposes repository and task commands', async () => {
       tenantId: 'tenant-task-1',
       userId: 'user-task-1',
       workspaceId: 'workspace-task-1',
-      path: '/tmp/harness-task-1'
+      path: '/tmp/harness-task-1',
     });
     const subscribedRepository = await client.sendCommand({
       type: 'stream.subscribe',
@@ -4784,7 +4971,7 @@ void test('stream server exposes repository and task commands', async () => {
       workspaceId: 'workspace-task-1',
       repositoryId: 'repository-1',
       includeOutput: false,
-      afterCursor: 0
+      afterCursor: 0,
     });
     const repositorySubscriptionId = subscribedRepository['subscriptionId'] as string;
     const subscribedTask = await client.sendCommand({
@@ -4794,7 +4981,7 @@ void test('stream server exposes repository and task commands', async () => {
       workspaceId: 'workspace-task-1',
       taskId: 'task-1',
       includeOutput: false,
-      afterCursor: 0
+      afterCursor: 0,
     });
     const taskSubscriptionId = subscribedTask['subscriptionId'] as string;
     const subscribedRepositoryMiss = await client.sendCommand({
@@ -4804,7 +4991,7 @@ void test('stream server exposes repository and task commands', async () => {
       workspaceId: 'workspace-task-1',
       repositoryId: 'repository-missing',
       includeOutput: false,
-      afterCursor: 0
+      afterCursor: 0,
     });
     const repositoryMissSubscriptionId = subscribedRepositoryMiss['subscriptionId'] as string;
     const subscribedTaskMiss = await client.sendCommand({
@@ -4814,7 +5001,7 @@ void test('stream server exposes repository and task commands', async () => {
       workspaceId: 'workspace-task-1',
       taskId: 'task-missing',
       includeOutput: false,
-      afterCursor: 0
+      afterCursor: 0,
     });
     const taskMissSubscriptionId = subscribedTaskMiss['subscriptionId'] as string;
 
@@ -4828,8 +5015,8 @@ void test('stream server exposes repository and task commands', async () => {
       remoteUrl: 'https://github.com/acme/harness.git',
       defaultBranch: 'main',
       metadata: {
-        owner: 'acme'
-      }
+        owner: 'acme',
+      },
     });
     const repositoryRecord = upsertedRepository['repository'] as Record<string, unknown>;
     assert.equal(repositoryRecord['repositoryId'], 'repository-1');
@@ -4837,7 +5024,7 @@ void test('stream server exposes repository and task commands', async () => {
 
     const fetchedRepository = await client.sendCommand({
       type: 'repository.get',
-      repositoryId: 'repository-1'
+      repositoryId: 'repository-1',
     });
     assert.equal((fetchedRepository['repository'] as Record<string, unknown>)['name'], 'Harness');
 
@@ -4846,18 +5033,18 @@ void test('stream server exposes repository and task commands', async () => {
       repositoryId: 'repository-1',
       name: 'Harness Updated',
       remoteUrl: 'https://github.com/acme/harness-2.git',
-      defaultBranch: 'develop'
+      defaultBranch: 'develop',
     });
     assert.equal(
       (updatedRepository['repository'] as Record<string, unknown>)['remoteUrl'],
-      'https://github.com/acme/harness-2.git'
+      'https://github.com/acme/harness-2.git',
     );
 
     const listedRepositories = await client.sendCommand({
       type: 'repository.list',
       tenantId: 'tenant-task-1',
       userId: 'user-task-1',
-      workspaceId: 'workspace-task-1'
+      workspaceId: 'workspace-task-1',
     });
     const repositoryRows = listedRepositories['repositories'] as Array<Record<string, unknown>>;
     assert.equal(repositoryRows.length, 1);
@@ -4878,12 +5065,14 @@ void test('stream server exposes repository and task commands', async () => {
         priority: 2,
         estimate: 3,
         dueDate: '2026-03-05',
-        labelIds: ['backend']
-      }
+        labelIds: ['backend'],
+      },
     });
     assert.equal(
-      ((createdTask['task'] as Record<string, unknown>)['linear'] as Record<string, unknown>)['identifier'],
-      'ENG-10'
+      ((createdTask['task'] as Record<string, unknown>)['linear'] as Record<string, unknown>)[
+        'identifier'
+      ],
+      'ENG-10',
     );
     await client.sendCommand({
       type: 'task.create',
@@ -4892,12 +5081,12 @@ void test('stream server exposes repository and task commands', async () => {
       userId: 'user-task-1',
       workspaceId: 'workspace-task-1',
       title: 'Implement task API',
-      description: 'Add stream commands for tasks'
+      description: 'Add stream commands for tasks',
     });
 
     const readyTask = await client.sendCommand({
       type: 'task.ready',
-      taskId: 'task-1'
+      taskId: 'task-1',
     });
     assert.equal((readyTask['task'] as Record<string, unknown>)['status'], 'ready');
 
@@ -4907,7 +5096,7 @@ void test('stream server exposes repository and task commands', async () => {
       controllerId: 'agent-1',
       directoryId: 'directory-task-1',
       branchName: 'feature/task-api',
-      baseBranch: 'main'
+      baseBranch: 'main',
     });
     const claimedTaskRecord = claimedTask['task'] as Record<string, unknown>;
     assert.equal(claimedTaskRecord['status'], 'in-progress');
@@ -4916,18 +5105,18 @@ void test('stream server exposes repository and task commands', async () => {
 
     const completedTask = await client.sendCommand({
       type: 'task.complete',
-      taskId: 'task-1'
+      taskId: 'task-1',
     });
     assert.equal((completedTask['task'] as Record<string, unknown>)['status'], 'completed');
 
     const queuedTask = await client.sendCommand({
       type: 'task.queue',
-      taskId: 'task-1'
+      taskId: 'task-1',
     });
     assert.equal((queuedTask['task'] as Record<string, unknown>)['status'], 'ready');
     const draftedTask = await client.sendCommand({
       type: 'task.draft',
-      taskId: 'task-1'
+      taskId: 'task-1',
     });
     assert.equal((draftedTask['task'] as Record<string, unknown>)['status'], 'draft');
 
@@ -4938,28 +5127,33 @@ void test('stream server exposes repository and task commands', async () => {
       title: 'Implement task API v2',
       linear: {
         identifier: 'ENG-11',
-        priority: 1
-      }
+        priority: 1,
+      },
     });
     assert.equal((updatedTask['task'] as Record<string, unknown>)['repositoryId'], 'repository-1');
     assert.equal(
-      ((updatedTask['task'] as Record<string, unknown>)['linear'] as Record<string, unknown>)['identifier'],
-      'ENG-11'
+      ((updatedTask['task'] as Record<string, unknown>)['linear'] as Record<string, unknown>)[
+        'identifier'
+      ],
+      'ENG-11',
     );
     const updatedTaskWithoutLinear = await client.sendCommand({
       type: 'task.update',
       taskId: 'task-2',
-      description: 'Add stream commands for tasks and linear references'
+      description: 'Add stream commands for tasks and linear references',
     });
     assert.equal(
       (updatedTaskWithoutLinear['task'] as Record<string, unknown>)['description'],
-      'Add stream commands for tasks and linear references'
+      'Add stream commands for tasks and linear references',
     );
     assert.equal(
-      ((updatedTaskWithoutLinear['task'] as Record<string, unknown>)['linear'] as Record<string, unknown>)[
-        'identifier'
-      ],
-      'ENG-11'
+      (
+        (updatedTaskWithoutLinear['task'] as Record<string, unknown>)['linear'] as Record<
+          string,
+          unknown
+        >
+      )['identifier'],
+      'ENG-11',
     );
 
     const reordered = await client.sendCommand({
@@ -4967,7 +5161,7 @@ void test('stream server exposes repository and task commands', async () => {
       tenantId: 'tenant-task-1',
       userId: 'user-task-1',
       workspaceId: 'workspace-task-1',
-      orderedTaskIds: ['task-2', 'task-1']
+      orderedTaskIds: ['task-2', 'task-1'],
     });
     const reorderedTasks = reordered['tasks'] as Array<Record<string, unknown>>;
     assert.equal(reorderedTasks[0]?.['taskId'], 'task-2');
@@ -4979,53 +5173,53 @@ void test('stream server exposes repository and task commands', async () => {
       type: 'task.list',
       tenantId: 'tenant-task-1',
       userId: 'user-task-1',
-      workspaceId: 'workspace-task-1'
+      workspaceId: 'workspace-task-1',
     });
     const taskRows = listedTasks['tasks'] as Array<Record<string, unknown>>;
     assert.equal(taskRows.length, 2);
 
     const fetchedTask = await client.sendCommand({
       type: 'task.get',
-      taskId: 'task-1'
+      taskId: 'task-1',
     });
     assert.equal((fetchedTask['task'] as Record<string, unknown>)['taskId'], 'task-1');
 
     await client.sendCommand({
       type: 'task.delete',
-      taskId: 'task-2'
+      taskId: 'task-2',
     });
     await assert.rejects(
       client.sendCommand({
         type: 'task.get',
-        taskId: 'task-2'
+        taskId: 'task-2',
       }),
-      /task not found/
+      /task not found/,
     );
     await assert.rejects(
       client.sendCommand({
         type: 'task.update',
         taskId: 'task-missing',
-        title: 'missing'
+        title: 'missing',
       }),
-      /task not found/
+      /task not found/,
     );
     await assert.rejects(
       client.sendCommand({
         type: 'task.delete',
-        taskId: 'task-missing'
+        taskId: 'task-missing',
       }),
-      /task not found/
+      /task not found/,
     );
 
     await client.sendCommand({
       type: 'repository.archive',
-      repositoryId: 'repository-1'
+      repositoryId: 'repository-1',
     });
     const listedActiveRepositories = await client.sendCommand({
       type: 'repository.list',
       tenantId: 'tenant-task-1',
       userId: 'user-task-1',
-      workspaceId: 'workspace-task-1'
+      workspaceId: 'workspace-task-1',
     });
     assert.deepEqual(listedActiveRepositories['repositories'], []);
 
@@ -5034,18 +5228,20 @@ void test('stream server exposes repository and task commands', async () => {
       tenantId: 'tenant-task-1',
       userId: 'user-task-1',
       workspaceId: 'workspace-task-1',
-      includeArchived: true
+      includeArchived: true,
     });
-    const archivedRows = listedArchivedRepositories['repositories'] as Array<Record<string, unknown>>;
+    const archivedRows = listedArchivedRepositories['repositories'] as Array<
+      Record<string, unknown>
+    >;
     assert.equal(archivedRows.length, 1);
     assert.equal(typeof archivedRows[0]?.['archivedAt'], 'string');
 
     await assert.rejects(
       client.sendCommand({
         type: 'repository.get',
-        repositoryId: 'repository-missing'
+        repositoryId: 'repository-missing',
       }),
-      /repository not found/
+      /repository not found/,
     );
 
     await delay(20);
@@ -5054,72 +5250,72 @@ void test('stream server exposes repository and task commands', async () => {
         (envelope) =>
           envelope.kind === 'stream.event' &&
           envelope.subscriptionId === repositorySubscriptionId &&
-          envelope.event.type === 'repository-upserted'
+          envelope.event.type === 'repository-upserted',
       ),
-      true
+      true,
     );
     assert.equal(
       observed.some(
         (envelope) =>
           envelope.kind === 'stream.event' &&
           envelope.subscriptionId === repositoryMissSubscriptionId &&
-          envelope.event.type === 'task-reordered'
+          envelope.event.type === 'task-reordered',
       ),
-      false
+      false,
     );
     assert.equal(
       observed.some(
         (envelope) =>
           envelope.kind === 'stream.event' &&
           envelope.subscriptionId === taskMissSubscriptionId &&
-          envelope.event.type === 'task-reordered'
+          envelope.event.type === 'task-reordered',
       ),
-      false
+      false,
     );
     assert.equal(
       observed.some(
         (envelope) =>
           envelope.kind === 'stream.event' &&
           envelope.subscriptionId === repositorySubscriptionId &&
-          envelope.event.type === 'repository-updated'
+          envelope.event.type === 'repository-updated',
       ),
-      true
+      true,
     );
     assert.equal(
       observed.some(
         (envelope) =>
           envelope.kind === 'stream.event' &&
           envelope.subscriptionId === repositorySubscriptionId &&
-          envelope.event.type === 'repository-archived'
+          envelope.event.type === 'repository-archived',
       ),
-      true
+      true,
     );
     assert.equal(
       observed.some(
         (envelope) =>
           envelope.kind === 'stream.event' &&
           envelope.subscriptionId === taskSubscriptionId &&
-          envelope.event.type === 'task-created'
+          envelope.event.type === 'task-created',
       ),
-      true
+      true,
     );
     assert.equal(
       observed.some(
         (envelope) =>
           envelope.kind === 'stream.event' &&
           envelope.subscriptionId === taskSubscriptionId &&
-          envelope.event.type === 'task-updated'
+          envelope.event.type === 'task-updated',
       ),
-      true
+      true,
     );
     assert.equal(
       observed.some(
         (envelope) =>
           envelope.kind === 'stream.event' &&
           envelope.subscriptionId === taskSubscriptionId &&
-          envelope.event.type === 'task-deleted'
+          envelope.event.type === 'task-deleted',
       ),
-      false
+      false,
     );
   } finally {
     client.close();

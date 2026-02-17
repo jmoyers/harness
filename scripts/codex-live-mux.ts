@@ -5,34 +5,28 @@ import { startCodexLiveSession } from '../src/codex/live-session.ts';
 import {
   openCodexControlPlaneClient,
   subscribeControlPlaneKeyEvents,
-  type ControlPlaneKeyEvent
+  type ControlPlaneKeyEvent,
 } from '../src/control-plane/codex-session-stream.ts';
 import { startControlPlaneStreamServer } from '../src/control-plane/stream-server.ts';
 import type {
   StreamObservedEvent,
   StreamServerEnvelope,
-  StreamSessionController
+  StreamSessionController,
 } from '../src/control-plane/stream-protocol.ts';
 import {
   parseSessionSummaryRecord,
-  parseSessionSummaryList
+  parseSessionSummaryList,
 } from '../src/control-plane/session-summary.ts';
 import { SqliteEventStore } from '../src/store/event-store.ts';
-import {
-  TerminalSnapshotOracle,
-  renderSnapshotAnsiRow
-} from '../src/terminal/snapshot-oracle.ts';
-import {
-  type EventScope,
-  type NormalizedEventEnvelope
-} from '../src/events/normalized-events.ts';
+import { TerminalSnapshotOracle, renderSnapshotAnsiRow } from '../src/terminal/snapshot-oracle.ts';
+import { type EventScope, type NormalizedEventEnvelope } from '../src/events/normalized-events.ts';
 import type { PtyExit } from '../src/pty/pty_host.ts';
 import {
   classifyPaneAt,
   computeDualPaneLayout,
   diffRenderedRows,
   parseMuxInputChunk,
-  wheelDeltaRowsFromCode
+  wheelDeltaRowsFromCode,
 } from '../src/mux/dual-pane-core.ts';
 import { loadHarnessConfig, updateHarnessMuxUiConfig } from '../src/config/config-core.ts';
 import { loadHarnessSecrets } from '../src/config/secrets-core.ts';
@@ -40,21 +34,17 @@ import {
   detectMuxGlobalShortcut,
   firstShortcutText,
   normalizeMuxKeyboardInputForPty,
-  resolveMuxShortcutBindings
+  resolveMuxShortcutBindings,
 } from '../src/mux/input-shortcuts.ts';
-import {
-  createMuxInputModeManager
-} from '../src/mux/terminal-input-modes.ts';
+import { createMuxInputModeManager } from '../src/mux/terminal-input-modes.ts';
 import {
   cycleConversationId,
-  type ConversationRailSessionSummary
+  type ConversationRailSessionSummary,
 } from '../src/mux/conversation-rail.ts';
 import { findAnsiIntegrityIssues } from '../src/mux/ansi-integrity.ts';
 import { ControlPlaneOpQueue } from '../src/mux/control-plane-op-queue.ts';
 import { detectConversationDoubleClick, detectEntityDoubleClick } from '../src/mux/double-click.ts';
-import {
-  renderWorkspaceRailAnsiRows
-} from '../src/mux/workspace-rail.ts';
+import { renderWorkspaceRailAnsiRows } from '../src/mux/workspace-rail.ts';
 import {
   actionAtWorkspaceRailCell,
   buildWorkspaceRailViewRows,
@@ -62,17 +52,15 @@ import {
   projectWorkspaceRailConversation,
   projectIdAtWorkspaceRailRow,
   repositoryIdAtWorkspaceRailRow,
-  kindAtWorkspaceRailRow
+  kindAtWorkspaceRailRow,
 } from '../src/mux/workspace-rail-model.ts';
-import {
-  buildSelectorIndexEntries
-} from '../src/mux/selector-index.ts';
+import { buildSelectorIndexEntries } from '../src/mux/selector-index.ts';
 import {
   createNewThreadPromptState,
   newThreadPromptBodyLines,
   normalizeThreadAgentType,
   reduceNewThreadPromptInput,
-  resolveNewThreadPromptAgentByRow
+  resolveNewThreadPromptAgentByRow,
 } from '../src/mux/new-thread-prompt.ts';
 import {
   buildProjectPaneRows,
@@ -85,7 +73,7 @@ import {
   sortedRepositoryList,
   sortTasksByOrder,
   type ProjectPaneSnapshot,
-  type TaskPaneAction
+  type TaskPaneAction,
 } from '../src/mux/harness-core-ui.ts';
 import {
   buildTaskFocusedPaneView,
@@ -93,7 +81,7 @@ import {
   taskFocusedPaneActionAtRow,
   taskFocusedPaneRepositoryIdAtRow,
   taskFocusedPaneTaskIdAtRow,
-  type TaskFocusedPaneView
+  type TaskFocusedPaneView,
 } from '../src/mux/task-focused-pane.ts';
 import {
   createTaskComposerBuffer,
@@ -112,67 +100,57 @@ import {
   taskComposerMoveWordLeft,
   taskComposerMoveWordRight,
   taskFieldsFromComposerText,
-  type TaskComposerBuffer
+  type TaskComposerBuffer,
 } from '../src/mux/task-composer.ts';
 import {
   detectTaskScreenKeybindingAction,
-  resolveTaskScreenKeybindings
+  resolveTaskScreenKeybindings,
 } from '../src/mux/task-screen-keybindings.ts';
 import {
   applyMuxControlPlaneKeyEvent,
-  applyTelemetrySummaryToConversation
+  applyTelemetrySummaryToConversation,
 } from '../src/mux/runtime-wiring.ts';
-import {
-  StartupSequencer
-} from '../src/mux/startup-sequencer.ts';
+import { StartupSequencer } from '../src/mux/startup-sequencer.ts';
 import {
   applyModalOverlay,
   buildRenderRows,
   cursorStyleEqual,
   cursorStyleToDecscusr,
-  renderCanonicalFrameAnsi
+  renderCanonicalFrameAnsi,
 } from '../src/mux/render-frame.ts';
-import {
-  createTerminalRecordingWriter
-} from '../src/recording/terminal-recording.ts';
+import { createTerminalRecordingWriter } from '../src/recording/terminal-recording.ts';
 import { renderTerminalRecordingToGif } from './terminal-recording-gif-lib.ts';
 import {
   buildAgentStartArgs,
   mergeAdapterStateFromSessionEvent,
-  normalizeAdapterState
+  normalizeAdapterState,
 } from '../src/adapters/agent-session-state.ts';
 import {
   configurePerfCore,
   perfNowNs,
   recordPerfEvent,
   shutdownPerfCore,
-  startPerfSpan
+  startPerfSpan,
 } from '../src/perf/perf-core.ts';
+import { buildUiModalOverlay, isUiModalOverlayHit } from '../src/ui/kit.ts';
 import {
-  buildUiModalOverlay,
-  isUiModalOverlayHit
-} from '../src/ui/kit.ts';
-import {
+  parseDirectoryGitStatusRecord,
   parseConversationRecord,
   parseDirectoryRecord,
   parseRepositoryRecord,
   parseSessionControllerRecord,
-  parseTaskRecord
+  parseTaskRecord,
 } from '../src/mux/live-mux/control-plane-records.ts';
 import {
   leftColsFromPaneWidthPercent,
-  paneWidthPercentFromLayout
+  paneWidthPercentFromLayout,
 } from '../src/mux/live-mux/layout.ts';
 import {
   normalizeGitHubRemoteUrl,
-  repositoryNameFromGitHubRemoteUrl
+  repositoryNameFromGitHubRemoteUrl,
 } from '../src/mux/live-mux/git-parsing.ts';
-import {
-  extractOscColorReplies
-} from '../src/mux/live-mux/palette-parsing.ts';
-import {
-  readProcessUsageSample
-} from '../src/mux/live-mux/git-snapshot.ts';
+import { extractOscColorReplies } from '../src/mux/live-mux/palette-parsing.ts';
+import { readProcessUsageSample } from '../src/mux/live-mux/git-snapshot.ts';
 import {
   extractFocusEvents,
   formatErrorMessage,
@@ -183,7 +161,7 @@ import {
   resolveWorkspacePathForMux,
   restoreTerminalState,
   sanitizeProcessEnv,
-  terminalSize
+  terminalSize,
 } from '../src/mux/live-mux/startup-utils.ts';
 import {
   normalizeExitCode,
@@ -192,7 +170,7 @@ import {
   isConversationNotFoundError,
   mapTerminalOutputToNormalizedEvent,
   mapSessionEventToNormalizedEvent,
-  observedAtFromSessionEvent
+  observedAtFromSessionEvent,
 } from '../src/mux/live-mux/event-mapping.ts';
 import { parseMuxArgs } from '../src/mux/live-mux/args.ts';
 import {
@@ -210,7 +188,7 @@ import {
   selectionText,
   selectionVisibleRows,
   type PaneSelection,
-  writeTextToClipboard
+  writeTextToClipboard,
 } from '../src/mux/live-mux/selection.ts';
 
 type ResolvedMuxShortcutBindings = ReturnType<typeof resolveMuxShortcutBindings>;
@@ -329,7 +307,7 @@ const GIT_SUMMARY_LOADING: GitSummary = {
   branch: '(loading)',
   changedFiles: 0,
   additions: 0,
-  deletions: 0
+  deletions: 0,
 };
 
 const GIT_REPOSITORY_NONE: GitRepositorySnapshot = {
@@ -338,7 +316,7 @@ const GIT_REPOSITORY_NONE: GitRepositorySnapshot = {
   lastCommitAt: null,
   shortCommitHash: null,
   inferredName: null,
-  defaultBranch: null
+  defaultBranch: null,
 };
 
 interface TaskEditorPromptState {
@@ -399,19 +377,19 @@ async function probeTerminalPalette(timeoutMs = 80): Promise<{
       resolve({
         ...(foregroundHex !== undefined
           ? {
-              foregroundHex
+              foregroundHex,
             }
           : {}),
         ...(backgroundHex !== undefined
           ? {
-              backgroundHex
+              backgroundHex,
             }
           : {}),
         ...(Object.keys(indexedHexByCode).length > 0
           ? {
-              indexedHexByCode
+              indexedHexByCode,
             }
-          : {})
+          : {}),
       });
     };
 
@@ -455,14 +433,18 @@ async function probeTerminalPalette(timeoutMs = 80): Promise<{
   });
 }
 
-function createConversationScope(baseScope: EventScope, conversationId: string, turnId: string): EventScope {
+function createConversationScope(
+  baseScope: EventScope,
+  conversationId: string,
+  turnId: string,
+): EventScope {
   return {
     tenantId: baseScope.tenantId,
     userId: baseScope.userId,
     workspaceId: baseScope.workspaceId,
     worktreeId: baseScope.worktreeId,
     conversationId,
-    turnId
+    turnId,
   };
 }
 
@@ -475,7 +457,7 @@ function createConversationState(
   turnId: string,
   baseScope: EventScope,
   cols: number,
-  rows: number
+  rows: number,
 ): ConversationState {
   return {
     sessionId,
@@ -499,13 +481,13 @@ function createConversationState(
     lastKnownWork: null,
     lastKnownWorkAt: null,
     lastTelemetrySource: null,
-    controller: null
+    controller: null,
   };
 }
 
 function applySummaryToConversation(
   target: ConversationState,
-  summary: ReturnType<typeof parseSessionSummaryRecord>
+  summary: ReturnType<typeof parseSessionSummaryRecord>,
 ): void {
   if (summary === null) {
     return;
@@ -534,11 +516,13 @@ function conversationSummary(conversation: ConversationState): ConversationRailS
     attentionReason: conversation.attentionReason,
     live: conversation.live,
     startedAt: conversation.startedAt,
-    lastEventAt: conversation.lastEventAt
+    lastEventAt: conversation.lastEventAt,
   };
 }
 
-function conversationOrder(conversations: ReadonlyMap<string, ConversationState>): readonly string[] {
+function conversationOrder(
+  conversations: ReadonlyMap<string, ConversationState>,
+): readonly string[] {
   return [...conversations.keys()];
 }
 
@@ -587,7 +571,7 @@ function buildRailModel(
   shortcutsCollapsed: boolean,
   gitSummaryByDirectoryId: ReadonlyMap<string, GitSummary>,
   processUsageBySessionId: ReadonlyMap<string, ProcessUsageSample>,
-  shortcutBindings: ResolvedMuxShortcutBindings
+  shortcutBindings: ResolvedMuxShortcutBindings,
 ): WorkspaceRailModel {
   const repositoryRows = [...repositories.values()].map((repository) => {
     let associatedProjectCount = 0;
@@ -603,7 +587,10 @@ function buildRailModel(
       if (snapshot === undefined) {
         continue;
       }
-      if (snapshot.commitCount !== null && (commitCount === null || snapshot.commitCount > commitCount)) {
+      if (
+        snapshot.commitCount !== null &&
+        (commitCount === null || snapshot.commitCount > commitCount)
+      ) {
         commitCount = snapshot.commitCount;
       }
       const snapshotCommitAtMs =
@@ -624,7 +611,7 @@ function buildRailModel(
       associatedProjectCount,
       commitCount,
       lastCommitAt,
-      shortCommitHash
+      shortCommitHash,
     };
   });
   const directoryRows = [...directories.values()].map((directory) => ({
@@ -632,13 +619,17 @@ function buildRailModel(
     workspaceId: basename(directory.path) || directory.path,
     worktreeId: directory.path,
     repositoryId: repositoryAssociationByDirectoryId.get(directory.directoryId) ?? null,
-    git: gitSummaryByDirectoryId.get(directory.directoryId) ?? GIT_SUMMARY_LOADING
+    git: gitSummaryByDirectoryId.get(directory.directoryId) ?? GIT_SUMMARY_LOADING,
   }));
   const knownDirectoryKeys = new Set(directoryRows.map((directory) => directory.key));
   for (const sessionId of orderedIds) {
     const conversation = conversations.get(sessionId);
     const directoryKey = conversation?.directoryId;
-    if (directoryKey === null || directoryKey === undefined || knownDirectoryKeys.has(directoryKey)) {
+    if (
+      directoryKey === null ||
+      directoryKey === undefined ||
+      knownDirectoryKeys.has(directoryKey)
+    ) {
       continue;
     }
     knownDirectoryKeys.add(directoryKey);
@@ -647,7 +638,7 @@ function buildRailModel(
       workspaceId: '(untracked)',
       worktreeId: '(untracked)',
       repositoryId: repositoryAssociationByDirectoryId.get(directoryKey) ?? null,
-      git: gitSummaryByDirectoryId.get(directoryKey) ?? GIT_SUMMARY_LOADING
+      git: gitSummaryByDirectoryId.get(directoryKey) ?? GIT_SUMMARY_LOADING,
     });
   }
 
@@ -670,7 +661,7 @@ function buildRailModel(
           memoryMb: processUsageBySessionId.get(conversation.sessionId)?.memoryMb ?? null,
           lastKnownWork: conversation.lastKnownWork,
           lastKnownWorkAt: conversation.lastKnownWorkAt,
-          controller: conversation.controller
+          controller: conversation.controller,
         };
       })
       .flatMap((conversation) => (conversation === null ? [] : [conversation])),
@@ -686,7 +677,7 @@ function buildRailModel(
     processes: [],
     shortcutHint: shortcutHintText(shortcutBindings),
     shortcutsCollapsed,
-    nowMs: Date.now()
+    nowMs: Date.now(),
   };
 }
 
@@ -709,7 +700,7 @@ function buildRailRows(
   shortcutsCollapsed: boolean,
   gitSummaryByDirectoryId: ReadonlyMap<string, GitSummary>,
   processUsageBySessionId: ReadonlyMap<string, ProcessUsageSample>,
-  shortcutBindings: ResolvedMuxShortcutBindings
+  shortcutBindings: ResolvedMuxShortcutBindings,
 ): { ansiRows: readonly string[]; viewRows: ReturnType<typeof buildWorkspaceRailViewRows> } {
   const railModel = buildRailModel(
     repositories,
@@ -729,12 +720,12 @@ function buildRailRows(
     shortcutsCollapsed,
     gitSummaryByDirectoryId,
     processUsageBySessionId,
-    shortcutBindings
+    shortcutBindings,
   );
   const viewRows = buildWorkspaceRailViewRows(railModel, layout.paneRows);
   return {
     ansiRows: renderWorkspaceRailAnsiRows(railModel, layout.leftCols, layout.paneRows),
-    viewRows
+    viewRows,
   };
 }
 
@@ -742,23 +733,23 @@ const MUX_MODAL_THEME = {
   frameStyle: {
     fg: { kind: 'indexed', index: 252 },
     bg: { kind: 'indexed', index: 236 },
-    bold: true
+    bold: true,
   },
   titleStyle: {
     fg: { kind: 'indexed', index: 231 },
     bg: { kind: 'indexed', index: 236 },
-    bold: true
+    bold: true,
   },
   bodyStyle: {
     fg: { kind: 'indexed', index: 253 },
     bg: { kind: 'indexed', index: 236 },
-    bold: false
+    bold: false,
   },
   footerStyle: {
     fg: { kind: 'indexed', index: 247 },
     bg: { kind: 'indexed', index: 236 },
-    bold: false
-  }
+    bold: false,
+  },
 } as const;
 
 async function main(): Promise<number> {
@@ -767,43 +758,46 @@ async function main(): Promise<number> {
     return 2;
   }
 
-  const invocationDirectory = process.env.HARNESS_INVOKE_CWD ?? process.env.INIT_CWD ?? process.cwd();
+  const invocationDirectory =
+    process.env.HARNESS_INVOKE_CWD ?? process.env.INIT_CWD ?? process.cwd();
   loadHarnessSecrets({ cwd: invocationDirectory });
   const options = parseMuxArgs(process.argv.slice(2));
   const loadedConfig = loadHarnessConfig({
-    cwd: options.invocationDirectory
+    cwd: options.invocationDirectory,
   });
   const debugConfig = loadedConfig.config.debug;
   const perfEnabled = parseBooleanEnv(
     process.env.HARNESS_PERF_ENABLED,
-    debugConfig.enabled && debugConfig.perf.enabled
+    debugConfig.enabled && debugConfig.perf.enabled,
   );
   const perfFilePath = resolve(
     options.invocationDirectory,
-    process.env.HARNESS_PERF_FILE_PATH ?? debugConfig.perf.filePath
+    process.env.HARNESS_PERF_FILE_PATH ?? debugConfig.perf.filePath,
   );
   const perfTruncateOnStart = parseBooleanEnv(
     process.env.HARNESS_PERF_TRUNCATE_ON_START,
-    debugConfig.overwriteArtifactsOnStart
+    debugConfig.overwriteArtifactsOnStart,
   );
   if (perfEnabled) {
     prepareArtifactPath(perfFilePath, perfTruncateOnStart);
   }
   configurePerfCore({
     enabled: perfEnabled,
-    filePath: perfFilePath
+    filePath: perfFilePath,
   });
   const startupSpan = startPerfSpan('mux.startup.total', {
     invocationDirectory: options.invocationDirectory,
-    codexArgs: options.codexArgs.length
+    codexArgs: options.codexArgs.length,
   });
   recordPerfEvent('mux.startup.begin', {
     stdinTty: process.stdin.isTTY ? 1 : 0,
     stdoutTty: process.stdout.isTTY ? 1 : 0,
-    perfFilePath
+    perfFilePath,
   });
   if (loadedConfig.error !== null) {
-    process.stderr.write(`[config] using last-known-good due to parse error: ${loadedConfig.error}\n`);
+    process.stderr.write(
+      `[config] using last-known-good due to parse error: ${loadedConfig.error}\n`,
+    );
   }
   const shortcutBindings = resolveMuxShortcutBindings(loadedConfig.config.mux.keybindings);
   const taskScreenKeybindings = resolveTaskScreenKeybindings(loadedConfig.config.mux.keybindings);
@@ -817,33 +811,42 @@ async function main(): Promise<number> {
     'mux.conversation.takeover': [],
     'mux.conversation.delete': [],
     'mux.directory.add': [],
-    'mux.directory.close': []
+    'mux.directory.close': [],
   });
   const store = new SqliteEventStore(options.storePath);
 
   let size = await readStartupTerminalSize();
   recordPerfEvent('mux.startup.terminal-size', {
     cols: size.cols,
-    rows: size.rows
+    rows: size.rows,
   });
   const configuredMuxUi = loadedConfig.config.mux.ui;
   const configuredMuxGit = loadedConfig.config.mux.git;
   const configuredCodexLaunch = loadedConfig.config.codex.launch;
   const codexLaunchModeByDirectoryPath = new Map<string, 'yolo' | 'standard'>();
   for (const [directoryPath, mode] of Object.entries(configuredCodexLaunch.directoryModes)) {
-    const normalizedDirectoryPath = resolveWorkspacePathForMux(options.invocationDirectory, directoryPath);
+    const normalizedDirectoryPath = resolveWorkspacePathForMux(
+      options.invocationDirectory,
+      directoryPath,
+    );
     codexLaunchModeByDirectoryPath.set(normalizedDirectoryPath, mode);
   }
   const resolveCodexLaunchModeForDirectory = (directoryPath: string): 'yolo' | 'standard' => {
-    const normalizedDirectoryPath = resolveWorkspacePathForMux(options.invocationDirectory, directoryPath);
-    return codexLaunchModeByDirectoryPath.get(normalizedDirectoryPath) ?? configuredCodexLaunch.defaultMode;
+    const normalizedDirectoryPath = resolveWorkspacePathForMux(
+      options.invocationDirectory,
+      directoryPath,
+    );
+    return (
+      codexLaunchModeByDirectoryPath.get(normalizedDirectoryPath) ??
+      configuredCodexLaunch.defaultMode
+    );
   };
   let leftPaneColsOverride: number | null =
     configuredMuxUi.paneWidthPercent === null
       ? null
       : leftColsFromPaneWidthPercent(size.cols, configuredMuxUi.paneWidthPercent);
   let layout = computeDualPaneLayout(size.cols, size.rows, {
-    leftCols: leftPaneColsOverride
+    leftCols: leftPaneColsOverride,
   });
   const resizeMinIntervalMs = debugConfig.enabled
     ? debugConfig.mux.resizeMinIntervalMs
@@ -856,19 +859,19 @@ async function main(): Promise<number> {
     : DEFAULT_STARTUP_SETTLE_QUIET_MS;
   const controlPlaneConnectRetryWindowMs = parsePositiveInt(
     process.env.HARNESS_CONTROL_PLANE_CONNECT_RETRY_WINDOW_MS,
-    0
+    0,
   );
   const controlPlaneConnectRetryDelayMs = Math.max(
     1,
-    parsePositiveInt(process.env.HARNESS_CONTROL_PLANE_CONNECT_RETRY_DELAY_MS, 50)
+    parsePositiveInt(process.env.HARNESS_CONTROL_PLANE_CONNECT_RETRY_DELAY_MS, 50),
   );
   const backgroundResumePersisted = parseBooleanEnv(
     process.env.HARNESS_MUX_BACKGROUND_RESUME,
-    DEFAULT_BACKGROUND_RESUME_PERSISTED
+    DEFAULT_BACKGROUND_RESUME_PERSISTED,
   );
   const backgroundProbesEnabled = parseBooleanEnv(
     process.env.HARNESS_MUX_BACKGROUND_PROBES,
-    DEFAULT_BACKGROUND_PROBES_ENABLED
+    DEFAULT_BACKGROUND_PROBES_ENABLED,
   );
   const validateAnsi = debugConfig.enabled ? debugConfig.mux.validateAnsi : false;
 
@@ -882,7 +885,7 @@ async function main(): Promise<number> {
   const probedPalette = await probeTerminalPalette();
   paletteProbeSpan.end({
     hasForeground: probedPalette.foregroundHex !== undefined,
-    hasBackground: probedPalette.backgroundHex !== undefined
+    hasBackground: probedPalette.backgroundHex !== undefined,
   });
   let muxRecordingWriter: ReturnType<typeof createTerminalRecordingWriter> | null = null;
   let muxRecordingOracle: TerminalSnapshotOracle | null = null;
@@ -893,7 +896,7 @@ async function main(): Promise<number> {
       source: 'codex-live-mux',
       defaultForegroundHex: process.env.HARNESS_TERM_FG ?? probedPalette.foregroundHex ?? 'd0d7de',
       defaultBackgroundHex: process.env.HARNESS_TERM_BG ?? probedPalette.backgroundHex ?? '0f1419',
-      minFrameIntervalMs: recordIntervalMs
+      minFrameIntervalMs: recordIntervalMs,
     };
     if (probedPalette.indexedHexByCode !== undefined) {
       recordingWriterOptions.ansiPaletteIndexedHex = probedPalette.indexedHexByCode;
@@ -909,25 +912,23 @@ async function main(): Promise<number> {
           port: options.controlPlanePort,
           ...(options.controlPlaneAuthToken !== null
             ? {
-                authToken: options.controlPlaneAuthToken
+                authToken: options.controlPlaneAuthToken,
               }
             : {}),
           connectRetryWindowMs: controlPlaneConnectRetryWindowMs,
-          connectRetryDelayMs: controlPlaneConnectRetryDelayMs
+          connectRetryDelayMs: controlPlaneConnectRetryDelayMs,
         }
       : {
-          mode: 'embedded' as const
+          mode: 'embedded' as const,
         };
   const closeLiveSessionsOnClientStop = controlPlaneMode.mode === 'embedded';
   const controlPlaneOpenSpan = startPerfSpan('mux.startup.control-plane-open');
-  const controlPlaneClient = await openCodexControlPlaneClient(
-    controlPlaneMode,
-    {
+  const controlPlaneClient = await openCodexControlPlaneClient(controlPlaneMode, {
     startEmbeddedServer: async () =>
       await startControlPlaneStreamServer({
         stateStorePath: resolve(
           options.invocationDirectory,
-          process.env.HARNESS_CONTROL_PLANE_DB_PATH ?? '.harness/control-plane.sqlite'
+          process.env.HARNESS_CONTROL_PLANE_DB_PATH ?? '.harness/control-plane.sqlite',
         ),
         codexTelemetry: loadedConfig.config.codex.telemetry,
         codexHistory: loadedConfig.config.codex.history,
@@ -935,7 +936,7 @@ async function main(): Promise<number> {
           enabled: loadedConfig.config.mux.git.enabled,
           pollMs: loadedConfig.config.mux.git.idlePollMs,
           maxConcurrency: loadedConfig.config.mux.git.maxConcurrency,
-          minDirectoryRefreshMs: Math.max(loadedConfig.config.mux.git.idlePollMs, 30_000)
+          minDirectoryRefreshMs: Math.max(loadedConfig.config.mux.git.idlePollMs, 30_000),
         },
         lifecycleHooks: loadedConfig.config.hooks.lifecycle,
         startSession: (input) => {
@@ -943,7 +944,7 @@ async function main(): Promise<number> {
             args: input.args,
             initialCols: input.initialCols,
             initialRows: input.initialRows,
-            enableSnapshotModel: debugConfig.mux.serverSnapshotModelEnabled
+            enableSnapshotModel: debugConfig.mux.serverSnapshotModelEnabled,
           };
           if (input.useNotifyHook !== undefined) {
             sessionOptions.useNotifyHook = input.useNotifyHook;
@@ -967,8 +968,8 @@ async function main(): Promise<number> {
             sessionOptions.terminalBackgroundHex = input.terminalBackgroundHex;
           }
           return startCodexLiveSession(sessionOptions);
-        }
-      })
+        },
+      }),
   });
   controlPlaneOpenSpan.end();
   const streamClient = controlPlaneClient.client;
@@ -979,7 +980,7 @@ async function main(): Promise<number> {
     tenantId: options.scope.tenantId,
     userId: options.scope.userId,
     workspaceId: options.scope.workspaceId,
-    path: options.invocationDirectory
+    path: options.invocationDirectory,
   });
   const persistedDirectory = parseDirectoryRecord(directoryResult['directory']);
   if (persistedDirectory === null) {
@@ -990,7 +991,7 @@ async function main(): Promise<number> {
   let mainPaneMode: 'conversation' | 'project' | 'home' = 'conversation';
   let leftNavSelection: LeftNavSelection = {
     kind: 'project',
-    directoryId: persistedDirectory.directoryId
+    directoryId: persistedDirectory.directoryId,
   };
   let activeRepositorySelectionId: string | null = null;
   const collapsedRepositoryGroupIds = new Set<string>();
@@ -1006,13 +1007,13 @@ async function main(): Promise<number> {
     actions: [],
     actionCells: [],
     top: 0,
-    selectedRepositoryId: null
+    selectedRepositoryId: null,
   };
   let taskPaneSelectedTaskId: string | null = null;
   let taskPaneSelectedRepositoryId: string | null = null;
   let taskRepositoryDropdownOpen = false;
   let taskEditorTarget: { kind: 'draft' } | { kind: 'task'; taskId: string } = {
-    kind: 'draft'
+    kind: 'draft',
   };
   let taskDraftComposer = createTaskComposerBuffer('');
   const taskComposerByTaskId = new Map<string, TaskComposerBuffer>();
@@ -1025,13 +1026,12 @@ async function main(): Promise<number> {
 
   const sessionEnv = {
     ...sanitizeProcessEnv(),
-    TERM: process.env.TERM ?? 'xterm-256color'
+    TERM: process.env.TERM ?? 'xterm-256color',
   };
   const directories = new Map<string, ControlPlaneDirectoryRecord>([
-    [persistedDirectory.directoryId, persistedDirectory]
+    [persistedDirectory.directoryId, persistedDirectory],
   ]);
   const repositories = new Map<string, ControlPlaneRepositoryRecord>();
-  const repositoryIdByNormalizedRemoteUrl = new Map<string, string>();
   const repositoryAssociationByDirectoryId = new Map<string, string>();
   const directoryRepositorySnapshotByDirectoryId = new Map<string, GitRepositorySnapshot>();
   const muxControllerId = `human-mux-${process.pid}-${randomUUID()}`;
@@ -1039,7 +1039,8 @@ async function main(): Promise<number> {
   const conversations = new Map<string, ConversationState>();
   const tasks = new Map<string, ControlPlaneTaskRecord>();
   let observedStreamSubscriptionId: string | null = null;
-  let keyEventSubscription: Awaited<ReturnType<typeof subscribeControlPlaneKeyEvents>> | null = null;
+  let keyEventSubscription: Awaited<ReturnType<typeof subscribeControlPlaneKeyEvents>> | null =
+    null;
   const conversationStartInFlight = new Map<string, Promise<ConversationState>>();
   const removedConversationIds = new Set<string>();
   let activeConversationId: string | null = null;
@@ -1050,11 +1051,13 @@ async function main(): Promise<number> {
   let startupActiveSettledSpan: ReturnType<typeof startPerfSpan> | null = null;
   const startupSequencer = new StartupSequencer({
     quietMs: startupSettleQuietMs,
-    nonemptyFallbackMs: DEFAULT_STARTUP_SETTLE_NONEMPTY_FALLBACK_MS
+    nonemptyFallbackMs: DEFAULT_STARTUP_SETTLE_NONEMPTY_FALLBACK_MS,
   });
   const startupSessionFirstOutputObserved = new Set<string>();
 
-  const endStartupActiveStartCommandSpan = (attrs: Record<string, boolean | number | string>): void => {
+  const endStartupActiveStartCommandSpan = (
+    attrs: Record<string, boolean | number | string>,
+  ): void => {
     if (startupActiveStartCommandSpan === null) {
       return;
     }
@@ -1062,7 +1065,9 @@ async function main(): Promise<number> {
     startupActiveStartCommandSpan = null;
   };
 
-  const endStartupActiveFirstOutputSpan = (attrs: Record<string, boolean | number | string>): void => {
+  const endStartupActiveFirstOutputSpan = (
+    attrs: Record<string, boolean | number | string>,
+  ): void => {
     if (startupActiveFirstOutputSpan === null) {
       return;
     }
@@ -1070,7 +1075,9 @@ async function main(): Promise<number> {
     startupActiveFirstOutputSpan = null;
   };
 
-  const endStartupActiveFirstPaintSpan = (attrs: Record<string, boolean | number | string>): void => {
+  const endStartupActiveFirstPaintSpan = (
+    attrs: Record<string, boolean | number | string>,
+  ): void => {
     if (startupActiveFirstPaintSpan === null) {
       return;
     }
@@ -1139,13 +1146,13 @@ async function main(): Promise<number> {
         sessionId: event.sessionId,
         gate: event.gate,
         quietMs: event.quietMs,
-        glyphCells
+        glyphCells,
       });
       endStartupActiveSettledSpan({
         observed: true,
         gate: event.gate,
         quietMs: event.quietMs,
-        glyphCells
+        glyphCells,
       });
       signalStartupActiveSettled();
     });
@@ -1249,7 +1256,7 @@ async function main(): Promise<number> {
 
   const selectLeftNavHome = (): void => {
     leftNavSelection = {
-      kind: 'home'
+      kind: 'home',
     };
   };
 
@@ -1257,7 +1264,7 @@ async function main(): Promise<number> {
     activeRepositorySelectionId = repositoryGroupId;
     leftNavSelection = {
       kind: 'repository',
-      repositoryId: repositoryGroupId
+      repositoryId: repositoryGroupId,
     };
   };
 
@@ -1265,14 +1272,14 @@ async function main(): Promise<number> {
     activeRepositorySelectionId = repositoryGroupIdForDirectory(directoryId);
     leftNavSelection = {
       kind: 'project',
-      directoryId
+      directoryId,
     };
   };
 
   const selectLeftNavConversation = (sessionId: string): void => {
     leftNavSelection = {
       kind: 'conversation',
-      sessionId
+      sessionId,
     };
   };
 
@@ -1283,7 +1290,7 @@ async function main(): Promise<number> {
       title?: string;
       agentType?: string;
       adapterState?: Record<string, unknown>;
-    }
+    },
   ): ConversationState => {
     const existing = conversations.get(sessionId);
     if (existing !== undefined) {
@@ -1312,7 +1319,7 @@ async function main(): Promise<number> {
       `turn-${randomUUID()}`,
       options.scope,
       layout.rightCols,
-      layout.paneRows
+      layout.paneRows,
     );
     conversations.set(sessionId, state);
     return state;
@@ -1339,10 +1346,11 @@ async function main(): Promise<number> {
 
   const applyControlPlaneKeyEvent = (event: ControlPlaneKeyEvent): void => {
     const existing = conversations.get(event.sessionId);
-    const beforeProjection = existing === undefined ? null : projectionSnapshotForConversation(existing);
+    const beforeProjection =
+      existing === undefined ? null : projectionSnapshotForConversation(existing);
     const updated = applyMuxControlPlaneKeyEvent(event, {
       removedConversationIds,
-      ensureConversation
+      ensureConversation,
     });
     if (updated === null) {
       return;
@@ -1356,7 +1364,7 @@ async function main(): Promise<number> {
       type: 'directory.list',
       tenantId: options.scope.tenantId,
       userId: options.scope.userId,
-      workspaceId: options.scope.workspaceId
+      workspaceId: options.scope.workspaceId,
     });
     const rows = Array.isArray(listed['directories']) ? listed['directories'] : [];
     directories.clear();
@@ -1373,7 +1381,7 @@ async function main(): Promise<number> {
           tenantId: record.tenantId,
           userId: record.userId,
           workspaceId: record.workspaceId,
-          path: normalizedPath
+          path: normalizedPath,
         });
         const repairedRecord = parseDirectoryRecord(repairedResult['directory']);
         directories.set(record.directoryId, repairedRecord ?? { ...record, path: normalizedPath });
@@ -1389,37 +1397,16 @@ async function main(): Promise<number> {
     }
   };
 
-  const rebuildRepositoryRemoteIndex = (): void => {
-    repositoryIdByNormalizedRemoteUrl.clear();
-    for (const repository of repositories.values()) {
-      const normalized = normalizeGitHubRemoteUrl(repository.remoteUrl);
-      if (normalized !== null) {
-        repositoryIdByNormalizedRemoteUrl.set(normalized, repository.repositoryId);
-      }
-    }
-  };
-
   const syncRepositoryAssociationsWithDirectorySnapshots = (): void => {
-    for (const [directoryId, repositoryId] of repositoryAssociationByDirectoryId.entries()) {
-      if (!directories.has(directoryId) || !repositories.has(repositoryId)) {
+    for (const directoryId of repositoryAssociationByDirectoryId.keys()) {
+      if (!directories.has(directoryId)) {
         repositoryAssociationByDirectoryId.delete(directoryId);
       }
     }
-    for (const [directoryId, snapshot] of directoryRepositorySnapshotByDirectoryId.entries()) {
+    for (const directoryId of directoryRepositorySnapshotByDirectoryId.keys()) {
       if (!directories.has(directoryId)) {
         directoryRepositorySnapshotByDirectoryId.delete(directoryId);
-        repositoryAssociationByDirectoryId.delete(directoryId);
-        continue;
       }
-      if (snapshot.normalizedRemoteUrl === null) {
-        repositoryAssociationByDirectoryId.delete(directoryId);
-        continue;
-      }
-      const matchedRepositoryId = repositoryIdByNormalizedRemoteUrl.get(snapshot.normalizedRemoteUrl);
-      if (matchedRepositoryId === undefined) {
-        continue;
-      }
-      repositoryAssociationByDirectoryId.set(directoryId, matchedRepositoryId);
     }
   };
 
@@ -1428,7 +1415,7 @@ async function main(): Promise<number> {
       type: 'repository.list',
       tenantId: options.scope.tenantId,
       userId: options.scope.userId,
-      workspaceId: options.scope.workspaceId
+      workspaceId: options.scope.workspaceId,
     });
     const rows = Array.isArray(listed['repositories']) ? listed['repositories'] : [];
     repositories.clear();
@@ -1439,17 +1426,48 @@ async function main(): Promise<number> {
       }
       repositories.set(record.repositoryId, record);
     }
-    rebuildRepositoryRemoteIndex();
     syncRepositoryAssociationsWithDirectorySnapshots();
   };
 
-  const hydratePersistedConversationsForDirectory = async (directoryId: string): Promise<number> => {
+  const hydrateDirectoryGitStatus = async (): Promise<void> => {
+    if (!configuredMuxGit.enabled) {
+      return;
+    }
+    const listed = await streamClient.sendCommand({
+      type: 'directory.git-status',
+      tenantId: options.scope.tenantId,
+      userId: options.scope.userId,
+      workspaceId: options.scope.workspaceId,
+    });
+    const rows = Array.isArray(listed['gitStatuses']) ? listed['gitStatuses'] : [];
+    for (const row of rows) {
+      const record = parseDirectoryGitStatusRecord(row);
+      if (record === null) {
+        continue;
+      }
+      gitSummaryByDirectoryId.set(record.directoryId, record.summary);
+      directoryRepositorySnapshotByDirectoryId.set(record.directoryId, record.repositorySnapshot);
+      if (record.repositoryId === null) {
+        repositoryAssociationByDirectoryId.delete(record.directoryId);
+      } else {
+        repositoryAssociationByDirectoryId.set(record.directoryId, record.repositoryId);
+      }
+      if (record.repository !== null) {
+        repositories.set(record.repository.repositoryId, record.repository);
+      }
+    }
+    syncRepositoryAssociationsWithDirectorySnapshots();
+  };
+
+  const hydratePersistedConversationsForDirectory = async (
+    directoryId: string,
+  ): Promise<number> => {
     const listedPersisted = await streamClient.sendCommand({
       type: 'conversation.list',
       directoryId,
       tenantId: options.scope.tenantId,
       userId: options.scope.userId,
-      workspaceId: options.scope.workspaceId
+      workspaceId: options.scope.workspaceId,
     });
     const persistedRows = Array.isArray(listedPersisted['conversations'])
       ? listedPersisted['conversations']
@@ -1463,7 +1481,7 @@ async function main(): Promise<number> {
         directoryId: record.directoryId,
         title: record.title,
         agentType: record.agentType,
-        adapterState: record.adapterState
+        adapterState: record.adapterState,
       });
       conversation.scope.tenantId = record.tenantId;
       conversation.scope.userId = record.userId;
@@ -1483,7 +1501,7 @@ async function main(): Promise<number> {
     try {
       await streamClient.sendCommand({
         type: 'pty.subscribe-events',
-        sessionId
+        sessionId,
       });
     } catch (error: unknown) {
       if (!isSessionNotFoundError(error) && !isSessionNotLiveError(error)) {
@@ -1496,7 +1514,7 @@ async function main(): Promise<number> {
     try {
       await streamClient.sendCommand({
         type: 'pty.unsubscribe-events',
-        sessionId
+        sessionId,
       });
     } catch (error: unknown) {
       if (!isSessionNotFoundError(error) && !isSessionNotLiveError(error)) {
@@ -1516,13 +1534,13 @@ async function main(): Promise<number> {
       if (existing?.live === true) {
         if (startupFirstPaintTargetSessionId === sessionId) {
           endStartupActiveStartCommandSpan({
-            alreadyLive: true
+            alreadyLive: true,
           });
         }
         return existing;
       }
       const startSpan = startPerfSpan('mux.conversation.start', {
-        sessionId
+        sessionId,
       });
       const targetConversation = ensureConversation(sessionId);
       targetConversation.lastOutputCursor = 0;
@@ -1531,10 +1549,10 @@ async function main(): Promise<number> {
       const configuredDirectoryPath =
         targetConversation.directoryId === null
           ? null
-          : directories.get(targetConversation.directoryId)?.path ?? null;
+          : (directories.get(targetConversation.directoryId)?.path ?? null);
       const sessionCwd = resolveWorkspacePathForMux(
         options.invocationDirectory,
-        configuredDirectoryPath ?? options.invocationDirectory
+        configuredDirectoryPath ?? options.invocationDirectory,
       );
       const codexLaunchMode =
         agentType === 'codex' ? resolveCodexLaunchModeForDirectory(sessionCwd) : undefined;
@@ -1542,7 +1560,7 @@ async function main(): Promise<number> {
         codexLaunchMode === undefined
           ? buildAgentStartArgs(agentType, baseArgsForAgent, targetConversation.adapterState)
           : buildAgentStartArgs(agentType, baseArgsForAgent, targetConversation.adapterState, {
-              codexLaunchMode
+              codexLaunchMode,
             });
       const ptyStartCommand: Parameters<typeof streamClient.sendCommand>[0] = {
         type: 'pty.start',
@@ -1555,7 +1573,7 @@ async function main(): Promise<number> {
         tenantId: options.scope.tenantId,
         userId: options.scope.userId,
         workspaceId: options.scope.workspaceId,
-        worktreeId: options.scope.worktreeId
+        worktreeId: options.scope.worktreeId,
       };
       const terminalForegroundHex = process.env.HARNESS_TERM_FG ?? probedPalette.foregroundHex;
       const terminalBackgroundHex = process.env.HARNESS_TERM_BG ?? probedPalette.backgroundHex;
@@ -1568,25 +1586,25 @@ async function main(): Promise<number> {
       await streamClient.sendCommand(ptyStartCommand);
       ptySizeByConversationId.set(sessionId, {
         cols: layout.rightCols,
-        rows: layout.paneRows
+        rows: layout.paneRows,
       });
       streamClient.sendResize(sessionId, layout.rightCols, layout.paneRows);
       if (startupFirstPaintTargetSessionId === sessionId) {
         endStartupActiveStartCommandSpan({
           alreadyLive: false,
           argCount: launchArgs.length,
-          resumed: launchArgs[0] === 'resume'
+          resumed: launchArgs[0] === 'resume',
         });
       }
       const state = ensureConversation(sessionId);
       recordPerfEvent('mux.conversation.start.command', {
         sessionId,
         argCount: launchArgs.length,
-        resumed: launchArgs[0] === 'resume'
+        resumed: launchArgs[0] === 'resume',
       });
       const statusRecord = await streamClient.sendCommand({
         type: 'session.status',
-        sessionId
+        sessionId,
       });
       const statusSummary = parseSessionSummaryRecord(statusRecord);
       if (statusSummary !== null) {
@@ -1594,7 +1612,7 @@ async function main(): Promise<number> {
       }
       await subscribeConversationEvents(sessionId);
       startSpan.end({
-        live: state.live
+        live: state.live,
       });
       return state;
     })();
@@ -1607,9 +1625,7 @@ async function main(): Promise<number> {
     }
   };
 
-  const queuePersistedConversationsInBackground = (
-    activeSessionId: string | null
-  ): number => {
+  const queuePersistedConversationsInBackground = (activeSessionId: string | null): number => {
     const ordered = conversationOrder(conversations);
     let queued = 0;
     for (const sessionId of ordered) {
@@ -1620,17 +1636,14 @@ async function main(): Promise<number> {
       if (conversation === undefined || conversation.live) {
         continue;
       }
-      queueBackgroundControlPlaneOp(
-        async () => {
-          const latest = conversations.get(sessionId);
-          if (latest === undefined || latest.live) {
-            return;
-          }
-          await startConversation(sessionId);
-          markDirty();
-        },
-        `background-start:${sessionId}`
-      );
+      queueBackgroundControlPlaneOp(async () => {
+        const latest = conversations.get(sessionId);
+        if (latest === undefined || latest.live) {
+          return;
+        }
+        await startConversation(sessionId);
+        markDirty();
+      }, `background-start:${sessionId}`);
       queued += 1;
     }
     return queued;
@@ -1650,7 +1663,7 @@ async function main(): Promise<number> {
       userId: options.scope.userId,
       workspaceId: options.scope.workspaceId,
       worktreeId: options.scope.worktreeId,
-      sort: 'started-asc'
+      sort: 'started-asc',
     });
     const summaries = parseSessionSummaryList(listedLive['sessions']);
     for (const summary of summaries) {
@@ -1662,7 +1675,7 @@ async function main(): Promise<number> {
     }
     hydrateSpan.end({
       persisted: persistedCount,
-      live: summaries.length
+      live: summaries.length,
     });
   };
 
@@ -1670,6 +1683,7 @@ async function main(): Promise<number> {
     await hydrateConversationList();
     await hydrateRepositoryList();
     await hydrateTaskPlanningState();
+    await hydrateDirectoryGitStatus();
     await subscribeTaskPlanningEvents(startupObservedCursor);
     if (activeConversationId === null) {
       const ordered = conversationOrder(conversations);
@@ -1699,7 +1713,7 @@ async function main(): Promise<number> {
   let processUsageRefreshInFlight = false;
 
   const projectionSnapshotForConversation = (
-    conversation: ConversationState
+    conversation: ConversationState,
   ): ConversationProjectionSnapshot => {
     const projected = projectWorkspaceRailConversation(
       {
@@ -1711,27 +1725,31 @@ async function main(): Promise<number> {
         memoryMb: processUsageBySessionId.get(conversation.sessionId)?.memoryMb ?? null,
         lastKnownWork: conversation.lastKnownWork,
         lastKnownWorkAt: conversation.lastKnownWorkAt,
-        controller: conversation.controller
+        controller: conversation.controller,
       },
       {
-        nowMs: Date.now()
-      }
+        nowMs: Date.now(),
+      },
     );
     return {
       status: projected.status,
       glyph: projected.glyph,
-      detailText: compactDebugText(projected.detailText)
+      detailText: compactDebugText(projected.detailText),
     };
   };
 
   const projectionSnapshotEqual = (
     left: ConversationProjectionSnapshot | null,
-    right: ConversationProjectionSnapshot
+    right: ConversationProjectionSnapshot,
   ): boolean => {
     if (left === null) {
       return false;
     }
-    return left.status === right.status && left.glyph === right.glyph && left.detailText === right.detailText;
+    return (
+      left.status === right.status &&
+      left.glyph === right.glyph &&
+      left.detailText === right.detailText
+    );
   };
 
   const refreshSelectorInstrumentation = (reason: string): void => {
@@ -1740,7 +1758,7 @@ async function main(): Promise<number> {
     const hash = entries
       .map(
         (entry) =>
-          `${entry.selectorIndex}:${entry.directoryId}:${entry.sessionId}:${entry.directoryIndex}:${entry.title}:${entry.agentType}`
+          `${entry.selectorIndex}:${entry.directoryId}:${entry.sessionId}:${entry.directoryIndex}:${entry.title}:${entry.agentType}`,
       )
       .join('|');
     if (hash === lastSelectorSnapshotHash) {
@@ -1753,13 +1771,13 @@ async function main(): Promise<number> {
       selectorIndexBySessionId.set(entry.sessionId, {
         selectorIndex: entry.selectorIndex,
         directoryIndex: entry.directoryIndex,
-        directoryId: entry.directoryId
+        directoryId: entry.directoryId,
       });
     }
     recordPerfEvent('mux.selector.snapshot', {
       reason: compactDebugText(reason),
       version: selectorSnapshotVersion,
-      count: entries.length
+      count: entries.length,
     });
     for (const entry of entries) {
       recordPerfEvent('mux.selector.entry', {
@@ -1769,7 +1787,7 @@ async function main(): Promise<number> {
         sessionId: entry.sessionId,
         directoryId: entry.directoryId,
         title: compactDebugText(entry.title),
-        agentType: entry.agentType
+        agentType: entry.agentType,
       });
     }
   };
@@ -1777,7 +1795,7 @@ async function main(): Promise<number> {
   const recordProjectionTransition = (
     event: ControlPlaneKeyEvent,
     before: ConversationProjectionSnapshot | null,
-    conversation: ConversationState
+    conversation: ConversationState,
   ): void => {
     const after = projectionSnapshotForConversation(conversation);
     if (projectionSnapshotEqual(before, after)) {
@@ -1810,7 +1828,7 @@ async function main(): Promise<number> {
       detailTo: after.detailText,
       source,
       eventName,
-      summary: compactDebugText(summary)
+      summary: compactDebugText(summary),
     });
   };
 
@@ -1827,7 +1845,7 @@ async function main(): Promise<number> {
 
   const gitRepositorySnapshotEqual = (
     left: GitRepositorySnapshot,
-    right: GitRepositorySnapshot
+    right: GitRepositorySnapshot,
   ): boolean =>
     left.normalizedRemoteUrl === right.normalizedRemoteUrl &&
     left.commitCount === right.commitCount &&
@@ -1853,7 +1871,7 @@ async function main(): Promise<number> {
       ensureDirectoryGitState(directoryId);
     }
     const staleDirectoryIds = [...gitSummaryByDirectoryId.keys()].filter(
-      (directoryId) => !directories.has(directoryId)
+      (directoryId) => !directories.has(directoryId),
     );
     for (const directoryId of staleDirectoryIds) {
       deleteDirectoryGitState(directoryId);
@@ -1875,7 +1893,8 @@ async function main(): Promise<number> {
     if (observed.type !== 'directory-git-updated') {
       return;
     }
-    const previousSummary = gitSummaryByDirectoryId.get(observed.directoryId) ?? GIT_SUMMARY_LOADING;
+    const previousSummary =
+      gitSummaryByDirectoryId.get(observed.directoryId) ?? GIT_SUMMARY_LOADING;
     const summaryChanged = !gitSummaryEqual(previousSummary, observed.summary);
     gitSummaryByDirectoryId.set(observed.directoryId, observed.summary);
 
@@ -1883,7 +1902,7 @@ async function main(): Promise<number> {
       directoryRepositorySnapshotByDirectoryId.get(observed.directoryId) ?? GIT_REPOSITORY_NONE;
     const repositorySnapshotChanged = !gitRepositorySnapshotEqual(
       previousRepositorySnapshot,
-      observed.repositorySnapshot
+      observed.repositorySnapshot,
     );
     directoryRepositorySnapshotByDirectoryId.set(observed.directoryId, observed.repositorySnapshot);
 
@@ -1891,7 +1910,8 @@ async function main(): Promise<number> {
     if (observed.repositoryId === null) {
       associationChanged = repositoryAssociationByDirectoryId.delete(observed.directoryId);
     } else {
-      const previousRepositoryId = repositoryAssociationByDirectoryId.get(observed.directoryId) ?? null;
+      const previousRepositoryId =
+        repositoryAssociationByDirectoryId.get(observed.directoryId) ?? null;
       repositoryAssociationByDirectoryId.set(observed.directoryId, observed.repositoryId);
       associationChanged = previousRepositoryId !== observed.repositoryId;
     }
@@ -1912,12 +1932,16 @@ async function main(): Promise<number> {
     }
 
     if (repositoryRecordChanged) {
-      rebuildRepositoryRemoteIndex();
       syncRepositoryAssociationsWithDirectorySnapshots();
       syncTaskPaneRepositorySelection();
     }
 
-    if (summaryChanged || repositorySnapshotChanged || associationChanged || repositoryRecordChanged) {
+    if (
+      summaryChanged ||
+      repositorySnapshotChanged ||
+      associationChanged ||
+      repositoryRecordChanged
+    ) {
       markDirty();
     }
   };
@@ -1929,14 +1953,14 @@ async function main(): Promise<number> {
     processUsageRefreshInFlight = true;
     const usageSpan = startPerfSpan('mux.background.process-usage', {
       reason,
-      conversations: conversations.size
+      conversations: conversations.size,
     });
     try {
       const entries = await Promise.all(
         [...conversations.entries()].map(async ([sessionId, conversation]) => ({
           sessionId,
-          sample: await readProcessUsageSample(conversation.processId)
-        }))
+          sample: await readProcessUsageSample(conversation.processId),
+        })),
       );
 
       let changed = false;
@@ -1963,7 +1987,7 @@ async function main(): Promise<number> {
       usageSpan.end({
         reason,
         samples: entries.length,
-        changed
+        changed,
       });
     } finally {
       processUsageRefreshInFlight = false;
@@ -1987,7 +2011,7 @@ async function main(): Promise<number> {
   let persistedMuxUiState = {
     paneWidthPercent: paneWidthPercentFromLayout(layout),
     repositoriesCollapsed: configuredMuxUi.repositoriesCollapsed,
-    shortcutsCollapsed: configuredMuxUi.shortcutsCollapsed
+    shortcutsCollapsed: configuredMuxUi.shortcutsCollapsed,
   };
   let pendingMuxUiStatePersist: {
     paneWidthPercent: number;
@@ -2043,7 +2067,7 @@ async function main(): Promise<number> {
           try {
             await streamClient.sendCommand({
               type: 'pty.close',
-              sessionId
+              sessionId,
             });
           } catch {
             // Best-effort shutdown only.
@@ -2060,7 +2084,7 @@ async function main(): Promise<number> {
     }
     runtimeFatal = {
       origin,
-      error
+      error,
     };
     shuttingDown = true;
     stop = true;
@@ -2109,12 +2133,12 @@ async function main(): Promise<number> {
     ...(startupObservedCursor === null
       ? {}
       : {
-          afterCursor: startupObservedCursor
+          afterCursor: startupObservedCursor,
         }),
     onEvent: (event) => {
       applyControlPlaneKeyEvent(event);
       markDirty();
-    }
+    },
   });
 
   const muxUiStatePersistenceEnabled = loadedConfig.error === null;
@@ -2140,7 +2164,7 @@ async function main(): Promise<number> {
     }
     try {
       const updated = updateHarnessMuxUiConfig(pending, {
-        filePath: loadedConfig.filePath
+        filePath: loadedConfig.filePath,
       });
       persistedMuxUiState = {
         paneWidthPercent:
@@ -2148,11 +2172,11 @@ async function main(): Promise<number> {
             ? paneWidthPercentFromLayout(layout)
             : updated.mux.ui.paneWidthPercent,
         repositoriesCollapsed: updated.mux.ui.repositoriesCollapsed,
-        shortcutsCollapsed: updated.mux.ui.shortcutsCollapsed
+        shortcutsCollapsed: updated.mux.ui.shortcutsCollapsed,
       };
     } catch (error: unknown) {
       process.stderr.write(
-        `[config] unable to persist mux ui state: ${error instanceof Error ? error.message : String(error)}\n`
+        `[config] unable to persist mux ui state: ${error instanceof Error ? error.message : String(error)}\n`,
       );
     }
   };
@@ -2163,7 +2187,7 @@ async function main(): Promise<number> {
     pendingMuxUiStatePersist = {
       paneWidthPercent: paneWidthPercentFromLayout(layout),
       repositoriesCollapsed,
-      shortcutsCollapsed
+      shortcutsCollapsed,
     };
     if (muxUiStatePersistTimer !== null) {
       clearTimeout(muxUiStatePersistTimer);
@@ -2181,7 +2205,7 @@ async function main(): Promise<number> {
     backgroundProbesStarted = true;
     recordPerfEvent('mux.startup.background-probes.begin', {
       timedOut,
-      settledObserved: startupSequencer.snapshot().settledObserved
+      settledObserved: startupSequencer.snapshot().settledObserved,
     });
     void refreshProcessUsage('startup');
     processUsageTimer = setInterval(() => {
@@ -2195,16 +2219,16 @@ async function main(): Promise<number> {
     }
   } else {
     recordPerfEvent('mux.background.git-summary.skipped', {
-      reason: 'disabled'
+      reason: 'disabled',
     });
   }
   recordPerfEvent('mux.startup.background-probes.wait', {
     maxWaitMs: DEFAULT_BACKGROUND_START_MAX_WAIT_MS,
-    enabled: backgroundProbesEnabled ? 1 : 0
+    enabled: backgroundProbesEnabled ? 1 : 0,
   });
   if (!backgroundProbesEnabled) {
     recordPerfEvent('mux.startup.background-probes.skipped', {
-      reason: 'disabled'
+      reason: 'disabled',
     });
   }
   void (async () => {
@@ -2219,7 +2243,7 @@ async function main(): Promise<number> {
           timedOut = true;
           resolve();
         }, DEFAULT_BACKGROUND_START_MAX_WAIT_MS);
-      })
+      }),
     ]);
     startBackgroundProbes(timedOut);
   })();
@@ -2241,14 +2265,14 @@ async function main(): Promise<number> {
     pendingPersistedEvents = [];
     const flushSpan = startPerfSpan('mux.events.flush', {
       reason,
-      count: batch.length
+      count: batch.length,
     });
     try {
       store.appendEvents(batch);
       flushSpan.end({
         reason,
         status: 'ok',
-        count: batch.length
+        count: batch.length,
       });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
@@ -2256,7 +2280,7 @@ async function main(): Promise<number> {
         reason,
         status: 'error',
         count: batch.length,
-        message
+        message,
       });
       process.stderr.write(`[mux] event-store error ${message}\n`);
     }
@@ -2282,7 +2306,7 @@ async function main(): Promise<number> {
   };
 
   const eventLoopDelayMonitor = monitorEventLoopDelay({
-    resolution: 20
+    resolution: 20,
   });
   eventLoopDelayMonitor.enable();
 
@@ -2305,7 +2329,7 @@ async function main(): Promise<number> {
     renderMaxMs: 0,
     outputHandleAvgMs: 0,
     outputHandleMaxMs: 0,
-    eventLoopP95Ms: 0
+    eventLoopP95Ms: 0,
   };
   const outputSampleSessionIds = new Set<string>();
   const outputLoadSampleTimer = setInterval(() => {
@@ -2320,12 +2344,16 @@ async function main(): Promise<number> {
     const renderAvgMs = renderSampleCount === 0 ? 0 : renderSampleTotalMs / renderSampleCount;
     const nextPerfStatusRow: MuxPerfStatusRow = {
       fps: Number(((renderSampleCount * 1000) / windowMs).toFixed(1)),
-      kbPerSecond: Number((((outputSampleActiveBytes + outputSampleInactiveBytes) * 1000) / windowMs / 1024).toFixed(1)),
+      kbPerSecond: Number(
+        (((outputSampleActiveBytes + outputSampleInactiveBytes) * 1000) / windowMs / 1024).toFixed(
+          1,
+        ),
+      ),
       renderAvgMs: Number(renderAvgMs.toFixed(2)),
       renderMaxMs: Number(renderSampleMaxMs.toFixed(2)),
       outputHandleAvgMs: Number(outputHandleAvgMs.toFixed(2)),
       outputHandleMaxMs: Number(outputHandleSampleMaxMs.toFixed(2)),
-      eventLoopP95Ms: Number(eventLoopP95Ms.toFixed(1))
+      eventLoopP95Ms: Number(eventLoopP95Ms.toFixed(1)),
     };
     if (
       nextPerfStatusRow.fps !== perfStatusRow.fps ||
@@ -2361,7 +2389,7 @@ async function main(): Promise<number> {
         pendingPersistedEvents: pendingPersistedEvents.length,
         interactiveQueued: controlPlaneQueueMetrics.interactiveQueued,
         backgroundQueued: controlPlaneQueueMetrics.backgroundQueued,
-        controlPlaneOpRunning: controlPlaneQueueMetrics.running ? 1 : 0
+        controlPlaneOpRunning: controlPlaneQueueMetrics.running ? 1 : 0,
       });
     }
     outputSampleWindowStartedAtMs = nowMs;
@@ -2383,7 +2411,7 @@ async function main(): Promise<number> {
   const applyPtyResizeToSession = (
     sessionId: string,
     ptySize: { cols: number; rows: number },
-    force = false
+    force = false,
   ): void => {
     const conversation = conversations.get(sessionId);
     if (conversation === undefined || !conversation.live) {
@@ -2400,7 +2428,7 @@ async function main(): Promise<number> {
     }
     ptySizeByConversationId.set(sessionId, {
       cols: ptySize.cols,
-      rows: ptySize.rows
+      rows: ptySize.rows,
     });
     conversation.oracle.resize(ptySize.cols, ptySize.rows);
     streamClient.sendResize(sessionId, ptySize.cols, ptySize.rows);
@@ -2441,16 +2469,19 @@ async function main(): Promise<number> {
     ptyResizeTimer = setTimeout(flushPendingPtyResize, ptyResizeSettleMs);
   };
 
-  const applyLayout = (nextSize: { cols: number; rows: number }, forceImmediatePtyResize = false): void => {
+  const applyLayout = (
+    nextSize: { cols: number; rows: number },
+    forceImmediatePtyResize = false,
+  ): void => {
     const nextLayout = computeDualPaneLayout(nextSize.cols, nextSize.rows, {
-      leftCols: leftPaneColsOverride
+      leftCols: leftPaneColsOverride,
     });
     schedulePtyResize(
       {
         cols: nextLayout.rightCols,
-        rows: nextLayout.paneRows
+        rows: nextLayout.paneRows,
       },
-      forceImmediatePtyResize
+      forceImmediatePtyResize,
     );
     if (
       nextLayout.cols === layout.cols &&
@@ -2470,9 +2501,9 @@ async function main(): Promise<number> {
           conversation.sessionId,
           {
             cols: nextLayout.rightCols,
-            rows: nextLayout.paneRows
+            rows: nextLayout.paneRows,
           },
-          true
+          true,
         );
       }
     }
@@ -2538,7 +2569,7 @@ async function main(): Promise<number> {
         label: event.label,
         priority: event.priority,
         interactiveQueued: metrics.interactiveQueued,
-        backgroundQueued: metrics.backgroundQueued
+        backgroundQueued: metrics.backgroundQueued,
       });
     },
     onStart: (event, metrics) => {
@@ -2546,7 +2577,7 @@ async function main(): Promise<number> {
         id: event.id,
         label: event.label,
         priority: event.priority,
-        waitMs: event.waitMs
+        waitMs: event.waitMs,
       });
       controlPlaneOpSpans.set(event.id, opSpan);
       recordPerfEvent('mux.control-plane.op.start', {
@@ -2555,7 +2586,7 @@ async function main(): Promise<number> {
         priority: event.priority,
         waitMs: event.waitMs,
         interactiveQueued: metrics.interactiveQueued,
-        backgroundQueued: metrics.backgroundQueued
+        backgroundQueued: metrics.backgroundQueued,
       });
     },
     onSuccess: (event) => {
@@ -2566,7 +2597,7 @@ async function main(): Promise<number> {
           label: event.label,
           priority: event.priority,
           status: 'ok',
-          waitMs: event.waitMs
+          waitMs: event.waitMs,
         });
         controlPlaneOpSpans.delete(event.id);
       }
@@ -2581,12 +2612,12 @@ async function main(): Promise<number> {
           priority: event.priority,
           status: 'error',
           waitMs: event.waitMs,
-          message
+          message,
         });
         controlPlaneOpSpans.delete(event.id);
       }
       process.stderr.write(`[mux] control-plane error ${message}\n`);
-    }
+    },
   });
 
   const waitForControlPlaneDrain = async (): Promise<void> => {
@@ -2597,7 +2628,10 @@ async function main(): Promise<number> {
     controlPlaneQueue.enqueueInteractive(task, label);
   };
 
-  const queueBackgroundControlPlaneOp = (task: () => Promise<void>, label = 'background-op'): void => {
+  const queueBackgroundControlPlaneOp = (
+    task: () => Promise<void>,
+    label = 'background-op',
+  ): void => {
     controlPlaneQueue.enqueueBackground(task, label);
   };
 
@@ -2610,7 +2644,7 @@ async function main(): Promise<number> {
 
   const queueConversationTitlePersist = (
     edit: ConversationTitleEditState,
-    reason: 'debounced' | 'flush'
+    reason: 'debounced' | 'flush',
   ): void => {
     const titleToPersist = edit.value;
     if (titleToPersist === edit.lastSavedValue) {
@@ -2623,7 +2657,7 @@ async function main(): Promise<number> {
         const result = await streamClient.sendCommand({
           type: 'conversation.update',
           conversationId: edit.conversationId,
-          title: titleToPersist
+          title: titleToPersist,
         });
         const parsed = parseConversationRecord(result['conversation']);
         const persistedTitle = parsed?.title ?? titleToPersist;
@@ -2709,19 +2743,21 @@ async function main(): Promise<number> {
       lastSavedValue: target.title,
       error: null,
       persistInFlight: false,
-      debounceTimer: null
+      debounceTimer: null,
     };
     markDirty();
   };
 
-  const buildNewThreadModalOverlay = (viewportRows: number): ReturnType<typeof buildUiModalOverlay> | null => {
+  const buildNewThreadModalOverlay = (
+    viewportRows: number,
+  ): ReturnType<typeof buildUiModalOverlay> | null => {
     if (newThreadPrompt === null) {
       return null;
     }
     const modalSize = resolveGoldenModalSize(layout.cols, viewportRows, {
       preferredHeight: 14,
       minWidth: 22,
-      maxWidth: 36
+      maxWidth: 36,
     });
     return buildUiModalOverlay({
       viewportCols: layout.cols,
@@ -2733,21 +2769,23 @@ async function main(): Promise<number> {
       title: 'New Thread',
       bodyLines: newThreadPromptBodyLines(newThreadPrompt, {
         codexButtonLabel: NEW_THREAD_MODAL_CODEX_BUTTON,
-        terminalButtonLabel: NEW_THREAD_MODAL_TERMINAL_BUTTON
+        terminalButtonLabel: NEW_THREAD_MODAL_TERMINAL_BUTTON,
       }),
       footer: 'enter create  esc',
-      theme: MUX_MODAL_THEME
+      theme: MUX_MODAL_THEME,
     });
   };
 
-  const buildAddDirectoryModalOverlay = (viewportRows: number): ReturnType<typeof buildUiModalOverlay> | null => {
+  const buildAddDirectoryModalOverlay = (
+    viewportRows: number,
+  ): ReturnType<typeof buildUiModalOverlay> | null => {
     if (addDirectoryPrompt === null) {
       return null;
     }
     const modalSize = resolveGoldenModalSize(layout.cols, viewportRows, {
       preferredHeight: 15,
       minWidth: 24,
-      maxWidth: 40
+      maxWidth: 40,
     });
     const promptValue = addDirectoryPrompt.value.length > 0 ? addDirectoryPrompt.value : '.';
     const addDirectoryBody = [`path: ${promptValue}_`];
@@ -2766,24 +2804,27 @@ async function main(): Promise<number> {
       title: 'Add Project',
       bodyLines: addDirectoryBody,
       footer: 'enter save  esc',
-      theme: MUX_MODAL_THEME
+      theme: MUX_MODAL_THEME,
     });
   };
 
-  const buildTaskEditorModalOverlay = (viewportRows: number): ReturnType<typeof buildUiModalOverlay> | null => {
+  const buildTaskEditorModalOverlay = (
+    viewportRows: number,
+  ): ReturnType<typeof buildUiModalOverlay> | null => {
     if (taskEditorPrompt === null) {
       return null;
     }
     const modalSize = resolveGoldenModalSize(layout.cols, viewportRows, {
       preferredHeight: 18,
       minWidth: 30,
-      maxWidth: 56
+      maxWidth: 56,
     });
-    const selectedRepositoryId = taskEditorPrompt.repositoryIds[taskEditorPrompt.repositoryIndex] ?? null;
+    const selectedRepositoryId =
+      taskEditorPrompt.repositoryIds[taskEditorPrompt.repositoryIndex] ?? null;
     const selectedRepositoryName =
       selectedRepositoryId === null
         ? '(none)'
-        : repositories.get(selectedRepositoryId)?.name ?? '(missing)';
+        : (repositories.get(selectedRepositoryId)?.name ?? '(missing)');
     const taskBody = [
       `${taskEditorPrompt.fieldIndex === 0 ? '>' : ' '} title: ${taskEditorPrompt.title}${
         taskEditorPrompt.fieldIndex === 0 ? '_' : ''
@@ -2794,7 +2835,7 @@ async function main(): Promise<number> {
       }`,
       '',
       'tab next field',
-      'left/right change repository'
+      'left/right change repository',
     ];
     if (taskEditorPrompt.error !== null && taskEditorPrompt.error.length > 0) {
       taskBody.push(`error: ${taskEditorPrompt.error}`);
@@ -2809,20 +2850,23 @@ async function main(): Promise<number> {
       title: taskEditorPrompt.mode === 'create' ? 'New Task' : 'Edit Task',
       bodyLines: taskBody,
       footer: 'enter save  esc',
-      theme: MUX_MODAL_THEME
+      theme: MUX_MODAL_THEME,
     });
   };
 
-  const buildRepositoryModalOverlay = (viewportRows: number): ReturnType<typeof buildUiModalOverlay> | null => {
+  const buildRepositoryModalOverlay = (
+    viewportRows: number,
+  ): ReturnType<typeof buildUiModalOverlay> | null => {
     if (repositoryPrompt === null) {
       return null;
     }
     const modalSize = resolveGoldenModalSize(layout.cols, viewportRows, {
       preferredHeight: 15,
       minWidth: 28,
-      maxWidth: 56
+      maxWidth: 56,
     });
-    const promptValue = repositoryPrompt.value.length > 0 ? repositoryPrompt.value : 'https://github.com/org/repo';
+    const promptValue =
+      repositoryPrompt.value.length > 0 ? repositoryPrompt.value : 'https://github.com/org/repo';
     const bodyLines = [`github url: ${promptValue}_`];
     if (repositoryPrompt.error !== null && repositoryPrompt.error.length > 0) {
       bodyLines.push(`error: ${repositoryPrompt.error}`);
@@ -2841,30 +2885,31 @@ async function main(): Promise<number> {
       title: repositoryPrompt.mode === 'add' ? 'Add Repository' : 'Edit Repository',
       bodyLines,
       footer: 'enter save  esc',
-      theme: MUX_MODAL_THEME
+      theme: MUX_MODAL_THEME,
     });
   };
 
-  const buildConversationTitleModalOverlay = (viewportRows: number): ReturnType<typeof buildUiModalOverlay> | null => {
+  const buildConversationTitleModalOverlay = (
+    viewportRows: number,
+  ): ReturnType<typeof buildUiModalOverlay> | null => {
     if (conversationTitleEdit === null) {
       return null;
     }
     const modalSize = resolveGoldenModalSize(layout.cols, viewportRows, {
       preferredHeight: 18,
       minWidth: 26,
-      maxWidth: 44
+      maxWidth: 44,
     });
-    const editState =
-      conversationTitleEdit.persistInFlight
-        ? 'saving'
-        : conversationTitleEdit.value === conversationTitleEdit.lastSavedValue
-          ? 'saved'
-          : 'pending';
+    const editState = conversationTitleEdit.persistInFlight
+      ? 'saving'
+      : conversationTitleEdit.value === conversationTitleEdit.lastSavedValue
+        ? 'saved'
+        : 'pending';
     const editBody = [
       `title: ${conversationTitleEdit.value}_`,
       `state: ${editState}`,
       '',
-      CONVERSATION_EDIT_ARCHIVE_BUTTON_LABEL
+      CONVERSATION_EDIT_ARCHIVE_BUTTON_LABEL,
     ];
     if (conversationTitleEdit.error !== null && conversationTitleEdit.error.length > 0) {
       editBody.push(`error: ${conversationTitleEdit.error}`);
@@ -2879,7 +2924,7 @@ async function main(): Promise<number> {
       title: 'Edit Thread Title',
       bodyLines: editBody,
       footer: 'type to save  enter done',
-      theme: MUX_MODAL_THEME
+      theme: MUX_MODAL_THEME,
     });
   };
 
@@ -2906,7 +2951,7 @@ async function main(): Promise<number> {
   const dismissModalOnOutsideClick = (
     input: Buffer,
     dismiss: () => void,
-    onInsidePointerPress?: (col: number, row: number) => boolean
+    onInsidePointerPress?: (col: number, row: number) => boolean,
   ): boolean => {
     if (!input.includes(0x1b)) {
       return false;
@@ -2952,12 +2997,12 @@ async function main(): Promise<number> {
       await streamClient.sendCommand({
         type: 'pty.attach',
         sessionId,
-        sinceCursor
+        sinceCursor,
       });
       conversation.attached = true;
       recordPerfEvent('mux.conversation.attach', {
         sessionId,
-        sinceCursor
+        sinceCursor,
       });
     }
   };
@@ -2972,12 +3017,12 @@ async function main(): Promise<number> {
     }
     await streamClient.sendCommand({
       type: 'pty.detach',
-      sessionId
+      sessionId,
     });
     conversation.attached = false;
     recordPerfEvent('mux.conversation.detach', {
       sessionId,
-      lastOutputCursor: conversation.lastOutputCursor
+      lastOutputCursor: conversation.lastOutputCursor,
     });
   };
 
@@ -3025,7 +3070,7 @@ async function main(): Promise<number> {
       return null;
     }
     return createTaskComposerBuffer(
-      task.description.length === 0 ? task.title : `${task.title}\n${task.description}`
+      task.description.length === 0 ? task.title : `${task.title}\n${task.description}`,
     );
   };
 
@@ -3069,7 +3114,7 @@ async function main(): Promise<number> {
         taskId,
         repositoryId: task.repositoryId,
         title: fields.title,
-        description: fields.description
+        description: fields.description,
       });
       const parsed = applyTaskFromCommandResult(result);
       if (parsed === null) {
@@ -3104,7 +3149,7 @@ async function main(): Promise<number> {
       flushTaskComposerPersist(taskEditorTarget.taskId);
     }
     taskEditorTarget = {
-      kind: 'draft'
+      kind: 'draft',
     };
     taskPaneSelectionFocus = 'task';
     markDirty();
@@ -3119,7 +3164,7 @@ async function main(): Promise<number> {
     }
     taskEditorTarget = {
       kind: 'task',
-      taskId
+      taskId,
     };
     taskPaneSelectedTaskId = taskId;
     taskPaneSelectionFocus = 'task';
@@ -3209,7 +3254,7 @@ async function main(): Promise<number> {
     taskRepositoryDropdownOpen = false;
     taskPaneSelectionFocus = 'repository';
     taskEditorTarget = {
-      kind: 'draft'
+      kind: 'draft',
     };
     syncTaskPaneSelection();
     taskPaneNotice = null;
@@ -3246,7 +3291,7 @@ async function main(): Promise<number> {
       type: 'repository.list',
       tenantId: options.scope.tenantId,
       userId: options.scope.userId,
-      workspaceId: options.scope.workspaceId
+      workspaceId: options.scope.workspaceId,
     });
     const repositoriesRaw = repositoriesResult['repositories'];
     if (!Array.isArray(repositoriesRaw)) {
@@ -3267,7 +3312,7 @@ async function main(): Promise<number> {
       tenantId: options.scope.tenantId,
       userId: options.scope.userId,
       workspaceId: options.scope.workspaceId,
-      limit: 1000
+      limit: 1000,
     });
     const tasksRaw = tasksResult['tasks'];
     if (!Array.isArray(tasksRaw)) {
@@ -3301,7 +3346,7 @@ async function main(): Promise<number> {
       if (repository !== undefined) {
         repositories.set(observed.repositoryId, {
           ...repository,
-          archivedAt: observed.ts
+          archivedAt: observed.ts,
         });
         syncTaskPaneRepositorySelection();
         markDirty();
@@ -3347,7 +3392,7 @@ async function main(): Promise<number> {
       tenantId: options.scope.tenantId,
       userId: options.scope.userId,
       workspaceId: options.scope.workspaceId,
-      conversationId: `cursor-probe-${randomUUID()}`
+      conversationId: `cursor-probe-${randomUUID()}`,
     });
     const subscriptionId = subscribed['subscriptionId'];
     if (typeof subscriptionId !== 'string' || subscriptionId.length === 0) {
@@ -3363,7 +3408,7 @@ async function main(): Promise<number> {
       try {
         await streamClient.sendCommand({
           type: 'stream.unsubscribe',
-          subscriptionId
+          subscriptionId,
         });
       } catch {
         // Best-effort unsubscribe only.
@@ -3385,7 +3430,7 @@ async function main(): Promise<number> {
       type: 'stream.subscribe',
       tenantId: options.scope.tenantId,
       userId: options.scope.userId,
-      workspaceId: options.scope.workspaceId
+      workspaceId: options.scope.workspaceId,
     };
     if (afterCursor !== null) {
       command.afterCursor = afterCursor;
@@ -3407,7 +3452,7 @@ async function main(): Promise<number> {
     try {
       await streamClient.sendCommand({
         type: 'stream.unsubscribe',
-        subscriptionId
+        subscriptionId,
       });
     } catch {
       // Best-effort unsubscribe only.
@@ -3466,7 +3511,10 @@ async function main(): Promise<number> {
         if (targetConversation !== undefined) {
           targetConversation.live = false;
           targetConversation.attached = false;
-          if (targetConversation.status === 'running' || targetConversation.status === 'needs-input') {
+          if (
+            targetConversation.status === 'running' ||
+            targetConversation.status === 'needs-input'
+          ) {
             targetConversation.status = 'completed';
             targetConversation.attentionReason = null;
           }
@@ -3478,9 +3526,9 @@ async function main(): Promise<number> {
     schedulePtyResize(
       {
         cols: layout.rightCols,
-        rows: layout.paneRows
+        rows: layout.paneRows,
       },
-      true
+      true,
     );
     markDirty();
   };
@@ -3499,7 +3547,7 @@ async function main(): Promise<number> {
   const reorderIdsByMove = (
     orderedIds: readonly string[],
     movedId: string,
-    targetId: string
+    targetId: string,
   ): readonly string[] | null => {
     const fromIndex = orderedIds.indexOf(movedId);
     const targetIndex = orderedIds.indexOf(targetId);
@@ -3530,7 +3578,7 @@ async function main(): Promise<number> {
         tenantId: options.scope.tenantId,
         userId: options.scope.userId,
         workspaceId: options.scope.workspaceId,
-        orderedTaskIds: [...taskIdOrderForReorder(orderedActiveTaskIds)]
+        orderedTaskIds: [...taskIdOrderForReorder(orderedActiveTaskIds)],
       });
       applyTaskListFromCommandResult(result);
     }, label);
@@ -3560,7 +3608,9 @@ async function main(): Promise<number> {
     markDirty();
   };
 
-  const applyTaskFromCommandResult = (result: Record<string, unknown>): ControlPlaneTaskRecord | null => {
+  const applyTaskFromCommandResult = (
+    result: Record<string, unknown>,
+  ): ControlPlaneTaskRecord | null => {
     const parsed = parseTaskRecord(result['task']);
     if (parsed === null) {
       return null;
@@ -3610,7 +3660,7 @@ async function main(): Promise<number> {
 
   const queueRepositoryPriorityOrder = (
     orderedRepositoryIds: readonly string[],
-    label: string
+    label: string,
   ): void => {
     const updates: Array<{
       repositoryId: string;
@@ -3629,8 +3679,8 @@ async function main(): Promise<number> {
         repositoryId,
         metadata: {
           ...repository.metadata,
-          homePriority: index
-        }
+          homePriority: index,
+        },
       });
     }
     if (updates.length === 0) {
@@ -3641,7 +3691,7 @@ async function main(): Promise<number> {
         const result = await streamClient.sendCommand({
           type: 'repository.update',
           repositoryId: update.repositoryId,
-          metadata: update.metadata
+          metadata: update.metadata,
         });
         const parsed = parseRepositoryRecord(result['repository']);
         if (parsed === null) {
@@ -3674,9 +3724,18 @@ async function main(): Promise<number> {
     queueTaskReorderByIds(reordered, 'tasks-reorder-drag');
   };
 
-  const reorderRepositoryByDrop = (draggedRepositoryId: string, targetRepositoryId: string): void => {
-    const orderedRepositoryIds = orderedActiveRepositoryRecords().map((repository) => repository.repositoryId);
-    const reordered = reorderIdsByMove(orderedRepositoryIds, draggedRepositoryId, targetRepositoryId);
+  const reorderRepositoryByDrop = (
+    draggedRepositoryId: string,
+    targetRepositoryId: string,
+  ): void => {
+    const orderedRepositoryIds = orderedActiveRepositoryRecords().map(
+      (repository) => repository.repositoryId,
+    );
+    const reordered = reorderIdsByMove(
+      orderedRepositoryIds,
+      draggedRepositoryId,
+      targetRepositoryId,
+    );
     if (reordered === null) {
       return;
     }
@@ -3736,13 +3795,13 @@ async function main(): Promise<number> {
         clearTaskAutosaveTimer(selected.taskId);
         await streamClient.sendCommand({
           type: 'task.delete',
-          taskId: selected.taskId
+          taskId: selected.taskId,
         });
         tasks.delete(selected.taskId);
         taskComposerByTaskId.delete(selected.taskId);
         if (taskEditorTarget.kind === 'task' && taskEditorTarget.taskId === selected.taskId) {
           taskEditorTarget = {
-            kind: 'draft'
+            kind: 'draft',
           };
         }
         syncTaskPaneSelection();
@@ -3755,7 +3814,7 @@ async function main(): Promise<number> {
       queueControlPlaneOp(async () => {
         const result = await streamClient.sendCommand({
           type: 'task.ready',
-          taskId: selected.taskId
+          taskId: selected.taskId,
         });
         applyTaskFromCommandResult(result);
       }, 'tasks-ready');
@@ -3766,7 +3825,7 @@ async function main(): Promise<number> {
       queueControlPlaneOp(async () => {
         const result = await streamClient.sendCommand({
           type: 'task.draft',
-          taskId: selected.taskId
+          taskId: selected.taskId,
         });
         applyTaskFromCommandResult(result);
       }, 'tasks-draft');
@@ -3777,7 +3836,7 @@ async function main(): Promise<number> {
       queueControlPlaneOp(async () => {
         const result = await streamClient.sendCommand({
           type: 'task.complete',
-          taskId: selected.taskId
+          taskId: selected.taskId,
         });
         applyTaskFromCommandResult(result);
       }, 'tasks-complete');
@@ -3803,7 +3862,7 @@ async function main(): Promise<number> {
       taskPaneSelectionFocus = 'task';
       queueTaskReorderByIds(
         reordered.map((task) => task.taskId),
-        action === 'task.reorder-up' ? 'tasks-reorder-up' : 'tasks-reorder-down'
+        action === 'task.reorder-up' ? 'tasks-reorder-up' : 'tasks-reorder-down',
       );
     }
   };
@@ -3833,7 +3892,7 @@ async function main(): Promise<number> {
       mode: 'add',
       repositoryId: null,
       value: '',
-      error: null
+      error: null,
     };
     markDirty();
   };
@@ -3853,13 +3912,16 @@ async function main(): Promise<number> {
       mode: 'edit',
       repositoryId,
       value: repository.remoteUrl,
-      error: null
+      error: null,
     };
     taskPaneSelectionFocus = 'repository';
     markDirty();
   };
 
-  const upsertRepositoryByRemoteUrl = async (remoteUrl: string, existingRepositoryId?: string): Promise<void> => {
+  const upsertRepositoryByRemoteUrl = async (
+    remoteUrl: string,
+    existingRepositoryId?: string,
+  ): Promise<void> => {
     const normalizedRemoteUrl = normalizeGitHubRemoteUrl(remoteUrl);
     if (normalizedRemoteUrl === null) {
       throw new Error('github url required');
@@ -3876,21 +3938,20 @@ async function main(): Promise<number> {
             remoteUrl: normalizedRemoteUrl,
             defaultBranch: 'main',
             metadata: {
-              source: 'mux-manual'
-            }
+              source: 'mux-manual',
+            },
           })
         : await streamClient.sendCommand({
             type: 'repository.update',
             repositoryId: existingRepositoryId,
             name: repositoryNameFromGitHubRemoteUrl(normalizedRemoteUrl),
-            remoteUrl: normalizedRemoteUrl
+            remoteUrl: normalizedRemoteUrl,
           });
     const repository = parseRepositoryRecord(result['repository']);
     if (repository === null) {
       throw new Error('control-plane repository command returned malformed repository record');
     }
     repositories.set(repository.repositoryId, repository);
-    rebuildRepositoryRemoteIndex();
     syncRepositoryAssociationsWithDirectorySnapshots();
     syncTaskPaneRepositorySelection();
     markDirty();
@@ -3899,10 +3960,9 @@ async function main(): Promise<number> {
   const archiveRepositoryById = async (repositoryId: string): Promise<void> => {
     await streamClient.sendCommand({
       type: 'repository.archive',
-      repositoryId
+      repositoryId,
     });
     repositories.delete(repositoryId);
-    rebuildRepositoryRemoteIndex();
     syncRepositoryAssociationsWithDirectorySnapshots();
     syncTaskPaneRepositorySelection();
     markDirty();
@@ -3910,7 +3970,7 @@ async function main(): Promise<number> {
 
   const createAndActivateConversationInDirectory = async (
     directoryId: string,
-    agentType: ThreadAgentType
+    agentType: ThreadAgentType,
   ): Promise<void> => {
     const sessionId = `conversation-${randomUUID()}`;
     const title = '';
@@ -3920,13 +3980,13 @@ async function main(): Promise<number> {
       directoryId,
       title,
       agentType,
-      adapterState: {}
+      adapterState: {},
     });
     ensureConversation(sessionId, {
       directoryId,
       title,
       agentType,
-      adapterState: {}
+      adapterState: {},
     });
     noteGitActivity(directoryId);
     await startConversation(sessionId);
@@ -3942,7 +4002,7 @@ async function main(): Promise<number> {
       try {
         await streamClient.sendCommand({
           type: 'pty.close',
-          sessionId
+          sessionId,
         });
       } catch {
         // Best-effort close only.
@@ -3952,7 +4012,7 @@ async function main(): Promise<number> {
     try {
       await streamClient.sendCommand({
         type: 'session.remove',
-        sessionId
+        sessionId,
       });
     } catch (error: unknown) {
       if (!isSessionNotFoundError(error)) {
@@ -3963,7 +4023,7 @@ async function main(): Promise<number> {
     try {
       await streamClient.sendCommand({
         type: 'conversation.archive',
-        conversationId: sessionId
+        conversationId: sessionId,
       });
     } catch (error: unknown) {
       if (!isConversationNotFoundError(error)) {
@@ -4014,7 +4074,7 @@ async function main(): Promise<number> {
       controllerType: 'human',
       controllerLabel: muxControllerLabel,
       reason: 'human takeover',
-      takeover: true
+      takeover: true,
     });
     const controller = parseSessionControllerRecord(result['controller']);
     if (controller !== null) {
@@ -4032,7 +4092,7 @@ async function main(): Promise<number> {
       tenantId: options.scope.tenantId,
       userId: options.scope.userId,
       workspaceId: options.scope.workspaceId,
-      path: normalizedPath
+      path: normalizedPath,
     });
     const directory = parseDirectoryRecord(directoryResult['directory']);
     if (directory === null) {
@@ -4071,7 +4131,7 @@ async function main(): Promise<number> {
         try {
           await streamClient.sendCommand({
             type: 'pty.close',
-            sessionId
+            sessionId,
           });
         } catch {
           // Best-effort close only.
@@ -4079,7 +4139,7 @@ async function main(): Promise<number> {
       }
       await streamClient.sendCommand({
         type: 'conversation.archive',
-        conversationId: sessionId
+        conversationId: sessionId,
       });
       await unsubscribeConversationEvents(sessionId);
       removeConversationState(sessionId);
@@ -4090,7 +4150,7 @@ async function main(): Promise<number> {
 
     await streamClient.sendCommand({
       type: 'directory.archive',
-      directoryId
+      directoryId,
     });
     directories.delete(directoryId);
     deleteDirectoryGitState(directoryId);
@@ -4104,7 +4164,11 @@ async function main(): Promise<number> {
       return;
     }
 
-    if (activeDirectoryId === directoryId || activeDirectoryId === null || !directories.has(activeDirectoryId)) {
+    if (
+      activeDirectoryId === directoryId ||
+      activeDirectoryId === null ||
+      !directories.has(activeDirectoryId)
+    ) {
       activeDirectoryId = firstDirectoryId();
     }
     if (activeDirectoryId !== null) {
@@ -4176,19 +4240,21 @@ async function main(): Promise<number> {
     const renderStartedAtNs = perfNowNs();
 
     const active =
-      activeConversationId === null ? null : conversations.get(activeConversationId) ?? null;
+      activeConversationId === null ? null : (conversations.get(activeConversationId) ?? null);
     if (!projectPaneActive && !homePaneActive && active === null) {
       dirty = false;
       return;
     }
     const rightFrame =
-      !projectPaneActive && !homePaneActive && active !== null ? active.oracle.snapshotWithoutHash() : null;
+      !projectPaneActive && !homePaneActive && active !== null
+        ? active.oracle.snapshotWithoutHash()
+        : null;
     const renderSelection =
       rightFrame !== null && selectionDrag !== null && selectionDrag.hasDragged
         ? {
             anchor: selectionDrag.anchor,
             focus: selectionDrag.focus,
-            text: ''
+            text: '',
           }
         : rightFrame !== null
           ? selection
@@ -4216,7 +4282,7 @@ async function main(): Promise<number> {
       shortcutsCollapsed,
       gitSummaryByDirectoryId,
       processUsageBySessionId,
-      shortcutBindings
+      shortcutBindings,
     );
     latestRailViewRows = rail.viewRows;
     let rightRows: readonly string[] = [];
@@ -4227,11 +4293,11 @@ async function main(): Promise<number> {
       actions: [],
       actionCells: [],
       top: 0,
-      selectedRepositoryId: null
+      selectedRepositoryId: null,
     };
     if (rightFrame !== null) {
       rightRows = Array.from({ length: layout.paneRows }, (_value, row) =>
-        renderSnapshotAnsiRow(rightFrame, row, layout.rightCols)
+        renderSnapshotAnsiRow(rightFrame, row, layout.rightCols),
       );
     } else if (homePaneActive) {
       const view = buildTaskFocusedPaneView({
@@ -4245,17 +4311,14 @@ async function main(): Promise<number> {
         notice: taskPaneNotice,
         cols: layout.rightCols,
         rows: layout.paneRows,
-        scrollTop: taskPaneScrollTop
+        scrollTop: taskPaneScrollTop,
       });
       taskPaneSelectedRepositoryId = view.selectedRepositoryId;
       taskPaneScrollTop = view.top;
       latestTaskPaneView = view;
       rightRows = view.rows;
     } else if (projectPaneActive && activeDirectoryId !== null) {
-      if (
-        projectPaneSnapshot === null ||
-        projectPaneSnapshot.directoryId !== activeDirectoryId
-      ) {
+      if (projectPaneSnapshot === null || projectPaneSnapshot.directoryId !== activeDirectoryId) {
         refreshProjectPaneSnapshot(activeDirectoryId);
       }
       if (projectPaneSnapshot === null) {
@@ -4265,7 +4328,7 @@ async function main(): Promise<number> {
           projectPaneSnapshot,
           layout.rightCols,
           layout.paneRows,
-          projectPaneScrollTop
+          projectPaneScrollTop,
         );
         projectPaneScrollTop = view.top;
         rightRows = view.rows;
@@ -4273,12 +4336,7 @@ async function main(): Promise<number> {
     } else {
       rightRows = Array.from({ length: layout.paneRows }, () => ' '.repeat(layout.rightCols));
     }
-    const rows = buildRenderRows(
-      layout,
-      rail.ansiRows,
-      rightRows,
-      perfStatusRow
-    );
+    const rows = buildRenderRows(layout, rail.ansiRows, rightRows, perfStatusRow);
     const modalOverlay = buildCurrentModalOverlay();
     if (modalOverlay !== null) {
       applyModalOverlay(rows, modalOverlay);
@@ -4290,9 +4348,7 @@ async function main(): Promise<number> {
         process.stderr.write(`[mux] ansi-integrity-failed ${issues.join(' | ')}\n`);
       }
     }
-    const diff = forceFullClear
-      ? diffRenderedRows(rows, [])
-      : diffRenderedRows(rows, previousRows);
+    const diff = forceFullClear ? diffRenderedRows(rows, []) : diffRenderedRows(rows, previousRows);
     const overlayResetRows = mergeUniqueRows(previousSelectionRows, selectionRows);
 
     let output = '';
@@ -4377,12 +4433,12 @@ async function main(): Promise<number> {
           recordPerfEvent('mux.startup.active-first-visible-paint', {
             sessionId: startupFirstPaintTargetSessionId,
             changedRows: diff.changedRows.length,
-            glyphCells
+            glyphCells,
           });
           endStartupActiveFirstPaintSpan({
             observed: true,
             changedRows: diff.changedRows.length,
-            glyphCells
+            glyphCells,
           });
         }
       }
@@ -4394,21 +4450,26 @@ async function main(): Promise<number> {
         startupSequencer.snapshot().firstOutputObserved
       ) {
         const glyphCells = visibleGlyphCellCount(active);
-        if (startupSequencer.markHeaderVisible(startupFirstPaintTargetSessionId, codexHeaderVisible(active))) {
+        if (
+          startupSequencer.markHeaderVisible(
+            startupFirstPaintTargetSessionId,
+            codexHeaderVisible(active),
+          )
+        ) {
           recordPerfEvent('mux.startup.active-header-visible', {
             sessionId: startupFirstPaintTargetSessionId,
-            glyphCells
+            glyphCells,
           });
         }
         const selectedGate = startupSequencer.maybeSelectSettleGate(
           startupFirstPaintTargetSessionId,
-          glyphCells
+          glyphCells,
         );
         if (selectedGate !== null) {
           recordPerfEvent('mux.startup.active-settle-gate', {
             sessionId: startupFirstPaintTargetSessionId,
             gate: selectedGate,
-            glyphCells
+            glyphCells,
           });
         }
         scheduleStartupSettledProbe(startupFirstPaintTargetSessionId);
@@ -4426,7 +4487,7 @@ async function main(): Promise<number> {
           recordingCursorStyle,
           shouldShowCursor,
           recordingCursorRow,
-          recordingCursorCol
+          recordingCursorCol,
         );
         muxRecordingOracle.ingest(canonicalFrame);
         try {
@@ -4469,7 +4530,7 @@ async function main(): Promise<number> {
         startupSessionFirstOutputObserved.add(envelope.sessionId);
         recordPerfEvent('mux.session.first-output', {
           sessionId: envelope.sessionId,
-          bytes: chunk.length
+          bytes: chunk.length,
         });
       }
       if (
@@ -4480,11 +4541,11 @@ async function main(): Promise<number> {
         if (startupSequencer.markFirstOutput(envelope.sessionId)) {
           recordPerfEvent('mux.startup.active-first-output', {
             sessionId: envelope.sessionId,
-            bytes: chunk.length
+            bytes: chunk.length,
           });
           endStartupActiveFirstOutputSpan({
             observed: true,
-            bytes: chunk.length
+            bytes: chunk.length,
           });
         }
       }
@@ -4492,7 +4553,7 @@ async function main(): Promise<number> {
         recordPerfEvent('mux.output.cursor-regression', {
           sessionId: envelope.sessionId,
           previousCursor: conversation.lastOutputCursor,
-          cursor: envelope.cursor
+          cursor: envelope.cursor,
         });
         conversation.lastOutputCursor = 0;
       }
@@ -4531,12 +4592,16 @@ async function main(): Promise<number> {
         conversation.agentType,
         conversation.adapterState,
         envelope.event,
-        observedAt
+        observedAt,
       );
       if (updatedAdapterState !== null) {
         conversation.adapterState = updatedAdapterState;
       }
-      const normalized = mapSessionEventToNormalizedEvent(envelope.event, conversation.scope, idFactory);
+      const normalized = mapSessionEventToNormalizedEvent(
+        envelope.event,
+        conversation.scope,
+        idFactory,
+      );
       if (normalized !== null) {
         enqueuePersistedEvent(normalized);
       }
@@ -4594,41 +4659,41 @@ async function main(): Promise<number> {
   if (initialActiveId !== null) {
     startupFirstPaintTargetSessionId = initialActiveId;
     startupActiveStartCommandSpan = startPerfSpan('mux.startup.active-start-command', {
-      sessionId: initialActiveId
+      sessionId: initialActiveId,
     });
     startupActiveFirstOutputSpan = startPerfSpan('mux.startup.active-first-output', {
-      sessionId: initialActiveId
+      sessionId: initialActiveId,
     });
     startupActiveFirstPaintSpan = startPerfSpan('mux.startup.active-first-visible-paint', {
-      sessionId: initialActiveId
+      sessionId: initialActiveId,
     });
     startupActiveSettledSpan = startPerfSpan('mux.startup.active-settled', {
       sessionId: initialActiveId,
-      quietMs: startupSettleQuietMs
+      quietMs: startupSettleQuietMs,
     });
     const initialActivateSpan = startPerfSpan('mux.startup.activate-initial', {
-      initialActiveId
+      initialActiveId,
     });
     await activateConversation(initialActiveId);
     initialActivateSpan.end();
   }
   startupSpan.end({
-    conversations: conversations.size
+    conversations: conversations.size,
   });
   recordPerfEvent('mux.startup.ready', {
-    conversations: conversations.size
+    conversations: conversations.size,
   });
   void (async () => {
     let timedOut = false;
     recordPerfEvent('mux.startup.background-start.wait', {
       sessionId: initialActiveId ?? 'none',
       maxWaitMs: DEFAULT_BACKGROUND_START_MAX_WAIT_MS,
-      enabled: backgroundResumePersisted ? 1 : 0
+      enabled: backgroundResumePersisted ? 1 : 0,
     });
     if (!backgroundResumePersisted) {
       recordPerfEvent('mux.startup.background-start.skipped', {
         sessionId: initialActiveId ?? 'none',
-        reason: 'disabled'
+        reason: 'disabled',
       });
       return;
     }
@@ -4639,17 +4704,17 @@ async function main(): Promise<number> {
           timedOut = true;
           resolve();
         }, DEFAULT_BACKGROUND_START_MAX_WAIT_MS);
-      })
+      }),
     ]);
     recordPerfEvent('mux.startup.background-start.begin', {
       sessionId: initialActiveId ?? 'none',
       timedOut,
-      settledObserved: startupSequencer.snapshot().settledObserved
+      settledObserved: startupSequencer.snapshot().settledObserved,
     });
     const queued = queuePersistedConversationsInBackground(initialActiveId);
     recordPerfEvent('mux.startup.background-start.queued', {
       sessionId: initialActiveId ?? 'none',
-      queued
+      queued,
     });
   })();
 
@@ -4726,7 +4791,7 @@ async function main(): Promise<number> {
         description: nextDescription,
         fieldIndex: nextFieldIndex,
         repositoryIndex: nextRepositoryIndex,
-        error: null
+        error: null,
       };
       markDirty();
     }
@@ -4742,7 +4807,7 @@ async function main(): Promise<number> {
         description: nextDescription,
         fieldIndex: nextFieldIndex,
         repositoryIndex: nextRepositoryIndex,
-        error: 'title required'
+        error: 'title required',
       };
       markDirty();
       return true;
@@ -4754,7 +4819,7 @@ async function main(): Promise<number> {
         description: nextDescription,
         fieldIndex: nextFieldIndex,
         repositoryIndex: nextRepositoryIndex,
-        error: 'repository required'
+        error: 'repository required',
       };
       markDirty();
       return true;
@@ -4772,7 +4837,7 @@ async function main(): Promise<number> {
             workspaceId: options.scope.workspaceId,
             repositoryId,
             title,
-            description: nextDescription
+            description: nextDescription,
           });
           const parsed = applyTaskFromCommandResult(result);
           if (parsed === null) {
@@ -4787,7 +4852,7 @@ async function main(): Promise<number> {
             taskId: promptTaskId,
             repositoryId,
             title,
-            description: nextDescription
+            description: nextDescription,
           });
           const parsed = applyTaskFromCommandResult(result);
           if (parsed === null) {
@@ -4833,25 +4898,29 @@ async function main(): Promise<number> {
       return true;
     }
     if (
-      dismissModalOnOutsideClick(input, () => {
-        stopConversationTitleEdit(true);
-      }, (_col, row) => {
-        const overlay = buildConversationTitleModalOverlay(layout.rows);
-        if (overlay === null) {
-          return false;
-        }
-        const archiveButtonRow = overlay.top + 5;
-        if (row - 1 !== archiveButtonRow) {
-          return false;
-        }
-        const targetConversationId = edit.conversationId;
-        stopConversationTitleEdit(true);
-        queueControlPlaneOp(async () => {
-          await archiveConversation(targetConversationId);
-        }, 'modal-archive-conversation-click');
-        markDirty();
-        return true;
-      })
+      dismissModalOnOutsideClick(
+        input,
+        () => {
+          stopConversationTitleEdit(true);
+        },
+        (_col, row) => {
+          const overlay = buildConversationTitleModalOverlay(layout.rows);
+          if (overlay === null) {
+            return false;
+          }
+          const archiveButtonRow = overlay.top + 5;
+          if (row - 1 !== archiveButtonRow) {
+            return false;
+          }
+          const targetConversationId = edit.conversationId;
+          stopConversationTitleEdit(true);
+          queueControlPlaneOp(async () => {
+            await archiveConversation(targetConversationId);
+          }, 'modal-archive-conversation-click');
+          markDirty();
+          return true;
+        },
+      )
     ) {
       return true;
     }
@@ -4905,28 +4974,32 @@ async function main(): Promise<number> {
     const maybeMouseSequence = input.includes(0x3c);
     if (
       maybeMouseSequence &&
-      dismissModalOnOutsideClick(input, () => {
-        newThreadPrompt = null;
-        markDirty();
-      }, (_col, row) => {
-        const overlay = buildNewThreadModalOverlay(layout.rows);
-        if (overlay === null) {
-          return false;
-        }
-        const selectedAgentType = resolveNewThreadPromptAgentByRow(overlay.top, row);
-        if (selectedAgentType === null) {
-          return false;
-        }
-        const targetDirectoryId = newThreadPrompt?.directoryId;
-        newThreadPrompt = null;
-        if (targetDirectoryId !== undefined) {
-          queueControlPlaneOp(async () => {
-            await createAndActivateConversationInDirectory(targetDirectoryId, selectedAgentType);
-          }, `modal-new-thread-click:${selectedAgentType}`);
-        }
-        markDirty();
-        return true;
-      })
+      dismissModalOnOutsideClick(
+        input,
+        () => {
+          newThreadPrompt = null;
+          markDirty();
+        },
+        (_col, row) => {
+          const overlay = buildNewThreadModalOverlay(layout.rows);
+          if (overlay === null) {
+            return false;
+          }
+          const selectedAgentType = resolveNewThreadPromptAgentByRow(overlay.top, row);
+          if (selectedAgentType === null) {
+            return false;
+          }
+          const targetDirectoryId = newThreadPrompt?.directoryId;
+          newThreadPrompt = null;
+          if (targetDirectoryId !== undefined) {
+            queueControlPlaneOp(async () => {
+              await createAndActivateConversationInDirectory(targetDirectoryId, selectedAgentType);
+            }, `modal-new-thread-click:${selectedAgentType}`);
+          }
+          markDirty();
+          return true;
+        },
+      )
     ) {
       return true;
     }
@@ -4994,7 +5067,7 @@ async function main(): Promise<number> {
     if (!submit) {
       addDirectoryPrompt = {
         value,
-        error: null
+        error: null,
       };
       markDirty();
       return true;
@@ -5004,7 +5077,7 @@ async function main(): Promise<number> {
     if (trimmed.length === 0) {
       addDirectoryPrompt = {
         value,
-        error: 'path required'
+        error: 'path required',
       };
       markDirty();
       return true;
@@ -5059,7 +5132,7 @@ async function main(): Promise<number> {
       repositoryPrompt = {
         ...repositoryPrompt,
         value,
-        error: null
+        error: null,
       };
       markDirty();
       return true;
@@ -5070,7 +5143,7 @@ async function main(): Promise<number> {
       repositoryPrompt = {
         ...repositoryPrompt,
         value,
-        error: 'github url required'
+        error: 'github url required',
       };
       markDirty();
       return true;
@@ -5079,7 +5152,7 @@ async function main(): Promise<number> {
       repositoryPrompt = {
         ...repositoryPrompt,
         value,
-        error: 'github url required'
+        error: 'github url required',
       };
       markDirty();
       return true;
@@ -5092,9 +5165,15 @@ async function main(): Promise<number> {
       markDirty();
       return true;
     }
-    queueControlPlaneOp(async () => {
-      await upsertRepositoryByRemoteUrl(trimmed, mode === 'edit' ? (repositoryId ?? undefined) : undefined);
-    }, mode === 'edit' ? 'prompt-edit-repository' : 'prompt-add-repository');
+    queueControlPlaneOp(
+      async () => {
+        await upsertRepositoryByRemoteUrl(
+          trimmed,
+          mode === 'edit' ? (repositoryId ?? undefined) : undefined,
+        );
+      },
+      mode === 'edit' ? 'prompt-edit-repository' : 'prompt-add-repository',
+    );
     markDirty();
     return true;
   };
@@ -5147,7 +5226,7 @@ async function main(): Promise<number> {
         workspaceId: options.scope.workspaceId,
         repositoryId,
         title: fields.title,
-        description: fields.description
+        description: fields.description,
       });
       const parsed = applyTaskFromCommandResult(result);
       if (parsed === null) {
@@ -5336,7 +5415,7 @@ async function main(): Promise<number> {
 
   const leftNavTargetFromRow = (
     rows: ReturnType<typeof buildWorkspaceRailViewRows>,
-    rowIndex: number
+    rowIndex: number,
   ): LeftNavSelection | null => {
     const row = rows[rowIndex];
     if (row === undefined) {
@@ -5344,25 +5423,25 @@ async function main(): Promise<number> {
     }
     if (row.railAction === 'home.open') {
       return {
-        kind: 'home'
+        kind: 'home',
       };
     }
     if (row.kind === 'repository-header' && row.repositoryId !== null) {
       return {
         kind: 'repository',
-        repositoryId: row.repositoryId
+        repositoryId: row.repositoryId,
       };
     }
     if (row.kind === 'dir-header' && row.directoryKey !== null) {
       return {
         kind: 'project',
-        directoryId: row.directoryKey
+        directoryId: row.directoryKey,
       };
     }
     if (row.kind === 'conversation-title' && row.conversationSessionId !== null) {
       return {
         kind: 'conversation',
-        sessionId: row.conversationSessionId
+        sessionId: row.conversationSessionId,
       };
     }
     return null;
@@ -5402,7 +5481,10 @@ async function main(): Promise<number> {
     return null;
   };
 
-  const activateLeftNavTarget = (target: LeftNavSelection, direction: 'next' | 'previous'): void => {
+  const activateLeftNavTarget = (
+    target: LeftNavSelection,
+    direction: 'next' | 'previous',
+  ): void => {
     if (target.kind === 'home') {
       enterHomePane();
       return;
@@ -5426,11 +5508,9 @@ async function main(): Promise<number> {
       }
       const visibleTargets = visibleLeftNavTargets();
       const fallbackConversation = visibleTargets.find(
-        (
-          entry
-        ): entry is Extract<LeftNavSelection, { kind: 'conversation' }> =>
+        (entry): entry is Extract<LeftNavSelection, { kind: 'conversation' }> =>
           entry.kind === 'conversation' &&
-          conversations.get(entry.sessionId)?.directoryId === target.directoryId
+          conversations.get(entry.sessionId)?.directoryId === target.directoryId,
       );
       if (fallbackConversation !== undefined) {
         queueControlPlaneOp(async () => {
@@ -5453,7 +5533,11 @@ async function main(): Promise<number> {
       return false;
     }
     const targetKeys = targets.map((target) => leftNavTargetKey(target));
-    const targetKey = cycleConversationId(targetKeys, leftNavTargetKey(leftNavSelection), direction);
+    const targetKey = cycleConversationId(
+      targetKeys,
+      leftNavTargetKey(leftNavSelection),
+      direction,
+    );
     if (targetKey === null) {
       return false;
     }
@@ -5594,8 +5678,7 @@ async function main(): Promise<number> {
       return;
     }
     if (globalShortcut === 'mux.conversation.archive') {
-      const targetConversationId =
-        mainPaneMode === 'conversation' ? activeConversationId : null;
+      const targetConversationId = mainPaneMode === 'conversation' ? activeConversationId : null;
       if (targetConversationId !== null && conversations.has(targetConversationId)) {
         queueControlPlaneOp(async () => {
           await archiveConversation(targetConversationId);
@@ -5604,8 +5687,7 @@ async function main(): Promise<number> {
       return;
     }
     if (globalShortcut === 'mux.conversation.delete') {
-      const targetConversationId =
-        mainPaneMode === 'conversation' ? activeConversationId : null;
+      const targetConversationId = mainPaneMode === 'conversation' ? activeConversationId : null;
       if (targetConversationId !== null && conversations.has(targetConversationId)) {
         queueControlPlaneOp(async () => {
           await archiveConversation(targetConversationId);
@@ -5614,8 +5696,7 @@ async function main(): Promise<number> {
       return;
     }
     if (globalShortcut === 'mux.conversation.takeover') {
-      const targetConversationId =
-        mainPaneMode === 'conversation' ? activeConversationId : null;
+      const targetConversationId = mainPaneMode === 'conversation' ? activeConversationId : null;
       if (targetConversationId !== null && conversations.has(targetConversationId)) {
         queueControlPlaneOp(async () => {
           await takeoverConversation(targetConversationId);
@@ -5627,7 +5708,7 @@ async function main(): Promise<number> {
       repositoryPrompt = null;
       addDirectoryPrompt = {
         value: '',
-        error: null
+        error: null,
       };
       markDirty();
       return;
@@ -5678,7 +5759,7 @@ async function main(): Promise<number> {
     inputRemainder = parsed.remainder;
 
     const inputConversation =
-      activeConversationId === null ? null : conversations.get(activeConversationId) ?? null;
+      activeConversationId === null ? null : (conversations.get(activeConversationId) ?? null);
     let snapshotForInput =
       inputConversation === null ? null : inputConversation.oracle.snapshotWithoutHash();
     const routedTokens: Array<(typeof parsed.tokens)[number]> = [];
@@ -5718,7 +5799,10 @@ async function main(): Promise<number> {
               reorderTaskByDrop(drag.itemId, targetTaskId);
             }
           } else {
-            const targetRepositoryId = taskFocusedPaneRepositoryIdAtRow(latestTaskPaneView, rowIndex);
+            const targetRepositoryId = taskFocusedPaneRepositoryIdAtRow(
+              latestTaskPaneView,
+              rowIndex,
+            );
             if (targetRepositoryId !== null) {
               reorderRepositoryByDrop(drag.itemId, targetRepositoryId);
             }
@@ -5763,7 +5847,8 @@ async function main(): Promise<number> {
         homePaneDragState = {
           ...homePaneDragState,
           latestRowIndex: rowIndex,
-          hasDragged: homePaneDragState.hasDragged || rowIndex !== homePaneDragState.startedRowIndex
+          hasDragged:
+            homePaneDragState.hasDragged || rowIndex !== homePaneDragState.startedRowIndex,
         };
         markDirty();
         continue;
@@ -5782,7 +5867,7 @@ async function main(): Promise<number> {
           layout.rightCols,
           layout.paneRows,
           projectPaneScrollTop,
-          rowIndex
+          rowIndex,
         );
         if (action === 'conversation.new') {
           openNewThreadPrompt(snapshot.directoryId);
@@ -5805,7 +5890,10 @@ async function main(): Promise<number> {
         !isMotionMouseCode(token.event.code);
       if (taskPaneActionClick) {
         const rowIndex = Math.max(0, Math.min(layout.paneRows - 1, token.event.row - 1));
-        const colIndex = Math.max(0, Math.min(layout.rightCols - 1, token.event.col - layout.rightStartCol));
+        const colIndex = Math.max(
+          0,
+          Math.min(layout.rightCols - 1, token.event.col - layout.rightStartCol),
+        );
         const action =
           taskFocusedPaneActionAtCell(latestTaskPaneView, rowIndex, colIndex) ??
           taskFocusedPaneActionAtRow(latestTaskPaneView, rowIndex);
@@ -5853,7 +5941,7 @@ async function main(): Promise<number> {
             taskPaneTaskEditClickState,
             taskId,
             Date.now(),
-            HOME_PANE_EDIT_DOUBLE_CLICK_WINDOW_MS
+            HOME_PANE_EDIT_DOUBLE_CLICK_WINDOW_MS,
           );
           selectTaskById(taskId);
           taskPaneNotice = null;
@@ -5868,7 +5956,7 @@ async function main(): Promise<number> {
               itemId: taskId,
               startedRowIndex: rowIndex,
               latestRowIndex: rowIndex,
-              hasDragged: false
+              hasDragged: false,
             };
           }
           markDirty();
@@ -5880,7 +5968,7 @@ async function main(): Promise<number> {
             taskPaneRepositoryEditClickState,
             repositoryId,
             Date.now(),
-            HOME_PANE_EDIT_DOUBLE_CLICK_WINDOW_MS
+            HOME_PANE_EDIT_DOUBLE_CLICK_WINDOW_MS,
           );
           selectRepositoryById(repositoryId);
           taskPaneNotice = null;
@@ -5895,7 +5983,7 @@ async function main(): Promise<number> {
               itemId: repositoryId,
               startedRowIndex: rowIndex,
               latestRowIndex: rowIndex,
-              hasDragged: false
+              hasDragged: false,
             };
           }
           markDirty();
@@ -5913,14 +6001,17 @@ async function main(): Promise<number> {
       if (leftPaneConversationSelect) {
         const rowIndex = Math.max(0, Math.min(layout.paneRows - 1, token.event.row - 1));
         const colIndex = Math.max(0, Math.min(layout.leftCols - 1, token.event.col - 1));
-        const selectedConversationId = conversationIdAtWorkspaceRailRow(latestRailViewRows, rowIndex);
+        const selectedConversationId = conversationIdAtWorkspaceRailRow(
+          latestRailViewRows,
+          rowIndex,
+        );
         const selectedProjectId = projectIdAtWorkspaceRailRow(latestRailViewRows, rowIndex);
         const selectedRepositoryId = repositoryIdAtWorkspaceRailRow(latestRailViewRows, rowIndex);
         const selectedAction = actionAtWorkspaceRailCell(
           latestRailViewRows,
           rowIndex,
           colIndex,
-          layout.leftCols
+          layout.leftCols,
         );
         const selectedRowKind = kindAtWorkspaceRailRow(latestRailViewRows, rowIndex);
         const supportsConversationTitleEditClick =
@@ -5962,7 +6053,7 @@ async function main(): Promise<number> {
           repositoryPrompt = null;
           addDirectoryPrompt = {
             value: '',
-            error: null
+            error: null,
           };
           markDirty();
           continue;
@@ -6034,17 +6125,18 @@ async function main(): Promise<number> {
           continue;
         }
         const clickNowMs = Date.now();
-        const conversationClick = selectedConversationId !== null && supportsConversationTitleEditClick
-          ? detectConversationDoubleClick(
-              conversationTitleEditClickState,
-              selectedConversationId,
-              clickNowMs,
-              CONVERSATION_TITLE_EDIT_DOUBLE_CLICK_WINDOW_MS
-            )
-          : {
-              doubleClick: false,
-              nextState: null
-            };
+        const conversationClick =
+          selectedConversationId !== null && supportsConversationTitleEditClick
+            ? detectConversationDoubleClick(
+                conversationTitleEditClickState,
+                selectedConversationId,
+                clickNowMs,
+                CONVERSATION_TITLE_EDIT_DOUBLE_CLICK_WINDOW_MS,
+              )
+            : {
+                doubleClick: false,
+                nextState: null,
+              };
         conversationTitleEditClickState = conversationClick.nextState;
         if (selectedConversationId !== null && selectedConversationId === activeConversationId) {
           if (mainPaneMode !== 'conversation') {
@@ -6112,7 +6204,7 @@ async function main(): Promise<number> {
         selectionDrag = {
           anchor: point,
           focus: point,
-          hasDragged: false
+          hasDragged: false,
         };
         markDirty();
         continue;
@@ -6122,7 +6214,8 @@ async function main(): Promise<number> {
         selectionDrag = {
           anchor: selectionDrag.anchor,
           focus: point,
-          hasDragged: selectionDrag.hasDragged || !selectionPointsEqual(selectionDrag.anchor, point)
+          hasDragged:
+            selectionDrag.hasDragged || !selectionPointsEqual(selectionDrag.anchor, point),
         };
         markDirty();
         continue;
@@ -6132,17 +6225,18 @@ async function main(): Promise<number> {
         const finalized = {
           anchor: selectionDrag.anchor,
           focus: point,
-          hasDragged: selectionDrag.hasDragged || !selectionPointsEqual(selectionDrag.anchor, point)
+          hasDragged:
+            selectionDrag.hasDragged || !selectionPointsEqual(selectionDrag.anchor, point),
         };
         if (finalized.hasDragged) {
           const completedSelection: PaneSelection = {
             anchor: finalized.anchor,
             focus: finalized.focus,
-            text: ''
+            text: '',
           };
           selection = {
             ...completedSelection,
-            text: selectionText(snapshotForInput, completedSelection)
+            text: selectionText(snapshotForInput, completedSelection),
           };
         } else {
           selection = null;
@@ -6170,9 +6264,7 @@ async function main(): Promise<number> {
     for (const token of routedTokens) {
       if (token.kind === 'passthrough') {
         if (mainPaneMode === 'conversation' && token.text.length > 0) {
-          forwardToSession.push(
-            normalizeMuxKeyboardInputForPty(Buffer.from(token.text, 'utf8'))
-          );
+          forwardToSession.push(normalizeMuxKeyboardInputForPty(Buffer.from(token.text, 'utf8')));
         }
         continue;
       }
@@ -6213,7 +6305,6 @@ async function main(): Promise<number> {
     if (forwardToSession.length > 0) {
       noteGitActivity(inputConversation.directoryId);
     }
-
   };
 
   const onResize = (): void => {
@@ -6332,16 +6423,16 @@ async function main(): Promise<number> {
       try {
         await renderTerminalRecordingToGif({
           recordingPath: options.recordingPath,
-          outputPath: options.recordingGifOutputPath
+          outputPath: options.recordingGifOutputPath,
         });
         process.stderr.write(
-          `[mux-recording] jsonl=${options.recordingPath} gif=${options.recordingGifOutputPath}\n`
+          `[mux-recording] jsonl=${options.recordingPath} gif=${options.recordingGifOutputPath}\n`,
         );
       } catch (error: unknown) {
         process.stderr.write(
           `[mux-recording] gif-export-failed ${
             error instanceof Error ? error.message : String(error)
-          }\n`
+          }\n`,
         );
       }
     } else if (recordingCloseError !== null) {
@@ -6351,24 +6442,22 @@ async function main(): Promise<number> {
           : typeof recordingCloseError === 'string'
             ? recordingCloseError
             : 'unknown error';
-      process.stderr.write(
-        `[mux-recording] close-failed ${recordingCloseErrorMessage}\n`
-      );
+      process.stderr.write(`[mux-recording] close-failed ${recordingCloseErrorMessage}\n`);
     }
     endStartupActiveStartCommandSpan({
-      observed: false
+      observed: false,
     });
     const startupSnapshot = startupSequencer.snapshot();
     endStartupActiveFirstOutputSpan({
-      observed: startupSnapshot.firstOutputObserved
+      observed: startupSnapshot.firstOutputObserved,
     });
     endStartupActiveFirstPaintSpan({
-      observed: startupSnapshot.firstPaintObserved
+      observed: startupSnapshot.firstPaintObserved,
     });
     clearStartupSettledTimer();
     endStartupActiveSettledSpan({
       observed: startupSnapshot.settledObserved,
-      gate: startupSnapshot.settleGate ?? 'none'
+      gate: startupSnapshot.settleGate ?? 'none',
     });
     signalStartupActiveSettled();
     shutdownPerfCore();

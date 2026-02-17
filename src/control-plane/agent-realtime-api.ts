@@ -7,7 +7,7 @@ import {
   type StreamSessionController,
   type StreamSessionControllerType,
   type StreamSessionRuntimeStatus,
-  type StreamSignal
+  type StreamSignal,
 } from './stream-protocol.ts';
 
 export interface AgentRealtimeSubscriptionFilter {
@@ -56,7 +56,9 @@ interface AgentEventTypeMap {
 
 export type AgentRealtimeEventType = keyof AgentEventTypeMap;
 
-export interface AgentRealtimeEventEnvelope<TEventType extends AgentRealtimeEventType = AgentRealtimeEventType> {
+export interface AgentRealtimeEventEnvelope<
+  TEventType extends AgentRealtimeEventType = AgentRealtimeEventType,
+> {
   readonly type: TEventType;
   readonly subscriptionId?: string;
   readonly cursor: number;
@@ -64,7 +66,7 @@ export interface AgentRealtimeEventEnvelope<TEventType extends AgentRealtimeEven
 }
 
 type AgentRealtimeListener<TEventType extends AgentRealtimeEventType> = (
-  event: AgentRealtimeEventEnvelope<TEventType>
+  event: AgentRealtimeEventEnvelope<TEventType>,
 ) => void | Promise<void>;
 
 type AnyRealtimeListener = (event: AgentRealtimeEventEnvelope) => void | Promise<void>;
@@ -120,6 +122,31 @@ export interface AgentProjectUpsertInput extends AgentScopeQuery {
 export interface AgentProjectListQuery extends AgentScopeQuery {
   includeArchived?: boolean;
   limit?: number;
+}
+
+interface AgentProjectGitStatusListQuery extends AgentScopeQuery {
+  projectId?: string;
+}
+
+interface AgentProjectGitStatus {
+  directoryId: string;
+  summary: {
+    branch: string;
+    changedFiles: number;
+    additions: number;
+    deletions: number;
+  };
+  repositorySnapshot: {
+    normalizedRemoteUrl: string | null;
+    commitCount: number | null;
+    lastCommitAt: string | null;
+    shortCommitHash: string | null;
+    inferredName: string | null;
+    defaultBranch: string | null;
+  };
+  repositoryId: string | null;
+  repository: AgentRepository | null;
+  observedAt: string;
 }
 
 export interface AgentThread {
@@ -359,7 +386,7 @@ function defaultTaskLinearRecord(): AgentTaskLinearRecord {
     priority: null,
     estimate: null,
     dueDate: null,
-    labelIds: []
+    labelIds: [],
   };
 }
 
@@ -425,7 +452,7 @@ function parseTaskLinearRecord(value: unknown): AgentTaskLinearRecord | null {
     priority: priority as AgentTaskLinearPriority | null,
     estimate,
     dueDate,
-    labelIds
+    labelIds,
   };
 }
 
@@ -437,7 +464,12 @@ function parseTaskStatus(value: unknown): AgentTaskStatus | null {
 }
 
 function parseRuntimeStatus(value: unknown): StreamSessionRuntimeStatus | null {
-  if (value === 'running' || value === 'needs-input' || value === 'completed' || value === 'exited') {
+  if (
+    value === 'running' ||
+    value === 'needs-input' ||
+    value === 'completed' ||
+    value === 'exited'
+  ) {
     return value;
   }
   return null;
@@ -477,7 +509,7 @@ function parseExit(value: unknown): PtyExit | null | undefined {
   }
   return {
     code,
-    signal
+    signal,
   };
 }
 
@@ -511,7 +543,7 @@ function parseProjectRecord(value: unknown): AgentProject | null {
     workspaceId,
     path,
     createdAt,
-    archivedAt
+    archivedAt,
   };
 }
 
@@ -572,7 +604,7 @@ function parseThreadRecord(value: unknown): AgentThread | null {
     runtimeProcessId,
     runtimeLastEventAt,
     runtimeLastExit,
-    adapterState
+    adapterState,
   };
 }
 
@@ -615,7 +647,78 @@ function parseRepositoryRecord(value: unknown): AgentRepository | null {
     defaultBranch,
     metadata,
     createdAt,
-    archivedAt
+    archivedAt,
+  };
+}
+
+function parseProjectGitStatusRecord(value: unknown): AgentProjectGitStatus | null {
+  const record = asRecord(value);
+  if (record === null) {
+    return null;
+  }
+  const directoryId = readString(record['directoryId']);
+  const summaryRecord = asRecord(record['summary']);
+  const repositorySnapshotRecord = asRecord(record['repositorySnapshot']);
+  const repositoryId = readNullableString(record['repositoryId']);
+  const observedAt = readString(record['observedAt']);
+  const repositoryRaw = record['repository'];
+  const repository =
+    repositoryRaw === null || repositoryRaw === undefined
+      ? null
+      : parseRepositoryRecord(repositoryRaw);
+  if (
+    directoryId === null ||
+    summaryRecord === null ||
+    repositorySnapshotRecord === null ||
+    repositoryId === undefined ||
+    observedAt === null ||
+    (repositoryRaw !== null && repositoryRaw !== undefined && repository === null)
+  ) {
+    return null;
+  }
+  const branch = readString(summaryRecord['branch']);
+  const changedFiles = readNumber(summaryRecord['changedFiles']);
+  const additions = readNumber(summaryRecord['additions']);
+  const deletions = readNumber(summaryRecord['deletions']);
+  const normalizedRemoteUrl = readNullableString(repositorySnapshotRecord['normalizedRemoteUrl']);
+  const commitCount = readNullableNumber(repositorySnapshotRecord['commitCount']);
+  const lastCommitAt = readNullableString(repositorySnapshotRecord['lastCommitAt']);
+  const shortCommitHash = readNullableString(repositorySnapshotRecord['shortCommitHash']);
+  const inferredName = readNullableString(repositorySnapshotRecord['inferredName']);
+  const defaultBranch = readNullableString(repositorySnapshotRecord['defaultBranch']);
+  if (
+    branch === null ||
+    changedFiles === null ||
+    additions === null ||
+    deletions === null ||
+    normalizedRemoteUrl === undefined ||
+    commitCount === undefined ||
+    lastCommitAt === undefined ||
+    shortCommitHash === undefined ||
+    inferredName === undefined ||
+    defaultBranch === undefined
+  ) {
+    return null;
+  }
+  return {
+    directoryId,
+    summary: {
+      branch,
+      changedFiles,
+      additions,
+      deletions,
+    },
+    repositorySnapshot: {
+      normalizedRemoteUrl,
+      commitCount,
+      lastCommitAt,
+      shortCommitHash,
+      inferredName,
+      defaultBranch,
+    },
+    repositoryId,
+    repository,
+    observedAt,
   };
 }
 
@@ -682,13 +785,13 @@ function parseTaskRecord(value: unknown): AgentTask | null {
     completedAt,
     linear,
     createdAt,
-    updatedAt
+    updatedAt,
   };
 }
 
 function parseExactRecordArray<T>(
   value: unknown,
-  parser: (entry: unknown) => T | null
+  parser: (entry: unknown) => T | null,
 ): readonly T[] | null {
   if (!Array.isArray(value)) {
     return null;
@@ -707,7 +810,7 @@ function parseExactRecordArray<T>(
 function requireParsed<T>(
   value: unknown,
   parser: (entry: unknown) => T | null,
-  errorMessage: string
+  errorMessage: string,
 ): T {
   const parsed = parser(value);
   if (parsed === null) {
@@ -719,7 +822,7 @@ function requireParsed<T>(
 function requireParsedArray<T>(
   value: unknown,
   parser: (entry: unknown) => T | null,
-  errorMessage: string
+  errorMessage: string,
 ): readonly T[] {
   const parsed = parseExactRecordArray(value, parser);
   if (parsed === null) {
@@ -737,13 +840,13 @@ function requireBoolean(value: unknown, errorMessage: string): boolean {
 
 function optionalField<TKey extends string, TValue>(
   key: TKey,
-  value: TValue | undefined
+  value: TValue | undefined,
 ): Partial<Record<TKey, TValue>> {
   if (value === undefined) {
     return {};
   }
   return {
-    [key]: value
+    [key]: value,
   } as Record<TKey, TValue>;
 }
 
@@ -768,7 +871,7 @@ function parseSessionController(value: unknown): StreamSessionController | null 
     controllerId,
     controllerType,
     controllerLabel,
-    claimedAt
+    claimedAt,
   };
 }
 
@@ -844,7 +947,7 @@ function parseClaimResult(result: Record<string, unknown>): AgentSessionClaimRes
   return {
     sessionId,
     action,
-    controller
+    controller,
   };
 }
 
@@ -856,11 +959,14 @@ function parseReleaseResult(result: Record<string, unknown>): AgentSessionReleas
   }
   return {
     sessionId,
-    released
+    released,
   };
 }
 
-function parseSubscriptionResult(result: Record<string, unknown>): { subscriptionId: string; cursor: number } {
+function parseSubscriptionResult(result: Record<string, unknown>): {
+  subscriptionId: string;
+  cursor: number;
+} {
   const subscriptionId = result['subscriptionId'];
   const cursor = result['cursor'];
   if (
@@ -873,7 +979,7 @@ function parseSubscriptionResult(result: Record<string, unknown>): { subscriptio
   }
   return {
     subscriptionId,
-    cursor
+    cursor,
   };
 }
 
@@ -883,7 +989,7 @@ function parseUnsubscribeResult(result: Record<string, unknown>): { unsubscribed
     throw new Error('control-plane stream.unsubscribe returned malformed response');
   }
   return {
-    unsubscribed
+    unsubscribed,
   };
 }
 
@@ -912,7 +1018,7 @@ function buildSubscriptionCommand(filter?: AgentRealtimeSubscriptionFilter): {
     afterCursor?: number;
   } = {
     type: 'stream.subscribe',
-    includeOutput: filter?.includeOutput ?? false
+    includeOutput: filter?.includeOutput ?? false,
   };
   if (filter?.tenantId !== undefined) {
     command.tenantId = filter.tenantId;
@@ -944,19 +1050,28 @@ function buildSubscriptionCommand(filter?: AgentRealtimeSubscriptionFilter): {
 export class HarnessAgentRealtimeClient {
   readonly client: ControlPlaneStreamClient;
   readonly projects = {
-    create: async (input: AgentProjectUpsertInput): Promise<AgentProject> => await this.createProject(input),
-    upsert: async (input: AgentProjectUpsertInput): Promise<AgentProject> => await this.upsertProject(input),
+    create: async (input: AgentProjectUpsertInput): Promise<AgentProject> =>
+      await this.createProject(input),
+    upsert: async (input: AgentProjectUpsertInput): Promise<AgentProject> =>
+      await this.upsertProject(input),
     get: async (projectId: string, scope: AgentScopeQuery = {}): Promise<AgentProject> =>
       await this.getProject(projectId, scope),
     list: async (query: AgentProjectListQuery = {}): Promise<readonly AgentProject[]> =>
       await this.listProjects(query),
-    update: async (projectId: string, input: Omit<AgentProjectUpsertInput, 'projectId'>): Promise<AgentProject> =>
-      await this.updateProject(projectId, input),
-    archive: async (projectId: string): Promise<AgentProject> => await this.archiveProject(projectId)
+    listGitStatus: async (
+      query: AgentProjectGitStatusListQuery = {},
+    ): Promise<readonly AgentProjectGitStatus[]> => await this.listProjectGitStatus(query),
+    update: async (
+      projectId: string,
+      input: Omit<AgentProjectUpsertInput, 'projectId'>,
+    ): Promise<AgentProject> => await this.updateProject(projectId, input),
+    archive: async (projectId: string): Promise<AgentProject> =>
+      await this.archiveProject(projectId),
   };
 
   readonly threads = {
-    create: async (input: AgentThreadCreateInput): Promise<AgentThread> => await this.createThread(input),
+    create: async (input: AgentThreadCreateInput): Promise<AgentThread> =>
+      await this.createThread(input),
     get: async (threadId: string, query: AgentThreadListQuery = {}): Promise<AgentThread> =>
       await this.getThread(threadId, query),
     list: async (query: AgentThreadListQuery = {}): Promise<readonly AgentThread[]> =>
@@ -964,8 +1079,10 @@ export class HarnessAgentRealtimeClient {
     update: async (threadId: string, input: AgentThreadUpdateInput): Promise<AgentThread> =>
       await this.updateThread(threadId, input),
     archive: async (threadId: string): Promise<AgentThread> => await this.archiveThread(threadId),
-    delete: async (threadId: string): Promise<{ deleted: boolean }> => await this.deleteThread(threadId),
-    status: async (threadId: string): Promise<AgentSessionSummary> => await this.threadStatus(threadId)
+    delete: async (threadId: string): Promise<{ deleted: boolean }> =>
+      await this.deleteThread(threadId),
+    status: async (threadId: string): Promise<AgentSessionSummary> =>
+      await this.threadStatus(threadId),
   };
 
   readonly repositories = {
@@ -973,18 +1090,23 @@ export class HarnessAgentRealtimeClient {
       await this.createRepository(input),
     upsert: async (input: AgentRepositoryUpsertInput): Promise<AgentRepository> =>
       await this.upsertRepository(input),
-    get: async (repositoryId: string): Promise<AgentRepository> => await this.getRepository(repositoryId),
+    get: async (repositoryId: string): Promise<AgentRepository> =>
+      await this.getRepository(repositoryId),
     list: async (query: AgentRepositoryListQuery = {}): Promise<readonly AgentRepository[]> =>
       await this.listRepositories(query),
-    update: async (repositoryId: string, update: AgentRepositoryUpdateInput): Promise<AgentRepository> =>
-      await this.updateRepository(repositoryId, update),
-    archive: async (repositoryId: string): Promise<AgentRepository> => await this.archiveRepository(repositoryId)
+    update: async (
+      repositoryId: string,
+      update: AgentRepositoryUpdateInput,
+    ): Promise<AgentRepository> => await this.updateRepository(repositoryId, update),
+    archive: async (repositoryId: string): Promise<AgentRepository> =>
+      await this.archiveRepository(repositoryId),
   };
 
   readonly tasks = {
     create: async (input: AgentTaskCreateInput): Promise<AgentTask> => await this.createTask(input),
     get: async (taskId: string): Promise<AgentTask> => await this.getTask(taskId),
-    list: async (query: AgentTaskListQuery = {}): Promise<readonly AgentTask[]> => await this.listTasks(query),
+    list: async (query: AgentTaskListQuery = {}): Promise<readonly AgentTask[]> =>
+      await this.listTasks(query),
     update: async (taskId: string, update: AgentTaskUpdateInput): Promise<AgentTask> =>
       await this.updateTask(taskId, update),
     delete: async (taskId: string): Promise<{ deleted: boolean }> => await this.deleteTask(taskId),
@@ -994,42 +1116,50 @@ export class HarnessAgentRealtimeClient {
     draft: async (taskId: string): Promise<AgentTask> => await this.draftTask(taskId),
     queue: async (taskId: string): Promise<AgentTask> => await this.queueTask(taskId),
     reorder: async (input: AgentTaskReorderInput): Promise<readonly AgentTask[]> =>
-      await this.reorderTasks(input)
+      await this.reorderTasks(input),
   };
 
   readonly sessions = {
-    list: async (query: Parameters<HarnessAgentRealtimeClient['listSessions']>[0] = {}): Promise<readonly AgentSessionSummary[]> =>
-      await this.listSessions(query),
-    status: async (sessionId: string): Promise<AgentSessionSummary> => await this.sessionStatus(sessionId),
+    list: async (
+      query: Parameters<HarnessAgentRealtimeClient['listSessions']>[0] = {},
+    ): Promise<readonly AgentSessionSummary[]> => await this.listSessions(query),
+    status: async (sessionId: string): Promise<AgentSessionSummary> =>
+      await this.sessionStatus(sessionId),
     claim: async (input: AgentClaimSessionInput): Promise<AgentSessionClaimResult> =>
       await this.claimSession(input),
     takeover: async (
-      input: Omit<AgentClaimSessionInput, 'takeover'>
+      input: Omit<AgentClaimSessionInput, 'takeover'>,
     ): Promise<AgentSessionClaimResult> => await this.takeoverSession(input),
     release: async (input: AgentReleaseSessionInput): Promise<AgentSessionReleaseResult> =>
       await this.releaseSession(input),
-    respond: async (sessionId: string, text: string): Promise<{ responded: boolean; sentBytes: number }> =>
-      await this.respond(sessionId, text),
-    interrupt: async (sessionId: string): Promise<{ interrupted: boolean }> => await this.interrupt(sessionId),
-    remove: async (sessionId: string): Promise<{ removed: boolean }> => await this.removeSession(sessionId),
+    respond: async (
+      sessionId: string,
+      text: string,
+    ): Promise<{ responded: boolean; sentBytes: number }> => await this.respond(sessionId, text),
+    interrupt: async (sessionId: string): Promise<{ interrupted: boolean }> =>
+      await this.interrupt(sessionId),
+    remove: async (sessionId: string): Promise<{ removed: boolean }> =>
+      await this.removeSession(sessionId),
     start: async (
-      input: Parameters<HarnessAgentRealtimeClient['startSession']>[0]
+      input: Parameters<HarnessAgentRealtimeClient['startSession']>[0],
     ): Promise<{ sessionId: string }> => await this.startSession(input),
     attach: async (sessionId: string, sinceCursor = 0): Promise<{ latestCursor: number }> =>
       await this.attachSession(sessionId, sinceCursor),
-    detach: async (sessionId: string): Promise<{ detached: boolean }> => await this.detachSession(sessionId),
-    close: async (sessionId: string): Promise<{ closed: boolean }> => await this.closeSession(sessionId),
+    detach: async (sessionId: string): Promise<{ detached: boolean }> =>
+      await this.detachSession(sessionId),
+    close: async (sessionId: string): Promise<{ closed: boolean }> =>
+      await this.closeSession(sessionId),
     subscribeEvents: async (sessionId: string): Promise<{ subscribed: boolean }> =>
       await this.subscribeSessionEvents(sessionId),
     unsubscribeEvents: async (sessionId: string): Promise<{ subscribed: boolean }> =>
-      await this.unsubscribeSessionEvents(sessionId)
+      await this.unsubscribeSessionEvents(sessionId),
   };
 
   readonly subscriptions = {
     create: async (filter?: AgentRealtimeSubscriptionFilter): Promise<AgentRealtimeSubscription> =>
       await this.subscribe(filter),
     remove: async (subscriptionId: string): Promise<{ unsubscribed: boolean }> =>
-      await this.unsubscribe(subscriptionId)
+      await this.unsubscribe(subscriptionId),
   };
 
   private readonly listenersByType = new Map<
@@ -1047,7 +1177,7 @@ export class HarnessAgentRealtimeClient {
     client: ControlPlaneStreamClient,
     initialSubscriptionId: string,
     removeEnvelopeListener: () => void,
-    onHandlerError: ((error: unknown, event: AgentRealtimeEventEnvelope) => void) | undefined
+    onHandlerError: ((error: unknown, event: AgentRealtimeEventEnvelope) => void) | undefined,
   ) {
     this.client = client;
     this.subscriptionIds.add(initialSubscriptionId);
@@ -1064,7 +1194,7 @@ export class HarnessAgentRealtimeClient {
       connectRetryDelayMs?: number;
     } = {
       host: options.host,
-      port: options.port
+      port: options.port,
     };
     if (options.authToken !== undefined) {
       connectOptions.authToken = options.authToken;
@@ -1077,7 +1207,11 @@ export class HarnessAgentRealtimeClient {
     }
     const client = await connectControlPlaneStreamClient(connectOptions);
 
-    const buffered: Array<{ subscriptionId: string; cursor: number; observed: StreamObservedEvent }> = [];
+    const buffered: Array<{
+      subscriptionId: string;
+      cursor: number;
+      observed: StreamObservedEvent;
+    }> = [];
     let instance: HarnessAgentRealtimeClient | null = null;
 
     const removeEnvelopeListener = client.onEnvelope((envelope) => {
@@ -1087,7 +1221,7 @@ export class HarnessAgentRealtimeClient {
       const payload = {
         subscriptionId: envelope.subscriptionId,
         cursor: envelope.cursor,
-        observed: envelope.event
+        observed: envelope.event,
       };
       if (instance === null) {
         buffered.push(payload);
@@ -1101,13 +1235,13 @@ export class HarnessAgentRealtimeClient {
 
     try {
       const subscribed = parseSubscriptionResult(
-        await client.sendCommand(buildSubscriptionCommand(options.subscription))
+        await client.sendCommand(buildSubscriptionCommand(options.subscription)),
       );
       instance = new HarnessAgentRealtimeClient(
         client,
         subscribed.subscriptionId,
         removeEnvelopeListener,
-        options.onHandlerError
+        options.onHandlerError,
       );
       for (const payload of buffered) {
         if (!instance.hasSubscription(payload.subscriptionId)) {
@@ -1126,7 +1260,7 @@ export class HarnessAgentRealtimeClient {
 
   on<TEventType extends AgentRealtimeEventType>(
     type: TEventType,
-    listener: AgentRealtimeListener<TEventType>
+    listener: AgentRealtimeListener<TEventType>,
   ): () => void;
   on(type: '*', listener: AnyRealtimeListener): () => void;
   on(type: AgentRealtimeEventType | '*', listener: AnyRealtimeListener): () => void {
@@ -1151,28 +1285,28 @@ export class HarnessAgentRealtimeClient {
 
   async subscribe(filter?: AgentRealtimeSubscriptionFilter): Promise<AgentRealtimeSubscription> {
     const subscribed = parseSubscriptionResult(
-      await this.client.sendCommand(buildSubscriptionCommand(filter))
+      await this.client.sendCommand(buildSubscriptionCommand(filter)),
     );
     this.subscriptionIds.add(subscribed.subscriptionId);
     return {
       subscriptionId: subscribed.subscriptionId,
       cursor: subscribed.cursor,
       unsubscribe: async (): Promise<{ unsubscribed: boolean }> =>
-        await this.unsubscribe(subscribed.subscriptionId)
+        await this.unsubscribe(subscribed.subscriptionId),
     };
   }
 
   async unsubscribe(subscriptionId: string): Promise<{ unsubscribed: boolean }> {
     if (!this.subscriptionIds.has(subscriptionId)) {
       return {
-        unsubscribed: false
+        unsubscribed: false,
       };
     }
     const result = parseUnsubscribeResult(
       await this.client.sendCommand({
         type: 'stream.unsubscribe',
-        subscriptionId
-      })
+        subscriptionId,
+      }),
     );
     this.subscriptionIds.delete(subscriptionId);
     return result;
@@ -1185,12 +1319,12 @@ export class HarnessAgentRealtimeClient {
       ...optionalField('tenantId', input.tenantId),
       ...optionalField('userId', input.userId),
       ...optionalField('workspaceId', input.workspaceId),
-      path: input.path
+      path: input.path,
     });
     return requireParsed(
       result['directory'],
       parseProjectRecord,
-      'control-plane directory.upsert returned malformed project'
+      'control-plane directory.upsert returned malformed project',
     );
   }
 
@@ -1200,11 +1334,11 @@ export class HarnessAgentRealtimeClient {
 
   async updateProject(
     projectId: string,
-    input: Omit<AgentProjectUpsertInput, 'projectId'>
+    input: Omit<AgentProjectUpsertInput, 'projectId'>,
   ): Promise<AgentProject> {
     return await this.upsertProject({
       ...input,
-      projectId
+      projectId,
     });
   }
 
@@ -1215,19 +1349,36 @@ export class HarnessAgentRealtimeClient {
       ...optionalField('userId', query.userId),
       ...optionalField('workspaceId', query.workspaceId),
       ...optionalField('includeArchived', query.includeArchived),
-      ...optionalField('limit', query.limit)
+      ...optionalField('limit', query.limit),
     });
     return requireParsedArray(
       result['directories'],
       parseProjectRecord,
-      'control-plane directory.list returned malformed projects'
+      'control-plane directory.list returned malformed projects',
+    );
+  }
+
+  async listProjectGitStatus(
+    query: AgentProjectGitStatusListQuery = {},
+  ): Promise<readonly AgentProjectGitStatus[]> {
+    const result = await this.client.sendCommand({
+      type: 'directory.git-status',
+      ...optionalField('tenantId', query.tenantId),
+      ...optionalField('userId', query.userId),
+      ...optionalField('workspaceId', query.workspaceId),
+      ...optionalField('directoryId', query.projectId),
+    });
+    return requireParsedArray(
+      result['gitStatuses'],
+      parseProjectGitStatusRecord,
+      'control-plane directory.git-status returned malformed statuses',
     );
   }
 
   async getProject(projectId: string, scope: AgentScopeQuery = {}): Promise<AgentProject> {
     const projects = await this.listProjects({
       ...scope,
-      includeArchived: true
+      includeArchived: true,
     });
     const project = projects.find((entry) => entry.projectId === projectId);
     if (project === undefined) {
@@ -1239,12 +1390,12 @@ export class HarnessAgentRealtimeClient {
   async archiveProject(projectId: string): Promise<AgentProject> {
     const result = await this.client.sendCommand({
       type: 'directory.archive',
-      directoryId: projectId
+      directoryId: projectId,
     });
     return requireParsed(
       result['directory'],
       parseProjectRecord,
-      'control-plane directory.archive returned malformed project'
+      'control-plane directory.archive returned malformed project',
     );
   }
 
@@ -1255,12 +1406,12 @@ export class HarnessAgentRealtimeClient {
       directoryId: input.projectId,
       title: input.title,
       agentType: input.agentType,
-      ...optionalField('adapterState', input.adapterState)
+      ...optionalField('adapterState', input.adapterState),
     });
     return requireParsed(
       result['conversation'],
       parseThreadRecord,
-      'control-plane conversation.create returned malformed thread'
+      'control-plane conversation.create returned malformed thread',
     );
   }
 
@@ -1272,19 +1423,19 @@ export class HarnessAgentRealtimeClient {
       ...optionalField('userId', query.userId),
       ...optionalField('workspaceId', query.workspaceId),
       ...optionalField('includeArchived', query.includeArchived),
-      ...optionalField('limit', query.limit)
+      ...optionalField('limit', query.limit),
     });
     return requireParsedArray(
       result['conversations'],
       parseThreadRecord,
-      'control-plane conversation.list returned malformed threads'
+      'control-plane conversation.list returned malformed threads',
     );
   }
 
   async getThread(threadId: string, query: AgentThreadListQuery = {}): Promise<AgentThread> {
     const threads = await this.listThreads({
       ...query,
-      includeArchived: true
+      includeArchived: true,
     });
     const thread = threads.find((entry) => entry.threadId === threadId);
     if (thread === undefined) {
@@ -1297,38 +1448,38 @@ export class HarnessAgentRealtimeClient {
     const result = await this.client.sendCommand({
       type: 'conversation.update',
       conversationId: threadId,
-      title: input.title
+      title: input.title,
     });
     return requireParsed(
       result['conversation'],
       parseThreadRecord,
-      'control-plane conversation.update returned malformed thread'
+      'control-plane conversation.update returned malformed thread',
     );
   }
 
   async archiveThread(threadId: string): Promise<AgentThread> {
     const result = await this.client.sendCommand({
       type: 'conversation.archive',
-      conversationId: threadId
+      conversationId: threadId,
     });
     return requireParsed(
       result['conversation'],
       parseThreadRecord,
-      'control-plane conversation.archive returned malformed thread'
+      'control-plane conversation.archive returned malformed thread',
     );
   }
 
   async deleteThread(threadId: string): Promise<{ deleted: boolean }> {
     const result = await this.client.sendCommand({
       type: 'conversation.delete',
-      conversationId: threadId
+      conversationId: threadId,
     });
     const deleted = requireBoolean(
       result['deleted'],
-      'control-plane conversation.delete returned malformed response'
+      'control-plane conversation.delete returned malformed response',
     );
     return {
-      deleted
+      deleted,
     };
   }
 
@@ -1346,12 +1497,12 @@ export class HarnessAgentRealtimeClient {
       name: input.name,
       remoteUrl: input.remoteUrl,
       ...optionalField('defaultBranch', input.defaultBranch),
-      ...optionalField('metadata', input.metadata)
+      ...optionalField('metadata', input.metadata),
     });
     return requireParsed(
       result['repository'],
       parseRepositoryRecord,
-      'control-plane repository.upsert returned malformed repository'
+      'control-plane repository.upsert returned malformed repository',
     );
   }
 
@@ -1362,56 +1513,58 @@ export class HarnessAgentRealtimeClient {
   async getRepository(repositoryId: string): Promise<AgentRepository> {
     const result = await this.client.sendCommand({
       type: 'repository.get',
-      repositoryId
+      repositoryId,
     });
     return requireParsed(
       result['repository'],
       parseRepositoryRecord,
-      'control-plane repository.get returned malformed repository'
+      'control-plane repository.get returned malformed repository',
     );
   }
 
-  async listRepositories(query: AgentRepositoryListQuery = {}): Promise<readonly AgentRepository[]> {
+  async listRepositories(
+    query: AgentRepositoryListQuery = {},
+  ): Promise<readonly AgentRepository[]> {
     const result = await this.client.sendCommand({
       type: 'repository.list',
       ...optionalField('tenantId', query.tenantId),
       ...optionalField('userId', query.userId),
       ...optionalField('workspaceId', query.workspaceId),
       ...optionalField('includeArchived', query.includeArchived),
-      ...optionalField('limit', query.limit)
+      ...optionalField('limit', query.limit),
     });
     return requireParsedArray(
       result['repositories'],
       parseRepositoryRecord,
-      'control-plane repository.list returned malformed repositories'
+      'control-plane repository.list returned malformed repositories',
     );
   }
 
   async updateRepository(
     repositoryId: string,
-    update: AgentRepositoryUpdateInput
+    update: AgentRepositoryUpdateInput,
   ): Promise<AgentRepository> {
     const result = await this.client.sendCommand({
       type: 'repository.update',
       repositoryId,
-      ...update
+      ...update,
     });
     return requireParsed(
       result['repository'],
       parseRepositoryRecord,
-      'control-plane repository.update returned malformed repository'
+      'control-plane repository.update returned malformed repository',
     );
   }
 
   async archiveRepository(repositoryId: string): Promise<AgentRepository> {
     const result = await this.client.sendCommand({
       type: 'repository.archive',
-      repositoryId
+      repositoryId,
     });
     return requireParsed(
       result['repository'],
       parseRepositoryRecord,
-      'control-plane repository.archive returned malformed repository'
+      'control-plane repository.archive returned malformed repository',
     );
   }
 
@@ -1425,17 +1578,25 @@ export class HarnessAgentRealtimeClient {
       ...optionalField('repositoryId', input.repositoryId),
       title: input.title,
       ...optionalField('description', input.description),
-      ...optionalField('linear', input.linear)
+      ...optionalField('linear', input.linear),
     });
-    return requireParsed(result['task'], parseTaskRecord, 'control-plane task.create returned malformed task');
+    return requireParsed(
+      result['task'],
+      parseTaskRecord,
+      'control-plane task.create returned malformed task',
+    );
   }
 
   async getTask(taskId: string): Promise<AgentTask> {
     const result = await this.client.sendCommand({
       type: 'task.get',
-      taskId
+      taskId,
     });
-    return requireParsed(result['task'], parseTaskRecord, 'control-plane task.get returned malformed task');
+    return requireParsed(
+      result['task'],
+      parseTaskRecord,
+      'control-plane task.get returned malformed task',
+    );
   }
 
   async listTasks(query: AgentTaskListQuery = {}): Promise<readonly AgentTask[]> {
@@ -1446,28 +1607,39 @@ export class HarnessAgentRealtimeClient {
       ...optionalField('workspaceId', query.workspaceId),
       ...optionalField('repositoryId', query.repositoryId),
       ...optionalField('status', query.status),
-      ...optionalField('limit', query.limit)
+      ...optionalField('limit', query.limit),
     });
-    return requireParsedArray(result['tasks'], parseTaskRecord, 'control-plane task.list returned malformed tasks');
+    return requireParsedArray(
+      result['tasks'],
+      parseTaskRecord,
+      'control-plane task.list returned malformed tasks',
+    );
   }
 
   async updateTask(taskId: string, update: AgentTaskUpdateInput): Promise<AgentTask> {
     const result = await this.client.sendCommand({
       type: 'task.update',
       taskId,
-      ...update
+      ...update,
     });
-    return requireParsed(result['task'], parseTaskRecord, 'control-plane task.update returned malformed task');
+    return requireParsed(
+      result['task'],
+      parseTaskRecord,
+      'control-plane task.update returned malformed task',
+    );
   }
 
   async deleteTask(taskId: string): Promise<{ deleted: boolean }> {
     const result = await this.client.sendCommand({
       type: 'task.delete',
-      taskId
+      taskId,
     });
-    const deleted = requireBoolean(result['deleted'], 'control-plane task.delete returned malformed response');
+    const deleted = requireBoolean(
+      result['deleted'],
+      'control-plane task.delete returned malformed response',
+    );
     return {
-      deleted
+      deleted,
     };
   }
 
@@ -1478,45 +1650,61 @@ export class HarnessAgentRealtimeClient {
       controllerId: input.controllerId,
       ...optionalField('directoryId', input.projectId),
       ...optionalField('branchName', input.branchName),
-      ...optionalField('baseBranch', input.baseBranch)
+      ...optionalField('baseBranch', input.baseBranch),
     });
-    return requireParsed(result['task'], parseTaskRecord, 'control-plane task.claim returned malformed task');
+    return requireParsed(
+      result['task'],
+      parseTaskRecord,
+      'control-plane task.claim returned malformed task',
+    );
   }
 
   async completeTask(taskId: string): Promise<AgentTask> {
     const result = await this.client.sendCommand({
       type: 'task.complete',
-      taskId
+      taskId,
     });
     return requireParsed(
       result['task'],
       parseTaskRecord,
-      'control-plane task.complete returned malformed task'
+      'control-plane task.complete returned malformed task',
     );
   }
 
   async readyTask(taskId: string): Promise<AgentTask> {
     const result = await this.client.sendCommand({
       type: 'task.ready',
-      taskId
+      taskId,
     });
-    return requireParsed(result['task'], parseTaskRecord, 'control-plane task.ready returned malformed task');
+    return requireParsed(
+      result['task'],
+      parseTaskRecord,
+      'control-plane task.ready returned malformed task',
+    );
   }
 
   async draftTask(taskId: string): Promise<AgentTask> {
     const result = await this.client.sendCommand({
       type: 'task.draft',
-      taskId
+      taskId,
     });
-    return requireParsed(result['task'], parseTaskRecord, 'control-plane task.draft returned malformed task');
+    return requireParsed(
+      result['task'],
+      parseTaskRecord,
+      'control-plane task.draft returned malformed task',
+    );
   }
 
   async queueTask(taskId: string): Promise<AgentTask> {
     const result = await this.client.sendCommand({
       type: 'task.queue',
-      taskId
+      taskId,
     });
-    return requireParsed(result['task'], parseTaskRecord, 'control-plane task.queue returned malformed task');
+    return requireParsed(
+      result['task'],
+      parseTaskRecord,
+      'control-plane task.queue returned malformed task',
+    );
   }
 
   async reorderTasks(input: AgentTaskReorderInput): Promise<readonly AgentTask[]> {
@@ -1525,28 +1713,30 @@ export class HarnessAgentRealtimeClient {
       tenantId: input.tenantId,
       userId: input.userId,
       workspaceId: input.workspaceId,
-      orderedTaskIds: [...input.orderedTaskIds]
+      orderedTaskIds: [...input.orderedTaskIds],
     });
     return requireParsedArray(
       result['tasks'],
       parseTaskRecord,
-      'control-plane task.reorder returned malformed tasks'
+      'control-plane task.reorder returned malformed tasks',
     );
   }
 
-  async listSessions(command: {
-    tenantId?: string;
-    userId?: string;
-    workspaceId?: string;
-    worktreeId?: string;
-    status?: 'running' | 'needs-input' | 'completed' | 'exited';
-    live?: boolean;
-    sort?: 'attention-first' | 'started-desc' | 'started-asc';
-    limit?: number;
-  } = {}): Promise<readonly AgentSessionSummary[]> {
+  async listSessions(
+    command: {
+      tenantId?: string;
+      userId?: string;
+      workspaceId?: string;
+      worktreeId?: string;
+      status?: 'running' | 'needs-input' | 'completed' | 'exited';
+      live?: boolean;
+      sort?: 'attention-first' | 'started-desc' | 'started-asc';
+      limit?: number;
+    } = {},
+  ): Promise<readonly AgentSessionSummary[]> {
     const result = await this.client.sendCommand({
       type: 'session.list',
-      ...command
+      ...command,
     });
     const parsed = parseSessionSummaryList(result['sessions']);
     return parsed;
@@ -1555,7 +1745,7 @@ export class HarnessAgentRealtimeClient {
   async sessionStatus(sessionId: string): Promise<AgentSessionSummary> {
     const result = await this.client.sendCommand({
       type: 'session.status',
-      sessionId
+      sessionId,
     });
     const parsed = parseSessionSummaryRecord(result);
     if (parsed === null) {
@@ -1577,7 +1767,7 @@ export class HarnessAgentRealtimeClient {
       type: 'session.claim',
       sessionId: input.sessionId,
       controllerId: input.controllerId,
-      controllerType: input.controllerType
+      controllerType: input.controllerType,
     };
     if (input.controllerLabel !== undefined) {
       command.controllerLabel = input.controllerLabel;
@@ -1593,11 +1783,11 @@ export class HarnessAgentRealtimeClient {
   }
 
   async takeoverSession(
-    input: Omit<AgentClaimSessionInput, 'takeover'>
+    input: Omit<AgentClaimSessionInput, 'takeover'>,
   ): Promise<AgentSessionClaimResult> {
     return await this.claimSession({
       ...input,
-      takeover: true
+      takeover: true,
     });
   }
 
@@ -1608,7 +1798,7 @@ export class HarnessAgentRealtimeClient {
       reason?: string;
     } = {
       type: 'session.release',
-      sessionId: input.sessionId
+      sessionId: input.sessionId,
     };
     if (input.reason !== undefined) {
       command.reason = input.reason;
@@ -1617,11 +1807,14 @@ export class HarnessAgentRealtimeClient {
     return parseReleaseResult(result);
   }
 
-  async respond(sessionId: string, text: string): Promise<{ responded: boolean; sentBytes: number }> {
+  async respond(
+    sessionId: string,
+    text: string,
+  ): Promise<{ responded: boolean; sentBytes: number }> {
     const result = await this.client.sendCommand({
       type: 'session.respond',
       sessionId,
-      text
+      text,
     });
     const responded = result['responded'];
     const sentBytes = result['sentBytes'];
@@ -1630,35 +1823,35 @@ export class HarnessAgentRealtimeClient {
     }
     return {
       responded,
-      sentBytes
+      sentBytes,
     };
   }
 
   async interrupt(sessionId: string): Promise<{ interrupted: boolean }> {
     const result = await this.client.sendCommand({
       type: 'session.interrupt',
-      sessionId
+      sessionId,
     });
     const interrupted = result['interrupted'];
     if (typeof interrupted !== 'boolean') {
       throw new Error('control-plane session.interrupt returned malformed response');
     }
     return {
-      interrupted
+      interrupted,
     };
   }
 
   async removeSession(sessionId: string): Promise<{ removed: boolean }> {
     const result = await this.client.sendCommand({
       type: 'session.remove',
-      sessionId
+      sessionId,
     });
     const removed = result['removed'];
     if (typeof removed !== 'boolean') {
       throw new Error('control-plane session.remove returned malformed response');
     }
     return {
-      removed
+      removed,
     };
   }
 
@@ -1678,14 +1871,14 @@ export class HarnessAgentRealtimeClient {
   }): Promise<{ sessionId: string }> {
     const result = await this.client.sendCommand({
       type: 'pty.start',
-      ...input
+      ...input,
     });
     const sessionId = result['sessionId'];
     if (typeof sessionId !== 'string') {
       throw new Error('control-plane pty.start returned malformed response');
     }
     return {
-      sessionId
+      sessionId,
     };
   }
 
@@ -1693,70 +1886,70 @@ export class HarnessAgentRealtimeClient {
     const result = await this.client.sendCommand({
       type: 'pty.attach',
       sessionId,
-      sinceCursor
+      sinceCursor,
     });
     const latestCursor = result['latestCursor'];
     if (typeof latestCursor !== 'number') {
       throw new Error('control-plane pty.attach returned malformed response');
     }
     return {
-      latestCursor
+      latestCursor,
     };
   }
 
   async detachSession(sessionId: string): Promise<{ detached: boolean }> {
     const result = await this.client.sendCommand({
       type: 'pty.detach',
-      sessionId
+      sessionId,
     });
     const detached = result['detached'];
     if (typeof detached !== 'boolean') {
       throw new Error('control-plane pty.detach returned malformed response');
     }
     return {
-      detached
+      detached,
     };
   }
 
   async subscribeSessionEvents(sessionId: string): Promise<{ subscribed: boolean }> {
     const result = await this.client.sendCommand({
       type: 'pty.subscribe-events',
-      sessionId
+      sessionId,
     });
     const subscribed = requireBoolean(
       result['subscribed'],
-      'control-plane pty.subscribe-events returned malformed response'
+      'control-plane pty.subscribe-events returned malformed response',
     );
     return {
-      subscribed
+      subscribed,
     };
   }
 
   async unsubscribeSessionEvents(sessionId: string): Promise<{ subscribed: boolean }> {
     const result = await this.client.sendCommand({
       type: 'pty.unsubscribe-events',
-      sessionId
+      sessionId,
     });
     const subscribed = requireBoolean(
       result['subscribed'],
-      'control-plane pty.unsubscribe-events returned malformed response'
+      'control-plane pty.unsubscribe-events returned malformed response',
     );
     return {
-      subscribed
+      subscribed,
     };
   }
 
   async closeSession(sessionId: string): Promise<{ closed: boolean }> {
     const result = await this.client.sendCommand({
       type: 'pty.close',
-      sessionId
+      sessionId,
     });
     const closed = result['closed'];
     if (typeof closed !== 'boolean') {
       throw new Error('control-plane pty.close returned malformed response');
     }
     return {
-      closed
+      closed,
     };
   }
 
@@ -1784,7 +1977,7 @@ export class HarnessAgentRealtimeClient {
       try {
         await this.client.sendCommand({
           type: 'stream.unsubscribe',
-          subscriptionId
+          subscriptionId,
         });
       } catch {
         // Best-effort unsubscribe only.
@@ -1804,7 +1997,7 @@ export class HarnessAgentRealtimeClient {
       type,
       subscriptionId,
       cursor,
-      observed
+      observed,
     } as AgentRealtimeEventEnvelope;
     const specific = this.listenersByType.get(type);
     if (specific !== undefined) {
@@ -1830,7 +2023,7 @@ export class HarnessAgentRealtimeClient {
 }
 
 export async function connectHarnessAgentRealtimeClient(
-  options: AgentRealtimeConnectOptions
+  options: AgentRealtimeConnectOptions,
 ): Promise<HarnessAgentRealtimeClient> {
   return await HarnessAgentRealtimeClient.connect(options);
 }

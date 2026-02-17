@@ -55,6 +55,14 @@ interface DirectoryArchiveCommand {
   directoryId: string;
 }
 
+interface DirectoryGitStatusListCommand {
+  type: 'directory.git-status';
+  tenantId?: string;
+  userId?: string;
+  workspaceId?: string;
+  directoryId?: string;
+}
+
 interface ConversationCreateCommand {
   type: 'conversation.create';
   conversationId?: string;
@@ -349,6 +357,7 @@ export type StreamCommand =
   | DirectoryUpsertCommand
   | DirectoryListCommand
   | DirectoryArchiveCommand
+  | DirectoryGitStatusListCommand
   | ConversationCreateCommand
   | ConversationListCommand
   | ConversationArchiveCommand
@@ -637,7 +646,9 @@ interface ConsumedJsonLines {
   remainder: string;
 }
 
-export function encodeStreamEnvelope(envelope: StreamClientEnvelope | StreamServerEnvelope): string {
+export function encodeStreamEnvelope(
+  envelope: StreamClientEnvelope | StreamServerEnvelope,
+): string {
   return `${JSON.stringify(envelope)}\n`;
 }
 
@@ -660,7 +671,7 @@ export function consumeJsonLines(buffer: string): ConsumedJsonLines {
 
   return {
     messages,
-    remainder
+    remainder,
   };
 }
 
@@ -711,7 +722,7 @@ export function parseClientEnvelope(value: unknown): StreamClientEnvelope | null
     }
     return {
       kind,
-      token
+      token,
     };
   }
 
@@ -725,7 +736,7 @@ export function parseClientEnvelope(value: unknown): StreamClientEnvelope | null
     return {
       kind,
       commandId,
-      command
+      command,
     };
   }
 
@@ -742,7 +753,7 @@ export function parseClientEnvelope(value: unknown): StreamClientEnvelope | null
     return {
       kind,
       sessionId,
-      dataBase64
+      dataBase64,
     };
   }
 
@@ -756,7 +767,7 @@ export function parseClientEnvelope(value: unknown): StreamClientEnvelope | null
       kind,
       sessionId,
       cols,
-      rows
+      rows,
     };
   }
 
@@ -768,7 +779,7 @@ export function parseClientEnvelope(value: unknown): StreamClientEnvelope | null
     return {
       kind,
       sessionId,
-      signal
+      signal,
     };
   }
 
@@ -804,8 +815,8 @@ function parseStreamSessionEvent(value: unknown): StreamSessionEvent | null {
       type,
       exit: {
         code: normalizedCode,
-        signal: normalizedSignal
-      }
+        signal: normalizedSignal,
+      },
     };
   }
 
@@ -823,8 +834,8 @@ function parseStreamSessionEvent(value: unknown): StreamSessionEvent | null {
       type: 'notify',
       record: {
         ts,
-        payload
-      }
+        payload,
+      },
     };
   }
 
@@ -863,12 +874,13 @@ function parseSessionController(value: unknown): StreamSessionController | null 
   }
   const controllerId = readString(record['controllerId']);
   const controllerType = parseSessionControllerType(record['controllerType']);
-  const controllerLabel = record['controllerLabel'] === null ? null : readString(record['controllerLabel']);
+  const controllerLabel =
+    record['controllerLabel'] === null ? null : readString(record['controllerLabel']);
   const claimedAt = readString(record['claimedAt']);
   if (
     controllerId === null ||
     controllerType === null ||
-    controllerLabel === null && record['controllerLabel'] !== null ||
+    (controllerLabel === null && record['controllerLabel'] !== null) ||
     claimedAt === null
   ) {
     return undefined;
@@ -877,7 +889,7 @@ function parseSessionController(value: unknown): StreamSessionController | null 
     controllerId,
     controllerType,
     controllerLabel,
-    claimedAt
+    claimedAt,
   };
 }
 
@@ -912,9 +924,9 @@ function parseTelemetrySummary(value: unknown): StreamTelemetrySummary | null | 
   const observedAt = readString(record['observedAt']);
   if (
     source === null ||
-    eventName === null && record['eventName'] !== null ||
-    severity === null && record['severity'] !== null ||
-    summary === null && record['summary'] !== null ||
+    (eventName === null && record['eventName'] !== null) ||
+    (severity === null && record['severity'] !== null) ||
+    (summary === null && record['summary'] !== null) ||
     observedAt === null
   ) {
     return undefined;
@@ -924,7 +936,7 @@ function parseTelemetrySummary(value: unknown): StreamTelemetrySummary | null | 
     eventName,
     severity,
     summary,
-    observedAt
+    observedAt,
   };
 }
 
@@ -941,9 +953,9 @@ function parseSessionKeyEventRecord(value: unknown): StreamSessionKeyEventRecord
   const statusHint = parseTelemetryStatusHint(record['statusHint']);
   if (
     source === null ||
-    eventName === null && record['eventName'] !== null ||
-    severity === null && record['severity'] !== null ||
-    summary === null && record['summary'] !== null ||
+    (eventName === null && record['eventName'] !== null) ||
+    (severity === null && record['severity'] !== null) ||
+    (summary === null && record['summary'] !== null) ||
     observedAt === null ||
     statusHint === undefined
   ) {
@@ -955,7 +967,7 @@ function parseSessionKeyEventRecord(value: unknown): StreamSessionKeyEventRecord
     severity,
     summary,
     observedAt,
-    statusHint
+    statusHint,
   };
 }
 
@@ -976,7 +988,7 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
     }
     return {
       type,
-      directory
+      directory,
     };
   }
 
@@ -989,7 +1001,7 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
     return {
       type,
       directoryId,
-      ts
+      ts,
     };
   }
 
@@ -999,15 +1011,14 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
     const repositorySnapshotRecord = asRecord(record['repositorySnapshot']);
     const repositoryId =
       record['repositoryId'] === null ? null : readString(record['repositoryId']);
-    const repository =
-      record['repository'] === null ? null : asRecord(record['repository']);
+    const repository = record['repository'] === null ? null : asRecord(record['repository']);
     const observedAt = readString(record['observedAt']);
     if (
       directoryId === null ||
       summaryRecord === null ||
       repositorySnapshotRecord === null ||
-      repositoryId === null && record['repositoryId'] !== null ||
-      repository === null && record['repository'] !== null ||
+      (repositoryId === null && record['repositoryId'] !== null) ||
+      (repository === null && record['repository'] !== null) ||
       observedAt === null
     ) {
       return null;
@@ -1016,12 +1027,7 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
     const changedFiles = readNumber(summaryRecord['changedFiles']);
     const additions = readNumber(summaryRecord['additions']);
     const deletions = readNumber(summaryRecord['deletions']);
-    if (
-      branch === null ||
-      changedFiles === null ||
-      additions === null ||
-      deletions === null
-    ) {
+    if (branch === null || changedFiles === null || additions === null || deletions === null) {
       return null;
     }
     const normalizedRemoteUrl =
@@ -1049,12 +1055,12 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
         ? null
         : readString(repositorySnapshotRecord['defaultBranch']);
     if (
-      normalizedRemoteUrl === null && repositorySnapshotRecord['normalizedRemoteUrl'] !== null ||
-      commitCount === null && repositorySnapshotRecord['commitCount'] !== null ||
-      lastCommitAt === null && repositorySnapshotRecord['lastCommitAt'] !== null ||
-      shortCommitHash === null && repositorySnapshotRecord['shortCommitHash'] !== null ||
-      inferredName === null && repositorySnapshotRecord['inferredName'] !== null ||
-      defaultBranch === null && repositorySnapshotRecord['defaultBranch'] !== null
+      (normalizedRemoteUrl === null && repositorySnapshotRecord['normalizedRemoteUrl'] !== null) ||
+      (commitCount === null && repositorySnapshotRecord['commitCount'] !== null) ||
+      (lastCommitAt === null && repositorySnapshotRecord['lastCommitAt'] !== null) ||
+      (shortCommitHash === null && repositorySnapshotRecord['shortCommitHash'] !== null) ||
+      (inferredName === null && repositorySnapshotRecord['inferredName'] !== null) ||
+      (defaultBranch === null && repositorySnapshotRecord['defaultBranch'] !== null)
     ) {
       return null;
     }
@@ -1065,7 +1071,7 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
         branch,
         changedFiles,
         additions,
-        deletions
+        deletions,
       },
       repositorySnapshot: {
         normalizedRemoteUrl,
@@ -1073,11 +1079,11 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
         lastCommitAt,
         shortCommitHash,
         inferredName,
-        defaultBranch
+        defaultBranch,
       },
       repositoryId,
       repository,
-      observedAt
+      observedAt,
     };
   }
 
@@ -1088,7 +1094,7 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
     }
     return {
       type,
-      conversation
+      conversation,
     };
   }
 
@@ -1099,7 +1105,7 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
     }
     return {
       type,
-      conversation
+      conversation,
     };
   }
 
@@ -1112,7 +1118,7 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
     return {
       type,
       conversationId,
-      ts
+      ts,
     };
   }
 
@@ -1125,7 +1131,7 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
     return {
       type,
       conversationId,
-      ts
+      ts,
     };
   }
 
@@ -1136,7 +1142,7 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
     }
     return {
       type,
-      repository
+      repository,
     };
   }
 
@@ -1147,7 +1153,7 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
     }
     return {
       type,
-      repository
+      repository,
     };
   }
 
@@ -1160,7 +1166,7 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
     return {
       type,
       repositoryId,
-      ts
+      ts,
     };
   }
 
@@ -1171,7 +1177,7 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
     }
     return {
       type,
-      task
+      task,
     };
   }
 
@@ -1182,7 +1188,7 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
     }
     return {
       type,
-      task
+      task,
     };
   }
 
@@ -1195,7 +1201,7 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
     return {
       type,
       taskId,
-      ts
+      ts,
     };
   }
 
@@ -1219,7 +1225,7 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
     return {
       type,
       tasks,
-      ts
+      ts,
     };
   }
 
@@ -1264,7 +1270,7 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
       directoryId: record['directoryId'] === null ? null : directoryId,
       conversationId: record['conversationId'] === null ? null : conversationId,
       telemetry: telemetry ?? null,
-      controller: controller ?? null
+      controller: controller ?? null,
     };
   }
 
@@ -1289,7 +1295,7 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
       event,
       ts,
       directoryId: record['directoryId'] === null ? null : directoryId,
-      conversationId: record['conversationId'] === null ? null : conversationId
+      conversationId: record['conversationId'] === null ? null : conversationId,
     };
   }
 
@@ -1314,7 +1320,7 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
       keyEvent,
       ts,
       directoryId: record['directoryId'] === null ? null : directoryId,
-      conversationId: record['conversationId'] === null ? null : conversationId
+      conversationId: record['conversationId'] === null ? null : conversationId,
     };
   }
 
@@ -1332,7 +1338,7 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
       (action !== 'claimed' && action !== 'released' && action !== 'taken-over') ||
       controller === undefined ||
       previousController === undefined ||
-      reason === null && record['reason'] !== null ||
+      (reason === null && record['reason'] !== null) ||
       ts === null ||
       (record['directoryId'] !== null && directoryId === null) ||
       (record['conversationId'] !== null && conversationId === null)
@@ -1348,7 +1354,7 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
       reason,
       ts,
       directoryId: record['directoryId'] === null ? null : directoryId,
-      conversationId: record['conversationId'] === null ? null : conversationId
+      conversationId: record['conversationId'] === null ? null : conversationId,
     };
   }
 
@@ -1376,7 +1382,7 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
       chunkBase64,
       ts,
       directoryId: record['directoryId'] === null ? null : directoryId,
-      conversationId: record['conversationId'] === null ? null : conversationId
+      conversationId: record['conversationId'] === null ? null : conversationId,
     };
   }
 
@@ -1396,7 +1402,7 @@ export function parseServerEnvelope(value: unknown): StreamServerEnvelope | null
 
   if (kind === 'auth.ok') {
     return {
-      kind
+      kind,
     };
   }
 
@@ -1407,7 +1413,7 @@ export function parseServerEnvelope(value: unknown): StreamServerEnvelope | null
     }
     return {
       kind,
-      error
+      error,
     };
   }
 
@@ -1418,7 +1424,7 @@ export function parseServerEnvelope(value: unknown): StreamServerEnvelope | null
     }
     return {
       kind,
-      commandId
+      commandId,
     };
   }
 
@@ -1431,7 +1437,7 @@ export function parseServerEnvelope(value: unknown): StreamServerEnvelope | null
     return {
       kind,
       commandId,
-      result
+      result,
     };
   }
 
@@ -1444,7 +1450,7 @@ export function parseServerEnvelope(value: unknown): StreamServerEnvelope | null
     return {
       kind,
       commandId,
-      error
+      error,
     };
   }
 
@@ -1459,7 +1465,7 @@ export function parseServerEnvelope(value: unknown): StreamServerEnvelope | null
       kind,
       subscriptionId,
       cursor,
-      event
+      event,
     };
   }
 
@@ -1478,7 +1484,7 @@ export function parseServerEnvelope(value: unknown): StreamServerEnvelope | null
       kind,
       sessionId,
       cursor,
-      chunkBase64
+      chunkBase64,
     };
   }
 
@@ -1502,8 +1508,8 @@ export function parseServerEnvelope(value: unknown): StreamServerEnvelope | null
       sessionId,
       exit: {
         code: normalizedCode,
-        signal: normalizedSignal
-      }
+        signal: normalizedSignal,
+      },
     };
   }
 
@@ -1515,7 +1521,7 @@ export function parseServerEnvelope(value: unknown): StreamServerEnvelope | null
     return {
       kind,
       sessionId,
-      event
+      event,
     };
   }
 

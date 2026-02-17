@@ -2,11 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   parseConversationRecord,
+  parseDirectoryGitStatusRecord,
   parseDirectoryRecord,
   parseRepositoryRecord,
   parseSessionControllerRecord,
   parseTaskRecord,
-  parseTaskStatus
+  parseTaskStatus,
 } from '../src/mux/live-mux/control-plane-records.ts';
 
 void test('parseDirectoryRecord validates shape', () => {
@@ -19,9 +20,9 @@ void test('parseDirectoryRecord validates shape', () => {
       workspaceId: 'w1',
       path: '/tmp/work',
       createdAt: '2026-01-01T00:00:00.000Z',
-      archivedAt: null
+      archivedAt: null,
     })?.directoryId,
-    'd1'
+    'd1',
   );
   assert.equal(
     parseDirectoryRecord({
@@ -30,9 +31,9 @@ void test('parseDirectoryRecord validates shape', () => {
       userId: 'u1',
       workspaceId: 'w1',
       path: '/tmp/work',
-      createdAt: 12
+      createdAt: 12,
     }),
-    null
+    null,
   );
 
   const validBase = {
@@ -42,7 +43,7 @@ void test('parseDirectoryRecord validates shape', () => {
     workspaceId: 'w1',
     path: '/tmp/work',
     createdAt: null,
-    archivedAt: null
+    archivedAt: null,
   };
   const invalidCases: Array<[keyof typeof validBase, unknown]> = [
     ['directoryId', 1],
@@ -51,7 +52,7 @@ void test('parseDirectoryRecord validates shape', () => {
     ['workspaceId', 1],
     ['path', 1],
     ['createdAt', 1],
-    ['archivedAt', 1]
+    ['archivedAt', 1],
   ];
   for (const [key, value] of invalidCases) {
     assert.equal(parseDirectoryRecord({ ...validBase, [key]: value }), null);
@@ -71,7 +72,7 @@ void test('parseConversationRecord validates runtime status and adapter state', 
     agentType: 'codex',
     adapterState: { foo: 'bar' },
     runtimeStatus: 'running',
-    runtimeLive: true
+    runtimeLive: true,
   });
   assert.equal(parsed?.runtimeStatus, 'running');
 
@@ -86,9 +87,9 @@ void test('parseConversationRecord validates runtime status and adapter state', 
       agentType: 'codex',
       adapterState: [],
       runtimeStatus: 'running',
-      runtimeLive: true
+      runtimeLive: true,
     }),
-    null
+    null,
   );
 
   assert.equal(
@@ -102,9 +103,9 @@ void test('parseConversationRecord validates runtime status and adapter state', 
       agentType: 'codex',
       adapterState: { foo: 'bar' },
       runtimeStatus: 'paused',
-      runtimeLive: true
+      runtimeLive: true,
     }),
-    null
+    null,
   );
 
   const validBase = {
@@ -117,7 +118,7 @@ void test('parseConversationRecord validates runtime status and adapter state', 
     agentType: 'codex',
     adapterState: { foo: 'bar' },
     runtimeStatus: 'running',
-    runtimeLive: true
+    runtimeLive: true,
   } as const;
   const invalidCases: Array<[keyof typeof validBase, unknown]> = [
     ['conversationId', 1],
@@ -128,7 +129,7 @@ void test('parseConversationRecord validates runtime status and adapter state', 
     ['title', 1],
     ['agentType', 1],
     ['adapterState', []],
-    ['runtimeLive', 'yes']
+    ['runtimeLive', 'yes'],
   ];
   for (const [key, value] of invalidCases) {
     assert.equal(parseConversationRecord({ ...validBase, [key]: value }), null);
@@ -137,23 +138,23 @@ void test('parseConversationRecord validates runtime status and adapter state', 
   assert.equal(
     parseConversationRecord({
       ...validBase,
-      runtimeStatus: 'needs-input'
+      runtimeStatus: 'needs-input',
     })?.runtimeStatus,
-    'needs-input'
+    'needs-input',
   );
   assert.equal(
     parseConversationRecord({
       ...validBase,
-      runtimeStatus: 'completed'
+      runtimeStatus: 'completed',
     })?.runtimeStatus,
-    'completed'
+    'completed',
   );
   assert.equal(
     parseConversationRecord({
       ...validBase,
-      runtimeStatus: 'exited'
+      runtimeStatus: 'exited',
     })?.runtimeStatus,
-    'exited'
+    'exited',
   );
 });
 
@@ -170,7 +171,7 @@ void test('parseRepositoryRecord validates metadata and timestamps', () => {
     defaultBranch: 'main',
     metadata: {},
     createdAt: '2026-01-01T00:00:00.000Z',
-    archivedAt: undefined
+    archivedAt: undefined,
   });
   assert.equal(parsed?.name, 'harness');
 
@@ -184,9 +185,9 @@ void test('parseRepositoryRecord validates metadata and timestamps', () => {
       remoteUrl: 'https://github.com/acme/harness',
       defaultBranch: 'main',
       metadata: [],
-      createdAt: '2026-01-01T00:00:00.000Z'
+      createdAt: '2026-01-01T00:00:00.000Z',
     }),
-    null
+    null,
   );
 
   const validBase = {
@@ -199,7 +200,7 @@ void test('parseRepositoryRecord validates metadata and timestamps', () => {
     defaultBranch: 'main',
     metadata: {},
     createdAt: null,
-    archivedAt: null
+    archivedAt: null,
   };
   const invalidCases: Array<[keyof typeof validBase, unknown]> = [
     ['repositoryId', 1],
@@ -211,11 +212,72 @@ void test('parseRepositoryRecord validates metadata and timestamps', () => {
     ['defaultBranch', 1],
     ['metadata', []],
     ['createdAt', 1],
-    ['archivedAt', 1]
+    ['archivedAt', 1],
   ];
   for (const [key, value] of invalidCases) {
     assert.equal(parseRepositoryRecord({ ...validBase, [key]: value }), null);
   }
+});
+
+void test('parseDirectoryGitStatusRecord validates gateway git status payloads', () => {
+  assert.deepEqual(
+    parseDirectoryGitStatusRecord({
+      directoryId: 'directory-1',
+      summary: {
+        branch: 'main',
+        changedFiles: 1,
+        additions: 2,
+        deletions: 3,
+      },
+      repositorySnapshot: {
+        normalizedRemoteUrl: 'https://github.com/example/harness',
+        commitCount: 10,
+        lastCommitAt: '2026-02-16T00:00:00.000Z',
+        shortCommitHash: 'abc1234',
+        inferredName: 'harness',
+        defaultBranch: 'main',
+      },
+      repositoryId: 'repository-1',
+      repository: {
+        repositoryId: 'repository-1',
+        tenantId: 'tenant-1',
+        userId: 'user-1',
+        workspaceId: 'workspace-1',
+        name: 'harness',
+        remoteUrl: 'https://github.com/example/harness',
+        defaultBranch: 'main',
+        metadata: {},
+        createdAt: '2026-02-16T00:00:00.000Z',
+        archivedAt: null,
+      },
+      observedAt: '2026-02-16T00:00:00.000Z',
+    })?.repositoryId,
+    'repository-1',
+  );
+
+  assert.equal(
+    parseDirectoryGitStatusRecord({
+      directoryId: 'directory-1',
+      summary: {
+        branch: 'main',
+        changedFiles: 'x',
+        additions: 2,
+        deletions: 3,
+      },
+      repositorySnapshot: {
+        normalizedRemoteUrl: null,
+        commitCount: null,
+        lastCommitAt: null,
+        shortCommitHash: null,
+        inferredName: null,
+        defaultBranch: null,
+      },
+      repositoryId: null,
+      repository: null,
+      observedAt: '2026-02-16T00:00:00.000Z',
+    }),
+    null,
+  );
 });
 
 void test('parseTaskStatus maps legacy queued to ready and rejects unknown', () => {
@@ -247,7 +309,7 @@ void test('parseTaskRecord validates optional fields and required scalar types',
     claimedAt: null,
     completedAt: undefined,
     createdAt: '2026-01-01T00:00:00.000Z',
-    updatedAt: '2026-01-02T00:00:00.000Z'
+    updatedAt: '2026-01-02T00:00:00.000Z',
   });
   assert.equal(parsed?.taskId, 'task-1');
   assert.equal(parsed?.repositoryId, null);
@@ -271,9 +333,9 @@ void test('parseTaskRecord validates optional fields and required scalar types',
       claimedAt: null,
       completedAt: null,
       createdAt: '2026-01-01T00:00:00.000Z',
-      updatedAt: '2026-01-02T00:00:00.000Z'
+      updatedAt: '2026-01-02T00:00:00.000Z',
     }),
-    null
+    null,
   );
 
   assert.equal(
@@ -294,9 +356,9 @@ void test('parseTaskRecord validates optional fields and required scalar types',
       claimedAt: null,
       completedAt: null,
       createdAt: '2026-01-01T00:00:00.000Z',
-      updatedAt: '2026-01-02T00:00:00.000Z'
+      updatedAt: '2026-01-02T00:00:00.000Z',
     }),
-    null
+    null,
   );
 
   const validBase = {
@@ -316,7 +378,7 @@ void test('parseTaskRecord validates optional fields and required scalar types',
     claimedAt: null,
     completedAt: null,
     createdAt: '2026-01-01T00:00:00.000Z',
-    updatedAt: '2026-01-02T00:00:00.000Z'
+    updatedAt: '2026-01-02T00:00:00.000Z',
   };
   const invalidCases: Array<[keyof typeof validBase, unknown]> = [
     ['taskId', 1],
@@ -335,7 +397,7 @@ void test('parseTaskRecord validates optional fields and required scalar types',
     ['claimedAt', 1],
     ['completedAt', 1],
     ['createdAt', 1],
-    ['updatedAt', 1]
+    ['updatedAt', 1],
   ];
   for (const [key, value] of invalidCases) {
     assert.equal(parseTaskRecord({ ...validBase, [key]: value }), null);
@@ -350,14 +412,14 @@ void test('parseSessionControllerRecord validates controller payloads', () => {
       controllerId: 'id-1',
       controllerType: 'human',
       controllerLabel: null,
-      claimedAt: '2026-01-01T00:00:00.000Z'
+      claimedAt: '2026-01-01T00:00:00.000Z',
     }),
     {
       controllerId: 'id-1',
       controllerType: 'human',
       controllerLabel: null,
-      claimedAt: '2026-01-01T00:00:00.000Z'
-    }
+      claimedAt: '2026-01-01T00:00:00.000Z',
+    },
   );
 
   assert.equal(
@@ -365,9 +427,9 @@ void test('parseSessionControllerRecord validates controller payloads', () => {
       controllerId: 'id-2',
       controllerType: 'automation',
       controllerLabel: 'auto',
-      claimedAt: '2026-01-01T00:00:00.000Z'
+      claimedAt: '2026-01-01T00:00:00.000Z',
     })?.controllerType,
-    'automation'
+    'automation',
   );
 
   assert.equal(
@@ -375,9 +437,9 @@ void test('parseSessionControllerRecord validates controller payloads', () => {
       controllerId: 'id-1',
       controllerType: 'bad-type',
       controllerLabel: null,
-      claimedAt: '2026-01-01T00:00:00.000Z'
+      claimedAt: '2026-01-01T00:00:00.000Z',
     }),
-    null
+    null,
   );
 
   assert.equal(
@@ -385,8 +447,8 @@ void test('parseSessionControllerRecord validates controller payloads', () => {
       controllerId: 'id-1',
       controllerType: 'agent',
       controllerLabel: 7,
-      claimedAt: '2026-01-01T00:00:00.000Z'
+      claimedAt: '2026-01-01T00:00:00.000Z',
     }),
-    null
+    null,
   );
 });

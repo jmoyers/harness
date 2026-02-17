@@ -1025,7 +1025,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
   - `src/control-plane/stream-protocol.ts` defines typed newline-delimited TCP stream envelopes for command lifecycle, PTY pass-through signals, and async event delivery.
     - protocol now includes `auth`, `auth.ok`, `auth.error` envelopes and session query commands (`session.list`, `session.status`, `session.snapshot`).
     - `session.list` now supports deterministic sort (`attention-first`, `started-desc`, `started-asc`) and scope/status/live filters for multi-conversation clients.
-    - protocol now includes persisted directory/conversation operations (`directory.upsert`, `directory.list`, `conversation.create`, `conversation.list`, `conversation.archive`, `conversation.delete`) and scoped live subscriptions (`stream.subscribe`, `stream.unsubscribe`, `stream.event`).
+    - protocol now includes persisted directory/conversation operations (`directory.upsert`, `directory.list`, `directory.git-status`, `conversation.create`, `conversation.list`, `conversation.archive`, `conversation.delete`) and scoped live subscriptions (`stream.subscribe`, `stream.unsubscribe`, `stream.event`).
     - protocol now includes session ownership controls (`session.claim`, `session.release`) and ownership lifecycle envelopes (`session-control`) for explicit human/agent handoff and takeover.
     - stream observed status events now carry latest telemetry summary (`session-status.telemetry`), and telemetry ingestion publishes dedicated key events (`session-key-event`) for real-time UI state enrichment.
   - `src/control-plane/stream-server.ts` provides a session-aware control-plane server that executes PTY/session operations and broadcasts output/events to subscribed clients.
@@ -1039,6 +1039,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - history ingestion uses non-blocking incremental reads from the last byte offset; the gateway no longer rereads the full history file each poll.
     - history polling defaults to a slower 5s baseline with jittered scheduling/backoff to decorrelate concurrent sessions and avoid synchronized background spikes.
     - git status monitoring runs in the control-plane runtime and emits `directory-git-updated` observed events; client-side git polling workers are removed.
+    - startup clients can request the current gateway-owned git cache through `directory.git-status`, eliminating startup races where first-update events were emitted before client subscriptions attached.
     - control-plane git monitoring is throttled by config (`pollMs`, `maxConcurrency`, and per-directory refresh floor) to bound background polling cost under large directory sets.
     - exited sessions are tombstoned with TTL-based cleanup to avoid unbounded daemon memory growth while preserving short-lived post-exit status/snapshot queries.
     - control-plane wrappers now include `attention.list`, `session.respond`, `session.interrupt`, and `session.remove` to provide parity-safe steering and explicit tombstone cleanup.

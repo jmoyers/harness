@@ -49,6 +49,7 @@ Harness is built for developers who want to:
 - Home-pane task/repo/composer keybindings are config-driven under `mux.keybindings` action IDs (`mux.home.*`), so defaults can be fully remapped in `harness.config.jsonc`.
 - Real-time typed event stream for status, telemetry, control changes, and output.
 - Control-plane-owned git monitoring publishes `directory-git-updated` events; git polling/execution is no longer done in the client mux loop.
+- Mux startup hydrates git/repository grouping from the gateway cache via `directory.git-status`, so early startup events cannot strand tracked projects under `untracked`.
 - Codex history enrichment is ingested incrementally from appended bytes (non-blocking) instead of full-file rereads each poll.
 - Codex notify-hook relay support on the same stream (`session-event notify`, including `agent-turn-complete` payloads).
 - Lifecycle hook connectors for external integrations (sound packs, webhooks, automation).

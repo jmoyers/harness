@@ -63,7 +63,7 @@ function readOptionalBoolean(record: CommandRecord, field: string): boolean | nu
 function readOptionalInteger(
   record: CommandRecord,
   field: string,
-  minInclusive: number
+  minInclusive: number,
 ): number | null | undefined {
   const value = readNumber(record[field]);
   if (record[field] !== undefined && value === null) {
@@ -80,7 +80,7 @@ function readOptionalInteger(
 
 function readOptionalNullableString(
   record: CommandRecord,
-  field: string
+  field: string,
 ): string | null | undefined | typeof INVALID_OPTIONAL {
   const value = record[field];
   if (value === undefined) {
@@ -97,7 +97,7 @@ function readOptionalNullableString(
 
 function readOptionalNullableNonNegativeInteger(
   record: CommandRecord,
-  field: string
+  field: string,
 ): number | null | undefined | typeof INVALID_OPTIONAL {
   const value = record[field];
   if (value === undefined) {
@@ -230,7 +230,7 @@ function parseDirectoryUpsert(record: CommandRecord): StreamCommand | null {
   }
   const command: StreamCommand = {
     type: 'directory.upsert',
-    path
+    path,
   };
   if (directoryId !== null) {
     command.directoryId = directoryId;
@@ -263,7 +263,7 @@ function parseDirectoryList(record: CommandRecord): StreamCommand | null {
     return null;
   }
   const command: StreamCommand = {
-    type: 'directory.list'
+    type: 'directory.list',
   };
   if (tenantId !== null) {
     command.tenantId = tenantId;
@@ -290,8 +290,39 @@ function parseDirectoryArchive(record: CommandRecord): StreamCommand | null {
   }
   return {
     type: 'directory.archive',
-    directoryId
+    directoryId,
   };
+}
+
+function parseDirectoryGitStatusList(record: CommandRecord): StreamCommand | null {
+  const tenantId = readOptionalString(record, 'tenantId');
+  const userId = readOptionalString(record, 'userId');
+  const workspaceId = readOptionalString(record, 'workspaceId');
+  const directoryId = readOptionalString(record, 'directoryId');
+  if (
+    tenantId === undefined ||
+    userId === undefined ||
+    workspaceId === undefined ||
+    directoryId === undefined
+  ) {
+    return null;
+  }
+  const command: StreamCommand = {
+    type: 'directory.git-status',
+  };
+  if (tenantId !== null) {
+    command.tenantId = tenantId;
+  }
+  if (userId !== null) {
+    command.userId = userId;
+  }
+  if (workspaceId !== null) {
+    command.workspaceId = workspaceId;
+  }
+  if (directoryId !== null) {
+    command.directoryId = directoryId;
+  }
+  return command;
 }
 
 function parseConversationCreate(record: CommandRecord): StreamCommand | null {
@@ -309,7 +340,7 @@ function parseConversationCreate(record: CommandRecord): StreamCommand | null {
     type: 'conversation.create',
     directoryId,
     title,
-    agentType
+    agentType,
   };
   const adapterState = record['adapterState'];
   if (adapterState !== undefined) {
@@ -343,7 +374,7 @@ function parseConversationList(record: CommandRecord): StreamCommand | null {
     return null;
   }
   const command: StreamCommand = {
-    type: 'conversation.list'
+    type: 'conversation.list',
   };
   if (directoryId !== null) {
     command.directoryId = directoryId;
@@ -373,7 +404,7 @@ function parseConversationArchive(record: CommandRecord): StreamCommand | null {
   }
   return {
     type: 'conversation.archive',
-    conversationId
+    conversationId,
   };
 }
 
@@ -386,7 +417,7 @@ function parseConversationUpdate(record: CommandRecord): StreamCommand | null {
   return {
     type: 'conversation.update',
     conversationId,
-    title
+    title,
   };
 }
 
@@ -397,7 +428,7 @@ function parseConversationDelete(record: CommandRecord): StreamCommand | null {
   }
   return {
     type: 'conversation.delete',
-    conversationId
+    conversationId,
   };
 }
 
@@ -424,7 +455,7 @@ function parseRepositoryUpsert(record: CommandRecord): StreamCommand | null {
   const command: StreamCommand = {
     type: 'repository.upsert',
     name,
-    remoteUrl
+    remoteUrl,
   };
   if (repositoryId !== null) {
     command.repositoryId = repositoryId;
@@ -458,7 +489,7 @@ function parseRepositoryGet(record: CommandRecord): StreamCommand | null {
   }
   return {
     type: 'repository.get',
-    repositoryId
+    repositoryId,
   };
 }
 
@@ -478,7 +509,7 @@ function parseRepositoryList(record: CommandRecord): StreamCommand | null {
     return null;
   }
   const command: StreamCommand = {
-    type: 'repository.list'
+    type: 'repository.list',
   };
   if (tenantId !== null) {
     command.tenantId = tenantId;
@@ -511,7 +542,7 @@ function parseRepositoryUpdate(record: CommandRecord): StreamCommand | null {
   }
   const command: StreamCommand = {
     type: 'repository.update',
-    repositoryId
+    repositoryId,
   };
   if (name !== null) {
     command.name = name;
@@ -539,7 +570,7 @@ function parseRepositoryArchive(record: CommandRecord): StreamCommand | null {
   }
   return {
     type: 'repository.archive',
-    repositoryId
+    repositoryId,
   };
 }
 
@@ -566,7 +597,7 @@ function parseTaskCreate(record: CommandRecord): StreamCommand | null {
   }
   const command: StreamCommand = {
     type: 'task.create',
-    title
+    title,
   };
   if (taskId !== null) {
     command.taskId = taskId;
@@ -603,7 +634,7 @@ function parseTaskGet(record: CommandRecord): StreamCommand | null {
   }
   return {
     type: 'task.get',
-    taskId
+    taskId,
   };
 }
 
@@ -635,7 +666,7 @@ function parseTaskList(record: CommandRecord): StreamCommand | null {
     return null;
   }
   const command: StreamCommand = {
-    type: 'task.list'
+    type: 'task.list',
   };
   if (tenantId !== null) {
     command.tenantId = tenantId;
@@ -681,7 +712,7 @@ function parseTaskUpdate(record: CommandRecord): StreamCommand | null {
 
   const command: StreamCommand = {
     type: 'task.update',
-    taskId
+    taskId,
   };
   if (title !== null) {
     command.title = title;
@@ -713,7 +744,7 @@ function parseTaskDelete(record: CommandRecord): StreamCommand | null {
   }
   return {
     type: 'task.delete',
-    taskId
+    taskId,
   };
 }
 
@@ -732,7 +763,7 @@ function parseTaskClaim(record: CommandRecord): StreamCommand | null {
   const command: StreamCommand = {
     type: 'task.claim',
     taskId,
-    controllerId
+    controllerId,
   };
   if (directoryId !== null) {
     command.directoryId = directoryId;
@@ -753,7 +784,7 @@ function parseTaskComplete(record: CommandRecord): StreamCommand | null {
   }
   return {
     type: 'task.complete',
-    taskId
+    taskId,
   };
 }
 
@@ -764,7 +795,7 @@ function parseTaskQueue(record: CommandRecord): StreamCommand | null {
   }
   return {
     type: 'task.queue',
-    taskId
+    taskId,
   };
 }
 
@@ -775,7 +806,7 @@ function parseTaskReady(record: CommandRecord): StreamCommand | null {
   }
   return {
     type: 'task.ready',
-    taskId
+    taskId,
   };
 }
 
@@ -786,7 +817,7 @@ function parseTaskDraft(record: CommandRecord): StreamCommand | null {
   }
   return {
     type: 'task.draft',
-    taskId
+    taskId,
   };
 }
 
@@ -808,7 +839,7 @@ function parseTaskReorder(record: CommandRecord): StreamCommand | null {
     tenantId,
     userId,
     workspaceId,
-    orderedTaskIds
+    orderedTaskIds,
   };
 }
 
@@ -836,7 +867,7 @@ function parseStreamSubscribe(record: CommandRecord): StreamCommand | null {
     return null;
   }
   const command: StreamCommand = {
-    type: 'stream.subscribe'
+    type: 'stream.subscribe',
   };
   if (tenantId !== null) {
     command.tenantId = tenantId;
@@ -875,7 +906,7 @@ function parseStreamUnsubscribe(record: CommandRecord): StreamCommand | null {
   }
   return {
     type: 'stream.unsubscribe',
-    subscriptionId
+    subscriptionId,
   };
 }
 
@@ -909,11 +940,16 @@ function parseSessionList(record: CommandRecord): StreamCommand | null {
   ) {
     return null;
   }
-  if (sort !== null && sort !== 'attention-first' && sort !== 'started-desc' && sort !== 'started-asc') {
+  if (
+    sort !== null &&
+    sort !== 'attention-first' &&
+    sort !== 'started-desc' &&
+    sort !== 'started-asc'
+  ) {
     return null;
   }
   const command: StreamCommand = {
-    type: 'session.list'
+    type: 'session.list',
   };
   if (tenantId !== null) {
     command.tenantId = tenantId;
@@ -944,11 +980,13 @@ function parseSessionList(record: CommandRecord): StreamCommand | null {
 
 function parseAttentionList(): StreamCommand {
   return {
-    type: 'attention.list'
+    type: 'attention.list',
   };
 }
 
-function parseSessionIdCommand(type: 'session.status' | 'session.snapshot' | 'session.interrupt' | 'session.remove') {
+function parseSessionIdCommand(
+  type: 'session.status' | 'session.snapshot' | 'session.interrupt' | 'session.remove',
+) {
   return (record: CommandRecord): StreamCommand | null => {
     const sessionId = readString(record['sessionId']);
     if (sessionId === null) {
@@ -956,7 +994,7 @@ function parseSessionIdCommand(type: 'session.status' | 'session.snapshot' | 'se
     }
     return {
       type,
-      sessionId
+      sessionId,
     };
   };
 }
@@ -970,7 +1008,7 @@ function parseSessionRespond(record: CommandRecord): StreamCommand | null {
   return {
     type: 'session.respond',
     sessionId,
-    text
+    text,
   };
 }
 
@@ -991,7 +1029,7 @@ function parseSessionClaim(record: CommandRecord): StreamCommand | null {
     type: 'session.claim',
     sessionId,
     controllerId,
-    controllerType
+    controllerType,
   };
   if (controllerLabel !== null) {
     command.controllerLabel = controllerLabel;
@@ -1016,7 +1054,7 @@ function parseSessionRelease(record: CommandRecord): StreamCommand | null {
   }
   const command: StreamCommand = {
     type: 'session.release',
-    sessionId
+    sessionId,
   };
   if (reason !== null) {
     command.reason = reason;
@@ -1055,7 +1093,12 @@ function parsePtyStart(record: CommandRecord): StreamCommand | null {
   const userId = readOptionalString(record, 'userId');
   const workspaceId = readOptionalString(record, 'workspaceId');
   const worktreeId = readOptionalString(record, 'worktreeId');
-  if (tenantId === undefined || userId === undefined || workspaceId === undefined || worktreeId === undefined) {
+  if (
+    tenantId === undefined ||
+    userId === undefined ||
+    workspaceId === undefined ||
+    worktreeId === undefined
+  ) {
     return null;
   }
   const terminalForegroundHex = record['terminalForegroundHex'];
@@ -1071,7 +1114,7 @@ function parsePtyStart(record: CommandRecord): StreamCommand | null {
     sessionId,
     args: argsValue,
     initialCols,
-    initialRows
+    initialRows,
   };
   if (env !== undefined) {
     command.env = env;
@@ -1111,7 +1154,7 @@ function parsePtyAttach(record: CommandRecord): StreamCommand | null {
   }
   const command: StreamCommand = {
     type: 'pty.attach',
-    sessionId
+    sessionId,
   };
   if (sinceCursor !== null) {
     command.sinceCursor = sinceCursor;
@@ -1119,7 +1162,9 @@ function parsePtyAttach(record: CommandRecord): StreamCommand | null {
   return command;
 }
 
-function parsePtySimple(type: 'pty.detach' | 'pty.subscribe-events' | 'pty.unsubscribe-events' | 'pty.close') {
+function parsePtySimple(
+  type: 'pty.detach' | 'pty.subscribe-events' | 'pty.unsubscribe-events' | 'pty.close',
+) {
   return (record: CommandRecord): StreamCommand | null => {
     const sessionId = readString(record['sessionId']);
     if (sessionId === null) {
@@ -1127,7 +1172,7 @@ function parsePtySimple(type: 'pty.detach' | 'pty.subscribe-events' | 'pty.unsub
     }
     return {
       type,
-      sessionId
+      sessionId,
     };
   };
 }
@@ -1140,6 +1185,7 @@ export const DEFAULT_STREAM_COMMAND_PARSERS: StreamCommandParserRegistry = {
   'directory.upsert': parseDirectoryUpsert,
   'directory.list': parseDirectoryList,
   'directory.archive': parseDirectoryArchive,
+  'directory.git-status': parseDirectoryGitStatusList,
   'conversation.create': parseConversationCreate,
   'conversation.list': parseConversationList,
   'conversation.archive': parseConversationArchive,
@@ -1177,12 +1223,12 @@ export const DEFAULT_STREAM_COMMAND_PARSERS: StreamCommandParserRegistry = {
   'pty.detach': parsePtySimple('pty.detach'),
   'pty.subscribe-events': parsePtySimple('pty.subscribe-events'),
   'pty.unsubscribe-events': parsePtySimple('pty.unsubscribe-events'),
-  'pty.close': parsePtySimple('pty.close')
+  'pty.close': parsePtySimple('pty.close'),
 };
 
 export function parseStreamCommand(
   value: unknown,
-  parsers: StreamCommandParserRegistry = DEFAULT_STREAM_COMMAND_PARSERS
+  parsers: StreamCommandParserRegistry = DEFAULT_STREAM_COMMAND_PARSERS,
 ): StreamCommand | null {
   const record = asRecord(value);
   if (record === null) {

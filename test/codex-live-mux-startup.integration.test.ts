@@ -3,10 +3,11 @@ import { test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { connectControlPlaneStreamClient } from '../src/control-plane/stream-client.ts';
 import {
   startControlPlaneStreamServer,
-  type StartControlPlaneSessionInput
+  type StartControlPlaneSessionInput,
 } from '../src/control-plane/stream-server.ts';
 import type { CodexLiveEvent } from '../src/codex/live-session.ts';
 import { startPtySession, type PtyExit } from '../src/pty/pty_host.ts';
@@ -60,7 +61,7 @@ class StartupTestLiveSession {
     for (const handlers of this.attachments.values()) {
       handlers.onData({
         cursor: this.latestCursor,
-        chunk
+        chunk,
       });
     }
   }
@@ -117,7 +118,7 @@ function isPtyExit(value: unknown): value is PtyExit {
 
 function waitForExit(
   session: ReturnType<typeof startPtySession>,
-  timeoutMs: number
+  timeoutMs: number,
 ): Promise<PtyExit> {
   return new Promise((resolveExit, rejectExit) => {
     const timer = setTimeout(() => {
@@ -159,7 +160,7 @@ function normalizeTerminalOutput(value: string): string {
 async function captureMuxBootOutput(
   workspace: string,
   durationMs: number,
-  options: CaptureMuxBootOutputOptions = {}
+  options: CaptureMuxBootOutputOptions = {},
 ): Promise<{ output: string; exit: PtyExit }> {
   const scriptPath = resolve(process.cwd(), 'scripts/codex-live-mux.ts');
   const collected: Buffer[] = [];
@@ -180,8 +181,8 @@ async function captureMuxBootOutput(
     env: {
       ...process.env,
       HARNESS_INVOKE_CWD: workspace,
-      ...(options.extraEnv ?? {})
-    }
+      ...(options.extraEnv ?? {}),
+    },
   });
   let exitResult: PtyExit | null = null;
   const exitPromise = waitForExit(session, 20000);
@@ -205,13 +206,13 @@ async function captureMuxBootOutput(
   const exit = await exitPromise;
   return {
     output: normalizeTerminalOutput(Buffer.concat(collected).toString('utf8')),
-    exit
+    exit,
   };
 }
 
 function startInteractiveMuxSession(
   workspace: string,
-  options: StartInteractiveMuxOptions = {}
+  options: StartInteractiveMuxOptions = {},
 ): {
   readonly session: ReturnType<typeof startPtySession>;
   readonly oracle: TerminalSnapshotOracle;
@@ -238,10 +239,10 @@ function startInteractiveMuxSession(
     env: {
       ...process.env,
       HARNESS_INVOKE_CWD: workspace,
-      ...(options.extraEnv ?? {})
+      ...(options.extraEnv ?? {}),
     },
     initialCols: cols,
-    initialRows: rows
+    initialRows: rows,
   });
   session.on('data', (chunk: Buffer) => {
     oracle.ingest(chunk);
@@ -249,14 +250,14 @@ function startInteractiveMuxSession(
   return {
     session,
     oracle,
-    waitForExit: waitForExit(session, 12000)
+    waitForExit: waitForExit(session, 12000),
   };
 }
 
 async function waitForSnapshotLineContaining(
   oracle: TerminalSnapshotOracle,
   text: string,
-  timeoutMs: number
+  timeoutMs: number,
 ): Promise<{ row: number; col: number }> {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
@@ -266,7 +267,7 @@ async function waitForSnapshotLineContaining(
       const colIndex = frame.lines[rowIndex]!.indexOf(text);
       return {
         row: rowIndex + 1,
-        col: colIndex + 1
+        col: colIndex + 1,
       };
     }
     await delay(40);
@@ -277,12 +278,19 @@ async function waitForSnapshotLineContaining(
 function writeLeftMouseClick(
   session: ReturnType<typeof startPtySession>,
   col: number,
-  row: number
+  row: number,
 ): void {
   const safeCol = Math.max(1, Math.floor(col));
   const safeRow = Math.max(1, Math.floor(row));
   session.write(`\u001b[<0;${String(safeCol)};${String(safeRow)}M`);
   session.write(`\u001b[<0;${String(safeCol)};${String(safeRow)}m`);
+}
+
+function runGit(cwd: string, args: readonly string[]): void {
+  execFileSync('git', [...args], {
+    cwd,
+    stdio: 'ignore',
+  });
 }
 
 void test(
@@ -301,7 +309,100 @@ void test(
       rmSync(workspace, { recursive: true, force: true });
     }
   },
-  { timeout: 20000 }
+  { timeout: 20000 },
+);
+
+void test(
+  'codex-live-mux startup hydrates tracked repository groups from gateway git cache',
+  async () => {
+    const workspace = createWorkspace();
+    const repoRoot = join(workspace, 'repo-harness');
+    mkdirSync(repoRoot, { recursive: true });
+    runGit(repoRoot, ['init']);
+    runGit(repoRoot, ['remote', 'add', 'origin', 'https://github.com/example/harness.git']);
+    const projectAPath = join(repoRoot, 'project-a');
+    const projectBPath = join(repoRoot, 'project-b');
+    mkdirSync(projectAPath, { recursive: true });
+    mkdirSync(projectBPath, { recursive: true });
+
+    const tenantId = 'tenant-git-cache';
+    const userId = 'user-git-cache';
+    const workspaceId = 'workspace-git-cache';
+    const worktreeId = 'worktree-git-cache';
+
+    const server = await startControlPlaneStreamServer({
+      stateStorePath: join(workspace, '.harness', 'control-plane.sqlite'),
+      gitStatus: {
+        enabled: true,
+        pollMs: 60_000,
+        maxConcurrency: 1,
+        minDirectoryRefreshMs: 60_000,
+      },
+      startSession: (input) => new StartupTestLiveSession(input),
+    });
+    const address = server.address();
+    const client = await connectControlPlaneStreamClient({
+      host: address.address,
+      port: address.port,
+    });
+
+    try {
+      await client.sendCommand({
+        type: 'directory.upsert',
+        directoryId: 'directory-project-a',
+        tenantId,
+        userId,
+        workspaceId,
+        path: projectAPath,
+      });
+      await client.sendCommand({
+        type: 'directory.upsert',
+        directoryId: 'directory-project-b',
+        tenantId,
+        userId,
+        workspaceId,
+        path: projectBPath,
+      });
+      await client.sendCommand({
+        type: 'conversation.create',
+        conversationId: 'conversation-project-a',
+        directoryId: 'directory-project-a',
+        title: 'thread a',
+        agentType: 'codex',
+        adapterState: {},
+      });
+      await client.sendCommand({
+        type: 'conversation.create',
+        conversationId: 'conversation-project-b',
+        directoryId: 'directory-project-b',
+        title: 'thread b',
+        agentType: 'codex',
+        adapterState: {},
+      });
+      await delay(180);
+
+      const result = await captureMuxBootOutput(workspace, 2200, {
+        controlPlaneHost: address.address,
+        controlPlanePort: address.port,
+        extraEnv: {
+          HARNESS_TENANT_ID: tenantId,
+          HARNESS_USER_ID: userId,
+          HARNESS_WORKSPACE_ID: workspaceId,
+          HARNESS_WORKTREE_ID: worktreeId,
+        },
+      });
+      assertExpectedBootTeardownExit(result.exit);
+      assert.equal(result.output.includes('harness (2 projects'), true);
+      assert.equal(result.output.includes('untracked (3 projects'), false);
+      assert.equal(result.output.includes('thread a'), true);
+      assert.equal(result.output.includes('thread b'), true);
+    } finally {
+      client.close();
+      await server.close();
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  },
+  { timeout: 30000 },
 );
 
 void test(
@@ -322,12 +423,12 @@ void test(
       startSession: (input) => {
         startedSessionInputs.push(input);
         return new StartupTestLiveSession(input);
-      }
+      },
     });
     const address = server.address();
     const client = await connectControlPlaneStreamClient({
       host: address.address,
-      port: address.port
+      port: address.port,
     });
 
     try {
@@ -337,7 +438,7 @@ void test(
         tenantId,
         userId,
         workspaceId,
-        path: join(workspace, 'project-a')
+        path: join(workspace, 'project-a'),
       });
       await client.sendCommand({
         type: 'directory.upsert',
@@ -345,12 +446,12 @@ void test(
         tenantId,
         userId,
         workspaceId,
-        path: join(workspace, 'project-b')
+        path: join(workspace, 'project-b'),
       });
 
       for (const [conversationId, directoryId] of [
         ['conversation-project-a', 'directory-project-a'],
-        ['conversation-project-b', 'directory-project-b']
+        ['conversation-project-b', 'directory-project-b'],
       ] as const) {
         await client.sendCommand({
           type: 'conversation.create',
@@ -358,29 +459,29 @@ void test(
           directoryId,
           title: '',
           agentType: 'codex',
-          adapterState: {}
+          adapterState: {},
         });
         await client.sendCommand({
           type: 'pty.start',
           sessionId: conversationId,
           args: ['resume', `thread-${conversationId}`],
           env: {
-            TERM: 'xterm-256color'
+            TERM: 'xterm-256color',
           },
           initialCols: 80,
           initialRows: 24,
           tenantId,
           userId,
           workspaceId,
-          worktreeId
+          worktreeId,
         });
         await client.sendCommand({
           type: 'session.remove',
-          sessionId: conversationId
+          sessionId: conversationId,
         });
         await client.sendCommand({
           type: 'conversation.archive',
-          conversationId
+          conversationId,
         });
       }
 
@@ -393,8 +494,8 @@ void test(
           HARNESS_USER_ID: userId,
           HARNESS_WORKSPACE_ID: workspaceId,
           HARNESS_WORKTREE_ID: worktreeId,
-          HARNESS_MUX_BACKGROUND_RESUME: '1'
-        }
+          HARNESS_MUX_BACKGROUND_RESUME: '1',
+        },
       });
       assertExpectedBootTeardownExit(result.exit);
       assert.equal(startedSessionInputs.length, startsBeforeMux);
@@ -404,7 +505,7 @@ void test(
         tenantId,
         userId,
         workspaceId,
-        worktreeId
+        worktreeId,
       });
       const sessions = Array.isArray(listedSessions['sessions']) ? listedSessions['sessions'] : [];
       assert.equal(sessions.length, 0);
@@ -414,7 +515,7 @@ void test(
       rmSync(workspace, { recursive: true, force: true });
     }
   },
-  { timeout: 20000 }
+  { timeout: 20000 },
 );
 
 void test(
@@ -435,7 +536,7 @@ void test(
       rmSync(workspace, { recursive: true, force: true });
     }
   },
-  { timeout: 20000 }
+  { timeout: 20000 },
 );
 
 void test(
@@ -458,7 +559,7 @@ void test(
       rmSync(workspace, { recursive: true, force: true });
     }
   },
-  { timeout: 20000 }
+  { timeout: 20000 },
 );
 
 void test(
@@ -467,7 +568,7 @@ void test(
     const workspace = createWorkspace();
     const interactive = startInteractiveMuxSession(workspace, {
       cols: 100,
-      rows: 30
+      rows: 30,
     });
 
     try {
@@ -480,7 +581,7 @@ void test(
       const shortcutsCell = await waitForSnapshotLineContaining(
         interactive.oracle,
         'shortcuts [-]',
-        12000
+        12000,
       );
       writeLeftMouseClick(interactive.session, shortcutsCell.col, shortcutsCell.row);
 
@@ -496,7 +597,7 @@ void test(
       }
     }
   },
-  { timeout: 30000 }
+  { timeout: 30000 },
 );
 
 void test(
@@ -505,11 +606,15 @@ void test(
     const workspace = createWorkspace();
     const interactive = startInteractiveMuxSession(workspace, {
       cols: 100,
-      rows: 30
+      rows: 30,
     });
 
     try {
-      const threadButtonCell = await waitForSnapshotLineContaining(interactive.oracle, '[+ thread]', 12000);
+      const threadButtonCell = await waitForSnapshotLineContaining(
+        interactive.oracle,
+        '[+ thread]',
+        12000,
+      );
       writeLeftMouseClick(interactive.session, threadButtonCell.col, threadButtonCell.row);
       await waitForSnapshotLineContaining(interactive.oracle, 'New Thread', 12000);
     } finally {
@@ -523,5 +628,5 @@ void test(
       }
     }
   },
-  { timeout: 30000 }
+  { timeout: 30000 },
 );

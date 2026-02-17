@@ -37,6 +37,31 @@ interface ControlPlaneRepositoryRecord {
   readonly archivedAt: string | null;
 }
 
+interface ControlPlaneGitSummaryRecord {
+  readonly branch: string;
+  readonly changedFiles: number;
+  readonly additions: number;
+  readonly deletions: number;
+}
+
+interface ControlPlaneGitRepositorySnapshotRecord {
+  readonly normalizedRemoteUrl: string | null;
+  readonly commitCount: number | null;
+  readonly lastCommitAt: string | null;
+  readonly shortCommitHash: string | null;
+  readonly inferredName: string | null;
+  readonly defaultBranch: string | null;
+}
+
+interface ControlPlaneDirectoryGitStatusRecord {
+  readonly directoryId: string;
+  readonly summary: ControlPlaneGitSummaryRecord;
+  readonly repositorySnapshot: ControlPlaneGitRepositorySnapshotRecord;
+  readonly repositoryId: string | null;
+  readonly repository: ControlPlaneRepositoryRecord | null;
+  readonly observedAt: string;
+}
+
 type TaskStatus = 'draft' | 'ready' | 'in-progress' | 'completed';
 
 interface ControlPlaneTaskRecord {
@@ -126,7 +151,7 @@ export function parseDirectoryRecord(value: unknown): ControlPlaneDirectoryRecor
     workspaceId,
     path,
     createdAt,
-    archivedAt
+    archivedAt,
   };
 }
 
@@ -180,7 +205,7 @@ export function parseConversationRecord(value: unknown): ControlPlaneConversatio
     agentType,
     adapterState,
     runtimeStatus,
-    runtimeLive
+    runtimeLive,
   };
 }
 
@@ -226,7 +251,88 @@ export function parseRepositoryRecord(value: unknown): ControlPlaneRepositoryRec
     defaultBranch,
     metadata,
     createdAt,
-    archivedAt
+    archivedAt,
+  };
+}
+
+export function parseDirectoryGitStatusRecord(
+  value: unknown,
+): ControlPlaneDirectoryGitStatusRecord | null {
+  const record = asRecord(value);
+  if (record === null) {
+    return null;
+  }
+  const directoryId = asRequiredString(record['directoryId']);
+  const summaryRecord = asRecord(record['summary']);
+  const repositorySnapshotRecord = asRecord(record['repositorySnapshot']);
+  const repositoryId = asOptionalString(record['repositoryId']);
+  const observedAt = asRequiredString(record['observedAt']);
+
+  if (
+    directoryId === null ||
+    summaryRecord === null ||
+    repositorySnapshotRecord === null ||
+    repositoryId === undefined ||
+    observedAt === null
+  ) {
+    return null;
+  }
+
+  const summaryBranch = asRequiredString(summaryRecord['branch']);
+  const changedFiles = summaryRecord['changedFiles'];
+  const additions = summaryRecord['additions'];
+  const deletions = summaryRecord['deletions'];
+  const normalizedRemoteUrl = asOptionalString(repositorySnapshotRecord['normalizedRemoteUrl']);
+  const commitCountRaw = repositorySnapshotRecord['commitCount'];
+  const lastCommitAt = asOptionalString(repositorySnapshotRecord['lastCommitAt']);
+  const shortCommitHash = asOptionalString(repositorySnapshotRecord['shortCommitHash']);
+  const inferredName = asOptionalString(repositorySnapshotRecord['inferredName']);
+  const defaultBranch = asOptionalString(repositorySnapshotRecord['defaultBranch']);
+  const repositoryRaw = record['repository'];
+  const repository =
+    repositoryRaw === null || repositoryRaw === undefined
+      ? null
+      : parseRepositoryRecord(repositoryRaw);
+
+  if (
+    summaryBranch === null ||
+    typeof changedFiles !== 'number' ||
+    !Number.isFinite(changedFiles) ||
+    typeof additions !== 'number' ||
+    !Number.isFinite(additions) ||
+    typeof deletions !== 'number' ||
+    !Number.isFinite(deletions) ||
+    normalizedRemoteUrl === undefined ||
+    lastCommitAt === undefined ||
+    shortCommitHash === undefined ||
+    inferredName === undefined ||
+    defaultBranch === undefined ||
+    (commitCountRaw !== null &&
+      (typeof commitCountRaw !== 'number' || !Number.isFinite(commitCountRaw))) ||
+    (repositoryRaw !== null && repositoryRaw !== undefined && repository === null)
+  ) {
+    return null;
+  }
+
+  return {
+    directoryId,
+    summary: {
+      branch: summaryBranch,
+      changedFiles,
+      additions,
+      deletions,
+    },
+    repositorySnapshot: {
+      normalizedRemoteUrl,
+      commitCount: commitCountRaw,
+      lastCommitAt,
+      shortCommitHash,
+      inferredName,
+      defaultBranch,
+    },
+    repositoryId,
+    repository,
+    observedAt,
   };
 }
 
@@ -303,7 +409,7 @@ export function parseTaskRecord(value: unknown): ControlPlaneTaskRecord | null {
     claimedAt,
     completedAt,
     createdAt,
-    updatedAt
+    updatedAt,
   };
 }
 
@@ -331,6 +437,6 @@ export function parseSessionControllerRecord(value: unknown): StreamSessionContr
     controllerId,
     controllerType,
     controllerLabel,
-    claimedAt
+    claimedAt,
   };
 }

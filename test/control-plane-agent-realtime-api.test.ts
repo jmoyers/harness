@@ -4,7 +4,7 @@ import { createServer, type AddressInfo, type Socket } from 'node:net';
 import {
   HarnessAgentRealtimeClient,
   type AgentRealtimeEventEnvelope,
-  connectHarnessAgentRealtimeClient
+  connectHarnessAgentRealtimeClient,
 } from '../src/control-plane/agent-realtime-api.ts';
 import type { ControlPlaneStreamClient } from '../src/control-plane/stream-client.ts';
 import {
@@ -15,11 +15,11 @@ import {
   type StreamCommand,
   type StreamObservedEvent,
   type StreamServerEnvelope,
-  type StreamSignal
+  type StreamSignal,
 } from '../src/control-plane/stream-protocol.ts';
 import {
   startControlPlaneStreamServer,
-  type StartControlPlaneSessionInput
+  type StartControlPlaneSessionInput,
 } from '../src/control-plane/stream-server.ts';
 import { TerminalSnapshotOracle } from '../src/terminal/snapshot-oracle.ts';
 import type { CodexLiveEvent } from '../src/codex/live-session.ts';
@@ -88,7 +88,7 @@ class MockRealtimeControlPlaneClient {
   sendInput(sessionId: string, chunk: Buffer): void {
     this.inputCalls.push({
       sessionId,
-      chunk
+      chunk,
     });
   }
 
@@ -96,14 +96,14 @@ class MockRealtimeControlPlaneClient {
     this.resizeCalls.push({
       sessionId,
       cols,
-      rows
+      rows,
     });
   }
 
   sendSignal(sessionId: string, signal: StreamSignal): void {
     this.signalCalls.push({
       sessionId,
-      signal
+      signal,
     });
   }
 
@@ -114,7 +114,7 @@ class MockRealtimeControlPlaneClient {
 
 function createRealtimeClientForTest(
   mockClient: MockRealtimeControlPlaneClient,
-  onHandlerError?: (error: unknown, event: AgentRealtimeEventEnvelope) => void
+  onHandlerError?: (error: unknown, event: AgentRealtimeEventEnvelope) => void,
 ): {
   client: HarnessAgentRealtimeClient;
   envelopeListenerRemoved: () => boolean;
@@ -125,7 +125,7 @@ function createRealtimeClientForTest(
       client: ControlPlaneStreamClient,
       subscriptionId: string,
       removeEnvelopeListener: () => void,
-      onHandlerError?: (error: unknown, event: AgentRealtimeEventEnvelope) => void
+      onHandlerError?: (error: unknown, event: AgentRealtimeEventEnvelope) => void,
     ): HarnessAgentRealtimeClient;
   };
   const client = new RealtimeClientCtor(
@@ -134,11 +134,11 @@ function createRealtimeClientForTest(
     () => {
       envelopeListenerRemoved = true;
     },
-    onHandlerError
+    onHandlerError,
   );
   return {
     client,
-    envelopeListenerRemoved: () => envelopeListenerRemoved
+    envelopeListenerRemoved: () => envelopeListenerRemoved,
   };
 }
 
@@ -191,7 +191,7 @@ class AgentApiLiveSession {
     for (const handlers of this.attachments.values()) {
       handlers.onData({
         cursor: this.latestCursor,
-        chunk
+        chunk,
       });
     }
   }
@@ -215,7 +215,7 @@ class AgentApiLiveSession {
 }
 
 async function startMockHarnessServer(
-  onMessage: (socket: Socket, envelope: StreamClientEnvelope) => void
+  onMessage: (socket: Socket, envelope: StreamClientEnvelope) => void,
 ): Promise<MockHarnessServer> {
   const server = createServer((socket) => {
     let remainder = '';
@@ -254,7 +254,7 @@ async function startMockHarnessServer(
           resolve();
         });
       });
-    }
+    },
   };
 }
 
@@ -268,8 +268,8 @@ void test('agent realtime client streams control events and wraps claim/release 
     socket.write(
       encodeStreamEnvelope({
         kind: 'command.accepted',
-        commandId: envelope.commandId
-      })
+        commandId: envelope.commandId,
+      }),
     );
 
     if (envelope.command.type === 'stream.subscribe') {
@@ -280,9 +280,9 @@ void test('agent realtime client streams control events and wraps claim/release 
           commandId: envelope.commandId,
           result: {
             subscriptionId,
-            cursor: 40
-          }
-        })
+            cursor: 40,
+          },
+        }),
       );
       return;
     }
@@ -301,7 +301,7 @@ void test('agent realtime client streams control events and wraps claim/release 
               controllerId: envelope.command.controllerId,
               controllerType: envelope.command.controllerType,
               controllerLabel: envelope.command.controllerLabel ?? null,
-              claimedAt: '2026-02-01T00:00:00.000Z'
+              claimedAt: '2026-02-01T00:00:00.000Z',
             },
             previousController:
               envelope.command.takeover === true
@@ -309,15 +309,15 @@ void test('agent realtime client streams control events and wraps claim/release 
                     controllerId: 'agent-prev',
                     controllerType: 'agent',
                     controllerLabel: 'agent-prev',
-                    claimedAt: '2026-02-01T00:00:00.000Z'
+                    claimedAt: '2026-02-01T00:00:00.000Z',
                   }
                 : null,
             reason: envelope.command.reason ?? null,
             ts: '2026-02-01T00:00:00.000Z',
             directoryId: null,
-            conversationId: envelope.command.sessionId
-          }
-        })
+            conversationId: envelope.command.sessionId,
+          },
+        }),
       );
       socket.write(
         encodeStreamEnvelope({
@@ -330,10 +330,10 @@ void test('agent realtime client streams control events and wraps claim/release 
               controllerId: envelope.command.controllerId,
               controllerType: envelope.command.controllerType,
               controllerLabel: envelope.command.controllerLabel ?? null,
-              claimedAt: '2026-02-01T00:00:00.000Z'
-            }
-          }
-        })
+              claimedAt: '2026-02-01T00:00:00.000Z',
+            },
+          },
+        }),
       );
       return;
     }
@@ -353,14 +353,14 @@ void test('agent realtime client streams control events and wraps claim/release 
               controllerId: 'agent-prev',
               controllerType: 'agent',
               controllerLabel: 'agent-prev',
-              claimedAt: '2026-02-01T00:00:00.000Z'
+              claimedAt: '2026-02-01T00:00:00.000Z',
             },
             reason: envelope.command.reason ?? null,
             ts: '2026-02-01T00:00:01.000Z',
             directoryId: null,
-            conversationId: envelope.command.sessionId
-          }
-        })
+            conversationId: envelope.command.sessionId,
+          },
+        }),
       );
       socket.write(
         encodeStreamEnvelope({
@@ -368,9 +368,9 @@ void test('agent realtime client streams control events and wraps claim/release 
           commandId: envelope.commandId,
           result: {
             sessionId: envelope.command.sessionId,
-            released: true
-          }
-        })
+            released: true,
+          },
+        }),
       );
       return;
     }
@@ -382,9 +382,9 @@ void test('agent realtime client streams control events and wraps claim/release 
           kind: 'command.completed',
           commandId: envelope.commandId,
           result: {
-            unsubscribed: true
-          }
-        })
+            unsubscribed: true,
+          },
+        }),
       );
       return;
     }
@@ -393,14 +393,14 @@ void test('agent realtime client streams control events and wraps claim/release 
       encodeStreamEnvelope({
         kind: 'command.completed',
         commandId: envelope.commandId,
-        result: {}
-      })
+        result: {},
+      }),
     );
   });
 
   const client = await connectHarnessAgentRealtimeClient({
     host: harness.address.address,
-    port: harness.address.port
+    port: harness.address.port,
   });
 
   const controlActions: string[] = [];
@@ -418,14 +418,14 @@ void test('agent realtime client streams control events and wraps claim/release 
       controllerId: 'agent-1',
       controllerType: 'agent',
       controllerLabel: 'agent one',
-      reason: 'start work'
+      reason: 'start work',
     });
     assert.equal(claimed.action, 'claimed');
     assert.equal(claimed.controller.controllerId, 'agent-1');
 
     const released = await client.releaseSession({
       sessionId: 'conversation-1',
-      reason: 'done'
+      reason: 'done',
     });
     assert.equal(released.released, true);
 
@@ -450,24 +450,24 @@ void test('agent realtime client enforces claim ownership and supports takeover 
       const session = new AgentApiLiveSession(input);
       startedSessions.push(session);
       return session;
-    }
+    },
   });
 
   const address = server.address();
   const agentClient = await connectHarnessAgentRealtimeClient({
     host: address.address,
-    port: address.port
+    port: address.port,
   });
   const humanClient = await connectHarnessAgentRealtimeClient({
     host: address.address,
-    port: address.port
+    port: address.port,
   });
 
   const controlEvents: Array<{ action: string; sessionId: string }> = [];
   const removeControlListener = agentClient.on('session.control', (event) => {
     controlEvents.push({
       action: event.observed.action,
-      sessionId: event.observed.sessionId
+      sessionId: event.observed.sessionId,
     });
   });
 
@@ -476,22 +476,22 @@ void test('agent realtime client enforces claim ownership and supports takeover 
       sessionId: 'lock-session',
       args: [],
       env: {
-        TERM: 'xterm-256color'
+        TERM: 'xterm-256color',
       },
       initialCols: 100,
-      initialRows: 30
+      initialRows: 30,
     });
 
     await agentClient.claimSession({
       sessionId: 'lock-session',
       controllerId: 'agent-owner',
       controllerType: 'agent',
-      controllerLabel: 'owner-agent'
+      controllerLabel: 'owner-agent',
     });
 
     await assert.rejects(
       humanClient.respond('lock-session', 'human input'),
-      /session is claimed by owner-agent/
+      /session is claimed by owner-agent/,
     );
 
     const takeover = await humanClient.takeoverSession({
@@ -499,7 +499,7 @@ void test('agent realtime client enforces claim ownership and supports takeover 
       controllerId: 'human-owner',
       controllerType: 'human',
       controllerLabel: 'human operator',
-      reason: 'manual takeover'
+      reason: 'manual takeover',
     });
     assert.equal(takeover.action, 'taken-over');
 
@@ -507,8 +507,14 @@ void test('agent realtime client enforces claim ownership and supports takeover 
     assert.equal(responded.responded, true);
 
     await new Promise((resolve) => setTimeout(resolve, 10));
-    assert.equal(controlEvents.some((event) => event.action === 'taken-over'), true);
-    assert.equal(startedSessions[0]?.writes.some((chunk) => chunk.toString('utf8') === 'human input'), true);
+    assert.equal(
+      controlEvents.some((event) => event.action === 'taken-over'),
+      true,
+    );
+    assert.equal(
+      startedSessions[0]?.writes.some((chunk) => chunk.toString('utf8') === 'human input'),
+      true,
+    );
   } finally {
     removeControlListener();
     await humanClient.close();
@@ -525,8 +531,8 @@ void test('agent realtime client rejects malformed claim payloads', async () => 
     socket.write(
       encodeStreamEnvelope({
         kind: 'command.accepted',
-        commandId: envelope.commandId
-      })
+        commandId: envelope.commandId,
+      }),
     );
     if (envelope.command.type === 'stream.subscribe') {
       socket.write(
@@ -535,9 +541,9 @@ void test('agent realtime client rejects malformed claim payloads', async () => 
           commandId: envelope.commandId,
           result: {
             subscriptionId: 'sub-1',
-            cursor: 0
-          }
-        })
+            cursor: 0,
+          },
+        }),
       );
       return;
     }
@@ -550,10 +556,10 @@ void test('agent realtime client rejects malformed claim payloads', async () => 
             sessionId: envelope.command.sessionId,
             action: 'claimed',
             controller: {
-              controllerId: 123
-            }
-          }
-        })
+              controllerId: 123,
+            },
+          },
+        }),
       );
       return;
     }
@@ -563,9 +569,9 @@ void test('agent realtime client rejects malformed claim payloads', async () => 
           kind: 'command.completed',
           commandId: envelope.commandId,
           result: {
-            unsubscribed: true
-          }
-        })
+            unsubscribed: true,
+          },
+        }),
       );
       return;
     }
@@ -573,7 +579,7 @@ void test('agent realtime client rejects malformed claim payloads', async () => 
 
   const client = await connectHarnessAgentRealtimeClient({
     host: harness.address.address,
-    port: harness.address.port
+    port: harness.address.port,
   });
 
   try {
@@ -581,9 +587,9 @@ void test('agent realtime client rejects malformed claim payloads', async () => 
       client.claimSession({
         sessionId: 'conversation-1',
         controllerId: 'agent-1',
-        controllerType: 'agent'
+        controllerType: 'agent',
       }),
-      /malformed response/
+      /malformed response/,
     );
   } finally {
     await client.close();
@@ -614,12 +620,14 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
     return Promise.reject(new Error('listener boom'));
   });
 
-  const dispatch = (realtime.client as unknown as {
-    dispatch: (subscriptionId: string, cursor: number, observed: StreamObservedEvent) => void;
-  }).dispatch.bind(realtime.client) as (
+  const dispatch = (
+    realtime.client as unknown as {
+      dispatch: (subscriptionId: string, cursor: number, observed: StreamObservedEvent) => void;
+    }
+  ).dispatch.bind(realtime.client) as (
     subscriptionId: string,
     cursor: number,
-    observed: StreamObservedEvent
+    observed: StreamObservedEvent,
   ) => void;
 
   const directoryPayload = {
@@ -629,7 +637,7 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
     workspaceId: 'workspace-local',
     path: '/tmp/project',
     archivedAt: null,
-    updatedAt: '2026-02-01T00:00:00.000Z'
+    updatedAt: '2026-02-01T00:00:00.000Z',
   };
   const conversationPayload = {
     conversationId: 'conversation-1',
@@ -638,28 +646,28 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
     agentType: 'codex',
     archivedAt: null,
     updatedAt: '2026-02-01T00:00:00.000Z',
-    adapterState: null
+    adapterState: null,
   };
   const repositoryPayload = {
     repositoryId: 'repository-1',
     name: 'harness',
-    remoteUrl: 'https://github.com/acme/harness.git'
+    remoteUrl: 'https://github.com/acme/harness.git',
   };
   const taskPayload = {
     taskId: 'task-1',
     repositoryId: 'repository-1',
-    status: 'ready'
+    status: 'ready',
   };
   const timestamp = '2026-02-01T00:00:00.000Z';
   const mappedEvents: StreamObservedEvent[] = [
     {
       type: 'directory-upserted',
-      directory: directoryPayload
+      directory: directoryPayload,
     },
     {
       type: 'directory-archived',
       directoryId: 'directory-1',
-      ts: timestamp
+      ts: timestamp,
     },
     {
       type: 'directory-git-updated',
@@ -668,7 +676,7 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
         branch: 'main',
         changedFiles: 2,
         additions: 5,
-        deletions: 1
+        deletions: 1,
       },
       repositorySnapshot: {
         normalizedRemoteUrl: 'https://github.com/example/harness',
@@ -676,63 +684,63 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
         lastCommitAt: timestamp,
         shortCommitHash: 'abc1234',
         inferredName: 'harness',
-        defaultBranch: 'main'
+        defaultBranch: 'main',
       },
       repositoryId: 'repository-1',
       repository: {
         repositoryId: 'repository-1',
-        name: 'harness'
+        name: 'harness',
       },
-      observedAt: timestamp
+      observedAt: timestamp,
     },
     {
       type: 'conversation-created',
-      conversation: conversationPayload
+      conversation: conversationPayload,
     },
     {
       type: 'conversation-updated',
-      conversation: conversationPayload
+      conversation: conversationPayload,
     },
     {
       type: 'conversation-archived',
       conversationId: 'conversation-1',
-      ts: timestamp
+      ts: timestamp,
     },
     {
       type: 'conversation-deleted',
       conversationId: 'conversation-1',
-      ts: timestamp
+      ts: timestamp,
     },
     {
       type: 'repository-upserted',
-      repository: repositoryPayload
+      repository: repositoryPayload,
     },
     {
       type: 'repository-updated',
-      repository: repositoryPayload
+      repository: repositoryPayload,
     },
     {
       type: 'repository-archived',
       repositoryId: 'repository-1',
-      ts: timestamp
+      ts: timestamp,
     },
     {
       type: 'task-created',
-      task: taskPayload
+      task: taskPayload,
     },
     {
       type: 'task-updated',
-      task: taskPayload
+      task: taskPayload,
     },
     {
       type: 'task-deleted',
       taskId: 'task-1',
-      ts: timestamp
+      ts: timestamp,
     },
     {
       type: 'task-reordered',
       tasks: [taskPayload],
-      ts: timestamp
+      ts: timestamp,
     },
     {
       type: 'session-status',
@@ -744,7 +752,7 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
       controller: null,
       ts: timestamp,
       directoryId: null,
-      conversationId: 'conversation-1'
+      conversationId: 'conversation-1',
     },
     {
       type: 'session-event',
@@ -753,12 +761,12 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
         type: 'session-exit',
         exit: {
           code: 0,
-          signal: null
-        }
+          signal: null,
+        },
       },
       ts: timestamp,
       directoryId: null,
-      conversationId: 'conversation-1'
+      conversationId: 'conversation-1',
     },
     {
       type: 'session-key-event',
@@ -769,11 +777,11 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
         severity: 'INFO',
         summary: 'request complete',
         statusHint: 'running',
-        observedAt: timestamp
+        observedAt: timestamp,
       },
       ts: timestamp,
       directoryId: null,
-      conversationId: 'conversation-1'
+      conversationId: 'conversation-1',
     },
     {
       type: 'session-control',
@@ -783,13 +791,13 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
         controllerId: 'agent-1',
         controllerType: 'agent',
         controllerLabel: null,
-        claimedAt: timestamp
+        claimedAt: timestamp,
       },
       previousController: null,
       reason: null,
       ts: timestamp,
       directoryId: null,
-      conversationId: 'conversation-1'
+      conversationId: 'conversation-1',
     },
     {
       type: 'session-output',
@@ -798,8 +806,8 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
       chunkBase64: Buffer.from('data', 'utf8').toString('base64'),
       ts: timestamp,
       directoryId: null,
-      conversationId: 'conversation-1'
-    }
+      conversationId: 'conversation-1',
+    },
   ];
 
   for (const event of mappedEvents) {
@@ -825,10 +833,13 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
     'session.event',
     'session.telemetry',
     'session.control',
-    'session.output'
+    'session.output',
   ]);
   assert.deepEqual(statusEventSessionIds, ['conversation-1']);
-  assert.equal(wildcardSubscriptionIds.every((subscriptionId) => subscriptionId === 'subscription-test'), true);
+  assert.equal(
+    wildcardSubscriptionIds.every((subscriptionId) => subscriptionId === 'subscription-test'),
+    true,
+  );
   assert.deepEqual(handlerErrors, ['listener boom']);
 
   removeStatusA();
@@ -856,12 +867,12 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
         exitedAt: null,
         live: true,
         controller: null,
-        telemetry: null
+        telemetry: null,
       },
       {
-        sessionId: 123
-      }
-    ]
+        sessionId: 123,
+      },
+    ],
   });
   mockClient.queueResult('session.status', {
     sessionId: 'conversation-1',
@@ -882,10 +893,10 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
     exitedAt: null,
     live: true,
     controller: null,
-    telemetry: null
+    telemetry: null,
   });
   mockClient.queueResult('session.status', {
-    sessionId: 99
+    sessionId: 99,
   });
   mockClient.queueResult('session.claim', {
     sessionId: 'conversation-1',
@@ -894,8 +905,8 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
       controllerId: 'agent-1',
       controllerType: 'agent',
       controllerLabel: null,
-      claimedAt: timestamp
-    }
+      claimedAt: timestamp,
+    },
   });
   mockClient.queueResult('session.claim', {
     sessionId: 'conversation-1',
@@ -904,8 +915,8 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
       controllerId: 'human-1',
       controllerType: 'human',
       controllerLabel: 'operator',
-      claimedAt: timestamp
-    }
+      claimedAt: timestamp,
+    },
   });
   mockClient.queueResult('session.claim', {
     sessionId: 'conversation-1',
@@ -914,66 +925,66 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
       controllerId: 'auto-1',
       controllerType: 'automation',
       controllerLabel: null,
-      claimedAt: timestamp
-    }
+      claimedAt: timestamp,
+    },
   });
   mockClient.queueResult('session.claim', {
     sessionId: 'conversation-1',
     action: 'claimed',
-    controller: 'bad-controller'
+    controller: 'bad-controller',
   });
   mockClient.queueResult('session.release', {
     sessionId: 'conversation-1',
-    released: true
+    released: true,
   });
   mockClient.queueResult('session.release', {
     sessionId: 'conversation-1',
-    released: 'nope'
+    released: 'nope',
   } as unknown as Record<string, unknown>);
   mockClient.queueResult('session.respond', {
     responded: true,
-    sentBytes: 11
+    sentBytes: 11,
   });
   mockClient.queueResult('session.respond', {
-    responded: true
+    responded: true,
   });
   mockClient.queueResult('session.interrupt', {
-    interrupted: true
+    interrupted: true,
   });
   mockClient.queueResult('session.interrupt', {});
   mockClient.queueResult('session.remove', {
-    removed: true
+    removed: true,
   });
   mockClient.queueResult('session.remove', {});
   mockClient.queueResult('pty.start', {
-    sessionId: 'conversation-1'
+    sessionId: 'conversation-1',
   });
   mockClient.queueResult('pty.start', {});
   mockClient.queueResult('pty.attach', {
-    latestCursor: 9
+    latestCursor: 9,
   });
   mockClient.queueResult('pty.attach', {});
   mockClient.queueResult('pty.detach', {
-    detached: true
+    detached: true,
   });
   mockClient.queueResult('pty.detach', {});
   mockClient.queueResult('pty.close', {
-    closed: true
+    closed: true,
   });
   mockClient.queueResult('pty.close', {});
   mockClient.queueResult('session.snapshot', {
-    passthrough: true
+    passthrough: true,
   });
   mockClient.queueError('stream.unsubscribe', new Error('unsubscribe failed'));
 
   const passthroughResult = await realtime.client.sendCommand({
     type: 'session.snapshot',
-    sessionId: 'conversation-1'
+    sessionId: 'conversation-1',
   });
   assert.equal(passthroughResult['passthrough'], true);
 
   const sessions = await realtime.client.listSessions({
-    status: 'running'
+    status: 'running',
   });
   assert.equal(sessions.length, 1);
   assert.equal(sessions[0]?.sessionId, 'conversation-1');
@@ -985,7 +996,7 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
   const claimed = await realtime.client.claimSession({
     sessionId: 'conversation-1',
     controllerId: 'agent-1',
-    controllerType: 'agent'
+    controllerType: 'agent',
   });
   assert.equal(claimed.controller.controllerId, 'agent-1');
   const takeover = await realtime.client.takeoverSession({
@@ -993,39 +1004,42 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
     controllerId: 'human-1',
     controllerType: 'human',
     controllerLabel: 'operator',
-    reason: 'manual'
+    reason: 'manual',
   });
   assert.equal(takeover.action, 'taken-over');
   const automationClaim = await realtime.client.claimSession({
     sessionId: 'conversation-1',
     controllerId: 'auto-1',
-    controllerType: 'automation'
+    controllerType: 'automation',
   });
   assert.equal(automationClaim.controller.controllerType, 'automation');
   await assert.rejects(
     realtime.client.claimSession({
       sessionId: 'conversation-1',
       controllerId: 'agent-1',
-      controllerType: 'agent'
+      controllerType: 'agent',
     }),
-    /malformed response/
+    /malformed response/,
   );
 
   const released = await realtime.client.releaseSession({
-    sessionId: 'conversation-1'
+    sessionId: 'conversation-1',
   });
   assert.equal(released.released, true);
   await assert.rejects(
     realtime.client.releaseSession({
       sessionId: 'conversation-1',
-      reason: 'done'
+      reason: 'done',
     }),
-    /malformed response/
+    /malformed response/,
   );
 
   const responded = await realtime.client.respond('conversation-1', 'hello world');
   assert.equal(responded.sentBytes, 11);
-  await assert.rejects(realtime.client.respond('conversation-1', 'hello world'), /malformed response/);
+  await assert.rejects(
+    realtime.client.respond('conversation-1', 'hello world'),
+    /malformed response/,
+  );
 
   const interrupted = await realtime.client.interrupt('conversation-1');
   assert.equal(interrupted.interrupted, true);
@@ -1039,7 +1053,7 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
     sessionId: 'conversation-1',
     args: [],
     initialCols: 80,
-    initialRows: 24
+    initialRows: 24,
   });
   assert.equal(started.sessionId, 'conversation-1');
   await assert.rejects(
@@ -1047,9 +1061,9 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
       sessionId: 'conversation-1',
       args: [],
       initialCols: 80,
-      initialRows: 24
+      initialRows: 24,
     }),
-    /malformed response/
+    /malformed response/,
   );
 
   const attached = await realtime.client.attachSession('conversation-1');
@@ -1078,7 +1092,9 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
   await realtime.client.close();
   assert.equal(realtime.envelopeListenerRemoved(), true);
   assert.equal(mockClient.closed, true);
-  const unsubscribeCommands = mockClient.commands.filter((command) => command.type === 'stream.unsubscribe');
+  const unsubscribeCommands = mockClient.commands.filter(
+    (command) => command.type === 'stream.unsubscribe',
+  );
   assert.equal(unsubscribeCommands.length, 1);
 });
 
@@ -1094,15 +1110,15 @@ void test('agent realtime client exposes typed CRUD wrappers for projects thread
     workspaceId: 'workspace-local',
     path: '/tmp/project',
     createdAt: timestamp,
-    archivedAt: null
+    archivedAt: null,
   };
   const projectUpdatedRecord = {
     ...projectRecord,
-    path: '/tmp/project-updated'
+    path: '/tmp/project-updated',
   };
   const projectArchivedRecord = {
     ...projectUpdatedRecord,
-    archivedAt: timestamp
+    archivedAt: timestamp,
   };
   const malformedProjectRecord = {
     directoryId: 'directory-1',
@@ -1110,7 +1126,7 @@ void test('agent realtime client exposes typed CRUD wrappers for projects thread
     userId: 'user-local',
     workspaceId: 'workspace-local',
     createdAt: timestamp,
-    archivedAt: null
+    archivedAt: null,
   };
   const threadRecord = {
     conversationId: 'conversation-1',
@@ -1129,9 +1145,9 @@ void test('agent realtime client exposes typed CRUD wrappers for projects thread
     runtimeLastEventAt: timestamp,
     runtimeLastExit: {
       code: null,
-      signal: 'SIGTERM'
+      signal: 'SIGTERM',
     },
-    adapterState: {}
+    adapterState: {},
   };
   const malformedThreadRecord = {
     ...threadRecord,
@@ -1139,15 +1155,15 @@ void test('agent realtime client exposes typed CRUD wrappers for projects thread
     runtimeProcessId: 'invalid-number',
     runtimeLastExit: {
       code: 1,
-      signal: 9
-    }
+      signal: 9,
+    },
   };
   const regexMalformedThreadRecord = {
     ...threadRecord,
     runtimeLastExit: {
       code: 1,
-      signal: 'BAD'
-    }
+      signal: 'BAD',
+    },
   };
   const undefinedSignalThreadRecord = {
     conversationId: 'conversation-1',
@@ -1164,22 +1180,22 @@ void test('agent realtime client exposes typed CRUD wrappers for projects thread
     runtimeAttentionReason: null,
     runtimeLastEventAt: timestamp,
     runtimeLastExit: {},
-    adapterState: {}
+    adapterState: {},
   };
   const nullSignalThreadRecord = {
     ...threadRecord,
     runtimeLastExit: {
       code: 'invalid-code',
-      signal: null
-    }
+      signal: null,
+    },
   };
   const nonObjectExitThreadRecord = {
     ...threadRecord,
-    runtimeLastExit: 'invalid-exit'
+    runtimeLastExit: 'invalid-exit',
   };
   const invalidRuntimeLiveThreadRecord = {
     ...threadRecord,
-    runtimeLive: 'invalid-runtime-live'
+    runtimeLive: 'invalid-runtime-live',
   };
   const missingExitThreadRecord = {
     conversationId: 'conversation-1',
@@ -1196,16 +1212,16 @@ void test('agent realtime client exposes typed CRUD wrappers for projects thread
     runtimeAttentionReason: null,
     runtimeProcessId: null,
     runtimeLastEventAt: timestamp,
-    adapterState: {}
+    adapterState: {},
   };
   const threadUpdatedRecord = {
     ...threadRecord,
-    title: 'Thread One Updated'
+    title: 'Thread One Updated',
   };
   const threadArchivedRecord = {
     ...threadUpdatedRecord,
     archivedAt: timestamp,
-    runtimeLastExit: null
+    runtimeLastExit: null,
   };
   const repositoryRecord = {
     repositoryId: 'repository-1',
@@ -1216,18 +1232,18 @@ void test('agent realtime client exposes typed CRUD wrappers for projects thread
     remoteUrl: 'https://github.com/acme/harness.git',
     defaultBranch: 'main',
     metadata: {
-      provider: 'github'
+      provider: 'github',
     },
     createdAt: timestamp,
-    archivedAt: null
+    archivedAt: null,
   };
   const repositoryUpdatedRecord = {
     ...repositoryRecord,
-    name: 'harness-updated'
+    name: 'harness-updated',
   };
   const repositoryArchivedRecord = {
     ...repositoryUpdatedRecord,
-    archivedAt: timestamp
+    archivedAt: timestamp,
   };
   const taskRecord = {
     taskId: 'task-1',
@@ -1258,10 +1274,10 @@ void test('agent realtime client exposes typed CRUD wrappers for projects thread
       priority: 2,
       estimate: 3,
       dueDate: '2026-03-05',
-      labelIds: ['bug', 'api']
+      labelIds: ['bug', 'api'],
     },
     createdAt: timestamp,
-    updatedAt: timestamp
+    updatedAt: timestamp,
   };
   const taskClaimedRecord = {
     ...taskRecord,
@@ -1271,102 +1287,129 @@ void test('agent realtime client exposes typed CRUD wrappers for projects thread
     branchName: 'task-branch',
     baseBranch: 'main',
     claimedAt: timestamp,
-    updatedAt: timestamp
+    updatedAt: timestamp,
   };
   const taskCompletedRecord = {
     ...taskClaimedRecord,
     status: 'completed',
-    completedAt: timestamp
+    completedAt: timestamp,
   };
 
   mockClient.queueResult('stream.subscribe', {
     subscriptionId: 'subscription-extra',
-    cursor: 44
+    cursor: 44,
   });
   mockClient.queueResult('stream.subscribe', {
     subscriptionId: 'subscription-malformed',
-    cursor: 45
+    cursor: 45,
   });
   mockClient.queueResult('stream.unsubscribe', {
-    unsubscribed: true
+    unsubscribed: true,
   });
   mockClient.queueResult('stream.unsubscribe', {});
 
   mockClient.queueResult('directory.upsert', {
-    directory: projectRecord
+    directory: projectRecord,
   });
   mockClient.queueResult('directory.upsert', {
-    directory: projectRecord
+    directory: projectRecord,
   });
   mockClient.queueResult('directory.upsert', {
-    directory: projectUpdatedRecord
+    directory: projectUpdatedRecord,
   });
   mockClient.queueResult('directory.upsert', {
-    directory: []
+    directory: [],
   });
   mockClient.queueResult('directory.upsert', {
-    directory: malformedProjectRecord
+    directory: malformedProjectRecord,
   });
   mockClient.queueResult('directory.list', {
-    directories: [projectRecord]
+    directories: [projectRecord],
   });
   mockClient.queueResult('directory.list', {
-    directories: [projectRecord]
+    directories: [projectRecord],
   });
   mockClient.queueResult('directory.list', {
-    directories: []
+    directories: [],
   });
   mockClient.queueResult('directory.list', {
-    directories: {}
+    directories: {},
+  });
+  mockClient.queueResult('directory.git-status', {
+    gitStatuses: [
+      {
+        directoryId: 'directory-1',
+        summary: {
+          branch: 'main',
+          changedFiles: 1,
+          additions: 2,
+          deletions: 0,
+        },
+        repositorySnapshot: {
+          normalizedRemoteUrl: 'https://github.com/acme/harness.git',
+          commitCount: 10,
+          lastCommitAt: timestamp,
+          shortCommitHash: 'abc1234',
+          inferredName: 'harness',
+          defaultBranch: 'main',
+        },
+        repositoryId: 'repository-1',
+        repository: repositoryRecord,
+        observedAt: timestamp,
+      },
+    ],
+  });
+  mockClient.queueResult('directory.git-status', {
+    gitStatuses: [{}],
   });
   mockClient.queueResult('directory.archive', {
-    directory: projectArchivedRecord
+    directory: projectArchivedRecord,
   });
 
   mockClient.queueResult('conversation.create', {
-    conversation: threadRecord
+    conversation: threadRecord,
   });
   mockClient.queueResult('conversation.create', {
-    conversation: malformedThreadRecord as unknown as Record<string, unknown>
+    conversation: malformedThreadRecord as unknown as Record<string, unknown>,
   });
   mockClient.queueResult('conversation.list', {
-    conversations: [threadRecord]
+    conversations: [threadRecord],
   });
   mockClient.queueResult('conversation.list', {
-    conversations: [threadRecord]
+    conversations: [threadRecord],
   });
   mockClient.queueResult('conversation.list', {
-    conversations: []
+    conversations: [],
   });
   mockClient.queueResult('conversation.update', {
-    conversation: threadUpdatedRecord
+    conversation: threadUpdatedRecord,
   });
   mockClient.queueResult('conversation.update', {
-    conversation: regexMalformedThreadRecord as unknown as Record<string, unknown>
+    conversation: regexMalformedThreadRecord as unknown as Record<string, unknown>,
   });
   mockClient.queueResult('conversation.update', {
-    conversation: undefinedSignalThreadRecord as unknown as Record<string, unknown>
+    conversation: undefinedSignalThreadRecord as unknown as Record<string, unknown>,
   });
   mockClient.queueResult('conversation.update', {
-    conversation: nullSignalThreadRecord as unknown as Record<string, unknown>
+    conversation: nullSignalThreadRecord as unknown as Record<string, unknown>,
   });
   mockClient.queueResult('conversation.update', {
-    conversation: nonObjectExitThreadRecord as unknown as Record<string, unknown>
+    conversation: nonObjectExitThreadRecord as unknown as Record<string, unknown>,
   });
   mockClient.queueResult('conversation.update', {
-    conversation: invalidRuntimeLiveThreadRecord as unknown as Record<string, unknown>
+    conversation: invalidRuntimeLiveThreadRecord as unknown as Record<string, unknown>,
   });
   mockClient.queueResult('conversation.update', {
-    conversation: missingExitThreadRecord as unknown as Record<string, unknown>
+    conversation: missingExitThreadRecord as unknown as Record<string, unknown>,
   });
   mockClient.queueResult('conversation.archive', {
-    conversation: threadArchivedRecord
+    conversation: threadArchivedRecord,
   });
   mockClient.queueResult('conversation.archive', {
-    conversation: []
+    conversation: [],
   });
   mockClient.queueResult('conversation.delete', {
-    deleted: true
+    deleted: true,
   });
   mockClient.queueResult('conversation.delete', {});
   mockClient.queueResult('session.status', {
@@ -1388,88 +1431,90 @@ void test('agent realtime client exposes typed CRUD wrappers for projects thread
     exitedAt: null,
     live: true,
     controller: null,
-    telemetry: null
+    telemetry: null,
   });
 
   mockClient.queueResult('repository.upsert', {
-    repository: repositoryRecord
+    repository: repositoryRecord,
   });
   mockClient.queueResult('repository.upsert', {
-    repository: repositoryRecord
+    repository: repositoryRecord,
   });
   mockClient.queueResult('repository.upsert', {
-    repository: []
+    repository: [],
   });
   mockClient.queueResult('repository.get', {
-    repository: repositoryRecord
+    repository: repositoryRecord,
   });
   mockClient.queueResult('repository.list', {
-    repositories: [repositoryRecord]
+    repositories: [repositoryRecord],
   });
   mockClient.queueResult('repository.list', {
-    repositories: [{}]
+    repositories: [{}],
   });
   mockClient.queueResult('repository.update', {
-    repository: repositoryUpdatedRecord
+    repository: repositoryUpdatedRecord,
   });
   mockClient.queueResult('repository.archive', {
-    repository: repositoryArchivedRecord
+    repository: repositoryArchivedRecord,
   });
 
   mockClient.queueResult('task.create', {
-    task: taskRecord
+    task: taskRecord,
   });
   mockClient.queueResult('task.create', {
-    task: []
+    task: [],
   });
   mockClient.queueResult('task.get', {
-    task: taskRecord
+    task: taskRecord,
   });
   mockClient.queueResult('task.list', {
-    tasks: [taskRecord]
+    tasks: [taskRecord],
   });
   mockClient.queueResult('task.list', {
-    tasks: [{}]
+    tasks: [{}],
   });
   mockClient.queueResult('task.update', {
-    task: taskClaimedRecord
+    task: taskClaimedRecord,
   });
   mockClient.queueResult('task.delete', {
-    deleted: true
+    deleted: true,
   });
   mockClient.queueResult('task.delete', {});
   mockClient.queueResult('task.claim', {
-    task: taskClaimedRecord
+    task: taskClaimedRecord,
   });
   mockClient.queueResult('task.complete', {
-    task: taskCompletedRecord
+    task: taskCompletedRecord,
   });
   mockClient.queueResult('task.ready', {
-    task: taskRecord
+    task: taskRecord,
   });
   mockClient.queueResult('task.queue', {
-    task: taskRecord
+    task: taskRecord,
   });
   mockClient.queueResult('task.reorder', {
-    tasks: [taskRecord]
+    tasks: [taskRecord],
   });
 
   const createdSub = await realtime.client.subscriptions.create({
-    taskId: 'task-1'
+    taskId: 'task-1',
   });
   assert.equal(createdSub.subscriptionId, 'subscription-extra');
   const removedSub = await createdSub.unsubscribe();
   assert.equal(removedSub.unsubscribed, true);
-  const unknownViaWrapper = await realtime.client.subscriptions.remove('subscription-unknown-wrapper');
+  const unknownViaWrapper = await realtime.client.subscriptions.remove(
+    'subscription-unknown-wrapper',
+  );
   assert.equal(unknownViaWrapper.unsubscribed, false);
   const unknownUnsubscribed = await realtime.client.unsubscribe('subscription-unknown');
   assert.equal(unknownUnsubscribed.unsubscribed, false);
   const malformedSub = await realtime.client.subscribe({
-    repositoryId: 'repository-1'
+    repositoryId: 'repository-1',
   });
   await assert.rejects(
     realtime.client.unsubscribe(malformedSub.subscriptionId),
-    /stream\.unsubscribe returned malformed response/
+    /stream\.unsubscribe returned malformed response/,
   );
 
   const createdProject = await realtime.client.projects.create({
@@ -1477,21 +1522,30 @@ void test('agent realtime client exposes typed CRUD wrappers for projects thread
     tenantId: 'tenant-local',
     userId: 'user-local',
     workspaceId: 'workspace-local',
-    path: '/tmp/project'
+    path: '/tmp/project',
   });
   assert.equal(createdProject.projectId, 'directory-1');
   const upsertedProject = await realtime.client.projects.upsert({
-    path: '/tmp/project'
+    path: '/tmp/project',
   });
   assert.equal(upsertedProject.path, '/tmp/project');
   const updatedProject = await realtime.client.projects.update('directory-1', {
-    path: '/tmp/project-updated'
+    path: '/tmp/project-updated',
   });
   assert.equal(updatedProject.path, '/tmp/project-updated');
   const listedProjects = await realtime.client.projects.list({
-    tenantId: 'tenant-local'
+    tenantId: 'tenant-local',
   });
   assert.equal(listedProjects.length, 1);
+  const listedProjectGitStatus = await realtime.client.projects.listGitStatus({
+    projectId: 'directory-1',
+  });
+  assert.equal(listedProjectGitStatus.length, 1);
+  assert.equal(listedProjectGitStatus[0]?.repositoryId, 'repository-1');
+  await assert.rejects(
+    realtime.client.projects.listGitStatus(),
+    /directory\.git-status returned malformed statuses/,
+  );
   const fetchedProject = await realtime.client.projects.get('directory-1');
   assert.equal(fetchedProject.projectId, 'directory-1');
   await assert.rejects(realtime.client.projects.get('directory-missing'), /project not found/);
@@ -1499,86 +1553,89 @@ void test('agent realtime client exposes typed CRUD wrappers for projects thread
   assert.equal(archivedProject.archivedAt, timestamp);
   await assert.rejects(
     realtime.client.upsertProject({
-      path: '/tmp/bad'
+      path: '/tmp/bad',
     }),
-    /directory\.upsert returned malformed project/
+    /directory\.upsert returned malformed project/,
   );
   await assert.rejects(
     realtime.client.upsertProject({
-      path: '/tmp/bad-2'
+      path: '/tmp/bad-2',
     }),
-    /directory\.upsert returned malformed project/
+    /directory\.upsert returned malformed project/,
   );
-  await assert.rejects(realtime.client.projects.list(), /directory\.list returned malformed projects/);
+  await assert.rejects(
+    realtime.client.projects.list(),
+    /directory\.list returned malformed projects/,
+  );
 
   const createdThread = await realtime.client.threads.create({
     threadId: 'conversation-1',
     projectId: 'directory-1',
     title: 'Thread One',
     agentType: 'codex',
-    adapterState: {}
+    adapterState: {},
   });
   assert.equal(createdThread.threadId, 'conversation-1');
   await assert.rejects(
     realtime.client.createThread({
       projectId: 'directory-1',
       title: 'bad',
-      agentType: 'codex'
+      agentType: 'codex',
     }),
-    /conversation\.create returned malformed thread/
+    /conversation\.create returned malformed thread/,
   );
   const listedThreads = await realtime.client.threads.list({
-    projectId: 'directory-1'
+    projectId: 'directory-1',
   });
   assert.equal(listedThreads.length, 1);
   const fetchedThread = await realtime.client.threads.get('conversation-1');
   assert.equal(fetchedThread.threadId, 'conversation-1');
   await assert.rejects(realtime.client.threads.get('conversation-missing'), /thread not found/);
   const updatedThread = await realtime.client.threads.update('conversation-1', {
-    title: 'Thread One Updated'
+    title: 'Thread One Updated',
   });
   assert.equal(updatedThread.title, 'Thread One Updated');
   await assert.rejects(
     realtime.client.threads.update('conversation-1', {
-      title: 'bad update'
+      title: 'bad update',
     }),
-    /conversation\.update returned malformed thread/
+    /conversation\.update returned malformed thread/,
   );
   await assert.rejects(
     realtime.client.threads.update('conversation-1', {
-      title: 'bad update missing signal'
+      title: 'bad update missing signal',
     }),
-    /conversation\.update returned malformed thread/
+    /conversation\.update returned malformed thread/,
   );
   await assert.rejects(
     realtime.client.threads.update('conversation-1', {
-      title: 'bad update null signal'
+      title: 'bad update null signal',
     }),
-    /conversation\.update returned malformed thread/
+    /conversation\.update returned malformed thread/,
   );
   await assert.rejects(
     realtime.client.threads.update('conversation-1', {
-      title: 'bad update non-object exit'
+      title: 'bad update non-object exit',
     }),
-    /conversation\.update returned malformed thread/
+    /conversation\.update returned malformed thread/,
   );
   await assert.rejects(
     realtime.client.threads.update('conversation-1', {
-      title: 'bad update invalid runtime live'
+      title: 'bad update invalid runtime live',
     }),
-    /conversation\.update returned malformed thread/
+    /conversation\.update returned malformed thread/,
   );
   await assert.rejects(
     realtime.client.threads.update('conversation-1', {
-      title: 'bad update missing exit'
+      title: 'bad update missing exit',
     }),
-    /conversation\.update returned malformed thread/
+    /conversation\.update returned malformed thread/,
   );
   const archivedThread = await realtime.client.threads.archive('conversation-1');
   assert.equal(archivedThread.archivedAt, timestamp);
   await assert.rejects(
     realtime.client.threads.archive('conversation-1'),
-    /conversation\.archive returned malformed thread/
+    /conversation\.archive returned malformed thread/,
   );
   const deletedThread = await realtime.client.threads.delete('conversation-1');
   assert.equal(deletedThread.deleted, true);
@@ -1591,29 +1648,32 @@ void test('agent realtime client exposes typed CRUD wrappers for projects thread
     name: 'harness',
     remoteUrl: 'https://github.com/acme/harness.git',
     metadata: {
-      provider: 'github'
-    }
+      provider: 'github',
+    },
   });
   assert.equal(createdRepository.repositoryId, 'repository-1');
   const upsertedRepository = await realtime.client.repositories.upsert({
     name: 'harness',
-    remoteUrl: 'https://github.com/acme/harness.git'
+    remoteUrl: 'https://github.com/acme/harness.git',
   });
   assert.equal(upsertedRepository.name, 'harness');
   await assert.rejects(
     realtime.client.repositories.upsert({
       name: 'bad',
-      remoteUrl: 'https://github.com/acme/harness.git'
+      remoteUrl: 'https://github.com/acme/harness.git',
     }),
-    /repository\.upsert returned malformed repository/
+    /repository\.upsert returned malformed repository/,
   );
   const fetchedRepository = await realtime.client.repositories.get('repository-1');
   assert.equal(fetchedRepository.repositoryId, 'repository-1');
   const listedRepositories = await realtime.client.repositories.list();
   assert.equal(listedRepositories.length, 1);
-  await assert.rejects(realtime.client.repositories.list(), /repository\.list returned malformed repositories/);
+  await assert.rejects(
+    realtime.client.repositories.list(),
+    /repository\.list returned malformed repositories/,
+  );
   const updatedRepository = await realtime.client.repositories.update('repository-1', {
-    name: 'harness-updated'
+    name: 'harness-updated',
   });
   assert.equal(updatedRepository.name, 'harness-updated');
   const archivedRepository = await realtime.client.repositories.archive('repository-1');
@@ -1623,26 +1683,26 @@ void test('agent realtime client exposes typed CRUD wrappers for projects thread
     taskId: 'task-1',
     repositoryId: 'repository-1',
     title: 'implement api',
-    description: 'details'
+    description: 'details',
   });
   assert.equal(createdTask.taskId, 'task-1');
   assert.equal(createdTask.linear.identifier, 'ENG-9');
   assert.deepEqual(createdTask.linear.labelIds, ['bug', 'api']);
   await assert.rejects(
     realtime.client.createTask({
-      title: 'bad'
+      title: 'bad',
     }),
-    /task\.create returned malformed task/
+    /task\.create returned malformed task/,
   );
   const fetchedTask = await realtime.client.tasks.get('task-1');
   assert.equal(fetchedTask.taskId, 'task-1');
   const listedTasks = await realtime.client.tasks.list({
-    repositoryId: 'repository-1'
+    repositoryId: 'repository-1',
   });
   assert.equal(listedTasks.length, 1);
   await assert.rejects(realtime.client.tasks.list(), /task\.list returned malformed tasks/);
   const updatedTask = await realtime.client.tasks.update('task-1', {
-    title: 'updated'
+    title: 'updated',
   });
   assert.equal(updatedTask.status, 'in-progress');
   assert.equal(updatedTask.linear.priority, 2);
@@ -1654,7 +1714,7 @@ void test('agent realtime client exposes typed CRUD wrappers for projects thread
     controllerId: 'agent-1',
     projectId: 'directory-1',
     branchName: 'task-branch',
-    baseBranch: 'main'
+    baseBranch: 'main',
   });
   assert.equal(claimedTask.claimedByProjectId, 'directory-1');
   const completedTask = await realtime.client.tasks.complete('task-1');
@@ -1667,7 +1727,7 @@ void test('agent realtime client exposes typed CRUD wrappers for projects thread
     tenantId: 'tenant-local',
     userId: 'user-local',
     workspaceId: 'workspace-local',
-    orderedTaskIds: ['task-1']
+    orderedTaskIds: ['task-1'],
   });
   assert.equal(reorderedTasks.length, 1);
 
@@ -1699,11 +1759,11 @@ void test('agent realtime client accepts draft task status and completed thread 
         runtimeLastEventAt: timestamp,
         runtimeLastExit: {
           code: 0,
-          signal: null
+          signal: null,
         },
-        adapterState: {}
-      }
-    ]
+        adapterState: {},
+      },
+    ],
   });
 
   mockClient.queueResult('task.list', {
@@ -1725,9 +1785,9 @@ void test('agent realtime client accepts draft task status and completed thread 
         claimedAt: null,
         completedAt: null,
         createdAt: timestamp,
-        updatedAt: timestamp
-      }
-    ]
+        updatedAt: timestamp,
+      },
+    ],
   });
 
   const threads = await realtime.client.threads.list();
@@ -1762,14 +1822,17 @@ void test('agent realtime client rejects malformed linear task payloads', async 
       claimedAt: null,
       completedAt: null,
       linear: {
-        priority: 9
+        priority: 9,
       },
       createdAt: timestamp,
-      updatedAt: timestamp
-    }
+      updatedAt: timestamp,
+    },
   });
 
-  await assert.rejects(realtime.client.tasks.get('task-invalid-linear'), /task\.get returned malformed task/);
+  await assert.rejects(
+    realtime.client.tasks.get('task-invalid-linear'),
+    /task\.get returned malformed task/,
+  );
   await realtime.client.close();
 });
 
@@ -1795,7 +1858,7 @@ void test('agent realtime client linear parser covers malformed shape branches',
     claimedAt: null,
     completedAt: null,
     createdAt: timestamp,
-    updatedAt: timestamp
+    updatedAt: timestamp,
   };
   const linearShapeBase = {
     issueId: null,
@@ -1810,22 +1873,46 @@ void test('agent realtime client linear parser covers malformed shape branches',
     priority: null,
     estimate: null,
     dueDate: null,
-    labelIds: []
+    labelIds: [],
   };
 
   mockClient.queueResult('task.get', { task: { ...baseTask, linear: [] } });
   mockClient.queueResult('task.get', { task: { ...baseTask, linear: { labelIds: {} } } });
   mockClient.queueResult('task.get', { task: { ...baseTask, linear: { labelIds: ['ok', 7] } } });
-  mockClient.queueResult('task.get', { task: { ...baseTask, linear: { ...linearShapeBase, priority: 1.5 } } });
-  mockClient.queueResult('task.get', { task: { ...baseTask, linear: { ...linearShapeBase, priority: 5 } } });
-  mockClient.queueResult('task.get', { task: { ...baseTask, linear: { ...linearShapeBase, estimate: -1 } } });
+  mockClient.queueResult('task.get', {
+    task: { ...baseTask, linear: { ...linearShapeBase, priority: 1.5 } },
+  });
+  mockClient.queueResult('task.get', {
+    task: { ...baseTask, linear: { ...linearShapeBase, priority: 5 } },
+  });
+  mockClient.queueResult('task.get', {
+    task: { ...baseTask, linear: { ...linearShapeBase, estimate: -1 } },
+  });
 
-  await assert.rejects(realtime.client.tasks.get('task-linear-branches'), /task\.get returned malformed task/);
-  await assert.rejects(realtime.client.tasks.get('task-linear-branches'), /task\.get returned malformed task/);
-  await assert.rejects(realtime.client.tasks.get('task-linear-branches'), /task\.get returned malformed task/);
-  await assert.rejects(realtime.client.tasks.get('task-linear-branches'), /task\.get returned malformed task/);
-  await assert.rejects(realtime.client.tasks.get('task-linear-branches'), /task\.get returned malformed task/);
-  await assert.rejects(realtime.client.tasks.get('task-linear-branches'), /task\.get returned malformed task/);
+  await assert.rejects(
+    realtime.client.tasks.get('task-linear-branches'),
+    /task\.get returned malformed task/,
+  );
+  await assert.rejects(
+    realtime.client.tasks.get('task-linear-branches'),
+    /task\.get returned malformed task/,
+  );
+  await assert.rejects(
+    realtime.client.tasks.get('task-linear-branches'),
+    /task\.get returned malformed task/,
+  );
+  await assert.rejects(
+    realtime.client.tasks.get('task-linear-branches'),
+    /task\.get returned malformed task/,
+  );
+  await assert.rejects(
+    realtime.client.tasks.get('task-linear-branches'),
+    /task\.get returned malformed task/,
+  );
+  await assert.rejects(
+    realtime.client.tasks.get('task-linear-branches'),
+    /task\.get returned malformed task/,
+  );
   await realtime.client.close();
 });
 
@@ -1835,8 +1922,8 @@ void test('agent realtime connect forwards optional filters and ignores unrelate
     if (envelope.kind === 'auth') {
       socket.write(
         encodeStreamEnvelope({
-          kind: 'auth.ok'
-        })
+          kind: 'auth.ok',
+        }),
       );
       return;
     }
@@ -1846,8 +1933,8 @@ void test('agent realtime connect forwards optional filters and ignores unrelate
     socket.write(
       encodeStreamEnvelope({
         kind: 'command.accepted',
-        commandId: envelope.commandId
-      })
+        commandId: envelope.commandId,
+      }),
     );
     if (envelope.command.type === 'stream.subscribe') {
       sockets.add(socket);
@@ -1865,8 +1952,8 @@ void test('agent realtime connect forwards optional filters and ignores unrelate
           kind: 'pty.output',
           sessionId: 'ignored',
           cursor: 1,
-          chunkBase64: Buffer.from('ignored', 'utf8').toString('base64')
-        })
+          chunkBase64: Buffer.from('ignored', 'utf8').toString('base64'),
+        }),
       );
       socket.write(
         encodeStreamEnvelope({
@@ -1880,9 +1967,9 @@ void test('agent realtime connect forwards optional filters and ignores unrelate
             chunkBase64: Buffer.from('buffered', 'utf8').toString('base64'),
             ts: '2026-02-01T00:00:00.000Z',
             directoryId: null,
-            conversationId: 'conversation-local'
-          }
-        })
+            conversationId: 'conversation-local',
+          },
+        }),
       );
       socket.write(
         encodeStreamEnvelope({
@@ -1896,9 +1983,9 @@ void test('agent realtime connect forwards optional filters and ignores unrelate
             chunkBase64: Buffer.from('other', 'utf8').toString('base64'),
             ts: '2026-02-01T00:00:00.000Z',
             directoryId: null,
-            conversationId: 'conversation-other'
-          }
-        })
+            conversationId: 'conversation-other',
+          },
+        }),
       );
       socket.write(
         encodeStreamEnvelope({
@@ -1906,9 +1993,9 @@ void test('agent realtime connect forwards optional filters and ignores unrelate
           commandId: envelope.commandId,
           result: {
             subscriptionId: 'subscription-local',
-            cursor: 44
-          }
-        })
+            cursor: 44,
+          },
+        }),
       );
       return;
     }
@@ -1918,9 +2005,9 @@ void test('agent realtime connect forwards optional filters and ignores unrelate
           kind: 'command.completed',
           commandId: envelope.commandId,
           result: {
-            unsubscribed: true
-          }
-        })
+            unsubscribed: true,
+          },
+        }),
       );
       return;
     }
@@ -1928,8 +2015,8 @@ void test('agent realtime connect forwards optional filters and ignores unrelate
       encodeStreamEnvelope({
         kind: 'command.completed',
         commandId: envelope.commandId,
-        result: {}
-      })
+        result: {},
+      }),
     );
   });
 
@@ -1948,8 +2035,8 @@ void test('agent realtime connect forwards optional filters and ignores unrelate
       directoryId: 'directory-local',
       conversationId: 'conversation-local',
       includeOutput: true,
-      afterCursor: 22
-    }
+      afterCursor: 22,
+    },
   });
   const observedTypes: string[] = [];
   const remove = client.on('*', (event) => {
@@ -1970,9 +2057,9 @@ void test('agent realtime connect forwards optional filters and ignores unrelate
             chunkBase64: Buffer.from('ignored-2', 'utf8').toString('base64'),
             ts: '2026-02-01T00:00:01.000Z',
             directoryId: null,
-            conversationId: 'conversation-other'
-          }
-        })
+            conversationId: 'conversation-other',
+          },
+        }),
       );
       socket.write(
         encodeStreamEnvelope({
@@ -1986,9 +2073,9 @@ void test('agent realtime connect forwards optional filters and ignores unrelate
             chunkBase64: Buffer.from('allowed', 'utf8').toString('base64'),
             ts: '2026-02-01T00:00:02.000Z',
             directoryId: null,
-            conversationId: 'conversation-local'
-          }
-        })
+            conversationId: 'conversation-local',
+          },
+        }),
       );
     }
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -2012,8 +2099,8 @@ void test('agent realtime connect drops post-connect events for unknown subscrip
     socket.write(
       encodeStreamEnvelope({
         kind: 'command.accepted',
-        commandId: envelope.commandId
-      })
+        commandId: envelope.commandId,
+      }),
     );
     if (envelope.command.type === 'stream.subscribe') {
       sockets.add(socket);
@@ -2023,9 +2110,9 @@ void test('agent realtime connect drops post-connect events for unknown subscrip
           commandId: envelope.commandId,
           result: {
             subscriptionId: 'subscription-main',
-            cursor: 0
-          }
-        })
+            cursor: 0,
+          },
+        }),
       );
       return;
     }
@@ -2035,9 +2122,9 @@ void test('agent realtime connect drops post-connect events for unknown subscrip
           kind: 'command.completed',
           commandId: envelope.commandId,
           result: {
-            unsubscribed: true
-          }
-        })
+            unsubscribed: true,
+          },
+        }),
       );
       return;
     }
@@ -2045,14 +2132,14 @@ void test('agent realtime connect drops post-connect events for unknown subscrip
       encodeStreamEnvelope({
         kind: 'command.completed',
         commandId: envelope.commandId,
-        result: {}
-      })
+        result: {},
+      }),
     );
   });
 
   const client = await connectHarnessAgentRealtimeClient({
     host: harness.address.address,
-    port: harness.address.port
+    port: harness.address.port,
   });
   const observed: string[] = [];
   const remove = client.on('*', (event) => {
@@ -2078,9 +2165,9 @@ void test('agent realtime connect drops post-connect events for unknown subscrip
           directoryId: null,
           conversationId: null,
           telemetry: null,
-          controller: null
-        }
-      })
+          controller: null,
+        },
+      }),
     );
     eventSocket.write(
       encodeStreamEnvelope({
@@ -2097,9 +2184,9 @@ void test('agent realtime connect drops post-connect events for unknown subscrip
           directoryId: null,
           conversationId: null,
           telemetry: null,
-          controller: null
-        }
-      })
+          controller: null,
+        },
+      }),
     );
     await new Promise((resolve) => setTimeout(resolve, 10));
     assert.deepEqual(observed, ['subscription-main:session.status']);
@@ -2127,8 +2214,8 @@ void test('agent realtime connect rejects malformed subscribe response and close
     socket.write(
       encodeStreamEnvelope({
         kind: 'command.accepted',
-        commandId: envelope.commandId
-      })
+        commandId: envelope.commandId,
+      }),
     );
     if (envelope.command.type === 'stream.subscribe') {
       socket.write(
@@ -2137,9 +2224,9 @@ void test('agent realtime connect rejects malformed subscribe response and close
           commandId: envelope.commandId,
           result: {
             subscriptionId: '',
-            cursor: 0
-          }
-        })
+            cursor: 0,
+          },
+        }),
       );
     }
   });
@@ -2148,9 +2235,9 @@ void test('agent realtime connect rejects malformed subscribe response and close
     await assert.rejects(
       connectHarnessAgentRealtimeClient({
         host: harness.address.address,
-        port: harness.address.port
+        port: harness.address.port,
       }),
-      /malformed subscription id/
+      /malformed subscription id/,
     );
     await new Promise((resolve) => setTimeout(resolve, 10));
     assert.equal(socketClosed, true);
@@ -2197,11 +2284,11 @@ void test('agent realtime sessions aliases and draft task helper issue expected 
         priority: null,
         estimate: null,
         dueDate: null,
-        labelIds: []
+        labelIds: [],
       },
       createdAt: timestamp,
-      updatedAt: timestamp
-    }
+      updatedAt: timestamp,
+    },
   });
   mockClient.queueResult('session.list', {
     sessions: [
@@ -2224,9 +2311,9 @@ void test('agent realtime sessions aliases and draft task helper issue expected 
         exitedAt: null,
         live: true,
         controller: null,
-        telemetry: null
-      }
-    ]
+        telemetry: null,
+      },
+    ],
   });
   mockClient.queueResult('session.status', {
     sessionId: 'conversation-1',
@@ -2247,7 +2334,7 @@ void test('agent realtime sessions aliases and draft task helper issue expected 
     exitedAt: null,
     live: true,
     controller: null,
-    telemetry: null
+    telemetry: null,
   });
   mockClient.queueResult('session.claim', {
     sessionId: 'conversation-1',
@@ -2256,8 +2343,8 @@ void test('agent realtime sessions aliases and draft task helper issue expected 
       controllerId: 'human-1',
       controllerType: 'human',
       controllerLabel: 'human',
-      claimedAt: timestamp
-    }
+      claimedAt: timestamp,
+    },
   });
   mockClient.queueResult('session.claim', {
     sessionId: 'conversation-1',
@@ -2266,40 +2353,40 @@ void test('agent realtime sessions aliases and draft task helper issue expected 
       controllerId: 'human-1',
       controllerType: 'human',
       controllerLabel: 'human',
-      claimedAt: timestamp
-    }
+      claimedAt: timestamp,
+    },
   });
   mockClient.queueResult('session.release', {
     sessionId: 'conversation-1',
-    released: true
+    released: true,
   });
   mockClient.queueResult('session.respond', {
     responded: true,
-    sentBytes: 3
+    sentBytes: 3,
   });
   mockClient.queueResult('session.interrupt', {
-    interrupted: true
+    interrupted: true,
   });
   mockClient.queueResult('session.remove', {
-    removed: true
+    removed: true,
   });
   mockClient.queueResult('pty.start', {
-    sessionId: 'conversation-1'
+    sessionId: 'conversation-1',
   });
   mockClient.queueResult('pty.attach', {
-    latestCursor: 9
+    latestCursor: 9,
   });
   mockClient.queueResult('pty.detach', {
-    detached: true
+    detached: true,
   });
   mockClient.queueResult('pty.subscribe-events', {
-    subscribed: true
+    subscribed: true,
   });
   mockClient.queueResult('pty.unsubscribe-events', {
-    subscribed: false
+    subscribed: false,
   });
   mockClient.queueResult('pty.close', {
-    closed: true
+    closed: true,
   });
 
   const drafted = await realtime.client.tasks.draft('task-1');
@@ -2313,18 +2400,18 @@ void test('agent realtime sessions aliases and draft task helper issue expected 
     sessionId: 'conversation-1',
     controllerId: 'human-1',
     controllerType: 'human',
-    controllerLabel: 'human'
+    controllerLabel: 'human',
   });
   assert.equal(claimed.action, 'claimed');
   const takenOver = await realtime.client.sessions.takeover({
     sessionId: 'conversation-1',
     controllerId: 'human-1',
     controllerType: 'human',
-    controllerLabel: 'human'
+    controllerLabel: 'human',
   });
   assert.equal(takenOver.action, 'taken-over');
   const released = await realtime.client.sessions.release({
-    sessionId: 'conversation-1'
+    sessionId: 'conversation-1',
   });
   assert.equal(released.released, true);
   const responded = await realtime.client.sessions.respond('conversation-1', 'ack');
@@ -2337,7 +2424,7 @@ void test('agent realtime sessions aliases and draft task helper issue expected 
     sessionId: 'conversation-1',
     args: [],
     initialCols: 120,
-    initialRows: 40
+    initialRows: 40,
   });
   assert.equal(started.sessionId, 'conversation-1');
   const attached = await realtime.client.sessions.attach('conversation-1', 0);
