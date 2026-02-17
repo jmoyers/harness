@@ -1185,8 +1185,8 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - project-scoped actions (`new thread`, `close project`) target the selected project in project mode and preserve active-thread project affinity in thread mode
     - a Home planning pane in the right side of mux is now repository-scoped and task-composer-first, backed by control-plane repository/task commands
     - Home pane starts with a repository dropdown, then shows only that repository's ordered task queue plus an always-available multiline draft composer
-    - composer/edit interaction model mirrors terminal coding agents: `Enter` submits draft tasks, `Shift+Enter` inserts newline, ArrowUp boundary moves from draft into task edit, ArrowDown boundary flushes task edits and returns to draft
-    - task rows expose pinned `ready` / `draft` / `complete` controls (keyboard + mouse), while task text edits autosave through debounced `task.update`
+    - composer/edit interaction model mirrors terminal coding agents: `Enter` submits and marks `ready`, `Tab` queues in `draft`, `Shift+Enter` inserts newline, ArrowUp boundary moves from draft into task edit, ArrowDown boundary flushes task edits and returns to draft
+    - task rows expose pinned `ready` / `queued` / `complete` controls (keyboard + mouse), while task text edits autosave through debounced `task.update`
     - Home-pane key actions are config-first under `mux.keybindings` (`mux.home.*`) so local keymaps are remappable without code changes
     - Home pane state is hydrated from `repository.list` + `task.list` and kept live through scoped `stream.subscribe` updates
     - when a project has zero threads, mux stays in project view and surfaces explicit `new thread` actions instead of auto-starting a thread

@@ -83,7 +83,7 @@ const READY_CHIP_LABEL = formatUiButton({
   prefixIcon: 'r'
 });
 const DRAFT_CHIP_LABEL = formatUiButton({
-  label: 'draft',
+  label: 'queued',
   prefixIcon: 'd'
 });
 const COMPLETE_CHIP_LABEL = formatUiButton({
@@ -321,7 +321,7 @@ export function buildTaskFocusedPaneView(options: BuildTaskFocusedPaneOptions): 
   for (const line of draftLines) {
     push(` > ${truncate(line, Math.max(1, safeCols - 3))}`);
   }
-  push(' enter submit  shift+enter newline  ctrl+g repos');
+  push(' enter ready  tab queue  shift+enter newline  ctrl+g repos');
 
   const maxTop = Math.max(0, lines.length - safeRows);
   const top = Math.max(0, Math.min(maxTop, options.scrollTop));

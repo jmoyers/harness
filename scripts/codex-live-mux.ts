@@ -5228,7 +5228,7 @@ async function main(): Promise<number> {
     selectRepositoryById(orderedIds[nextIndex]!);
   };
 
-  const submitDraftTaskFromComposer = (): void => {
+  const createTaskFromDraftComposer = (targetStatus: 'ready' | 'draft'): void => {
     const repositoryId = taskPaneSelectedRepositoryId;
     if (repositoryId === null || !repositories.has(repositoryId)) {
       taskPaneNotice = 'select a repository first';
@@ -5255,11 +5255,21 @@ async function main(): Promise<number> {
       if (parsed === null) {
         throw new Error('control-plane task.create returned malformed task record');
       }
+      if (targetStatus === 'ready') {
+        const readyResult = await streamClient.sendCommand({
+          type: 'task.ready',
+          taskId: parsed.taskId,
+        });
+        const readyTask = applyTaskFromCommandResult(readyResult);
+        if (readyTask === null) {
+          throw new Error('control-plane task.ready returned malformed task record');
+        }
+      }
       taskDraftComposer = createTaskComposerBuffer('');
       taskPaneNotice = null;
       syncTaskPaneSelection();
       markDirty();
-    }, 'task-composer-create');
+    }, `task-composer-create-${targetStatus}`);
   };
 
   const moveTaskEditorFocusUp = (): void => {
@@ -5330,8 +5340,20 @@ async function main(): Promise<number> {
       }
       if (action === 'mux.home.task.submit') {
         if (taskEditorTarget.kind === 'draft') {
-          submitDraftTaskFromComposer();
+          createTaskFromDraftComposer('ready');
+        } else if ((tasks.get(taskEditorTarget.taskId)?.status ?? null) === 'draft') {
+          runTaskPaneAction('task.ready');
+          focusDraftComposer();
         } else {
+          focusDraftComposer();
+        }
+        return true;
+      }
+      if (action === 'mux.home.task.queue') {
+        if (taskEditorTarget.kind === 'draft') {
+          createTaskFromDraftComposer('draft');
+        } else {
+          runTaskPaneAction('task.draft');
           focusDraftComposer();
         }
         return true;

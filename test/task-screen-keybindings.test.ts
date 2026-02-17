@@ -10,9 +10,9 @@ import {
 } from '../src/mux/task-screen-keybindings.ts';
 
 void test('task screen keybinding exported types remain reachable from src/test graph', () => {
-  const action: TaskScreenKeybindingAction = 'mux.home.task.submit';
+  const action: TaskScreenKeybindingAction = 'mux.home.task.queue';
   const resolved: ResolvedTaskScreenKeybindings = resolveTaskScreenKeybindings();
-  assert.equal(action, 'mux.home.task.submit');
+  assert.equal(action, 'mux.home.task.queue');
   assert.equal(typeof resolved.rawByAction[action][0], 'string');
 });
 
@@ -45,6 +45,7 @@ void test('task screen keybindings default and override resolution are stable', 
 void test('task screen keybinding detection supports single-byte controls and printable keys', () => {
   const bindings = resolveTaskScreenKeybindings({
     'mux.home.task.submit': ['enter'],
+    'mux.home.task.queue': ['tab'],
     'mux.home.editor.delete.backward': ['backspace'],
     'mux.home.editor.line.start': ['ctrl+a'],
     'mux.home.editor.line.end': ['ctrl+e'],
@@ -55,6 +56,10 @@ void test('task screen keybinding detection supports single-byte controls and pr
   assert.equal(
     detectTaskScreenKeybindingAction(Buffer.from([0x0d]), bindings),
     'mux.home.task.submit'
+  );
+  assert.equal(
+    detectTaskScreenKeybindingAction(Buffer.from([0x09]), bindings),
+    'mux.home.task.queue'
   );
   assert.equal(
     detectTaskScreenKeybindingAction(Buffer.from([0x7f]), bindings),
@@ -204,6 +209,7 @@ void test('task screen keybinding parser ignores malformed sequences and malform
 void test('task screen keybinding coverage matrix exercises protocol decode branches', () => {
   const bindings = resolveTaskScreenKeybindings({
     'mux.home.task.submit': ['space'],
+    'mux.home.task.queue': ['ctrl+q'],
     'mux.home.task.newline': ['shift+enter'],
     'mux.home.editor.line.start': ['tab'],
     'mux.home.editor.line.end': ['escape'],
@@ -301,4 +307,12 @@ void test('task screen keybinding coverage matrix exercises protocol decode bran
     'mux.home.task.submit': ['+', 'ctrl+']
   });
   assert.equal(detectTaskScreenKeybindingAction(Buffer.from([0x0d]), malformedOnly), null);
+});
+
+void test('task screen keybinding defaults map tab to queue action', () => {
+  const bindings = resolveTaskScreenKeybindings();
+  assert.equal(
+    detectTaskScreenKeybindingAction(Buffer.from([0x09]), bindings),
+    'mux.home.task.queue'
+  );
 });

@@ -84,6 +84,8 @@ void test('focused pane renders selected repository tasks with editable task buf
   assert.equal(view.rows.some((row) => row.includes('tasks (2)')), true);
   assert.equal(view.rows.some((row) => row.includes('edited body')), true);
   assert.equal(view.rows.some((row) => row.includes('other repo')), false);
+  assert.equal(view.rows.some((row) => row.includes('[ d queued ]')), true);
+  assert.equal(view.rows.some((row) => row.includes('tab queue')), true);
 });
 
 void test('focused pane exported types remain reachable from src/test graph', () => {

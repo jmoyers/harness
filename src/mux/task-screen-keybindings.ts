@@ -16,6 +16,7 @@ export type TaskScreenKeybindingAction =
   | 'mux.home.repo.next'
   | 'mux.home.repo.previous'
   | 'mux.home.task.submit'
+  | 'mux.home.task.queue'
   | 'mux.home.task.newline'
   | 'mux.home.task.status.ready'
   | 'mux.home.task.status.draft'
@@ -41,6 +42,7 @@ const ACTION_ORDER: readonly TaskScreenKeybindingAction[] = [
   'mux.home.repo.next',
   'mux.home.repo.previous',
   'mux.home.task.submit',
+  'mux.home.task.queue',
   'mux.home.task.newline',
   'mux.home.task.status.ready',
   'mux.home.task.status.draft',
@@ -69,6 +71,7 @@ export const DEFAULT_TASK_SCREEN_KEYBINDINGS_RAW: Readonly<
   'mux.home.repo.next': ['ctrl+n'],
   'mux.home.repo.previous': ['ctrl+p'],
   'mux.home.task.submit': ['enter'],
+  'mux.home.task.queue': ['tab'],
   'mux.home.task.newline': ['shift+enter'],
   'mux.home.task.status.ready': ['alt+r'],
   'mux.home.task.status.draft': ['alt+d'],
@@ -472,6 +475,7 @@ export function resolveTaskScreenKeybindings(
       'mux.home.repo.next': bindingsForAction(rawByAction['mux.home.repo.next']),
       'mux.home.repo.previous': bindingsForAction(rawByAction['mux.home.repo.previous']),
       'mux.home.task.submit': bindingsForAction(rawByAction['mux.home.task.submit']),
+      'mux.home.task.queue': bindingsForAction(rawByAction['mux.home.task.queue']),
       'mux.home.task.newline': bindingsForAction(rawByAction['mux.home.task.newline']),
       'mux.home.task.status.ready': bindingsForAction(rawByAction['mux.home.task.status.ready']),
       'mux.home.task.status.draft': bindingsForAction(rawByAction['mux.home.task.status.draft']),

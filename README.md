@@ -45,8 +45,8 @@ Harness is built for developers who want to:
 - Repository/task control-plane stream commands (`repository.*`, `task.*`) for automation and UI clients.
 - Repository/task stream subscriptions, including scoped filters for `repositoryId` and `taskId`.
 - Home planning pane is now repo-scoped: choose a repository from an inline dropdown, then work only on that repository's task queue.
-- Home pane task input is Codex-style and keyboard-first: growing multiline composer, `enter` to create draft tasks, `shift+enter` newline, `↑` boundary to jump into task edit, `↓` boundary to save and return to draft composer.
-- Draft/ready/complete controls are pinned on each task row and support both keyboard actions and mouse clicks.
+- Home pane task input is Codex-style and keyboard-first: growing multiline composer, `enter` submits and marks `ready`, `tab` queues in `draft`, `shift+enter` newline, `↑` boundary to jump into task edit, `↓` boundary to save and return to draft composer.
+- Queued/ready/complete controls are pinned on each task row and support both keyboard actions and mouse clicks.
 - Home-pane task/repo/composer keybindings are config-driven under `mux.keybindings` action IDs (`mux.home.*`), so defaults can be fully remapped in `harness.config.jsonc`.
 - Real-time typed event stream for status, telemetry, control changes, and output.
 - Control-plane-owned git monitoring publishes `directory-git-updated` events; git polling/execution is no longer done in the client mux loop.
