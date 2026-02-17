@@ -214,6 +214,7 @@ import {
   type GitRepositorySnapshot,
   type GitSummary,
 } from '../src/mux/live-mux/git-state.ts';
+import { refreshProcessUsageSnapshots as refreshProcessUsageSnapshotsHelper } from '../src/mux/live-mux/process-usage.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -1510,38 +1511,21 @@ async function main(): Promise<number> {
       conversations: conversations.size,
     });
     try {
-      const entries = await Promise.all(
-        [...conversations.entries()].map(async ([sessionId, conversation]) => ({
-          sessionId,
-          sample: await readProcessUsageSample(conversation.processId),
-        })),
-      );
+      const refreshed = await refreshProcessUsageSnapshotsHelper({
+        conversations,
+        processUsageBySessionId,
+        readProcessUsageSample,
+        processIdForConversation: (conversation) => conversation.processId,
+        processUsageEqual,
+      });
 
-      let changed = false;
-      const observedSessionIds = new Set<string>();
-      for (const entry of entries) {
-        observedSessionIds.add(entry.sessionId);
-        const previous = processUsageBySessionId.get(entry.sessionId);
-        if (previous === undefined || !processUsageEqual(previous, entry.sample)) {
-          processUsageBySessionId.set(entry.sessionId, entry.sample);
-          changed = true;
-        }
-      }
-      for (const sessionId of processUsageBySessionId.keys()) {
-        if (observedSessionIds.has(sessionId)) {
-          continue;
-        }
-        processUsageBySessionId.delete(sessionId);
-        changed = true;
-      }
-
-      if (changed) {
+      if (refreshed.changed) {
         markDirty();
       }
       usageSpan.end({
         reason,
-        samples: entries.length,
-        changed,
+        samples: refreshed.samples,
+        changed: refreshed.changed,
       });
     } finally {
       processUsageRefreshInFlight = false;

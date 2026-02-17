@@ -379,3 +379,18 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass
 - LOC delta:
   - `scripts/codex-live-mux-runtime.ts`: 5038 -> 4992 LOC
+
+### Checkpoint 17 (2026-02-17): process usage snapshot helper extraction
+
+- Added `src/mux/live-mux/process-usage.ts`:
+  - conversation process usage snapshot refresh helper
+  - stale session cleanup and change detection
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate process usage map refresh through the helper while keeping existing perf span semantics.
+- Verification after checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass
+- LOC delta:
+  - `scripts/codex-live-mux-runtime.ts`: 4992 -> 4977 LOC
