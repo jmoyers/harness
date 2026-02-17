@@ -137,6 +137,7 @@ import {
 } from '../src/mux/live-mux/git-parsing.ts';
 import { readProcessUsageSample } from '../src/mux/live-mux/git-snapshot.ts';
 import { probeTerminalPalette } from '../src/mux/live-mux/terminal-palette.ts';
+import { dismissModalOnOutsideClick as dismissModalOnOutsideClickHelper } from '../src/mux/live-mux/modal-pointer.ts';
 import {
   readObservedStreamCursorBaseline,
   subscribeObservedStream,
@@ -2434,35 +2435,20 @@ async function main(): Promise<number> {
     dismiss: () => void,
     onInsidePointerPress?: (col: number, row: number) => boolean,
   ): boolean => {
-    if (!input.includes(0x1b)) {
-      return false;
-    }
-    const parsed = parseMuxInputChunk(inputRemainder, input);
-    inputRemainder = parsed.remainder;
-    const modalOverlay = buildCurrentModalOverlay();
-    if (modalOverlay === null) {
-      return true;
-    }
-    for (const token of parsed.tokens) {
-      if (token.kind !== 'mouse') {
-        continue;
-      }
-      const pointerPress =
-        token.event.final === 'M' &&
-        !isWheelMouseCode(token.event.code) &&
-        !isMotionMouseCode(token.event.code);
-      if (!pointerPress) {
-        continue;
-      }
-      if (!isUiModalOverlayHit(modalOverlay, token.event.col, token.event.row)) {
-        dismiss();
-        return true;
-      }
-      if (onInsidePointerPress?.(token.event.col, token.event.row) === true) {
-        return true;
-      }
-    }
-    return true;
+    const result = dismissModalOnOutsideClickHelper({
+      input,
+      inputRemainder,
+      dismiss,
+      buildCurrentModalOverlay,
+      isOverlayHit: isUiModalOverlayHit,
+      ...(onInsidePointerPress === undefined
+        ? {}
+        : {
+            onInsidePointerPress,
+          }),
+    });
+    inputRemainder = result.inputRemainder;
+    return result.handled;
   };
 
   const attachConversation = async (sessionId: string): Promise<void> => {

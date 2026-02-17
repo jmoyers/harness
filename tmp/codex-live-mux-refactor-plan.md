@@ -224,3 +224,18 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass
 - LOC delta:
   - `scripts/codex-live-mux-runtime.ts`: 5637 -> 5572 LOC
+
+### Checkpoint 7 (2026-02-17): modal pointer dismissal extraction
+
+- Added `src/mux/live-mux/modal-pointer.ts`:
+  - outside-click modal dismissal helper
+  - preserves mux input remainder behavior
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate modal outside-click handling through the helper.
+- Verification after checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass
+- LOC delta:
+  - `scripts/codex-live-mux-runtime.ts`: 5572 -> 5558 LOC
