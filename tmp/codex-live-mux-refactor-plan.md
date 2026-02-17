@@ -317,3 +317,19 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass
 - LOC delta:
   - `scripts/codex-live-mux-runtime.ts`: 5296 -> 5239 LOC
+
+### Checkpoint 13 (2026-02-17): home/task-pane shortcut handler extraction
+
+- Added `src/mux/live-mux/task-pane-shortcuts.ts`:
+  - home-pane keyboard shortcut handler
+  - editor cursor/editing action routing
+  - repository dropdown and task status/reorder shortcut handling
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate home/task-pane shortcut handling through the helper.
+- Verification after checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass
+- LOC delta:
+  - `scripts/codex-live-mux-runtime.ts`: 5239 -> 5111 LOC

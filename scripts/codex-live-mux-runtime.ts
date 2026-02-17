@@ -73,25 +73,11 @@ import {
 } from '../src/mux/task-focused-pane.ts';
 import {
   createTaskComposerBuffer,
-  insertTaskComposerText,
   normalizeTaskComposerBuffer,
-  taskComposerBackspace,
-  taskComposerDeleteForward,
-  taskComposerDeleteToLineEnd,
-  taskComposerDeleteToLineStart,
-  taskComposerDeleteWordLeft,
-  taskComposerMoveLeft,
-  taskComposerMoveLineEnd,
-  taskComposerMoveLineStart,
-  taskComposerMoveRight,
-  taskComposerMoveVertical,
-  taskComposerMoveWordLeft,
-  taskComposerMoveWordRight,
   taskFieldsFromComposerText,
   type TaskComposerBuffer,
 } from '../src/mux/task-composer.ts';
 import {
-  detectTaskScreenKeybindingAction,
   resolveTaskScreenKeybindings,
 } from '../src/mux/task-screen-keybindings.ts';
 import { applyMuxControlPlaneKeyEvent } from '../src/mux/runtime-wiring.ts';
@@ -218,6 +204,7 @@ import {
   handleRepositoryPromptInput as handleRepositoryPromptInputHelper,
 } from '../src/mux/live-mux/modal-prompt-handlers.ts';
 import { handleTaskEditorPromptInput as handleTaskEditorPromptInputHelper } from '../src/mux/live-mux/modal-task-editor-handler.ts';
+import { handleTaskPaneShortcutInput as handleTaskPaneShortcutInputHelper } from '../src/mux/live-mux/task-pane-shortcuts.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -4360,143 +4347,26 @@ async function main(): Promise<number> {
   };
 
   const handleTaskPaneShortcutInput = (input: Buffer): boolean => {
-    if (mainPaneMode !== 'home') {
-      return false;
-    }
-    const action = detectTaskScreenKeybindingAction(input, taskScreenKeybindings);
-    if (action !== null) {
-      if (action === 'mux.home.repo.dropdown.toggle') {
-        taskRepositoryDropdownOpen = !taskRepositoryDropdownOpen;
-        markDirty();
-        return true;
-      }
-      if (action === 'mux.home.repo.next') {
-        taskRepositoryDropdownOpen = true;
-        selectRepositoryByDirection(1);
-        return true;
-      }
-      if (action === 'mux.home.repo.previous') {
-        taskRepositoryDropdownOpen = true;
-        selectRepositoryByDirection(-1);
-        return true;
-      }
-      if (action === 'mux.home.task.status.ready') {
-        runTaskPaneAction('task.ready');
-        return true;
-      }
-      if (action === 'mux.home.task.status.draft') {
-        runTaskPaneAction('task.draft');
-        return true;
-      }
-      if (action === 'mux.home.task.status.complete') {
-        runTaskPaneAction('task.complete');
-        return true;
-      }
-      if (action === 'mux.home.task.reorder.up') {
-        runTaskPaneAction('task.reorder-up');
-        return true;
-      }
-      if (action === 'mux.home.task.reorder.down') {
-        runTaskPaneAction('task.reorder-down');
-        return true;
-      }
-      if (action === 'mux.home.task.newline') {
-        updateHomeEditorBuffer(insertTaskComposerText(homeEditorBuffer(), '\n'));
-        return true;
-      }
-      if (action === 'mux.home.task.submit') {
-        if (taskEditorTarget.kind === 'draft') {
-          submitDraftTaskFromComposer();
-        } else {
-          focusDraftComposer();
-        }
-        return true;
-      }
-      if (action === 'mux.home.editor.cursor.left') {
-        updateHomeEditorBuffer(taskComposerMoveLeft(homeEditorBuffer()));
-        return true;
-      }
-      if (action === 'mux.home.editor.cursor.right') {
-        updateHomeEditorBuffer(taskComposerMoveRight(homeEditorBuffer()));
-        return true;
-      }
-      if (action === 'mux.home.editor.cursor.up') {
-        const vertical = taskComposerMoveVertical(homeEditorBuffer(), -1);
-        if (vertical.hitBoundary) {
-          moveTaskEditorFocusUp();
-        } else {
-          updateHomeEditorBuffer(vertical.next);
-        }
-        return true;
-      }
-      if (action === 'mux.home.editor.cursor.down') {
-        if (taskEditorTarget.kind === 'task') {
-          const vertical = taskComposerMoveVertical(homeEditorBuffer(), 1);
-          if (vertical.hitBoundary) {
-            focusDraftComposer();
-          } else {
-            updateHomeEditorBuffer(vertical.next);
-          }
-        } else {
-          updateHomeEditorBuffer(taskComposerMoveVertical(homeEditorBuffer(), 1).next);
-        }
-        return true;
-      }
-      if (action === 'mux.home.editor.line.start') {
-        updateHomeEditorBuffer(taskComposerMoveLineStart(homeEditorBuffer()));
-        return true;
-      }
-      if (action === 'mux.home.editor.line.end') {
-        updateHomeEditorBuffer(taskComposerMoveLineEnd(homeEditorBuffer()));
-        return true;
-      }
-      if (action === 'mux.home.editor.word.left') {
-        updateHomeEditorBuffer(taskComposerMoveWordLeft(homeEditorBuffer()));
-        return true;
-      }
-      if (action === 'mux.home.editor.word.right') {
-        updateHomeEditorBuffer(taskComposerMoveWordRight(homeEditorBuffer()));
-        return true;
-      }
-      if (action === 'mux.home.editor.delete.backward') {
-        updateHomeEditorBuffer(taskComposerBackspace(homeEditorBuffer()));
-        return true;
-      }
-      if (action === 'mux.home.editor.delete.forward') {
-        updateHomeEditorBuffer(taskComposerDeleteForward(homeEditorBuffer()));
-        return true;
-      }
-      if (action === 'mux.home.editor.delete.word.backward') {
-        updateHomeEditorBuffer(taskComposerDeleteWordLeft(homeEditorBuffer()));
-        return true;
-      }
-      if (action === 'mux.home.editor.delete.line.start') {
-        updateHomeEditorBuffer(taskComposerDeleteToLineStart(homeEditorBuffer()));
-        return true;
-      }
-      if (action === 'mux.home.editor.delete.line.end') {
-        updateHomeEditorBuffer(taskComposerDeleteToLineEnd(homeEditorBuffer()));
-        return true;
-      }
-    }
-
-    if (input.includes(0x1b)) {
-      return false;
-    }
-
-    let next = homeEditorBuffer();
-    let changed = false;
-    for (const byte of input) {
-      if (byte >= 32 && byte <= 126) {
-        next = insertTaskComposerText(next, String.fromCharCode(byte));
-        changed = true;
-      }
-    }
-    if (!changed) {
-      return false;
-    }
-    updateHomeEditorBuffer(next);
-    return true;
+    return handleTaskPaneShortcutInputHelper({
+      input,
+      mainPaneMode,
+      taskScreenKeybindings,
+      taskEditorTarget,
+      homeEditorBuffer,
+      updateHomeEditorBuffer,
+      moveTaskEditorFocusUp,
+      focusDraftComposer,
+      submitDraftTaskFromComposer,
+      runTaskPaneAction: (action) => {
+        runTaskPaneAction(action);
+      },
+      selectRepositoryByDirection,
+      getTaskRepositoryDropdownOpen: () => taskRepositoryDropdownOpen,
+      setTaskRepositoryDropdownOpen: (open) => {
+        taskRepositoryDropdownOpen = open;
+      },
+      markDirty,
+    });
   };
 
   const visibleLeftNavTargetsForState = (): readonly LeftNavSelection[] =>
