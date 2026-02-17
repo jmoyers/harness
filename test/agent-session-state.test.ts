@@ -405,6 +405,40 @@ void test('buildAgentSessionStartArgs applies codex launch defaults and director
   );
 });
 
+void test('buildAgentSessionStartArgs applies claude launch defaults and directory overrides', () => {
+  const directoryModes = {
+    '/tmp/claude-standard': 'standard' as const
+  };
+
+  assert.deepEqual(
+    buildAgentSessionStartArgs(
+      'claude',
+      ['--model', 'opus'],
+      {},
+      {
+        directoryPath: '/tmp/claude-yolo',
+        claudeLaunchDefaultMode: 'yolo',
+        claudeLaunchModeByDirectoryPath: directoryModes
+      }
+    ),
+    ['--model', 'opus', '--dangerously-skip-permissions']
+  );
+
+  assert.deepEqual(
+    buildAgentSessionStartArgs(
+      'claude',
+      ['--model', 'opus'],
+      {},
+      {
+        directoryPath: '  /tmp/claude-standard  ',
+        claudeLaunchDefaultMode: 'yolo',
+        claudeLaunchModeByDirectoryPath: directoryModes
+      }
+    ),
+    ['--model', 'opus']
+  );
+});
+
 void test('buildAgentStartArgs applies configurable claude yolo launch mode', () => {
   assert.deepEqual(
     buildAgentStartArgs(

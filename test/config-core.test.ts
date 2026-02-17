@@ -637,6 +637,15 @@ void test('parseHarnessConfigText falls back for invalid claude settings', () =>
     }
   `);
   assert.deepEqual(parsedWithBadLaunchShapes.claude.launch, DEFAULT_HARNESS_CONFIG.claude.launch);
+
+  const parsedWithNullLaunch = parseHarnessConfigText(`
+    {
+      "claude": {
+        "launch": null
+      }
+    }
+  `);
+  assert.deepEqual(parsedWithNullLaunch.claude.launch, DEFAULT_HARNESS_CONFIG.claude.launch);
 });
 
 void test('parseHarnessConfigText parses lifecycle hook connectors and event filters', () => {
