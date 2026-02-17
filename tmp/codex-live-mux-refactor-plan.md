@@ -634,3 +634,17 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass
 - LOC delta:
   - `scripts/codex-live-mux-runtime.ts`: 4683 -> 4678 LOC
+
+### Checkpoint 33 (2026-02-17): helper alias naming cleanup
+
+- Updated `scripts/codex-live-mux-runtime.ts`:
+  - removed `...Helper` alias naming pattern from extracted-module imports/usages
+  - normalized to non-helper alias suffixes for readability during ongoing refactor
+- Verification after checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass
+- LOC delta:
+  - `scripts/codex-live-mux-runtime.ts`: 4678 -> 4678 LOC

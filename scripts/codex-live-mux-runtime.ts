@@ -113,26 +113,26 @@ import {
 } from '../src/mux/live-mux/git-parsing.ts';
 import { readProcessUsageSample } from '../src/mux/live-mux/git-snapshot.ts';
 import { probeTerminalPalette } from '../src/mux/live-mux/terminal-palette.ts';
-import { dismissModalOnOutsideClick as dismissModalOnOutsideClickHelper } from '../src/mux/live-mux/modal-pointer.ts';
+import { dismissModalOnOutsideClick as dismissModalOnOutsideClickFn } from '../src/mux/live-mux/modal-pointer.ts';
 import {
   visibleLeftNavTargets,
   type LeftNavSelection,
 } from '../src/mux/live-mux/left-nav.ts';
 import {
-  activateLeftNavTarget as activateLeftNavTargetHelper,
-  cycleLeftNavSelection as cycleLeftNavSelectionHelper,
+  activateLeftNavTarget as activateLeftNavTargetFn,
+  cycleLeftNavSelection as cycleLeftNavSelectionFn,
 } from '../src/mux/live-mux/left-nav-activation.ts';
 import {
-  collapseAllRepositoryGroups as collapseAllRepositoryGroupsHelper,
-  collapseRepositoryGroup as collapseRepositoryGroupHelper,
-  expandAllRepositoryGroups as expandAllRepositoryGroupsHelper,
-  expandRepositoryGroup as expandRepositoryGroupHelper,
-  firstDirectoryForRepositoryGroup as firstDirectoryForRepositoryGroupHelper,
-  repositoryGroupIdForDirectory as repositoryGroupIdForDirectoryHelper,
+  collapseAllRepositoryGroups as collapseAllRepositoryGroupsFn,
+  collapseRepositoryGroup as collapseRepositoryGroupFn,
+  expandAllRepositoryGroups as expandAllRepositoryGroupsFn,
+  expandRepositoryGroup as expandRepositoryGroupFn,
+  firstDirectoryForRepositoryGroup as firstDirectoryForRepositoryGroupFn,
+  repositoryGroupIdForDirectory as repositoryGroupIdForDirectoryFn,
   reduceRepositoryFoldChordInput,
   repositoryTreeArrowAction,
   selectedRepositoryGroupIdForLeftNav,
-  toggleRepositoryGroup as toggleRepositoryGroupHelper,
+  toggleRepositoryGroup as toggleRepositoryGroupFn,
 } from '../src/mux/live-mux/repository-folding.ts';
 import {
   readObservedStreamCursorBaseline,
@@ -198,63 +198,63 @@ import {
   writeTextToClipboard,
 } from '../src/mux/live-mux/selection.ts';
 import {
-  handleConversationTitleEditInput as handleConversationTitleEditInputHelper,
-  handleNewThreadPromptInput as handleNewThreadPromptInputHelper,
+  handleConversationTitleEditInput as handleConversationTitleEditInputFn,
+  handleNewThreadPromptInput as handleNewThreadPromptInputFn,
 } from '../src/mux/live-mux/modal-conversation-handlers.ts';
 import {
-  handleAddDirectoryPromptInput as handleAddDirectoryPromptInputHelper,
-  handleRepositoryPromptInput as handleRepositoryPromptInputHelper,
+  handleAddDirectoryPromptInput as handleAddDirectoryPromptInputFn,
+  handleRepositoryPromptInput as handleRepositoryPromptInputFn,
 } from '../src/mux/live-mux/modal-prompt-handlers.ts';
-import { handleTaskEditorPromptInput as handleTaskEditorPromptInputHelper } from '../src/mux/live-mux/modal-task-editor-handler.ts';
-import { handleTaskPaneShortcutInput as handleTaskPaneShortcutInputHelper } from '../src/mux/live-mux/task-pane-shortcuts.ts';
-import { handleGlobalShortcut as handleGlobalShortcutHelper } from '../src/mux/live-mux/global-shortcut-handlers.ts';
+import { handleTaskEditorPromptInput as handleTaskEditorPromptInputFn } from '../src/mux/live-mux/modal-task-editor-handler.ts';
+import { handleTaskPaneShortcutInput as handleTaskPaneShortcutInputFn } from '../src/mux/live-mux/task-pane-shortcuts.ts';
+import { handleGlobalShortcut as handleGlobalShortcutFn } from '../src/mux/live-mux/global-shortcut-handlers.ts';
 import {
-  applyObservedGitStatusEvent as applyObservedGitStatusEventHelper,
-  deleteDirectoryGitState as deleteDirectoryGitStateHelper,
-  ensureDirectoryGitState as ensureDirectoryGitStateHelper,
-  syncGitStateWithDirectories as syncGitStateWithDirectoriesHelper,
+  applyObservedGitStatusEvent as applyObservedGitStatusEventFn,
+  deleteDirectoryGitState as deleteDirectoryGitStateFn,
+  ensureDirectoryGitState as ensureDirectoryGitStateFn,
+  syncGitStateWithDirectories as syncGitStateWithDirectoriesFn,
   type GitRepositorySnapshot,
   type GitSummary,
 } from '../src/mux/live-mux/git-state.ts';
-import { refreshProcessUsageSnapshots as refreshProcessUsageSnapshotsHelper } from '../src/mux/live-mux/process-usage.ts';
+import { refreshProcessUsageSnapshots as refreshProcessUsageSnapshotsFn } from '../src/mux/live-mux/process-usage.ts';
 import {
-  firstDirectoryId as firstDirectoryIdHelper,
-  resolveActiveDirectoryId as resolveActiveDirectoryIdHelper,
-  resolveDirectoryForAction as resolveDirectoryForActionHelper,
+  firstDirectoryId as firstDirectoryIdFn,
+  resolveActiveDirectoryId as resolveActiveDirectoryIdFn,
+  resolveDirectoryForAction as resolveDirectoryForActionFn,
 } from '../src/mux/live-mux/directory-resolution.ts';
-import { requestStop as requestStopHelper } from '../src/mux/live-mux/runtime-shutdown.ts';
-import { routeInputTokensForConversation as routeInputTokensForConversationHelper } from '../src/mux/live-mux/input-forwarding.ts';
-import { handleProjectPaneActionClick as handleProjectPaneActionClickHelper } from '../src/mux/live-mux/project-pane-pointer.ts';
-import { handleLeftRailActionClick as handleLeftRailActionClickHelper } from '../src/mux/live-mux/left-rail-actions.ts';
-import { handleLeftRailConversationClick as handleLeftRailConversationClickHelper } from '../src/mux/live-mux/left-rail-conversation-click.ts';
+import { requestStop as requestStopFn } from '../src/mux/live-mux/runtime-shutdown.ts';
+import { routeInputTokensForConversation as routeInputTokensForConversationFn } from '../src/mux/live-mux/input-forwarding.ts';
+import { handleProjectPaneActionClick as handleProjectPaneActionClickFn } from '../src/mux/live-mux/project-pane-pointer.ts';
+import { handleLeftRailActionClick as handleLeftRailActionClickFn } from '../src/mux/live-mux/left-rail-actions.ts';
+import { handleLeftRailConversationClick as handleLeftRailConversationClickFn } from '../src/mux/live-mux/left-rail-conversation-click.ts';
 import {
-  handleLeftRailPointerClick as handleLeftRailPointerClickHelper,
+  handleLeftRailPointerClick as handleLeftRailPointerClickFn,
   type LeftRailPointerContext,
 } from '../src/mux/live-mux/left-rail-pointer.ts';
 import {
-  handleHomePaneDragMove as handleHomePaneDragMoveHelper,
-  handleMainPaneWheelInput as handleMainPaneWheelInputHelper,
-  handlePaneDividerDragInput as handlePaneDividerDragInputHelper,
-  handleSeparatorPointerPress as handleSeparatorPointerPressHelper,
+  handleHomePaneDragMove as handleHomePaneDragMoveFn,
+  handleMainPaneWheelInput as handleMainPaneWheelInputFn,
+  handlePaneDividerDragInput as handlePaneDividerDragInputFn,
+  handleSeparatorPointerPress as handleSeparatorPointerPressFn,
 } from '../src/mux/live-mux/pointer-routing.ts';
-import { handleHomePaneDragRelease as handleHomePaneDragReleaseHelper } from '../src/mux/live-mux/home-pane-drop.ts';
-import { handleHomePanePointerClick as handleHomePanePointerClickHelper } from '../src/mux/live-mux/home-pane-pointer.ts';
-import { runTaskPaneAction as runTaskPaneActionHelper } from '../src/mux/live-mux/actions-task.ts';
+import { handleHomePaneDragRelease as handleHomePaneDragReleaseFn } from '../src/mux/live-mux/home-pane-drop.ts';
+import { handleHomePanePointerClick as handleHomePanePointerClickFn } from '../src/mux/live-mux/home-pane-pointer.ts';
+import { runTaskPaneAction as runTaskPaneActionFn } from '../src/mux/live-mux/actions-task.ts';
 import {
-  archiveRepositoryById as archiveRepositoryByIdHelper,
-  openRepositoryPromptForCreate as openRepositoryPromptForCreateHelper,
-  openRepositoryPromptForEdit as openRepositoryPromptForEditHelper,
-  queueRepositoryPriorityOrder as queueRepositoryPriorityOrderHelper,
-  reorderRepositoryByDrop as reorderRepositoryByDropHelper,
-  upsertRepositoryByRemoteUrl as upsertRepositoryByRemoteUrlHelper,
+  archiveRepositoryById as archiveRepositoryByIdFn,
+  openRepositoryPromptForCreate as openRepositoryPromptForCreateFn,
+  openRepositoryPromptForEdit as openRepositoryPromptForEditFn,
+  queueRepositoryPriorityOrder as queueRepositoryPriorityOrderFn,
+  reorderRepositoryByDrop as reorderRepositoryByDropFn,
+  upsertRepositoryByRemoteUrl as upsertRepositoryByRemoteUrlFn,
 } from '../src/mux/live-mux/actions-repository.ts';
 import {
-  addDirectoryByPath as addDirectoryByPathHelper,
-  archiveConversation as archiveConversationHelper,
-  closeDirectory as closeDirectoryHelper,
-  createAndActivateConversationInDirectory as createAndActivateConversationInDirectoryHelper,
-  openNewThreadPrompt as openNewThreadPromptHelper,
-  takeoverConversation as takeoverConversationHelper,
+  addDirectoryByPath as addDirectoryByPathFn,
+  archiveConversation as archiveConversationFn,
+  closeDirectory as closeDirectoryFn,
+  createAndActivateConversationInDirectory as createAndActivateConversationInDirectoryFn,
+  openNewThreadPrompt as openNewThreadPromptFn,
+  takeoverConversation as takeoverConversationFn,
 } from '../src/mux/live-mux/actions-conversation.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
@@ -781,12 +781,12 @@ async function main(): Promise<number> {
   };
 
   const resolveActiveDirectoryId = (): string | null => {
-    activeDirectoryId = resolveActiveDirectoryIdHelper(activeDirectoryId, directories);
+    activeDirectoryId = resolveActiveDirectoryIdFn(activeDirectoryId, directories);
     return activeDirectoryId;
   };
 
   const resolveDirectoryForAction = (): string | null => {
-    return resolveDirectoryForActionHelper({
+    return resolveDirectoryForActionFn({
       mainPaneMode,
       activeDirectoryId,
       activeConversationId,
@@ -796,36 +796,36 @@ async function main(): Promise<number> {
   };
 
   const repositoryGroupIdForDirectory = (directoryId: string): string =>
-    repositoryGroupIdForDirectoryHelper(
+    repositoryGroupIdForDirectoryFn(
       repositoryAssociationByDirectoryId,
       directoryId,
       UNTRACKED_REPOSITORY_GROUP_ID,
     );
 
   const collapseRepositoryGroup = (repositoryGroupId: string): void => {
-    collapseRepositoryGroupHelper(repositoryGroupId, repositoriesCollapsed, expandedRepositoryGroupIds, collapsedRepositoryGroupIds);
+    collapseRepositoryGroupFn(repositoryGroupId, repositoriesCollapsed, expandedRepositoryGroupIds, collapsedRepositoryGroupIds);
   };
 
   const expandRepositoryGroup = (repositoryGroupId: string): void => {
-    expandRepositoryGroupHelper(repositoryGroupId, repositoriesCollapsed, expandedRepositoryGroupIds, collapsedRepositoryGroupIds);
+    expandRepositoryGroupFn(repositoryGroupId, repositoriesCollapsed, expandedRepositoryGroupIds, collapsedRepositoryGroupIds);
   };
 
   const toggleRepositoryGroup = (repositoryGroupId: string): void => {
-    toggleRepositoryGroupHelper(repositoryGroupId, repositoriesCollapsed, expandedRepositoryGroupIds, collapsedRepositoryGroupIds);
+    toggleRepositoryGroupFn(repositoryGroupId, repositoriesCollapsed, expandedRepositoryGroupIds, collapsedRepositoryGroupIds);
   };
 
   const collapseAllRepositoryGroups = (): void => {
-    repositoriesCollapsed = collapseAllRepositoryGroupsHelper(collapsedRepositoryGroupIds, expandedRepositoryGroupIds);
+    repositoriesCollapsed = collapseAllRepositoryGroupsFn(collapsedRepositoryGroupIds, expandedRepositoryGroupIds);
     queuePersistMuxUiState();
   };
 
   const expandAllRepositoryGroups = (): void => {
-    repositoriesCollapsed = expandAllRepositoryGroupsHelper(collapsedRepositoryGroupIds, expandedRepositoryGroupIds);
+    repositoriesCollapsed = expandAllRepositoryGroupsFn(collapsedRepositoryGroupIds, expandedRepositoryGroupIds);
     queuePersistMuxUiState();
   };
 
   const firstDirectoryForRepositoryGroup = (repositoryGroupId: string): string | null => {
-    return firstDirectoryForRepositoryGroupHelper(directories, repositoryGroupIdForDirectory, repositoryGroupId);
+    return firstDirectoryForRepositoryGroupFn(directories, repositoryGroupIdForDirectory, repositoryGroupId);
   };
 
   const selectLeftNavHome = (): void => {
@@ -1422,11 +1422,11 @@ async function main(): Promise<number> {
     left.cpuPercent === right.cpuPercent && left.memoryMb === right.memoryMb;
 
   const ensureDirectoryGitState = (directoryId: string): void => {
-    ensureDirectoryGitStateHelper(gitSummaryByDirectoryId, directoryId, GIT_SUMMARY_LOADING);
+    ensureDirectoryGitStateFn(gitSummaryByDirectoryId, directoryId, GIT_SUMMARY_LOADING);
   };
 
   const deleteDirectoryGitState = (directoryId: string): void => {
-    deleteDirectoryGitStateHelper(
+    deleteDirectoryGitStateFn(
       directoryId,
       gitSummaryByDirectoryId,
       directoryRepositorySnapshotByDirectoryId,
@@ -1435,7 +1435,7 @@ async function main(): Promise<number> {
   };
 
   const syncGitStateWithDirectories = (): void => {
-    syncGitStateWithDirectoriesHelper({
+    syncGitStateWithDirectoriesFn({
       directoryIds: [...directories.keys()],
       directoriesHas: (directoryId) => directories.has(directoryId),
       gitSummaryByDirectoryId,
@@ -1454,7 +1454,7 @@ async function main(): Promise<number> {
   };
 
   const applyObservedGitStatusEvent = (observed: StreamObservedEvent): void => {
-    const reduced = applyObservedGitStatusEventHelper({
+    const reduced = applyObservedGitStatusEventFn({
       enabled: configuredMuxGit.enabled,
       observed,
       gitSummaryByDirectoryId,
@@ -1493,7 +1493,7 @@ async function main(): Promise<number> {
       conversations: conversations.size,
     });
     try {
-      const refreshed = await refreshProcessUsageSnapshotsHelper({
+      const refreshed = await refreshProcessUsageSnapshotsFn({
         conversations,
         processUsageBySessionId,
         readProcessUsageSample,
@@ -1562,7 +1562,7 @@ async function main(): Promise<number> {
   const ptySizeByConversationId = new Map<string, { cols: number; rows: number }>();
 
   const requestStop = (): void => {
-    requestStopHelper({
+    requestStopFn({
       stop,
       hasConversationTitleEdit: conversationTitleEdit !== null,
       stopConversationTitleEdit: () => stopConversationTitleEdit(true),
@@ -2324,7 +2324,7 @@ async function main(): Promise<number> {
     dismiss: () => void,
     onInsidePointerPress?: (col: number, row: number) => boolean,
   ): boolean => {
-    const result = dismissModalOnOutsideClickHelper({
+    const result = dismissModalOnOutsideClickFn({
       input,
       inputRemainder,
       dismiss,
@@ -2954,7 +2954,7 @@ async function main(): Promise<number> {
     orderedRepositoryIds: readonly string[],
     label: string,
   ): void => {
-    queueRepositoryPriorityOrderHelper({
+    queueRepositoryPriorityOrderFn({
       orderedRepositoryIds,
       repositories,
       queueControlPlaneOp,
@@ -3003,7 +3003,7 @@ async function main(): Promise<number> {
     draggedRepositoryId: string,
     targetRepositoryId: string,
   ): void => {
-    reorderRepositoryByDropHelper({
+    reorderRepositoryByDropFn({
       draggedRepositoryId,
       targetRepositoryId,
       orderedRepositoryIds: orderedActiveRepositoryRecords().map(
@@ -3015,7 +3015,7 @@ async function main(): Promise<number> {
   };
 
   const runTaskPaneAction = (action: TaskPaneAction): void => {
-    runTaskPaneActionHelper({
+    runTaskPaneActionFn({
       action,
       openTaskCreatePrompt,
       openRepositoryPromptForCreate,
@@ -3088,7 +3088,7 @@ async function main(): Promise<number> {
   };
 
   const openNewThreadPrompt = (directoryId: string): void => {
-    openNewThreadPromptHelper({
+    openNewThreadPromptFn({
       directoryId,
       directoriesHas: (nextDirectoryId) => directories.has(nextDirectoryId),
       clearAddDirectoryPrompt: () => {
@@ -3113,7 +3113,7 @@ async function main(): Promise<number> {
   };
 
   const openRepositoryPromptForCreate = (): void => {
-    openRepositoryPromptForCreateHelper({
+    openRepositoryPromptForCreateFn({
       clearNewThreadPrompt: () => {
         newThreadPrompt = null;
       },
@@ -3135,7 +3135,7 @@ async function main(): Promise<number> {
   };
 
   const openRepositoryPromptForEdit = (repositoryId: string): void => {
-    openRepositoryPromptForEditHelper({
+    openRepositoryPromptForEditFn({
       repositoryId,
       repositories,
       clearNewThreadPrompt: () => {
@@ -3165,7 +3165,7 @@ async function main(): Promise<number> {
     remoteUrl: string,
     existingRepositoryId?: string,
   ): Promise<void> => {
-    await upsertRepositoryByRemoteUrlHelper({
+    await upsertRepositoryByRemoteUrlFn({
       remoteUrl,
       existingRepositoryId: existingRepositoryId ?? null,
       normalizeGitHubRemoteUrl,
@@ -3193,7 +3193,7 @@ async function main(): Promise<number> {
   };
 
   const archiveRepositoryById = async (repositoryId: string): Promise<void> => {
-    await archiveRepositoryByIdHelper({
+    await archiveRepositoryByIdFn({
       repositoryId,
       archiveRepository: (targetRepositoryId) =>
         streamClient.sendCommand({
@@ -3213,7 +3213,7 @@ async function main(): Promise<number> {
     directoryId: string,
     agentType: ThreadAgentType,
   ): Promise<void> => {
-    await createAndActivateConversationInDirectoryHelper({
+    await createAndActivateConversationInDirectoryFn({
       directoryId,
       agentType,
       createConversationId: () => `conversation-${randomUUID()}`,
@@ -3237,7 +3237,7 @@ async function main(): Promise<number> {
   };
 
   const archiveConversation = async (sessionId: string): Promise<void> => {
-    await archiveConversationHelper({
+    await archiveConversationFn({
       sessionId,
       conversations,
       closePtySession: async (targetSessionId) => {
@@ -3277,7 +3277,7 @@ async function main(): Promise<number> {
   };
 
   const takeoverConversation = async (sessionId: string): Promise<void> => {
-    await takeoverConversationHelper({
+    await takeoverConversationFn({
       sessionId,
       conversationsHas: (targetSessionId) => conversations.has(targetSessionId),
       claimSession: async (targetSessionId) => {
@@ -3309,7 +3309,7 @@ async function main(): Promise<number> {
   };
 
   const addDirectoryByPath = async (rawPath: string): Promise<void> => {
-    await addDirectoryByPathHelper({
+    await addDirectoryByPathFn({
       rawPath,
       resolveWorkspacePathForMux: (value) =>
         resolveWorkspacePathForMux(options.invocationDirectory, value),
@@ -3346,7 +3346,7 @@ async function main(): Promise<number> {
   };
 
   const closeDirectory = async (directoryId: string): Promise<void> => {
-    await closeDirectoryHelper({
+    await closeDirectoryFn({
       directoryId,
       directoriesHas: (targetDirectoryId) => directories.has(targetDirectoryId),
       orderedConversationIds: () => conversationOrder(conversations),
@@ -3392,7 +3392,7 @@ async function main(): Promise<number> {
       setActiveDirectoryId: (targetDirectoryId) => {
         activeDirectoryId = targetDirectoryId;
       },
-      firstDirectoryId: () => firstDirectoryIdHelper(directories),
+      firstDirectoryId: () => firstDirectoryIdFn(directories),
       noteGitActivity,
       resolveActiveDirectoryId,
       activateConversation,
@@ -3929,7 +3929,7 @@ async function main(): Promise<number> {
   })();
 
   const handleTaskEditorPromptInput = (input: Buffer): boolean => {
-    const handled = handleTaskEditorPromptInputHelper({
+    const handled = handleTaskEditorPromptInputFn({
       input,
       prompt: taskEditorPrompt,
       isQuitShortcut: (rawInput) =>
@@ -3997,7 +3997,7 @@ async function main(): Promise<number> {
   };
 
   const handleConversationTitleEditInput = (input: Buffer): boolean => {
-    return handleConversationTitleEditInputHelper({
+    return handleConversationTitleEditInputFn({
       input,
       edit: conversationTitleEdit,
       isQuitShortcut: (rawInput) =>
@@ -4019,7 +4019,7 @@ async function main(): Promise<number> {
   };
 
   const handleNewThreadPromptInput = (input: Buffer): boolean => {
-    return handleNewThreadPromptInputHelper({
+    return handleNewThreadPromptInputFn({
       input,
       prompt: newThreadPrompt,
       isQuitShortcut: (rawInput) =>
@@ -4038,7 +4038,7 @@ async function main(): Promise<number> {
   };
 
   const handleAddDirectoryPromptInput = (input: Buffer): boolean => {
-    return handleAddDirectoryPromptInputHelper({
+    return handleAddDirectoryPromptInputFn({
       input,
       prompt: addDirectoryPrompt,
       isQuitShortcut: (rawInput) =>
@@ -4054,7 +4054,7 @@ async function main(): Promise<number> {
   };
 
   const handleRepositoryPromptInput = (input: Buffer): boolean => {
-    return handleRepositoryPromptInputHelper({
+    return handleRepositoryPromptInputFn({
       input,
       prompt: repositoryPrompt,
       isQuitShortcut: (rawInput) =>
@@ -4154,7 +4154,7 @@ async function main(): Promise<number> {
   };
 
   const handleTaskPaneShortcutInput = (input: Buffer): boolean => {
-    return handleTaskPaneShortcutInputHelper({
+    return handleTaskPaneShortcutInputFn({
       input,
       mainPaneMode,
       taskScreenKeybindings,
@@ -4191,7 +4191,7 @@ async function main(): Promise<number> {
     target: LeftNavSelection,
     direction: 'next' | 'previous',
   ): void => {
-    activateLeftNavTargetHelper({
+    activateLeftNavTargetFn({
       target,
       direction,
       enterHomePane,
@@ -4212,7 +4212,7 @@ async function main(): Promise<number> {
   };
 
   const cycleLeftNavSelection = (direction: 'next' | 'previous'): boolean => {
-    return cycleLeftNavSelectionHelper({
+    return cycleLeftNavSelectionFn({
       visibleTargets: visibleLeftNavTargetsForState(),
       currentSelection: leftNavSelection,
       direction,
@@ -4321,7 +4321,7 @@ async function main(): Promise<number> {
 
     const globalShortcut = detectMuxGlobalShortcut(focusExtraction.sanitized, shortcutBindings);
     if (
-      handleGlobalShortcutHelper({
+      handleGlobalShortcutFn({
         shortcut: globalShortcut,
         requestStop,
         resolveDirectoryForAction,
@@ -4395,7 +4395,7 @@ async function main(): Promise<number> {
       }
 
       if (
-        handlePaneDividerDragInputHelper({
+        handlePaneDividerDragInputFn({
           paneDividerDragActive,
           isMouseRelease: isMouseRelease(token.event.final),
           isWheelMouseCode: isWheelMouseCode(token.event.code),
@@ -4410,7 +4410,7 @@ async function main(): Promise<number> {
 
       const target = classifyPaneAt(layout, token.event.col, token.event.row);
       if (
-        handleHomePaneDragReleaseHelper({
+        handleHomePaneDragReleaseFn({
           homePaneDragState,
           isMouseRelease: isMouseRelease(token.event.final),
           mainPaneMode,
@@ -4427,7 +4427,7 @@ async function main(): Promise<number> {
         continue;
       }
       if (
-        handleSeparatorPointerPressHelper({
+        handleSeparatorPointerPressFn({
           target,
           isLeftButtonPress: isLeftButtonPress(token.event.code, token.event.final),
           hasAltModifier: hasAltModifier(token.event.code),
@@ -4441,7 +4441,7 @@ async function main(): Promise<number> {
       const isMainPaneTarget = target === 'right';
       const wheelDelta = wheelDeltaRowsFromCode(token.event.code);
       if (
-        handleMainPaneWheelInputHelper({
+        handleMainPaneWheelInputFn({
           target,
           wheelDelta,
           mainPaneMode,
@@ -4463,7 +4463,7 @@ async function main(): Promise<number> {
         continue;
       }
       if (
-        handleHomePaneDragMoveHelper({
+        handleHomePaneDragMoveFn({
           homePaneDragState,
           mainPaneMode,
           target,
@@ -4483,7 +4483,7 @@ async function main(): Promise<number> {
         !hasAltModifier(token.event.code) &&
         !isMotionMouseCode(token.event.code);
       if (
-        handleProjectPaneActionClickHelper({
+        handleProjectPaneActionClickFn({
           clickEligible: projectPaneActionClick,
           snapshot: projectPaneSnapshot,
           rightCols: layout.rightCols,
@@ -4509,7 +4509,7 @@ async function main(): Promise<number> {
         !hasAltModifier(token.event.code) &&
         !isMotionMouseCode(token.event.code);
       if (
-        handleHomePanePointerClickHelper({
+        handleHomePanePointerClickFn({
           clickEligible: taskPaneActionClick,
           paneRows: layout.paneRows,
           rightCols: layout.rightCols,
@@ -4551,7 +4551,7 @@ async function main(): Promise<number> {
         !hasAltModifier(token.event.code) &&
         !isMotionMouseCode(token.event.code);
       if (
-        handleLeftRailPointerClickHelper({
+        handleLeftRailPointerClickFn({
           clickEligible: leftPaneConversationSelect,
           rows: latestRailViewRows,
           paneRows: layout.paneRows,
@@ -4570,7 +4570,7 @@ async function main(): Promise<number> {
             releaseViewportPinForSelection();
           },
           handleAction: ({ selectedAction, selectedProjectId, selectedRepositoryId }: LeftRailPointerContext) =>
-            handleLeftRailActionClickHelper({
+            handleLeftRailActionClickFn({
               action: selectedAction,
               selectedProjectId,
               selectedRepositoryId,
@@ -4622,7 +4622,7 @@ async function main(): Promise<number> {
             selectedProjectId,
             supportsConversationTitleEditClick,
           }: LeftRailPointerContext) => {
-            handleLeftRailConversationClickHelper({
+            handleLeftRailConversationClickFn({
               selectedConversationId,
               selectedProjectId,
               supportsConversationTitleEditClick,
@@ -4699,7 +4699,7 @@ async function main(): Promise<number> {
       routedTokens.push(token);
     }
 
-    const { mainPaneScrollRows, forwardToSession } = routeInputTokensForConversationHelper({
+    const { mainPaneScrollRows, forwardToSession } = routeInputTokensForConversationFn({
       tokens: routedTokens,
       mainPaneMode,
       normalizeMuxKeyboardInputForPty,
