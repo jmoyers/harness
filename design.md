@@ -562,6 +562,7 @@ Design constraints:
 
 - Single instrumentation abstraction only (`perf-core`) used by every subsystem and process.
 - `perf-core` writes structured performance events to the same canonical structured file used by `log-core`.
+- `perf-core` write-path is hot-path aware: records are buffered and flushed in batches, and high-frequency events can use deterministic sampling (for example `pty.stdout.chunk`) to bound instrumentation overhead.
 - Trace model must support flamegraph-style analysis:
   - `trace_id`
   - `span_id`
@@ -1107,8 +1108,8 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - per-connection output buffering is bounded; slow consumers are disconnected once buffered output exceeds configured limits.
     - session runtime status tracking is exposed through `session.status` (`running`, `needs-input`, `completed`, `exited`) with attention reason and last-exit details.
     - runtime status is now event-driven from provider telemetry signals (not history replay) instead of local keystroke heuristics, preventing false `working` transitions from pre-submit typing and making background-session completion deterministic.
-    - session summaries now include PTY `processId` for per-session telemetry in operator clients.
-    - when enabled in `harness.config.jsonc`, the server hosts a local OTLP HTTP receiver and appends Codex `-c` overrides on launch so logs/metrics/traces (including optional prompt text) stream directly into Harness.
+    - session summaries now include PTY `processId` plus per-session diagnostics counters for telemetry ingest/fanout backpressure analysis.
+    - when enabled in `harness.config.jsonc`, the server hosts a local OTLP HTTP receiver and appends Codex `-c` overrides on launch so logs/metrics/traces (including optional prompt text) stream directly into Harness; telemetry ingest mode defaults to lifecycle-fast parsing (`codex.telemetry.ingestMode=lifecycle-fast`) with optional full payload parsing (`full`) for deep debugging.
     - Codex `history.jsonl` tail ingestion is supported as a parallel enrichment path, with thread-id correlation into conversation ids and shared SQLite persistence.
     - history ingestion uses non-blocking incremental reads from the last byte offset; the gateway no longer rereads the full history file each poll.
     - history polling defaults to a slower 5s baseline with jittered scheduling/backoff to decorrelate concurrent sessions and avoid synchronized background spikes.
@@ -1200,7 +1201,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - active-session attach now resumes from the last observed PTY cursor; inactive live conversations keep event subscriptions after detach so status/telemetry stays fresh while PTY output replay remains bounded by cursor-based attach
     - key-event subscription wiring (`session-status` + `session-key-event`) that drives thread bubble status and second-line "last known work" text from provider/telemetry signals rather than local keystroke heuristics
     - Codex OTEL normalization now uses a minimal active/inactive contract: prompt + SSE progress marks active, turn-e2e marks inactive, explicit needs-input tokens raise attention, and severity/error keyword fallbacks are disabled to prevent false telemetry errors.
-    - telemetry capture is lifecycle-first by default: `codex.telemetry.captureVerboseEvents=false` stores/publishes lifecycle events (`codex.conversation_starts`, `codex.user_prompt`, `codex.turn.e2e_duration_ms`) plus non-verbose high-signal events with explicit status hints; verbose event families remain opt-in.
+    - telemetry capture is lifecycle-first by default: `codex.telemetry.captureVerboseEvents=false` with `codex.telemetry.ingestMode=lifecycle-fast` stores/publishes lifecycle events (`codex.conversation_starts`, `codex.user_prompt`, `codex.turn.e2e_duration_ms`) plus non-verbose high-signal events with explicit status hints while skipping expensive full-payload expansion; verbose/full modes remain opt-in.
     - Codex notify hook relay support streams `session-event notify` records (for example `agent-turn-complete`) without introducing side-channel status heuristics.
     - Claude Code sessions inject ephemeral hook settings at launch (`UserPromptSubmit`, `PreToolUse`, `Stop`, `Notification`) and relay hook payloads through the same notify stream; control-plane derives scoped `session-key-event` status hints from explicit hook fields (including structured `notification_type`) and persists Claude resume session IDs for subsequent `--resume` launches.
     - mux status reduction now separates high-signal status transitions from noisy telemetry chatter: trace spans are status-neutral, non-turn metrics are status-neutral, stream deltas collapse into stable human-readable progress text, and the working glyph is static (non-blinking) to reduce visual noise while preserving live progress detail in the second line.

@@ -167,12 +167,14 @@ Harness is built to expose operational truth, not hide it.
 - Canonical thread/session lifecycle events.
 - Typed telemetry events for status hints and recent work summaries.
 - Deliberately minimal work-status projection: Codex prompt/SSE progress and Claude `UserPromptSubmit`/`PreToolUse` hooks mark `active`; Codex turn-e2e metrics and Claude `Stop` hooks mark `inactive`; Claude `Notification` status hints are derived only from explicit `notification_type` values (no summary-text heuristics); controller ownership never overrides status text.
-- Lifecycle telemetry is default-first: `codex.telemetry.captureVerboseEvents` defaults to `false`, retaining lifecycle events (`codex.conversation_starts`, `codex.user_prompt`, `codex.turn.e2e_duration_ms`) plus non-verbose high-signal events that carry explicit status hints; Claude hook lifecycle events flow through the same typed key-event path.
+- Lifecycle telemetry is default-first: `codex.telemetry.captureVerboseEvents` defaults to `false`, and `codex.telemetry.ingestMode` defaults to `lifecycle-fast` so ingest keeps lifecycle/high-signal events while avoiding full OTLP payload expansion on the hot path; set `ingestMode` to `full` when deep payload diagnostics are needed.
+- `session.status`/`session.list` summaries include per-session diagnostics counters (telemetry ingested/retained/dropped totals, last-60s ingest rate, fanout enqueue bytes/events, and backpressure/disconnect signals).
 - Mux projection instrumentation (`mux.session-projection.transition`) for icon/status-line timeline debugging.
 - Selector index snapshots (`mux.selector.snapshot` + `mux.selector.entry`) so threads can be referenced by visible rail index.
 - Session ownership/control transition events.
 - Durable state in SQLite for reconnect-safe operations.
 - Codex telemetry ingestion (logs, metrics, traces, history) for deep diagnostics when verbose capture is enabled.
+- `perf-core` uses batched writes plus deterministic sampling for hot high-frequency events (`pty.stdout.chunk`) to keep instrumentation overhead low under sustained output.
 - Shared mux runtime helpers are factored into `src/mux/live-mux/*` (args parsing, control-plane record parsing, startup env/terminal helpers, git/palette parsing, git/process snapshot probes, event mapping, pane layout math, selection/copy helpers).
 - Mux regression checks are behavior-first; tests validate runtime behavior directly instead of asserting source-code string fragments.
 
@@ -279,6 +281,7 @@ harness --session perf-a profile stop
 
 Configuration is file-first via `harness.config.jsonc`.
 Codex launch mode is controlled under `codex.launch` with `defaultMode` and per-directory `directoryModes` overrides.
+Codex telemetry ingest defaults to `codex.telemetry.ingestMode: "lifecycle-fast"`; switch to `"full"` when troubleshooting raw OTLP payload detail.
 Process-bootstrap secrets can be stored in `.harness/secrets.env` (for example `ANTHROPIC_API_KEY=...`); existing exported environment values take precedence.
 To expose Bun debugger protocol endpoints for live profiler control, configure `debug.inspect`:
 

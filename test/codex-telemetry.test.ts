@@ -4,6 +4,9 @@ import {
   buildCodexTelemetryConfigArgs,
   extractCodexThreadId,
   parseCodexHistoryLine,
+  parseOtlpLifecycleLogEvents,
+  parseOtlpLifecycleMetricEvents,
+  parseOtlpLifecycleTraceEvents,
   parseOtlpLogEvents,
   parseOtlpMetricEvents,
   parseOtlpTraceEvents,
@@ -637,6 +640,218 @@ void test('parseOtlpLogEvents does not derive needs-input status from severity-o
 void test('parseOtlpLogEvents returns empty on invalid root shape', () => {
   assert.deepEqual(parseOtlpLogEvents({}, '2026-01-01T00:00:00.000Z'), []);
   assert.deepEqual(parseOtlpLogEvents(null, '2026-01-01T00:00:00.000Z'), []);
+});
+
+void test('parseOtlpLifecycleLogEvents keeps lifecycle/high-signal records and drops verbose noise', () => {
+  const events = parseOtlpLifecycleLogEvents(
+    {
+      resourceLogs: [
+        {
+          scopeLogs: [
+            {
+              logRecords: [
+                {
+                  attributes: [
+                    { key: 'event.name', value: { stringValue: 'codex.user_prompt' } },
+                    { key: 'thread-id', value: { stringValue: 'thread-life-log' } }
+                  ],
+                  body: { stringValue: 'prompt accepted' }
+                },
+                {
+                  attributes: [{ key: 'event.name', value: { stringValue: 'codex.sse_event' } }],
+                  body: { stringValue: 'response.in_progress' }
+                },
+                {
+                  attributes: [{ key: 'event.name', value: { stringValue: 'custom.event' } }],
+                  body: { stringValue: 'needs-input now' }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    '2026-02-15T00:00:00.000Z'
+  );
+
+  assert.equal(events.length, 2);
+  assert.equal(events[0]?.eventName, 'codex.user_prompt');
+  assert.equal(events[0]?.providerThreadId, 'thread-life-log');
+  assert.equal(events[0]?.statusHint, 'running');
+  assert.equal(events[1]?.eventName, 'custom.event');
+  assert.equal(events[1]?.statusHint, 'needs-input');
+});
+
+void test('parseOtlpLifecycleMetricEvents keeps lifecycle metrics and emits compact payload', () => {
+  const events = parseOtlpLifecycleMetricEvents(
+    {
+      resourceMetrics: [
+        {
+          resource: {
+            attributes: [{ key: 'thread_id', value: { stringValue: 'thread-life-metric' } }]
+          },
+          scopeMetrics: [
+            {
+              metrics: [
+                {
+                  name: 'codex.turn.e2e_duration_ms',
+                  gauge: {
+                    dataPoints: [{ asDouble: 901.2 }]
+                  }
+                },
+                {
+                  name: 'custom.metric',
+                  gauge: {
+                    dataPoints: [{ asDouble: 12 }]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    '2026-02-15T00:00:00.000Z'
+  );
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.eventName, 'codex.turn.e2e_duration_ms');
+  assert.equal(events[0]?.statusHint, 'completed');
+  assert.equal(events[0]?.providerThreadId, 'thread-life-metric');
+  assert.equal(events[0]?.summary, 'turn complete (901ms)');
+  assert.equal(events[0]?.payload['pointCount'], 1);
+});
+
+void test('parseOtlpLifecycleTraceEvents keeps lifecycle/high-signal spans only', () => {
+  const events = parseOtlpLifecycleTraceEvents(
+    {
+      resourceSpans: [
+        {
+          scopeSpans: [
+            {
+              spans: [
+                {
+                  name: 'codex.turn.e2e_duration_ms',
+                  attributes: [{ key: 'thread-id', value: { stringValue: 'thread-life-trace' } }]
+                },
+                {
+                  name: 'codex.sse_event',
+                  attributes: [{ key: 'kind', value: { stringValue: 'response.completed' } }]
+                },
+                {
+                  name: 'custom.trace',
+                  attributes: [{ key: 'kind', value: { stringValue: 'noop' } }]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    '2026-02-15T00:00:00.000Z'
+  );
+
+  assert.equal(events.length, 2);
+  assert.equal(events[0]?.eventName, 'codex.turn.e2e_duration_ms');
+  assert.equal(events[0]?.providerThreadId, 'thread-life-trace');
+  assert.equal(events[0]?.statusHint, 'completed');
+  assert.equal(events[1]?.eventName, 'codex.sse_event');
+  assert.equal(events[1]?.statusHint, 'completed');
+});
+
+void test('parseOtlpLifecycleLogEvents covers text-value and summary fallback branches', () => {
+  const events = parseOtlpLifecycleLogEvents(
+    {
+      resourceLogs: [
+        {
+          scopeLogs: [
+            {
+              logRecords: [
+                {
+                  attributes: [{ key: 'event.name', value: 'codex.turn.e2e_duration_ms' }]
+                },
+                {
+                  attributes: [
+                    { key: 'event.name', value: { stringValue: 'codex.conversation_starts' } },
+                    { key: 'model_name', value: { stringValue: 'gpt-5' } }
+                  ]
+                },
+                {
+                  attributes: [
+                    { key: 'event.name', value: { stringValue: 'codex.conversation_starts' } },
+                    { key: 'model_name', value: { stringValue: '   ' } }
+                  ]
+                },
+                {
+                  attributes: [
+                    { key: 'event.name', value: { stringValue: 'codex.sse_event' } },
+                    { key: 'kind', value: { stringValue: 'needs-input' } }
+                  ]
+                },
+                {
+                  attributes: [{ key: 'event.name', value: { boolValue: true } }]
+                },
+                {
+                  attributes: [{ key: 'event.name', value: { intValue: '123' } }]
+                },
+                {
+                  attributes: [{ key: 'event.name', value: { doubleValue: 1.5 } }]
+                },
+                {
+                  attributes: [{ key: 'event.name', value: { bytesValue: 'Ymlu' } }]
+                },
+                {
+                  attributes: [{ key: 'event.name', value: { stringValue: '   ' } }]
+                },
+                {
+                  attributes: [{ key: 'event.name', value: { stringValue: 'custom.event' } }],
+                  body: { stringValue: 'needs-input now' }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    '2026-02-15T00:00:00.000Z'
+  );
+
+  assert.equal(events.length, 5);
+  assert.equal(events[0]?.summary, 'turn complete');
+  assert.equal(events[1]?.summary, 'conversation started (gpt-5)');
+  assert.equal(events[2]?.summary, 'conversation started');
+  assert.equal(events[3]?.summary, 'stream needs-input');
+  assert.equal(events[4]?.statusHint, 'needs-input');
+  assert.equal(events[4]?.summary, 'needs-input');
+});
+
+void test('parseOtlpLifecycleMetricEvents handles missing points and invalid root shapes', () => {
+  const events = parseOtlpLifecycleMetricEvents(
+    {
+      resourceMetrics: [
+        {
+          scopeMetrics: [
+            {
+              metrics: [
+                {
+                  name: 'codex.turn.e2e_duration_ms'
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    '2026-02-15T00:00:00.000Z'
+  );
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.payload['pointCount'], 0);
+  assert.equal(events[0]?.observedAt, '2026-02-15T00:00:00.000Z');
+  assert.deepEqual(parseOtlpLifecycleMetricEvents({}, '2026-02-15T00:00:00.000Z'), []);
+});
+
+void test('parseOtlpLifecycleTraceEvents returns empty on invalid root shape', () => {
+  assert.deepEqual(parseOtlpLifecycleTraceEvents({}, '2026-02-15T00:00:00.000Z'), []);
 });
 
 void test('parseOtlpMetricEvents parses metrics and status hints', () => {

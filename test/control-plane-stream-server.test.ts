@@ -2024,6 +2024,9 @@ void test('stream server internal sort helper covers tie-break branches', async 
       exitedAt: string | null;
       tombstoneTimer: NodeJS.Timeout | null;
       lastObservedOutputCursor: number;
+      latestTelemetry: Record<string, unknown> | null;
+      controller: Record<string, unknown> | null;
+      diagnostics: Record<string, unknown>;
     }
 
     const internals = server as unknown as {
@@ -2049,6 +2052,23 @@ void test('stream server internal sort helper covers tie-break branches', async 
       exitedAt: null,
       tombstoneTimer: null,
       lastObservedOutputCursor: 0,
+      latestTelemetry: null,
+      controller: null,
+      diagnostics: {
+        telemetryIngestedTotal: 0,
+        telemetryRetainedTotal: 0,
+        telemetryDroppedTotal: 0,
+        telemetryIngestRate: {
+          buckets: [0, 0, 0, 0, 0, 0],
+          currentBucketStartMs: 0,
+        },
+        telemetryEventsLast60s: 0,
+        telemetryIngestQps1m: 0,
+        fanoutEventsEnqueuedTotal: 0,
+        fanoutBytesEnqueuedTotal: 0,
+        fanoutBackpressureSignalsTotal: 0,
+        fanoutBackpressureDisconnectsTotal: 0,
+      },
     };
 
     const rows: readonly InternalSessionState[] = [
@@ -2995,6 +3015,9 @@ void test('stream server internal guard branches remain safe for missing ids', a
       exitedAt: string | null;
       tombstoneTimer: NodeJS.Timeout | null;
       lastObservedOutputCursor: number;
+      latestTelemetry: Record<string, unknown> | null;
+      controller: Record<string, unknown> | null;
+      diagnostics: Record<string, unknown>;
     }
 
     const internals = server as unknown as {
@@ -3008,7 +3031,11 @@ void test('stream server internal guard branches remain safe for missing ids', a
           attachedSessionIds: Set<string>;
           eventSessionIds: Set<string>;
           streamSubscriptionIds: Set<string>;
-          queuedPayloads: string[];
+          queuedPayloads: Array<{
+            payload: string;
+            bytes: number;
+            diagnosticSessionId: string | null;
+          }>;
           queuedPayloadBytes: number;
           writeBlocked: boolean;
         }
@@ -3059,7 +3086,11 @@ void test('stream server internal guard branches remain safe for missing ids', a
     });
 
     const fakeConnection = internals.connections.get('fake-connection')!;
-    fakeConnection.queuedPayloads.push('payload');
+    fakeConnection.queuedPayloads.push({
+      payload: 'payload',
+      bytes: 7,
+      diagnosticSessionId: null,
+    });
     fakeConnection.queuedPayloadBytes = 7;
     internals.flushConnectionWrites('fake-connection');
     assert.equal(destroyed, true);
@@ -3084,6 +3115,23 @@ void test('stream server internal guard branches remain safe for missing ids', a
       exitedAt: new Date(0).toISOString(),
       tombstoneTimer: null,
       lastObservedOutputCursor: 0,
+      latestTelemetry: null,
+      controller: null,
+      diagnostics: {
+        telemetryIngestedTotal: 0,
+        telemetryRetainedTotal: 0,
+        telemetryDroppedTotal: 0,
+        telemetryIngestRate: {
+          buckets: [0, 0, 0, 0, 0, 0],
+          currentBucketStartMs: 0,
+        },
+        telemetryEventsLast60s: 0,
+        telemetryIngestQps1m: 0,
+        fanoutEventsEnqueuedTotal: 0,
+        fanoutBytesEnqueuedTotal: 0,
+        fanoutBackpressureSignalsTotal: 0,
+        fanoutBackpressureDisconnectsTotal: 0,
+      },
     } as unknown as typeof internals.sessions extends Map<string, infer T> ? T : never);
     internals.detachConnectionFromSession('fake-connection', 'fake-session');
 
@@ -3135,6 +3183,21 @@ void test('stream server internal guard branches remain safe for missing ids', a
         controllerLabel: 'Cleanup Agent',
         claimedAt: new Date(0).toISOString(),
       },
+      diagnostics: {
+        telemetryIngestedTotal: 0,
+        telemetryRetainedTotal: 0,
+        telemetryDroppedTotal: 0,
+        telemetryIngestRate: {
+          buckets: [0, 0, 0, 0, 0, 0],
+          currentBucketStartMs: 0,
+        },
+        telemetryEventsLast60s: 0,
+        telemetryIngestQps1m: 0,
+        fanoutEventsEnqueuedTotal: 0,
+        fanoutBytesEnqueuedTotal: 0,
+        fanoutBackpressureSignalsTotal: 0,
+        fanoutBackpressureDisconnectsTotal: 0,
+      },
     } as unknown as typeof internals.sessions extends Map<string, infer T> ? T : never);
     internals.cleanupConnection('cleanup-connection');
     assert.equal(internals.streamSubscriptions.has('subscription-cleanup'), false);
@@ -3177,6 +3240,23 @@ void test('stream server internal guard branches remain safe for missing ids', a
       exitedAt: new Date(0).toISOString(),
       tombstoneTimer: null,
       lastObservedOutputCursor: 0,
+      latestTelemetry: null,
+      controller: null,
+      diagnostics: {
+        telemetryIngestedTotal: 0,
+        telemetryRetainedTotal: 0,
+        telemetryDroppedTotal: 0,
+        telemetryIngestRate: {
+          buckets: [0, 0, 0, 0, 0, 0],
+          currentBucketStartMs: 0,
+        },
+        telemetryEventsLast60s: 0,
+        telemetryIngestQps1m: 0,
+        fanoutEventsEnqueuedTotal: 0,
+        fanoutBytesEnqueuedTotal: 0,
+        fanoutBackpressureSignalsTotal: 0,
+        fanoutBackpressureDisconnectsTotal: 0,
+      },
     });
     internals.scheduleTombstoneRemoval('timer-guard-session');
     const timerGuardState = internals.sessions.get('timer-guard-session');
@@ -4036,6 +4116,17 @@ void test('stream server lifecycle telemetry mode drops verbose codex events whi
     assert.notEqual(telemetry, null);
     assert.equal(telemetry?.['eventName'], 'codex.turn.e2e_duration_ms');
     assert.equal(telemetry?.['source'], 'otlp-metric');
+    const diagnostics = status['diagnostics'] as Record<string, unknown>;
+    assert.equal(diagnostics['telemetryIngestedTotal'], 6);
+    assert.equal(diagnostics['telemetryRetainedTotal'], 3);
+    assert.equal(diagnostics['telemetryDroppedTotal'], 3);
+    assert.equal(diagnostics['fanoutBackpressureSignalsTotal'], 0);
+    assert.equal(diagnostics['fanoutBackpressureDisconnectsTotal'], 0);
+    assert.equal(
+      typeof diagnostics['fanoutEventsEnqueuedTotal'] === 'number' &&
+        (diagnostics['fanoutEventsEnqueuedTotal'] as number) > 0,
+      true,
+    );
 
     const observedKeyEvents = observedTelemetry.filter(
       (envelope) =>

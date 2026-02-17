@@ -167,3 +167,58 @@ void test('perf-core supports file path rotation while enabled', () => {
     rmSync(tempPath, { recursive: true, force: true });
   }
 });
+
+void test('perf-core samples high-volume pty stdout events and keeps non-sampled events', () => {
+  const tempPath = mkdtempSync(join(tmpdir(), 'harness-perf-sample-'));
+  const outputPath = join(tempPath, 'perf.jsonl');
+
+  try {
+    configurePerfCore({
+      enabled: true,
+      filePath: outputPath
+    });
+    for (let idx = 0; idx < 20; idx += 1) {
+      recordPerfEvent('pty.stdout.chunk');
+    }
+    recordPerfEvent('non.sampled.event');
+    shutdownPerfCore();
+
+    const records = readRecords(outputPath);
+    const sampledCount = records.filter((record) => record.name === 'pty.stdout.chunk').length;
+    const unsampledCount = records.filter((record) => record.name === 'non.sampled.event').length;
+    assert.equal(sampledCount, 2);
+    assert.equal(unsampledCount, 1);
+  } finally {
+    rmSync(tempPath, { recursive: true, force: true });
+  }
+});
+
+void test('perf-core resets event sampling counters on configure', () => {
+  const tempPath = mkdtempSync(join(tmpdir(), 'harness-perf-sample-reset-'));
+  const outputPath = join(tempPath, 'perf.jsonl');
+
+  try {
+    configurePerfCore({
+      enabled: true,
+      filePath: outputPath
+    });
+    for (let idx = 0; idx < 9; idx += 1) {
+      recordPerfEvent('pty.stdout.chunk');
+    }
+
+    configurePerfCore({
+      enabled: true,
+      filePath: outputPath
+    });
+    for (let idx = 0; idx < 10; idx += 1) {
+      recordPerfEvent('pty.stdout.chunk');
+    }
+    shutdownPerfCore();
+
+    const records = readRecords(outputPath);
+    const sampledCount = records.filter((record) => record.name === 'pty.stdout.chunk').length;
+    assert.equal(sampledCount, 1);
+  } finally {
+    rmSync(tempPath, { recursive: true, force: true });
+  }
+});

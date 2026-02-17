@@ -321,6 +321,20 @@ const NEEDS_INPUT_HINT_TOKENS = [
   'approval_required'
 ] as const;
 
+const LIFECYCLE_TELEMETRY_EVENT_NAMES = new Set([
+  'codex.user_prompt',
+  'codex.turn.e2e_duration_ms',
+  'codex.conversation_starts'
+]);
+
+function isLifecycleTelemetryEventName(eventName: string | null): boolean {
+  const normalized = eventName?.trim().toLowerCase() ?? '';
+  if (normalized.length === 0) {
+    return false;
+  }
+  return LIFECYCLE_TELEMETRY_EVENT_NAMES.has(normalized);
+}
+
 function statusFromOutcomeText(value: string | null): CodexStatusHint | null {
   const normalized = value?.toLowerCase().trim() ?? '';
   if (normalized.length === 0) {
@@ -800,6 +814,369 @@ export function parseOtlpTraceEvents(
           providerThreadId: extractCodexThreadId(payloadRecord),
           statusHint: null,
           payload: payloadRecord
+        });
+      }
+    }
+  }
+  return events;
+}
+
+function readOtlpTextValue(value: unknown): string | null {
+  const record = asRecord(value);
+  if (record === null) {
+    return asSummaryText(value);
+  }
+  if (record['stringValue'] !== undefined) {
+    return asSummaryText(record['stringValue']);
+  }
+  if (record['boolValue'] !== undefined) {
+    return asSummaryText(record['boolValue']);
+  }
+  if (record['intValue'] !== undefined) {
+    return asSummaryText(record['intValue']);
+  }
+  if (record['doubleValue'] !== undefined) {
+    return asSummaryText(record['doubleValue']);
+  }
+  return null;
+}
+
+function parseOtlpAttributeTextMap(value: unknown): Record<string, string> {
+  if (!Array.isArray(value)) {
+    return {};
+  }
+  const out: Record<string, string> = {};
+  for (const entry of value) {
+    const record = asRecord(entry);
+    if (record === null) {
+      continue;
+    }
+    const key = readStringTrimmed(record['key']);
+    if (key === null) {
+      continue;
+    }
+    const parsedValue = readOtlpTextValue(record['value']);
+    if (parsedValue === null) {
+      continue;
+    }
+    out[key] = parsedValue;
+  }
+  return out;
+}
+
+function pickAttributeText(
+  attributes: Record<string, string>,
+  keys: readonly string[]
+): string | null {
+  const normalizedKeys = new Set(keys.map((key) => normalizeLookupKey(key)));
+  for (const [key, value] of Object.entries(attributes)) {
+    if (normalizedKeys.has(normalizeLookupKey(key))) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function lifecycleSummaryFromEventName(
+  eventName: string | null,
+  statusHint: CodexStatusHint | null,
+  attributes: Record<string, string>,
+  bodyText: string | null
+): string | null {
+  const normalizedEventName = eventName?.trim().toLowerCase() ?? '';
+  if (normalizedEventName === 'codex.user_prompt') {
+    return 'prompt submitted';
+  }
+  if (normalizedEventName === 'codex.conversation_starts') {
+    const model = pickAttributeText(attributes, ['model', 'model_name', 'modelName']);
+    if (model !== null) {
+      return `conversation started (${compactSummaryText(model)})`;
+    }
+    return 'conversation started';
+  }
+  if (normalizedEventName === 'codex.turn.e2e_duration_ms') {
+    return 'turn complete';
+  }
+  if (normalizedEventName === 'codex.sse_event') {
+    const kind = pickAttributeText(attributes, ['kind', 'event.kind', 'event_type', 'event.type', 'type']);
+    return kind === null ? 'stream event' : `stream ${compactSummaryText(kind)}`;
+  }
+  return statusHint === 'needs-input' ? 'needs-input' : compactSummaryText(eventName) ?? compactSummaryText(bodyText);
+}
+
+function lifecycleEventNameFromAttributes(
+  attributes: Record<string, string>,
+  bodyText: string | null
+): string | null {
+  return (
+    pickAttributeText(attributes, [
+      'event.name',
+      'name',
+      'codex.event',
+      'event',
+      'type'
+    ]) ?? compactSummaryText(bodyText)
+  );
+}
+
+function lifecycleThreadIdFromAttributes(attributes: Record<string, string>): string | null {
+  return pickAttributeText(attributes, [
+    'thread-id',
+    'thread_id',
+    'threadid',
+    'session-id',
+    'session_id',
+    'sessionid',
+    'conversation-id',
+    'conversation_id',
+    'conversationid'
+  ]);
+}
+
+function lifecycleStatusHintFromAttributes(
+  eventName: string | null,
+  attributes: Record<string, string>,
+  bodyText: string | null
+): CodexStatusHint | null {
+  const normalizedEventName = eventName?.toLowerCase().trim() ?? '';
+  if (normalizedEventName === 'codex.user_prompt') {
+    return 'running';
+  }
+  if (normalizedEventName === 'codex.turn.e2e_duration_ms') {
+    return 'completed';
+  }
+  if (normalizedEventName === 'codex.sse_event') {
+    const kind = pickAttributeText(attributes, ['kind', 'event.kind', 'event_type', 'event.type', 'type']);
+    if ((kind?.toLowerCase() ?? '').includes('response.completed')) {
+      return 'completed';
+    }
+  }
+  const statusToken =
+    pickAttributeText(attributes, [
+      'status',
+      'result',
+      'outcome',
+      'decision',
+      'kind',
+      'event.kind',
+      'event_type',
+      'event.type',
+      'type'
+    ]) ?? bodyText;
+  const statusHint = statusFromOutcomeText(statusToken);
+  if (statusHint !== null) {
+    return statusHint;
+  }
+  return statusFromOutcomeText(eventName);
+}
+
+function shouldRetainLifecycleEvent(
+  eventName: string | null,
+  statusHint: CodexStatusHint | null
+): boolean {
+  return isLifecycleTelemetryEventName(eventName) || statusHint !== null;
+}
+
+export function parseOtlpLifecycleLogEvents(
+  payload: unknown,
+  observedAtFallback: string
+): readonly ParsedCodexTelemetryEvent[] {
+  const root = asRecord(payload);
+  if (root === null || !Array.isArray(root['resourceLogs'])) {
+    return [];
+  }
+  const events: ParsedCodexTelemetryEvent[] = [];
+  for (const resourceLog of root['resourceLogs']) {
+    const resourceLogRecord = asRecord(resourceLog);
+    if (resourceLogRecord === null) {
+      continue;
+    }
+    const scopeLogs = resourceLogRecord['scopeLogs'];
+    if (!Array.isArray(scopeLogs)) {
+      continue;
+    }
+    for (const scopeLog of scopeLogs) {
+      const scopeLogRecord = asRecord(scopeLog);
+      if (scopeLogRecord === null || !Array.isArray(scopeLogRecord['logRecords'])) {
+        continue;
+      }
+      for (const logRecord of scopeLogRecord['logRecords']) {
+        const item = asRecord(logRecord);
+        if (item === null) {
+          continue;
+        }
+        const attributes = parseOtlpAttributeTextMap(item['attributes']);
+        const bodyText = readOtlpTextValue(item['body']);
+        const eventName = lifecycleEventNameFromAttributes(attributes, bodyText);
+        const statusHint = lifecycleStatusHintFromAttributes(eventName, attributes, bodyText);
+        if (!shouldRetainLifecycleEvent(eventName, statusHint)) {
+          continue;
+        }
+        const observedAt = normalizeNanoTimestamp(
+          item['timeUnixNano'],
+          normalizeNanoTimestamp(item['observedTimeUnixNano'], observedAtFallback)
+        );
+        const severity = readStringTrimmed(item['severityText']);
+        const providerThreadId = lifecycleThreadIdFromAttributes(attributes);
+        const summary = lifecycleSummaryFromEventName(eventName, statusHint, attributes, bodyText);
+        events.push({
+          source: 'otlp-log',
+          observedAt,
+          eventName,
+          severity,
+          summary,
+          providerThreadId,
+          statusHint,
+          payload: {
+            attributes,
+            body: bodyText,
+          },
+        });
+      }
+    }
+  }
+  return events;
+}
+
+function metricDataPointsShallow(metric: Record<string, unknown>): readonly Record<string, unknown>[] {
+  const candidates = [
+    asRecord(metric['sum'])?.['dataPoints'],
+    asRecord(metric['gauge'])?.['dataPoints'],
+    asRecord(metric['histogram'])?.['dataPoints'],
+    asRecord(metric['exponentialHistogram'])?.['dataPoints'],
+    asRecord(metric['summary'])?.['dataPoints'],
+  ];
+  for (const candidate of candidates) {
+    if (!Array.isArray(candidate)) {
+      continue;
+    }
+    return candidate.flatMap((entry) => {
+      const record = asRecord(entry);
+      return record === null ? [] : [record];
+    });
+  }
+  return [];
+}
+
+function readMetricPointValueShallow(point: Record<string, unknown>): number | null {
+  return (
+    readFiniteNumber(point['asDouble']) ??
+    readFiniteNumber(point['asInt']) ??
+    readFiniteNumber(point['sum'])
+  );
+}
+
+export function parseOtlpLifecycleMetricEvents(
+  payload: unknown,
+  observedAtFallback: string
+): readonly ParsedCodexTelemetryEvent[] {
+  const root = asRecord(payload);
+  if (root === null || !Array.isArray(root['resourceMetrics'])) {
+    return [];
+  }
+  const events: ParsedCodexTelemetryEvent[] = [];
+  for (const resourceMetric of root['resourceMetrics']) {
+    const resourceMetricRecord = asRecord(resourceMetric);
+    if (resourceMetricRecord === null || !Array.isArray(resourceMetricRecord['scopeMetrics'])) {
+      continue;
+    }
+    const resourceAttributes = parseOtlpAttributeTextMap(asRecord(resourceMetricRecord['resource'])?.['attributes']);
+    for (const scopeMetric of resourceMetricRecord['scopeMetrics']) {
+      const scopeMetricRecord = asRecord(scopeMetric);
+      if (scopeMetricRecord === null || !Array.isArray(scopeMetricRecord['metrics'])) {
+        continue;
+      }
+      for (const metricValue of scopeMetricRecord['metrics']) {
+        const metric = asRecord(metricValue);
+        if (metric === null) {
+          continue;
+        }
+        const eventName = readStringTrimmed(metric['name']);
+        const statusHint = eventName === 'codex.turn.e2e_duration_ms' ? 'completed' : null;
+        if (!shouldRetainLifecycleEvent(eventName, statusHint)) {
+          continue;
+        }
+        const dataPoints = metricDataPointsShallow(metric);
+        const firstPoint = dataPoints[0];
+        const pointAttributes = firstPoint === undefined
+          ? {}
+          : parseOtlpAttributeTextMap(firstPoint['attributes']);
+        const providerThreadId =
+          lifecycleThreadIdFromAttributes(pointAttributes) ??
+          lifecycleThreadIdFromAttributes(resourceAttributes);
+        const firstValue = firstPoint === undefined ? null : readMetricPointValueShallow(firstPoint);
+        const summary =
+          eventName === 'codex.turn.e2e_duration_ms' && firstValue !== null
+            ? `turn complete (${firstValue.toFixed(0)}ms)`
+            : compactSummaryText(eventName) ?? 'metric';
+        const observedAt =
+          firstPoint === undefined
+            ? observedAtFallback
+            : normalizeNanoTimestamp(firstPoint['timeUnixNano'], observedAtFallback);
+        events.push({
+          source: 'otlp-metric',
+          observedAt,
+          eventName,
+          severity: null,
+          summary,
+          providerThreadId,
+          statusHint,
+          payload: {
+            metricName: eventName,
+            pointCount: dataPoints.length,
+            firstPointValue: firstValue,
+          },
+        });
+      }
+    }
+  }
+  return events;
+}
+
+export function parseOtlpLifecycleTraceEvents(
+  payload: unknown,
+  observedAtFallback: string
+): readonly ParsedCodexTelemetryEvent[] {
+  const root = asRecord(payload);
+  if (root === null || !Array.isArray(root['resourceSpans'])) {
+    return [];
+  }
+  const events: ParsedCodexTelemetryEvent[] = [];
+  for (const resourceSpan of root['resourceSpans']) {
+    const resourceSpanRecord = asRecord(resourceSpan);
+    if (resourceSpanRecord === null || !Array.isArray(resourceSpanRecord['scopeSpans'])) {
+      continue;
+    }
+    for (const scopeSpan of resourceSpanRecord['scopeSpans']) {
+      const scopeSpanRecord = asRecord(scopeSpan);
+      if (scopeSpanRecord === null || !Array.isArray(scopeSpanRecord['spans'])) {
+        continue;
+      }
+      for (const spanValue of scopeSpanRecord['spans']) {
+        const span = asRecord(spanValue);
+        if (span === null) {
+          continue;
+        }
+        const attributes = parseOtlpAttributeTextMap(span['attributes']);
+        const eventName = readStringTrimmed(span['name']);
+        const statusHint = lifecycleStatusHintFromAttributes(eventName, attributes, null);
+        if (!shouldRetainLifecycleEvent(eventName, statusHint)) {
+          continue;
+        }
+        const providerThreadId = lifecycleThreadIdFromAttributes(attributes);
+        const observedAt = normalizeNanoTimestamp(span['endTimeUnixNano'], observedAtFallback);
+        events.push({
+          source: 'otlp-trace',
+          observedAt,
+          eventName,
+          severity: null,
+          summary: compactSummaryText(eventName) ?? 'span',
+          providerThreadId,
+          statusHint,
+          payload: {
+            attributes,
+            spanName: eventName,
+          },
         });
       }
     }

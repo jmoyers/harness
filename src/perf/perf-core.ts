@@ -32,6 +32,10 @@ interface PerfSpanRecord {
 type PerfRecord = PerfEventRecord | PerfSpanRecord;
 
 const DEFAULT_FILE_PATH = '.harness/perf.jsonl';
+const DEFAULT_MAX_PENDING_RECORDS = 4096;
+const DEFAULT_EVENT_SAMPLE_RATES: Readonly<Record<string, number>> = {
+  'pty.stdout.chunk': 0.1,
+};
 
 const state: {
   enabled: boolean;
@@ -39,12 +43,22 @@ const state: {
   fd: number | null;
   nextTraceId: number;
   nextSpanId: number;
+  flushTimer: NodeJS.Timeout | null;
+  pendingRecords: string[];
+  maxPendingRecords: number;
+  sampleRates: Readonly<Record<string, number>>;
+  sampleCounters: Map<string, number>;
 } = {
   enabled: false,
   filePath: DEFAULT_FILE_PATH,
   fd: null,
   nextTraceId: 1,
-  nextSpanId: 1
+  nextSpanId: 1,
+  flushTimer: null,
+  pendingRecords: [],
+  maxPendingRecords: DEFAULT_MAX_PENDING_RECORDS,
+  sampleRates: DEFAULT_EVENT_SAMPLE_RATES,
+  sampleCounters: new Map(),
 };
 
 function ensureWriter(): void {
@@ -58,6 +72,11 @@ function ensureWriter(): void {
 }
 
 function closeWriter(): void {
+  flushPendingRecords();
+  if (state.flushTimer !== null) {
+    clearTimeout(state.flushTimer);
+    state.flushTimer = null;
+  }
   if (state.fd === null) {
     return;
   }
@@ -66,9 +85,54 @@ function closeWriter(): void {
   state.fd = null;
 }
 
+function scheduleFlush(): void {
+  if (!state.enabled || state.fd === null || state.flushTimer !== null) {
+    return;
+  }
+  state.flushTimer = setTimeout(() => {
+    state.flushTimer = null;
+    flushPendingRecords();
+  }, 0);
+  state.flushTimer.unref();
+}
+
+function flushPendingRecords(): void {
+  if (state.fd === null || state.pendingRecords.length === 0) {
+    return;
+  }
+  const chunk = state.pendingRecords.join('');
+  state.pendingRecords.length = 0;
+  writeSync(state.fd, chunk);
+}
+
 function writeRecord(record: PerfRecord): void {
   ensureWriter();
-  writeSync(state.fd as number, `${JSON.stringify(record)}\n`);
+  if (state.fd === null) {
+    return;
+  }
+  if (state.pendingRecords.length >= state.maxPendingRecords) {
+    state.pendingRecords.shift();
+  }
+  state.pendingRecords.push(`${JSON.stringify(record)}\n`);
+  scheduleFlush();
+}
+
+function shouldRecordEvent(name: string): boolean {
+  const sampleRate = state.sampleRates[name];
+  if (sampleRate === undefined) {
+    return true;
+  }
+  if (!Number.isFinite(sampleRate) || sampleRate <= 0) {
+    return false;
+  }
+  if (sampleRate >= 1) {
+    return true;
+  }
+  const sampleEvery = Math.max(1, Math.floor(1 / sampleRate));
+  const previous = state.sampleCounters.get(name) ?? 0;
+  const next = previous + 1;
+  state.sampleCounters.set(name, next);
+  return next % sampleEvery === 0;
 }
 
 function nextTraceId(): string {
@@ -194,6 +258,7 @@ export function configurePerfCore(config: PerfCoreConfig): void {
 
   state.enabled = config.enabled;
   state.filePath = nextFilePath;
+  state.sampleCounters.clear();
 
   if (state.enabled) {
     ensureWriter();
@@ -232,7 +297,7 @@ export function recordPerfDuration(name: string, startedAtNs: bigint, attrs?: Pe
 }
 
 export function recordPerfEvent(name: string, attrs?: PerfAttrs): void {
-  if (!state.enabled) {
+  if (!state.enabled || !shouldRecordEvent(name)) {
     return;
   }
 

@@ -387,7 +387,10 @@ void test(
 
       const session = startPtySession({
         command: '/bin/sh',
-        commandArgs: ['-c', 'printf "stdout-without-probe\\n"']
+        commandArgs: [
+          '-c',
+          'for i in $(seq 1 12); do printf "stdout-without-probe-$i\\n"; sleep 0.01; done'
+        ]
       });
 
       const exit = await waitForExit(session, 10000);

@@ -88,6 +88,7 @@ interface HarnessCodexTelemetryConfig {
   readonly captureMetrics: boolean;
   readonly captureTraces: boolean;
   readonly captureVerboseEvents: boolean;
+  readonly ingestMode: 'lifecycle-fast' | 'full';
 }
 
 interface HarnessCodexHistoryConfig {
@@ -218,6 +219,7 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
       captureMetrics: true,
       captureTraces: true,
       captureVerboseEvents: false,
+      ingestMode: 'lifecycle-fast',
     },
     history: {
       enabled: true,
@@ -654,6 +656,11 @@ function normalizeCodexTelemetryConfig(input: unknown): HarnessCodexTelemetryCon
   if (record === null) {
     return DEFAULT_HARNESS_CONFIG.codex.telemetry;
   }
+  const rawIngestMode = record['ingestMode'];
+  const ingestMode =
+    rawIngestMode === 'full' || rawIngestMode === 'lifecycle-fast'
+      ? rawIngestMode
+      : DEFAULT_HARNESS_CONFIG.codex.telemetry.ingestMode;
   return {
     enabled:
       typeof record['enabled'] === 'boolean'
@@ -681,6 +688,7 @@ function normalizeCodexTelemetryConfig(input: unknown): HarnessCodexTelemetryCon
       typeof record['captureVerboseEvents'] === 'boolean'
         ? record['captureVerboseEvents']
         : DEFAULT_HARNESS_CONFIG.codex.telemetry.captureVerboseEvents,
+    ingestMode,
   };
 }
 

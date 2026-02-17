@@ -46,6 +46,9 @@ import { recordPerfEvent, startPerfSpan } from '../perf/perf-core.ts';
 import {
   buildCodexTelemetryConfigArgs,
   parseCodexHistoryLine,
+  parseOtlpLifecycleLogEvents,
+  parseOtlpLifecycleMetricEvents,
+  parseOtlpLifecycleTraceEvents,
   parseOtlpLogEvents,
   parseOtlpMetricEvents,
   parseOtlpTraceEvents,
@@ -119,6 +122,7 @@ interface CodexTelemetryServerConfig {
   readonly captureMetrics: boolean;
   readonly captureTraces: boolean;
   readonly captureVerboseEvents?: boolean;
+  readonly ingestMode?: 'lifecycle-fast' | 'full';
 }
 
 interface CodexHistoryIngestConfig {
@@ -168,9 +172,31 @@ interface ConnectionState {
   attachedSessionIds: Set<string>;
   eventSessionIds: Set<string>;
   streamSubscriptionIds: Set<string>;
-  queuedPayloads: string[];
+  queuedPayloads: QueuedPayload[];
   queuedPayloadBytes: number;
   writeBlocked: boolean;
+}
+
+interface QueuedPayload {
+  payload: string;
+  bytes: number;
+  diagnosticSessionId: string | null;
+}
+
+interface SessionRollingCounter {
+  buckets: [number, number, number, number, number, number];
+  currentBucketStartMs: number;
+}
+
+interface SessionDiagnostics {
+  telemetryIngestedTotal: number;
+  telemetryRetainedTotal: number;
+  telemetryDroppedTotal: number;
+  telemetryIngestRate: SessionRollingCounter;
+  fanoutEventsEnqueuedTotal: number;
+  fanoutBytesEnqueuedTotal: number;
+  fanoutBackpressureSignalsTotal: number;
+  fanoutBackpressureDisconnectsTotal: number;
 }
 
 interface SessionState {
@@ -197,6 +223,7 @@ interface SessionState {
   lastObservedOutputCursor: number;
   latestTelemetry: ControlPlaneTelemetrySummary | null;
   controller: SessionControllerState | null;
+  diagnostics: SessionDiagnostics;
 }
 
 interface SessionControllerState extends StreamSessionController {
@@ -262,6 +289,8 @@ const DEFAULT_MAX_STREAM_JOURNAL_ENTRIES = 10000;
 const DEFAULT_GIT_STATUS_POLL_MS = 1200;
 const HISTORY_POLL_JITTER_RATIO = 0.35;
 const HISTORY_POLL_MAX_DELAY_MS = 60_000;
+const SESSION_DIAGNOSTICS_BUCKET_MS = 10_000;
+const SESSION_DIAGNOSTICS_BUCKET_COUNT = 6;
 const DEFAULT_BOOTSTRAP_SESSION_COLS = 80;
 const DEFAULT_BOOTSTRAP_SESSION_ROWS = 24;
 const DEFAULT_TENANT_ID = 'tenant-local';
@@ -338,6 +367,55 @@ function compareIsoDesc(left: string | null, right: string | null): number {
   return right.localeCompare(left);
 }
 
+function createSessionRollingCounter(nowMs = Date.now()): SessionRollingCounter {
+  const roundedStartMs = Math.floor(nowMs / SESSION_DIAGNOSTICS_BUCKET_MS) * SESSION_DIAGNOSTICS_BUCKET_MS;
+  return {
+    buckets: [0, 0, 0, 0, 0, 0],
+    currentBucketStartMs: roundedStartMs,
+  };
+}
+
+function advanceSessionRollingCounter(counter: SessionRollingCounter, nowMs: number): void {
+  const roundedNowMs = Math.floor(nowMs / SESSION_DIAGNOSTICS_BUCKET_MS) * SESSION_DIAGNOSTICS_BUCKET_MS;
+  const elapsedBuckets = Math.floor((roundedNowMs - counter.currentBucketStartMs) / SESSION_DIAGNOSTICS_BUCKET_MS);
+  if (elapsedBuckets <= 0) {
+    return;
+  }
+  if (elapsedBuckets >= SESSION_DIAGNOSTICS_BUCKET_COUNT) {
+    counter.buckets = [0, 0, 0, 0, 0, 0];
+    counter.currentBucketStartMs = roundedNowMs;
+    return;
+  }
+  for (let idx = SESSION_DIAGNOSTICS_BUCKET_COUNT - 1; idx >= 0; idx -= 1) {
+    const fromIndex = idx - elapsedBuckets;
+    counter.buckets[idx] = fromIndex >= 0 ? (counter.buckets[fromIndex] ?? 0) : 0;
+  }
+  counter.currentBucketStartMs = roundedNowMs;
+}
+
+function incrementSessionRollingCounter(counter: SessionRollingCounter, nowMs: number): void {
+  advanceSessionRollingCounter(counter, nowMs);
+  counter.buckets[0] += 1;
+}
+
+function sessionRollingCounterTotal(counter: SessionRollingCounter, nowMs: number): number {
+  advanceSessionRollingCounter(counter, nowMs);
+  return counter.buckets.reduce((total, value) => total + value, 0);
+}
+
+function createSessionDiagnostics(nowMs = Date.now()): SessionDiagnostics {
+  return {
+    telemetryIngestedTotal: 0,
+    telemetryRetainedTotal: 0,
+    telemetryDroppedTotal: 0,
+    telemetryIngestRate: createSessionRollingCounter(nowMs),
+    fanoutEventsEnqueuedTotal: 0,
+    fanoutBytesEnqueuedTotal: 0,
+    fanoutBackpressureSignalsTotal: 0,
+    fanoutBackpressureDisconnectsTotal: 0,
+  };
+}
+
 function sessionPriority(status: StreamSessionRuntimeStatus): number {
   if (status === 'needs-input') {
     return 0;
@@ -363,6 +441,7 @@ function normalizeCodexTelemetryConfig(
     captureMetrics: input?.captureMetrics ?? true,
     captureTraces: input?.captureTraces ?? true,
     captureVerboseEvents: input?.captureVerboseEvents ?? false,
+    ingestMode: input?.ingestMode ?? 'lifecycle-fast',
   };
 }
 
@@ -1063,6 +1142,7 @@ export class ControlPlaneStreamServer {
       lastObservedOutputCursor: session.latestCursorValue(),
       latestTelemetry: this.stateStore.latestTelemetrySummary(command.sessionId),
       controller: null,
+      diagnostics: createSessionDiagnostics(),
     });
 
     const state = this.sessions.get(command.sessionId);
@@ -1150,12 +1230,21 @@ export class ControlPlaneStreamServer {
     payload: unknown,
   ): void {
     const now = new Date().toISOString();
+    const useLifecycleFastPath =
+      this.codexTelemetry.captureVerboseEvents !== true &&
+      this.codexTelemetry.ingestMode === 'lifecycle-fast';
     const parsed =
       kind === 'logs'
-        ? parseOtlpLogEvents(payload, now)
+        ? useLifecycleFastPath
+          ? parseOtlpLifecycleLogEvents(payload, now)
+          : parseOtlpLogEvents(payload, now)
         : kind === 'metrics'
-          ? parseOtlpMetricEvents(payload, now)
-          : parseOtlpTraceEvents(payload, now);
+          ? useLifecycleFastPath
+            ? parseOtlpLifecycleMetricEvents(payload, now)
+            : parseOtlpMetricEvents(payload, now)
+          : useLifecycleFastPath
+            ? parseOtlpLifecycleTraceEvents(payload, now)
+            : parseOtlpTraceEvents(payload, now);
     if (parsed.length === 0) {
       const sourceByKind: Record<
         'logs' | 'metrics' | 'traces',
@@ -1198,6 +1287,9 @@ export class ControlPlaneStreamServer {
     const shouldRetainHighSignalEvent =
       isLifecycleTelemetryEventName(event.eventName) || event.statusHint !== null;
     if (!captureVerboseEvents && !shouldRetainHighSignalEvent) {
+      if (resolvedSessionId !== null) {
+        this.noteTelemetryIngest(resolvedSessionId, 'dropped', event.observedAt);
+      }
       if (resolvedSessionId !== null && event.providerThreadId !== null) {
         const sessionState = this.sessions.get(resolvedSessionId);
         if (sessionState !== undefined) {
@@ -1226,6 +1318,13 @@ export class ControlPlaneStreamServer {
       payload: event.payload,
       fingerprint,
     });
+    if (resolvedSessionId !== null) {
+      this.noteTelemetryIngest(
+        resolvedSessionId,
+        inserted ? 'retained' : 'dropped',
+        event.observedAt,
+      );
+    }
     if (!inserted || resolvedSessionId === null) {
       return;
     }
@@ -2606,12 +2705,16 @@ export class ControlPlaneStreamServer {
         if (!this.matchesObservedFilter(entry.scope, entry.event, filter)) {
           continue;
         }
+        const diagnosticSessionId = this.diagnosticSessionIdForObservedEvent(
+          entry.scope,
+          entry.event,
+        );
         this.sendToConnection(connection.id, {
           kind: 'stream.event',
           subscriptionId,
           cursor: entry.cursor,
           event: entry.event,
-        });
+        }, diagnosticSessionId);
       }
 
       return {
@@ -2846,7 +2949,7 @@ export class ControlPlaneStreamServer {
               sessionId: command.sessionId,
               cursor: event.cursor,
               chunkBase64: Buffer.from(event.chunk).toString('base64'),
-            });
+            }, command.sessionId);
             const sessionState = this.sessions.get(command.sessionId);
             if (sessionState !== undefined) {
               if (event.cursor <= sessionState.lastObservedOutputCursor) {
@@ -2869,7 +2972,7 @@ export class ControlPlaneStreamServer {
               kind: 'pty.exit',
               sessionId: command.sessionId,
               exit,
-            });
+            }, command.sessionId);
           },
         },
         command.sinceCursor ?? 0,
@@ -2994,7 +3097,7 @@ export class ControlPlaneStreamServer {
           kind: 'pty.event',
           sessionId,
           event: mapped,
-        });
+        }, sessionId);
       }
       this.publishObservedEvent(
         this.sessionScope(sessionState),
@@ -3306,6 +3409,7 @@ export class ControlPlaneStreamServer {
       scope,
       event,
     };
+    const diagnosticSessionId = this.diagnosticSessionIdForObservedEvent(scope, event);
     this.streamJournal.push(entry);
     if (this.streamJournal.length > this.maxStreamJournalEntries) {
       this.streamJournal.shift();
@@ -3320,7 +3424,7 @@ export class ControlPlaneStreamServer {
         subscriptionId: subscription.id,
         cursor: entry.cursor,
         event: entry.event,
-      });
+      }, diagnosticSessionId);
     }
     this.lifecycleHooks.publish(scope, event, entry.cursor);
   }
@@ -3638,6 +3742,98 @@ export class ControlPlaneStreamServer {
     return sorted.map((state) => this.sessionSummaryRecord(state));
   }
 
+  private sessionDiagnosticsRecord(state: SessionState): Record<string, unknown> {
+    const nowMs = Date.now();
+    const telemetryEventsLast60s = sessionRollingCounterTotal(state.diagnostics.telemetryIngestRate, nowMs);
+    return {
+      telemetryIngestedTotal: state.diagnostics.telemetryIngestedTotal,
+      telemetryRetainedTotal: state.diagnostics.telemetryRetainedTotal,
+      telemetryDroppedTotal: state.diagnostics.telemetryDroppedTotal,
+      telemetryEventsLast60s,
+      telemetryIngestQps1m: Number((telemetryEventsLast60s / 60).toFixed(3)),
+      fanoutEventsEnqueuedTotal: state.diagnostics.fanoutEventsEnqueuedTotal,
+      fanoutBytesEnqueuedTotal: state.diagnostics.fanoutBytesEnqueuedTotal,
+      fanoutBackpressureSignalsTotal: state.diagnostics.fanoutBackpressureSignalsTotal,
+      fanoutBackpressureDisconnectsTotal: state.diagnostics.fanoutBackpressureDisconnectsTotal,
+    };
+  }
+
+  private noteTelemetryIngest(
+    sessionId: string,
+    outcome: 'ingested-only' | 'retained' | 'dropped',
+    observedAt: string,
+  ): void {
+    const state = this.sessions.get(sessionId);
+    if (state === undefined) {
+      return;
+    }
+    state.diagnostics.telemetryIngestedTotal += 1;
+    incrementSessionRollingCounter(
+      state.diagnostics.telemetryIngestRate,
+      Date.parse(observedAt) || Date.now(),
+    );
+    if (outcome === 'retained') {
+      state.diagnostics.telemetryRetainedTotal += 1;
+      return;
+    }
+    if (outcome === 'dropped') {
+      state.diagnostics.telemetryDroppedTotal += 1;
+    }
+  }
+
+  private noteSessionFanoutEnqueue(sessionId: string | null, bytes: number): void {
+    if (sessionId === null) {
+      return;
+    }
+    const state = this.sessions.get(sessionId);
+    if (state === undefined) {
+      return;
+    }
+    state.diagnostics.fanoutEventsEnqueuedTotal += 1;
+    state.diagnostics.fanoutBytesEnqueuedTotal += Math.max(0, bytes);
+  }
+
+  private noteSessionFanoutBackpressure(sessionId: string | null): void {
+    if (sessionId === null) {
+      return;
+    }
+    const state = this.sessions.get(sessionId);
+    if (state === undefined) {
+      return;
+    }
+    state.diagnostics.fanoutBackpressureSignalsTotal += 1;
+  }
+
+  private noteSessionFanoutDisconnect(sessionId: string | null): void {
+    if (sessionId === null) {
+      return;
+    }
+    const state = this.sessions.get(sessionId);
+    if (state === undefined) {
+      return;
+    }
+    state.diagnostics.fanoutBackpressureDisconnectsTotal += 1;
+  }
+
+  private diagnosticSessionIdForObservedEvent(scope: StreamObservedScope, event: StreamObservedEvent): string | null {
+    if (event.type === 'session-status') {
+      return event.sessionId;
+    }
+    if (event.type === 'session-event') {
+      return event.sessionId;
+    }
+    if (event.type === 'session-key-event') {
+      return event.sessionId;
+    }
+    if (event.type === 'session-control') {
+      return event.sessionId;
+    }
+    if (event.type === 'session-output') {
+      return event.sessionId;
+    }
+    return scope.conversationId;
+  }
+
   private sessionSummaryRecord(state: SessionState): Record<string, unknown> {
     return {
       sessionId: state.id,
@@ -3659,6 +3855,7 @@ export class ControlPlaneStreamServer {
       live: state.session !== null,
       telemetry: state.latestTelemetry,
       controller: toPublicSessionController(state.controller),
+      diagnostics: this.sessionDiagnosticsRecord(state),
     };
   }
 
@@ -3675,17 +3872,28 @@ export class ControlPlaneStreamServer {
     };
   }
 
-  private sendToConnection(connectionId: string, envelope: StreamServerEnvelope): void {
+  private sendToConnection(
+    connectionId: string,
+    envelope: StreamServerEnvelope,
+    diagnosticSessionId: string | null = null,
+  ): void {
     const connection = this.connections.get(connectionId);
     if (connection === undefined) {
       return;
     }
 
     const payload = encodeStreamEnvelope(envelope);
-    connection.queuedPayloads.push(payload);
-    connection.queuedPayloadBytes += Buffer.byteLength(payload);
+    const payloadBytes = Buffer.byteLength(payload);
+    connection.queuedPayloads.push({
+      payload,
+      bytes: payloadBytes,
+      diagnosticSessionId,
+    });
+    connection.queuedPayloadBytes += payloadBytes;
+    this.noteSessionFanoutEnqueue(diagnosticSessionId, payloadBytes);
 
     if (this.connectionBufferedBytes(connection) > this.maxConnectionBufferedBytes) {
+      this.noteSessionFanoutDisconnect(diagnosticSessionId);
       connection.socket.destroy(new Error('connection output buffer exceeded configured maximum'));
       return;
     }
@@ -3700,16 +3908,19 @@ export class ControlPlaneStreamServer {
     }
 
     while (connection.queuedPayloads.length > 0) {
-      const payload = connection.queuedPayloads.shift()!;
-      connection.queuedPayloadBytes -= Buffer.byteLength(payload);
-      const writeResult = connection.socket.write(payload);
+      const queued = connection.queuedPayloads.shift()!;
+      connection.queuedPayloadBytes -= queued.bytes;
+      const writeResult = connection.socket.write(queued.payload);
       if (!writeResult) {
         connection.writeBlocked = true;
+        this.noteSessionFanoutBackpressure(queued.diagnosticSessionId);
         break;
       }
     }
 
     if (this.connectionBufferedBytes(connection) > this.maxConnectionBufferedBytes) {
+      const diagnosticSessionId = connection.queuedPayloads[0]?.diagnosticSessionId ?? null;
+      this.noteSessionFanoutDisconnect(diagnosticSessionId);
       connection.socket.destroy(new Error('connection output buffer exceeded configured maximum'));
     }
   }

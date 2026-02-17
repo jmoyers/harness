@@ -438,7 +438,8 @@ void test('parseHarnessConfigText parses codex telemetry and history settings', 
           "captureLogs": true,
           "captureMetrics": false,
           "captureTraces": false,
-          "captureVerboseEvents": true
+          "captureVerboseEvents": true,
+          "ingestMode": "full"
         },
         "history": {
           "enabled": true,
@@ -465,6 +466,7 @@ void test('parseHarnessConfigText parses codex telemetry and history settings', 
       captureMetrics: false,
       captureTraces: false,
       captureVerboseEvents: true,
+      ingestMode: 'full',
     },
     history: {
       enabled: true,
@@ -493,7 +495,8 @@ void test('parseHarnessConfigText falls back for invalid codex settings', () => 
           "captureLogs": "1",
           "captureMetrics": "0",
           "captureTraces": "0",
-          "captureVerboseEvents": "verbose"
+          "captureVerboseEvents": "verbose",
+          "ingestMode": "fast"
         },
         "history": {
           "enabled": "true",
