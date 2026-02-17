@@ -256,3 +256,19 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass
 - LOC delta:
   - `scripts/codex-live-mux-runtime.ts`: 5558 -> 5487 LOC
+
+### Checkpoint 9 (2026-02-17): repository folding helper extraction
+
+- Added `src/mux/live-mux/repository-folding.ts`:
+  - selected repository group resolution from left-nav selection
+  - repository tree arrow action reducer
+  - repository fold chord reducer
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate repository fold/arrow decision logic.
+- Verification after checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass
+- LOC delta:
+  - `scripts/codex-live-mux-runtime.ts`: 5487 -> 5471 LOC

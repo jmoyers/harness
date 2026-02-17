@@ -144,6 +144,11 @@ import {
   type LeftNavSelection,
 } from '../src/mux/live-mux/left-nav.ts';
 import {
+  reduceRepositoryFoldChordInput,
+  repositoryTreeArrowAction,
+  selectedRepositoryGroupIdForLeftNav,
+} from '../src/mux/live-mux/repository-folding.ts';
+import {
   readObservedStreamCursorBaseline,
   subscribeObservedStream,
   unsubscribeObservedStream,
@@ -4742,19 +4747,11 @@ async function main(): Promise<number> {
     visibleLeftNavTargets(latestRailViewRows);
 
   const selectedRepositoryGroupId = (): string | null => {
-    if (leftNavSelection.kind === 'repository') {
-      return leftNavSelection.repositoryId;
-    }
-    if (leftNavSelection.kind === 'project') {
-      return repositoryGroupIdForDirectory(leftNavSelection.directoryId);
-    }
-    if (leftNavSelection.kind === 'conversation') {
-      const conversation = conversations.get(leftNavSelection.sessionId);
-      if (conversation?.directoryId !== null && conversation?.directoryId !== undefined) {
-        return repositoryGroupIdForDirectory(conversation.directoryId);
-      }
-    }
-    return null;
+    return selectedRepositoryGroupIdForLeftNav(
+      leftNavSelection,
+      conversations,
+      repositoryGroupIdForDirectory,
+    );
   };
 
   const activateLeftNavTarget = (
@@ -4826,21 +4823,18 @@ async function main(): Promise<number> {
   };
 
   const handleRepositoryTreeArrow = (input: Buffer): boolean => {
-    if (leftNavSelection.kind === 'conversation') {
-      return false;
-    }
-    const text = input.toString('utf8');
     const repositoryId = selectedRepositoryGroupId();
-    if (repositoryId === null) {
+    const action = repositoryTreeArrowAction(input, leftNavSelection, repositoryId);
+    if (repositoryId === null || action === null) {
       return false;
     }
-    if (text === '\u001b[C') {
+    if (action === 'expand') {
       expandRepositoryGroup(repositoryId);
       selectLeftNavRepository(repositoryId);
       markDirty();
       return true;
     }
-    if (text === '\u001b[D') {
+    if (action === 'collapse') {
       collapseRepositoryGroup(repositoryId);
       selectLeftNavRepository(repositoryId);
       markDirty();
@@ -4850,36 +4844,26 @@ async function main(): Promise<number> {
   };
 
   const handleRepositoryFoldChords = (input: Buffer): boolean => {
-    if (leftNavSelection.kind === 'conversation') {
-      repositoryToggleChordPrefixAtMs = null;
-      return false;
-    }
-    const nowMs = Date.now();
-    if (
-      repositoryToggleChordPrefixAtMs !== null &&
-      nowMs - repositoryToggleChordPrefixAtMs > REPOSITORY_TOGGLE_CHORD_TIMEOUT_MS
-    ) {
-      repositoryToggleChordPrefixAtMs = null;
-    }
-    if (repositoryToggleChordPrefixAtMs !== null) {
-      repositoryToggleChordPrefixAtMs = null;
-      if (input.length === 1 && input[0] === 0x0a) {
-        expandAllRepositoryGroups();
-        markDirty();
-        return true;
-      }
-      if (input.length === 1 && input[0] === 0x30) {
-        collapseAllRepositoryGroups();
-        markDirty();
-        return true;
-      }
-      return false;
-    }
-    if (input.equals(REPOSITORY_COLLAPSE_ALL_CHORD_PREFIX)) {
-      repositoryToggleChordPrefixAtMs = nowMs;
+    const reduced = reduceRepositoryFoldChordInput({
+      input,
+      leftNavSelection,
+      nowMs: Date.now(),
+      prefixAtMs: repositoryToggleChordPrefixAtMs,
+      chordTimeoutMs: REPOSITORY_TOGGLE_CHORD_TIMEOUT_MS,
+      collapseAllChordPrefix: REPOSITORY_COLLAPSE_ALL_CHORD_PREFIX,
+    });
+    repositoryToggleChordPrefixAtMs = reduced.nextPrefixAtMs;
+    if (reduced.action === 'expand-all') {
+      expandAllRepositoryGroups();
+      markDirty();
       return true;
     }
-    return false;
+    if (reduced.action === 'collapse-all') {
+      collapseAllRepositoryGroups();
+      markDirty();
+      return true;
+    }
+    return reduced.consumed;
   };
 
   const onInput = (chunk: Buffer): void => {
