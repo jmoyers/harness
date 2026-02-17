@@ -230,6 +230,7 @@ import {
 } from '../src/mux/live-mux/directory-resolution.ts';
 import { requestStop as requestStopHelper } from '../src/mux/live-mux/runtime-shutdown.ts';
 import { routeInputTokensForConversation as routeInputTokensForConversationHelper } from '../src/mux/live-mux/input-forwarding.ts';
+import { handleProjectPaneActionClick as handleProjectPaneActionClickHelper } from '../src/mux/live-mux/project-pane-pointer.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -4550,28 +4551,25 @@ async function main(): Promise<number> {
         isLeftButtonPress(token.event.code, token.event.final) &&
         !hasAltModifier(token.event.code) &&
         !isMotionMouseCode(token.event.code);
-      if (projectPaneActionClick && projectPaneSnapshot !== null) {
-        const snapshot = projectPaneSnapshot;
-        const rowIndex = Math.max(0, Math.min(layout.paneRows - 1, token.event.row - 1));
-        const action = projectPaneActionAtRow(
-          snapshot,
-          layout.rightCols,
-          layout.paneRows,
+      if (
+        handleProjectPaneActionClickHelper({
+          clickEligible: projectPaneActionClick,
+          snapshot: projectPaneSnapshot,
+          rightCols: layout.rightCols,
+          paneRows: layout.paneRows,
           projectPaneScrollTop,
-          rowIndex,
-        );
-        if (action === 'conversation.new') {
-          openNewThreadPrompt(snapshot.directoryId);
-          markDirty();
-          continue;
-        }
-        if (action === 'project.close') {
-          queueControlPlaneOp(async () => {
-            await closeDirectory(snapshot.directoryId);
-          }, 'project-pane-close-project');
-          markDirty();
-          continue;
-        }
+          rowIndex: Math.max(0, Math.min(layout.paneRows - 1, token.event.row - 1)),
+          projectPaneActionAtRow,
+          openNewThreadPrompt,
+          queueCloseDirectory: (directoryId) => {
+            queueControlPlaneOp(async () => {
+              await closeDirectory(directoryId);
+            }, 'project-pane-close-project');
+          },
+          markDirty,
+        })
+      ) {
+        continue;
       }
       const taskPaneActionClick =
         target === 'right' &&

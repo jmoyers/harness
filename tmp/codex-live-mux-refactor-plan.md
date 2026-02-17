@@ -471,3 +471,17 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass
 - LOC delta:
   - `scripts/codex-live-mux-runtime.ts`: 4891 -> 4875 LOC
+
+### Checkpoint 23 (2026-02-17): project-pane click action helper extraction
+
+- Added `src/mux/live-mux/project-pane-pointer.ts`:
+  - project-pane click action handler for `conversation.new` and `project.close`
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate project-pane click action branching through the helper.
+- Verification after checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass
+- LOC delta:
+  - `scripts/codex-live-mux-runtime.ts`: 4875 -> 4873 LOC
