@@ -205,6 +205,7 @@ import {
 } from '../src/mux/live-mux/modal-prompt-handlers.ts';
 import { handleTaskEditorPromptInput as handleTaskEditorPromptInputHelper } from '../src/mux/live-mux/modal-task-editor-handler.ts';
 import { handleTaskPaneShortcutInput as handleTaskPaneShortcutInputHelper } from '../src/mux/live-mux/task-pane-shortcuts.ts';
+import { handleGlobalShortcut as handleGlobalShortcutHelper } from '../src/mux/live-mux/global-shortcut-handlers.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -4513,77 +4514,38 @@ async function main(): Promise<number> {
     }
 
     const globalShortcut = detectMuxGlobalShortcut(focusExtraction.sanitized, shortcutBindings);
-    if (globalShortcut === 'mux.app.interrupt-all') {
-      requestStop();
-      return;
-    }
-    if (globalShortcut === 'mux.app.quit') {
-      requestStop();
-      return;
-    }
-    if (globalShortcut === 'mux.conversation.new') {
-      const targetDirectoryId = resolveDirectoryForAction();
-      if (targetDirectoryId !== null) {
-        openNewThreadPrompt(targetDirectoryId);
-      }
-      return;
-    }
-    if (globalShortcut === 'mux.conversation.archive') {
-      const targetConversationId = mainPaneMode === 'conversation' ? activeConversationId : null;
-      if (targetConversationId !== null && conversations.has(targetConversationId)) {
-        queueControlPlaneOp(async () => {
-          await archiveConversation(targetConversationId);
-        }, 'shortcut-archive-conversation');
-      }
-      return;
-    }
-    if (globalShortcut === 'mux.conversation.delete') {
-      const targetConversationId = mainPaneMode === 'conversation' ? activeConversationId : null;
-      if (targetConversationId !== null && conversations.has(targetConversationId)) {
-        queueControlPlaneOp(async () => {
-          await archiveConversation(targetConversationId);
-        }, 'shortcut-delete-conversation');
-      }
-      return;
-    }
-    if (globalShortcut === 'mux.conversation.takeover') {
-      const targetConversationId = mainPaneMode === 'conversation' ? activeConversationId : null;
-      if (targetConversationId !== null && conversations.has(targetConversationId)) {
-        queueControlPlaneOp(async () => {
-          await takeoverConversation(targetConversationId);
-        }, 'shortcut-takeover-conversation');
-      }
-      return;
-    }
-    if (globalShortcut === 'mux.directory.add') {
-      repositoryPrompt = null;
-      addDirectoryPrompt = {
-        value: '',
-        error: null,
-      };
-      markDirty();
-      return;
-    }
-    if (globalShortcut === 'mux.directory.close') {
-      const targetDirectoryId =
-        mainPaneMode === 'project' &&
-        activeDirectoryId !== null &&
-        directories.has(activeDirectoryId)
-          ? activeDirectoryId
-          : null;
-      if (targetDirectoryId !== null) {
-        queueControlPlaneOp(async () => {
-          await closeDirectory(targetDirectoryId);
-        }, 'shortcut-close-directory');
-      }
-      return;
-    }
     if (
-      globalShortcut === 'mux.conversation.next' ||
-      globalShortcut === 'mux.conversation.previous'
+      handleGlobalShortcutHelper({
+        shortcut: globalShortcut,
+        requestStop,
+        resolveDirectoryForAction,
+        openNewThreadPrompt,
+        resolveConversationForAction: () =>
+          mainPaneMode === 'conversation' ? activeConversationId : null,
+        conversationsHas: (sessionId) => conversations.has(sessionId),
+        queueControlPlaneOp,
+        archiveConversation,
+        takeoverConversation,
+        openAddDirectoryPrompt: () => {
+          repositoryPrompt = null;
+          addDirectoryPrompt = {
+            value: '',
+            error: null,
+          };
+          markDirty();
+        },
+        resolveClosableDirectoryId: () =>
+          mainPaneMode === 'project' &&
+          activeDirectoryId !== null &&
+          directories.has(activeDirectoryId)
+            ? activeDirectoryId
+            : null,
+        closeDirectory,
+        cycleLeftNavSelection: (direction) => {
+          cycleLeftNavSelection(direction);
+        },
+      })
     ) {
-      const direction = globalShortcut === 'mux.conversation.next' ? 'next' : 'previous';
-      cycleLeftNavSelection(direction);
       return;
     }
     if (handleTaskPaneShortcutInput(focusExtraction.sanitized)) {

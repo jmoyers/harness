@@ -348,3 +348,18 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass
 - LOC delta:
   - `scripts/codex-live-mux-runtime.ts`: 5111 -> 5076 LOC
+
+### Checkpoint 15 (2026-02-17): global shortcut dispatcher extraction
+
+- Added `src/mux/live-mux/global-shortcut-handlers.ts`:
+  - global shortcut dispatcher for app/conversation/directory shortcuts
+  - callback-driven action routing for stop/archive/takeover/new-thread/close-directory/nav-cycle
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate global shortcut branching through the helper.
+- Verification after checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass
+- LOC delta:
+  - `scripts/codex-live-mux-runtime.ts`: 5076 -> 5038 LOC
