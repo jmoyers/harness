@@ -463,7 +463,6 @@ const streamServerInternals = {
   gitSummaryEqual,
   gitRepositorySnapshotEqual
 };
-export const streamServerInternalsForTest = streamServerInternals;
 export const streamServerTestInternals = streamServerInternals;
 
 function toPublicSessionController(

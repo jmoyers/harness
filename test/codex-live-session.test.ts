@@ -237,7 +237,8 @@ void test('codex live session notify polling handles resets, malformed lines, an
     {
       useNotifyHook: true,
       notifyFilePath: '/tmp/harness-notify.jsonl',
-      relayScriptPath: '/tmp/relay.ts'
+      relayScriptPath: '/tmp/relay.ts',
+      notifyPollMs: 25
     },
     {
       startBroker: () => broker,
@@ -282,19 +283,19 @@ void test('codex live session notify polling handles resets, malformed lines, an
   });
 
   pollNotify();
-  await delay(0);
+  await delay(130);
   pollNotify();
-  await delay(0);
+  await delay(130);
   pollNotify();
-  await delay(0);
+  await delay(130);
   pollNotify();
-  await delay(0);
+  await delay(130);
   pollNotify();
-  await delay(0);
+  await delay(130);
 
   assert.deepEqual(notifyTypes, ['approval-required']);
   pollNotify();
-  await delay(0);
+  await delay(130);
   assert.equal(readCallCount, 6);
   assert.deepEqual(notifyTypes, ['approval-required']);
 
@@ -343,6 +344,106 @@ void test('codex live session notify polling supports async readFile dependency'
   assert.deepEqual(notifyTypes, ['agent-turn-complete']);
 
   removeListener();
+  session.close();
+});
+
+void test('codex live session notify polling swallows async readFile rejections', async () => {
+  const broker = new FakeBroker();
+  let pollNotify: () => void = () => undefined;
+  const fakeTimer = {
+    refresh: () => fakeTimer,
+    ref: () => fakeTimer,
+    unref: () => fakeTimer,
+    hasRef: () => false
+  } as unknown as NodeJS.Timeout;
+  const session = startCodexLiveSession(
+    {
+      useNotifyHook: true,
+      notifyFilePath: '/tmp/harness-notify.jsonl',
+      relayScriptPath: '/tmp/relay.ts'
+    },
+    {
+      startBroker: () => broker,
+      readFile: () => Promise.reject(Object.assign(new Error('denied'), { code: 'EACCES' })),
+      setIntervalFn: (callback) => {
+        pollNotify = callback;
+        return fakeTimer;
+      }
+    }
+  );
+
+  pollNotify();
+  await delay(0);
+  session.close();
+});
+
+void test('codex live session default notify polling swallows non-ENOENT filesystem errors', async () => {
+  const broker = new FakeBroker();
+  let pollNotify: () => void = () => undefined;
+  const fakeTimer = {
+    refresh: () => fakeTimer,
+    ref: () => fakeTimer,
+    unref: () => fakeTimer,
+    hasRef: () => false
+  } as unknown as NodeJS.Timeout;
+  const session = startCodexLiveSession(
+    {
+      useNotifyHook: true,
+      notifyFilePath: tmpdir(),
+      relayScriptPath: '/tmp/relay.ts'
+    },
+    {
+      startBroker: () => broker,
+      setIntervalFn: (callback) => {
+        pollNotify = callback;
+        return fakeTimer;
+      }
+    }
+  );
+
+  pollNotify();
+  await delay(0);
+  session.close();
+});
+
+void test('codex live session notify polling backs off when no new bytes are available', async () => {
+  const broker = new FakeBroker();
+  let pollNotify: () => void = () => undefined;
+  let readCallCount = 0;
+  const fakeTimer = {
+    refresh: () => fakeTimer,
+    ref: () => fakeTimer,
+    unref: () => fakeTimer,
+    hasRef: () => false
+  } as unknown as NodeJS.Timeout;
+  const session = startCodexLiveSession(
+    {
+      useNotifyHook: true,
+      notifyFilePath: '/tmp/harness-notify.jsonl',
+      relayScriptPath: '/tmp/relay.ts',
+      notifyPollMs: 100
+    },
+    {
+      startBroker: () => broker,
+      readFile: () => {
+        readCallCount += 1;
+        return '';
+      },
+      setIntervalFn: (callback) => {
+        pollNotify = callback;
+        return fakeTimer;
+      }
+    }
+  );
+
+  pollNotify();
+  await delay(0);
+  pollNotify();
+  await delay(0);
+  pollNotify();
+  await delay(0);
+
+  assert.equal(readCallCount, 1);
   session.close();
 });
 

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { readFile as readFileAsync } from 'node:fs/promises';
+import { open as openFileAsync } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -87,6 +87,7 @@ interface LiveSessionDependencies {
 const DEFAULT_COMMAND = 'codex';
 const DEFAULT_BASE_ARGS = ['--no-alt-screen'];
 const DEFAULT_NOTIFY_POLL_MS = 100;
+const DEFAULT_NOTIFY_POLL_MAX_BACKOFF_MS = 2000;
 const DEFAULT_RELAY_SCRIPT_PATH = fileURLToPath(
   new URL('../../scripts/codex-notify-relay.ts', import.meta.url)
 );
@@ -442,7 +443,7 @@ class TerminalQueryResponder {
 
 class CodexLiveSession {
   private readonly broker: SessionBrokerLike;
-  private readonly readFile: (path: string) => string | Promise<string>;
+  private readonly readFile: ((path: string) => string | Promise<string>) | null;
   private readonly clearIntervalFn: (handle: NodeJS.Timeout) => void;
   private readonly notifyFilePath: string;
   private readonly listeners = new Set<(event: CodexLiveEvent) => void>();
@@ -451,7 +452,10 @@ class CodexLiveSession {
   private readonly terminalQueryResponder: TerminalQueryResponder;
   private readonly brokerAttachmentId: string;
   private readonly notifyTimer: NodeJS.Timeout | null;
+  private readonly notifyPollMs: number;
   private notifyPollInFlight = false;
+  private notifyIdleStreak = 0;
+  private notifyNextAllowedPollAtMs = 0;
   private notifyOffset = 0;
   private notifyRemainder = '';
   private closed = false;
@@ -467,7 +471,7 @@ class CodexLiveSession {
 
     const command = options.command ?? DEFAULT_COMMAND;
     const useNotifyHook = options.useNotifyHook ?? false;
-    const notifyPollMs = options.notifyPollMs ?? DEFAULT_NOTIFY_POLL_MS;
+    this.notifyPollMs = Math.max(25, options.notifyPollMs ?? DEFAULT_NOTIFY_POLL_MS);
     this.notifyFilePath =
       options.notifyFilePath ??
       join(tmpdir(), `harness-codex-notify-${process.pid}-${randomUUID()}.jsonl`);
@@ -480,7 +484,7 @@ class CodexLiveSession {
     ];
 
     const startBroker = dependencies.startBroker ?? startSingleSessionBroker;
-    this.readFile = dependencies.readFile ?? (async (path) => await readFileAsync(path, 'utf8'));
+    this.readFile = dependencies.readFile ?? null;
     const setIntervalFn = dependencies.setIntervalFn ?? setInterval;
     this.clearIntervalFn = dependencies.clearIntervalFn ?? clearInterval;
 
@@ -529,7 +533,7 @@ class CodexLiveSession {
     if (useNotifyHook) {
       this.notifyTimer = setIntervalFn(() => {
         this.pollNotifyFile();
-      }, notifyPollMs);
+      }, this.notifyPollMs);
       this.notifyTimer.unref?.();
     } else {
       this.notifyTimer = null;
@@ -594,28 +598,61 @@ class CodexLiveSession {
   }
 
   private pollNotifyFile(): void {
-    if (this.notifyPollInFlight || this.closed) {
+    const nowMs = Date.now();
+    if (this.notifyPollInFlight || this.closed || nowMs < this.notifyNextAllowedPollAtMs) {
       return;
     }
     this.notifyPollInFlight = true;
-    let contentOrPromise: string | Promise<string>;
-    try {
-      contentOrPromise = this.readFile(this.notifyFilePath);
-    } catch (error: unknown) {
-      this.notifyPollInFlight = false;
-      this.handleNotifyReadError(error);
+    if (this.readFile !== null) {
+      let contentOrPromise: string | Promise<string>;
+      try {
+        contentOrPromise = this.readFile(this.notifyFilePath);
+      } catch (error: unknown) {
+        this.notifyPollInFlight = false;
+        this.handleNotifyReadError(error);
+        return;
+      }
+      void Promise.resolve(contentOrPromise)
+        .then((content) => {
+          const consumedNewBytes = this.consumeNotifyFileContent(content);
+          this.scheduleNextNotifyPoll(consumedNewBytes);
+        })
+        .catch((error: unknown) => {
+          this.handleNotifyReadError(error);
+          this.scheduleNextNotifyPoll(false);
+        })
+        .finally(() => {
+          this.notifyPollInFlight = false;
+        });
       return;
     }
-    void Promise.resolve(contentOrPromise)
-      .then((content) => {
-        this.consumeNotifyFileContent(content);
+
+    void this.readNotifyDeltaFromFile()
+      .then((delta) => {
+        const consumedNewBytes = this.consumeNotifyDelta(delta);
+        this.scheduleNextNotifyPoll(consumedNewBytes);
       })
       .catch((error: unknown) => {
         this.handleNotifyReadError(error);
+        this.scheduleNextNotifyPoll(false);
       })
       .finally(() => {
         this.notifyPollInFlight = false;
       });
+  }
+
+  private scheduleNextNotifyPoll(consumedNewBytes: boolean): void {
+    if (consumedNewBytes) {
+      this.notifyIdleStreak = 0;
+      this.notifyNextAllowedPollAtMs = Date.now() + this.notifyPollMs;
+      return;
+    }
+    this.notifyIdleStreak = Math.min(this.notifyIdleStreak + 1, 4);
+    const backoffMs = Math.min(
+      DEFAULT_NOTIFY_POLL_MAX_BACKOFF_MS,
+      this.notifyPollMs * (1 << this.notifyIdleStreak)
+    );
+    this.notifyNextAllowedPollAtMs = Date.now() + backoffMs;
   }
 
   private handleNotifyReadError(error: unknown): void {
@@ -633,19 +670,75 @@ class CodexLiveSession {
     });
   }
 
-  private consumeNotifyFileContent(content: string): void {
+  private consumeNotifyFileContent(content: string): boolean {
     if (content.length < this.notifyOffset) {
       this.notifyOffset = 0;
       this.notifyRemainder = '';
     }
     const delta = content.slice(this.notifyOffset);
     if (delta.length === 0) {
-      return;
+      return false;
     }
     this.notifyOffset = content.length;
+    return this.consumeNotifyDelta(delta);
+  }
+
+  private async readNotifyDeltaFromFile(): Promise<string> {
+    let handle: Awaited<ReturnType<typeof openFileAsync>>;
+    try {
+      handle = await openFileAsync(this.notifyFilePath, 'r');
+    } catch (error: unknown) {
+      const withCode = error as { code?: unknown };
+      if (withCode.code === 'ENOENT') {
+        return '';
+      }
+      throw error;
+    }
+    try {
+      const stats = await handle.stat();
+      const fileSize = Number(stats.size);
+      if (!Number.isFinite(fileSize)) {
+        return '';
+      }
+      if (fileSize < this.notifyOffset) {
+        this.notifyOffset = 0;
+        this.notifyRemainder = '';
+      }
+      const remainingBytes = fileSize - this.notifyOffset;
+      if (remainingBytes <= 0) {
+        return '';
+      }
+      const buffer = Buffer.allocUnsafe(remainingBytes);
+      let bytesReadTotal = 0;
+      while (bytesReadTotal < remainingBytes) {
+        const { bytesRead } = await handle.read(
+          buffer,
+          bytesReadTotal,
+          remainingBytes - bytesReadTotal,
+          this.notifyOffset + bytesReadTotal
+        );
+        if (bytesRead <= 0) {
+          break;
+        }
+        bytesReadTotal += bytesRead;
+      }
+      if (bytesReadTotal <= 0) {
+        return '';
+      }
+      this.notifyOffset += bytesReadTotal;
+      return buffer.toString('utf8', 0, bytesReadTotal);
+    } finally {
+      await handle.close();
+    }
+  }
+
+  private consumeNotifyDelta(delta: string): boolean {
+    if (delta.length === 0) {
+      return false;
+    }
     const buffered = `${this.notifyRemainder}${delta}`;
     const lines = buffered.split('\n');
-    this.notifyRemainder = lines.pop()!;
+    this.notifyRemainder = lines.pop() as string;
     for (const line of lines) {
       const trimmed = line.trim();
       if (trimmed.length === 0) {
@@ -660,6 +753,7 @@ class CodexLiveSession {
         record
       });
     }
+    return true;
   }
 
   private emit(event: CodexLiveEvent): void {

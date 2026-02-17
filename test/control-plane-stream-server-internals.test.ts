@@ -1,17 +1,17 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { streamServerInternalsForTest } from '../src/control-plane/stream-server.ts';
+import { streamServerTestInternals } from '../src/control-plane/stream-server.ts';
 
 void test('stream server internals runWithConcurrencyLimit handles sparse values and empty lists', async () => {
   let emptyCallCount = 0;
-  await streamServerInternalsForTest.runWithConcurrencyLimit([], 2, () => {
+  await streamServerTestInternals.runWithConcurrencyLimit([], 2, () => {
     emptyCallCount += 1;
     return Promise.resolve();
   });
   assert.equal(emptyCallCount, 0);
 
   const observed: number[] = [];
-  await streamServerInternalsForTest.runWithConcurrencyLimit([1, undefined, 3], 2, (value) => {
+  await streamServerTestInternals.runWithConcurrencyLimit([1, undefined, 3], 2, (value) => {
     if (value !== undefined) {
       observed.push(value);
     }
@@ -40,8 +40,8 @@ void test('stream server internals gitSummaryEqual compares all summary fields',
     additions: 3,
     deletions: 4
   };
-  assert.equal(streamServerInternalsForTest.gitSummaryEqual(left, right), true);
-  assert.equal(streamServerInternalsForTest.gitSummaryEqual(left, different), false);
+  assert.equal(streamServerTestInternals.gitSummaryEqual(left, right), true);
+  assert.equal(streamServerTestInternals.gitSummaryEqual(left, different), false);
 });
 
 void test('stream server internals gitRepositorySnapshotEqual compares all repository snapshot fields', () => {
@@ -69,6 +69,6 @@ void test('stream server internals gitRepositorySnapshotEqual compares all repos
     inferredName: 'harness',
     defaultBranch: 'main'
   };
-  assert.equal(streamServerInternalsForTest.gitRepositorySnapshotEqual(left, right), true);
-  assert.equal(streamServerInternalsForTest.gitRepositorySnapshotEqual(left, different), false);
+  assert.equal(streamServerTestInternals.gitRepositorySnapshotEqual(left, right), true);
+  assert.equal(streamServerTestInternals.gitRepositorySnapshotEqual(left, different), false);
 });
