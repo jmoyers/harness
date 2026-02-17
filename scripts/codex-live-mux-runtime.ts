@@ -51,7 +51,6 @@ import { buildRailRows } from '../src/mux/live-mux/rail-layout.ts';
 import { buildSelectorIndexEntries } from '../src/mux/selector-index.ts';
 import {
   createNewThreadPromptState,
-  newThreadPromptBodyLines,
   normalizeThreadAgentType,
   reduceNewThreadPromptInput,
   resolveNewThreadPromptAgentByRow,
@@ -59,12 +58,7 @@ import {
 import {
   buildProjectPaneRows,
   buildProjectPaneSnapshot,
-  CONVERSATION_EDIT_ARCHIVE_BUTTON_LABEL,
-  NEW_THREAD_MODAL_CLAUDE_BUTTON,
-  NEW_THREAD_MODAL_CODEX_BUTTON,
-  NEW_THREAD_MODAL_TERMINAL_BUTTON,
   projectPaneActionAtRow,
-  resolveGoldenModalSize,
   sortedRepositoryList,
   sortTasksByOrder,
   type ProjectPaneSnapshot,
@@ -124,7 +118,7 @@ import {
   shutdownPerfCore,
   startPerfSpan,
 } from '../src/perf/perf-core.ts';
-import { buildUiModalOverlay, isUiModalOverlayHit } from '../src/ui/kit.ts';
+import { isUiModalOverlayHit } from '../src/ui/kit.ts';
 import {
   parseDirectoryGitStatusRecord,
   parseConversationRecord,
@@ -143,6 +137,13 @@ import {
 } from '../src/mux/live-mux/git-parsing.ts';
 import { readProcessUsageSample } from '../src/mux/live-mux/git-snapshot.ts';
 import { probeTerminalPalette } from '../src/mux/live-mux/terminal-palette.ts';
+import {
+  buildAddDirectoryModalOverlay as buildAddDirectoryModalOverlayFrame,
+  buildConversationTitleModalOverlay as buildConversationTitleModalOverlayFrame,
+  buildNewThreadModalOverlay as buildNewThreadModalOverlayFrame,
+  buildRepositoryModalOverlay as buildRepositoryModalOverlayFrame,
+  buildTaskEditorModalOverlay as buildTaskEditorModalOverlayFrame,
+} from '../src/mux/live-mux/modal-overlays.ts';
 import {
   applySummaryToConversation,
   compactDebugText,
@@ -2360,186 +2361,46 @@ async function main(): Promise<number> {
 
   const buildNewThreadModalOverlay = (
     viewportRows: number,
-  ): ReturnType<typeof buildUiModalOverlay> | null => {
-    if (newThreadPrompt === null) {
-      return null;
-    }
-    const modalSize = resolveGoldenModalSize(layout.cols, viewportRows, {
-      preferredHeight: 14,
-      minWidth: 22,
-      maxWidth: 36,
-    });
-    return buildUiModalOverlay({
-      viewportCols: layout.cols,
-      viewportRows,
-      width: modalSize.width,
-      height: modalSize.height,
-      anchor: 'center',
-      marginRows: 1,
-      title: 'New Thread',
-      bodyLines: newThreadPromptBodyLines(newThreadPrompt, {
-        codexButtonLabel: NEW_THREAD_MODAL_CODEX_BUTTON,
-        claudeButtonLabel: NEW_THREAD_MODAL_CLAUDE_BUTTON,
-        terminalButtonLabel: NEW_THREAD_MODAL_TERMINAL_BUTTON,
-      }),
-      footer: 'enter create  esc',
-      theme: MUX_MODAL_THEME,
-    });
+  ) => {
+    return buildNewThreadModalOverlayFrame(layout.cols, viewportRows, newThreadPrompt, MUX_MODAL_THEME);
   };
 
   const buildAddDirectoryModalOverlay = (
     viewportRows: number,
-  ): ReturnType<typeof buildUiModalOverlay> | null => {
-    if (addDirectoryPrompt === null) {
-      return null;
-    }
-    const modalSize = resolveGoldenModalSize(layout.cols, viewportRows, {
-      preferredHeight: 15,
-      minWidth: 24,
-      maxWidth: 40,
-    });
-    const promptValue = addDirectoryPrompt.value.length > 0 ? addDirectoryPrompt.value : '.';
-    const addDirectoryBody = [`path: ${promptValue}_`];
-    if (addDirectoryPrompt.error !== null && addDirectoryPrompt.error.length > 0) {
-      addDirectoryBody.push(`error: ${addDirectoryPrompt.error}`);
-    } else {
-      addDirectoryBody.push('add a workspace project for new threads');
-    }
-    return buildUiModalOverlay({
-      viewportCols: layout.cols,
-      viewportRows,
-      width: modalSize.width,
-      height: modalSize.height,
-      anchor: 'center',
-      marginRows: 1,
-      title: 'Add Project',
-      bodyLines: addDirectoryBody,
-      footer: 'enter save  esc',
-      theme: MUX_MODAL_THEME,
-    });
+  ) => {
+    return buildAddDirectoryModalOverlayFrame(layout.cols, viewportRows, addDirectoryPrompt, MUX_MODAL_THEME);
   };
 
   const buildTaskEditorModalOverlay = (
     viewportRows: number,
-  ): ReturnType<typeof buildUiModalOverlay> | null => {
-    if (taskEditorPrompt === null) {
-      return null;
-    }
-    const modalSize = resolveGoldenModalSize(layout.cols, viewportRows, {
-      preferredHeight: 18,
-      minWidth: 30,
-      maxWidth: 56,
-    });
-    const selectedRepositoryId =
-      taskEditorPrompt.repositoryIds[taskEditorPrompt.repositoryIndex] ?? null;
-    const selectedRepositoryName =
-      selectedRepositoryId === null
-        ? '(none)'
-        : (repositories.get(selectedRepositoryId)?.name ?? '(missing)');
-    const taskBody = [
-      `${taskEditorPrompt.fieldIndex === 0 ? '>' : ' '} title: ${taskEditorPrompt.title}${
-        taskEditorPrompt.fieldIndex === 0 ? '_' : ''
-      }`,
-      `${taskEditorPrompt.fieldIndex === 1 ? '>' : ' '} repository: ${selectedRepositoryName}`,
-      `${taskEditorPrompt.fieldIndex === 2 ? '>' : ' '} description: ${taskEditorPrompt.description}${
-        taskEditorPrompt.fieldIndex === 2 ? '_' : ''
-      }`,
-      '',
-      'tab next field',
-      'left/right change repository',
-    ];
-    if (taskEditorPrompt.error !== null && taskEditorPrompt.error.length > 0) {
-      taskBody.push(`error: ${taskEditorPrompt.error}`);
-    }
-    return buildUiModalOverlay({
-      viewportCols: layout.cols,
+  ) => {
+    return buildTaskEditorModalOverlayFrame(
+      layout.cols,
       viewportRows,
-      width: modalSize.width,
-      height: modalSize.height,
-      anchor: 'center',
-      marginRows: 1,
-      title: taskEditorPrompt.mode === 'create' ? 'New Task' : 'Edit Task',
-      bodyLines: taskBody,
-      footer: 'enter save  esc',
-      theme: MUX_MODAL_THEME,
-    });
+      taskEditorPrompt,
+      (repositoryId) => repositories.get(repositoryId)?.name ?? null,
+      MUX_MODAL_THEME,
+    );
   };
 
   const buildRepositoryModalOverlay = (
     viewportRows: number,
-  ): ReturnType<typeof buildUiModalOverlay> | null => {
-    if (repositoryPrompt === null) {
-      return null;
-    }
-    const modalSize = resolveGoldenModalSize(layout.cols, viewportRows, {
-      preferredHeight: 15,
-      minWidth: 28,
-      maxWidth: 56,
-    });
-    const promptValue =
-      repositoryPrompt.value.length > 0 ? repositoryPrompt.value : 'https://github.com/org/repo';
-    const bodyLines = [`github url: ${promptValue}_`];
-    if (repositoryPrompt.error !== null && repositoryPrompt.error.length > 0) {
-      bodyLines.push(`error: ${repositoryPrompt.error}`);
-    } else if (repositoryPrompt.mode === 'add') {
-      bodyLines.push('add a repository and link matching projects');
-    } else {
-      bodyLines.push('update repository github url');
-    }
-    return buildUiModalOverlay({
-      viewportCols: layout.cols,
-      viewportRows,
-      width: modalSize.width,
-      height: modalSize.height,
-      anchor: 'center',
-      marginRows: 1,
-      title: repositoryPrompt.mode === 'add' ? 'Add Repository' : 'Edit Repository',
-      bodyLines,
-      footer: 'enter save  esc',
-      theme: MUX_MODAL_THEME,
-    });
+  ) => {
+    return buildRepositoryModalOverlayFrame(layout.cols, viewportRows, repositoryPrompt, MUX_MODAL_THEME);
   };
 
   const buildConversationTitleModalOverlay = (
     viewportRows: number,
-  ): ReturnType<typeof buildUiModalOverlay> | null => {
-    if (conversationTitleEdit === null) {
-      return null;
-    }
-    const modalSize = resolveGoldenModalSize(layout.cols, viewportRows, {
-      preferredHeight: 18,
-      minWidth: 26,
-      maxWidth: 44,
-    });
-    const editState = conversationTitleEdit.persistInFlight
-      ? 'saving'
-      : conversationTitleEdit.value === conversationTitleEdit.lastSavedValue
-        ? 'saved'
-        : 'pending';
-    const editBody = [
-      `title: ${conversationTitleEdit.value}_`,
-      `state: ${editState}`,
-      '',
-      CONVERSATION_EDIT_ARCHIVE_BUTTON_LABEL,
-    ];
-    if (conversationTitleEdit.error !== null && conversationTitleEdit.error.length > 0) {
-      editBody.push(`error: ${conversationTitleEdit.error}`);
-    }
-    return buildUiModalOverlay({
-      viewportCols: layout.cols,
+  ) => {
+    return buildConversationTitleModalOverlayFrame(
+      layout.cols,
       viewportRows,
-      width: modalSize.width,
-      height: modalSize.height,
-      anchor: 'center',
-      marginRows: 1,
-      title: 'Edit Thread Title',
-      bodyLines: editBody,
-      footer: 'type to save  enter done',
-      theme: MUX_MODAL_THEME,
-    });
+      conversationTitleEdit,
+      MUX_MODAL_THEME,
+    );
   };
 
-  const buildCurrentModalOverlay = (): ReturnType<typeof buildUiModalOverlay> | null => {
+  const buildCurrentModalOverlay = () => {
     const newThreadOverlay = buildNewThreadModalOverlay(layout.rows);
     if (newThreadOverlay !== null) {
       return newThreadOverlay;

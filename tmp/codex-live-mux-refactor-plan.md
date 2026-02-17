@@ -175,3 +175,21 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass
 - LOC delta:
   - `scripts/codex-live-mux-runtime.ts`: 5894 -> 5823 LOC
+
+### Checkpoint 4 (2026-02-17): modal overlay builder extraction
+
+- Added `src/mux/live-mux/modal-overlays.ts`:
+  - New thread modal overlay
+  - Add project modal overlay
+  - Task editor modal overlay
+  - Repository modal overlay
+  - Conversation title modal overlay
+- Updated `scripts/codex-live-mux-runtime.ts` to call extracted overlay builders.
+- Verification after checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass
+- LOC delta:
+  - `scripts/codex-live-mux-runtime.ts`: 5823 -> 5684 LOC
