@@ -188,6 +188,7 @@ import { RuntimeConversationActivation } from '../src/services/runtime-conversat
 import { RuntimeConversationStarter } from '../src/services/runtime-conversation-starter.ts';
 import { RuntimeDirectoryActions } from '../src/services/runtime-directory-actions.ts';
 import { RuntimeEnvelopeHandler } from '../src/services/runtime-envelope-handler.ts';
+import { RuntimeRenderFlush } from '../src/services/runtime-render-flush.ts';
 import { RuntimeRenderLifecycle } from '../src/services/runtime-render-lifecycle.ts';
 import { RuntimeShutdownService } from '../src/services/runtime-shutdown.ts';
 import { TaskPaneSelectionActions } from '../src/services/task-pane-selection-actions.ts';
@@ -2419,6 +2420,70 @@ async function main(): Promise<number> {
     }
   };
 
+  const runtimeRenderFlush = new RuntimeRenderFlush<
+    ConversationState,
+    ReturnType<TerminalSnapshotOracle['snapshotWithoutHash']>,
+    PaneSelection,
+    typeof layout,
+    NonNullable<ReturnType<typeof buildCurrentModalOverlay>>,
+    ReturnType<OutputLoadSampler['currentStatusRow']>
+  >({
+    perfNowNs,
+    statusFooterForConversation: (conversation) => debugFooterForConversation(conversation),
+    currentStatusNotice: () => debugFooterNotice.current(),
+    currentStatusRow: () => outputLoadSampler.currentStatusRow(),
+    buildRenderRows: (renderLayout, railRows, rightRows, statusRow, statusFooter) =>
+      buildRenderRows(renderLayout, railRows, rightRows, statusRow, statusFooter),
+    buildModalOverlay: () => buildCurrentModalOverlay(),
+    applyModalOverlay: (rows, overlay) => {
+      applyModalOverlay(rows, overlay);
+    },
+    renderSelectionOverlay: (renderLayout, frame, renderSelection) =>
+      renderSelectionOverlay(renderLayout, frame, renderSelection),
+    flush: ({ layout: renderLayout, rows, rightFrame, selectionRows, selectionOverlay }) =>
+      screen.flush({
+        layout: renderLayout,
+        rows,
+        rightFrame,
+        selectionRows,
+        selectionOverlay,
+        validateAnsi,
+      }),
+    onFlushOutput: ({ activeConversation, rightFrame, rows, flushResult, changedRowCount }) => {
+      startupPaintTracker.onRenderFlush({
+        activeConversation,
+        activeConversationId: conversationManager.activeConversationId,
+        rightFrameVisible: rightFrame !== null,
+        changedRowCount,
+      });
+      if (muxRecordingWriter !== null && muxRecordingOracle !== null) {
+        const recordingCursorStyle: ScreenCursorStyle =
+          rightFrame === null ? { shape: 'block', blinking: false } : rightFrame.cursor.style;
+        const recordingCursorRow = rightFrame === null ? 0 : rightFrame.cursor.row;
+        const recordingCursorCol =
+          rightFrame === null
+            ? layout.rightStartCol - 1
+            : layout.rightStartCol + rightFrame.cursor.col - 1;
+        const canonicalFrame = renderCanonicalFrameAnsi(
+          rows,
+          recordingCursorStyle,
+          flushResult.shouldShowCursor,
+          recordingCursorRow,
+          recordingCursorCol,
+        );
+        muxRecordingOracle.ingest(canonicalFrame);
+        try {
+          muxRecordingWriter.capture(muxRecordingOracle.snapshot());
+        } catch {
+          // Recording failures must never break live interaction.
+        }
+      }
+    },
+    recordRenderSample: (durationMs, changedRowCount) => {
+      outputLoadSampler.recordRenderSample(durationMs, changedRowCount);
+    },
+  });
+
   const render = (): void => {
     if (shuttingDown || !screen.isDirty()) {
       return;
@@ -2432,7 +2497,6 @@ async function main(): Promise<number> {
       screen.clearDirty();
       return;
     }
-    const renderStartedAtNs = perfNowNs();
 
     const active = conversationManager.getActiveConversation();
     if (!projectPaneActive && !homePaneActive && active === null) {
@@ -2536,70 +2600,17 @@ async function main(): Promise<number> {
     } else {
       rightRows = Array.from({ length: layout.paneRows }, () => ' '.repeat(layout.rightCols));
     }
-    const baseStatusFooter =
-      !projectPaneActive && !homePaneActive && active !== null
-        ? debugFooterForConversation(active)
-        : '';
-    const statusNotice = debugFooterNotice.current();
-    const statusFooter =
-      statusNotice === null || statusNotice.length === 0
-        ? baseStatusFooter
-        : `${baseStatusFooter.length > 0 ? `${baseStatusFooter}  ` : ''}${statusNotice}`;
-    const rows = buildRenderRows(
+    runtimeRenderFlush.flushRender({
       layout,
-      rail.ansiRows,
-      rightRows,
-      outputLoadSampler.currentStatusRow(),
-      statusFooter,
-    );
-    const modalOverlay = buildCurrentModalOverlay();
-    if (modalOverlay !== null) {
-      applyModalOverlay(rows, modalOverlay);
-    }
-    const selectionOverlay =
-      rightFrame === null ? '' : renderSelectionOverlay(layout, rightFrame, renderSelection);
-    const flushResult = screen.flush({
-      layout,
-      rows,
+      projectPaneActive,
+      homePaneActive,
+      activeConversation: active,
       rightFrame,
+      renderSelection,
       selectionRows,
-      selectionOverlay,
-      validateAnsi,
+      railAnsiRows: rail.ansiRows,
+      rightRows,
     });
-    const changedRowCount = flushResult.changedRowCount;
-
-    if (flushResult.wroteOutput) {
-      startupPaintTracker.onRenderFlush({
-        activeConversation: active,
-        activeConversationId: conversationManager.activeConversationId,
-        rightFrameVisible: rightFrame !== null,
-        changedRowCount,
-      });
-      if (muxRecordingWriter !== null && muxRecordingOracle !== null) {
-        const recordingCursorStyle: ScreenCursorStyle =
-          rightFrame === null ? { shape: 'block', blinking: false } : rightFrame.cursor.style;
-        const recordingCursorRow = rightFrame === null ? 0 : rightFrame.cursor.row;
-        const recordingCursorCol =
-          rightFrame === null
-            ? layout.rightStartCol - 1
-            : layout.rightStartCol + rightFrame.cursor.col - 1;
-        const canonicalFrame = renderCanonicalFrameAnsi(
-          rows,
-          recordingCursorStyle,
-          flushResult.shouldShowCursor,
-          recordingCursorRow,
-          recordingCursorCol,
-        );
-        muxRecordingOracle.ingest(canonicalFrame);
-        try {
-          muxRecordingWriter.capture(muxRecordingOracle.snapshot());
-        } catch {
-          // Recording failures must never break live interaction.
-        }
-      }
-    }
-    const renderDurationMs = Number(perfNowNs() - renderStartedAtNs) / 1e6;
-    outputLoadSampler.recordRenderSample(renderDurationMs, changedRowCount);
   };
 
   const runtimeEnvelopeHandler = new RuntimeEnvelopeHandler<

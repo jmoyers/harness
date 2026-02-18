@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~3157 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~3168 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -1376,8 +1376,27 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3157 non-empty LOC
 
+### Checkpoint BV (2026-02-18): Render flush orchestration extracted into class service
+
+- Added `src/services/runtime-render-flush.ts` with class-based `RuntimeRenderFlush` to own render flush orchestration:
+  - status footer + notice composition
+  - rail/right row assembly via `buildRenderRows(...)`
+  - modal overlay application before flush
+  - selection overlay assembly and `Screen.flush(...)` delegation
+  - startup/recording side-effect callback fanout on wrote-output
+  - render-sample duration/changed-row accounting callback
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate the render flush compose/flush branch to `RuntimeRenderFlush.flushRender(...)`.
+- Added `test/services-runtime-render-flush.test.ts` with coverage for:
+  - status footer composition + modal overlay application + wrote-output callback path
+  - project-pane/no-output branch that skips conversation footer and flush-output callback
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3168 non-empty LOC
+
 ### Next focus (yield-first)
 
 - Continue startup/runtime orchestration extraction before callback-bag cleanup:
-  - extract render orchestration seam (frame assembly + modal/recording compose flow) into a class service
-  - then extract input token-loop orchestration seam to keep runtime trending down
+  - extract remaining render-row assembly branch (pane/rail build path) into a class service
+  - extract input token-loop orchestration seam to keep runtime trending down
+  - start action-handler consolidation pass (conversation/directory/task orchestration bundles)
