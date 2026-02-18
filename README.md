@@ -22,7 +22,7 @@ Run many agent threads in parallel across `codex`, `claude`, `cursor`, `terminal
 ### Prerequisites
 
 - Bun `1.3.9+`
-- Rust toolchain (used for the PTY helper; `bun install` will prompt to install via `rustup` if missing)
+- Rust toolchain (used for the PTY helper; `bun install` auto-installs via `rustup` if missing)
 - At least one agent CLI you plan to use (`codex`, `claude`, `cursor`, or `critique`)
 
 ### Install and Run

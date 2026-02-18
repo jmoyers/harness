@@ -3,10 +3,6 @@ set -euo pipefail
 
 RUSTUP_INSTALL_URL="https://sh.rustup.rs"
 
-is_tty() {
-  [[ -t 0 && -t 1 ]]
-}
-
 add_cargo_to_path() {
   export PATH="$HOME/.cargo/bin:$PATH"
 }
@@ -30,8 +26,11 @@ error: Rust toolchain is required to build the native PTY helper.
 Install Rust manually:
   https://www.rust-lang.org/tools/install
 
-Or rerun with automatic install:
-  HARNESS_AUTO_INSTALL_RUST=1 bun install
+Or allow automatic install (default behavior):
+  bun install
+
+To disable automatic install and fail fast:
+  HARNESS_AUTO_INSTALL_RUST=0 bun install
 EOF
 }
 
@@ -45,25 +44,6 @@ install_rustup_noninteractive() {
   curl --proto '=https' --tlsv1.2 -sSf "$RUSTUP_INSTALL_URL" | sh -s -- -y
 }
 
-prompt_install_rustup() {
-  if ! is_tty; then
-    print_rust_required_message
-    exit 1
-  fi
-  printf "Rust toolchain not found. Install via rustup now? [Y/n] "
-  local response
-  read -r response
-  case "${response:-y}" in
-    y|Y|yes|YES)
-      install_rustup_noninteractive
-      ;;
-    *)
-      print_rust_required_message
-      exit 1
-      ;;
-  esac
-}
-
 ensure_rust_toolchain() {
   add_cargo_to_path
   source_cargo_env_if_present
@@ -71,11 +51,12 @@ ensure_rust_toolchain() {
     return
   fi
 
-  if [[ "${HARNESS_AUTO_INSTALL_RUST:-}" == "1" ]]; then
-    install_rustup_noninteractive
-  else
-    prompt_install_rustup
+  # Default to automatic rustup install for non-interactive setup flows.
+  if [[ "${HARNESS_AUTO_INSTALL_RUST:-1}" == "0" ]]; then
+    print_rust_required_message
+    exit 1
   fi
+  install_rustup_noninteractive
 
   source_cargo_env_if_present
   add_cargo_to_path
