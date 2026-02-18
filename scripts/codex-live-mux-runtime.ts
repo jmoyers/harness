@@ -162,10 +162,9 @@ import { RuntimeRightPaneRender } from '../src/services/runtime-right-pane-rende
 import { RuntimeRenderState } from '../src/services/runtime-render-state.ts';
 import { RuntimeRenderLifecycle } from '../src/services/runtime-render-lifecycle.ts';
 import { RuntimeShutdownService } from '../src/services/runtime-shutdown.ts';
-import { RuntimeTaskPaneActions } from '../src/services/runtime-task-pane-actions.ts';
 import { RuntimeTaskEditorActions } from '../src/services/runtime-task-editor-actions.ts';
 import { RuntimeTaskComposerPersistenceService } from '../src/services/runtime-task-composer-persistence.ts';
-import { RuntimeTaskPaneShortcuts } from '../src/services/runtime-task-pane-shortcuts.ts';
+import { RuntimeTaskPane } from '../src/services/runtime-task-pane.ts';
 import { RuntimeModalInput } from '../src/services/runtime-modal-input.ts';
 import { TaskPaneSelectionActions } from '../src/services/task-pane-selection-actions.ts';
 import { TaskPlanningHydrationService } from '../src/services/task-planning-hydration.ts';
@@ -1743,79 +1742,77 @@ async function main(): Promise<number> {
     markDirty,
   });
 
-  const runtimeTaskPaneActions = new RuntimeTaskPaneActions<ControlPlaneTaskRecord>({
-    workspace,
-    controlPlaneService,
-    repositoriesHas: (repositoryId) => repositories.has(repositoryId),
-    setTask: (task) => {
-      taskManager.setTask(task);
+  const runtimeTaskPane = new RuntimeTaskPane<ControlPlaneTaskRecord>({
+    actions: {
+      workspace,
+      controlPlaneService,
+      repositoriesHas: (repositoryId) => repositories.has(repositoryId),
+      setTask: (task) => {
+        taskManager.setTask(task);
+      },
+      getTask: (taskId) => taskManager.getTask(taskId),
+      taskReorderPayloadIds: (orderedActiveTaskIds) =>
+        taskManager.taskReorderPayloadIds({
+          orderedActiveTaskIds,
+          sortTasks: sortTasksByOrder,
+          isCompleted: (task) => task.status === 'completed',
+        }),
+      reorderedActiveTaskIdsForDrop: (draggedTaskId, targetTaskId) =>
+        taskManager.reorderedActiveTaskIdsForDrop({
+          draggedTaskId,
+          targetTaskId,
+          sortTasks: sortTasksByOrder,
+          isCompleted: (task) => task.status === 'completed',
+        }),
+      clearTaskAutosaveTimer,
+      deleteTask: (taskId) => {
+        taskManager.deleteTask(taskId);
+      },
+      deleteTaskComposer: (taskId) => {
+        taskManager.deleteTaskComposer(taskId);
+      },
+      focusDraftComposer,
+      focusTaskComposer,
+      selectedTask: () => selectedTaskRecord(),
+      orderedTaskRecords,
+      queueControlPlaneOp,
+      syncTaskPaneSelection,
+      syncTaskPaneRepositorySelection,
+      openRepositoryPromptForCreate: () => {
+        runtimeRepositoryActions.openRepositoryPromptForCreate();
+      },
+      openRepositoryPromptForEdit: (repositoryId) => {
+        runtimeRepositoryActions.openRepositoryPromptForEdit(repositoryId);
+      },
+      archiveRepositoryById: async (repositoryId) => {
+        await runtimeRepositoryActions.archiveRepositoryById(repositoryId);
+      },
+      markDirty,
     },
-    getTask: (taskId) => taskManager.getTask(taskId),
-    taskReorderPayloadIds: (orderedActiveTaskIds) =>
-      taskManager.taskReorderPayloadIds({
-        orderedActiveTaskIds,
-        sortTasks: sortTasksByOrder,
-        isCompleted: (task) => task.status === 'completed',
-      }),
-    reorderedActiveTaskIdsForDrop: (draggedTaskId, targetTaskId) =>
-      taskManager.reorderedActiveTaskIdsForDrop({
-        draggedTaskId,
-        targetTaskId,
-        sortTasks: sortTasksByOrder,
-        isCompleted: (task) => task.status === 'completed',
-      }),
-    clearTaskAutosaveTimer,
-    deleteTask: (taskId) => {
-      taskManager.deleteTask(taskId);
+    shortcuts: {
+      workspace,
+      taskScreenKeybindings,
+      repositoriesHas: (repositoryId) => repositories.has(repositoryId),
+      activeRepositoryIds,
+      selectRepositoryById,
+      taskComposerForTask,
+      setTaskComposerForTask,
+      scheduleTaskComposerPersist,
+      selectedRepositoryTaskRecords,
+      focusTaskComposer,
+      focusDraftComposer,
+      queueControlPlaneOp,
+      createTask: async (payload) => {
+        return await controlPlaneService.createTask(payload);
+      },
+      syncTaskPaneSelection,
+      markDirty,
     },
-    deleteTaskComposer: (taskId) => {
-      taskManager.deleteTaskComposer(taskId);
-    },
-    focusDraftComposer,
-    focusTaskComposer,
-    selectedTask: () => selectedTaskRecord(),
-    orderedTaskRecords,
-    queueControlPlaneOp,
-    syncTaskPaneSelection,
-    syncTaskPaneRepositorySelection,
-    openRepositoryPromptForCreate: () => {
-      runtimeRepositoryActions.openRepositoryPromptForCreate();
-    },
-    openRepositoryPromptForEdit: (repositoryId) => {
-      runtimeRepositoryActions.openRepositoryPromptForEdit(repositoryId);
-    },
-    archiveRepositoryById: async (repositoryId) => {
-      await runtimeRepositoryActions.archiveRepositoryById(repositoryId);
-    },
-    markDirty,
-  });
-  const runtimeTaskPaneShortcuts = new RuntimeTaskPaneShortcuts<ControlPlaneTaskRecord>({
-    workspace,
-    taskScreenKeybindings,
-    repositoriesHas: (repositoryId) => repositories.has(repositoryId),
-    activeRepositoryIds,
-    selectRepositoryById,
-    taskComposerForTask,
-    setTaskComposerForTask,
-    scheduleTaskComposerPersist,
-    selectedRepositoryTaskRecords,
-    focusTaskComposer,
-    focusDraftComposer,
-    runTaskPaneAction: (shortcutAction) => {
-      runtimeTaskPaneActions.runTaskPaneAction(shortcutAction);
-    },
-    queueControlPlaneOp,
-    createTask: async (payload) => {
-      return await controlPlaneService.createTask(payload);
-    },
-    applyTaskRecord,
-    syncTaskPaneSelection,
-    markDirty,
   });
   const runtimeTaskEditorActions = new RuntimeTaskEditorActions<ControlPlaneTaskRecord>({
     workspace,
     controlPlaneService,
-    applyTaskRecord,
+    applyTaskRecord: (task) => runtimeTaskPane.applyTaskRecord(task),
     queueControlPlaneOp,
     markDirty,
   });
@@ -1899,8 +1896,8 @@ async function main(): Promise<number> {
     directoryActions: runtimeDirectoryActions,
     repositoryActions: runtimeRepositoryActions,
     controlActions: runtimeControlActions,
-    taskPaneActions: runtimeTaskPaneActions,
-    taskPaneShortcuts: runtimeTaskPaneShortcuts,
+    taskPaneActions: runtimeTaskPane,
+    taskPaneShortcuts: runtimeTaskPane,
     orderedActiveRepositoryIds: () =>
       orderedActiveRepositoryRecords().map((repository) => repository.repositoryId),
   });
