@@ -185,6 +185,7 @@ import { RuntimeConversationActivation } from '../src/services/runtime-conversat
 import { RuntimeDirectoryActions } from '../src/services/runtime-directory-actions.ts';
 import { RuntimeRenderLifecycle } from '../src/services/runtime-render-lifecycle.ts';
 import { RuntimeShutdownService } from '../src/services/runtime-shutdown.ts';
+import { TaskPaneSelectionActions } from '../src/services/task-pane-selection-actions.ts';
 import { StartupShutdownService } from '../src/services/startup-shutdown.ts';
 import { StartupSettledGate } from '../src/services/startup-settled-gate.ts';
 import { StartupSpanTracker } from '../src/services/startup-span-tracker.ts';
@@ -1758,34 +1759,6 @@ async function main(): Promise<number> {
     queuePersistTaskComposer(taskId, 'flush');
   };
 
-  const focusDraftComposer = (): void => {
-    if ('taskId' in workspace.taskEditorTarget && typeof workspace.taskEditorTarget.taskId === 'string') {
-      flushTaskComposerPersist(workspace.taskEditorTarget.taskId);
-    }
-    workspace.taskEditorTarget = {
-      kind: 'draft',
-    };
-    workspace.taskPaneSelectionFocus = 'task';
-    markDirty();
-  };
-
-  const focusTaskComposer = (taskId: string): void => {
-    if (!taskManager.hasTask(taskId)) {
-      return;
-    }
-    if (workspace.taskEditorTarget.kind === 'task' && workspace.taskEditorTarget.taskId !== taskId) {
-      flushTaskComposerPersist(workspace.taskEditorTarget.taskId);
-    }
-    workspace.taskEditorTarget = {
-      kind: 'task',
-      taskId,
-    };
-    workspace.taskPaneSelectedTaskId = taskId;
-    workspace.taskPaneSelectionFocus = 'task';
-    workspace.taskPaneNotice = null;
-    markDirty();
-  };
-
   function syncTaskPaneSelectionFocus(): void {
     const hasTaskSelection =
       workspace.taskPaneSelectedTaskId !== null && taskManager.hasTask(workspace.taskPaneSelectedTaskId);
@@ -1838,6 +1811,24 @@ async function main(): Promise<number> {
     syncTaskPaneSelection();
   }
 
+  const taskPaneSelectionActions = new TaskPaneSelectionActions<ControlPlaneTaskRecord>({
+    workspace,
+    taskRecordById: (taskId) => taskManager.getTask(taskId),
+    hasTask: (taskId) => taskManager.hasTask(taskId),
+    hasRepository: (repositoryId) => repositories.has(repositoryId),
+    flushTaskComposerPersist,
+    syncTaskPaneSelection,
+    markDirty,
+  });
+
+  const focusDraftComposer = (): void => {
+    taskPaneSelectionActions.focusDraftComposer();
+  };
+
+  const focusTaskComposer = (taskId: string): void => {
+    taskPaneSelectionActions.focusTaskComposer(taskId);
+  };
+
   const selectedTaskRecord = (): ControlPlaneTaskRecord | null => {
     if (workspace.taskPaneSelectedTaskId === null) {
       return null;
@@ -1846,34 +1837,11 @@ async function main(): Promise<number> {
   };
 
   const selectTaskById = (taskId: string): void => {
-    const taskRecord = taskManager.getTask(taskId);
-    if (taskRecord === undefined) {
-      return;
-    }
-    workspace.taskPaneSelectedTaskId = taskId;
-    workspace.taskPaneSelectionFocus = 'task';
-    if (taskRecord.repositoryId !== null && repositories.has(taskRecord.repositoryId)) {
-      workspace.taskPaneSelectedRepositoryId = taskRecord.repositoryId;
-    }
-    focusTaskComposer(taskId);
+    taskPaneSelectionActions.selectTaskById(taskId);
   };
 
   const selectRepositoryById = (repositoryId: string): void => {
-    if (!repositories.has(repositoryId)) {
-      return;
-    }
-    if ('taskId' in workspace.taskEditorTarget && typeof workspace.taskEditorTarget.taskId === 'string') {
-      flushTaskComposerPersist(workspace.taskEditorTarget.taskId);
-    }
-    workspace.taskPaneSelectedRepositoryId = repositoryId;
-    workspace.taskRepositoryDropdownOpen = false;
-    workspace.taskPaneSelectionFocus = 'repository';
-    workspace.taskEditorTarget = {
-      kind: 'draft',
-    };
-    syncTaskPaneSelection();
-    workspace.taskPaneNotice = null;
-    markDirty();
+    taskPaneSelectionActions.selectRepositoryById(repositoryId);
   };
 
   const activeRepositoryIds = (): readonly string[] => {

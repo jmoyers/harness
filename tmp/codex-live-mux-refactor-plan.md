@@ -1243,9 +1243,22 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3287 non-empty LOC
 
+### Checkpoint BN (2026-02-18): Task-pane selection/editor transitions extracted into class service
+
+- Added `src/services/task-pane-selection-actions.ts` with class-based `TaskPaneSelectionActions` methods for:
+  - `focusDraftComposer()`
+  - `focusTaskComposer(taskId)`
+  - `selectTaskById(taskId)`
+  - `selectRepositoryById(repositoryId)`
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate those task-pane transition handlers to `TaskPaneSelectionActions`.
+- Added `test/services-task-pane-selection-actions.test.ts` with coverage for missing-target no-op branches and normal task/repository selection flows.
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3254 non-empty LOC
+
 ### Next focus (yield-first)
 
 - Continue action-handler extraction before wiring cleanup:
-  - task selection/editor actions (`focusDraftComposer`, `selectTaskById`, `selectRepositoryById`) into class-owned workspace/task transitions
-  - task + selection transition ownership into workspace/task domain methods
+  - task + selection transition ownership into workspace/task domain methods (sync/reconcile flows)
   - hydration flow extraction into manager/service-owned methods
