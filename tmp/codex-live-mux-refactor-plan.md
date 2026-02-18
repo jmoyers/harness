@@ -1543,6 +1543,14 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2956 non-empty LOC
 
+### Checkpoint CE (2026-02-18): Post-rebase coverage-gate compliance restored
+
+- Added a targeted runtime-wiring regression test in `test/mux-runtime-wiring.test.ts` for stale completed-status ordering:
+  - when a `session-status` `completed` event arrives with an older timestamp than `lastKnownWorkAt`, the wiring now remains covered for preserving newer work projection timestamps.
+- This closes a full-verify blocker that surfaced after rebasing onto remote `main` (line coverage gap on `src/mux/runtime-wiring.ts`).
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+
 ### Next focus (yield-first)
 
 - Consolidation order (updated from critique review):

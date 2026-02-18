@@ -1155,6 +1155,38 @@ void test('runtime wiring marks completed session-status updates inactive even a
   assert.equal(conversation.lastKnownWorkAt, '2026-02-15T00:00:02.000Z');
 });
 
+void test('runtime wiring keeps newer work timestamp when completed status arrives out of order', () => {
+  const conversation = createConversationState('conversation-completed-stale-status', {
+    status: 'running',
+    lastKnownWork: 'working: applying patch',
+    lastKnownWorkAt: '2026-02-15T00:00:10.000Z',
+    lastTelemetrySource: 'otlp-log',
+  });
+  const updated = applyMuxControlPlaneKeyEvent(
+    {
+      type: 'session-status',
+      sessionId: 'conversation-completed-stale-status',
+      status: 'completed',
+      attentionReason: null,
+      live: true,
+      ts: '2026-02-15T00:00:09.000Z',
+      directoryId: 'directory-completed-stale-status',
+      conversationId: 'conversation-completed-stale-status',
+      telemetry: null,
+      controller: null,
+      cursor: 89,
+    },
+    {
+      removedConversationIds: new Set(),
+      ensureConversation: () => conversation,
+    },
+  );
+  assert.notEqual(updated, null);
+  assert.equal(conversation.status, 'completed');
+  assert.equal(conversation.lastKnownWork, 'working: applying patch');
+  assert.equal(conversation.lastKnownWorkAt, '2026-02-15T00:00:10.000Z');
+});
+
 void test('runtime wiring applies turn metric completion summaries regardless of active controller', () => {
   const conversation = createConversationState('conversation-active-agent-idle-guard', {
     status: 'running',
