@@ -523,3 +523,20 @@ bun run loc:verify:enforce
   - `bun run verify`: pass
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4598 non-empty LOC
+
+### Checkpoint V (2026-02-18): WorkspaceModel now owns left-nav transitions
+
+- Continued Phase 1/3 boundary cleanup by moving navigation state transitions into `WorkspaceModel`.
+- Extended `src/domain/workspace.ts` with explicit methods:
+  - `selectLeftNavHome()`
+  - `selectLeftNavRepository(...)`
+  - `selectLeftNavProject(...)`
+  - `selectLeftNavConversation(...)`
+- Updated `scripts/codex-live-mux-runtime.ts` to call workspace-owned transition methods instead of ad-hoc local closure functions.
+- Expanded `test/domain-workspace.test.ts` to cover the new state transition methods.
+- Validation at checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun run verify`: pass
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4581 non-empty LOC

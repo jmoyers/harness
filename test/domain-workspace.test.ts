@@ -57,3 +57,51 @@ void test('workspace model initializes defaults and preserves constructor state'
   assert.equal(workspace.repositoriesCollapsed, true);
   assert.equal(workspace.shortcutsCollapsed, false);
 });
+
+void test('workspace model left-nav transition methods own state updates', () => {
+  const workspace = new WorkspaceModel({
+    activeDirectoryId: 'dir-a',
+    leftNavSelection: {
+      kind: 'project',
+      directoryId: 'dir-a',
+    },
+    latestTaskPaneView: {
+      rows: [],
+      taskIds: [],
+      repositoryIds: [],
+      actions: [],
+      actionCells: [],
+      top: 0,
+      selectedRepositoryId: null,
+    },
+    taskDraftComposer: {
+      text: '',
+      cursor: 0,
+    },
+    repositoriesCollapsed: false,
+    shortcutsCollapsed: false,
+  });
+
+  workspace.selectLeftNavHome();
+  assert.deepEqual(workspace.leftNavSelection, { kind: 'home' });
+
+  workspace.selectLeftNavRepository('repo-a');
+  assert.deepEqual(workspace.leftNavSelection, {
+    kind: 'repository',
+    repositoryId: 'repo-a',
+  });
+  assert.equal(workspace.activeRepositorySelectionId, 'repo-a');
+
+  workspace.selectLeftNavProject('dir-b', 'repo-b');
+  assert.deepEqual(workspace.leftNavSelection, {
+    kind: 'project',
+    directoryId: 'dir-b',
+  });
+  assert.equal(workspace.activeRepositorySelectionId, 'repo-b');
+
+  workspace.selectLeftNavConversation('session-a');
+  assert.deepEqual(workspace.leftNavSelection, {
+    kind: 'conversation',
+    sessionId: 'session-a',
+  });
+});

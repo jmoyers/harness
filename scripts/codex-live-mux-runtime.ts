@@ -810,35 +810,6 @@ async function main(): Promise<number> {
     );
   };
 
-  const selectLeftNavHome = (): void => {
-    workspace.leftNavSelection = {
-      kind: 'home',
-    };
-  };
-
-  const selectLeftNavRepository = (repositoryGroupId: string): void => {
-    workspace.activeRepositorySelectionId = repositoryGroupId;
-    workspace.leftNavSelection = {
-      kind: 'repository',
-      repositoryId: repositoryGroupId,
-    };
-  };
-
-  const selectLeftNavProject = (directoryId: string): void => {
-    workspace.activeRepositorySelectionId = repositoryGroupIdForDirectory(directoryId);
-    workspace.leftNavSelection = {
-      kind: 'project',
-      directoryId,
-    };
-  };
-
-  const selectLeftNavConversation = (sessionId: string): void => {
-    workspace.leftNavSelection = {
-      kind: 'conversation',
-      sessionId,
-    };
-  };
-
   conversationManager.configureEnsureDependencies({
     resolveDefaultDirectoryId: resolveActiveDirectoryId,
     normalizeAdapterState,
@@ -1191,11 +1162,15 @@ async function main(): Promise<number> {
     await subscribeTaskPlanningEvents(startupObservedCursor);
     conversationManager.ensureActiveConversationId();
     if (conversationManager.activeConversationId !== null) {
-      selectLeftNavConversation(conversationManager.activeConversationId);
+      workspace.selectLeftNavConversation(conversationManager.activeConversationId);
     }
-    if (conversationManager.activeConversationId === null && resolveActiveDirectoryId() !== null) {
+    const activeDirectoryId = resolveActiveDirectoryId();
+    if (conversationManager.activeConversationId === null && activeDirectoryId !== null) {
       workspace.mainPaneMode = 'project';
-      selectLeftNavProject(resolveActiveDirectoryId()!);
+      workspace.selectLeftNavProject(
+        activeDirectoryId,
+        repositoryGroupIdForDirectory(activeDirectoryId),
+      );
     }
   }
 
@@ -2301,7 +2276,7 @@ async function main(): Promise<number> {
       return;
     }
     workspace.activeDirectoryId = directoryId;
-    selectLeftNavProject(directoryId);
+    workspace.selectLeftNavProject(directoryId, repositoryGroupIdForDirectory(directoryId));
     noteGitActivity(directoryId);
     workspace.mainPaneMode = 'project';
     workspace.homePaneDragState = null;
@@ -2528,7 +2503,7 @@ async function main(): Promise<number> {
 
   const enterHomePane = (): void => {
     workspace.mainPaneMode = 'home';
-    selectLeftNavHome();
+    workspace.selectLeftNavHome();
     workspace.projectPaneSnapshot = null;
     workspace.projectPaneScrollTop = 0;
     selection = null;
@@ -2671,7 +2646,7 @@ async function main(): Promise<number> {
     if (conversationManager.activeConversationId === sessionId) {
       if (workspace.mainPaneMode !== 'conversation') {
         workspace.mainPaneMode = 'conversation';
-        selectLeftNavConversation(sessionId);
+        workspace.selectLeftNavConversation(sessionId);
         forceFullClear = true;
         previousRows = [];
         markDirty();
@@ -2690,7 +2665,7 @@ async function main(): Promise<number> {
     }
     conversationManager.setActiveConversationId(sessionId);
     workspace.mainPaneMode = 'conversation';
-    selectLeftNavConversation(sessionId);
+    workspace.selectLeftNavConversation(sessionId);
     workspace.homePaneDragState = null;
     workspace.taskPaneTaskEditClickState = null;
     workspace.taskPaneRepositoryEditClickState = null;
@@ -4111,7 +4086,9 @@ async function main(): Promise<number> {
       setMainPaneProjectMode: () => {
         workspace.mainPaneMode = 'project';
       },
-      selectLeftNavRepository,
+      selectLeftNavRepository: (repositoryGroupId) => {
+        workspace.selectLeftNavRepository(repositoryGroupId);
+      },
       markDirty,
       directoriesHas: (directoryId) => directoryManager.hasDirectory(directoryId),
       visibleTargetsForState: visibleLeftNavTargetsForState,
@@ -4139,13 +4116,13 @@ async function main(): Promise<number> {
     }
     if (action === 'expand') {
       expandRepositoryGroup(repositoryId);
-      selectLeftNavRepository(repositoryId);
+      workspace.selectLeftNavRepository(repositoryId);
       markDirty();
       return true;
     }
     if (action === 'collapse') {
       collapseRepositoryGroup(repositoryId);
-      selectLeftNavRepository(repositoryId);
+      workspace.selectLeftNavRepository(repositoryId);
       markDirty();
       return true;
     }
@@ -4514,7 +4491,9 @@ async function main(): Promise<number> {
                 }, 'mouse-archive-repository');
               },
               toggleRepositoryGroup,
-              selectLeftNavRepository,
+              selectLeftNavRepository: (repositoryGroupId) => {
+                workspace.selectLeftNavRepository(repositoryGroupId);
+              },
               expandAllRepositoryGroups,
               collapseAllRepositoryGroups,
               enterHomePane,
@@ -4548,7 +4527,7 @@ async function main(): Promise<number> {
               },
               ensureConversationPaneActive: (conversationId) => {
                 workspace.mainPaneMode = 'conversation';
-                selectLeftNavConversation(conversationId);
+                workspace.selectLeftNavConversation(conversationId);
                 workspace.projectPaneSnapshot = null;
                 workspace.projectPaneScrollTop = 0;
                 forceFullClear = true;

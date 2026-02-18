@@ -99,4 +99,33 @@ export class WorkspaceModel {
     this.repositoriesCollapsed = init.repositoriesCollapsed;
     this.shortcutsCollapsed = init.shortcutsCollapsed;
   }
+
+  selectLeftNavHome(): void {
+    this.leftNavSelection = {
+      kind: 'home',
+    };
+  }
+
+  selectLeftNavRepository(repositoryGroupId: string): void {
+    this.activeRepositorySelectionId = repositoryGroupId;
+    this.leftNavSelection = {
+      kind: 'repository',
+      repositoryId: repositoryGroupId,
+    };
+  }
+
+  selectLeftNavProject(directoryId: string, repositoryGroupId: string): void {
+    this.activeRepositorySelectionId = repositoryGroupId;
+    this.leftNavSelection = {
+      kind: 'project',
+      directoryId,
+    };
+  }
+
+  selectLeftNavConversation(sessionId: string): void {
+    this.leftNavSelection = {
+      kind: 'conversation',
+      sessionId,
+    };
+  }
 }
