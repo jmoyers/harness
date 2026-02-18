@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~3926 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~3898 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -929,3 +929,15 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3926 non-empty LOC
+
+### Checkpoint AU (2026-02-18): Service extraction continues with class-based startup visibility helpers
+
+- Added `src/services/startup-visibility.ts` with a class-based `StartupVisibility` that owns:
+  - visible non-empty glyph-cell counting for startup paint/settle checkpoints
+  - codex-header visibility detection over the active terminal snapshot
+- Updated `scripts/codex-live-mux-runtime.ts` startup render/settle paths to delegate visibility calculations to `StartupVisibility` and remove inline visibility helper closures.
+- Added `test/services-startup-visibility.test.ts` covering glyph-cell counting and positive/negative codex-header visibility detection.
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3898 non-empty LOC

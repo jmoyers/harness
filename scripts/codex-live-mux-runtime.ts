@@ -185,6 +185,7 @@ import { TaskManager } from '../src/domain/tasks.ts';
 import { ControlPlaneService } from '../src/services/control-plane.ts';
 import { RecordingService } from '../src/services/recording.ts';
 import { StartupSpanTracker } from '../src/services/startup-span-tracker.ts';
+import { StartupVisibility } from '../src/services/startup-visibility.ts';
 import { Screen, type ScreenCursorStyle } from '../src/ui/screen.ts';
 import { ConversationPane } from '../src/ui/panes/conversation.ts';
 import { HomePane } from '../src/ui/panes/home.ts';
@@ -606,6 +607,7 @@ async function main(): Promise<number> {
     nonemptyFallbackMs: DEFAULT_STARTUP_SETTLE_NONEMPTY_FALLBACK_MS,
   });
   const startupSpanTracker = new StartupSpanTracker(startPerfSpan, startupSettleQuietMs);
+  const startupVisibility = new StartupVisibility();
   const startupSessionFirstOutputObserved = new Set<string>();
 
   const clearStartupSettledTimer = (): void => {
@@ -616,47 +618,14 @@ async function main(): Promise<number> {
     startupSequencer.signalSettled();
   };
 
-  const visibleGlyphCellCount = (conversation: ConversationState): number => {
-    const frame = conversation.oracle.snapshotWithoutHash();
-    let count = 0;
-    for (const line of frame.richLines) {
-      for (const cell of line.cells) {
-        if (!cell.continued && cell.glyph.trim().length > 0) {
-          count += 1;
-        }
-      }
-    }
-    return count;
-  };
-
-  const visibleText = (conversation: ConversationState): string => {
-    const frame = conversation.oracle.snapshotWithoutHash();
-    const rows: string[] = [];
-    for (const line of frame.richLines) {
-      let row = '';
-      for (const cell of line.cells) {
-        if (cell.continued) {
-          continue;
-        }
-        row += cell.glyph;
-      }
-      rows.push(row.trimEnd());
-    }
-    return rows.join('\n');
-  };
-
-  const codexHeaderVisible = (conversation: ConversationState): boolean => {
-    const text = visibleText(conversation);
-    return text.includes('OpenAI Codex') && text.includes('model:') && text.includes('directory:');
-  };
-
   const scheduleStartupSettledProbe = (sessionId: string): void => {
     startupSequencer.scheduleSettledProbe(sessionId, (event) => {
       if (startupSpanTracker.firstPaintTargetSessionId !== event.sessionId) {
         return;
       }
       const conversation = conversationManager.get(event.sessionId);
-      const glyphCells = conversation === undefined ? 0 : visibleGlyphCellCount(conversation);
+      const glyphCells =
+        conversation === undefined ? 0 : startupVisibility.visibleGlyphCellCount(conversation);
       recordPerfEvent('mux.startup.active-settled', {
         sessionId: event.sessionId,
         gate: event.gate,
@@ -3188,7 +3157,7 @@ async function main(): Promise<number> {
         startupSequencer.snapshot().firstOutputObserved &&
         !startupSequencer.snapshot().firstPaintObserved
       ) {
-        const glyphCells = visibleGlyphCellCount(active);
+        const glyphCells = startupVisibility.visibleGlyphCellCount(active);
         if (
           startupSequencer.markFirstPaintVisible(
             startupSpanTracker.firstPaintTargetSessionId,
@@ -3214,11 +3183,11 @@ async function main(): Promise<number> {
         conversationManager.activeConversationId === startupSpanTracker.firstPaintTargetSessionId &&
         startupSequencer.snapshot().firstOutputObserved
       ) {
-        const glyphCells = visibleGlyphCellCount(active);
+        const glyphCells = startupVisibility.visibleGlyphCellCount(active);
         if (
           startupSequencer.markHeaderVisible(
             startupSpanTracker.firstPaintTargetSessionId,
-            codexHeaderVisible(active),
+            startupVisibility.codexHeaderVisible(active),
           )
         ) {
           recordPerfEvent('mux.startup.active-header-visible', {
