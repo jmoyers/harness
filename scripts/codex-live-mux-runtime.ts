@@ -51,7 +51,6 @@ import {
   resolveTaskScreenKeybindings,
 } from '../src/mux/task-screen-keybindings.ts';
 import { applyMuxControlPlaneKeyEvent } from '../src/mux/runtime-wiring.ts';
-import { StartupSequencer } from '../src/mux/startup-sequencer.ts';
 import {
   applyModalOverlay,
   buildRenderRows,
@@ -172,10 +171,7 @@ import { OutputLoadSampler } from '../src/services/output-load-sampler.ts';
 import { ProcessUsageRefreshService } from '../src/services/process-usage-refresh.ts';
 import { RecordingService } from '../src/services/recording.ts';
 import { SessionProjectionInstrumentation } from '../src/services/session-projection-instrumentation.ts';
-import { StartupBackgroundProbeService } from '../src/services/startup-background-probe.ts';
-import { StartupBackgroundResumeService } from '../src/services/startup-background-resume.ts';
-import { StartupOutputTracker } from '../src/services/startup-output-tracker.ts';
-import { StartupPaintTracker } from '../src/services/startup-paint-tracker.ts';
+import { StartupOrchestrator } from '../src/services/startup-orchestrator.ts';
 import { StartupPersistedConversationQueueService } from '../src/services/startup-persisted-conversation-queue.ts';
 import { RuntimeProcessWiring } from '../src/services/runtime-process-wiring.ts';
 import { RuntimeConversationActions } from '../src/services/runtime-conversation-actions.ts';
@@ -195,11 +191,7 @@ import { RuntimeTaskPaneShortcuts } from '../src/services/runtime-task-pane-shor
 import { TaskPaneSelectionActions } from '../src/services/task-pane-selection-actions.ts';
 import { TaskPlanningHydrationService } from '../src/services/task-planning-hydration.ts';
 import { TaskPlanningObservedEvents } from '../src/services/task-planning-observed-events.ts';
-import { StartupShutdownService } from '../src/services/startup-shutdown.ts';
 import { StartupStateHydrationService } from '../src/services/startup-state-hydration.ts';
-import { StartupSettledGate } from '../src/services/startup-settled-gate.ts';
-import { StartupSpanTracker } from '../src/services/startup-span-tracker.ts';
-import { StartupVisibility } from '../src/services/startup-visibility.ts';
 import { Screen, type ScreenCursorStyle } from '../src/ui/screen.ts';
 import { ConversationPane } from '../src/ui/panes/conversation.ts';
 import { DebugFooterNotice } from '../src/ui/debug-footer-notice.ts';
@@ -608,35 +600,34 @@ async function main(): Promise<number> {
   let observedStreamSubscriptionId: string | null = null;
   let keyEventSubscription: Awaited<ReturnType<typeof subscribeControlPlaneKeyEvents>> | null =
     null;
-  const startupSequencer = new StartupSequencer({
-    quietMs: startupSettleQuietMs,
-    nonemptyFallbackMs: DEFAULT_STARTUP_SETTLE_NONEMPTY_FALLBACK_MS,
-  });
-  const startupSpanTracker = new StartupSpanTracker(startPerfSpan, startupSettleQuietMs);
-  const startupVisibility = new StartupVisibility();
-  const startupSettledGate = new StartupSettledGate({
-    startupSequencer,
-    startupSpanTracker,
+  let hydrateStartupStateForStartupOrchestrator = async (
+    _afterCursor: number | null,
+  ): Promise<void> => {};
+  let queuePersistedConversationsForStartupOrchestrator = (
+    _activeSessionId: string | null,
+  ): number => 0;
+  let activateConversationForStartupOrchestrator = async (_sessionId: string): Promise<void> => {};
+  let shuttingDown = false;
+  const startupOrchestrator = new StartupOrchestrator({
+    startupSettleQuietMs,
+    startupSettleNonemptyFallbackMs: DEFAULT_STARTUP_SETTLE_NONEMPTY_FALLBACK_MS,
+    backgroundWaitMaxMs: DEFAULT_BACKGROUND_START_MAX_WAIT_MS,
+    backgroundProbeEnabled: backgroundProbesEnabled,
+    backgroundResumeEnabled: backgroundResumePersisted,
+    startPerfSpan,
+    startupSpan,
+    recordPerfEvent,
     getConversation: (sessionId) => conversationManager.get(sessionId),
-    visibleGlyphCellCount: (conversation) => startupVisibility.visibleGlyphCellCount(conversation),
-    recordPerfEvent,
-  });
-  const startupOutputTracker = new StartupOutputTracker({
-    startupSequencer,
-    startupSpanTracker,
-    recordPerfEvent,
-  });
-  const startupPaintTracker = new StartupPaintTracker({
-    startupSequencer,
-    startupSpanTracker,
-    startupVisibility,
-    startupSettledGate,
-    recordPerfEvent,
-  });
-  const startupShutdownService = new StartupShutdownService({
-    startupSequencer,
-    startupSpanTracker,
-    startupSettledGate,
+    isShuttingDown: () => shuttingDown,
+    refreshProcessUsage: (reason) =>
+      void processUsageRefreshService.refresh(reason, _unsafeConversationMap),
+    queuePersistedConversationsInBackground: (initialActiveId) =>
+      queuePersistedConversationsForStartupOrchestrator(initialActiveId),
+    hydrateStartupState: async (afterCursor) =>
+      await hydrateStartupStateForStartupOrchestrator(afterCursor),
+    activateConversation: async (sessionId) =>
+      await activateConversationForStartupOrchestrator(sessionId),
+    conversationCount: () => conversationManager.size(),
   });
 
   const resolveActiveDirectoryId = (): string | null => {
@@ -826,9 +817,9 @@ async function main(): Promise<number> {
       startPerfSpan('mux.conversation.start', {
         sessionId,
       }),
-    firstPaintTargetSessionId: () => startupSpanTracker.firstPaintTargetSessionId,
+    firstPaintTargetSessionId: () => startupOrchestrator.firstPaintTargetSessionId,
     endStartCommandSpan: (input) => {
-      startupSpanTracker.endStartCommandSpan(input);
+      startupOrchestrator.endStartCommandSpan(input);
     },
     layout: () => layout,
     startPtySession: async (input) => {
@@ -951,6 +942,9 @@ async function main(): Promise<number> {
       workspace.enterHomePane();
     },
   });
+  queuePersistedConversationsForStartupOrchestrator = queuePersistedConversationsInBackground;
+  hydrateStartupStateForStartupOrchestrator = async (afterCursor) =>
+    await startupStateHydrationService.hydrateStartupState(afterCursor);
 
   const ensureDirectoryGitState = (directoryId: string): void => {
     directoryManager.ensureGitSummary(directoryId, GIT_SUMMARY_LOADING);
@@ -1017,7 +1011,6 @@ async function main(): Promise<number> {
   const leftRailPane = new LeftRailPane();
   let stop = false;
   let inputRemainder = '';
-  let shuttingDown = false;
   const debugFooterNotice = new DebugFooterNotice({
     ttlMs: DEBUG_FOOTER_NOTICE_TTL_MS,
   });
@@ -1169,24 +1162,6 @@ async function main(): Promise<number> {
     });
   };
 
-  const startupBackgroundProbeService = new StartupBackgroundProbeService({
-    enabled: backgroundProbesEnabled,
-    maxWaitMs: DEFAULT_BACKGROUND_START_MAX_WAIT_MS,
-    isShuttingDown: () => shuttingDown,
-    waitForSettled: () => startupSequencer.waitForSettled(),
-    settledObserved: () => startupSequencer.snapshot().settledObserved,
-    refreshProcessUsage: (reason) =>
-      void processUsageRefreshService.refresh(reason, _unsafeConversationMap),
-    recordPerfEvent,
-  });
-  const startupBackgroundResumeService = new StartupBackgroundResumeService({
-    enabled: backgroundResumePersisted,
-    maxWaitMs: DEFAULT_BACKGROUND_START_MAX_WAIT_MS,
-    waitForSettled: () => startupSequencer.waitForSettled(),
-    settledObserved: () => startupSequencer.snapshot().settledObserved,
-    queuePersistedConversationsInBackground,
-    recordPerfEvent,
-  });
   if (configuredMuxGit.enabled) {
     syncGitStateWithDirectories();
     if (workspace.activeDirectoryId !== null) {
@@ -1197,8 +1172,7 @@ async function main(): Promise<number> {
       reason: 'disabled',
     });
   }
-  startupBackgroundProbeService.recordWaitPhase();
-  void startupBackgroundProbeService.startWhenSettled();
+  startupOrchestrator.startBackgroundProbe();
 
   const eventPersistence = new EventPersistence({
     appendEvents: (events) => store.appendEvents(events),
@@ -1920,6 +1894,7 @@ async function main(): Promise<number> {
   const activateConversation = async (sessionId: string): Promise<void> => {
     await runtimeConversationActivation.activateConversation(sessionId);
   };
+  activateConversationForStartupOrchestrator = activateConversation;
 
   const removeConversationState = (sessionId: string): void => {
     if (workspace.conversationTitleEdit?.conversationId === sessionId) {
@@ -2386,7 +2361,7 @@ async function main(): Promise<number> {
         validateAnsi,
       }),
     onFlushOutput: ({ activeConversation, rightFrame, rows, flushResult, changedRowCount }) => {
-      startupPaintTracker.onRenderFlush({
+      startupOrchestrator.onRenderFlush({
         activeConversation,
         activeConversationId: conversationManager.activeConversationId,
         rightFrameVisible: rightFrame !== null,
@@ -2535,10 +2510,10 @@ async function main(): Promise<number> {
       outputLoadSampler.recordOutputChunk(input.sessionId, input.chunkLength, input.active);
     },
     startupOutputChunk: (sessionId, chunkLength) => {
-      startupOutputTracker.onOutputChunk(sessionId, chunkLength);
+      startupOrchestrator.onOutputChunk(sessionId, chunkLength);
     },
     startupPaintOutputChunk: (sessionId) => {
-      startupPaintTracker.onOutputChunk(sessionId);
+      startupOrchestrator.onPaintOutputChunk(sessionId);
     },
     recordPerfEvent,
     mapTerminalOutputToNormalizedEvent: (chunk, scope, makeId) =>
@@ -2595,22 +2570,8 @@ async function main(): Promise<number> {
 
   const initialActiveId = conversationManager.activeConversationId;
   conversationManager.setActiveConversationId(null);
-  startupSequencer.setTargetSession(initialActiveId);
-  if (initialActiveId !== null) {
-    startupSpanTracker.beginForSession(initialActiveId);
-    const initialActivateSpan = startPerfSpan('mux.startup.activate-initial', {
-      initialActiveId,
-    });
-    await activateConversation(initialActiveId);
-    initialActivateSpan.end();
-  }
-  startupSpan.end({
-    conversations: conversationManager.size(),
-  });
-  recordPerfEvent('mux.startup.ready', {
-    conversations: conversationManager.size(),
-  });
-  void startupBackgroundResumeService.run(initialActiveId);
+  await startupOrchestrator.activateInitialConversation(initialActiveId);
+  startupOrchestrator.finalizeStartup(initialActiveId);
 
   const inputRouter = new InputRouter({
     isModalDismissShortcut: (rawInput) =>
@@ -3029,7 +2990,7 @@ async function main(): Promise<number> {
     handleRuntimeFatal,
   });
 
-  await startupStateHydrationService.hydrateStartupState(startupObservedCursor);
+  await startupOrchestrator.hydrateStartupState(startupObservedCursor);
 
   runtimeProcessWiring.attach();
 
@@ -3039,7 +3000,7 @@ async function main(): Promise<number> {
   const runtimeShutdownService = new RuntimeShutdownService({
     screen,
     outputLoadSampler,
-    startupBackgroundProbeService,
+    startupBackgroundProbeService: startupOrchestrator,
     clearResizeTimer: () => {
       if (resizeTimer !== null) {
         clearTimeout(resizeTimer);
@@ -3100,7 +3061,7 @@ async function main(): Promise<number> {
     restoreTerminalState: () => {
       restoreTerminalState(true, inputModeManager.restore);
     },
-    startupShutdownService,
+    startupShutdownService: startupOrchestrator,
     shutdownPerfCore,
   });
 

@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~2995 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~2956 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -1523,10 +1523,29 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2995 non-empty LOC
 
+### Checkpoint CD (2026-02-18): Startup lifecycle wiring consolidated behind StartupOrchestrator
+
+- Added `src/services/startup-orchestrator.ts` with class-based `StartupOrchestrator` that composes:
+  - startup settle sequencing + span/paint/output tracking
+  - startup background probe/resume lifecycle
+  - startup hydration delegation + initial activation + ready/finalize hooks
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate startup lifecycle orchestration through `StartupOrchestrator`:
+  - `firstPaintTargetSessionId` + startup start-command span end hooks now flow through orchestrator methods
+  - startup output/paint flush callbacks now route through orchestrator methods
+  - startup background probe kickoff, startup hydrate call, initial activation, and startup ready finalization all route through orchestrator
+  - runtime shutdown now uses orchestrator-owned `stop`/`finalize` seams for startup probe + startup shutdown lifecycles
+- Added `test/services-startup-orchestrator.test.ts` with full function-coverage for:
+  - disabled and enabled background probe/resume flows
+  - null and non-null initial activation paths
+  - startup output/paint visibility flow and startup ready finalization
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2956 non-empty LOC
+
 ### Next focus (yield-first)
 
 - Consolidation order (updated from critique review):
-  - collapse startup orchestration ownership into a single `StartupOrchestrator` seam (hydrate + settle + background probe/resume lifecycle)
   - remove `_unsafe*` runtime escape hatches by exposing manager-owned read APIs/projections
   - reduce callback/options bags in input/router modules by passing manager/service dependencies directly
   - after ownership consolidation, rename/merge `runtime-*` service modules so names match stable responsibilities rather than extraction history
