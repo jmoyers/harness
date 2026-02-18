@@ -8,8 +8,8 @@ Run multiple coding threads in parallel, keep each thread isolated to its own pr
 
 ### Speed
 
-- Single-pass terminal query parsing with lazy state reads for CSI probes.
-- Snapshot row reuse to reduce render cost during heavy output and scrolling.
+- 400+ FPS rendering on local workloads.
+- Millisecond-level thread switching in the main workflow.
 
 ### Keybinds
 
@@ -33,8 +33,7 @@ Run multiple coding threads in parallel, keep each thread isolated to its own pr
 - Keep long-running sessions alive in the detached gateway while clients reconnect.
 - Toggle gateway CPU profiling from the client (`ctrl+p` by default), using the same `harness profile start|stop` behavior.
 - Subscribe to typed realtime events for status, output, telemetry, and lifecycle activity.
-- Keep terminal query handshakes fast via single-pass query parsing and lazy state reads (stateful CSI probes only).
-- Reuse unchanged terminal snapshot rows across frames to reduce CPU during heavy output/scroll workloads.
+- Keep UI responsiveness high under heavy output and rapid thread switching.
 
 ## Demo
 
