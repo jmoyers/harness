@@ -169,6 +169,8 @@ import { RepositoryManager } from '../src/domain/repositories.ts';
 import { DirectoryManager } from '../src/domain/directories.ts';
 import { TaskManager } from '../src/domain/tasks.ts';
 import { ControlPlaneService } from '../src/services/control-plane.ts';
+import { ConversationStartupHydrationService } from '../src/services/conversation-startup-hydration.ts';
+import { DirectoryHydrationService } from '../src/services/directory-hydration.ts';
 import { EventPersistence } from '../src/services/event-persistence.ts';
 import { MuxUiStatePersistence } from '../src/services/mux-ui-state-persistence.ts';
 import { OutputLoadSampler } from '../src/services/output-load-sampler.ts';
@@ -714,28 +716,23 @@ async function main(): Promise<number> {
     sessionProjectionInstrumentation.recordTransition(event, beforeProjection, updated);
   };
 
+  const directoryHydrationService = new DirectoryHydrationService<ControlPlaneDirectoryRecord>({
+    controlPlaneService,
+    resolveWorkspacePathForMux: (rawPath) =>
+      resolveWorkspacePathForMux(options.invocationDirectory, rawPath),
+    clearDirectories: () => {
+      directoryManager.clearDirectories();
+    },
+    setDirectory: (directoryId, directory) => {
+      directoryManager.setDirectory(directoryId, directory);
+    },
+    hasDirectory: (directoryId) => directoryManager.hasDirectory(directoryId),
+    persistedDirectory,
+    resolveActiveDirectoryId,
+  });
+
   const hydrateDirectoryList = async (): Promise<void> => {
-    const rows = await controlPlaneService.listDirectories();
-    directoryManager.clearDirectories();
-    for (const row of rows) {
-      const record = row;
-      const normalizedPath = resolveWorkspacePathForMux(options.invocationDirectory, record.path);
-      if (normalizedPath !== record.path) {
-        const repairedRecord = await controlPlaneService.upsertDirectory({
-          directoryId: record.directoryId,
-          path: normalizedPath,
-        });
-        directoryManager.setDirectory(record.directoryId, repairedRecord);
-        continue;
-      }
-      directoryManager.setDirectory(record.directoryId, record);
-    }
-    if (!directoryManager.hasDirectory(persistedDirectory.directoryId)) {
-      directoryManager.setDirectory(persistedDirectory.directoryId, persistedDirectory);
-    }
-    if (resolveActiveDirectoryId() === null) {
-      throw new Error('no active directory available after hydrate');
-    }
+    await directoryHydrationService.hydrate();
   };
 
   const syncRepositoryAssociationsWithDirectorySnapshots = (): void => {
@@ -926,31 +923,28 @@ async function main(): Promise<number> {
     return queued;
   };
 
-  const hydrateConversationList = async (): Promise<void> => {
-    const hydrateSpan = startPerfSpan('mux.startup.hydrate-conversations');
-    await hydrateDirectoryList();
-    let persistedCount = 0;
-    for (const directoryId of directoryManager.directoryIds()) {
-      persistedCount += await hydratePersistedConversationsForDirectory(directoryId);
-    }
-
-    const summaries = await controlPlaneService.listSessions({
-      worktreeId: options.scope.worktreeId,
-      sort: 'started-asc',
-    });
-    for (const summary of summaries) {
+  const conversationStartupHydrationService = new ConversationStartupHydrationService({
+    startHydrationSpan: () => startPerfSpan('mux.startup.hydrate-conversations'),
+    hydrateDirectoryList,
+    directoryIds: () => directoryManager.directoryIds(),
+    hydratePersistedConversationsForDirectory,
+    listSessions: async () => {
+      return await controlPlaneService.listSessions({
+        worktreeId: options.scope.worktreeId,
+        sort: 'started-asc',
+      });
+    },
+    upsertFromSessionSummary: (summary) => {
       conversationManager.upsertFromSessionSummary({
         summary,
         ensureConversation,
       });
-      if (summary.live) {
-        await subscribeConversationEvents(summary.sessionId);
-      }
-    }
-    hydrateSpan.end({
-      persisted: persistedCount,
-      live: summaries.length,
-    });
+    },
+    subscribeConversationEvents,
+  });
+
+  const hydrateConversationList = async (): Promise<void> => {
+    await conversationStartupHydrationService.hydrateConversationList();
   };
 
   async function hydrateStartupState(): Promise<void> {

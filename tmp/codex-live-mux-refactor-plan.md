@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~3530 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~3186 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -1288,8 +1288,29 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3193 non-empty LOC
 
+### Checkpoint BQ (2026-02-18): Startup directory + conversation hydration extracted into class services
+
+- Added `src/services/directory-hydration.ts` with class-based `DirectoryHydrationService` to own startup directory hydration sequencing:
+  - list directories
+  - normalize/repair paths via `directory.upsert`
+  - ensure persisted active-directory availability
+- Added `src/services/conversation-startup-hydration.ts` with class-based `ConversationStartupHydrationService` to own startup conversation hydration sequencing:
+  - startup span open/close payloads
+  - persisted conversation hydration by active directory
+  - live session summary upsert + subscription
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate:
+  - `hydrateDirectoryList()` to `DirectoryHydrationService`
+  - `hydrateConversationList()` to `ConversationStartupHydrationService`
+- Added tests:
+  - `test/services-directory-hydration.test.ts`
+  - `test/services-conversation-startup-hydration.test.ts`
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3186 non-empty LOC
+
 ### Next focus (yield-first)
 
-- Continue action-handler extraction before wiring cleanup:
-  - continue hydration extraction for directory/conversation startup flows (`hydrateDirectoryList`, `hydrateConversationList`)
-  - keep collapsing remaining inline startup orchestration in runtime into class services
+- Continue startup/runtime orchestration extraction before callback-bag cleanup:
+  - extract remaining startup flow orchestration and startup wiring glue into class services
+  - then extract render orchestration seam to start next large runtime LOC drop
