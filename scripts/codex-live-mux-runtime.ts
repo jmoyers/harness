@@ -188,6 +188,7 @@ import { StartupBackgroundProbeService } from '../src/services/startup-backgroun
 import { StartupBackgroundResumeService } from '../src/services/startup-background-resume.ts';
 import { StartupOutputTracker } from '../src/services/startup-output-tracker.ts';
 import { StartupPaintTracker } from '../src/services/startup-paint-tracker.ts';
+import { StartupShutdownService } from '../src/services/startup-shutdown.ts';
 import { StartupSettledGate } from '../src/services/startup-settled-gate.ts';
 import { StartupSpanTracker } from '../src/services/startup-span-tracker.ts';
 import { StartupVisibility } from '../src/services/startup-visibility.ts';
@@ -631,6 +632,11 @@ async function main(): Promise<number> {
     startupVisibility,
     startupSettledGate,
     recordPerfEvent,
+  });
+  const startupShutdownService = new StartupShutdownService({
+    startupSequencer,
+    startupSpanTracker,
+    startupSettledGate,
   });
 
   const resolveActiveDirectoryId = (): string | null => {
@@ -3891,22 +3897,7 @@ async function main(): Promise<number> {
     store.close();
     restoreTerminalState(true, inputModeManager.restore);
     await recordingService.finalizeAfterShutdown(recordingCloseError);
-    startupSpanTracker.endStartCommandSpan({
-      observed: false,
-    });
-    const startupSnapshot = startupSequencer.snapshot();
-    startupSpanTracker.endFirstOutputSpan({
-      observed: startupSnapshot.firstOutputObserved,
-    });
-    startupSpanTracker.endFirstPaintSpan({
-      observed: startupSnapshot.firstPaintObserved,
-    });
-    startupSettledGate.clearTimer();
-    startupSpanTracker.endSettledSpan({
-      observed: startupSnapshot.settledObserved,
-      gate: startupSnapshot.settleGate ?? 'none',
-    });
-    startupSettledGate.signalSettled();
+    startupShutdownService.finalize();
     shutdownPerfCore();
   }
 

@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~3754 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~3745 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -1013,3 +1013,16 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3754 non-empty LOC
+
+### Checkpoint BA (2026-02-18): Service extraction continues with class-based startup shutdown finalization
+
+- Added `src/services/startup-shutdown.ts` with a class-based `StartupShutdownService` that owns:
+  - startup span finalization ordering at shutdown (`start-command`, `first-output`, `first-paint`, `settled`)
+  - startup settled-gate teardown sequencing (`clearTimer` + `signalSettled`)
+  - settled-gate fallback normalization (`gate: none`) when startup snapshot has no selected gate
+- Updated `scripts/codex-live-mux-runtime.ts` shutdown path to delegate startup teardown flow to `StartupShutdownService.finalize()`, removing inline shutdown startup-span and settled-gate teardown logic.
+- Added `test/services-startup-shutdown.test.ts` with coverage for full finalize call ordering and settle-gate fallback behavior.
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3745 non-empty LOC
