@@ -184,6 +184,7 @@ import { StartupPaintTracker } from '../src/services/startup-paint-tracker.ts';
 import { RuntimeProcessWiring } from '../src/services/runtime-process-wiring.ts';
 import { RuntimeConversationActions } from '../src/services/runtime-conversation-actions.ts';
 import { RuntimeConversationActivation } from '../src/services/runtime-conversation-activation.ts';
+import { RuntimeConversationStarter } from '../src/services/runtime-conversation-starter.ts';
 import { RuntimeDirectoryActions } from '../src/services/runtime-directory-actions.ts';
 import { RuntimeRenderLifecycle } from '../src/services/runtime-render-lifecycle.ts';
 import { RuntimeShutdownService } from '../src/services/runtime-shutdown.ts';
@@ -218,6 +219,9 @@ type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
 type ControlPlaneDirectoryRecord = Awaited<ReturnType<ControlPlaneService['upsertDirectory']>>;
 type ControlPlaneRepositoryRecord = NonNullable<ReturnType<typeof parseRepositoryRecord>>;
 type ControlPlaneTaskRecord = NonNullable<ReturnType<typeof parseTaskRecord>>;
+type ControlPlaneSessionSummary = NonNullable<
+  Awaited<ReturnType<ControlPlaneService['getSessionStatus']>>
+>;
 
 type ProcessUsageSample = Awaited<ReturnType<typeof readProcessUsageSample>>;
 
@@ -797,31 +801,33 @@ async function main(): Promise<number> {
     }
   }
 
-  const startConversation = async (sessionId: string): Promise<ConversationState> => {
-    return await conversationManager.runWithStartInFlight(sessionId, async () => {
-      const existing = conversationManager.get(sessionId);
-      const targetConversation = existing ?? ensureConversation(sessionId);
-      const agentType = normalizeThreadAgentType(targetConversation.agentType);
-      const baseArgsForAgent =
-        agentType === 'codex'
-          ? options.codexArgs
-          : agentType === 'critique'
-            ? configuredCritique.launch.defaultArgs
-            : [];
+  const runtimeConversationStarter =
+    new RuntimeConversationStarter<ConversationState, ControlPlaneSessionSummary>({
+    runWithStartInFlight: async (sessionId, run) => {
+      return await conversationManager.runWithStartInFlight(sessionId, run);
+    },
+    conversationById: (sessionId) => conversationManager.get(sessionId),
+    ensureConversation,
+    normalizeThreadAgentType,
+    codexArgs: options.codexArgs,
+    critiqueDefaultArgs: configuredCritique.launch.defaultArgs,
+    sessionCwdForConversation: (conversation) => {
       const configuredDirectoryPath =
-        targetConversation.directoryId === null
+        conversation.directoryId === null
           ? null
-          : (directoryManager.getDirectory(targetConversation.directoryId)?.path ?? null);
-      const sessionCwd = resolveWorkspacePathForMux(
+          : (directoryManager.getDirectory(conversation.directoryId)?.path ?? null);
+      return resolveWorkspacePathForMux(
         options.invocationDirectory,
         configuredDirectoryPath ?? options.invocationDirectory,
       );
-      const launchArgs = buildAgentSessionStartArgs(
-        agentType,
-        baseArgsForAgent,
-        targetConversation.adapterState,
+    },
+    buildLaunchArgs: (input) => {
+      return buildAgentSessionStartArgs(
+        input.agentType,
+        input.baseArgsForAgent,
+        input.adapterState,
         {
-          directoryPath: sessionCwd,
+          directoryPath: input.sessionCwd,
           codexLaunchDefaultMode: configuredCodexLaunch.defaultMode,
           codexLaunchModeByDirectoryPath: codexLaunchModeByDirectoryPath,
           claudeLaunchDefaultMode: configuredClaudeLaunch.defaultMode,
@@ -830,73 +836,52 @@ async function main(): Promise<number> {
           cursorLaunchModeByDirectoryPath: cursorLaunchModeByDirectoryPath,
         },
       );
-      targetConversation.launchCommand = formatCommandForDebugBar(
-        launchCommandForAgent(agentType),
-        launchArgs,
-      );
-
-      if (existing?.live === true) {
-        if (startupSpanTracker.firstPaintTargetSessionId === sessionId) {
-          startupSpanTracker.endStartCommandSpan({
-            alreadyLive: true,
-          });
-        }
-        return existing;
-      }
-
-      const startSpan = startPerfSpan('mux.conversation.start', {
+    },
+    launchCommandForAgent,
+    formatCommandForDebugBar,
+    startConversationSpan: (sessionId) =>
+      startPerfSpan('mux.conversation.start', {
         sessionId,
-      });
-      targetConversation.lastOutputCursor = 0;
-      const ptyStartInput: Parameters<ControlPlaneService['startPtySession']>[0] = {
-        sessionId,
-        args: launchArgs,
-        env: sessionEnv,
-        cwd: sessionCwd,
-        initialCols: layout.rightCols,
-        initialRows: layout.paneRows,
-        worktreeId: options.scope.worktreeId,
-      };
-      const terminalForegroundHex = process.env.HARNESS_TERM_FG ?? probedPalette.foregroundHex;
-      const terminalBackgroundHex = process.env.HARNESS_TERM_BG ?? probedPalette.backgroundHex;
-      if (terminalForegroundHex !== undefined) {
-        ptyStartInput.terminalForegroundHex = terminalForegroundHex;
-      }
-      if (terminalBackgroundHex !== undefined) {
-        ptyStartInput.terminalBackgroundHex = terminalBackgroundHex;
-      }
-      await controlPlaneService.startPtySession(ptyStartInput);
-      ptySizeByConversationId.set(sessionId, {
-        cols: layout.rightCols,
-        rows: layout.paneRows,
-      });
-      streamClient.sendResize(sessionId, layout.rightCols, layout.paneRows);
-      if (startupSpanTracker.firstPaintTargetSessionId === sessionId) {
-        startupSpanTracker.endStartCommandSpan({
-          alreadyLive: false,
-          argCount: launchArgs.length,
-          resumed: launchArgs[0] === 'resume',
-        });
-      }
-      const state = ensureConversation(sessionId);
+      }),
+    firstPaintTargetSessionId: () => startupSpanTracker.firstPaintTargetSessionId,
+    endStartCommandSpan: (input) => {
+      startupSpanTracker.endStartCommandSpan(input);
+    },
+    layout: () => layout,
+    startPtySession: async (input) => {
+      await controlPlaneService.startPtySession(input);
+    },
+    setPtySize: (sessionId, size) => {
+      ptySizeByConversationId.set(sessionId, size);
+    },
+    sendResize: (sessionId, cols, rows) => {
+      streamClient.sendResize(sessionId, cols, rows);
+    },
+    sessionEnv,
+    worktreeId: options.scope.worktreeId,
+    terminalForegroundHex: process.env.HARNESS_TERM_FG ?? probedPalette.foregroundHex,
+    terminalBackgroundHex: process.env.HARNESS_TERM_BG ?? probedPalette.backgroundHex,
+    recordStartCommand: (sessionId, launchArgs) => {
       recordPerfEvent('mux.conversation.start.command', {
         sessionId,
         argCount: launchArgs.length,
         resumed: launchArgs[0] === 'resume',
       });
-      const statusSummary = await controlPlaneService.getSessionStatus(sessionId);
-      if (statusSummary !== null) {
-        conversationManager.upsertFromSessionSummary({
-          summary: statusSummary,
-          ensureConversation,
-        });
-      }
-      await subscribeConversationEvents(sessionId);
-      startSpan.end({
-        live: state.live,
+    },
+    getSessionStatus: async (sessionId) => {
+      return await controlPlaneService.getSessionStatus(sessionId);
+    },
+    upsertFromSessionSummary: (summary) => {
+      conversationManager.upsertFromSessionSummary({
+        summary,
+        ensureConversation,
       });
-      return state;
-    });
+    },
+    subscribeConversationEvents,
+  });
+
+  const startConversation = async (sessionId: string): Promise<ConversationState> => {
+    return await runtimeConversationStarter.startConversation(sessionId);
   };
 
   const queuePersistedConversationsInBackground = (activeSessionId: string | null): number => {

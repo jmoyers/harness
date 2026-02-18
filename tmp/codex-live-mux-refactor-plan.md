@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~3186 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~3172 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -1309,8 +1309,26 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3186 non-empty LOC
 
+### Checkpoint BR (2026-02-18): Conversation start lifecycle extracted into class service
+
+- Added `src/services/runtime-conversation-starter.ts` with class-based `RuntimeConversationStarter` to own runtime conversation-start orchestration:
+  - launch-arg resolution per agent type (codex/critique/other)
+  - launch-command status text generation for debug/footer visibility
+  - PTY start + resize wiring and persisted size cache updates
+  - startup-span completion payload routing and session-summary subscription flow
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate `startConversation(...)` to `RuntimeConversationStarter`.
+- Added `test/services-runtime-conversation-starter.test.ts` with coverage for:
+  - existing-live short-circuit branch
+  - codex start branch (resume args, span payload, status upsert, subscribe)
+  - critique args branch
+  - non-codex/non-critique base-args fallback branch
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3172 non-empty LOC
+
 ### Next focus (yield-first)
 
 - Continue startup/runtime orchestration extraction before callback-bag cleanup:
-  - extract remaining startup flow orchestration and startup wiring glue into class services
+  - extract remaining startup flow orchestration/wiring glue into class services (especially startup state + background queue glue)
   - then extract render orchestration seam to start next large runtime LOC drop
