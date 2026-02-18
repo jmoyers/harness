@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~4174 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~4143 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -768,3 +768,16 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4174 non-empty LOC
+
+### Checkpoint AI (2026-02-18): Phase 8 continues with class-based repository-fold input routing
+
+- Added `src/ui/repository-fold-input.ts` with a class-based `RepositoryFoldInput` that owns:
+  - repository-group selection resolution for left-nav context
+  - left/right arrow fold routing
+  - collapse/expand-all chord prefix routing
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate repository fold keyboard handling to `RepositoryFoldInput`, removing inline repository fold reducer/arrow handlers from runtime.
+- Added `test/ui-repository-fold-input.test.ts` to cover tree-arrow behavior, selection mapping, chord prefix timing, and conversation-branch reset behavior.
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4143 non-empty LOC

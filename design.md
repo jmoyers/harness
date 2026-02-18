@@ -141,6 +141,7 @@ Control-plane boundaries:
 - Pane rendering seams are moving behind class-based UI modules (`src/ui/panes/conversation.ts`, `src/ui/panes/home.ts`, `src/ui/panes/project.ts`, `src/ui/panes/left-rail.ts`) so runtime delegates per-pane rendering responsibilities instead of assembling pane-specific rows inline.
 - Modal overlay lifecycle and outside-click dismissal are moving behind a class-based `ModalManager` (`src/ui/modals/manager.ts`) so runtime delegates modal overlay selection/building and pointer-dismiss routing instead of keeping modal orchestration inline.
 - Modal prompt input dispatch is moving behind a class-based `InputRouter` (`src/ui/input.ts`) so runtime delegates per-modal prompt routing order and handler wiring instead of maintaining inline prompt-dispatch trees.
+- Repository fold keyboard routing is moving behind a class-based `RepositoryFoldInput` (`src/ui/repository-fold-input.ts`) so runtime delegates repository tree arrow/chord reducers instead of keeping fold-transition branches inline.
 
 This separation prevents UI-only behavior and enables reliable automation without computer-use tooling.
 

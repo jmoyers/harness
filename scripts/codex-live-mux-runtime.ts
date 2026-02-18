@@ -105,9 +105,6 @@ import {
 } from '../src/mux/live-mux/left-nav-activation.ts';
 import {
   firstDirectoryForRepositoryGroup as firstDirectoryForRepositoryGroupFn,
-  reduceRepositoryFoldChordInput,
-  repositoryTreeArrowAction,
-  selectedRepositoryGroupIdForLeftNav,
 } from '../src/mux/live-mux/repository-folding.ts';
 import {
   readObservedStreamCursorBaseline,
@@ -230,6 +227,7 @@ import { ProjectPane } from '../src/ui/panes/project.ts';
 import { LeftRailPane } from '../src/ui/panes/left-rail.ts';
 import { ModalManager } from '../src/ui/modals/manager.ts';
 import { InputRouter } from '../src/ui/input.ts';
+import { RepositoryFoldInput } from '../src/ui/repository-fold-input.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -3654,14 +3652,6 @@ async function main(): Promise<number> {
   const visibleLeftNavTargetsForState = (): readonly LeftNavSelection[] =>
     visibleLeftNavTargets(latestRailViewRows);
 
-  const selectedRepositoryGroupId = (): string | null => {
-    return selectedRepositoryGroupIdForLeftNav(
-      workspace.leftNavSelection,
-      _unsafeConversationMap,
-      repositoryGroupIdForDirectory,
-    );
-  };
-
   const activateLeftNavTarget = (
     target: LeftNavSelection,
     direction: 'next' | 'previous',
@@ -3696,50 +3686,26 @@ async function main(): Promise<number> {
       activateTarget: activateLeftNavTarget,
     });
   };
-
-  const handleRepositoryTreeArrow = (input: Buffer): boolean => {
-    const repositoryId = selectedRepositoryGroupId();
-    const action = repositoryTreeArrowAction(input, workspace.leftNavSelection, repositoryId);
-    if (repositoryId === null || action === null) {
-      return false;
-    }
-    if (action === 'expand') {
-      expandRepositoryGroup(repositoryId);
-      workspace.selectLeftNavRepository(repositoryId);
-      markDirty();
-      return true;
-    }
-    if (action === 'collapse') {
-      collapseRepositoryGroup(repositoryId);
-      workspace.selectLeftNavRepository(repositoryId);
-      markDirty();
-      return true;
-    }
-    return false;
-  };
-
-  const handleRepositoryFoldChords = (input: Buffer): boolean => {
-    const reduced = reduceRepositoryFoldChordInput({
-      input,
-      leftNavSelection: workspace.leftNavSelection,
-      nowMs: Date.now(),
-      prefixAtMs: workspace.repositoryToggleChordPrefixAtMs,
-      chordTimeoutMs: REPOSITORY_TOGGLE_CHORD_TIMEOUT_MS,
-      collapseAllChordPrefix: REPOSITORY_COLLAPSE_ALL_CHORD_PREFIX,
-    });
-    workspace.repositoryToggleChordPrefixAtMs = reduced.nextPrefixAtMs;
-    if (reduced.action === 'expand-all') {
-      expandAllRepositoryGroups();
-      markDirty();
-      return true;
-    }
-    if (reduced.action === 'collapse-all') {
-      collapseAllRepositoryGroups();
-      markDirty();
-      return true;
-    }
-    return reduced.consumed;
-  };
+  const repositoryFoldInput = new RepositoryFoldInput({
+    getLeftNavSelection: () => workspace.leftNavSelection,
+    getRepositoryToggleChordPrefixAtMs: () => workspace.repositoryToggleChordPrefixAtMs,
+    setRepositoryToggleChordPrefixAtMs: (value) => {
+      workspace.repositoryToggleChordPrefixAtMs = value;
+    },
+    conversations: _unsafeConversationMap,
+    repositoryGroupIdForDirectory,
+    collapseRepositoryGroup,
+    expandRepositoryGroup,
+    collapseAllRepositoryGroups,
+    expandAllRepositoryGroups,
+    selectLeftNavRepository: (repositoryGroupId) => {
+      workspace.selectLeftNavRepository(repositoryGroupId);
+    },
+    markDirty,
+    chordTimeoutMs: REPOSITORY_TOGGLE_CHORD_TIMEOUT_MS,
+    collapseAllChordPrefix: REPOSITORY_COLLAPSE_ALL_CHORD_PREFIX,
+    nowMs: () => Date.now(),
+  });
 
   const onInput = (chunk: Buffer): void => {
     if (shuttingDown) {
@@ -3777,10 +3743,10 @@ async function main(): Promise<number> {
     if (focusExtraction.sanitized.length === 0) {
       return;
     }
-    if (handleRepositoryFoldChords(focusExtraction.sanitized)) {
+    if (repositoryFoldInput.handleRepositoryFoldChords(focusExtraction.sanitized)) {
       return;
     }
-    if (handleRepositoryTreeArrow(focusExtraction.sanitized)) {
+    if (repositoryFoldInput.handleRepositoryTreeArrow(focusExtraction.sanitized)) {
       return;
     }
 
