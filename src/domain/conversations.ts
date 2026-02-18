@@ -24,18 +24,18 @@ export interface PersistedConversationRecord {
   runtimeLive: boolean;
 }
 
-interface EnsureConversationInput {
+interface CreateConversationInput {
   sessionId: string;
-  seed?: ConversationSeed;
+  directoryId: string | null;
+  title: string;
+  agentType: string;
+  adapterState: Record<string, unknown>;
+}
+
+interface EnsureConversationDependencies {
   resolveDefaultDirectoryId: () => string | null;
   normalizeAdapterState: (value: Record<string, unknown> | undefined) => Record<string, unknown>;
-  createConversation: (input: {
-    sessionId: string;
-    directoryId: string | null;
-    title: string;
-    agentType: string;
-    adapterState: Record<string, unknown>;
-  }) => ConversationState;
+  createConversation: (input: CreateConversationInput) => ConversationState;
 }
 
 interface UpsertPersistedConversationInput {
@@ -96,29 +96,42 @@ interface DetachIfAttachedResult {
 }
 
 export class ConversationManager {
-  readonly conversations = new Map<string, ConversationState>();
+  private readonly conversationsBySessionId = new Map<string, ConversationState>();
   readonly startInFlightBySessionId = new Map<string, Promise<ConversationState>>();
   readonly removedConversationIds = new Set<string>();
+  private ensureDependencies: EnsureConversationDependencies | null = null;
 
   activeConversationId: string | null = null;
 
   get(sessionId: string): ConversationState | undefined {
-    return this.conversations.get(sessionId);
+    return this.conversationsBySessionId.get(sessionId);
   }
 
   has(sessionId: string): boolean {
-    return this.conversations.has(sessionId);
+    return this.conversationsBySessionId.has(sessionId);
   }
 
   set(state: ConversationState): void {
-    this.conversations.set(state.sessionId, state);
+    this.conversationsBySessionId.set(state.sessionId, state);
+  }
+
+  readonlyMap(): ReadonlyMap<string, ConversationState> {
+    return this.conversationsBySessionId;
+  }
+
+  values(): IterableIterator<ConversationState> {
+    return this.conversationsBySessionId.values();
+  }
+
+  size(): number {
+    return this.conversationsBySessionId.size;
   }
 
   getActiveConversation(): ConversationState | null {
     if (this.activeConversationId === null) {
       return null;
     }
-    return this.conversations.get(this.activeConversationId) ?? null;
+    return this.conversationsBySessionId.get(this.activeConversationId) ?? null;
   }
 
   clearRemoved(sessionId: string): void {
@@ -143,7 +156,7 @@ export class ConversationManager {
 
   remove(sessionId: string): void {
     this.removedConversationIds.add(sessionId);
-    this.conversations.delete(sessionId);
+    this.conversationsBySessionId.delete(sessionId);
     this.startInFlightBySessionId.delete(sessionId);
     if (this.activeConversationId === sessionId) {
       this.activeConversationId = null;
@@ -151,22 +164,22 @@ export class ConversationManager {
   }
 
   orderedIds(): readonly string[] {
-    return [...this.conversations.keys()];
+    return [...this.conversationsBySessionId.keys()];
   }
 
   directoryIdOf(sessionId: string): string | null {
-    return this.conversations.get(sessionId)?.directoryId ?? null;
+    return this.conversationsBySessionId.get(sessionId)?.directoryId ?? null;
   }
 
   isLive(sessionId: string): boolean {
-    return this.conversations.get(sessionId)?.live === true;
+    return this.conversationsBySessionId.get(sessionId)?.live === true;
   }
 
   setController(
     sessionId: string,
     controller: ConversationState['controller'],
   ): ConversationState | null {
-    const conversation = this.conversations.get(sessionId);
+    const conversation = this.conversationsBySessionId.get(sessionId);
     if (conversation === undefined) {
       return null;
     }
@@ -175,7 +188,7 @@ export class ConversationManager {
   }
 
   setLastEventAt(sessionId: string, lastEventAt: string): ConversationState | null {
-    const conversation = this.conversations.get(sessionId);
+    const conversation = this.conversationsBySessionId.get(sessionId);
     if (conversation === undefined) {
       return null;
     }
@@ -199,6 +212,10 @@ export class ConversationManager {
     this.activeConversationId = sessionId;
   }
 
+  configureEnsureDependencies(dependencies: EnsureConversationDependencies): void {
+    this.ensureDependencies = dependencies;
+  }
+
   ensureActiveConversationId(): string | null {
     if (this.activeConversationId === null) {
       this.activeConversationId = this.orderedIds()[0] ?? null;
@@ -206,32 +223,35 @@ export class ConversationManager {
     return this.activeConversationId;
   }
 
-  ensure(input: EnsureConversationInput): ConversationState {
-    const existing = this.conversations.get(input.sessionId);
+  ensure(sessionId: string, seed?: ConversationSeed): ConversationState {
+    if (this.ensureDependencies === null) {
+      throw new Error('conversation ensure dependencies are not configured');
+    }
+    const existing = this.conversationsBySessionId.get(sessionId);
     if (existing !== undefined) {
-      if (input.seed?.directoryId !== undefined) {
-        existing.directoryId = input.seed.directoryId;
+      if (seed?.directoryId !== undefined) {
+        existing.directoryId = seed.directoryId;
       }
-      if (input.seed?.title !== undefined) {
-        existing.title = input.seed.title;
+      if (seed?.title !== undefined) {
+        existing.title = seed.title;
       }
-      if (input.seed?.agentType !== undefined) {
-        existing.agentType = input.seed.agentType;
+      if (seed?.agentType !== undefined) {
+        existing.agentType = seed.agentType;
       }
-      if (input.seed?.adapterState !== undefined) {
-        existing.adapterState = input.normalizeAdapterState(input.seed.adapterState);
+      if (seed?.adapterState !== undefined) {
+        existing.adapterState = this.ensureDependencies.normalizeAdapterState(seed.adapterState);
       }
       return existing;
     }
 
-    this.clearRemoved(input.sessionId);
-    const directoryId = input.seed?.directoryId ?? input.resolveDefaultDirectoryId();
-    const state = input.createConversation({
-      sessionId: input.sessionId,
+    this.clearRemoved(sessionId);
+    const directoryId = seed?.directoryId ?? this.ensureDependencies.resolveDefaultDirectoryId();
+    const state = this.ensureDependencies.createConversation({
+      sessionId,
       directoryId,
-      title: input.seed?.title ?? '',
-      agentType: input.seed?.agentType ?? 'codex',
-      adapterState: input.normalizeAdapterState(input.seed?.adapterState),
+      title: seed?.title ?? '',
+      agentType: seed?.agentType ?? 'codex',
+      adapterState: this.ensureDependencies.normalizeAdapterState(seed?.adapterState),
     });
     this.set(state);
     return state;
@@ -241,7 +261,7 @@ export class ConversationManager {
     if (this.activeConversationId === null) {
       throw new Error('active thread is not set');
     }
-    const state = this.conversations.get(this.activeConversationId);
+    const state = this.conversationsBySessionId.get(this.activeConversationId);
     if (state === undefined) {
       throw new Error(`active thread missing: ${this.activeConversationId}`);
     }
@@ -293,7 +313,7 @@ export class ConversationManager {
   }
 
   markSessionExited(input: MarkSessionExitedInput): ConversationState | null {
-    const conversation = this.conversations.get(input.sessionId);
+    const conversation = this.conversationsBySessionId.get(input.sessionId);
     if (conversation === undefined) {
       return null;
     }
@@ -323,7 +343,7 @@ export class ConversationManager {
   }
 
   setAttached(sessionId: string, attached: boolean): ConversationState | null {
-    const conversation = this.conversations.get(sessionId);
+    const conversation = this.conversationsBySessionId.get(sessionId);
     if (conversation === undefined) {
       return null;
     }
@@ -332,7 +352,7 @@ export class ConversationManager {
   }
 
   markSessionUnavailable(sessionId: string): ConversationState | null {
-    const conversation = this.conversations.get(sessionId);
+    const conversation = this.conversationsBySessionId.get(sessionId);
     if (conversation === undefined) {
       return null;
     }
@@ -354,7 +374,7 @@ export class ConversationManager {
   }
 
   async attachIfLive(input: AttachIfLiveInput): Promise<AttachIfLiveResult> {
-    const conversation = this.conversations.get(input.sessionId);
+    const conversation = this.conversationsBySessionId.get(input.sessionId);
     if (conversation === undefined || !conversation.live || conversation.attached) {
       return {
         attached: false,
@@ -373,7 +393,7 @@ export class ConversationManager {
   }
 
   async detachIfAttached(input: DetachIfAttachedInput): Promise<DetachIfAttachedResult> {
-    const conversation = this.conversations.get(input.sessionId);
+    const conversation = this.conversationsBySessionId.get(input.sessionId);
     if (conversation === undefined || !conversation.attached) {
       return {
         detached: false,

@@ -638,7 +638,7 @@ async function main(): Promise<number> {
   const muxControllerId = `human-mux-${process.pid}-${randomUUID()}`;
   const muxControllerLabel = `human mux ${process.pid}`;
   const conversationManager = new ConversationManager();
-  const conversations = conversationManager.conversations;
+  const _unsafeConversationMap = conversationManager.readonlyMap();
   const tasks = new Map<string, ControlPlaneTaskRecord>();
   let observedStreamSubscriptionId: string | null = null;
   let keyEventSubscription: Awaited<ReturnType<typeof subscribeControlPlaneKeyEvents>> | null =
@@ -767,7 +767,7 @@ async function main(): Promise<number> {
       mainPaneMode: workspace.mainPaneMode,
       activeDirectoryId: workspace.activeDirectoryId,
       activeConversationId: conversationManager.activeConversationId,
-      conversations,
+      conversations: _unsafeConversationMap,
       directoriesHas: (directoryId) => directories.has(directoryId),
     });
   };
@@ -851,25 +851,25 @@ async function main(): Promise<number> {
     };
   };
 
+  conversationManager.configureEnsureDependencies({
+    resolveDefaultDirectoryId: resolveActiveDirectoryId,
+    normalizeAdapterState,
+    createConversation: (input) =>
+      createConversationState(
+        input.sessionId,
+        input.directoryId,
+        input.title,
+        input.agentType,
+        input.adapterState,
+        `turn-${randomUUID()}`,
+        options.scope,
+        layout.rightCols,
+        layout.paneRows,
+      ),
+  });
+
   const ensureConversation = (sessionId: string, seed?: ConversationSeed): ConversationState => {
-    return conversationManager.ensure({
-      sessionId,
-      ...(seed === undefined ? {} : { seed }),
-      resolveDefaultDirectoryId: resolveActiveDirectoryId,
-      normalizeAdapterState,
-      createConversation: (input) =>
-        createConversationState(
-          input.sessionId,
-          input.directoryId,
-          input.title,
-          input.agentType,
-          input.adapterState,
-          `turn-${randomUUID()}`,
-          options.scope,
-          layout.rightCols,
-          layout.paneRows,
-        ),
-    });
+    return conversationManager.ensure(sessionId, seed);
   };
 
   const applyControlPlaneKeyEvent = (event: ControlPlaneKeyEvent): void => {
@@ -1257,7 +1257,7 @@ async function main(): Promise<number> {
 
   const refreshSelectorInstrumentation = (reason: string): void => {
     const orderedIds = conversationManager.orderedIds();
-    const entries = buildSelectorIndexEntries(directories, conversations, orderedIds);
+    const entries = buildSelectorIndexEntries(directories, _unsafeConversationMap, orderedIds);
     const hash = entries
       .map(
         (entry) =>
@@ -1409,11 +1409,11 @@ async function main(): Promise<number> {
     processUsageRefreshInFlight = true;
     const usageSpan = startPerfSpan('mux.background.process-usage', {
       reason,
-      conversations: conversations.size,
+      conversations: conversationManager.size(),
     });
     try {
       const refreshed = await refreshProcessUsageSnapshotsFn({
-        conversations,
+        conversations: _unsafeConversationMap,
         processUsageBySessionId,
         readProcessUsageSample,
         processIdForConversation: (conversation) => conversation.processId,
@@ -1491,7 +1491,7 @@ async function main(): Promise<number> {
       flushTaskComposerPersist,
       closeLiveSessionsOnClientStop,
       orderedConversationIds: conversationManager.orderedIds(),
-      conversations,
+      conversations: _unsafeConversationMap,
       queueControlPlaneOp,
       sendSignal: (sessionId, signal) => {
         streamClient.sendSignal(sessionId, signal);
@@ -1924,7 +1924,7 @@ async function main(): Promise<number> {
     }
     size = nextSize;
     layout = nextLayout;
-    for (const conversation of conversations.values()) {
+    for (const conversation of conversationManager.values()) {
       conversation.oracle.resize(nextLayout.rightCols, nextLayout.paneRows);
       if (conversation.live) {
         applyPtyResizeToSession(
@@ -3142,7 +3142,7 @@ async function main(): Promise<number> {
   const archiveConversation = async (sessionId: string): Promise<void> => {
     await archiveConversationFn({
       sessionId,
-      conversations,
+      conversations: _unsafeConversationMap,
       closePtySession: async (targetSessionId) => {
         await streamClient.sendCommand({
           type: 'pty.close',
@@ -3371,7 +3371,7 @@ async function main(): Promise<number> {
       repositoryAssociationByDirectoryId,
       directoryRepositorySnapshotByDirectoryId,
       directories,
-      conversations,
+      conversations: _unsafeConversationMap,
       orderedIds,
       activeProjectId: workspace.activeDirectoryId,
       activeRepositoryId: workspace.activeRepositorySelectionId,
@@ -3786,10 +3786,10 @@ async function main(): Promise<number> {
     initialActivateSpan.end();
   }
   startupSpan.end({
-    conversations: conversations.size,
+    conversations: conversationManager.size(),
   });
   recordPerfEvent('mux.startup.ready', {
-    conversations: conversations.size,
+    conversations: conversationManager.size(),
   });
   void (async () => {
     let timedOut = false;
@@ -3911,7 +3911,7 @@ async function main(): Promise<number> {
       queueControlPlaneOp,
       archiveConversation,
       markDirty,
-      conversations,
+      conversations: _unsafeConversationMap,
       scheduleConversationTitlePersist,
     });
   };
@@ -4080,7 +4080,7 @@ async function main(): Promise<number> {
   const selectedRepositoryGroupId = (): string | null => {
     return selectedRepositoryGroupIdForLeftNav(
       workspace.leftNavSelection,
-      conversations,
+      _unsafeConversationMap,
       repositoryGroupIdForDirectory,
     );
   };

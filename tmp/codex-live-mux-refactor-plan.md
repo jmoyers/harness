@@ -135,7 +135,7 @@ bun run loc:verify:enforce
 
 ## Current State Snapshot
 
-- Current primary over-limit file: `scripts/codex-live-mux-runtime.ts` (~4586 LOC).
+- Current primary over-limit file: `scripts/codex-live-mux-runtime.ts` (~4585 LOC).
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
 
@@ -387,3 +387,23 @@ bun run loc:verify:enforce
   - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4586 non-empty LOC
+
+### Checkpoint P (2026-02-18): ConversationManager escape-hatch tightening
+
+- Extended `src/domain/conversations.ts` to harden manager ownership:
+  - internal map renamed to private `conversationsBySessionId`
+  - added read-only exposure + query helpers (`readonlyMap()`, `values()`, `size()`)
+  - moved `ensure(...)` behavior dependencies to manager-owned configuration via `configureEnsureDependencies(...)`
+  - simplified `ensure(...)` call shape to `ensure(sessionId, seed?)`
+- Updated `scripts/codex-live-mux-runtime.ts` to:
+  - remove direct `conversationManager.conversations` access
+  - use explicit transitional alias `_unsafeConversationMap` from `readonlyMap()` at helper boundaries
+  - configure conversation creation/normalization dependencies once at startup
+  - use manager-native iteration/count APIs where direct map reads were unnecessary
+- Validation at checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4585 non-empty LOC
