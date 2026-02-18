@@ -14,16 +14,12 @@ import { TerminalSnapshotOracle } from '../src/terminal/snapshot-oracle.ts';
 import { type NormalizedEventEnvelope } from '../src/events/normalized-events.ts';
 import type { PtyExit } from '../src/pty/pty_host.ts';
 import {
-  classifyPaneAt,
   computeDualPaneLayout,
-  parseMuxInputChunk,
-  wheelDeltaRowsFromCode,
 } from '../src/mux/dual-pane-core.ts';
 import { loadHarnessConfig, updateHarnessMuxUiConfig } from '../src/config/config-core.ts';
 import { loadHarnessSecrets } from '../src/config/secrets-core.ts';
 import {
   detectMuxGlobalShortcut,
-  normalizeMuxKeyboardInputForPty,
   resolveMuxShortcutBindings,
 } from '../src/mux/input-shortcuts.ts';
 import { createMuxInputModeManager } from '../src/mux/terminal-input-modes.ts';
@@ -155,7 +151,6 @@ import {
   resolveDirectoryForAction as resolveDirectoryForActionFn,
 } from '../src/mux/live-mux/directory-resolution.ts';
 import { requestStop as requestStopFn } from '../src/mux/live-mux/runtime-shutdown.ts';
-import { routeInputTokensForConversation as routeInputTokensForConversationFn } from '../src/mux/live-mux/input-forwarding.ts';
 import { runTaskPaneAction as runTaskPaneActionFn } from '../src/mux/live-mux/actions-task.ts';
 import {
   archiveRepositoryById as archiveRepositoryByIdFn,
@@ -204,6 +199,7 @@ import { PointerRoutingInput } from '../src/ui/pointer-routing-input.ts';
 import { ConversationSelectionInput } from '../src/ui/conversation-selection-input.ts';
 import { GlobalShortcutInput } from '../src/ui/global-shortcut-input.ts';
 import { InputTokenRouter } from '../src/ui/input-token-router.ts';
+import { ConversationInputForwarder } from '../src/ui/conversation-input-forwarder.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -3934,6 +3930,23 @@ async function main(): Promise<number> {
     leftRailPointerInput,
     conversationSelectionInput,
   });
+  const conversationInputForwarder = new ConversationInputForwarder({
+    getInputRemainder: () => inputRemainder,
+    setInputRemainder: (next) => {
+      inputRemainder = next;
+    },
+    getMainPaneMode: () => workspace.mainPaneMode,
+    getLayout: () => layout,
+    inputTokenRouter,
+    getActiveConversation: () => conversationManager.getActiveConversation(),
+    markDirty,
+    isControlledByLocalHuman: (input) => conversationManager.isControlledByLocalHuman(input),
+    controllerId: muxControllerId,
+    sendInputToSession: (sessionId, chunk) => {
+      streamClient.sendInput(sessionId, chunk);
+    },
+    noteGitActivity,
+  });
 
   const onInput = (chunk: Buffer): void => {
     if (shuttingDown) {
@@ -4002,50 +4015,7 @@ async function main(): Promise<number> {
       return;
     }
 
-    const parsed = parseMuxInputChunk(inputRemainder, focusExtraction.sanitized);
-    inputRemainder = parsed.remainder;
-
-    const inputConversation = conversationManager.getActiveConversation();
-    const { routedTokens } = inputTokenRouter.routeTokens({
-      tokens: parsed.tokens,
-      layout,
-      conversation: inputConversation,
-      snapshotForInput:
-        inputConversation === null ? null : inputConversation.oracle.snapshotWithoutHash(),
-    });
-
-    const { mainPaneScrollRows, forwardToSession } = routeInputTokensForConversationFn({
-      tokens: routedTokens,
-      mainPaneMode: workspace.mainPaneMode,
-      normalizeMuxKeyboardInputForPty,
-      classifyPaneAt: (col, row) => classifyPaneAt(layout, col, row),
-      wheelDeltaRowsFromCode,
-    });
-
-    if (mainPaneScrollRows !== 0 && inputConversation !== null) {
-      inputConversation.oracle.scrollViewport(mainPaneScrollRows);
-      markDirty();
-    }
-
-    if (inputConversation === null) {
-      return;
-    }
-    if (
-      inputConversation.controller !== null &&
-      !conversationManager.isControlledByLocalHuman({
-        conversation: inputConversation,
-        controllerId: muxControllerId,
-      })
-    ) {
-      return;
-    }
-
-    for (const forwardChunk of forwardToSession) {
-      streamClient.sendInput(inputConversation.sessionId, forwardChunk);
-    }
-    if (forwardToSession.length > 0) {
-      noteGitActivity(inputConversation.directoryId);
-    }
+    conversationInputForwarder.handleInput(focusExtraction.sanitized);
   };
 
   const onResize = (): void => {

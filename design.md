@@ -149,6 +149,7 @@ Control-plane boundaries:
 - Conversation mouse-selection transitions are moving behind a class-based `ConversationSelectionInput` (`src/ui/conversation-selection-input.ts`) so runtime delegates selection clear/reduce/pin behavior instead of keeping selection-state transition logic inline.
 - Global shortcut detection/dispatch is moving behind a class-based `GlobalShortcutInput` (`src/ui/global-shortcut-input.ts`) so runtime delegates shortcut detection + action resolver wiring instead of maintaining inline global-shortcut callback trees.
 - Input token-loop routing is moving behind a class-based `InputTokenRouter` (`src/ui/input-token-router.ts`) so runtime delegates mouse/text token classification + dispatch ordering instead of carrying the full inline token loop.
+- Conversation input forwarding is moving behind a class-based `ConversationInputForwarder` (`src/ui/conversation-input-forwarder.ts`) so runtime delegates parse/token/forward orchestration and controller-gated PTY writes instead of keeping tail routing inline.
 
 This separation prevents UI-only behavior and enables reliable automation without computer-use tooling.
 

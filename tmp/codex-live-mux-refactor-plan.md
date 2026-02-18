@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~4027 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~4002 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -875,3 +875,17 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4027 non-empty LOC
+
+### Checkpoint AQ (2026-02-18): Phase 8 continues with class-based conversation input forwarding
+
+- Added `src/ui/conversation-input-forwarder.ts` with a class-based `ConversationInputForwarder` that owns:
+  - parsed-input remainder updates for conversation input routing
+  - token routing -> pane-forwarding orchestration bridge
+  - main-pane scroll routing + dirty signaling for active conversation viewport
+  - session-forward gating on controller ownership before PTY input writes
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate the parse/route/forward tail of `onInput` to `ConversationInputForwarder`.
+- Added `test/ui-conversation-input-forwarder.test.ts` for scroll/forward behavior, controller gating, forward-empty behavior, and default dependency coverage.
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4002 non-empty LOC
