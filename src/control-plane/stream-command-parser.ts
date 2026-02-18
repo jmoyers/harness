@@ -985,7 +985,7 @@ function parseAttentionList(): StreamCommand {
 }
 
 function parseSessionIdCommand(
-  type: 'session.status' | 'session.snapshot' | 'session.interrupt' | 'session.remove',
+  type: 'session.status' | 'session.interrupt' | 'session.remove',
 ) {
   return (record: CommandRecord): StreamCommand | null => {
     const sessionId = readString(record['sessionId']);
@@ -997,6 +997,22 @@ function parseSessionIdCommand(
       sessionId,
     };
   };
+}
+
+function parseSessionSnapshot(record: CommandRecord): StreamCommand | null {
+  const sessionId = readString(record['sessionId']);
+  const tailLines = readOptionalInteger(record, 'tailLines', 1);
+  if (sessionId === null || tailLines === undefined) {
+    return null;
+  }
+  const command: Extract<StreamCommand, { type: 'session.snapshot' }> = {
+    type: 'session.snapshot',
+    sessionId,
+  };
+  if (tailLines !== null) {
+    command.tailLines = tailLines;
+  }
+  return command;
 }
 
 function parseSessionRespond(record: CommandRecord): StreamCommand | null {
@@ -1212,7 +1228,7 @@ export const DEFAULT_STREAM_COMMAND_PARSERS: StreamCommandParserRegistry = {
   'session.list': parseSessionList,
   'attention.list': () => parseAttentionList(),
   'session.status': parseSessionIdCommand('session.status'),
-  'session.snapshot': parseSessionIdCommand('session.snapshot'),
+  'session.snapshot': parseSessionSnapshot,
   'session.respond': parseSessionRespond,
   'session.claim': parseSessionClaim,
   'session.release': parseSessionRelease,

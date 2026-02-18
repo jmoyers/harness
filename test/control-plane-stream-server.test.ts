@@ -1109,6 +1109,14 @@ void test('stream server supports session.list, session.status, and session.snap
   const server = await startControlPlaneStreamServer({
     startSession: (input) => new FakeLiveSession(input),
   });
+  const internals = server as unknown as {
+    sessions: Map<
+      string,
+      {
+        session: FakeLiveSession | null;
+      }
+    >;
+  };
   const address = server.address();
   const client = await connectControlPlaneStreamClient({
     host: address.address,
@@ -1235,6 +1243,38 @@ void test('stream server supports session.list, session.status, and session.snap
     const snapshotRecord = snapshot['snapshot'] as Record<string, unknown>;
     assert.equal(typeof snapshotRecord['frameHash'], 'string');
     assert.equal(Array.isArray(snapshotRecord['lines']), true);
+
+    const tailInput = Array.from({ length: 30 }, (_, index) =>
+      `line-${String(index + 1).padStart(2, '0')}`,
+    ).join('\r\n');
+    client.sendInput('session-list', Buffer.from(`\r\n${tailInput}`, 'utf8'));
+    await delay(2);
+    const tailedSnapshot = await client.sendCommand({
+      type: 'session.snapshot',
+      sessionId: 'session-list',
+      tailLines: 2,
+    });
+    const tailedBuffer = tailedSnapshot['buffer'] as Record<string, unknown>;
+    assert.deepEqual(tailedBuffer['lines'], ['line-29', 'line-30']);
+    assert.equal(typeof tailedBuffer['totalRows'], 'number');
+    assert.equal(
+      tailedBuffer['startRow'],
+      (tailedBuffer['totalRows'] as number) - (tailedBuffer['lines'] as string[]).length,
+    );
+
+    const sessionState = internals.sessions.get('session-list');
+    assert.notEqual(sessionState, undefined);
+    assert.notEqual(sessionState?.session, null);
+    (sessionState!.session as unknown as { bufferTail?: undefined }).bufferTail = undefined;
+    const fallbackTailedSnapshot = await client.sendCommand({
+      type: 'session.snapshot',
+      sessionId: 'session-list',
+      tailLines: 2,
+    });
+    assert.deepEqual((fallbackTailedSnapshot['buffer'] as Record<string, unknown>)['lines'], [
+      'line-29',
+      'line-30',
+    ]);
   } finally {
     client.close();
     await server.close();
@@ -1508,17 +1548,44 @@ void test('stream server list/query options apply tenant scoping and snapshot re
     );
 
     internals.sessions.get('session-snapshot-missing')!.lastSnapshot = {
-      lines: [],
+      lines: ['line-1', 'line-2', 'line-3'],
       frameHash: 'stale-hash',
       cursorRow: 0,
       cursorCol: 0,
+      viewport: {
+        totalRows: 5,
+      },
     };
     const staleSnapshot = await client.sendCommand({
       type: 'session.snapshot',
       sessionId: 'session-snapshot-missing',
+      tailLines: 2,
     });
     assert.equal(staleSnapshot['sessionId'], 'session-snapshot-missing');
     assert.equal(staleSnapshot['stale'], true);
+    assert.deepEqual(staleSnapshot['buffer'], {
+      totalRows: 5,
+      startRow: 3,
+      lines: ['line-2', 'line-3'],
+    });
+
+    internals.sessions.get('session-snapshot-missing')!.lastSnapshot = {
+      lines: 'invalid',
+      frameHash: 'stale-hash-invalid',
+      cursorRow: 0,
+      cursorCol: 0,
+      viewport: 'invalid',
+    };
+    const malformedStaleSnapshot = await client.sendCommand({
+      type: 'session.snapshot',
+      sessionId: 'session-snapshot-missing',
+      tailLines: 3,
+    });
+    assert.deepEqual(malformedStaleSnapshot['buffer'], {
+      totalRows: 0,
+      startRow: 0,
+      lines: [],
+    });
   } finally {
     client.close();
     await server.close();

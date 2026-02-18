@@ -887,3 +887,35 @@ void test('parseStreamCommand supports injected parser registry overrides', () =
   assert.equal(calls.length, 1);
   assert.equal(calls[0]?.['marker'], 'ok');
 });
+
+void test('parseStreamCommand parses session.snapshot tailLines and rejects malformed tailLines', () => {
+  assert.deepEqual(
+    parseStreamCommand({
+      type: 'session.snapshot',
+      sessionId: 'session-1',
+      tailLines: 25,
+    }),
+    {
+      type: 'session.snapshot',
+      sessionId: 'session-1',
+      tailLines: 25,
+    },
+  );
+
+  assert.equal(
+    parseStreamCommand({
+      type: 'session.snapshot',
+      sessionId: 'session-1',
+      tailLines: 0,
+    }),
+    null,
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'session.snapshot',
+      sessionId: 'session-1',
+      tailLines: '10',
+    }),
+    null,
+  );
+});

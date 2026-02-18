@@ -82,6 +82,27 @@ void test('snapshot oracle can emit frame data without hash for hot-path renderi
   assert.equal('frameHash' in withoutHash, false);
 });
 
+void test('snapshot oracle returns buffer tail from combined scrollback and viewport lines', () => {
+  const oracle = new TerminalSnapshotOracle(32, 2);
+  oracle.ingest('line-1\r\nline-2\r\nline-3');
+
+  assert.deepEqual(oracle.bufferTail(2), {
+    totalRows: 3,
+    startRow: 1,
+    lines: ['line-2', 'line-3'],
+  });
+  assert.deepEqual(oracle.bufferTail(10), {
+    totalRows: 3,
+    startRow: 0,
+    lines: ['line-1', 'line-2', 'line-3'],
+  });
+  assert.deepEqual(oracle.bufferTail(), {
+    totalRows: 3,
+    startRow: 0,
+    lines: ['line-1', 'line-2', 'line-3'],
+  });
+});
+
 void test('snapshot oracle reuses unchanged rendered rows and only invalidates dirty rows', () => {
   const oracle = new TerminalSnapshotOracle(6, 2);
   oracle.ingest('ab');

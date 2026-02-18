@@ -11,7 +11,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type CodexLiveEvent, type LiveSessionNotifyMode } from '../codex/live-session.ts';
 import type { PtyExit } from '../pty/pty_host.ts';
-import type { TerminalSnapshotFrame } from '../terminal/snapshot-oracle.ts';
+import type { TerminalBufferTail, TerminalSnapshotFrame } from '../terminal/snapshot-oracle.ts';
 import {
   encodeStreamEnvelope,
   type StreamObservedEvent,
@@ -105,6 +105,7 @@ interface LiveSessionLike {
   write(data: string | Uint8Array): void;
   resize(cols: number, rows: number): void;
   snapshot(): TerminalSnapshotFrame;
+  bufferTail?(tailLines?: number): TerminalBufferTail;
   close(): void;
   onEvent(listener: (event: CodexLiveEvent) => void): () => void;
 }

@@ -11,6 +11,7 @@ import {
 import type { PtyExit } from '../pty/pty_host.ts';
 import {
   TerminalSnapshotOracle,
+  type TerminalBufferTail,
   type TerminalSnapshotFrame,
   type TerminalQueryState,
 } from '../terminal/snapshot-oracle.ts';
@@ -636,6 +637,10 @@ class CodexLiveSession {
 
   snapshot(): TerminalSnapshotFrame {
     return this.snapshotOracle.snapshot();
+  }
+
+  bufferTail(tailLines?: number): TerminalBufferTail {
+    return this.snapshotOracle.bufferTail(tailLines);
   }
 
   close(): void {

@@ -364,6 +364,15 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
     },
     {
       kind: 'command',
+      commandId: 'c1c1',
+      command: {
+        type: 'session.snapshot',
+        sessionId: 's1',
+        tailLines: 25,
+      },
+    },
+    {
+      kind: 'command',
       commandId: 'c1ca',
       command: {
         type: 'session.respond',
@@ -549,6 +558,24 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
       command: {
         type: 'session.list',
         status: 'bad-status',
+      },
+    },
+    {
+      kind: 'command',
+      commandId: 'c2snapshot',
+      command: {
+        type: 'session.snapshot',
+        sessionId: 's1',
+        tailLines: 0,
+      },
+    },
+    {
+      kind: 'command',
+      commandId: 'c2snapshotb',
+      command: {
+        type: 'session.snapshot',
+        sessionId: 's1',
+        tailLines: '10',
       },
     },
     {

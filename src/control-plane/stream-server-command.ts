@@ -11,7 +11,7 @@ import type {
   ControlPlaneRepositoryRecord,
   ControlPlaneTaskRecord,
 } from '../store/control-plane-store.ts';
-import type { TerminalSnapshotFrame } from '../terminal/snapshot-oracle.ts';
+import type { TerminalBufferTail, TerminalSnapshotFrame } from '../terminal/snapshot-oracle.ts';
 import type { PtyExit } from '../pty/pty_host.ts';
 
 const DEFAULT_TENANT_ID = 'tenant-local';
@@ -74,6 +74,7 @@ interface LiveSessionLike {
   latestCursorValue(): number;
   write(data: string | Uint8Array): void;
   snapshot(): TerminalSnapshotFrame;
+  bufferTail?(tailLines?: number): TerminalBufferTail;
 }
 
 interface SessionState {
@@ -316,6 +317,53 @@ function normalizeAdapterState(value: unknown): Record<string, unknown> {
     return {};
   }
   return value as Record<string, unknown>;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function asStringArray(value: unknown): string[] | null {
+  if (!Array.isArray(value) || !value.every((entry) => typeof entry === 'string')) {
+    return null;
+  }
+  return [...value];
+}
+
+function bufferTailFromVisibleLines(
+  lines: readonly string[],
+  totalRows: number,
+  tailLines: number,
+): TerminalBufferTail {
+  const availableCount = lines.length;
+  const rowCount = Math.min(availableCount, tailLines);
+  const startRow = Math.max(0, totalRows - rowCount);
+  return {
+    totalRows,
+    startRow,
+    lines: lines.slice(Math.max(0, availableCount - rowCount)),
+  };
+}
+
+function bufferTailFromFrame(frame: TerminalSnapshotFrame, tailLines: number): TerminalBufferTail {
+  return bufferTailFromVisibleLines(frame.lines, frame.viewport.totalRows, tailLines);
+}
+
+function bufferTailFromSnapshotRecord(
+  snapshot: Record<string, unknown>,
+  tailLines: number,
+): TerminalBufferTail {
+  const lines = asStringArray(snapshot['lines']) ?? [];
+  const viewport = asRecord(snapshot['viewport']);
+  const totalRowsRaw = viewport?.['totalRows'];
+  const totalRows =
+    typeof totalRowsRaw === 'number' && Number.isInteger(totalRowsRaw) && totalRowsRaw >= 0
+      ? totalRowsRaw
+      : lines.length;
+  return bufferTailFromVisibleLines(lines, totalRows, tailLines);
 }
 
 export function executeStreamServerCommand(
@@ -1213,19 +1261,30 @@ export function executeStreamServerCommand(
       if (state.lastSnapshot === null) {
         throw new Error(`session snapshot unavailable: ${command.sessionId}`);
       }
-      return {
+      const result: Record<string, unknown> = {
         sessionId: command.sessionId,
         snapshot: state.lastSnapshot,
         stale: true,
       };
+      if (command.tailLines !== undefined) {
+        result['buffer'] = bufferTailFromSnapshotRecord(state.lastSnapshot, command.tailLines);
+      }
+      return result;
     }
-    const snapshot = ctx.snapshotRecordFromFrame(state.session.snapshot());
+    const frame = state.session.snapshot();
+    const snapshot = ctx.snapshotRecordFromFrame(frame);
     state.lastSnapshot = snapshot;
-    return {
+    const result: Record<string, unknown> = {
       sessionId: command.sessionId,
       snapshot,
       stale: false,
     };
+    if (command.tailLines !== undefined) {
+      result['buffer'] =
+        state.session.bufferTail?.(command.tailLines) ??
+        bufferTailFromFrame(frame, command.tailLines);
+    }
+    return result;
   }
 
   if (command.type === 'session.claim') {

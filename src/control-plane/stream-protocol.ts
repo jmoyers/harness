@@ -277,6 +277,7 @@ interface SessionStatusCommand {
 interface SessionSnapshotCommand {
   type: 'session.snapshot';
   sessionId: string;
+  tailLines?: number;
 }
 
 interface SessionRespondCommand {

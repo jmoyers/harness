@@ -8,7 +8,7 @@ import type { ControlPlaneStreamClient } from '../src/control-plane/stream-clien
 import type { StreamServerEnvelope } from '../src/control-plane/stream-protocol.ts';
 import type { CodexLiveEvent } from '../src/codex/live-session.ts';
 import type { PtyExit } from '../src/pty/pty_host.ts';
-import { TerminalSnapshotOracle } from '../src/terminal/snapshot-oracle.ts';
+import { TerminalSnapshotOracle, type TerminalBufferTail } from '../src/terminal/snapshot-oracle.ts';
 
 interface SessionDataEvent {
   cursor: number;
@@ -108,6 +108,10 @@ export class FakeLiveSession {
 
   snapshot() {
     return this.snapshotOracle.snapshot();
+  }
+
+  bufferTail(tailLines?: number): TerminalBufferTail {
+    return this.snapshotOracle.bufferTail(tailLines);
   }
 
   close(): void {

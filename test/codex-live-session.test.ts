@@ -630,6 +630,28 @@ void test('codex live session emits terminal and exit events', () => {
   assert.equal(broker.detachCount, 2);
 });
 
+void test('codex live session exposes buffer tail from terminal snapshot oracle', () => {
+  const broker = new FakeBroker();
+  const session = startCodexLiveSession(
+    {
+      initialCols: 32,
+      initialRows: 2,
+    },
+    {
+      startBroker: () => broker,
+    },
+  );
+
+  broker.emitData(1, Buffer.from('line-1\r\nline-2\r\nline-3', 'utf8'));
+  assert.deepEqual(session.bufferTail(2), {
+    totalRows: 3,
+    startRow: 1,
+    lines: ['line-2', 'line-3'],
+  });
+
+  session.close();
+});
+
 void test('codex live session can disable snapshot ingest while preserving output events', () => {
   const broker = new FakeBroker();
   const session = startCodexLiveSession(

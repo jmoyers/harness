@@ -64,6 +64,12 @@ export interface TerminalSnapshotFrame extends TerminalSnapshotFrameCore {
   frameHash: string;
 }
 
+export interface TerminalBufferTail {
+  totalRows: number;
+  startRow: number;
+  lines: string[];
+}
+
 export interface TerminalQueryState {
   rows: number;
   cols: number;
@@ -623,6 +629,20 @@ class ScreenBuffer {
     };
   }
 
+  bufferTail(tailLines: number | null): TerminalBufferTail {
+    const combined = [...this.scrollback, ...this.lines];
+    const totalRows = combined.length;
+    const maxTail = tailLines === null ? totalRows : Math.max(1, Math.floor(tailLines));
+    const rowCount = Math.min(totalRows, maxTail);
+    const startRow = Math.max(0, totalRows - rowCount);
+    const visible = combined.slice(startRow);
+    return {
+      totalRows,
+      startRow,
+      lines: visible.map((line) => this.materializeSnapshotLine(line).text),
+    };
+  }
+
   private advanceLine(cursor: ScreenCursor, wrapped: boolean, fillStyle: TerminalCellStyle): void {
     cursor.col = 0;
     this.lineFeed(cursor, fillStyle);
@@ -1036,6 +1056,14 @@ export class TerminalSnapshotOracle {
       this.bracketedPasteMode,
       false,
     );
+  }
+
+  bufferTail(tailLines?: number): TerminalBufferTail {
+    const normalizedTail =
+      typeof tailLines === 'number' && Number.isFinite(tailLines)
+        ? Math.max(1, Math.floor(tailLines))
+        : null;
+    return this.currentScreen().bufferTail(normalizedTail);
   }
 
   private currentScreen(): ScreenBuffer {
