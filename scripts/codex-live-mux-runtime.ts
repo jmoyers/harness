@@ -187,6 +187,7 @@ import { RuntimeRenderState } from '../src/services/runtime-render-state.ts';
 import { RuntimeRenderLifecycle } from '../src/services/runtime-render-lifecycle.ts';
 import { RuntimeShutdownService } from '../src/services/runtime-shutdown.ts';
 import { RuntimeTaskPaneActions } from '../src/services/runtime-task-pane-actions.ts';
+import { RuntimeTaskComposerPersistenceService } from '../src/services/runtime-task-composer-persistence.ts';
 import { RuntimeTaskPaneShortcuts } from '../src/services/runtime-task-pane-shortcuts.ts';
 import { TaskPaneSelectionActions } from '../src/services/task-pane-selection-actions.ts';
 import { TaskPlanningHydrationService } from '../src/services/task-planning-hydration.ts';
@@ -1485,32 +1486,6 @@ async function main(): Promise<number> {
     return sortedRepositoryList(repositories);
   }
 
-  const taskComposerForTask = (taskId: string): TaskComposerBuffer | null => {
-    const existing = taskManager.getTaskComposer(taskId);
-    if (existing !== undefined) {
-      return existing;
-    }
-    const task = taskManager.getTask(taskId);
-    if (task === undefined) {
-      return null;
-    }
-    return createTaskComposerBuffer(
-      task.description.length === 0 ? task.title : `${task.title}\n${task.description}`,
-    );
-  };
-
-  const setTaskComposerForTask = (taskId: string, buffer: TaskComposerBuffer): void => {
-    taskManager.setTaskComposer(taskId, normalizeTaskComposerBuffer(buffer));
-  };
-
-  const clearTaskAutosaveTimer = (taskId: string): void => {
-    const timer = taskManager.getTaskAutosaveTimer(taskId);
-    if (timer !== undefined) {
-      clearTimeout(timer);
-      taskManager.deleteTaskAutosaveTimer(taskId);
-    }
-  };
-
   const selectedRepositoryTaskRecords = (): readonly ControlPlaneTaskRecord[] => {
     return taskManager.tasksForRepository({
       repositoryId: workspace.taskPaneSelectedRepositoryId,
@@ -1519,51 +1494,63 @@ async function main(): Promise<number> {
     });
   };
 
-  const queuePersistTaskComposer = (taskId: string, reason: string): void => {
-    const task = taskManager.getTask(taskId);
-    const buffer = taskManager.getTaskComposer(taskId);
-    if (task === undefined || buffer === undefined) {
-      return;
-    }
-    const fields = taskFieldsFromComposerText(buffer.text);
-    if (fields.title.length === 0) {
-      workspace.taskPaneNotice = 'first line is required';
-      markDirty();
-      return;
-    }
-    if (fields.title === task.title && fields.description === task.description) {
-      return;
-    }
-    queueControlPlaneOp(async () => {
-      const parsed = await controlPlaneService.updateTask({
-        taskId,
-        repositoryId: task.repositoryId,
-        title: fields.title,
-        description: fields.description,
-      });
-      applyTaskRecord(parsed);
-      const persistedText =
-        parsed.description.length === 0 ? parsed.title : `${parsed.title}\n${parsed.description}`;
-      const latestBuffer = taskManager.getTaskComposer(taskId);
-      if (latestBuffer !== undefined && latestBuffer.text === persistedText) {
-        taskManager.deleteTaskComposer(taskId);
-      }
-    }, `task-editor-save:${reason}:${taskId}`);
+  const taskComposerPersistence = new RuntimeTaskComposerPersistenceService<
+    ControlPlaneTaskRecord,
+    TaskComposerBuffer
+  >({
+    getTask: (taskId) => taskManager.getTask(taskId),
+    getTaskComposer: (taskId) => taskManager.getTaskComposer(taskId),
+    setTaskComposer: (taskId, buffer) => {
+      taskManager.setTaskComposer(taskId, buffer);
+    },
+    deleteTaskComposer: (taskId) => {
+      taskManager.deleteTaskComposer(taskId);
+    },
+    getTaskAutosaveTimer: (taskId) => taskManager.getTaskAutosaveTimer(taskId),
+    setTaskAutosaveTimer: (taskId, timer) => {
+      taskManager.setTaskAutosaveTimer(taskId, timer);
+    },
+    deleteTaskAutosaveTimer: (taskId) => {
+      taskManager.deleteTaskAutosaveTimer(taskId);
+    },
+    buildComposerFromTask: (task) =>
+      createTaskComposerBuffer(
+        task.description.length === 0 ? task.title : `${task.title}\n${task.description}`,
+      ),
+    normalizeTaskComposerBuffer,
+    taskFieldsFromComposerText,
+    updateTask: async (input) => {
+      return await controlPlaneService.updateTask(input);
+    },
+    applyTaskRecord: (task) => {
+      applyTaskRecord(task);
+    },
+    queueControlPlaneOp,
+    setTaskPaneNotice: (text) => {
+      workspace.taskPaneNotice = text;
+    },
+    markDirty,
+    autosaveDebounceMs: DEFAULT_TASK_EDITOR_AUTOSAVE_DEBOUNCE_MS,
+  });
+
+  const taskComposerForTask = (taskId: string): TaskComposerBuffer | null => {
+    return taskComposerPersistence.taskComposerForTask(taskId);
+  };
+
+  const setTaskComposerForTask = (taskId: string, buffer: TaskComposerBuffer): void => {
+    taskComposerPersistence.setTaskComposerForTask(taskId, buffer);
+  };
+
+  const clearTaskAutosaveTimer = (taskId: string): void => {
+    taskComposerPersistence.clearTaskAutosaveTimer(taskId);
   };
 
   const scheduleTaskComposerPersist = (taskId: string): void => {
-    clearTaskAutosaveTimer(taskId);
-    const timer = setTimeout(() => {
-      taskManager.deleteTaskAutosaveTimer(taskId);
-      queuePersistTaskComposer(taskId, 'debounced');
-    }, DEFAULT_TASK_EDITOR_AUTOSAVE_DEBOUNCE_MS);
-    timer.unref?.();
-    taskManager.setTaskAutosaveTimer(taskId, timer);
+    taskComposerPersistence.scheduleTaskComposerPersist(taskId);
   };
 
   const flushTaskComposerPersist = (taskId: string): void => {
-    clearTaskAutosaveTimer(taskId);
-    queuePersistTaskComposer(taskId, 'flush');
+    taskComposerPersistence.flushTaskComposerPersist(taskId);
   };
 
   const activeRepositoryIds = (): readonly string[] => {

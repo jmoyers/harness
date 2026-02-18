@@ -1614,6 +1614,23 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2814 non-empty LOC
 
+### Checkpoint CI (2026-02-18): Task composer autosave/persist lifecycle extracted into class service
+
+- Added `src/services/runtime-task-composer-persistence.ts` with class-based `RuntimeTaskComposerPersistenceService` to own:
+  - per-task composer buffer lookup + normalization
+  - autosave timer lifecycle (`schedule`, `clear`, `flush`)
+  - task-editor persist queueing, validation, unchanged guards, and post-persist buffer reconciliation
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate task composer persistence wiring through `RuntimeTaskComposerPersistenceService` and remove inline autosave/persist lifecycle logic.
+- Added `test/services-runtime-task-composer-persistence.test.ts` with full branch/function coverage for:
+  - composer lookup and normalization paths
+  - autosave timer clear/schedule + empty-title validation guard
+  - flush/debounced queueing guards and persisted-buffer cleanup behavior
+  - default timer fallback behavior (no injected timer deps)
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2801 non-empty LOC
+
 ### Next focus (yield-first)
 
 - Consolidation order (updated from critique review):
