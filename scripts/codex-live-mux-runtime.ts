@@ -192,6 +192,7 @@ import {
   openNewThreadPrompt as openNewThreadPromptFn,
   takeoverConversation as takeoverConversationFn,
 } from '../src/mux/live-mux/actions-conversation.ts';
+import { toggleGatewayProfiler as toggleGatewayProfilerFn } from '../src/mux/live-mux/gateway-profiler.ts';
 import {
   WorkspaceModel,
   type ConversationTitleEditState,
@@ -248,6 +249,7 @@ const DEFAULT_STARTUP_SETTLE_NONEMPTY_FALLBACK_MS = 1500;
 const DEFAULT_BACKGROUND_START_MAX_WAIT_MS = 5000;
 const DEFAULT_BACKGROUND_RESUME_PERSISTED = false;
 const DEFAULT_BACKGROUND_PROBES_ENABLED = false;
+const DEBUG_FOOTER_NOTICE_TTL_MS = 8000;
 const DEFAULT_CONVERSATION_TITLE_EDIT_DEBOUNCE_MS = 250;
 const DEFAULT_TASK_EDITOR_AUTOSAVE_DEBOUNCE_MS = 250;
 const CONVERSATION_TITLE_EDIT_DOUBLE_CLICK_WINDOW_MS = 350;
@@ -332,6 +334,11 @@ async function main(): Promise<number> {
     invocationDirectory: options.invocationDirectory,
     codexArgs: options.codexArgs.length,
   });
+  const muxSessionName =
+    typeof process.env.HARNESS_SESSION_NAME === 'string' &&
+    process.env.HARNESS_SESSION_NAME.trim().length > 0
+      ? process.env.HARNESS_SESSION_NAME.trim()
+      : null;
   recordPerfEvent('mux.startup.begin', {
     stdinTty: process.stdin.isTTY ? 1 : 0,
     stdoutTty: process.stdout.isTTY ? 1 : 0,
@@ -347,6 +354,7 @@ async function main(): Promise<number> {
   const modalDismissShortcutBindings = resolveMuxShortcutBindings({
     'mux.app.quit': ['escape'],
     'mux.app.interrupt-all': [],
+    'mux.gateway.profile.toggle': [],
     'mux.conversation.new': [],
     'mux.conversation.critique.open-or-create': [],
     'mux.conversation.next': [],
@@ -1314,6 +1322,7 @@ async function main(): Promise<number> {
   let taskEditorPrompt: TaskEditorPromptState | null = null;
   let conversationTitleEdit: ConversationTitleEditState | null = null;
   let conversationTitleEditClickState: { conversationId: string; atMs: number } | null = null;
+  let debugFooterNotice: { text: string; expiresAtMs: number } | null = null;
   const modalManager = new ModalManager({
     theme: MUX_MODAL_THEME,
     resolveRepositoryName: (repositoryId) => repositories.get(repositoryId)?.name ?? null,
@@ -1355,6 +1364,29 @@ async function main(): Promise<number> {
       markDirty,
       setStop: (next) => { stop = next; },
     });
+  };
+
+  const setDebugFooterNotice = (text: string): void => {
+    const normalized = text.trim();
+    if (normalized.length === 0) {
+      debugFooterNotice = null;
+      return;
+    }
+    debugFooterNotice = {
+      text: normalized,
+      expiresAtMs: Date.now() + DEBUG_FOOTER_NOTICE_TTL_MS,
+    };
+  };
+
+  const activeDebugFooterNoticeText = (): string | null => {
+    if (debugFooterNotice === null) {
+      return null;
+    }
+    if (Date.now() > debugFooterNotice.expiresAtMs) {
+      debugFooterNotice = null;
+      return null;
+    }
+    return debugFooterNotice.text;
   };
 
   const handleRuntimeFatal = (origin: string, error: unknown): void => {
@@ -3004,6 +3036,29 @@ async function main(): Promise<number> {
     });
   };
 
+  const toggleGatewayProfiler = async (): Promise<void> => {
+    try {
+      const result = await toggleGatewayProfilerFn({
+        invocationDirectory: options.invocationDirectory,
+        sessionName: muxSessionName,
+      });
+      const scopedMessage =
+        muxSessionName === null
+          ? `[profile] ${result.message}`
+          : `[profile:${muxSessionName}] ${result.message}`;
+      workspace.taskPaneNotice = scopedMessage;
+      setDebugFooterNotice(scopedMessage);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      const scopedMessage =
+        muxSessionName === null ? `[profile] ${message}` : `[profile:${muxSessionName}] ${message}`;
+      workspace.taskPaneNotice = scopedMessage;
+      setDebugFooterNotice(scopedMessage);
+    } finally {
+      markDirty();
+    }
+  };
+
   const pinViewportForSelection = (): void => {
     if (selectionPinnedFollowOutput !== null) {
       return;
@@ -3146,10 +3201,15 @@ async function main(): Promise<number> {
     } else {
       rightRows = Array.from({ length: layout.paneRows }, () => ' '.repeat(layout.rightCols));
     }
-    const statusFooter =
+    const baseStatusFooter =
       !projectPaneActive && !homePaneActive && active !== null
         ? debugFooterForConversation(active)
-        : undefined;
+        : '';
+    const statusNotice = activeDebugFooterNoticeText();
+    const statusFooter =
+      statusNotice === null || statusNotice.length === 0
+        ? baseStatusFooter
+        : `${baseStatusFooter.length > 0 ? `${baseStatusFooter}  ` : ''}${statusNotice}`;
     const rows = buildRenderRows(layout, rail.ansiRows, rightRows, perfStatusRow, statusFooter);
     const modalOverlay = buildCurrentModalOverlay();
     if (modalOverlay !== null) {
@@ -3814,6 +3874,9 @@ async function main(): Promise<number> {
         resolveDirectoryForAction,
         openNewThreadPrompt,
         openOrCreateCritiqueConversationInDirectory,
+        toggleGatewayProfile: async () => {
+          await toggleGatewayProfiler();
+        },
         resolveConversationForAction: () =>
           workspace.mainPaneMode === 'conversation' ? conversationManager.activeConversationId : null,
         conversationsHas: (sessionId) => conversationManager.has(sessionId),

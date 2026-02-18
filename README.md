@@ -23,6 +23,7 @@ Harness is built for developers who want to:
 - Track repositories and tasks with full CRUD through the control plane (`repository.*`, `task.*`).
 - Use strict human/agent control semantics (claim, release, takeover).
 - Keep long-running sessions alive in the detached gateway while clients reconnect.
+- Toggle gateway CPU profiling from the client (`ctrl+p` by default), using the same `harness profile start|stop` behavior.
 - Subscribe to typed realtime events for status, output, telemetry, and lifecycle activity.
 
 ## Demo
@@ -107,7 +108,8 @@ Example (critique defaults + hotkey override):
   },
   "mux": {
     "keybindings": {
-      "mux.conversation.critique.open-or-create": ["ctrl+g"]
+      "mux.conversation.critique.open-or-create": ["ctrl+g"],
+      "mux.gateway.profile.toggle": ["ctrl+p"]
     }
   }
 }

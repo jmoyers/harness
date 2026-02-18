@@ -13,6 +13,7 @@ function baseOptions(overrides: Partial<Parameters<typeof handleGlobalShortcut>[
     requestStop: 0,
     newThread: 0,
     critique: 0,
+    profileToggle: 0,
     archive: 0,
     takeover: 0,
     addDirectory: 0,
@@ -30,6 +31,9 @@ function baseOptions(overrides: Partial<Parameters<typeof handleGlobalShortcut>[
     },
     openOrCreateCritiqueConversationInDirectory: async (_directoryId) => {
       calls.critique += 1;
+    },
+    toggleGatewayProfile: async () => {
+      calls.profileToggle += 1;
     },
     resolveConversationForAction: () => 'conversation-1',
     conversationsHas: () => true,
@@ -102,6 +106,17 @@ void test('global shortcut handler covers direct and queued actions', async () =
     assert.equal(queued[0]?.label, 'shortcut-open-or-create-critique-conversation');
     await queued[0]!.task();
     assert.equal(calls.critique, 1);
+  }
+
+  {
+    const { options, queued, calls } = baseOptions({
+      shortcut: 'mux.gateway.profile.toggle',
+    });
+    assert.equal(handleGlobalShortcut(options), true);
+    assert.equal(queued.length, 1);
+    assert.equal(queued[0]?.label, 'shortcut-toggle-gateway-profile');
+    await queued[0]!.task();
+    assert.equal(calls.profileToggle, 1);
   }
 
   {

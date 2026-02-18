@@ -96,8 +96,9 @@ function shortcutHintText(bindings: ResolvedMuxShortcutBindings): string {
   const next = firstShortcutText(bindings, 'mux.conversation.next') || 'ctrl+j';
   const previous = firstShortcutText(bindings, 'mux.conversation.previous') || 'ctrl+k';
   const interrupt = firstShortcutText(bindings, 'mux.app.interrupt-all') || 'ctrl+c';
+  const profile = firstShortcutText(bindings, 'mux.gateway.profile.toggle') || 'ctrl+p';
   const switchHint = next === previous ? next : `${next}/${previous}`;
-  return `${newConversation} new  ${critiqueConversation} critique  ${deleteConversation} archive  ${takeoverConversation} takeover  ${addProject}/${closeProject} projects  ${switchHint} switch nav  ←/→ collapse/expand  ${interrupt} quit`;
+  return `${newConversation} new  ${critiqueConversation} critique  ${deleteConversation} archive  ${takeoverConversation} takeover  ${addProject}/${closeProject} projects  ${switchHint} switch nav  ${profile} profile  ←/→ collapse/expand  ${interrupt} quit`;
 }
 
 function conversationSummary(conversation: MuxRailConversationRecord): ConversationRailSessionSummary {

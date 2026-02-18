@@ -640,6 +640,7 @@ Design constraints:
   - steer active turn
   - queue turn
   - interrupt
+  - toggle gateway profiler capture (`mux.gateway.profile.toggle`, default `ctrl+p`)
   - open file/project
 
 Target layout sketch:
@@ -1174,6 +1175,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - `harness gateway ...` is the canonical daemon control plane: `start|stop|status|restart|run|call`.
     - `harness profile ...` (or `harness profile run ...`) runs a dedicated profiled client+gateway lifecycle, writes Bun CPU profiles to `.harness/profiles[/<session>]/{client,gateway}.cpuprofile`, and auto-stops the profiled gateway so both artifacts are flushed.
     - `harness profile start|stop` supports long-lived gateway-only profiling for incident windows via live inspector attach: `start` requires a running inspect-enabled session gateway, starts profiler capture in-process, and records active profile state; `stop` stops capture, writes `gateway.cpuprofile` under `.harness/profiles[/<session>]/`, and leaves the gateway running.
+    - mux clients expose a first-party keybinding path for the same gateway profiler controls (`mux.gateway.profile.toggle`, default `ctrl+p`) by delegating to the canonical `harness profile start|stop` command in the active session scope.
     - `harness gateway stop` performs best-effort workspace-scoped orphan cleanup by default (orphan gateway daemon processes, orphan PTY helpers, relay-linked orphan agent processes, and `sqlite3`), with force-stop signaling the gateway process group to drain child runtimes; `--no-cleanup-orphans` disables this defensive cleanup.
     - `harness cursor-hooks install|uninstall` manages Cursor hook registrations in a non-destructive merge-only mode (removing only Harness-managed entries on uninstall).
     - `harness animate` is a first-party high-FPS terminal benchmark scene (ASCII tunnel/starfield) for stressing render throughput independent of gateway lifecycle.

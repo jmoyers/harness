@@ -1,6 +1,7 @@
 type MuxGlobalShortcutAction =
   | 'mux.app.quit'
   | 'mux.app.interrupt-all'
+  | 'mux.gateway.profile.toggle'
   | 'mux.conversation.new'
   | 'mux.conversation.critique.open-or-create'
   | 'mux.conversation.next'
@@ -32,6 +33,7 @@ interface ResolvedMuxShortcutBindings {
 const ACTION_ORDER: readonly MuxGlobalShortcutAction[] = [
   'mux.app.quit',
   'mux.app.interrupt-all',
+  'mux.gateway.profile.toggle',
   'mux.conversation.new',
   'mux.conversation.critique.open-or-create',
   'mux.conversation.next',
@@ -46,6 +48,7 @@ const ACTION_ORDER: readonly MuxGlobalShortcutAction[] = [
 const DEFAULT_MUX_SHORTCUT_BINDINGS_RAW: Readonly<Record<MuxGlobalShortcutAction, readonly string[]>> = {
   'mux.app.quit': [],
   'mux.app.interrupt-all': ['ctrl+c'],
+  'mux.gateway.profile.toggle': ['ctrl+p'],
   'mux.conversation.new': ['ctrl+t'],
   'mux.conversation.critique.open-or-create': ['ctrl+g'],
   'mux.conversation.next': ['ctrl+j'],
@@ -535,6 +538,9 @@ function withDefaultBindings(
     'mux.app.quit': overrides?.['mux.app.quit'] ?? DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.app.quit'],
     'mux.app.interrupt-all':
       overrides?.['mux.app.interrupt-all'] ?? DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.app.interrupt-all'],
+    'mux.gateway.profile.toggle':
+      overrides?.['mux.gateway.profile.toggle'] ??
+      DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.gateway.profile.toggle'],
     'mux.conversation.new':
       overrides?.['mux.conversation.new'] ?? DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.new'],
     'mux.conversation.critique.open-or-create':
@@ -566,6 +572,7 @@ export function resolveMuxShortcutBindings(
     parsedByAction: {
       'mux.app.quit': parseBindingsForAction(rawByAction['mux.app.quit']),
       'mux.app.interrupt-all': parseBindingsForAction(rawByAction['mux.app.interrupt-all']),
+      'mux.gateway.profile.toggle': parseBindingsForAction(rawByAction['mux.gateway.profile.toggle']),
       'mux.conversation.new': parseBindingsForAction(rawByAction['mux.conversation.new']),
       'mux.conversation.critique.open-or-create': parseBindingsForAction(
         rawByAction['mux.conversation.critique.open-or-create']

@@ -1363,6 +1363,7 @@ async function runMuxClient(
   invocationDirectory: string,
   gateway: GatewayRecord,
   passthroughArgs: readonly string[],
+  sessionName: string | null,
   runtimeArgs: readonly string[] = [],
 ): Promise<number> {
   const args = tsRuntimeArgs(
@@ -1383,6 +1384,7 @@ async function runMuxClient(
     env: {
       ...process.env,
       HARNESS_INVOKE_CWD: invocationDirectory,
+      ...(sessionName === null ? {} : { HARNESS_SESSION_NAME: sessionName }),
     },
   });
   const exit = await once(child, 'exit');
@@ -1642,6 +1644,7 @@ async function runDefaultClient(
   logPath: string,
   defaultStateDbPath: string,
   args: readonly string[],
+  sessionName: string | null,
   runtimeOptions: RuntimeInspectOptions,
 ): Promise<number> {
   const ensured = await ensureGatewayRunning(
@@ -1663,6 +1666,7 @@ async function runDefaultClient(
     invocationDirectory,
     ensured.record,
     args,
+    sessionName,
     runtimeOptions.clientRuntimeArgs,
   );
 }
@@ -1673,6 +1677,7 @@ async function runProfileRun(
   muxScriptPath: string,
   sessionPaths: SessionPaths,
   command: ParsedProfileRunCommand,
+  sessionName: string | null,
   runtimeOptions: RuntimeInspectOptions,
 ): Promise<number> {
   const profileDir =
@@ -1739,6 +1744,7 @@ async function runProfileRun(
       invocationDirectory,
       gateway,
       command.muxArgs,
+      sessionName,
       [
         ...runtimeOptions.clientRuntimeArgs,
         ...buildCpuProfileRuntimeArgs({
@@ -1937,6 +1943,7 @@ async function runProfileCommandEntry(
   muxScriptPath: string,
   sessionPaths: SessionPaths,
   args: readonly string[],
+  sessionName: string | null,
   runtimeOptions: RuntimeInspectOptions,
 ): Promise<number> {
   if (args.length > 0 && (args[0] === '--help' || args[0] === '-h')) {
@@ -1956,6 +1963,7 @@ async function runProfileCommandEntry(
     muxScriptPath,
     sessionPaths,
     command,
+    sessionName,
     runtimeOptions,
   );
 }
@@ -2036,6 +2044,7 @@ async function main(): Promise<number> {
       muxScriptPath,
       sessionPaths,
       argv.slice(1),
+      parsedGlobals.sessionName,
       runtimeOptions,
     );
   }
@@ -2058,6 +2067,7 @@ async function main(): Promise<number> {
     sessionPaths.logPath,
     sessionPaths.defaultStateDbPath,
     passthroughArgs,
+    parsedGlobals.sessionName,
     runtimeOptions,
   );
 }

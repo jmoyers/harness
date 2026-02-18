@@ -18,6 +18,7 @@ void test('detectMuxGlobalShortcut maps default raw control-byte bindings', () =
   assert.equal(detectMuxGlobalShortcut(Buffer.from([0x0b]), bindings), 'mux.conversation.previous');
   assert.equal(detectMuxGlobalShortcut(Buffer.from([0x0c]), bindings), 'mux.conversation.takeover');
   assert.equal(detectMuxGlobalShortcut(Buffer.from([0x03]), bindings), 'mux.app.interrupt-all');
+  assert.equal(detectMuxGlobalShortcut(Buffer.from([0x10]), bindings), 'mux.gateway.profile.toggle');
   assert.equal(detectMuxGlobalShortcut(Buffer.from([0x18]), bindings), 'mux.conversation.delete');
   assert.equal(detectMuxGlobalShortcut(Buffer.from([0x0f]), bindings), 'mux.directory.add');
   assert.equal(detectMuxGlobalShortcut(Buffer.from([0x17]), bindings), 'mux.directory.close');
@@ -36,6 +37,7 @@ void test('detectMuxGlobalShortcut parses kitty and modifyOtherKeys control comb
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[106;5u', 'utf8'), bindings), 'mux.conversation.next');
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[107;5u', 'utf8'), bindings), 'mux.conversation.previous');
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[108;5u', 'utf8'), bindings), 'mux.conversation.takeover');
+  assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[112;5u', 'utf8'), bindings), 'mux.gateway.profile.toggle');
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[93;5u', 'utf8'), bindings), null);
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[27;5;116~', 'utf8'), bindings), 'mux.conversation.new');
   assert.equal(
@@ -45,6 +47,7 @@ void test('detectMuxGlobalShortcut parses kitty and modifyOtherKeys control comb
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[27;5;106~', 'utf8'), bindings), 'mux.conversation.next');
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[27;5;107~', 'utf8'), bindings), 'mux.conversation.previous');
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[27;5;108~', 'utf8'), bindings), 'mux.conversation.takeover');
+  assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[27;5;112~', 'utf8'), bindings), 'mux.gateway.profile.toggle');
   assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[27;5;93~', 'utf8'), bindings), null);
 });
 
