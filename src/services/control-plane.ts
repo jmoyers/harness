@@ -1,8 +1,9 @@
-import type { StreamCommand } from '../control-plane/stream-protocol.ts';
+import type { StreamCommand, StreamSessionControllerType } from '../control-plane/stream-protocol.ts';
 import {
   parseConversationRecord,
   parseDirectoryRecord,
   parseRepositoryRecord,
+  parseSessionControllerRecord,
   parseTaskRecord,
 } from '../mux/live-mux/control-plane-records.ts';
 
@@ -20,6 +21,7 @@ type ControlPlaneRepositoryRecord = NonNullable<ReturnType<typeof parseRepositor
 type ControlPlaneTaskRecord = NonNullable<ReturnType<typeof parseTaskRecord>>;
 type ControlPlaneDirectoryRecord = NonNullable<ReturnType<typeof parseDirectoryRecord>>;
 type ControlPlaneConversationRecord = NonNullable<ReturnType<typeof parseConversationRecord>>;
+type ControlPlaneSessionControllerRecord = NonNullable<ReturnType<typeof parseSessionControllerRecord>>;
 
 export class ControlPlaneService {
   constructor(
@@ -146,6 +148,72 @@ export class ControlPlaneService {
       type: 'directory.archive',
       directoryId,
     });
+  }
+
+  async attachPty(input: {
+    sessionId: string;
+    sinceCursor: number;
+  }): Promise<void> {
+    await this.client.sendCommand({
+      type: 'pty.attach',
+      sessionId: input.sessionId,
+      sinceCursor: input.sinceCursor,
+    });
+  }
+
+  async detachPty(sessionId: string): Promise<void> {
+    await this.client.sendCommand({
+      type: 'pty.detach',
+      sessionId,
+    });
+  }
+
+  async subscribePtyEvents(sessionId: string): Promise<void> {
+    await this.client.sendCommand({
+      type: 'pty.subscribe-events',
+      sessionId,
+    });
+  }
+
+  async unsubscribePtyEvents(sessionId: string): Promise<void> {
+    await this.client.sendCommand({
+      type: 'pty.unsubscribe-events',
+      sessionId,
+    });
+  }
+
+  async closePtySession(sessionId: string): Promise<void> {
+    await this.client.sendCommand({
+      type: 'pty.close',
+      sessionId,
+    });
+  }
+
+  async removeSession(sessionId: string): Promise<void> {
+    await this.client.sendCommand({
+      type: 'session.remove',
+      sessionId,
+    });
+  }
+
+  async claimSession(input: {
+    sessionId: string;
+    controllerId: string;
+    controllerType: StreamSessionControllerType;
+    controllerLabel: string;
+    reason: string;
+    takeover: boolean;
+  }): Promise<ControlPlaneSessionControllerRecord | null> {
+    const result = await this.client.sendCommand({
+      type: 'session.claim',
+      sessionId: input.sessionId,
+      controllerId: input.controllerId,
+      controllerType: input.controllerType,
+      controllerLabel: input.controllerLabel,
+      reason: input.reason,
+      takeover: input.takeover,
+    });
+    return parseSessionControllerRecord(result['controller']);
   }
 
   async listTasks(limit = 1000): Promise<readonly ControlPlaneTaskRecord[]> {

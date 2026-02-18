@@ -136,7 +136,7 @@ Control-plane boundaries:
 - Conversation lifecycle state ownership is being centralized behind a class-based `ConversationManager` (`src/domain/conversations.ts`) so start-in-flight, removal, and ordering concerns are not spread across runtime locals.
 - Repository and directory runtime state ownership is being centralized behind class-based `RepositoryManager` and `DirectoryManager` modules (`src/domain/repositories.ts`, `src/domain/directories.ts`) so association/fold/git-summary concerns are manager-owned rather than free runtime maps.
 - Task runtime state ownership is being centralized behind a class-based `TaskManager` (`src/domain/tasks.ts`) that now owns task records, composer buffers, autosave timers, and task reorder semantics.
-- Control-plane parsing/wrapping is moving into a class-based service layer (`src/services/control-plane.ts`) so runtime callsites consume validated domain records instead of duplicating command parsing; task/repository/directory and conversation-metadata flows now route through this service.
+- Control-plane parsing/wrapping is moving into a class-based service layer (`src/services/control-plane.ts`) so runtime callsites consume validated domain records instead of duplicating command parsing; task/repository/directory + conversation metadata and PTY/session lifecycle wrappers now route through this service.
 
 This separation prevents UI-only behavior and enables reliable automation without computer-use tooling.
 

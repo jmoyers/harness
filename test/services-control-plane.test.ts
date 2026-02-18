@@ -59,6 +59,15 @@ function conversationRecord(conversationId = 'conversation-1', directoryId = 'di
   };
 }
 
+function sessionControllerRecord(controllerId = 'controller-1'): Record<string, unknown> {
+  return {
+    controllerId,
+    controllerType: 'human',
+    controllerLabel: 'Human',
+    claimedAt: '2026-02-18T00:00:00.000Z',
+  };
+}
+
 function taskRecord(
   taskId = 'task-1',
   status: 'draft' | 'ready' | 'in-progress' | 'completed' = 'ready',
@@ -192,6 +201,55 @@ void test('control-plane service sends directory/conversation commands and parse
   assert.equal(client.commands[4]?.type, 'conversation.update');
   assert.equal(client.commands[5]?.type, 'conversation.archive');
   assert.equal(client.commands[6]?.type, 'directory.archive');
+});
+
+void test('control-plane service wraps pty/session lifecycle commands', async () => {
+  const client = new MockCommandClient();
+  const service = new ControlPlaneService(client, {
+    tenantId: 'tenant-1',
+    userId: 'user-1',
+    workspaceId: 'workspace-1',
+  });
+
+  client.results.push({}, {}, {}, {}, {}, {}, { controller: sessionControllerRecord('controller-ok') }, { controller: {} });
+
+  await service.attachPty({ sessionId: 'session-a', sinceCursor: 10 });
+  await service.detachPty('session-a');
+  await service.subscribePtyEvents('session-a');
+  await service.unsubscribePtyEvents('session-a');
+  await service.closePtySession('session-a');
+  await service.removeSession('session-a');
+  assert.equal(
+    (await service.claimSession({
+      sessionId: 'session-a',
+      controllerId: 'controller-local',
+      controllerType: 'human',
+      controllerLabel: 'Human',
+      reason: 'takeover',
+      takeover: true,
+    }))?.controllerId,
+    'controller-ok',
+  );
+  assert.equal(
+    await service.claimSession({
+      sessionId: 'session-a',
+      controllerId: 'controller-local',
+      controllerType: 'human',
+      controllerLabel: 'Human',
+      reason: 'takeover',
+      takeover: true,
+    }),
+    null,
+  );
+
+  assert.equal(client.commands[0]?.type, 'pty.attach');
+  assert.equal(client.commands[1]?.type, 'pty.detach');
+  assert.equal(client.commands[2]?.type, 'pty.subscribe-events');
+  assert.equal(client.commands[3]?.type, 'pty.unsubscribe-events');
+  assert.equal(client.commands[4]?.type, 'pty.close');
+  assert.equal(client.commands[5]?.type, 'session.remove');
+  assert.equal(client.commands[6]?.type, 'session.claim');
+  assert.equal(client.commands[7]?.type, 'session.claim');
 });
 
 void test('control-plane service directory/conversation parse helpers handle malformed payloads', async () => {

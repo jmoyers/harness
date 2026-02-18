@@ -96,7 +96,6 @@ import { isUiModalOverlayHit } from '../src/ui/kit.ts';
 import {
   parseDirectoryGitStatusRecord,
   parseRepositoryRecord,
-  parseSessionControllerRecord,
   parseTaskRecord,
 } from '../src/mux/live-mux/control-plane-records.ts';
 import {
@@ -929,10 +928,7 @@ async function main(): Promise<number> {
 
   async function subscribeConversationEvents(sessionId: string): Promise<void> {
     try {
-      await streamClient.sendCommand({
-        type: 'pty.subscribe-events',
-        sessionId,
-      });
+      await controlPlaneService.subscribePtyEvents(sessionId);
     } catch (error: unknown) {
       if (!isSessionNotFoundError(error) && !isSessionNotLiveError(error)) {
         throw error;
@@ -942,10 +938,7 @@ async function main(): Promise<number> {
 
   async function unsubscribeConversationEvents(sessionId: string): Promise<void> {
     try {
-      await streamClient.sendCommand({
-        type: 'pty.unsubscribe-events',
-        sessionId,
-      });
+      await controlPlaneService.unsubscribePtyEvents(sessionId);
     } catch (error: unknown) {
       if (!isSessionNotFoundError(error) && !isSessionNotLiveError(error)) {
         throw error;
@@ -1427,10 +1420,7 @@ async function main(): Promise<number> {
         streamClient.sendSignal(sessionId, signal);
       },
       closeSession: async (sessionId) => {
-        await streamClient.sendCommand({
-          type: 'pty.close',
-          sessionId,
-        });
+        await controlPlaneService.closePtySession(sessionId);
       },
       markDirty,
       setStop: (next) => { stop = next; },
@@ -2192,8 +2182,7 @@ async function main(): Promise<number> {
     const attachResult = await conversationManager.attachIfLive({
       sessionId,
       attach: async (sinceCursor) => {
-        await streamClient.sendCommand({
-          type: 'pty.attach',
+        await controlPlaneService.attachPty({
           sessionId,
           sinceCursor,
         });
@@ -2211,10 +2200,7 @@ async function main(): Promise<number> {
     const detachResult = await conversationManager.detachIfAttached({
       sessionId,
       detach: async () => {
-        await streamClient.sendCommand({
-          type: 'pty.detach',
-          sessionId,
-        });
+        await controlPlaneService.detachPty(sessionId);
       },
     });
     if (detachResult.detached && detachResult.conversation !== null) {
@@ -3024,16 +3010,10 @@ async function main(): Promise<number> {
       sessionId,
       conversations: _unsafeConversationMap,
       closePtySession: async (targetSessionId) => {
-        await streamClient.sendCommand({
-          type: 'pty.close',
-          sessionId: targetSessionId,
-        });
+        await controlPlaneService.closePtySession(targetSessionId);
       },
       removeSession: async (targetSessionId) => {
-        await streamClient.sendCommand({
-          type: 'session.remove',
-          sessionId: targetSessionId,
-        });
+        await controlPlaneService.removeSession(targetSessionId);
       },
       isSessionNotFoundError,
       archiveConversationRecord: async (targetSessionId) => {
@@ -3060,8 +3040,7 @@ async function main(): Promise<number> {
       sessionId,
       conversationsHas: (targetSessionId) => conversationManager.has(targetSessionId),
       claimSession: async (targetSessionId) => {
-        const result = await streamClient.sendCommand({
-          type: 'session.claim',
+        return await controlPlaneService.claimSession({
           sessionId: targetSessionId,
           controllerId: muxControllerId,
           controllerType: 'human',
@@ -3069,7 +3048,6 @@ async function main(): Promise<number> {
           reason: 'human takeover',
           takeover: true,
         });
-        return parseSessionControllerRecord(result['controller']);
       },
       applyController: (targetSessionId, controller) => {
         conversationManager.setController(targetSessionId, controller);
@@ -3121,10 +3099,7 @@ async function main(): Promise<number> {
       conversationDirectoryId: (sessionId) => conversationManager.directoryIdOf(sessionId),
       conversationLive: (sessionId) => conversationManager.isLive(sessionId),
       closePtySession: async (sessionId) => {
-        await streamClient.sendCommand({
-          type: 'pty.close',
-          sessionId,
-        });
+        await controlPlaneService.closePtySession(sessionId);
       },
       archiveConversationRecord: async (sessionId) => {
         await controlPlaneService.archiveConversation(sessionId);

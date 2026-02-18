@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~4441 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~4416 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -665,3 +665,26 @@ bun run loc:verify:enforce
   - `bun run verify`: pass
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4441 non-empty LOC
+
+### Checkpoint AC (2026-02-18): ControlPlaneService expands to session/PTy lifecycle wrappers
+
+- Continued Phase 5 by extending `ControlPlaneService` with session/PTy lifecycle wrappers:
+  - `pty.attach`
+  - `pty.detach`
+  - `pty.subscribe-events`
+  - `pty.unsubscribe-events`
+  - `pty.close`
+  - `session.remove`
+  - `session.claim` (with parsed controller record output)
+- Updated `scripts/codex-live-mux-runtime.ts` callsites to delegate these flows through the service:
+  - conversation event subscribe/unsubscribe
+  - attach/detach flows
+  - stop/archive/close-directory PTY close + session removal flows
+  - takeover claim flow
+- Expanded `test/services-control-plane.test.ts` to cover new session/PTy service methods including malformed controller parsing fallback.
+- Validation at checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun run verify`: pass
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4416 non-empty LOC
