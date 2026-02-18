@@ -7,9 +7,10 @@ Delete this file after the refactor is complete.
 
 ## Latest Checkpoint
 
-- Extracted a consolidated `RuntimeRenderPipeline` service that composes right-pane render, left-rail render, render-state prep, and flush orchestration behind one runtime-facing entrypoint.
-- Rewired runtime render wiring to instantiate the pipeline once and delegate `render()` calls through the pipeline.
-- Added dedicated coverage tests for pipeline composition and both render-state branches (null-state clear-dirty path and non-null flush path).
+- Pivoted away from new wrapper/proxy layering and applied direct dependency injection on the input subsystem boundary.
+- Refactored `RuntimeInputRouter` so runtime passes concrete dependencies directly (workspace/actions/managers utilities), and the router internally composes modal/rail/main-pane input services.
+- Rewired mux runtime input construction to the direct router dependency shape, removing nested `modal/rail/mainPane` callback bag assembly in runtime.
+- Expanded router tests to cover modal shortcut routing paths and keep 100% function coverage after constructor refactor.
 - Verification status:
   - `bun run verify`: pass
   - `bun run loc:verify`: advisory pass
