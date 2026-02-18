@@ -81,7 +81,6 @@ import {
   shutdownPerfCore,
   startPerfSpan,
 } from '../src/perf/perf-core.ts';
-import { isUiModalOverlayHit } from '../src/ui/kit.ts';
 import {
   parseRepositoryRecord,
   parseTaskRecord,
@@ -96,7 +95,6 @@ import {
 } from '../src/mux/live-mux/git-parsing.ts';
 import { readProcessUsageSample } from '../src/mux/live-mux/git-snapshot.ts';
 import { probeTerminalPalette } from '../src/mux/live-mux/terminal-palette.ts';
-import { dismissModalOnOutsideClick as dismissModalOnOutsideClickFn } from '../src/mux/live-mux/modal-pointer.ts';
 import {
   visibleLeftNavTargets,
   type LeftNavSelection,
@@ -116,13 +114,6 @@ import {
   subscribeObservedStream,
   unsubscribeObservedStream,
 } from '../src/mux/live-mux/observed-stream.ts';
-import {
-  buildAddDirectoryModalOverlay as buildAddDirectoryModalOverlayFrame,
-  buildConversationTitleModalOverlay as buildConversationTitleModalOverlayFrame,
-  buildNewThreadModalOverlay as buildNewThreadModalOverlayFrame,
-  buildRepositoryModalOverlay as buildRepositoryModalOverlayFrame,
-  buildTaskEditorModalOverlay as buildTaskEditorModalOverlayFrame,
-} from '../src/mux/live-mux/modal-overlays.ts';
 import {
   compactDebugText,
   conversationSummary,
@@ -246,6 +237,7 @@ import { ConversationPane } from '../src/ui/panes/conversation.ts';
 import { HomePane } from '../src/ui/panes/home.ts';
 import { ProjectPane } from '../src/ui/panes/project.ts';
 import { LeftRailPane } from '../src/ui/panes/left-rail.ts';
+import { ModalManager } from '../src/ui/modals/manager.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -1344,6 +1336,15 @@ async function main(): Promise<number> {
   let taskEditorPrompt: TaskEditorPromptState | null = null;
   let conversationTitleEdit: ConversationTitleEditState | null = null;
   let conversationTitleEditClickState: { conversationId: string; atMs: number } | null = null;
+  const modalManager = new ModalManager({
+    theme: MUX_MODAL_THEME,
+    resolveRepositoryName: (repositoryId) => repositories.get(repositoryId)?.name ?? null,
+    getNewThreadPrompt: () => newThreadPrompt,
+    getAddDirectoryPrompt: () => addDirectoryPrompt,
+    getTaskEditorPrompt: () => taskEditorPrompt,
+    getRepositoryPrompt: () => repositoryPrompt,
+    getConversationTitleEdit: () => conversationTitleEdit,
+  });
   let paneDividerDragActive = false;
   let resizeTimer: NodeJS.Timeout | null = null;
   let pendingSize: { cols: number; rows: number } | null = null;
@@ -2049,62 +2050,17 @@ async function main(): Promise<number> {
   const buildNewThreadModalOverlay = (
     viewportRows: number,
   ) => {
-    return buildNewThreadModalOverlayFrame(layout.cols, viewportRows, newThreadPrompt, MUX_MODAL_THEME);
-  };
-
-  const buildAddDirectoryModalOverlay = (
-    viewportRows: number,
-  ) => {
-    return buildAddDirectoryModalOverlayFrame(layout.cols, viewportRows, addDirectoryPrompt, MUX_MODAL_THEME);
-  };
-
-  const buildTaskEditorModalOverlay = (
-    viewportRows: number,
-  ) => {
-    return buildTaskEditorModalOverlayFrame(
-      layout.cols,
-      viewportRows,
-      taskEditorPrompt,
-      (repositoryId) => repositories.get(repositoryId)?.name ?? null,
-      MUX_MODAL_THEME,
-    );
-  };
-
-  const buildRepositoryModalOverlay = (
-    viewportRows: number,
-  ) => {
-    return buildRepositoryModalOverlayFrame(layout.cols, viewportRows, repositoryPrompt, MUX_MODAL_THEME);
+    return modalManager.buildNewThreadOverlay(layout.cols, viewportRows);
   };
 
   const buildConversationTitleModalOverlay = (
     viewportRows: number,
   ) => {
-    return buildConversationTitleModalOverlayFrame(
-      layout.cols,
-      viewportRows,
-      conversationTitleEdit,
-      MUX_MODAL_THEME,
-    );
+    return modalManager.buildConversationTitleOverlay(layout.cols, viewportRows);
   };
 
   const buildCurrentModalOverlay = () => {
-    const newThreadOverlay = buildNewThreadModalOverlay(layout.rows);
-    if (newThreadOverlay !== null) {
-      return newThreadOverlay;
-    }
-    const addDirectoryOverlay = buildAddDirectoryModalOverlay(layout.rows);
-    if (addDirectoryOverlay !== null) {
-      return addDirectoryOverlay;
-    }
-    const taskEditorOverlay = buildTaskEditorModalOverlay(layout.rows);
-    if (taskEditorOverlay !== null) {
-      return taskEditorOverlay;
-    }
-    const repositoryOverlay = buildRepositoryModalOverlay(layout.rows);
-    if (repositoryOverlay !== null) {
-      return repositoryOverlay;
-    }
-    return buildConversationTitleModalOverlay(layout.rows);
+    return modalManager.buildCurrentOverlay(layout.cols, layout.rows);
   };
 
   const dismissModalOnOutsideClick = (
@@ -2112,12 +2068,12 @@ async function main(): Promise<number> {
     dismiss: () => void,
     onInsidePointerPress?: (col: number, row: number) => boolean,
   ): boolean => {
-    const result = dismissModalOnOutsideClickFn({
+    const result = modalManager.dismissOnOutsideClick({
       input,
       inputRemainder,
+      layoutCols: layout.cols,
+      viewportRows: layout.rows,
       dismiss,
-      buildCurrentModalOverlay,
-      isOverlayHit: isUiModalOverlayHit,
       ...(onInsidePointerPress === undefined
         ? {}
         : {

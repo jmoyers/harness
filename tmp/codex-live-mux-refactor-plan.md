@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~4286 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~4245 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -151,7 +151,7 @@ bun run loc:verify:enforce
 - [~] Phase 5: ControlPlaneService extraction.
 - [~] Phase 6: Screen extraction in progress.
 - [~] Phase 7: Pane extraction in progress.
-- [ ] Phase 8: ModalManager + InputRouter extraction.
+- [~] Phase 8: ModalManager + InputRouter extraction in progress.
 - [ ] Phase 9: Thin runtime + cleanup + strict gates.
 
 ## Notes
@@ -740,3 +740,16 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4286 non-empty LOC
+
+### Checkpoint AG (2026-02-18): Phase 8 start with class-based `ModalManager`
+
+- Started Phase 8 by introducing `src/ui/modals/manager.ts` with class-owned modal responsibilities:
+  - overlay builder delegation for new-thread/add-directory/task-editor/repository/conversation-title modals
+  - ordered current-overlay resolution
+  - outside-click dismiss routing (with input remainder threading and optional inside-click consumption)
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate modal overlay assembly and outside-click dismissal through `ModalManager`, removing inline modal orchestration logic from runtime.
+- Added `test/ui-modal-manager.test.ts` with default + injected-dependency coverage for priority ordering, dismiss behavior, and constructor dependency seams.
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4245 non-empty LOC
