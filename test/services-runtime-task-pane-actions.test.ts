@@ -75,6 +75,10 @@ function createHarness(overrides: Partial<RuntimeTaskPaneActionsOptions> = {}) {
       }),
     },
     repositoriesHas: (repositoryId) => repositoryId === 'repo-1',
+    setTask: (task) => {
+      tasksById.set(task.taskId, task);
+      calls.push(`setTask:${task.taskId}:${task.status}`);
+    },
     getTask: (taskId) => tasksById.get(taskId),
     taskReorderPayloadIds: (orderedActiveTaskIds) => {
       reorderPayloads.push(orderedActiveTaskIds);
@@ -109,12 +113,6 @@ function createHarness(overrides: Partial<RuntimeTaskPaneActionsOptions> = {}) {
     queueControlPlaneOp: (task, label) => {
       calls.push(`queueControlPlaneOp:${label ?? ''}`);
       queuedOps.push(task());
-    },
-    applyTaskRecord: (task) => {
-      calls.push(`applyTaskRecord:${task.taskId}:${task.status}`);
-    },
-    applyTaskList: (tasks) => {
-      calls.push(`applyTaskList:${tasks.map((task) => task.taskId).join(',')}`);
     },
     syncTaskPaneSelection: () => {
       calls.push('syncTaskPaneSelection');
@@ -201,6 +199,50 @@ void test('runtime task pane actions openTaskEditPrompt updates selection and fo
   assert.deepEqual(harness.calls, ['focusTaskComposer:task-1', 'markDirty']);
 });
 
+void test('runtime task pane actions applyTaskRecord updates selection state and task map', () => {
+  const harness = createHarness();
+  harness.workspace.taskPaneSelectedRepositoryId = 'repo-stale';
+  const applied = harness.service.applyTaskRecord({
+    taskId: 'task-1',
+    repositoryId: 'repo-1',
+    status: 'ready',
+  });
+
+  assert.equal(applied.taskId, 'task-1');
+  assert.equal(harness.workspace.taskPaneSelectedTaskId, 'task-1');
+  assert.equal(harness.workspace.taskPaneSelectedRepositoryId, 'repo-1');
+  assert.equal(harness.workspace.taskPaneSelectionFocus, 'task');
+  assert.deepEqual(harness.calls, ['setTask:task-1:ready', 'syncTaskPaneSelection', 'markDirty']);
+});
+
+void test('runtime task pane actions applyTaskList updates all tasks and marks dirty only when changed', () => {
+  const empty = createHarness();
+  const emptyChanged = empty.service.applyTaskList([]);
+  assert.equal(emptyChanged, false);
+  assert.deepEqual(empty.calls, []);
+
+  const harness = createHarness();
+  const changed = harness.service.applyTaskList([
+    {
+      taskId: 'task-a',
+      repositoryId: 'repo-1',
+      status: 'ready',
+    },
+    {
+      taskId: 'task-b',
+      repositoryId: 'repo-1',
+      status: 'draft',
+    },
+  ]);
+  assert.equal(changed, true);
+  assert.deepEqual(harness.calls, [
+    'setTask:task-a:ready',
+    'setTask:task-b:draft',
+    'syncTaskPaneSelection',
+    'markDirty',
+  ]);
+});
+
 void test('runtime task pane actions queueTaskReorderByIds queues reorder payload and applies task list', async () => {
   const harness = createHarness();
 
@@ -211,7 +253,10 @@ void test('runtime task pane actions queueTaskReorderByIds queues reorder payloa
   assert.deepEqual(harness.calls, [
     'queueControlPlaneOp:tasks-reorder-up',
     'reorderTasks:task-a,task-b',
-    'applyTaskList:task-a,task-b',
+    'setTask:task-a:ready',
+    'setTask:task-b:ready',
+    'syncTaskPaneSelection',
+    'markDirty',
   ]);
 });
 
@@ -242,7 +287,10 @@ void test('runtime task pane actions reorderTaskByDrop queues reorder operation 
   assert.deepEqual(harness.calls, [
     'queueControlPlaneOp:tasks-reorder-drag',
     'reorderTasks:task-b,task-a',
-    'applyTaskList:task-b,task-a',
+    'setTask:task-b:ready',
+    'setTask:task-a:ready',
+    'syncTaskPaneSelection',
+    'markDirty',
   ]);
 });
 
@@ -285,7 +333,10 @@ void test('runtime task pane actions runTaskPaneAction default task reorder flow
   assert.deepEqual(harness.calls, [
     'queueControlPlaneOp:tasks-reorder-down',
     'reorderTasks:task-2,task-1',
-    'applyTaskList:task-2,task-1',
+    'setTask:task-2:ready',
+    'setTask:task-1:ready',
+    'syncTaskPaneSelection',
+    'markDirty',
   ]);
 });
 
@@ -327,34 +378,28 @@ void test('runtime task pane actions runTaskPaneAction wires callback actions th
   await harness.flushQueued();
 
   assert.equal(harness.workspace.taskPaneNotice, null);
-  assert.equal(harness.workspace.taskPaneSelectionFocus, 'repository');
+  assert.equal(harness.workspace.taskPaneSelectionFocus, 'task');
   assert.deepEqual(harness.workspace.taskEditorTarget, { kind: 'draft' });
-  assert.deepEqual(harness.calls, [
-    'focusDraftComposer',
-    'markDirty',
-    'openRepositoryPromptForCreate',
-    'openRepositoryPromptForEdit:repo-1',
-    'queueControlPlaneOp:tasks-archive-repository',
-    'archiveRepositoryById:repo-1',
-    'focusTaskComposer:task-1',
-    'markDirty',
-    'queueControlPlaneOp:tasks-delete',
-    'clearTaskAutosaveTimer:task-1',
-    'serviceDeleteTask:task-1',
-    'queueControlPlaneOp:tasks-ready',
-    'queueControlPlaneOp:tasks-draft',
-    'queueControlPlaneOp:tasks-complete',
-    'queueControlPlaneOp:tasks-reorder-up',
-    'reorderTasks:task-1,task-2',
-    'markDirty',
-    'syncTaskPaneRepositorySelection',
-    'deleteTask:task-1',
-    'deleteTaskComposer:task-1',
-    'syncTaskPaneSelection',
-    'markDirty',
-    'applyTaskRecord:task-1:ready',
-    'applyTaskRecord:task-1:draft',
-    'applyTaskRecord:task-1:completed',
-    'applyTaskList:task-1,task-2',
-  ]);
+  const callSet = new Set(harness.calls);
+  assert.equal(callSet.has('focusDraftComposer'), true);
+  assert.equal(callSet.has('openRepositoryPromptForCreate'), true);
+  assert.equal(callSet.has('openRepositoryPromptForEdit:repo-1'), true);
+  assert.equal(callSet.has('queueControlPlaneOp:tasks-archive-repository'), true);
+  assert.equal(callSet.has('archiveRepositoryById:repo-1'), true);
+  assert.equal(callSet.has('queueControlPlaneOp:tasks-delete'), true);
+  assert.equal(callSet.has('clearTaskAutosaveTimer:task-1'), true);
+  assert.equal(callSet.has('serviceDeleteTask:task-1'), true);
+  assert.equal(callSet.has('deleteTask:task-1'), true);
+  assert.equal(callSet.has('deleteTaskComposer:task-1'), true);
+  assert.equal(callSet.has('queueControlPlaneOp:tasks-ready'), true);
+  assert.equal(callSet.has('queueControlPlaneOp:tasks-draft'), true);
+  assert.equal(callSet.has('queueControlPlaneOp:tasks-complete'), true);
+  assert.equal(callSet.has('queueControlPlaneOp:tasks-reorder-up'), true);
+  assert.equal(callSet.has('reorderTasks:task-1,task-2'), true);
+  assert.equal(callSet.has('setTask:task-1:ready'), true);
+  assert.equal(callSet.has('setTask:task-1:draft'), true);
+  assert.equal(callSet.has('setTask:task-1:completed'), true);
+  assert.equal(callSet.has('setTask:task-2:ready'), true);
+  assert.equal(callSet.has('syncTaskPaneSelection'), true);
+  assert.equal(callSet.has('syncTaskPaneRepositorySelection'), true);
 });

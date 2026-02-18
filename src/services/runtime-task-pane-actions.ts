@@ -20,6 +20,7 @@ interface RuntimeTaskPaneActionsOptions<TTaskRecord extends TaskRecordShape> {
   readonly workspace: WorkspaceModel;
   readonly controlPlaneService: RuntimeTaskPaneActionService<TTaskRecord>;
   readonly repositoriesHas: (repositoryId: string) => boolean;
+  readonly setTask: (task: TTaskRecord) => void;
   readonly getTask: (taskId: string) => TTaskRecord | undefined;
   readonly taskReorderPayloadIds: (orderedActiveTaskIds: readonly string[]) => readonly string[];
   readonly reorderedActiveTaskIdsForDrop: (
@@ -34,8 +35,6 @@ interface RuntimeTaskPaneActionsOptions<TTaskRecord extends TaskRecordShape> {
   readonly selectedTask: () => TTaskRecord | null;
   readonly orderedTaskRecords: () => readonly TTaskRecord[];
   readonly queueControlPlaneOp: (task: () => Promise<void>, label?: string) => void;
-  readonly applyTaskRecord: (task: TTaskRecord) => void;
-  readonly applyTaskList: (tasks: readonly TTaskRecord[]) => void;
   readonly syncTaskPaneSelection: () => void;
   readonly syncTaskPaneRepositorySelection: () => void;
   readonly openRepositoryPromptForCreate: () => void;
@@ -77,12 +76,37 @@ export class RuntimeTaskPaneActions<TTaskRecord extends TaskRecordShape> {
     this.options.markDirty();
   }
 
+  applyTaskRecord(task: TTaskRecord): TTaskRecord {
+    this.options.setTask(task);
+    this.options.workspace.taskPaneSelectedTaskId = task.taskId;
+    if (task.repositoryId !== null && this.options.repositoriesHas(task.repositoryId)) {
+      this.options.workspace.taskPaneSelectedRepositoryId = task.repositoryId;
+    }
+    this.options.workspace.taskPaneSelectionFocus = 'task';
+    this.options.syncTaskPaneSelection();
+    this.options.markDirty();
+    return task;
+  }
+
+  applyTaskList(tasks: readonly TTaskRecord[]): boolean {
+    let changed = false;
+    for (const task of tasks) {
+      this.options.setTask(task);
+      changed = true;
+    }
+    if (changed) {
+      this.options.syncTaskPaneSelection();
+      this.options.markDirty();
+    }
+    return changed;
+  }
+
   queueTaskReorderByIds(orderedActiveTaskIds: readonly string[], label: string): void {
     this.options.queueControlPlaneOp(async () => {
       const tasks = await this.options.controlPlaneService.reorderTasks(
         this.options.taskReorderPayloadIds(orderedActiveTaskIds),
       );
-      this.options.applyTaskList(tasks);
+      this.applyTaskList(tasks);
     }, label);
   }
 
@@ -152,17 +176,17 @@ export class RuntimeTaskPaneActions<TTaskRecord extends TaskRecordShape> {
       },
       queueTaskReady: (taskId) => {
         this.options.queueControlPlaneOp(async () => {
-          this.options.applyTaskRecord(await this.options.controlPlaneService.taskReady(taskId));
+          this.applyTaskRecord(await this.options.controlPlaneService.taskReady(taskId));
         }, 'tasks-ready');
       },
       queueTaskDraft: (taskId) => {
         this.options.queueControlPlaneOp(async () => {
-          this.options.applyTaskRecord(await this.options.controlPlaneService.taskDraft(taskId));
+          this.applyTaskRecord(await this.options.controlPlaneService.taskDraft(taskId));
         }, 'tasks-draft');
       },
       queueTaskComplete: (taskId) => {
         this.options.queueControlPlaneOp(async () => {
-          this.options.applyTaskRecord(await this.options.controlPlaneService.taskComplete(taskId));
+          this.applyTaskRecord(await this.options.controlPlaneService.taskComplete(taskId));
         }, 'tasks-complete');
       },
       orderedTaskRecords: () => this.options.orderedTaskRecords(),

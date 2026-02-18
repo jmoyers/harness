@@ -1937,28 +1937,7 @@ async function main(): Promise<number> {
   };
 
   const applyTaskRecord = (parsed: ControlPlaneTaskRecord): ControlPlaneTaskRecord => {
-    taskManager.setTask(parsed);
-    workspace.taskPaneSelectedTaskId = parsed.taskId;
-    if (parsed.repositoryId !== null && repositories.has(parsed.repositoryId)) {
-      workspace.taskPaneSelectedRepositoryId = parsed.repositoryId;
-    }
-    workspace.taskPaneSelectionFocus = 'task';
-    syncTaskPaneSelection();
-    markDirty();
-    return parsed;
-  };
-
-  const applyTaskList = (tasks: readonly ControlPlaneTaskRecord[]): boolean => {
-    let changed = false;
-    for (const parsed of tasks) {
-      taskManager.setTask(parsed);
-      changed = true;
-    }
-    if (changed) {
-      syncTaskPaneSelection();
-      markDirty();
-    }
-    return changed;
+    return runtimeTaskPaneActions.applyTaskRecord(parsed);
   };
 
   const queueRepositoryPriorityOrder = (
@@ -2118,6 +2097,9 @@ async function main(): Promise<number> {
     workspace,
     controlPlaneService,
     repositoriesHas: (repositoryId) => repositories.has(repositoryId),
+    setTask: (task) => {
+      taskManager.setTask(task);
+    },
     getTask: (taskId) => taskManager.getTask(taskId),
     taskReorderPayloadIds: (orderedActiveTaskIds) =>
       taskManager.taskReorderPayloadIds({
@@ -2144,10 +2126,6 @@ async function main(): Promise<number> {
     selectedTask: () => selectedTaskRecord(),
     orderedTaskRecords,
     queueControlPlaneOp,
-    applyTaskRecord,
-    applyTaskList: (tasks) => {
-      applyTaskList(tasks);
-    },
     syncTaskPaneSelection,
     syncTaskPaneRepositorySelection,
     openRepositoryPromptForCreate,

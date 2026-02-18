@@ -1631,6 +1631,22 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2801 non-empty LOC
 
+### Checkpoint CJ (2026-02-18): Task projection state transitions moved from runtime into class-owned service methods
+
+- Extended `src/services/runtime-task-pane-actions.ts` so the class now owns task projection transitions:
+  - added `applyTaskRecord(...)` for task-map writes + selection/focus sync
+  - added `applyTaskList(...)` for bulk task-map writes + selection sync
+  - updated reorder and status-transition action flows to call class-owned projection methods directly
+- Updated `scripts/codex-live-mux-runtime.ts` to remove inline task projection logic and delegate through `RuntimeTaskPaneActions`.
+- Expanded `test/services-runtime-task-pane-actions.test.ts` to cover class-owned projection behavior:
+  - direct `applyTaskRecord` behavior
+  - direct `applyTaskList` behavior (changed + unchanged branches)
+  - action wiring expectations updated for service-owned task projection calls
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2780 non-empty LOC
+
 ### Next focus (yield-first)
 
 - Consolidation order (updated from critique review):
