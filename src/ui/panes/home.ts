@@ -43,7 +43,7 @@ export class HomePane {
     options: HomePaneOptions = {},
   ) {
     this.showTaskPlanningUi = options.showTaskPlanningUi ?? false;
-    this.animateBackground = options.animateBackground ?? false;
+    this.animateBackground = options.animateBackground ?? true;
     this.staticBackgroundTimeMs = this.nowMs();
   }
 

@@ -112,6 +112,40 @@ void test('home pane renders startup overlay when repositories and tasks are emp
   assert.equal(stripped.some((row) => row.includes('- harness v0.1.0 -')), true);
 });
 
+void test('home pane animates background by default', () => {
+  const renderedTimes: number[] = [];
+  let nowValue = 0;
+  const pane = new HomePane(
+    undefined,
+    (input) => {
+      renderedTimes.push(input.timeMs);
+      return input.contentRows;
+    },
+    () => {
+      nowValue += 100;
+      return nowValue;
+    },
+  );
+  const renderInput = {
+    layout: {
+      rightCols: 24,
+      paneRows: 4,
+    },
+    repositories: new Map(),
+    tasks: new Map(),
+    selectedRepositoryId: null,
+    repositoryDropdownOpen: false,
+    editorTarget: { kind: 'draft' } as const,
+    draftBuffer: createTaskComposerBuffer(''),
+    taskBufferById: new Map(),
+    notice: null,
+    scrollTop: 0,
+  };
+  pane.render(renderInput);
+  pane.render(renderInput);
+  assert.deepEqual(renderedTimes, [200, 300]);
+});
+
 void test('home pane can hide task/repository ui while keeping centered home text', () => {
   const pane = new HomePane(undefined, undefined, () => 0, {
     showTaskPlanningUi: false,
