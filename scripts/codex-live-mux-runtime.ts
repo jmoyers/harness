@@ -22,7 +22,6 @@ import {
   resolveMuxShortcutBindings,
 } from '../src/mux/input-shortcuts.ts';
 import { createMuxInputModeManager } from '../src/mux/terminal-input-modes.ts';
-import { ControlPlaneOpQueue } from '../src/mux/control-plane-op-queue.ts';
 import type { buildWorkspaceRailViewRows } from '../src/mux/workspace-rail-model.ts';
 import {
   createNewThreadPromptState,
@@ -176,6 +175,7 @@ import { RuntimeProcessWiring } from '../src/services/runtime-process-wiring.ts'
 import { RuntimeConversationActions } from '../src/services/runtime-conversation-actions.ts';
 import { RuntimeConversationActivation } from '../src/services/runtime-conversation-activation.ts';
 import { RuntimeConversationStarter } from '../src/services/runtime-conversation-starter.ts';
+import { RuntimeControlPlaneOps } from '../src/services/runtime-control-plane-ops.ts';
 import { RuntimeConversationTitleEditService } from '../src/services/runtime-conversation-title-edit.ts';
 import { RuntimeDirectoryActions } from '../src/services/runtime-directory-actions.ts';
 import { RuntimeEnvelopeHandler } from '../src/services/runtime-envelope-handler.ts';
@@ -1087,6 +1087,26 @@ async function main(): Promise<number> {
   const markDirty = (): void => {
     runtimeRenderLifecycle.markDirty();
   };
+  const controlPlaneOps = new RuntimeControlPlaneOps({
+    onFatal: (error: unknown) => {
+      handleRuntimeFatal('control-plane-pump', error);
+    },
+    startPerfSpan,
+    recordPerfEvent,
+    writeStderr: (text) => process.stderr.write(text),
+  });
+  const waitForControlPlaneDrain = async (): Promise<void> => {
+    await controlPlaneOps.waitForDrain();
+  };
+  const queueControlPlaneOp = (task: () => Promise<void>, label = 'interactive-op'): void => {
+    controlPlaneOps.enqueueInteractive(task, label);
+  };
+  const queueBackgroundControlPlaneOp = (
+    task: () => Promise<void>,
+    label = 'background-op',
+  ): void => {
+    controlPlaneOps.enqueueBackground(task, label);
+  };
   const processUsageRefreshService = new ProcessUsageRefreshService<
     ConversationState,
     ProcessUsageSample
@@ -1181,7 +1201,7 @@ async function main(): Promise<number> {
   });
   const outputLoadSampler = new OutputLoadSampler({
     recordPerfEvent,
-    getControlPlaneQueueMetrics: () => controlPlaneQueue.metrics(),
+    getControlPlaneQueueMetrics: () => controlPlaneOps.metrics(),
     getActiveConversationId: () => conversationManager.activeConversationId,
     getPendingPersistedEvents: () => eventPersistence.pendingCount(),
     onStatusRowChanged: markDirty,
@@ -1343,83 +1363,6 @@ async function main(): Promise<number> {
     leftPaneColsOverride = Math.max(1, normalizedCol - 1);
     applyLayout(size);
     queuePersistMuxUiState();
-  };
-
-  const controlPlaneOpSpans = new Map<number, ReturnType<typeof startPerfSpan>>();
-  const controlPlaneQueue = new ControlPlaneOpQueue({
-    onFatal: (error: unknown) => {
-      handleRuntimeFatal('control-plane-pump', error);
-    },
-    onEnqueued: (event, metrics) => {
-      recordPerfEvent('mux.control-plane.op.enqueued', {
-        id: event.id,
-        label: event.label,
-        priority: event.priority,
-        interactiveQueued: metrics.interactiveQueued,
-        backgroundQueued: metrics.backgroundQueued,
-      });
-    },
-    onStart: (event, metrics) => {
-      const opSpan = startPerfSpan('mux.control-plane.op', {
-        id: event.id,
-        label: event.label,
-        priority: event.priority,
-        waitMs: event.waitMs,
-      });
-      controlPlaneOpSpans.set(event.id, opSpan);
-      recordPerfEvent('mux.control-plane.op.start', {
-        id: event.id,
-        label: event.label,
-        priority: event.priority,
-        waitMs: event.waitMs,
-        interactiveQueued: metrics.interactiveQueued,
-        backgroundQueued: metrics.backgroundQueued,
-      });
-    },
-    onSuccess: (event) => {
-      const opSpan = controlPlaneOpSpans.get(event.id);
-      if (opSpan !== undefined) {
-        opSpan.end({
-          id: event.id,
-          label: event.label,
-          priority: event.priority,
-          status: 'ok',
-          waitMs: event.waitMs,
-        });
-        controlPlaneOpSpans.delete(event.id);
-      }
-    },
-    onError: (event, _metrics, error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      const opSpan = controlPlaneOpSpans.get(event.id);
-      if (opSpan !== undefined) {
-        opSpan.end({
-          id: event.id,
-          label: event.label,
-          priority: event.priority,
-          status: 'error',
-          waitMs: event.waitMs,
-          message,
-        });
-        controlPlaneOpSpans.delete(event.id);
-      }
-      process.stderr.write(`[mux] control-plane error ${message}\n`);
-    },
-  });
-
-  const waitForControlPlaneDrain = async (): Promise<void> => {
-    await controlPlaneQueue.waitForDrain();
-  };
-
-  const queueControlPlaneOp = (task: () => Promise<void>, label = 'interactive-op'): void => {
-    controlPlaneQueue.enqueueInteractive(task, label);
-  };
-
-  const queueBackgroundControlPlaneOp = (
-    task: () => Promise<void>,
-    label = 'background-op',
-  ): void => {
-    controlPlaneQueue.enqueueBackground(task, label);
   };
 
   const runtimeConversationTitleEdit = new RuntimeConversationTitleEditService<ConversationState>({

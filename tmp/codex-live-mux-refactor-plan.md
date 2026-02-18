@@ -1595,6 +1595,25 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2867 non-empty LOC
 
+### Checkpoint CH (2026-02-18): Control-plane op queue wiring extracted into class service
+
+- Added `src/services/runtime-control-plane-ops.ts` with class-based `RuntimeControlPlaneOps` to own:
+  - interactive/background control-plane op queue ownership
+  - enqueue/start perf event emission
+  - per-op span lifecycle (`ok` / `error`)
+  - control-plane error stderr reporting and fatal callback routing
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate queue wiring through `RuntimeControlPlaneOps`:
+  - removed inline `ControlPlaneOpQueue` + span map callback block from runtime
+  - runtime now calls `enqueueInteractive`, `enqueueBackground`, `waitForDrain`, and `metrics` via service methods
+- Added `test/services-runtime-control-plane-ops.test.ts` with branch coverage for:
+  - interactive-first ordering and enqueue/start/success telemetry paths
+  - error span + stderr path with queue-drain continuity
+  - fatal callback path routed through `onFatal`
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2814 non-empty LOC
+
 ### Next focus (yield-first)
 
 - Consolidation order (updated from critique review):
