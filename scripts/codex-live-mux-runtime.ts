@@ -186,6 +186,7 @@ import { ControlPlaneService } from '../src/services/control-plane.ts';
 import { RecordingService } from '../src/services/recording.ts';
 import { StartupBackgroundProbeService } from '../src/services/startup-background-probe.ts';
 import { StartupBackgroundResumeService } from '../src/services/startup-background-resume.ts';
+import { StartupOutputTracker } from '../src/services/startup-output-tracker.ts';
 import { StartupSettledGate } from '../src/services/startup-settled-gate.ts';
 import { StartupSpanTracker } from '../src/services/startup-span-tracker.ts';
 import { StartupVisibility } from '../src/services/startup-visibility.ts';
@@ -618,7 +619,11 @@ async function main(): Promise<number> {
     visibleGlyphCellCount: (conversation) => startupVisibility.visibleGlyphCellCount(conversation),
     recordPerfEvent,
   });
-  const startupSessionFirstOutputObserved = new Set<string>();
+  const startupOutputTracker = new StartupOutputTracker({
+    startupSequencer,
+    startupSpanTracker,
+    recordPerfEvent,
+  });
 
   const resolveActiveDirectoryId = (): string | null => {
     workspace.activeDirectoryId = directoryManager.resolveActiveDirectoryId(workspace.activeDirectoryId);
@@ -3219,29 +3224,7 @@ async function main(): Promise<number> {
         outputSampleInactiveBytes += chunk.length;
         outputSampleInactiveChunks += 1;
       }
-      if (!startupSessionFirstOutputObserved.has(envelope.sessionId)) {
-        startupSessionFirstOutputObserved.add(envelope.sessionId);
-        recordPerfEvent('mux.session.first-output', {
-          sessionId: envelope.sessionId,
-          bytes: chunk.length,
-        });
-      }
-      if (
-        startupSpanTracker.firstPaintTargetSessionId !== null &&
-        envelope.sessionId === startupSpanTracker.firstPaintTargetSessionId &&
-        !startupSequencer.snapshot().firstOutputObserved
-      ) {
-        if (startupSequencer.markFirstOutput(envelope.sessionId)) {
-          recordPerfEvent('mux.startup.active-first-output', {
-            sessionId: envelope.sessionId,
-            bytes: chunk.length,
-          });
-          startupSpanTracker.endFirstOutputSpan({
-            observed: true,
-            bytes: chunk.length,
-          });
-        }
-      }
+      startupOutputTracker.onOutputChunk(envelope.sessionId, chunk.length);
       if (outputIngest.cursorRegressed) {
         recordPerfEvent('mux.output.cursor-regression', {
           sessionId: envelope.sessionId,

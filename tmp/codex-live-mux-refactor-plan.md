@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~3821 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~3804 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -980,3 +980,16 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3821 non-empty LOC
+
+### Checkpoint AY (2026-02-18): Service extraction continues with class-based startup output tracking
+
+- Added `src/services/startup-output-tracker.ts` with a class-based `StartupOutputTracker` that owns:
+  - per-session first-output observation dedupe for `mux.session.first-output`
+  - startup target-session first-output gate coordination with `StartupSequencer`
+  - startup first-output span completion (`StartupSpanTracker.endFirstOutputSpan`) on the first eligible target output
+- Updated `scripts/codex-live-mux-runtime.ts` `pty.output` handling to delegate first-output observation and startup-first-output gating to `StartupOutputTracker`, removing inline set/gate logic.
+- Added `test/services-startup-output-tracker.test.ts` with coverage for session-level dedupe, target startup first-output success path, and mark-failure no-op behavior.
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3804 non-empty LOC
