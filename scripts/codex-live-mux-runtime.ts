@@ -1663,14 +1663,8 @@ async function main(): Promise<number> {
     if (!directoryManager.hasDirectory(directoryId)) {
       return;
     }
-    workspace.activeDirectoryId = directoryId;
-    workspace.selectLeftNavProject(directoryId, repositoryGroupIdForDirectory(directoryId));
+    workspace.enterProjectPane(directoryId, repositoryGroupIdForDirectory(directoryId));
     noteGitActivity(directoryId);
-    workspace.mainPaneMode = 'project';
-    workspace.homePaneDragState = null;
-    workspace.taskPaneTaskEditClickState = null;
-    workspace.taskPaneRepositoryEditClickState = null;
-    workspace.projectPaneScrollTop = 0;
     refreshProjectPaneSnapshot(directoryId);
     screen.resetFrameCache();
   };
@@ -1887,19 +1881,10 @@ async function main(): Promise<number> {
   };
 
   const enterHomePane = (): void => {
-    workspace.mainPaneMode = 'home';
-    workspace.selectLeftNavHome();
-    workspace.projectPaneSnapshot = null;
-    workspace.projectPaneScrollTop = 0;
+    workspace.enterHomePane();
     selection = null;
     selectionDrag = null;
     releaseViewportPinForSelection();
-    workspace.taskPaneScrollTop = 0;
-    workspace.taskPaneNotice = null;
-    workspace.taskRepositoryDropdownOpen = false;
-    workspace.taskPaneTaskEditClickState = null;
-    workspace.taskPaneRepositoryEditClickState = null;
-    workspace.homePaneDragState = null;
     syncTaskPaneSelection();
     syncTaskPaneRepositorySelection();
     screen.resetFrameCache();

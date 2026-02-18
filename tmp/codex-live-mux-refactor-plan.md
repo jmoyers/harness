@@ -1231,9 +1231,21 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3302 non-empty LOC
 
+### Checkpoint BM (2026-02-18): WorkspaceModel owns project/home pane transition state mutations
+
+- Extended `src/domain/workspace.ts` with class-owned transition methods:
+  - `enterProjectPane(directoryId, repositoryGroupId)`
+  - `enterHomePane()`
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate project/home pane state mutations to these `WorkspaceModel` methods instead of mutating many workspace fields inline.
+- Updated `test/domain-workspace.test.ts` with a new pane-transition test that validates project/home transition side effects.
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3287 non-empty LOC
+
 ### Next focus (yield-first)
 
 - Continue action-handler extraction before wiring cleanup:
-  - conversation/directory lifecycle handlers that still mutate workspace + manager state inline
+  - task selection/editor actions (`focusDraftComposer`, `selectTaskById`, `selectRepositoryById`) into class-owned workspace/task transitions
   - task + selection transition ownership into workspace/task domain methods
   - hydration flow extraction into manager/service-owned methods

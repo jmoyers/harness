@@ -128,4 +128,27 @@ export class WorkspaceModel {
       sessionId,
     };
   }
+
+  enterProjectPane(directoryId: string, repositoryGroupId: string): void {
+    this.activeDirectoryId = directoryId;
+    this.selectLeftNavProject(directoryId, repositoryGroupId);
+    this.mainPaneMode = 'project';
+    this.homePaneDragState = null;
+    this.taskPaneTaskEditClickState = null;
+    this.taskPaneRepositoryEditClickState = null;
+    this.projectPaneScrollTop = 0;
+  }
+
+  enterHomePane(): void {
+    this.mainPaneMode = 'home';
+    this.selectLeftNavHome();
+    this.projectPaneSnapshot = null;
+    this.projectPaneScrollTop = 0;
+    this.taskPaneScrollTop = 0;
+    this.taskPaneNotice = null;
+    this.taskRepositoryDropdownOpen = false;
+    this.taskPaneTaskEditClickState = null;
+    this.taskPaneRepositoryEditClickState = null;
+    this.homePaneDragState = null;
+  }
 }
