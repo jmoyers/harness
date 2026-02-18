@@ -190,6 +190,7 @@ import { RuntimeDirectoryActions } from '../src/services/runtime-directory-actio
 import { RuntimeEnvelopeHandler } from '../src/services/runtime-envelope-handler.ts';
 import { RuntimeRenderFlush } from '../src/services/runtime-render-flush.ts';
 import { RuntimeLeftRailRender } from '../src/services/runtime-left-rail-render.ts';
+import { RuntimeRenderOrchestrator } from '../src/services/runtime-render-orchestrator.ts';
 import { RuntimeRightPaneRender } from '../src/services/runtime-right-pane-render.ts';
 import { RuntimeRenderState } from '../src/services/runtime-render-state.ts';
 import { RuntimeRenderLifecycle } from '../src/services/runtime-render-lifecycle.ts';
@@ -2543,35 +2544,44 @@ async function main(): Promise<number> {
     snapshotFrame: (conversation) => conversation.oracle.snapshotWithoutHash(),
     selectionVisibleRows,
   });
+  const runtimeRenderOrchestrator = new RuntimeRenderOrchestrator<
+    typeof layout,
+    ConversationState,
+    ReturnType<TerminalSnapshotOracle['snapshotWithoutHash']>,
+    PaneSelection,
+    PaneSelectionDrag,
+    ReturnType<typeof buildWorkspaceRailViewRows>
+  >({
+    isScreenDirty: () => screen.isDirty(),
+    clearDirty: () => {
+      screen.clearDirty();
+    },
+    prepareRenderState: (renderSelection, renderSelectionDrag) =>
+      runtimeRenderState.prepareRenderState(renderSelection, renderSelectionDrag),
+    renderLeftRail: (renderLayout) => runtimeLeftRailRender.render(renderLayout),
+    setLatestRailViewRows: (rows) => {
+      latestRailViewRows = rows;
+    },
+    renderRightRows: (input) =>
+      runtimeRightPaneRender.renderRightRows({
+        layout: input.layout,
+        rightFrame: input.rightFrame,
+        homePaneActive: input.homePaneActive,
+        projectPaneActive: input.projectPaneActive,
+        activeDirectoryId: input.activeDirectoryId,
+      }),
+    flushRender: (input) => {
+      runtimeRenderFlush.flushRender(input);
+    },
+    activeDirectoryId: () => workspace.activeDirectoryId,
+  });
 
   const render = (): void => {
-    if (shuttingDown || !screen.isDirty()) {
-      return;
-    }
-    const renderState = runtimeRenderState.prepareRenderState(selection, selectionDrag);
-    if (renderState === null) {
-      screen.clearDirty();
-      return;
-    }
-    const rail = runtimeLeftRailRender.render(layout);
-    latestRailViewRows = rail.viewRows;
-    const rightRows = runtimeRightPaneRender.renderRightRows({
+    runtimeRenderOrchestrator.render({
+      shuttingDown,
       layout,
-      rightFrame: renderState.rightFrame,
-      homePaneActive: renderState.homePaneActive,
-      projectPaneActive: renderState.projectPaneActive,
-      activeDirectoryId: workspace.activeDirectoryId,
-    });
-    runtimeRenderFlush.flushRender({
-      layout,
-      projectPaneActive: renderState.projectPaneActive,
-      homePaneActive: renderState.homePaneActive,
-      activeConversation: renderState.activeConversation,
-      rightFrame: renderState.rightFrame,
-      renderSelection: renderState.renderSelection,
-      selectionRows: renderState.selectionRows,
-      railAnsiRows: rail.ansiRows,
-      rightRows,
+      selection,
+      selectionDrag,
     });
   };
 

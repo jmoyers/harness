@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~3135 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~3145 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -1446,9 +1446,26 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3135 non-empty LOC
 
+### Checkpoint BZ (2026-02-18): Render orchestration wrapper extracted into class service
+
+- Added `src/services/runtime-render-orchestrator.ts` with class-based `RuntimeRenderOrchestrator` to own:
+  - `shuttingDown` + screen-dirty short-circuit gates
+  - render-state prep null-path dirty clearing
+  - rail render -> latest rail rows publish -> right-pane render -> flush sequencing
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate `render()` orchestration through `RuntimeRenderOrchestrator.render(...)`.
+- Added `test/services-runtime-render-orchestrator.test.ts` with branch coverage for:
+  - shutting-down short-circuit
+  - non-dirty short-circuit
+  - null render-state dirty clear path
+  - full orchestration dataflow path
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3145 non-empty LOC
+
 ### Next focus (yield-first)
 
 - Continue startup/runtime orchestration extraction before callback-bag cleanup:
   - extract action-handler consolidation slice (conversation/directory/task orchestration bundles)
-  - extract remaining render orchestration seam (`render()` orchestration wrapper around rail/right/flush services)
   - then perform callback-bag reduction pass for input/router modules
+  - perform a small runtime cleanup pass to collapse temporary type-heavy wiring now that render seams are in place
