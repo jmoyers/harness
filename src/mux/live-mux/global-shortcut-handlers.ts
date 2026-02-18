@@ -8,6 +8,7 @@ interface HandleGlobalShortcutOptions {
   openOrCreateCritiqueConversationInDirectory: (directoryId: string) => Promise<void>;
   toggleGatewayProfile: () => Promise<void>;
   toggleGatewayStatusTimeline: () => Promise<void>;
+  toggleGatewayRenderTrace: (conversationId: string | null) => Promise<void>;
   resolveConversationForAction: () => string | null;
   conversationsHas: (sessionId: string) => boolean;
   queueControlPlaneOp: (task: () => Promise<void>, label: string) => void;
@@ -29,6 +30,7 @@ export function handleGlobalShortcut(options: HandleGlobalShortcutOptions): bool
     openOrCreateCritiqueConversationInDirectory,
     toggleGatewayProfile,
     toggleGatewayStatusTimeline,
+    toggleGatewayRenderTrace,
     resolveConversationForAction,
     conversationsHas,
     queueControlPlaneOp,
@@ -73,6 +75,13 @@ export function handleGlobalShortcut(options: HandleGlobalShortcutOptions): bool
     queueControlPlaneOp(async () => {
       await toggleGatewayStatusTimeline();
     }, 'shortcut-toggle-gateway-status-timeline');
+    return true;
+  }
+  if (shortcut === 'mux.gateway.render-trace.toggle') {
+    const targetConversationId = resolveConversationForAction();
+    queueControlPlaneOp(async () => {
+      await toggleGatewayRenderTrace(targetConversationId);
+    }, 'shortcut-toggle-gateway-render-trace');
     return true;
   }
   if (shortcut === 'mux.conversation.archive' || shortcut === 'mux.conversation.delete') {

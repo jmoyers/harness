@@ -24,6 +24,7 @@ void test('runtime control actions interrupt is a no-op for missing conversation
     },
     toggleGatewayProfiler: async () => ({ message: 'ignored' }),
     toggleGatewayStatusTimeline: async () => ({ message: 'ignored' }),
+    toggleGatewayRenderTrace: async () => ({ message: 'ignored' }),
     invocationDirectory: '/tmp/work',
     sessionName: null,
     setTaskPaneNotice: () => {},
@@ -53,6 +54,7 @@ void test('runtime control actions interrupt updates live conversation when inte
     },
     toggleGatewayProfiler: async () => ({ message: 'ignored' }),
     toggleGatewayStatusTimeline: async () => ({ message: 'ignored' }),
+    toggleGatewayRenderTrace: async () => ({ message: 'ignored' }),
     invocationDirectory: '/tmp/work',
     sessionName: null,
     setTaskPaneNotice: () => {},
@@ -84,6 +86,7 @@ void test('runtime control actions interrupt keeps state unchanged when interrup
     },
     toggleGatewayProfiler: async () => ({ message: 'ignored' }),
     toggleGatewayStatusTimeline: async () => ({ message: 'ignored' }),
+    toggleGatewayRenderTrace: async () => ({ message: 'ignored' }),
     invocationDirectory: '/tmp/work',
     sessionName: null,
     setTaskPaneNotice: () => {},
@@ -114,6 +117,7 @@ void test('runtime control actions toggle gateway profiler writes success notice
       return { message: 'profile started' };
     },
     toggleGatewayStatusTimeline: async () => ({ message: 'ignored' }),
+    toggleGatewayRenderTrace: async () => ({ message: 'ignored' }),
     invocationDirectory: '/tmp/work',
     sessionName: 'mux-main',
     setTaskPaneNotice: (message) => {
@@ -147,6 +151,7 @@ void test('runtime control actions toggle gateway profiler writes failure notice
       throw new Error('profile start failed');
     },
     toggleGatewayStatusTimeline: async () => ({ message: 'ignored' }),
+    toggleGatewayRenderTrace: async () => ({ message: 'ignored' }),
     invocationDirectory: '/tmp/work',
     sessionName: null,
     setTaskPaneNotice: (message) => {
@@ -182,6 +187,7 @@ void test('runtime control actions toggle gateway status timeline writes success
       assert.equal(input.sessionName, 'mux-main');
       return { message: 'status timeline started' };
     },
+    toggleGatewayRenderTrace: async () => ({ message: 'ignored' }),
     invocationDirectory: '/tmp/work',
     sessionName: 'mux-main',
     setTaskPaneNotice: (message) => {
@@ -215,6 +221,7 @@ void test('runtime control actions toggle gateway status timeline writes failure
     toggleGatewayStatusTimeline: async () => {
       throw new Error('status timeline start failed');
     },
+    toggleGatewayRenderTrace: async () => ({ message: 'ignored' }),
     invocationDirectory: '/tmp/work',
     sessionName: null,
     setTaskPaneNotice: (message) => {
@@ -230,6 +237,43 @@ void test('runtime control actions toggle gateway status timeline writes failure
   assert.deepEqual(notices, [
     'task:[status-trace] status timeline start failed',
     'debug:[status-trace] status timeline start failed',
+  ]);
+  assert.equal(dirtyCalls, 1);
+});
+
+void test('runtime control actions toggle gateway render trace writes scoped notice and forwards conversation id', async () => {
+  const notices: string[] = [];
+  let dirtyCalls = 0;
+  const actions = new RuntimeControlActions<TestConversationState>({
+    conversationById: () => undefined,
+    interruptSession: async () => ({ interrupted: false }),
+    nowIso: () => '2026-02-18T00:00:00.000Z',
+    markDirty: () => {
+      dirtyCalls += 1;
+    },
+    toggleGatewayProfiler: async () => ({ message: 'ignored' }),
+    toggleGatewayStatusTimeline: async () => ({ message: 'ignored' }),
+    toggleGatewayRenderTrace: async (input) => {
+      assert.equal(input.invocationDirectory, '/tmp/work');
+      assert.equal(input.sessionName, 'mux-main');
+      assert.equal(input.conversationId, 'session-123');
+      return { message: 'render trace started' };
+    },
+    invocationDirectory: '/tmp/work',
+    sessionName: 'mux-main',
+    setTaskPaneNotice: (message) => {
+      notices.push(`task:${message}`);
+    },
+    setDebugFooterNotice: (message) => {
+      notices.push(`debug:${message}`);
+    },
+  });
+
+  await actions.toggleGatewayRenderTrace('session-123');
+
+  assert.deepEqual(notices, [
+    'task:[render-trace:mux-main] render trace started',
+    'debug:[render-trace:mux-main] render trace started',
   ]);
   assert.equal(dirtyCalls, 1);
 });

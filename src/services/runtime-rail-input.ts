@@ -13,6 +13,7 @@ interface RuntimeRailWorkspaceActions {
   openOrCreateCritiqueConversationInDirectory(directoryId: string): Promise<void>;
   toggleGatewayProfiler(): Promise<void>;
   toggleGatewayStatusTimeline(): Promise<void>;
+  toggleGatewayRenderTrace(conversationId: string | null): Promise<void>;
   archiveConversation(sessionId: string): Promise<void>;
   interruptConversation(sessionId: string): Promise<void>;
   takeoverConversation(sessionId: string): Promise<void>;
@@ -132,6 +133,9 @@ export class RuntimeRailInput {
         },
         toggleGatewayStatusTimeline: async () => {
           await options.runtimeWorkspaceActions.toggleGatewayStatusTimeline();
+        },
+        toggleGatewayRenderTrace: async (conversationId) => {
+          await options.runtimeWorkspaceActions.toggleGatewayRenderTrace(conversationId);
         },
         archiveConversation: async (sessionId) => {
           await options.runtimeWorkspaceActions.archiveConversation(sessionId);

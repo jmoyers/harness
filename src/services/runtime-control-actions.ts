@@ -17,6 +17,10 @@ interface RuntimeGatewayStatusTimelineResult {
   readonly message: string;
 }
 
+interface RuntimeGatewayRenderTraceResult {
+  readonly message: string;
+}
+
 interface RuntimeControlActionsOptions<TConversation extends RuntimeConversationControlState> {
   readonly conversationById: (sessionId: string) => TConversation | undefined;
   readonly interruptSession: (sessionId: string) => Promise<RuntimeInterruptResult>;
@@ -30,6 +34,11 @@ interface RuntimeControlActionsOptions<TConversation extends RuntimeConversation
     invocationDirectory: string;
     sessionName: string | null;
   }) => Promise<RuntimeGatewayStatusTimelineResult>;
+  readonly toggleGatewayRenderTrace: (input: {
+    invocationDirectory: string;
+    sessionName: string | null;
+    conversationId: string | null;
+  }) => Promise<RuntimeGatewayRenderTraceResult>;
   readonly invocationDirectory: string;
   readonly sessionName: string | null;
   readonly setTaskPaneNotice: (message: string) => void;
@@ -79,6 +88,22 @@ export class RuntimeControlActions<TConversation extends RuntimeConversationCont
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       this.setNotices(this.scopeMessage('status-trace', message));
+    } finally {
+      this.options.markDirty();
+    }
+  }
+
+  async toggleGatewayRenderTrace(conversationId: string | null): Promise<void> {
+    try {
+      const result = await this.options.toggleGatewayRenderTrace({
+        invocationDirectory: this.options.invocationDirectory,
+        sessionName: this.options.sessionName,
+        conversationId,
+      });
+      this.setNotices(this.scopeMessage('render-trace', result.message));
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.setNotices(this.scopeMessage('render-trace', message));
     } finally {
       this.options.markDirty();
     }

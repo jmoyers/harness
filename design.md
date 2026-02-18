@@ -680,6 +680,7 @@ Design constraints:
   - interrupt
   - toggle gateway profiler capture (`mux.gateway.profile.toggle`, default `ctrl+p`)
   - toggle interleaved status timeline capture (`mux.gateway.status-timeline.toggle`, default `alt+r`)
+  - toggle focused render diagnostics capture (`mux.gateway.render-trace.toggle`, default `ctrl+]`)
   - open file/project
 
 Target layout sketch:

@@ -187,6 +187,7 @@ void test('live-mux rail layout shortcut hint collapses next/previous into singl
   assert.equal(visible.includes('ctrl+n/ctrl+n switch nav'), false);
   assert.equal(visible.includes('ctrl+p profile'), true);
   assert.equal(visible.includes('alt+r status'), true);
+  assert.equal(visible.includes('ctrl+] render'), true);
 });
 
 void test('live-mux rail model selects latest repository snapshot metadata and skips missing sessions', () => {

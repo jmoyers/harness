@@ -15,6 +15,8 @@ function baseOptions(overrides: Partial<Parameters<typeof handleGlobalShortcut>[
     critique: 0,
     profileToggle: 0,
     statusTimelineToggle: 0,
+    renderTraceToggle: 0,
+    renderTraceConversationId: null as string | null,
     archive: 0,
     interrupt: 0,
     takeover: 0,
@@ -39,6 +41,10 @@ function baseOptions(overrides: Partial<Parameters<typeof handleGlobalShortcut>[
     },
     toggleGatewayStatusTimeline: async () => {
       calls.statusTimelineToggle += 1;
+    },
+    toggleGatewayRenderTrace: async (conversationId) => {
+      calls.renderTraceToggle += 1;
+      calls.renderTraceConversationId = conversationId;
     },
     resolveConversationForAction: () => 'conversation-1',
     conversationsHas: () => true,
@@ -136,6 +142,19 @@ void test('global shortcut handler covers direct and queued actions', async () =
     assert.equal(queued[0]?.label, 'shortcut-toggle-gateway-status-timeline');
     await queued[0]!.task();
     assert.equal(calls.statusTimelineToggle, 1);
+  }
+
+  {
+    const { options, queued, calls } = baseOptions({
+      shortcut: 'mux.gateway.render-trace.toggle',
+      resolveConversationForAction: () => 'conversation-trace',
+    });
+    assert.equal(handleGlobalShortcut(options), true);
+    assert.equal(queued.length, 1);
+    assert.equal(queued[0]?.label, 'shortcut-toggle-gateway-render-trace');
+    await queued[0]!.task();
+    assert.equal(calls.renderTraceToggle, 1);
+    assert.equal(calls.renderTraceConversationId, 'conversation-trace');
   }
 
   {

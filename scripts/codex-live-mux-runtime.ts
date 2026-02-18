@@ -131,7 +131,13 @@ import { requestStop as requestStopFn } from '../src/mux/live-mux/runtime-shutdo
 import { openNewThreadPrompt as openNewThreadPromptFn } from '../src/mux/live-mux/actions-conversation.ts';
 import { toggleGatewayProfiler as toggleGatewayProfilerFn } from '../src/mux/live-mux/gateway-profiler.ts';
 import { toggleGatewayStatusTimeline as toggleGatewayStatusTimelineFn } from '../src/mux/live-mux/gateway-status-timeline.ts';
+import { toggleGatewayRenderTrace as toggleGatewayRenderTraceFn } from '../src/mux/live-mux/gateway-render-trace.ts';
 import { resolveStatusTimelineStatePath } from '../src/mux/live-mux/status-timeline-state.ts';
+import { resolveRenderTraceStatePath } from '../src/mux/live-mux/render-trace-state.ts';
+import {
+  findRenderTraceControlIssues,
+  renderTraceChunkPreview,
+} from '../src/mux/live-mux/render-trace-analysis.ts';
 import { WorkspaceModel } from '../src/domain/workspace.ts';
 import { ConversationManager, type ConversationSeed } from '../src/domain/conversations.ts';
 import { RepositoryManager } from '../src/domain/repositories.ts';
@@ -171,6 +177,7 @@ import { WorkspaceObservedEvents } from '../src/services/workspace-observed-even
 import { RuntimeWorkspaceObservedEvents } from '../src/services/runtime-workspace-observed-events.ts';
 import { StartupStateHydrationService } from '../src/services/startup-state-hydration.ts';
 import { StatusTimelineRecorder, type StatusTimelineLabels } from '../src/services/status-timeline-recorder.ts';
+import { RenderTraceRecorder, type RenderTraceLabels } from '../src/services/render-trace-recorder.ts';
 import { Screen, type ScreenCursorStyle } from '../src/ui/screen.ts';
 import { ConversationPane } from '../src/ui/panes/conversation.ts';
 import { DebugFooterNotice } from '../src/ui/debug-footer-notice.ts';
@@ -564,11 +571,14 @@ async function main(): Promise<number> {
   const statusTimelineRecorder = new StatusTimelineRecorder({
     statePath: resolveStatusTimelineStatePath(options.invocationDirectory, muxSessionName),
   });
-  const resolveStatusTimelineLabels = (input: {
+  const renderTraceRecorder = new RenderTraceRecorder({
+    statePath: resolveRenderTraceStatePath(options.invocationDirectory, muxSessionName),
+  });
+  const resolveTraceLabels = (input: {
     sessionId: string | null;
     directoryId: string | null;
     conversationId: string | null;
-  }): StatusTimelineLabels => {
+  }): RenderTraceLabels => {
     const conversation =
       input.sessionId === null
         ? input.conversationId === null
@@ -618,6 +628,32 @@ async function main(): Promise<number> {
           }
         : baseRecordInput;
     statusTimelineRecorder.record(recordInput);
+  };
+  const recordRenderTrace = (input: {
+    direction: 'incoming' | 'outgoing';
+    source: string;
+    eventType: string;
+    labels: RenderTraceLabels;
+    payload: unknown;
+    dedupeKey?: string;
+    dedupeValue?: string;
+  }): void => {
+    const baseRecordInput = {
+      direction: input.direction,
+      source: input.source,
+      eventType: input.eventType,
+      labels: input.labels,
+      payload: input.payload,
+    };
+    const recordInput: Parameters<RenderTraceRecorder['record']>[0] =
+      input.dedupeKey !== undefined && input.dedupeValue !== undefined
+        ? {
+            ...baseRecordInput,
+            dedupeKey: input.dedupeKey,
+            dedupeValue: input.dedupeValue,
+          }
+        : baseRecordInput;
+    renderTraceRecorder.record(recordInput);
   };
   let keyEventSubscription: Awaited<ReturnType<typeof subscribeControlPlaneKeyEvents>> | null =
     null;
@@ -1111,7 +1147,39 @@ async function main(): Promise<number> {
 
   const idFactory = (): string => `event-${randomUUID()}`;
   let exit: PtyExit | null = null;
-  const screen = new Screen();
+  const screen = new Screen({
+    writeError: (output) => {
+      process.stderr.write(output);
+      const prefix = '[mux] ansi-integrity-failed ';
+      const prefixIndex = output.indexOf(prefix);
+      if (prefixIndex < 0) {
+        return;
+      }
+      const issueText = output.slice(prefixIndex + prefix.length).trim();
+      const issues = issueText
+        .split(' | ')
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0);
+      const activeConversationId = conversationManager.activeConversationId;
+      const labels = resolveTraceLabels({
+        sessionId: activeConversationId,
+        directoryId: workspace.activeDirectoryId,
+        conversationId: activeConversationId,
+      });
+      recordRenderTrace({
+        direction: 'outgoing',
+        source: 'screen',
+        eventType: 'ansi-integrity-failed',
+        labels,
+        payload: {
+          issues,
+          message: issueText,
+        },
+        dedupeKey: 'ansi-integrity-failed',
+        dedupeValue: issueText,
+      });
+    },
+  });
   const conversationPane = new ConversationPane();
   const homePane = new HomePane();
   const projectPane = new ProjectPane();
@@ -1231,7 +1299,7 @@ async function main(): Promise<number> {
         direction: 'outgoing',
         source: 'session-projection',
         eventType: 'projection-transition',
-        labels: resolveStatusTimelineLabels({
+        labels: resolveTraceLabels({
           sessionId: transition.sessionId,
           directoryId: null,
           conversationId: transition.sessionId,
@@ -1261,7 +1329,7 @@ async function main(): Promise<number> {
         direction: 'incoming',
         source: 'control-plane-key-events',
         eventType: event.type,
-        labels: resolveStatusTimelineLabels({
+        labels: resolveTraceLabels({
           sessionId: event.sessionId,
           directoryId: event.directoryId,
           conversationId: event.conversationId,
@@ -1950,6 +2018,9 @@ async function main(): Promise<number> {
     toggleGatewayStatusTimeline: async (input) => {
       return await toggleGatewayStatusTimelineFn(input);
     },
+    toggleGatewayRenderTrace: async (input) => {
+      return await toggleGatewayRenderTraceFn(input);
+    },
     invocationDirectory: options.invocationDirectory,
     sessionName: muxSessionName,
     setTaskPaneNotice: (message) => {
@@ -1958,7 +2029,7 @@ async function main(): Promise<number> {
         direction: 'outgoing',
         source: 'task-pane-notice',
         eventType: 'status-notice',
-        labels: resolveStatusTimelineLabels({
+        labels: resolveTraceLabels({
           sessionId: conversationManager.activeConversationId,
           directoryId: workspace.activeDirectoryId,
           conversationId: conversationManager.activeConversationId,
@@ -1974,7 +2045,7 @@ async function main(): Promise<number> {
         direction: 'outgoing',
         source: 'debug-footer-notice',
         eventType: 'status-notice',
-        labels: resolveStatusTimelineLabels({
+        labels: resolveTraceLabels({
           sessionId: conversationManager.activeConversationId,
           directoryId: workspace.activeDirectoryId,
           conversationId: conversationManager.activeConversationId,
@@ -2058,7 +2129,7 @@ async function main(): Promise<number> {
           direction: 'outgoing',
           source: 'render-status-line',
           eventType: 'status-line',
-          labels: resolveStatusTimelineLabels({
+          labels: resolveTraceLabels({
             sessionId: activeConversationId,
             directoryId: workspace.activeDirectoryId,
             conversationId: activeConversationId,
@@ -2249,6 +2320,38 @@ async function main(): Promise<number> {
     idFactory,
   });
   const handleEnvelope = (envelope: StreamServerEnvelope): void => {
+    if (envelope.kind === 'pty.output') {
+      const conversation = conversationManager.get(envelope.sessionId);
+      const labels = resolveTraceLabels({
+        sessionId: envelope.sessionId,
+        directoryId: conversation?.directoryId ?? null,
+        conversationId: envelope.sessionId,
+      });
+      if (renderTraceRecorder.shouldCaptureConversation(labels.conversationId)) {
+        const chunk = Buffer.from(envelope.chunkBase64, 'base64');
+        const issues = findRenderTraceControlIssues(chunk);
+        if (issues.length > 0) {
+          const issueSignature = issues.map((issue) => `${issue.kind}:${issue.sequence}`).join('|');
+          recordRenderTrace({
+            direction: 'incoming',
+            source: 'terminal-output',
+            eventType: 'control-sequence-risk',
+            labels,
+            payload: {
+              cursor: envelope.cursor,
+              chunkBytes: chunk.length,
+              chunkPreview: renderTraceChunkPreview(chunk, 320),
+              issues: issues.map((issue) => ({
+                ...issue,
+                sequencePreview: renderTraceChunkPreview(issue.sequence, 160),
+              })),
+            },
+            dedupeKey: `render-trace-sequence:${envelope.sessionId}`,
+            dedupeValue: issueSignature,
+          });
+        }
+      }
+    }
     if (envelope.kind !== 'pty.output') {
       let eventType: string = envelope.kind;
       let directoryId: string | null = null;
@@ -2269,7 +2372,7 @@ async function main(): Promise<number> {
         direction: 'incoming',
         source: 'stream-envelope',
         eventType,
-        labels: resolveStatusTimelineLabels({
+        labels: resolveTraceLabels({
           sessionId: 'sessionId' in envelope ? envelope.sessionId : null,
           directoryId,
           conversationId,
@@ -2515,6 +2618,7 @@ async function main(): Promise<number> {
   } finally {
     shuttingDown = true;
     statusTimelineRecorder.close();
+    renderTraceRecorder.close();
     await runtimeShutdownService.finalize();
   }
 

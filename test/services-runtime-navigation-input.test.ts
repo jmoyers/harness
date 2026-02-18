@@ -24,6 +24,7 @@ interface CapturedGlobalShortcutOptions {
   openOrCreateCritiqueConversationInDirectory(directoryId: string): Promise<void>;
   toggleGatewayProfile(): Promise<void>;
   toggleGatewayStatusTimeline(): Promise<void>;
+  toggleGatewayRenderTrace(conversationId: string | null): Promise<void>;
   archiveConversation(sessionId: string): Promise<void>;
   interruptConversation(sessionId: string): Promise<void>;
   takeoverConversation(sessionId: string): Promise<void>;
@@ -132,6 +133,9 @@ function createNavigationOptions(
       },
       toggleGatewayStatusTimeline: async () => {
         calls.push('toggleGatewayStatusTimeline');
+      },
+      toggleGatewayRenderTrace: async (conversationId) => {
+        calls.push(`toggleGatewayRenderTrace:${conversationId ?? 'null'}`);
       },
       archiveConversation: async (sessionId) => {
         calls.push(`archiveConversation:${sessionId}`);
@@ -269,6 +273,10 @@ void test('runtime navigation input preserves workspace action method context', 
       this.sink.push('toggleGatewayStatusTimeline');
     }
 
+    async toggleGatewayRenderTrace(conversationId: string | null): Promise<void> {
+      this.sink.push(`toggleGatewayRenderTrace:${conversationId ?? 'null'}`);
+    }
+
     async archiveConversation(sessionId: string): Promise<void> {
       this.sink.push(`archiveConversation:${sessionId}`);
     }
@@ -334,6 +342,7 @@ void test('runtime navigation input preserves workspace action method context', 
   await globalShortcutOptions.openOrCreateCritiqueConversationInDirectory('dir-ctx');
   await globalShortcutOptions.toggleGatewayProfile();
   await globalShortcutOptions.toggleGatewayStatusTimeline();
+  await globalShortcutOptions.toggleGatewayRenderTrace('session-ctx');
   await globalShortcutOptions.archiveConversation('session-ctx');
   await globalShortcutOptions.interruptConversation('session-ctx');
   await globalShortcutOptions.takeoverConversation('session-ctx');
@@ -344,6 +353,7 @@ void test('runtime navigation input preserves workspace action method context', 
     'openOrCreateCritiqueConversationInDirectory:dir-ctx',
     'toggleGatewayProfiler',
     'toggleGatewayStatusTimeline',
+    'toggleGatewayRenderTrace:session-ctx',
     'archiveConversation:session-ctx',
     'interruptConversation:session-ctx',
     'takeoverConversation:session-ctx',

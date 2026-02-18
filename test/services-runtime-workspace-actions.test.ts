@@ -60,6 +60,9 @@ void test('runtime workspace actions delegates conversation directory repository
       toggleGatewayStatusTimeline: async () => {
         calls.push('toggleGatewayStatusTimeline');
       },
+      toggleGatewayRenderTrace: async (conversationId) => {
+        calls.push(`toggleGatewayRenderTrace:${conversationId ?? 'null'}`);
+      },
     },
     taskPaneActions: {
       runTaskPaneAction: (action: TaskPaneAction) => {
@@ -97,6 +100,7 @@ void test('runtime workspace actions delegates conversation directory repository
   await actions.interruptConversation('session-3');
   await actions.toggleGatewayProfiler();
   await actions.toggleGatewayStatusTimeline();
+  await actions.toggleGatewayRenderTrace('session-3');
   actions.runTaskPaneAction('task.edit');
   actions.openTaskEditPrompt('task-4');
   actions.reorderTaskByDrop('task-4', 'task-5');
@@ -119,6 +123,7 @@ void test('runtime workspace actions delegates conversation directory repository
     'interruptConversation:session-3',
     'toggleGatewayProfiler',
     'toggleGatewayStatusTimeline',
+    'toggleGatewayRenderTrace:session-3',
     'runTaskPaneAction:task.edit',
     'openTaskEditPrompt:task-4',
     'reorderTaskByDrop:task-4:task-5',

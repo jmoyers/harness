@@ -29,6 +29,7 @@ interface RuntimeWorkspaceControlActions {
   interruptConversation(sessionId: string): Promise<void>;
   toggleGatewayProfiler(): Promise<void>;
   toggleGatewayStatusTimeline(): Promise<void>;
+  toggleGatewayRenderTrace(conversationId: string | null): Promise<void>;
 }
 
 interface RuntimeWorkspaceTaskPaneActions {
@@ -128,6 +129,10 @@ export class RuntimeWorkspaceActions {
 
   async toggleGatewayStatusTimeline(): Promise<void> {
     await this.options.controlActions.toggleGatewayStatusTimeline();
+  }
+
+  async toggleGatewayRenderTrace(conversationId: string | null): Promise<void> {
+    await this.options.controlActions.toggleGatewayRenderTrace(conversationId);
   }
 
   runTaskPaneAction(action: TaskPaneAction): void {

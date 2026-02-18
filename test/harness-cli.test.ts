@@ -1031,6 +1031,107 @@ void test('harness status-timeline start rejects unknown options', async () => {
   }
 });
 
+void test('harness render-trace start/stop writes and clears active state for the target session', async () => {
+  const workspace = createWorkspace();
+  const sessionName = 'render-trace-start-stop-a';
+  const renderTraceStatePath = join(
+    workspace,
+    `.harness/sessions/${sessionName}/active-render-trace.json`,
+  );
+  const renderTraceOutputPath = join(workspace, `.harness/render-traces/${sessionName}/render-trace.log`);
+  try {
+    const startResult = await runHarness(workspace, [
+      '--session',
+      sessionName,
+      'render-trace',
+      '--conversation-id',
+      'session-1',
+    ]);
+    assert.equal(startResult.code, 0);
+    assert.equal(startResult.stdout.includes('render trace started'), true);
+    assert.equal(startResult.stdout.includes(`render-trace-target: ${renderTraceOutputPath}`), true);
+    assert.equal(startResult.stdout.includes('render-trace-conversation-id: session-1'), true);
+    assert.equal(existsSync(renderTraceStatePath), true);
+    assert.equal(existsSync(renderTraceOutputPath), true);
+    assert.equal(readFileSync(renderTraceOutputPath, 'utf8'), '');
+
+    const stopResult = await runHarness(workspace, [
+      '--session',
+      sessionName,
+      'render-trace',
+      'stop',
+    ]);
+    assert.equal(stopResult.code, 0);
+    assert.equal(stopResult.stdout.includes(`render trace stopped: ${renderTraceOutputPath}`), true);
+    assert.equal(existsSync(renderTraceStatePath), false);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('harness render-trace rejects duplicate start and validates stop/options', async () => {
+  const workspace = createWorkspace();
+  const sessionName = 'render-trace-validation-a';
+  try {
+    const startResult = await runHarness(workspace, ['--session', sessionName, 'render-trace']);
+    assert.equal(startResult.code, 0);
+
+    const duplicateStartResult = await runHarness(workspace, [
+      '--session',
+      sessionName,
+      'render-trace',
+      'start',
+    ]);
+    assert.equal(duplicateStartResult.code, 1);
+    assert.equal(duplicateStartResult.stderr.includes('render trace already running; stop it first'), true);
+
+    const stopResult = await runHarness(workspace, [
+      '--session',
+      sessionName,
+      'render-trace',
+      'stop',
+      '--bad',
+    ]);
+    assert.equal(stopResult.code, 1);
+    assert.equal(stopResult.stderr.includes('unknown render-trace option: --bad'), true);
+  } finally {
+    void runHarness(workspace, ['--session', sessionName, 'render-trace', 'stop']).catch(
+      () => undefined,
+    );
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('harness render-trace stop and subcommand validation errors are explicit', async () => {
+  const workspace = createWorkspace();
+  const sessionName = 'render-trace-stop-missing';
+  try {
+    const stopResult = await runHarness(workspace, [
+      '--session',
+      sessionName,
+      'render-trace',
+      'stop',
+    ]);
+    assert.equal(stopResult.code, 1);
+    assert.equal(stopResult.stderr.includes('no active render trace run for this session'), true);
+
+    const badSubcommandResult = await runHarness(workspace, ['render-trace', 'bogus']);
+    assert.equal(badSubcommandResult.code, 1);
+    assert.equal(badSubcommandResult.stderr.includes('unknown render-trace subcommand: bogus'), true);
+
+    const badOptionResult = await runHarness(workspace, [
+      'render-trace',
+      'start',
+      '--conversation-id',
+      '',
+    ]);
+    assert.equal(badOptionResult.code, 1);
+    assert.equal(badOptionResult.stderr.includes('invalid --conversation-id value: empty string'), true);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 void test(
   'named session can run two terminal threads that execute harness animate for throughput load',
   async () => {

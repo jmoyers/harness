@@ -49,6 +49,7 @@ void test('runtime input router composes modal rail and main-pane routing surfac
       openOrCreateCritiqueConversationInDirectory: async () => {},
       toggleGatewayProfiler: async () => {},
       toggleGatewayStatusTimeline: async () => {},
+      toggleGatewayRenderTrace: async () => {},
       archiveConversation: async () => {},
       interruptConversation: async () => {},
       takeoverConversation: async () => {},

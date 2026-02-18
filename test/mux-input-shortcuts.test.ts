@@ -30,11 +30,18 @@ void test('detectMuxGlobalShortcut maps default raw control-byte bindings', () =
     detectMuxGlobalShortcut(Buffer.from('\u001br', 'utf8'), bindings),
     'mux.gateway.status-timeline.toggle',
   );
+  assert.equal(
+    detectMuxGlobalShortcut(Buffer.from('\u001bR', 'utf8'), bindings),
+    null,
+  );
   assert.equal(detectMuxGlobalShortcut(Buffer.from([0x18]), bindings), 'mux.conversation.delete');
   assert.equal(detectMuxGlobalShortcut(Buffer.from([0x0f]), bindings), 'mux.directory.add');
   assert.equal(detectMuxGlobalShortcut(Buffer.from([0x17]), bindings), 'mux.directory.close');
   assert.equal(detectMuxGlobalShortcut(Buffer.from([0x08]), bindings), null);
-  assert.equal(detectMuxGlobalShortcut(Buffer.from([0x1d]), bindings), null);
+  assert.equal(
+    detectMuxGlobalShortcut(Buffer.from([0x1d]), bindings),
+    'mux.gateway.render-trace.toggle',
+  );
   assert.equal(detectMuxGlobalShortcut(Buffer.from([0x74]), bindings), null);
 });
 
@@ -68,7 +75,14 @@ void test('detectMuxGlobalShortcut parses kitty and modifyOtherKeys control comb
     detectMuxGlobalShortcut(Buffer.from('\u001b[114;3u', 'utf8'), bindings),
     'mux.gateway.status-timeline.toggle',
   );
-  assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[93;5u', 'utf8'), bindings), null);
+  assert.equal(
+    detectMuxGlobalShortcut(Buffer.from('\u001b[114;4u', 'utf8'), bindings),
+    null,
+  );
+  assert.equal(
+    detectMuxGlobalShortcut(Buffer.from('\u001b[93;5u', 'utf8'), bindings),
+    'mux.gateway.render-trace.toggle',
+  );
   assert.equal(
     detectMuxGlobalShortcut(Buffer.from('\u001b[27;5;116~', 'utf8'), bindings),
     'mux.conversation.new',
@@ -97,7 +111,14 @@ void test('detectMuxGlobalShortcut parses kitty and modifyOtherKeys control comb
     detectMuxGlobalShortcut(Buffer.from('\u001b[27;3;114~', 'utf8'), bindings),
     'mux.gateway.status-timeline.toggle',
   );
-  assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[27;5;93~', 'utf8'), bindings), null);
+  assert.equal(
+    detectMuxGlobalShortcut(Buffer.from('\u001b[27;4;114~', 'utf8'), bindings),
+    null,
+  );
+  assert.equal(
+    detectMuxGlobalShortcut(Buffer.from('\u001b[27;5;93~', 'utf8'), bindings),
+    'mux.gateway.render-trace.toggle',
+  );
 });
 
 void test('resolveMuxShortcutBindings applies config overrides and display helpers', () => {

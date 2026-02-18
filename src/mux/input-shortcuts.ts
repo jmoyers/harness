@@ -3,6 +3,7 @@ type MuxGlobalShortcutAction =
   | 'mux.app.interrupt-all'
   | 'mux.gateway.profile.toggle'
   | 'mux.gateway.status-timeline.toggle'
+  | 'mux.gateway.render-trace.toggle'
   | 'mux.conversation.new'
   | 'mux.conversation.critique.open-or-create'
   | 'mux.conversation.next'
@@ -39,6 +40,7 @@ const ACTION_ORDER: readonly MuxGlobalShortcutAction[] = [
   'mux.app.interrupt-all',
   'mux.gateway.profile.toggle',
   'mux.gateway.status-timeline.toggle',
+  'mux.gateway.render-trace.toggle',
   'mux.conversation.new',
   'mux.conversation.critique.open-or-create',
   'mux.conversation.next',
@@ -58,6 +60,7 @@ const DEFAULT_MUX_SHORTCUT_BINDINGS_RAW: Readonly<
   'mux.app.interrupt-all': ['ctrl+c'],
   'mux.gateway.profile.toggle': ['ctrl+p'],
   'mux.gateway.status-timeline.toggle': ['alt+r'],
+  'mux.gateway.render-trace.toggle': ['ctrl+]'],
   'mux.conversation.new': ['ctrl+t'],
   'mux.conversation.critique.open-or-create': ['ctrl+g'],
   'mux.conversation.next': ['ctrl+j'],
@@ -556,6 +559,9 @@ function withDefaultBindings(
     'mux.gateway.status-timeline.toggle':
       overrides?.['mux.gateway.status-timeline.toggle'] ??
       DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.gateway.status-timeline.toggle'],
+    'mux.gateway.render-trace.toggle':
+      overrides?.['mux.gateway.render-trace.toggle'] ??
+      DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.gateway.render-trace.toggle'],
     'mux.conversation.new':
       overrides?.['mux.conversation.new'] ??
       DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.new'],
@@ -602,6 +608,9 @@ export function resolveMuxShortcutBindings(
       ),
       'mux.gateway.status-timeline.toggle': parseBindingsForAction(
         rawByAction['mux.gateway.status-timeline.toggle'],
+      ),
+      'mux.gateway.render-trace.toggle': parseBindingsForAction(
+        rawByAction['mux.gateway.render-trace.toggle'],
       ),
       'mux.conversation.new': parseBindingsForAction(rawByAction['mux.conversation.new']),
       'mux.conversation.critique.open-or-create': parseBindingsForAction(

@@ -17,6 +17,7 @@ Run many agent threads in parallel across `codex`, `claude`, `cursor`, `terminal
 - See project/thread lifecycle updates from other connected clients in real time (no client restart rehydration loop).
 - Get gateway-canonical thread status icons/text for structured agent threads, plus fixed one-cell title glyphs for `terminal`/`critique` threads (single server projection, no client-side status interpretation).
 - Capture interleaved status debugging timelines (incoming status sources + outgoing status line/notice outputs) with a toggle and CLI commands.
+- Capture focused render diagnostics (unsupported control sequences + ANSI integrity failures) with a dedicated toggle and CLI commands.
 
 ## Demo
 
@@ -131,6 +132,8 @@ harness gateway start
 harness gateway stop
 harness status-timeline start
 harness status-timeline stop
+harness render-trace start
+harness render-trace stop
 ```
 
 Run the core quality gate:

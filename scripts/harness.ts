@@ -56,6 +56,13 @@ import {
   STATUS_TIMELINE_MODE,
   STATUS_TIMELINE_STATE_VERSION,
 } from '../src/mux/live-mux/status-timeline-state.ts';
+import {
+  parseActiveRenderTraceState,
+  resolveDefaultRenderTraceOutputPath,
+  resolveRenderTraceStatePath,
+  RENDER_TRACE_MODE,
+  RENDER_TRACE_STATE_VERSION,
+} from '../src/mux/live-mux/render-trace-state.ts';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_DAEMON_SCRIPT_PATH = resolve(SCRIPT_DIR, 'control-plane-daemon.ts');
@@ -132,6 +139,18 @@ type ParsedStatusTimelineCommand =
   | ParsedStatusTimelineStartCommand
   | ParsedStatusTimelineStopCommand;
 
+interface ParsedRenderTraceStartCommand {
+  type: 'start';
+  outputPath: string | null;
+  conversationId: string | null;
+}
+
+interface ParsedRenderTraceStopCommand {
+  type: 'stop';
+}
+
+type ParsedRenderTraceCommand = ParsedRenderTraceStartCommand | ParsedRenderTraceStopCommand;
+
 interface ParsedCursorHooksCommand {
   type: 'install' | 'uninstall';
   hooksFilePath: string | null;
@@ -155,6 +174,8 @@ interface SessionPaths {
   profileStatePath: string;
   statusTimelineStatePath: string;
   defaultStatusTimelineOutputPath: string;
+  renderTraceStatePath: string;
+  defaultRenderTraceOutputPath: string;
 }
 
 interface ParsedGlobalCliOptions {
@@ -212,6 +233,15 @@ interface ActiveStatusTimelineState {
   mode: typeof STATUS_TIMELINE_MODE;
   outputPath: string;
   sessionName: string | null;
+  startedAt: string;
+}
+
+interface ActiveRenderTraceState {
+  version: number;
+  mode: typeof RENDER_TRACE_MODE;
+  outputPath: string;
+  sessionName: string | null;
+  conversationId: string | null;
   startedAt: string;
 }
 
@@ -291,6 +321,11 @@ function resolveSessionPaths(
     invocationDirectory,
     sessionName,
   );
+  const renderTraceStatePath = resolveRenderTraceStatePath(invocationDirectory, sessionName);
+  const defaultRenderTraceOutputPath = resolveDefaultRenderTraceOutputPath(
+    invocationDirectory,
+    sessionName,
+  );
   if (sessionName === null) {
     return {
       recordPath: resolveGatewayRecordPath(invocationDirectory),
@@ -300,6 +335,8 @@ function resolveSessionPaths(
       profileStatePath: resolve(invocationDirectory, '.harness', PROFILE_STATE_FILE_NAME),
       statusTimelineStatePath,
       defaultStatusTimelineOutputPath,
+      renderTraceStatePath,
+      defaultRenderTraceOutputPath,
     };
   }
   const sessionRoot = resolve(invocationDirectory, DEFAULT_SESSION_ROOT_PATH, sessionName);
@@ -311,6 +348,8 @@ function resolveSessionPaths(
     profileStatePath: resolve(sessionRoot, PROFILE_STATE_FILE_NAME),
     statusTimelineStatePath,
     defaultStatusTimelineOutputPath,
+    renderTraceStatePath,
+    defaultRenderTraceOutputPath,
   };
 }
 
@@ -443,6 +482,61 @@ function parseStatusTimelineCommand(argv: readonly string[]): ParsedStatusTimeli
     return parseStatusTimelineStartCommand(argv);
   }
   throw new Error(`unknown status-timeline subcommand: ${subcommand}`);
+}
+
+function parseRenderTraceStartCommand(argv: readonly string[]): ParsedRenderTraceStartCommand {
+  let outputPath: string | null = null;
+  let conversationId: string | null = null;
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index]!;
+    if (arg === '--output-path') {
+      outputPath = readCliValue(argv, index, '--output-path');
+      index += 1;
+      continue;
+    }
+    if (arg === '--conversation-id') {
+      const value = readCliValue(argv, index, '--conversation-id').trim();
+      if (value.length === 0) {
+        throw new Error('invalid --conversation-id value: empty string');
+      }
+      conversationId = value;
+      index += 1;
+      continue;
+    }
+    throw new Error(`unknown render-trace option: ${arg}`);
+  }
+  return {
+    type: 'start',
+    outputPath,
+    conversationId,
+  };
+}
+
+function parseRenderTraceStopCommand(argv: readonly string[]): ParsedRenderTraceStopCommand {
+  if (argv.length > 0) {
+    throw new Error(`unknown render-trace option: ${argv[0]}`);
+  }
+  return {
+    type: 'stop',
+  };
+}
+
+function parseRenderTraceCommand(argv: readonly string[]): ParsedRenderTraceCommand {
+  if (argv.length === 0) {
+    return parseRenderTraceStartCommand(argv);
+  }
+  const subcommand = argv[0]!;
+  const rest = argv.slice(1);
+  if (subcommand === 'start') {
+    return parseRenderTraceStartCommand(rest);
+  }
+  if (subcommand === 'stop') {
+    return parseRenderTraceStopCommand(rest);
+  }
+  if (subcommand.startsWith('-')) {
+    return parseRenderTraceStartCommand(argv);
+  }
+  throw new Error(`unknown render-trace subcommand: ${subcommand}`);
 }
 
 function parseCursorHooksOptions(argv: readonly string[]): { hooksFilePath: string | null } {
@@ -698,6 +792,9 @@ function printUsage(): void {
       '  harness [--session <name>] status-timeline start [--output-path <path>]',
       '  harness [--session <name>] status-timeline stop',
       '  harness [--session <name>] status-timeline [--output-path <path>]',
+      '  harness [--session <name>] render-trace start [--output-path <path>] [--conversation-id <id>]',
+      '  harness [--session <name>] render-trace stop',
+      '  harness [--session <name>] render-trace [--output-path <path>] [--conversation-id <id>]',
       '  harness cursor-hooks install [--hooks-file <path>]',
       '  harness cursor-hooks uninstall [--hooks-file <path>]',
       '  harness animate [--fps <fps>] [--frames <count>] [--duration-ms <ms>] [--seed <seed>] [--no-color]',
@@ -860,6 +957,38 @@ function writeActiveStatusTimelineState(
 }
 
 function removeActiveStatusTimelineState(statePath: string): void {
+  removeFileIfExists(statePath);
+}
+
+function readActiveRenderTraceState(statePath: string): ActiveRenderTraceState | null {
+  if (!existsSync(statePath)) {
+    return null;
+  }
+  try {
+    const raw = JSON.parse(readFileSync(statePath, 'utf8')) as unknown;
+    const parsed = parseActiveRenderTraceState(raw);
+    if (parsed === null) {
+      return null;
+    }
+    return {
+      version: parsed.version,
+      mode: parsed.mode,
+      outputPath: parsed.outputPath,
+      sessionName: parsed.sessionName,
+      conversationId: parsed.conversationId,
+      startedAt: parsed.startedAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeActiveRenderTraceState(statePath: string, state: ActiveRenderTraceState): void {
+  mkdirSync(dirname(statePath), { recursive: true });
+  writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+}
+
+function removeActiveRenderTraceState(statePath: string): void {
   removeFileIfExists(statePath);
 }
 
@@ -2173,6 +2302,69 @@ async function runStatusTimelineCommandEntry(
   return await runStatusTimelineStart(invocationDirectory, sessionPaths, sessionName, command);
 }
 
+async function runRenderTraceStart(
+  invocationDirectory: string,
+  sessionPaths: SessionPaths,
+  sessionName: string | null,
+  command: ParsedRenderTraceStartCommand,
+): Promise<number> {
+  const outputPath =
+    command.outputPath === null
+      ? sessionPaths.defaultRenderTraceOutputPath
+      : resolve(invocationDirectory, command.outputPath);
+  const existingState = readActiveRenderTraceState(sessionPaths.renderTraceStatePath);
+  if (existingState !== null) {
+    throw new Error('render trace already running; stop it first with `harness render-trace stop`');
+  }
+  mkdirSync(dirname(outputPath), { recursive: true });
+  writeFileSync(outputPath, '', 'utf8');
+  writeActiveRenderTraceState(sessionPaths.renderTraceStatePath, {
+    version: RENDER_TRACE_STATE_VERSION,
+    mode: RENDER_TRACE_MODE,
+    outputPath,
+    sessionName,
+    conversationId: command.conversationId,
+    startedAt: new Date().toISOString(),
+  });
+  process.stdout.write('render trace started\n');
+  process.stdout.write(`render-trace-state: ${sessionPaths.renderTraceStatePath}\n`);
+  process.stdout.write(`render-trace-target: ${outputPath}\n`);
+  if (command.conversationId !== null) {
+    process.stdout.write(`render-trace-conversation-id: ${command.conversationId}\n`);
+  }
+  process.stdout.write('stop with: harness render-trace stop\n');
+  return 0;
+}
+
+async function runRenderTraceStop(sessionPaths: SessionPaths): Promise<number> {
+  const state = readActiveRenderTraceState(sessionPaths.renderTraceStatePath);
+  if (state === null) {
+    throw new Error(
+      'no active render trace run for this session; start one with `harness render-trace start`',
+    );
+  }
+  removeActiveRenderTraceState(sessionPaths.renderTraceStatePath);
+  process.stdout.write(`render trace stopped: ${state.outputPath}\n`);
+  return 0;
+}
+
+async function runRenderTraceCommandEntry(
+  invocationDirectory: string,
+  sessionPaths: SessionPaths,
+  args: readonly string[],
+  sessionName: string | null,
+): Promise<number> {
+  if (args.length > 0 && (args[0] === '--help' || args[0] === '-h')) {
+    printUsage();
+    return 0;
+  }
+  const command = parseRenderTraceCommand(args);
+  if (command.type === 'stop') {
+    return await runRenderTraceStop(sessionPaths);
+  }
+  return await runRenderTraceStart(invocationDirectory, sessionPaths, sessionName, command);
+}
+
 async function runCursorHooksCommandEntry(
   invocationDirectory: string,
   command: ParsedCursorHooksCommand,
@@ -2257,6 +2449,15 @@ async function main(): Promise<number> {
 
   if (argv.length > 0 && argv[0] === 'status-timeline') {
     return await runStatusTimelineCommandEntry(
+      invocationDirectory,
+      sessionPaths,
+      argv.slice(1),
+      parsedGlobals.sessionName,
+    );
+  }
+
+  if (argv.length > 0 && argv[0] === 'render-trace') {
+    return await runRenderTraceCommandEntry(
       invocationDirectory,
       sessionPaths,
       argv.slice(1),
