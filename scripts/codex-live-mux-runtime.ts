@@ -165,7 +165,7 @@ import { RuntimeShutdownService } from '../src/services/runtime-shutdown.ts';
 import { RuntimeTaskEditorActions } from '../src/services/runtime-task-editor-actions.ts';
 import { RuntimeInputPipeline } from '../src/services/runtime-input-pipeline.ts';
 import { RuntimeMainPaneInput } from '../src/services/runtime-main-pane-input.ts';
-import { RuntimeNavigationInput } from '../src/services/runtime-navigation-input.ts';
+import { RuntimeRailInput } from '../src/services/runtime-rail-input.ts';
 import { RuntimeTaskComposerPersistenceService } from '../src/services/runtime-task-composer-persistence.ts';
 import { RuntimeTaskPane } from '../src/services/runtime-task-pane.ts';
 import { RuntimeModalInput } from '../src/services/runtime-modal-input.ts';
@@ -183,7 +183,6 @@ import { HomePane } from '../src/ui/panes/home.ts';
 import { ProjectPane } from '../src/ui/panes/project.ts';
 import { LeftRailPane } from '../src/ui/panes/left-rail.ts';
 import { ModalManager } from '../src/ui/modals/manager.ts';
-import { LeftRailPointerInput } from '../src/ui/left-rail-pointer-input.ts';
 
 type ControlPlaneDirectoryRecord = Awaited<ReturnType<ControlPlaneService['upsertDirectory']>>;
 type ControlPlaneConversationRecord = NonNullable<ReturnType<typeof parseConversationRecord>>;
@@ -2197,33 +2196,22 @@ async function main(): Promise<number> {
     scheduleConversationTitlePersist,
   });
 
-  const queueCloseDirectoryMouseAction = (directoryId: string, label: string): void => {
-    queueControlPlaneOp(async () => {
-      await runtimeWorkspaceActions.closeDirectory(directoryId);
-    }, label);
-  };
-  const openAddDirectoryPromptFromShortcut = (): void => {
-    workspace.repositoryPrompt = null;
-    workspace.addDirectoryPrompt = {
-      value: '',
-      error: null,
-    };
-    markDirty();
-  };
-  const runtimeNavigationInput = new RuntimeNavigationInput({
+  const runtimeRailInput = new RuntimeRailInput({
     workspace,
     shortcutBindings,
+    queueControlPlaneOp,
+    runtimeWorkspaceActions,
     requestStop,
     resolveDirectoryForAction,
     openNewThreadPrompt,
-    openAddDirectoryPrompt: openAddDirectoryPromptFromShortcut,
-    queueControlPlaneOp,
     firstDirectoryForRepositoryGroup,
     enterHomePane,
     enterProjectPane,
     markDirty,
+    queuePersistMuxUiState,
     conversations: conversationRecords,
     repositoryGroupIdForDirectory,
+    toggleRepositoryGroup,
     collapseRepositoryGroup,
     expandRepositoryGroup,
     collapseAllRepositoryGroups,
@@ -2234,123 +2222,20 @@ async function main(): Promise<number> {
     getMainPaneMode: () => workspace.mainPaneMode,
     getActiveConversationId: () => conversationManager.activeConversationId,
     getActiveDirectoryId: () => workspace.activeDirectoryId,
-    workspaceActions: {
-      activateConversation: async (sessionId) => {
-        await runtimeWorkspaceActions.activateConversation(sessionId);
-      },
-      openOrCreateCritiqueConversationInDirectory: async (directoryId) => {
-        await runtimeWorkspaceActions.openOrCreateCritiqueConversationInDirectory(directoryId);
-      },
-      toggleGatewayProfiler: async () => {
-        await runtimeWorkspaceActions.toggleGatewayProfiler();
-      },
-      archiveConversation: async (sessionId) => {
-        await runtimeWorkspaceActions.archiveConversation(sessionId);
-      },
-      interruptConversation: async (sessionId) => {
-        await runtimeWorkspaceActions.interruptConversation(sessionId);
-      },
-      takeoverConversation: async (sessionId) => {
-        await runtimeWorkspaceActions.takeoverConversation(sessionId);
-      },
-      closeDirectory: async (directoryId) => {
-        await runtimeWorkspaceActions.closeDirectory(directoryId);
-      },
-    },
+    repositoriesHas: (repositoryId) => repositories.has(repositoryId),
     chordTimeoutMs: REPOSITORY_TOGGLE_CHORD_TIMEOUT_MS,
     collapseAllChordPrefix: REPOSITORY_COLLAPSE_ALL_CHORD_PREFIX,
-  });
-  const leftRailPointerInput = new LeftRailPointerInput({
-    getLatestRailRows: () => workspace.latestRailViewRows,
-    hasConversationTitleEdit: () => workspace.conversationTitleEdit !== null,
-    conversationTitleEditConversationId: () =>
-      workspace.conversationTitleEdit?.conversationId ?? null,
-    stopConversationTitleEdit: () => {
-      stopConversationTitleEdit(true);
-    },
-    hasSelection: () => workspace.selection !== null || workspace.selectionDrag !== null,
-    clearSelection: () => {
-      workspace.selection = null;
-      workspace.selectionDrag = null;
-      releaseViewportPinForSelection();
-    },
-    activeConversationId: () => conversationManager.activeConversationId,
-    repositoriesCollapsed: () => workspace.repositoriesCollapsed,
-    clearConversationTitleEditClickState: () => {
-      workspace.conversationTitleEditClickState = null;
-    },
-    resolveDirectoryForAction,
-    openNewThreadPrompt,
-    queueArchiveConversation: (conversationId) => {
-      queueControlPlaneOp(async () => {
-        await runtimeWorkspaceActions.archiveConversation(conversationId);
-      }, 'mouse-archive-conversation');
-    },
-    openAddDirectoryPrompt: () => {
-      workspace.repositoryPrompt = null;
-      workspace.addDirectoryPrompt = {
-        value: '',
-        error: null,
-      };
-    },
-    openRepositoryPromptForCreate: () => {
-      runtimeWorkspaceActions.openRepositoryPromptForCreate();
-    },
-    repositoryExists: (repositoryId) => repositories.has(repositoryId),
-    openRepositoryPromptForEdit: (repositoryId) => {
-      runtimeWorkspaceActions.openRepositoryPromptForEdit(repositoryId);
-    },
-    queueArchiveRepository: (repositoryId) => {
-      queueControlPlaneOp(async () => {
-        await runtimeWorkspaceActions.archiveRepositoryById(repositoryId);
-      }, 'mouse-archive-repository');
-    },
-    queueCloseDirectory: (directoryId) =>
-      queueCloseDirectoryMouseAction(directoryId, 'mouse-close-directory'),
-    toggleRepositoryGroup,
-    selectLeftNavRepository: (repositoryGroupId) => {
-      workspace.selectLeftNavRepository(repositoryGroupId);
-    },
-    expandAllRepositoryGroups,
-    collapseAllRepositoryGroups,
-    enterHomePane,
-    toggleShortcutsCollapsed: () => {
-      workspace.shortcutsCollapsed = !workspace.shortcutsCollapsed;
-      queuePersistMuxUiState();
-    },
-    previousConversationClickState: () => workspace.conversationTitleEditClickState,
-    setConversationClickState: (next) => {
-      workspace.conversationTitleEditClickState = next;
-    },
-    nowMs: () => Date.now(),
-    conversationTitleEditDoubleClickWindowMs: CONVERSATION_TITLE_EDIT_DOUBLE_CLICK_WINDOW_MS,
-    isConversationPaneActive: () => workspace.mainPaneMode === 'conversation',
-    ensureConversationPaneActive: (conversationId) => {
-      workspace.mainPaneMode = 'conversation';
-      workspace.selectLeftNavConversation(conversationId);
-      workspace.projectPaneSnapshot = null;
-      workspace.projectPaneScrollTop = 0;
+    stopConversationTitleEdit,
+    releaseViewportPinForSelection,
+    beginConversationTitleEdit,
+    resetConversationPaneFrameCache: () => {
       screen.resetFrameCache();
     },
-    beginConversationTitleEdit,
-    queueActivateConversation: (conversationId) => {
-      queueControlPlaneOp(async () => {
-        await runtimeWorkspaceActions.activateConversation(conversationId);
-      }, 'mouse-activate-conversation');
-    },
-    queueActivateConversationAndEdit: (conversationId) => {
-      queueControlPlaneOp(async () => {
-        await runtimeWorkspaceActions.activateConversation(conversationId);
-        beginConversationTitleEdit(conversationId);
-      }, 'mouse-activate-edit-conversation');
-    },
-    directoriesHas: (directoryId) => directoryManager.hasDirectory(directoryId),
-    enterProjectPane,
-    markDirty,
+    conversationTitleEditDoubleClickWindowMs: CONVERSATION_TITLE_EDIT_DOUBLE_CLICK_WINDOW_MS,
   });
   const runtimeMainPaneInput = new RuntimeMainPaneInput({
     workspace,
-    leftRailPointerInput,
+    leftRailPointerInput: runtimeRailInput,
     workspaceActions: {
       runTaskPaneAction: (action) => {
         runtimeWorkspaceActions.runTaskPaneAction(action);
@@ -2371,7 +2256,9 @@ async function main(): Promise<number> {
     projectPaneActionAtRow,
     openNewThreadPrompt,
     queueCloseDirectory: (directoryId) =>
-      queueCloseDirectoryMouseAction(directoryId, 'project-pane-close-project'),
+      queueControlPlaneOp(async () => {
+        await runtimeWorkspaceActions.closeDirectory(directoryId);
+      }, 'project-pane-close-project'),
     selectTaskById,
     selectRepositoryById,
     taskPaneActionAtCell: taskFocusedPaneActionAtCell,
@@ -2409,8 +2296,8 @@ async function main(): Promise<number> {
       onFocusOut: () => {
         markDirty();
       },
-      handleRepositoryFoldInput: (input) => runtimeNavigationInput.handleRepositoryFoldInput(input),
-      handleGlobalShortcutInput: (input) => runtimeNavigationInput.handleGlobalShortcutInput(input),
+      handleRepositoryFoldInput: (input) => runtimeRailInput.handleRepositoryFoldInput(input),
+      handleGlobalShortcutInput: (input) => runtimeRailInput.handleGlobalShortcutInput(input),
       handleTaskPaneShortcutInput: (input) =>
         runtimeWorkspaceActions.handleTaskPaneShortcutInput(input),
       handleCopyShortcutInput: (input) => {

@@ -1947,10 +1947,30 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2462 non-empty LOC
 
+### Checkpoint DB (2026-02-18): Rail input subsystem composition (navigation + pointer) folded into one class-owned service
+
+- Added `src/services/runtime-rail-input.ts` with class-based `RuntimeRailInput` that composes:
+  - `RuntimeNavigationInput`
+  - `LeftRailPointerInput`
+- Updated `scripts/codex-live-mux-runtime.ts` to remove direct rail input wiring from `main()`:
+  - removed inline `RuntimeNavigationInput` construction
+  - removed inline `LeftRailPointerInput` construction
+  - replaced both with one `RuntimeRailInput` instance used by:
+    - `RuntimeMainPaneInput` (`leftRailPointerInput`)
+    - `RuntimeInputPipeline` preflight handlers (`handleRepositoryFoldInput`, `handleGlobalShortcutInput`)
+- Added `test/services-runtime-rail-input.test.ts` with strict composition/delegation coverage, including:
+  - workspace-owned state mutations for add-directory prompt, selection clear, shortcut-collapse toggle, and conversation-pane activation
+  - queued workspace actions for archive/close/activate rail actions with preserved queue labels
+  - default dependency path validation for rail routing surfaces
+- Validation at checkpoint:
+  - `bun run verify`: pass (`1019` pass / `0` fail, global lines/functions/branches = `100%`)
+  - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2349 non-empty LOC
+
 ### Next focus (yield-first)
 
 - Consolidation order (updated from critique review):
-  - continue subsystem rollup: fold remaining left-nav/repository-fold/global-shortcut/left-rail-pointer wiring into one class-owned input subsystem
+  - continue subsystem rollup by collapsing callback/options bags into object-reference dependencies (domain managers + services) inside subsystem constructors
   - remove `_unsafe*` runtime escape hatches by exposing manager-owned read APIs/projections
   - reduce callback/options bags in input/router modules by passing manager/service dependencies directly
   - after ownership consolidation, rename/merge `runtime-*` service modules so names match stable responsibilities rather than extraction history
