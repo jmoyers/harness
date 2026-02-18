@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~3148 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~3135 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -1426,9 +1426,29 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3148 non-empty LOC
 
+### Checkpoint BY (2026-02-18): Render state gating + frame/selection assembly extracted into class service
+
+- Added `src/services/runtime-render-state.ts` with class-based `RuntimeRenderState` to own:
+  - project/home pane active-state gating
+  - early no-active-thread render short-circuit conditions
+  - active conversation frame snapshot selection
+  - drag-selection vs static-selection render payload composition
+  - selection-visible-row derivation
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate render-state prep through `RuntimeRenderState.prepareRenderState(...)`.
+- Added `test/services-runtime-render-state.test.ts` with branch coverage for:
+  - no-pane/no-active-id short-circuit
+  - missing-active-conversation short-circuit
+  - dragged selection payload branch
+  - static selection branch
+  - project-pane render path with no active conversation
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3135 non-empty LOC
+
 ### Next focus (yield-first)
 
 - Continue startup/runtime orchestration extraction before callback-bag cleanup:
   - extract action-handler consolidation slice (conversation/directory/task orchestration bundles)
-  - extract render-state orchestration (`project/home` gating + frame/selection assembly) into a class service
+  - extract remaining render orchestration seam (`render()` orchestration wrapper around rail/right/flush services)
   - then perform callback-bag reduction pass for input/router modules

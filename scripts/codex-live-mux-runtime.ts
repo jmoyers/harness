@@ -191,6 +191,7 @@ import { RuntimeEnvelopeHandler } from '../src/services/runtime-envelope-handler
 import { RuntimeRenderFlush } from '../src/services/runtime-render-flush.ts';
 import { RuntimeLeftRailRender } from '../src/services/runtime-left-rail-render.ts';
 import { RuntimeRightPaneRender } from '../src/services/runtime-right-pane-render.ts';
+import { RuntimeRenderState } from '../src/services/runtime-render-state.ts';
 import { RuntimeRenderLifecycle } from '../src/services/runtime-render-lifecycle.ts';
 import { RuntimeShutdownService } from '../src/services/runtime-shutdown.ts';
 import { TaskPaneSelectionActions } from '../src/services/task-pane-selection-actions.ts';
@@ -2536,59 +2537,44 @@ async function main(): Promise<number> {
     activeConversationId: () => conversationManager.activeConversationId,
     orderedConversationIds: () => conversationManager.orderedIds(),
   });
+  const runtimeRenderState = new RuntimeRenderState<
+    ConversationState,
+    ReturnType<TerminalSnapshotOracle['snapshotWithoutHash']>
+  >({
+    workspace,
+    hasDirectory: (directoryId) => directoryManager.hasDirectory(directoryId),
+    activeConversationId: () => conversationManager.activeConversationId,
+    activeConversation: () => conversationManager.getActiveConversation(),
+    snapshotFrame: (conversation) => conversation.oracle.snapshotWithoutHash(),
+    selectionVisibleRows,
+  });
 
   const render = (): void => {
     if (shuttingDown || !screen.isDirty()) {
       return;
     }
-    const projectPaneActive =
-      workspace.mainPaneMode === 'project' &&
-      workspace.activeDirectoryId !== null &&
-      directoryManager.hasDirectory(workspace.activeDirectoryId);
-    const homePaneActive = workspace.mainPaneMode === 'home';
-    if (!projectPaneActive && !homePaneActive && conversationManager.activeConversationId === null) {
+    const renderState = runtimeRenderState.prepareRenderState(selection, selectionDrag);
+    if (renderState === null) {
       screen.clearDirty();
       return;
     }
-
-    const active = conversationManager.getActiveConversation();
-    if (!projectPaneActive && !homePaneActive && active === null) {
-      screen.clearDirty();
-      return;
-    }
-    const rightFrame =
-      !projectPaneActive && !homePaneActive && active !== null
-        ? active.oracle.snapshotWithoutHash()
-        : null;
-    const renderSelection =
-      rightFrame !== null && selectionDrag !== null && selectionDrag.hasDragged
-        ? {
-            anchor: selectionDrag.anchor,
-            focus: selectionDrag.focus,
-            text: '',
-          }
-        : rightFrame !== null
-          ? selection
-          : null;
-    const selectionRows =
-      rightFrame === null ? [] : selectionVisibleRows(rightFrame, renderSelection);
     const rail = runtimeLeftRailRender.render(layout);
     latestRailViewRows = rail.viewRows;
     const rightRows = runtimeRightPaneRender.renderRightRows({
       layout,
-      rightFrame,
-      homePaneActive,
-      projectPaneActive,
+      rightFrame: renderState.rightFrame,
+      homePaneActive: renderState.homePaneActive,
+      projectPaneActive: renderState.projectPaneActive,
       activeDirectoryId: workspace.activeDirectoryId,
     });
     runtimeRenderFlush.flushRender({
       layout,
-      projectPaneActive,
-      homePaneActive,
-      activeConversation: active,
-      rightFrame,
-      renderSelection,
-      selectionRows,
+      projectPaneActive: renderState.projectPaneActive,
+      homePaneActive: renderState.homePaneActive,
+      activeConversation: renderState.activeConversation,
+      rightFrame: renderState.rightFrame,
+      renderSelection: renderState.renderSelection,
+      selectionRows: renderState.selectionRows,
       railAnsiRows: rail.ansiRows,
       rightRows,
     });
