@@ -145,7 +145,6 @@ import {
   buildTaskEditorModalOverlay as buildTaskEditorModalOverlayFrame,
 } from '../src/mux/live-mux/modal-overlays.ts';
 import {
-  applySummaryToConversation,
   compactDebugText,
   conversationSummary,
   createConversationState,
@@ -259,7 +258,10 @@ import {
   type RepositoryPromptState,
   type TaskEditorPromptState,
 } from '../src/domain/workspace.ts';
-import { ConversationManager } from '../src/domain/conversations.ts';
+import {
+  ConversationManager,
+  type ConversationSeed,
+} from '../src/domain/conversations.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -636,7 +638,6 @@ async function main(): Promise<number> {
   let observedStreamSubscriptionId: string | null = null;
   let keyEventSubscription: Awaited<ReturnType<typeof subscribeControlPlaneKeyEvents>> | null =
     null;
-  let activeConversationId: string | null = null;
   let startupFirstPaintTargetSessionId: string | null = null;
   let startupActiveStartCommandSpan: ReturnType<typeof startPerfSpan> | null = null;
   let startupActiveFirstOutputSpan: ReturnType<typeof startPerfSpan> | null = null;
@@ -760,7 +761,7 @@ async function main(): Promise<number> {
     return resolveDirectoryForActionFn({
       mainPaneMode: workspace.mainPaneMode,
       activeDirectoryId: workspace.activeDirectoryId,
-      activeConversationId,
+      activeConversationId: conversationManager.activeConversationId,
       conversations,
       directoriesHas: (directoryId) => directories.has(directoryId),
     });
@@ -849,65 +850,29 @@ async function main(): Promise<number> {
     };
   };
 
-  const ensureConversation = (
-    sessionId: string,
-    seed?: {
-      directoryId?: string | null;
-      title?: string;
-      agentType?: string;
-      adapterState?: Record<string, unknown>;
-    },
-  ): ConversationState => {
-    const existing = conversationManager.get(sessionId);
-    if (existing !== undefined) {
-      if (seed?.directoryId !== undefined) {
-        existing.directoryId = seed.directoryId;
-      }
-      if (seed?.title !== undefined) {
-        existing.title = seed.title;
-      }
-      if (seed?.agentType !== undefined) {
-        existing.agentType = seed.agentType;
-      }
-      if (seed?.adapterState !== undefined) {
-        existing.adapterState = normalizeAdapterState(seed.adapterState);
-      }
-      return existing;
-    }
-    conversationManager.clearRemoved(sessionId);
-    const directoryId = seed?.directoryId ?? resolveActiveDirectoryId();
-    const state = createConversationState(
+  const ensureConversation = (sessionId: string, seed?: ConversationSeed): ConversationState => {
+    return conversationManager.ensure({
       sessionId,
-      directoryId,
-      seed?.title ?? '',
-      seed?.agentType ?? 'codex',
-      normalizeAdapterState(seed?.adapterState),
-      `turn-${randomUUID()}`,
-      options.scope,
-      layout.rightCols,
-      layout.paneRows,
-    );
-    conversationManager.set(state);
-    return state;
+      ...(seed === undefined ? {} : { seed }),
+      resolveDefaultDirectoryId: resolveActiveDirectoryId,
+      normalizeAdapterState,
+      createConversation: (input) =>
+        createConversationState(
+          input.sessionId,
+          input.directoryId,
+          input.title,
+          input.agentType,
+          input.adapterState,
+          `turn-${randomUUID()}`,
+          options.scope,
+          layout.rightCols,
+          layout.paneRows,
+        ),
+    });
   };
 
   const activeConversation = (): ConversationState => {
-    if (activeConversationId === null) {
-      throw new Error('active thread is not set');
-    }
-    const state = conversationManager.get(activeConversationId);
-    if (state === undefined) {
-      throw new Error(`active thread missing: ${activeConversationId}`);
-    }
-    return state;
-  };
-
-  const isConversationControlledByLocalHuman = (conversation: ConversationState): boolean => {
-    return (
-      conversation.controller !== null &&
-      conversation.controller.controllerType === 'human' &&
-      conversation.controller.controllerId === muxControllerId
-    );
+    return conversationManager.requireActiveConversation();
   };
 
   const applyControlPlaneKeyEvent = (event: ControlPlaneKeyEvent): void => {
@@ -1043,22 +1008,10 @@ async function main(): Promise<number> {
       if (record === null) {
         continue;
       }
-      const conversation = ensureConversation(record.conversationId, {
-        directoryId: record.directoryId,
-        title: record.title,
-        agentType: record.agentType,
-        adapterState: record.adapterState,
+      conversationManager.upsertFromPersistedRecord({
+        record,
+        ensureConversation,
       });
-      conversation.scope.tenantId = record.tenantId;
-      conversation.scope.userId = record.userId;
-      conversation.scope.workspaceId = record.workspaceId;
-      conversation.status =
-        !record.runtimeLive &&
-        (record.runtimeStatus === 'running' || record.runtimeStatus === 'needs-input')
-          ? 'completed'
-          : record.runtimeStatus;
-      // Persisted runtime flags are advisory; session.list is authoritative for live sessions.
-      conversation.live = false;
     }
     return persistedRows.length;
   };
@@ -1090,12 +1043,7 @@ async function main(): Promise<number> {
   }
 
   const startConversation = async (sessionId: string): Promise<ConversationState> => {
-    const inFlight = conversationManager.getStartInFlight(sessionId);
-    if (inFlight !== undefined) {
-      return await inFlight;
-    }
-
-    const task = (async (): Promise<ConversationState> => {
+    return await conversationManager.runWithStartInFlight(sessionId, async () => {
       const existing = conversationManager.get(sessionId);
       const targetConversation = existing ?? ensureConversation(sessionId);
       const agentType = normalizeThreadAgentType(targetConversation.agentType);
@@ -1184,21 +1132,17 @@ async function main(): Promise<number> {
       });
       const statusSummary = parseSessionSummaryRecord(statusRecord);
       if (statusSummary !== null) {
-        applySummaryToConversation(state, statusSummary);
+        conversationManager.upsertFromSessionSummary({
+          summary: statusSummary,
+          ensureConversation,
+        });
       }
       await subscribeConversationEvents(sessionId);
       startSpan.end({
         live: state.live,
       });
       return state;
-    })();
-
-    conversationManager.setStartInFlight(sessionId, task);
-    try {
-      return await task;
-    } finally {
-      conversationManager.clearStartInFlight(sessionId);
-    }
+    });
   };
 
   const queuePersistedConversationsInBackground = (activeSessionId: string | null): number => {
@@ -1243,8 +1187,10 @@ async function main(): Promise<number> {
     });
     const summaries = parseSessionSummaryList(listedLive['sessions']);
     for (const summary of summaries) {
-      const conversation = ensureConversation(summary.sessionId);
-      applySummaryToConversation(conversation, summary);
+      conversationManager.upsertFromSessionSummary({
+        summary,
+        ensureConversation,
+      });
       if (summary.live) {
         await subscribeConversationEvents(summary.sessionId);
       }
@@ -1261,15 +1207,11 @@ async function main(): Promise<number> {
     await hydrateTaskPlanningState();
     await hydrateDirectoryGitStatus();
     await subscribeTaskPlanningEvents(startupObservedCursor);
-    if (activeConversationId === null) {
-      const ordered = conversationManager.orderedIds();
-      activeConversationId = ordered[0] ?? null;
-      conversationManager.activeConversationId = activeConversationId;
+    conversationManager.ensureActiveConversationId();
+    if (conversationManager.activeConversationId !== null) {
+      selectLeftNavConversation(conversationManager.activeConversationId);
     }
-    if (activeConversationId !== null) {
-      selectLeftNavConversation(activeConversationId);
-    }
-    if (activeConversationId === null && resolveActiveDirectoryId() !== null) {
+    if (conversationManager.activeConversationId === null && resolveActiveDirectoryId() !== null) {
       workspace.mainPaneMode = 'project';
       selectLeftNavProject(resolveActiveDirectoryId()!);
     }
@@ -1887,7 +1829,7 @@ async function main(): Promise<number> {
         renderChangedRows: renderSampleChangedRows,
         eventLoopP95Ms: Number(eventLoopP95Ms.toFixed(3)),
         eventLoopMaxMs: Number(eventLoopMaxMs.toFixed(3)),
-        activeConversationId: activeConversationId ?? 'none',
+        activeConversationId: conversationManager.activeConversationId ?? 'none',
         sessionsWithOutput: outputSampleSessionIds.size,
         pendingPersistedEvents: pendingPersistedEvents.length,
         interactiveQueued: controlPlaneQueueMetrics.interactiveQueued,
@@ -1939,10 +1881,10 @@ async function main(): Promise<number> {
   };
 
   const applyPtyResize = (ptySize: { cols: number; rows: number }): void => {
-    if (activeConversationId === null) {
+    if (conversationManager.activeConversationId === null) {
       return;
     }
-    applyPtyResizeToSession(activeConversationId, ptySize, false);
+    applyPtyResizeToSession(conversationManager.activeConversationId, ptySize, false);
   };
 
   const flushPendingPtyResize = (): void => {
@@ -2334,45 +2276,40 @@ async function main(): Promise<number> {
   };
 
   const attachConversation = async (sessionId: string): Promise<void> => {
-    const conversation = conversations.get(sessionId);
-    if (conversation === undefined) {
-      return;
-    }
-    if (!conversation.live) {
-      return;
-    }
-    if (!conversation.attached) {
-      const sinceCursor = Math.max(0, conversation.lastOutputCursor);
-      await streamClient.sendCommand({
-        type: 'pty.attach',
-        sessionId,
-        sinceCursor,
-      });
-      conversation.attached = true;
+    const attachResult = await conversationManager.attachIfLive({
+      sessionId,
+      attach: async (sinceCursor) => {
+        await streamClient.sendCommand({
+          type: 'pty.attach',
+          sessionId,
+          sinceCursor,
+        });
+      },
+    });
+    if (attachResult.attached && attachResult.sinceCursor !== null) {
       recordPerfEvent('mux.conversation.attach', {
         sessionId,
-        sinceCursor,
+        sinceCursor: attachResult.sinceCursor,
       });
     }
   };
 
   const detachConversation = async (sessionId: string): Promise<void> => {
-    const conversation = conversations.get(sessionId);
-    if (conversation === undefined) {
-      return;
-    }
-    if (!conversation.attached) {
-      return;
-    }
-    await streamClient.sendCommand({
-      type: 'pty.detach',
+    const detachResult = await conversationManager.detachIfAttached({
       sessionId,
+      detach: async () => {
+        await streamClient.sendCommand({
+          type: 'pty.detach',
+          sessionId,
+        });
+      },
     });
-    conversation.attached = false;
-    recordPerfEvent('mux.conversation.detach', {
-      sessionId,
-      lastOutputCursor: conversation.lastOutputCursor,
-    });
+    if (detachResult.detached && detachResult.conversation !== null) {
+      recordPerfEvent('mux.conversation.detach', {
+        sessionId,
+        lastOutputCursor: detachResult.conversation.lastOutputCursor,
+      });
+    }
   };
 
   const refreshProjectPaneSnapshot = (directoryId: string): void => {
@@ -2756,7 +2693,7 @@ async function main(): Promise<number> {
   };
 
   const activateConversation = async (sessionId: string): Promise<void> => {
-    if (activeConversationId === sessionId) {
+    if (conversationManager.activeConversationId === sessionId) {
       if (workspace.mainPaneMode !== 'conversation') {
         workspace.mainPaneMode = 'conversation';
         selectLeftNavConversation(sessionId);
@@ -2769,15 +2706,14 @@ async function main(): Promise<number> {
     if (conversationTitleEdit !== null && conversationTitleEdit.conversationId !== sessionId) {
       stopConversationTitleEdit(true);
     }
-    const previousActiveId = activeConversationId;
+    const previousActiveId = conversationManager.activeConversationId;
     selection = null;
     selectionDrag = null;
     releaseViewportPinForSelection();
     if (previousActiveId !== null) {
       await detachConversation(previousActiveId);
     }
-    activeConversationId = sessionId;
-    conversationManager.activeConversationId = sessionId;
+    conversationManager.setActiveConversationId(sessionId);
     workspace.mainPaneMode = 'conversation';
     selectLeftNavConversation(sessionId);
     workspace.homePaneDragState = null;
@@ -2805,17 +2741,7 @@ async function main(): Promise<number> {
         if (!isSessionNotFoundError(error) && !isSessionNotLiveError(error)) {
           throw error;
         }
-        if (targetConversation !== undefined) {
-          targetConversation.live = false;
-          targetConversation.attached = false;
-          if (
-            targetConversation.status === 'running' ||
-            targetConversation.status === 'needs-input'
-          ) {
-            targetConversation.status = 'completed';
-            targetConversation.attentionReason = null;
-          }
-        }
+        conversationManager.markSessionUnavailable(sessionId);
         await startConversation(sessionId);
         await attachConversation(sessionId);
       }
@@ -3254,10 +3180,9 @@ async function main(): Promise<number> {
       isConversationNotFoundError,
       unsubscribeConversationEvents,
       removeConversationState,
-      activeConversationId,
+      activeConversationId: conversationManager.activeConversationId,
       setActiveConversationId: (next) => {
-        activeConversationId = next;
-        conversationManager.activeConversationId = next;
+        conversationManager.setActiveConversationId(next);
       },
       orderedConversationIds: () => conversationManager.orderedIds(),
       conversationDirectoryId: (targetSessionId) =>
@@ -3359,10 +3284,9 @@ async function main(): Promise<number> {
       },
       unsubscribeConversationEvents,
       removeConversationState,
-      activeConversationId,
+      activeConversationId: conversationManager.activeConversationId,
       setActiveConversationId: (sessionId) => {
-        activeConversationId = sessionId;
-        conversationManager.activeConversationId = sessionId;
+        conversationManager.setActiveConversationId(sessionId);
       },
       archiveDirectory: async (targetDirectoryId) => {
         await streamClient.sendCommand({
@@ -3399,7 +3323,7 @@ async function main(): Promise<number> {
     if (selectionPinnedFollowOutput !== null) {
       return;
     }
-    if (activeConversationId === null) {
+    if (conversationManager.activeConversationId === null) {
       return;
     }
     const follow = activeConversation().oracle.snapshotWithoutHash().viewport.followOutput;
@@ -3416,7 +3340,7 @@ async function main(): Promise<number> {
     const shouldRepin = selectionPinnedFollowOutput;
     selectionPinnedFollowOutput = null;
     if (shouldRepin) {
-      if (activeConversationId === null) {
+      if (conversationManager.activeConversationId === null) {
         return;
       }
       activeConversation().oracle.setFollowOutput(true);
@@ -3432,14 +3356,14 @@ async function main(): Promise<number> {
       workspace.activeDirectoryId !== null &&
       directories.has(workspace.activeDirectoryId);
     const homePaneActive = workspace.mainPaneMode === 'home';
-    if (!projectPaneActive && !homePaneActive && activeConversationId === null) {
+    if (!projectPaneActive && !homePaneActive && conversationManager.activeConversationId === null) {
       dirty = false;
       return;
     }
     const renderStartedAtNs = perfNowNs();
 
     const active =
-      activeConversationId === null ? null : (conversations.get(activeConversationId) ?? null);
+      conversationManager.activeConversationId === null ? null : (conversations.get(conversationManager.activeConversationId) ?? null);
     if (!projectPaneActive && !homePaneActive && active === null) {
       dirty = false;
       return;
@@ -3472,7 +3396,7 @@ async function main(): Promise<number> {
       orderedIds,
       activeProjectId: workspace.activeDirectoryId,
       activeRepositoryId: workspace.activeRepositorySelectionId,
-      activeConversationId,
+      activeConversationId: conversationManager.activeConversationId,
       projectSelectionEnabled: workspace.leftNavSelection.kind === 'project',
       repositorySelectionEnabled: workspace.leftNavSelection.kind === 'repository',
       homeSelectionEnabled: workspace.leftNavSelection.kind === 'home',
@@ -3628,7 +3552,7 @@ async function main(): Promise<number> {
         active !== null &&
         rightFrame !== null &&
         startupFirstPaintTargetSessionId !== null &&
-        activeConversationId === startupFirstPaintTargetSessionId &&
+        conversationManager.activeConversationId === startupFirstPaintTargetSessionId &&
         startupSequencer.snapshot().firstOutputObserved &&
         !startupSequencer.snapshot().firstPaintObserved
       ) {
@@ -3650,7 +3574,7 @@ async function main(): Promise<number> {
         active !== null &&
         rightFrame !== null &&
         startupFirstPaintTargetSessionId !== null &&
-        activeConversationId === startupFirstPaintTargetSessionId &&
+        conversationManager.activeConversationId === startupFirstPaintTargetSessionId &&
         startupSequencer.snapshot().firstOutputObserved
       ) {
         const glyphCells = visibleGlyphCellCount(active);
@@ -3719,11 +3643,17 @@ async function main(): Promise<number> {
       if (conversationManager.isRemoved(envelope.sessionId)) {
         return;
       }
-      const conversation = ensureConversation(envelope.sessionId);
-      noteGitActivity(conversation.directoryId);
       const chunk = Buffer.from(envelope.chunkBase64, 'base64');
+      const outputIngest = conversationManager.ingestOutputChunk({
+        sessionId: envelope.sessionId,
+        cursor: envelope.cursor,
+        chunk,
+        ensureConversation,
+      });
+      const conversation = outputIngest.conversation;
+      noteGitActivity(conversation.directoryId);
       outputSampleSessionIds.add(envelope.sessionId);
-      if (activeConversationId === envelope.sessionId) {
+      if (conversationManager.activeConversationId === envelope.sessionId) {
         outputSampleActiveBytes += chunk.length;
         outputSampleActiveChunks += 1;
       } else {
@@ -3753,16 +3683,13 @@ async function main(): Promise<number> {
           });
         }
       }
-      if (envelope.cursor < conversation.lastOutputCursor) {
+      if (outputIngest.cursorRegressed) {
         recordPerfEvent('mux.output.cursor-regression', {
           sessionId: envelope.sessionId,
-          previousCursor: conversation.lastOutputCursor,
+          previousCursor: outputIngest.previousCursor,
           cursor: envelope.cursor,
         });
-        conversation.lastOutputCursor = 0;
       }
-      conversation.oracle.ingest(chunk);
-      conversation.lastOutputCursor = envelope.cursor;
       if (
         startupFirstPaintTargetSessionId !== null &&
         envelope.sessionId === startupFirstPaintTargetSessionId
@@ -3773,7 +3700,7 @@ async function main(): Promise<number> {
       const normalized = mapTerminalOutputToNormalizedEvent(chunk, conversation.scope, idFactory);
       enqueuePersistedEvent(normalized);
       conversation.lastEventAt = normalized.ts;
-      if (activeConversationId === envelope.sessionId) {
+      if (conversationManager.activeConversationId === envelope.sessionId) {
         markDirty();
       }
       const outputHandledDurationMs = Number(perfNowNs() - outputHandledStartedAtNs) / 1e6;
@@ -3811,12 +3738,11 @@ async function main(): Promise<number> {
       }
       if (envelope.event.type === 'session-exit') {
         exit = envelope.event.exit;
-        conversation.status = 'exited';
-        conversation.live = false;
-        conversation.attentionReason = null;
-        conversation.lastExit = envelope.event.exit;
-        conversation.exitedAt = new Date().toISOString();
-        conversation.attached = false;
+        conversationManager.markSessionExited({
+          sessionId: envelope.sessionId,
+          exit: envelope.event.exit,
+          exitedAt: new Date().toISOString(),
+        });
         ptySizeByConversationId.delete(envelope.sessionId);
       }
       markDirty();
@@ -3827,16 +3753,15 @@ async function main(): Promise<number> {
       if (conversationManager.isRemoved(envelope.sessionId)) {
         return;
       }
-      const conversation = conversations.get(envelope.sessionId);
+      const conversation = conversationManager.get(envelope.sessionId);
       if (conversation !== undefined) {
         noteGitActivity(conversation.directoryId);
         exit = envelope.exit;
-        conversation.status = 'exited';
-        conversation.live = false;
-        conversation.attentionReason = null;
-        conversation.lastExit = envelope.exit;
-        conversation.exitedAt = new Date().toISOString();
-        conversation.attached = false;
+        conversationManager.markSessionExited({
+          sessionId: envelope.sessionId,
+          exit: envelope.exit,
+          exitedAt: new Date().toISOString(),
+        });
         ptySizeByConversationId.delete(envelope.sessionId);
       }
       markDirty();
@@ -3857,9 +3782,8 @@ async function main(): Promise<number> {
     }
   });
 
-  const initialActiveId = activeConversationId;
-  activeConversationId = null;
-  conversationManager.activeConversationId = null;
+  const initialActiveId = conversationManager.activeConversationId;
+  conversationManager.setActiveConversationId(null);
   startupSequencer.setTargetSession(initialActiveId);
   if (initialActiveId !== null) {
     startupFirstPaintTargetSessionId = initialActiveId;
@@ -4286,8 +4210,8 @@ async function main(): Promise<number> {
         releaseViewportPinForSelection();
         markDirty();
       }
-      if (workspace.mainPaneMode === 'conversation' && activeConversationId !== null) {
-        const escapeTarget = conversations.get(activeConversationId);
+      if (workspace.mainPaneMode === 'conversation' && conversationManager.activeConversationId !== null) {
+        const escapeTarget = conversations.get(conversationManager.activeConversationId);
         if (escapeTarget !== undefined) {
           streamClient.sendInput(escapeTarget.sessionId, chunk);
         }
@@ -4322,7 +4246,7 @@ async function main(): Promise<number> {
         resolveDirectoryForAction,
         openNewThreadPrompt,
         resolveConversationForAction: () =>
-          workspace.mainPaneMode === 'conversation' ? activeConversationId : null,
+          workspace.mainPaneMode === 'conversation' ? conversationManager.activeConversationId : null,
         conversationsHas: (sessionId) => conversations.has(sessionId),
         queueControlPlaneOp,
         archiveConversation,
@@ -4358,7 +4282,7 @@ async function main(): Promise<number> {
       selection !== null &&
       isCopyShortcutInput(focusExtraction.sanitized)
     ) {
-      if (activeConversationId === null) {
+      if (conversationManager.activeConversationId === null) {
         return;
       }
       const selectedFrame = activeConversation().oracle.snapshotWithoutHash();
@@ -4373,7 +4297,7 @@ async function main(): Promise<number> {
     inputRemainder = parsed.remainder;
 
     const inputConversation =
-      activeConversationId === null ? null : (conversations.get(activeConversationId) ?? null);
+      conversationManager.activeConversationId === null ? null : (conversations.get(conversationManager.activeConversationId) ?? null);
     let snapshotForInput =
       inputConversation === null ? null : inputConversation.oracle.snapshotWithoutHash();
     const routedTokens: Array<(typeof parsed.tokens)[number]> = [];
@@ -4569,7 +4493,7 @@ async function main(): Promise<number> {
               action: selectedAction,
               selectedProjectId,
               selectedRepositoryId,
-              activeConversationId,
+              activeConversationId: conversationManager.activeConversationId,
               repositoriesCollapsed: workspace.repositoriesCollapsed,
               clearConversationTitleEditClickState: () => {
                 conversationTitleEditClickState = null;
@@ -4624,7 +4548,7 @@ async function main(): Promise<number> {
               previousClickState: conversationTitleEditClickState,
               nowMs: Date.now(),
               conversationTitleEditDoubleClickWindowMs: CONVERSATION_TITLE_EDIT_DOUBLE_CLICK_WINDOW_MS,
-              activeConversationId,
+              activeConversationId: conversationManager.activeConversationId,
               isConversationPaneActive: workspace.mainPaneMode === 'conversation',
               setConversationClickState: (next) => {
                 conversationTitleEditClickState = next;
@@ -4712,7 +4636,10 @@ async function main(): Promise<number> {
     }
     if (
       inputConversation.controller !== null &&
-      !isConversationControlledByLocalHuman(inputConversation)
+      !conversationManager.isControlledByLocalHuman({
+        conversation: inputConversation,
+        controllerId: muxControllerId,
+      })
     ) {
       return;
     }

@@ -135,7 +135,7 @@ bun run loc:verify:enforce
 
 ## Current State Snapshot
 
-- Current primary over-limit file: `scripts/codex-live-mux-runtime.ts` (~4676 LOC).
+- Current primary over-limit file: `scripts/codex-live-mux-runtime.ts` (~4606 LOC).
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
 
@@ -197,3 +197,130 @@ bun run loc:verify:enforce
   - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4676 non-empty LOC
+
+### Checkpoint C (2026-02-18): ConversationManager ensure/active ownership
+
+- Extended `src/domain/conversations.ts` with class-owned lifecycle behavior:
+  - `ensure(...)` now owns conversation creation/update hydration semantics
+  - `requireActiveConversation()` now owns active-session presence validation
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate:
+  - `ensureConversation(...)` to `conversationManager.ensure(...)`
+  - active-conversation resolution to `conversationManager.requireActiveConversation()`
+- Validation at checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4649 non-empty LOC
+
+### Checkpoint D (2026-02-18): ConversationManager start in-flight ownership
+
+- Extended `src/domain/conversations.ts` with `runWithStartInFlight(...)` so the manager owns in-flight start deduplication behavior.
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate `startConversation(...)` in-flight guards to `conversationManager.runWithStartInFlight(...)`.
+- Validation at checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4639 non-empty LOC
+
+### Checkpoint E (2026-02-18): ConversationManager active-id source of truth
+
+- Updated `scripts/codex-live-mux-runtime.ts` to remove duplicate local active-session state and use `conversationManager.activeConversationId` directly as the single runtime source of truth.
+- Cleaned call-site payloads to pass explicit `activeConversationId` fields where needed after the ownership shift.
+- Validation at checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4632 non-empty LOC
+
+### Checkpoint F (2026-02-18): ConversationManager persisted-record hydration
+
+- Extended `src/domain/conversations.ts` with:
+  - `PersistedConversationRecord` type
+  - `upsertFromPersistedRecord(...)` lifecycle method
+- Updated `scripts/codex-live-mux-runtime.ts` persisted hydration path to delegate record upsert semantics to `conversationManager.upsertFromPersistedRecord(...)`.
+- Validation at checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4623 non-empty LOC
+
+### Checkpoint G (2026-02-18): ConversationManager exit transition ownership
+
+- Extended `src/domain/conversations.ts` with `markSessionExited(...)` so exit-status transitions are class-owned.
+- Updated `scripts/codex-live-mux-runtime.ts` to use `conversationManager.markSessionExited(...)` in both `pty.event` (`session-exit`) and `pty.exit` handlers.
+- Validation at checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4621 non-empty LOC
+
+### Checkpoint H (2026-02-18): ConversationManager PTY output ingest ownership
+
+- Extended `src/domain/conversations.ts` with `ingestOutputChunk(...)` so output cursor regression handling + oracle ingest state mutation are class-owned.
+- Updated `scripts/codex-live-mux-runtime.ts` `pty.output` envelope handling to call `conversationManager.ingestOutputChunk(...)` and consume structured regression metadata for instrumentation.
+- Validation at checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4624 non-empty LOC
+
+### Checkpoint I (2026-02-18): ConversationManager controller/attachment ownership
+
+- Extended `src/domain/conversations.ts` with:
+  - `setAttached(...)`
+  - `markSessionUnavailable(...)`
+  - `isControlledByLocalHuman(...)`
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate:
+  - attach/detach attached-flag state transitions
+  - session-not-live fallback transitions during activation retries
+  - local-human control guard checks
+- Validation at checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4610 non-empty LOC
+
+### Checkpoint J (2026-02-18): ConversationManager attach/detach flow ownership
+
+- Extended `src/domain/conversations.ts` with:
+  - `attachIfLive(...)`
+  - `detachIfAttached(...)`
+- Updated `scripts/codex-live-mux-runtime.ts` attach/detach flow to delegate live/attached guards and state transitions through manager methods, while retaining stream command and perf event emission in runtime.
+- Validation at checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4605 non-empty LOC
+
+### Checkpoint K (2026-02-18): ConversationManager summary/active-id ownership
+
+- Extended `src/domain/conversations.ts` with:
+  - `upsertFromSessionSummary(...)`
+  - `setActiveConversationId(...)`
+  - `ensureActiveConversationId(...)`
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate:
+  - session summary hydration (`session.status` + `session.list`) through manager APIs
+  - active-id bootstrap and mutation through manager setters
+- Validation at checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4606 non-empty LOC
