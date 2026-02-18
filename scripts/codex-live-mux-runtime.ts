@@ -125,8 +125,6 @@ import {
   writeTextToClipboard,
 } from '../src/mux/live-mux/selection.ts';
 import {
-  applyObservedGitStatusEvent as applyObservedGitStatusEventFn,
-  deleteDirectoryGitState as deleteDirectoryGitStateFn,
   type GitRepositorySnapshot,
   type GitSummary,
 } from '../src/mux/live-mux/git-state.ts';
@@ -162,6 +160,7 @@ import { RuntimeRenderFlush } from '../src/services/runtime-render-flush.ts';
 import { RuntimeLeftRailRender } from '../src/services/runtime-left-rail-render.ts';
 import { RuntimeRenderOrchestrator } from '../src/services/runtime-render-orchestrator.ts';
 import { RuntimeRepositoryActions } from '../src/services/runtime-repository-actions.ts';
+import { RuntimeGitState } from '../src/services/runtime-git-state.ts';
 import { RuntimeRightPaneRender } from '../src/services/runtime-right-pane-render.ts';
 import { RuntimeRenderState } from '../src/services/runtime-render-state.ts';
 import { RuntimeRenderLifecycle } from '../src/services/runtime-render-lifecycle.ts';
@@ -945,59 +944,34 @@ async function main(): Promise<number> {
   hydrateStartupStateForStartupOrchestrator = async (afterCursor) =>
     await startupStateHydrationService.hydrateStartupState(afterCursor);
 
-  const ensureDirectoryGitState = (directoryId: string): void => {
-    directoryManager.ensureGitSummary(directoryId, GIT_SUMMARY_LOADING);
-  };
-
-  const deleteDirectoryGitState = (directoryId: string): void => {
-    deleteDirectoryGitStateFn(
-      directoryId,
-      gitSummaryByDirectoryId,
-      directoryRepositorySnapshotByDirectoryId,
-      repositoryAssociationByDirectoryId,
-    );
-  };
-
-  const syncGitStateWithDirectories = (): void => {
-    directoryManager.syncGitSummariesWithDirectories(GIT_SUMMARY_LOADING);
-    syncRepositoryAssociationsWithDirectorySnapshots();
-  };
-
-  const noteGitActivity = (directoryId: string | null): void => {
-    if (directoryId === null || !directoryManager.hasDirectory(directoryId)) {
-      return;
-    }
-    ensureDirectoryGitState(directoryId);
-  };
-
-  const applyObservedGitStatusEvent = (observed: StreamObservedEvent): void => {
-    const reduced = applyObservedGitStatusEventFn({
-      enabled: configuredMuxGit.enabled,
-      observed,
-      gitSummaryByDirectoryId: gitSummaryByDirectoryId,
-      loadingSummary: GIT_SUMMARY_LOADING,
-      directoryRepositorySnapshotByDirectoryId,
-      emptyRepositorySnapshot: GIT_REPOSITORY_NONE,
-      repositoryAssociationByDirectoryId,
-      repositories,
-      parseRepositoryRecord,
-      repositoryRecordChanged: (previous, repository) =>
-        previous === undefined ||
-        previous.name !== repository.name ||
-        previous.remoteUrl !== repository.remoteUrl ||
-        previous.defaultBranch !== repository.defaultBranch ||
-        previous.archivedAt !== repository.archivedAt,
-    });
-    if (!reduced.handled) {
-      return;
-    }
-    if (reduced.repositoryRecordChanged) {
-      syncRepositoryAssociationsWithDirectorySnapshots();
+  const runtimeGitState = new RuntimeGitState<ControlPlaneRepositoryRecord>({
+    enabled: configuredMuxGit.enabled,
+    directoryManager,
+    directoryRepositorySnapshotByDirectoryId,
+    repositoryAssociationByDirectoryId,
+    repositories,
+    parseRepositoryRecord,
+    loadingSummary: GIT_SUMMARY_LOADING,
+    emptyRepositorySnapshot: GIT_REPOSITORY_NONE,
+    syncRepositoryAssociationsWithDirectorySnapshots,
+    syncTaskPaneRepositorySelection: () => {
       syncTaskPaneRepositorySelection();
-    }
-    if (reduced.changed) {
+    },
+    markDirty: () => {
       markDirty();
-    }
+    },
+  });
+  const deleteDirectoryGitState = (directoryId: string): void => {
+    runtimeGitState.deleteDirectoryGitState(directoryId);
+  };
+  const syncGitStateWithDirectories = (): void => {
+    runtimeGitState.syncGitStateWithDirectories();
+  };
+  const noteGitActivity = (directoryId: string | null): void => {
+    runtimeGitState.noteGitActivity(directoryId);
+  };
+  const applyObservedGitStatusEvent = (observed: StreamObservedEvent): void => {
+    runtimeGitState.applyObservedGitStatusEvent(observed);
   };
 
   const idFactory = (): string => `event-${randomUUID()}`;

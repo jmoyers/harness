@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~2860 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~2838 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2172 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -1664,6 +1664,22 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2860 non-empty LOC
+
+### Checkpoint CL (2026-02-18): Git/directory runtime state transitions extracted into class service
+
+- Added `src/services/runtime-git-state.ts` with class-based `RuntimeGitState` to own:
+  - directory git-state delete/sync lifecycle
+  - git activity note/ensure behavior for active directories
+  - observed `directory-git-updated` event reduction and downstream selection/dirty sync triggers
+- Updated `scripts/codex-live-mux-runtime.ts` to remove inline git-state transition block and delegate through `RuntimeGitState`.
+- Added `test/services-runtime-git-state.test.ts` with coverage for:
+  - note/delete/sync branches
+  - observed event disabled/non-git guards
+  - observed event changed/no-change parse branches
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2838 non-empty LOC
 
 ### Next focus (yield-first)
 
