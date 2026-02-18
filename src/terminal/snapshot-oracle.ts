@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { StringDecoder } from 'node:string_decoder';
 
-type ParserMode = 'normal' | 'esc' | 'csi' | 'osc' | 'osc-esc';
+type ParserMode = 'normal' | 'esc' | 'csi' | 'osc' | 'osc-esc' | 'dcs' | 'dcs-esc';
 type ActiveScreen = 'primary' | 'alternate';
 type TerminalCursorShape = 'block' | 'underline' | 'bar';
 
@@ -64,6 +64,21 @@ export interface TerminalSnapshotFrame extends TerminalSnapshotFrameCore {
   frameHash: string;
 }
 
+export interface TerminalQueryState {
+  rows: number;
+  cols: number;
+  cursor: {
+    row: number;
+    col: number;
+  };
+}
+
+interface TerminalQueryHooks {
+  onCsiQuery?: (payload: string, readState: () => TerminalQueryState) => void;
+  onOscQuery?: (payload: string, useBellTerminator: boolean) => void;
+  onDcsQuery?: (payload: string) => void;
+}
+
 interface ScreenCursor {
   row: number;
   col: number;
@@ -72,6 +87,10 @@ interface ScreenCursor {
 interface InternalLine {
   wrapped: boolean;
   cells: TerminalCell[];
+  revision: number;
+  snapshotCache: TerminalSnapshotLine | null;
+  snapshotCacheRevision: number;
+  snapshotCacheWrapped: boolean;
 }
 
 const DEFAULT_COLOR: TerminalColor = { kind: 'default' };
@@ -217,10 +236,14 @@ function cellsToText(cells: readonly TerminalCell[]): string {
   return value;
 }
 
-function createLine(cols: number, style: TerminalCellStyle): InternalLine {
+function createLine(cols: number, style: TerminalCellStyle, revision: number): InternalLine {
   return {
     wrapped: false,
-    cells: Array.from({ length: cols }, () => blankCell(style))
+    cells: Array.from({ length: cols }, () => blankCell(style)),
+    revision,
+    snapshotCache: null,
+    snapshotCacheRevision: -1,
+    snapshotCacheWrapped: false
   };
 }
 
@@ -235,19 +258,21 @@ class ScreenBuffer {
   private viewportTop = 0;
   private scrollRegionTop = 0;
   private scrollRegionBottom: number;
+  private nextLineRevision = 1;
 
   constructor(cols: number, rows: number, includeScrollback: boolean, scrollbackLimit: number) {
     this.cols = cols;
     this.rows = rows;
     this.includeScrollback = includeScrollback;
     this.scrollbackLimit = scrollbackLimit;
-    this.lines = Array.from({ length: rows }, () => createLine(cols, defaultCellStyle()));
+    this.lines = Array.from({ length: rows }, () => this.createBlankLine(defaultCellStyle()));
     this.scrollRegionBottom = Math.max(0, rows - 1);
   }
 
   resize(cols: number, rows: number, fillStyle: TerminalCellStyle): void {
     const nextLines = Array.from({ length: rows }, (_, rowIdx) => {
-      const nextLine = createLine(cols, fillStyle);
+      const nextLine = createLine(cols, fillStyle, this.nextLineRevision);
+      this.nextLineRevision += 1;
       if (rowIdx < this.lines.length) {
         const previousLine = this.lines[rowIdx]!;
         nextLine.wrapped = previousLine.wrapped;
@@ -277,7 +302,7 @@ class ScreenBuffer {
   }
 
   clear(fillStyle: TerminalCellStyle): void {
-    this.lines = Array.from({ length: this.rows }, () => createLine(this.cols, fillStyle));
+    this.lines = Array.from({ length: this.rows }, () => this.createBlankLine(fillStyle));
     this.scrollback = [];
     this.recomputeViewport();
   }
@@ -323,24 +348,29 @@ class ScreenBuffer {
 
   putGlyph(cursor: ScreenCursor, glyph: string, width: number, style: TerminalCellStyle): boolean {
     const normalizedWidth = Math.max(1, Math.min(2, width));
+    const line = this.currentLine(cursor);
 
-    if (this.currentLine(cursor).cells[cursor.col]?.continued === true && cursor.col > 0) {
-      this.currentLine(cursor).cells[cursor.col - 1] = blankCell(defaultCellStyle());
+    if (line.cells[cursor.col]?.continued === true && cursor.col > 0) {
+      line.cells[cursor.col - 1] = blankCell(defaultCellStyle());
+      this.touchLine(line);
     }
 
     if (normalizedWidth === 2 && cursor.col === this.cols - 1) {
       this.advanceLine(cursor, true, style);
     }
 
-    this.currentLine(cursor).cells[cursor.col] = {
+    const targetLine = this.currentLine(cursor);
+    targetLine.cells[cursor.col] = {
       glyph,
       width: normalizedWidth,
       continued: false,
       style: cloneStyle(style)
     };
+    this.touchLine(targetLine);
 
     if (normalizedWidth === 2 && cursor.col + 1 < this.cols) {
-      this.currentLine(cursor).cells[cursor.col + 1] = continuationCell(style);
+      targetLine.cells[cursor.col + 1] = continuationCell(style);
+      this.touchLine(targetLine);
     }
 
     if (normalizedWidth === 1 && cursor.col === this.cols - 1) {
@@ -372,17 +402,19 @@ class ScreenBuffer {
   }
 
   appendCombining(cursor: ScreenCursor, combiningChar: string): void {
+    const line = this.currentLine(cursor);
     const targetCol = cursor.col > 0 ? cursor.col - 1 : 0;
-    const targetCell = this.currentLine(cursor).cells[targetCol];
+    const targetCell = line.cells[targetCol];
     if (targetCell === undefined || targetCell.continued) {
       return;
     }
     targetCell.glyph += combiningChar;
+    this.touchLine(line);
   }
 
   clearScreen(cursor: ScreenCursor, mode: number, fillStyle: TerminalCellStyle): void {
     if (mode === 2 || mode === 3) {
-      this.lines = Array.from({ length: this.rows }, () => createLine(this.cols, fillStyle));
+      this.lines = Array.from({ length: this.rows }, () => this.createBlankLine(fillStyle));
       if (mode === 3) {
         this.scrollback = [];
       }
@@ -395,9 +427,11 @@ class ScreenBuffer {
     if (mode === 1) {
       for (let row = 0; row <= cursor.row; row += 1) {
         const end = row === cursor.row ? cursor.col : this.cols;
+        const line = this.lines[row]!;
         for (let col = 0; col < end; col += 1) {
-          this.lines[row]!.cells[col] = blankCell(fillStyle);
+          line.cells[col] = blankCell(fillStyle);
         }
+        this.touchLine(line);
       }
       this.recomputeViewport();
       return;
@@ -405,29 +439,34 @@ class ScreenBuffer {
 
     for (let row = cursor.row; row < this.rows; row += 1) {
       const start = row === cursor.row ? cursor.col : 0;
+      const line = this.lines[row]!;
       for (let col = start; col < this.cols; col += 1) {
-        this.lines[row]!.cells[col] = blankCell(fillStyle);
+        line.cells[col] = blankCell(fillStyle);
       }
+      this.touchLine(line);
     }
     this.recomputeViewport();
   }
 
   clearLine(cursor: ScreenCursor, mode: number, fillStyle: TerminalCellStyle): void {
     if (mode === 2) {
-      this.lines[cursor.row] = createLine(this.cols, fillStyle);
+      this.lines[cursor.row] = this.createBlankLine(fillStyle);
       return;
     }
 
+    const line = this.lines[cursor.row]!;
     if (mode === 1) {
       for (let col = 0; col <= cursor.col; col += 1) {
-        this.lines[cursor.row]!.cells[col] = blankCell(fillStyle);
+        line.cells[col] = blankCell(fillStyle);
       }
+      this.touchLine(line);
       return;
     }
 
     for (let col = cursor.col; col < this.cols; col += 1) {
-      this.lines[cursor.row]!.cells[col] = blankCell(fillStyle);
+      line.cells[col] = blankCell(fillStyle);
     }
+    this.touchLine(line);
   }
 
   scrollUp(lines: number, fillStyle: TerminalCellStyle, top = 0, bottom = this.rows - 1): void {
@@ -449,7 +488,7 @@ class ScreenBuffer {
           this.scrollback.shift();
         }
       }
-      this.lines.splice(clampedBottom, 0, createLine(this.cols, fillStyle));
+      this.lines.splice(clampedBottom, 0, this.createBlankLine(fillStyle));
     }
     this.recomputeViewport();
   }
@@ -463,7 +502,7 @@ class ScreenBuffer {
     const count = Math.max(1, lines);
     for (let idx = 0; idx < count; idx += 1) {
       this.lines.splice(clampedBottom, 1);
-      this.lines.splice(clampedTop, 0, createLine(this.cols, fillStyle));
+      this.lines.splice(clampedTop, 0, this.createBlankLine(fillStyle));
     }
     this.recomputeViewport();
   }
@@ -477,7 +516,7 @@ class ScreenBuffer {
     const count = Math.max(1, Math.min(lines, maxCount));
     for (let idx = 0; idx < count; idx += 1) {
       this.lines.splice(this.scrollRegionBottom, 1);
-      this.lines.splice(cursor.row, 0, createLine(this.cols, fillStyle));
+      this.lines.splice(cursor.row, 0, this.createBlankLine(fillStyle));
     }
   }
 
@@ -490,7 +529,7 @@ class ScreenBuffer {
     const count = Math.max(1, Math.min(lines, maxCount));
     for (let idx = 0; idx < count; idx += 1) {
       this.lines.splice(cursor.row, 1);
-      this.lines.splice(this.scrollRegionBottom, 0, createLine(this.cols, fillStyle));
+      this.lines.splice(this.scrollRegionBottom, 0, this.createBlankLine(fillStyle));
     }
   }
 
@@ -504,6 +543,7 @@ class ScreenBuffer {
     for (let col = cursor.col; col < cursor.col + count; col += 1) {
       line.cells[col] = blankCell(fillStyle);
     }
+    this.touchLine(line);
   }
 
   deleteChars(cursor: ScreenCursor, chars: number, fillStyle: TerminalCellStyle): void {
@@ -516,6 +556,7 @@ class ScreenBuffer {
     for (let col = this.cols - count; col < this.cols; col += 1) {
       line.cells[col] = blankCell(fillStyle);
     }
+    this.touchLine(line);
   }
 
   snapshot(
@@ -549,18 +590,7 @@ class ScreenBuffer {
 
     const richLines = Array.from({ length: this.rows }, (_, rowIdx) => {
       const line = visible[rowIdx]!;
-      const cells = line.cells.map((cell) => ({
-        glyph: cell.glyph,
-        width: cell.width,
-        continued: cell.continued,
-        style: cloneStyle(cell.style)
-      }));
-      const trimmedText = cellsToText(trimRightCells(cells));
-      return {
-        wrapped: line.wrapped,
-        text: trimmedText,
-        cells
-      };
+      return this.materializeSnapshotLine(line);
     });
 
     const simpleLines = richLines.map((line) => line.text);
@@ -601,12 +631,54 @@ class ScreenBuffer {
     cursor.col = 0;
     this.lineFeed(cursor, fillStyle);
     if (cursor.row >= 0 && cursor.row < this.rows) {
-      this.lines[cursor.row]!.wrapped = wrapped;
+      const line = this.lines[cursor.row]!;
+      if (line.wrapped !== wrapped) {
+        line.wrapped = wrapped;
+        this.touchLine(line);
+      }
     }
   }
 
   private currentLine(cursor: ScreenCursor): InternalLine {
     return this.lines[cursor.row]!;
+  }
+
+  private createBlankLine(style: TerminalCellStyle): InternalLine {
+    const line = createLine(this.cols, style, this.nextLineRevision);
+    this.nextLineRevision += 1;
+    return line;
+  }
+
+  private touchLine(line: InternalLine): void {
+    line.revision += 1;
+    line.snapshotCache = null;
+    line.snapshotCacheRevision = -1;
+  }
+
+  private materializeSnapshotLine(line: InternalLine): TerminalSnapshotLine {
+    if (
+      line.snapshotCache !== null &&
+      line.snapshotCacheRevision === line.revision &&
+      line.snapshotCacheWrapped === line.wrapped
+    ) {
+      return line.snapshotCache;
+    }
+    const cells = line.cells.map((cell) => ({
+      glyph: cell.glyph,
+      width: cell.width,
+      continued: cell.continued,
+      style: cloneStyle(cell.style)
+    }));
+    const trimmedText = cellsToText(trimRightCells(cells));
+    const snapshotLine: TerminalSnapshotLine = {
+      wrapped: line.wrapped,
+      text: trimmedText,
+      cells
+    };
+    line.snapshotCache = snapshotLine;
+    line.snapshotCacheRevision = line.revision;
+    line.snapshotCacheWrapped = line.wrapped;
+    return snapshotLine;
   }
 
   private maxViewportTop(): number {
@@ -875,11 +947,14 @@ export class TerminalSnapshotOracle {
   private readonly decoder = new StringDecoder('utf8');
   private readonly primary: ScreenBuffer;
   private readonly alternate: ScreenBuffer;
+  private queryHooks: TerminalQueryHooks | null;
   private activeScreen: ActiveScreen = 'primary';
   private cursor: ScreenCursor = { row: 0, col: 0 };
   private savedCursor: ScreenCursor | null = null;
   private mode: ParserMode = 'normal';
   private csiBuffer = '';
+  private oscBuffer = '';
+  private dcsBuffer = '';
   private cursorVisible = true;
   private cursorStyle: TerminalCursorStyle = cloneCursorStyle(DEFAULT_CURSOR_STYLE);
   private bracketedPasteMode = false;
@@ -888,9 +963,10 @@ export class TerminalSnapshotOracle {
   private pendingWrap = false;
   private tabStops = new Set<number>();
 
-  constructor(cols: number, rows: number, scrollbackLimit = 5000) {
+  constructor(cols: number, rows: number, scrollbackLimit = 5000, queryHooks: TerminalQueryHooks | null = null) {
     this.primary = new ScreenBuffer(cols, rows, true, scrollbackLimit);
     this.alternate = new ScreenBuffer(cols, rows, false, 0);
+    this.queryHooks = queryHooks;
     this.resetTabStops(cols);
   }
 
@@ -921,6 +997,22 @@ export class TerminalSnapshotOracle {
 
   scrollViewport(deltaRows: number): void {
     this.currentScreen().scrollViewport(deltaRows);
+  }
+
+  setQueryHooks(queryHooks: TerminalQueryHooks | null): void {
+    this.queryHooks = queryHooks;
+  }
+
+  queryState(): TerminalQueryState {
+    const screen = this.currentScreen();
+    return {
+      rows: screen.rows,
+      cols: screen.cols,
+      cursor: {
+        row: this.cursor.row,
+        col: this.cursor.col
+      }
+    };
   }
 
   snapshot(): TerminalSnapshotFrame {
@@ -966,7 +1058,15 @@ export class TerminalSnapshotOracle {
       this.processOsc(char);
       return;
     }
-    this.processOscEsc(char);
+    if (this.mode === 'osc-esc') {
+      this.processOscEsc(char);
+      return;
+    }
+    if (this.mode === 'dcs') {
+      this.processDcs(char);
+      return;
+    }
+    this.processDcsEsc(char);
   }
 
   private processNormal(char: string): void {
@@ -1026,6 +1126,12 @@ export class TerminalSnapshotOracle {
     }
     if (char === ']') {
       this.mode = 'osc';
+      this.oscBuffer = '';
+      return;
+    }
+    if (char === 'P') {
+      this.mode = 'dcs';
+      this.dcsBuffer = '';
       return;
     }
     if (char === '7') {
@@ -1079,7 +1185,13 @@ export class TerminalSnapshotOracle {
       const rawParams = this.csiBuffer;
       this.mode = 'normal';
       this.csiBuffer = '';
+      this.emitCsiQuery(`${rawParams}${finalByte}`);
       this.applyCsi(rawParams, finalByte);
+      return;
+    }
+    if (char === '\u001b') {
+      this.mode = 'esc';
+      this.csiBuffer = '';
       return;
     }
 
@@ -1088,20 +1200,45 @@ export class TerminalSnapshotOracle {
 
   private processOsc(char: string): void {
     if (char === '\u0007') {
+      this.emitOscQuery(true);
       this.mode = 'normal';
       return;
     }
     if (char === '\u001b') {
       this.mode = 'osc-esc';
+      return;
     }
+    this.oscBuffer += char;
   }
 
   private processOscEsc(char: string): void {
     if (char === '\\') {
+      this.emitOscQuery(false);
       this.mode = 'normal';
       return;
     }
+    this.oscBuffer += '\u001b';
+    this.oscBuffer += char;
     this.mode = 'osc';
+  }
+
+  private processDcs(char: string): void {
+    if (char === '\u001b') {
+      this.mode = 'dcs-esc';
+      return;
+    }
+    this.dcsBuffer += char;
+  }
+
+  private processDcsEsc(char: string): void {
+    if (char === '\\') {
+      this.emitDcsQuery();
+      this.mode = 'normal';
+      return;
+    }
+    this.dcsBuffer += '\u001b';
+    this.dcsBuffer += char;
+    this.mode = 'dcs';
   }
 
   private applyCsi(rawParams: string, finalByte: string): void {
@@ -1245,6 +1382,22 @@ export class TerminalSnapshotOracle {
     }
   }
 
+  private emitCsiQuery(payload: string): void {
+    this.queryHooks?.onCsiQuery?.(payload, () => this.queryState());
+  }
+
+  private emitOscQuery(useBellTerminator: boolean): void {
+    const payload = this.oscBuffer;
+    this.oscBuffer = '';
+    this.queryHooks?.onOscQuery?.(payload, useBellTerminator);
+  }
+
+  private emitDcsQuery(): void {
+    const payload = this.dcsBuffer;
+    this.dcsBuffer = '';
+    this.queryHooks?.onDcsQuery?.(payload);
+  }
+
   private applyPrivateMode(params: number[], enabled: boolean): void {
     for (const value of params) {
       if (!Number.isFinite(value)) {
@@ -1354,6 +1507,10 @@ export class TerminalSnapshotOracle {
 
   private hardReset(): void {
     const style = defaultCellStyle();
+    this.mode = 'normal';
+    this.csiBuffer = '';
+    this.oscBuffer = '';
+    this.dcsBuffer = '';
     this.activeScreen = 'primary';
     this.cursor = { row: 0, col: 0 };
     this.savedCursor = null;

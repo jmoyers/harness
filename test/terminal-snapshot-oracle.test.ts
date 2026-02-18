@@ -82,6 +82,22 @@ void test('snapshot oracle can emit frame data without hash for hot-path renderi
   assert.equal('frameHash' in withoutHash, false);
 });
 
+void test('snapshot oracle reuses unchanged rendered rows and only invalidates dirty rows', () => {
+  const oracle = new TerminalSnapshotOracle(6, 2);
+  oracle.ingest('ab');
+
+  const first = oracle.snapshotWithoutHash();
+  const second = oracle.snapshotWithoutHash();
+  assert.equal(second.richLines[0], first.richLines[0]);
+  assert.equal(second.richLines[1], first.richLines[1]);
+
+  oracle.ingest('\u001b[2;1HX');
+  const third = oracle.snapshotWithoutHash();
+  assert.equal(third.richLines[0], first.richLines[0]);
+  assert.notEqual(third.richLines[1], first.richLines[1]);
+  assert.equal(third.lines[1], 'X');
+});
+
 void test('snapshot row renderer tolerates transient missing cells during resize races', () => {
   const oracle = new TerminalSnapshotOracle(4, 1);
   oracle.ingest('ab');

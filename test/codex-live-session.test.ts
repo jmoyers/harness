@@ -14,6 +14,7 @@ import {
 import type { BrokerAttachmentHandlers } from '../src/pty/session-broker.ts';
 import type { PtyExit } from '../src/pty/pty_host.ts';
 import { configurePerfCore, shutdownPerfCore } from '../src/perf/perf-core.ts';
+import { TerminalSnapshotOracle } from '../src/terminal/snapshot-oracle.ts';
 
 class FakeBroker {
   private readonly attachments = new Map<string, BrokerAttachmentHandlers>();
@@ -656,6 +657,71 @@ void test('codex live session can disable snapshot ingest while preserving outpu
   assert.equal(snapshot.cursor.col, 0);
 
   removeListener();
+  session.close();
+});
+
+void test('codex live session still answers stateful terminal queries when snapshot model is disabled', () => {
+  const broker = new FakeBroker();
+  const session = startCodexLiveSession(
+    {
+      enableSnapshotModel: false
+    },
+    {
+      startBroker: () => broker
+    }
+  );
+
+  broker.emitData(1, Buffer.from('\u001b[6n\u001b[14t\u001b[18t', 'utf8'));
+  const writes = broker.writes.map((entry) => String(entry));
+  assert.equal(writes.includes('\u001b[1;1R'), true);
+  assert.equal(writes.includes('\u001b[4;384;640t'), true);
+  assert.equal(writes.includes('\u001b[8;24;80t'), true);
+
+  session.close();
+});
+
+void test('codex live session only reads query state for csi payloads that require cursor or dimensions', () => {
+  const broker = new FakeBroker();
+  const originalQueryState = TerminalSnapshotOracle.prototype.queryState;
+  let queryStateReads = 0;
+  TerminalSnapshotOracle.prototype.queryState = function patchedQueryState(this: TerminalSnapshotOracle) {
+    queryStateReads += 1;
+    return originalQueryState.call(this);
+  };
+
+  try {
+    const session = startCodexLiveSession(
+      {},
+      {
+        startBroker: () => broker
+      }
+    );
+
+    broker.emitData(1, Buffer.from('\u001b[c\u001b[>c\u001b[5n\u001b[16t\u001b[?u', 'utf8'));
+    assert.equal(queryStateReads, 0);
+
+    broker.emitData(2, Buffer.from('\u001b[6n\u001b[14t\u001b[18t', 'utf8'));
+    assert.equal(queryStateReads, 3);
+
+    session.close();
+  } finally {
+    TerminalSnapshotOracle.prototype.queryState = originalQueryState;
+  }
+});
+
+void test('codex live session query replies use cursor state at the exact query boundary', () => {
+  const broker = new FakeBroker();
+  const session = startCodexLiveSession(
+    {},
+    {
+      startBroker: () => broker
+    }
+  );
+
+  broker.emitData(1, Buffer.from('abc\u001b[6n', 'utf8'));
+  const writes = broker.writes.map((entry) => String(entry));
+  assert.equal(writes.includes('\u001b[1;4R'), true);
+
   session.close();
 });
 

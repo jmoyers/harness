@@ -1113,8 +1113,11 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
   - Milestone 2 live-steered checkpoint is implemented:
   - `src/codex/live-session.ts` hosts a PTY-backed live Codex session with attach/detach, steering writes/resizes, and event emission.
   - Live session now includes terminal query reply support for `OSC 10/11` and indexed palette `OSC 4` probes (0..15) to improve visual parity with direct terminal runs.
+  - Terminal query handling is now single-pass on the default path: when snapshot modeling is enabled, CSI/OSC/DCS query detection and replies are emitted from the snapshot-oracle parser pass (no parallel query parser over the same chunk).
+  - CSI query state reads are lazy and payload-gated: only stateful probes (`6n`, `14t`, `18t`) read cursor/dimensions; fixed replies (`c`, `>c`, `5n`, `16t`, `?u`) do not trigger frame/state reads.
   - Live session now emits `perf-core` query-observation events (`codex.terminal-query`) for CSI/OSC/DCS startup-query attribution (handled vs unhandled).
   - `src/terminal/snapshot-oracle.ts` provides deterministic pseudo-snapshots (`rows`, `cols`, `activeScreen`, `cursor`, `lines`, `frameHash`) from live PTY output, including DEC scroll-region/origin handling required for pinned-footer UIs.
+  - Snapshot materialization now reuses cached rendered rows by line revision and only rebuilds dirty rows, reducing repeated `cells/style/text` reconstruction on unchanged frames.
   - Supported terminal semantics now include `DECSTBM` (`CSI t;b r`), `DECOM` (`CSI ? 6 h/l`), `IND`/`NEL`/`RI`, and region-scoped `IL`/`DL` behavior.
   - `src/terminal/parity-suite.ts` defines codex/vim/core parity scenes and a deterministic matrix runner with scene-level failures and frame-hash output.
   - `scripts/codex-live.ts` provides a direct live entrypoint (`bun run codex:live -- ...`) with persisted normalized events.
