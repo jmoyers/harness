@@ -183,6 +183,7 @@ import { DirectoryManager } from '../src/domain/directories.ts';
 import { TaskManager } from '../src/domain/tasks.ts';
 import { ControlPlaneService } from '../src/services/control-plane.ts';
 import { EventPersistence } from '../src/services/event-persistence.ts';
+import { MuxUiStatePersistence } from '../src/services/mux-ui-state-persistence.ts';
 import { RecordingService } from '../src/services/recording.ts';
 import { StartupBackgroundProbeService } from '../src/services/startup-background-probe.ts';
 import { StartupBackgroundResumeService } from '../src/services/startup-background-resume.ts';
@@ -1216,17 +1217,6 @@ async function main(): Promise<number> {
   let stop = false;
   let inputRemainder = '';
   let latestRailViewRows: ReturnType<typeof buildWorkspaceRailViewRows> = [];
-  let persistedMuxUiState = {
-    paneWidthPercent: paneWidthPercentFromLayout(layout),
-    repositoriesCollapsed: configuredMuxUi.repositoriesCollapsed,
-    shortcutsCollapsed: configuredMuxUi.shortcutsCollapsed,
-  };
-  let pendingMuxUiStatePersist: {
-    paneWidthPercent: number;
-    repositoriesCollapsed: boolean;
-    shortcutsCollapsed: boolean;
-  } | null = null;
-  let muxUiStatePersistTimer: NodeJS.Timeout | null = null;
   let renderScheduled = false;
   let shuttingDown = false;
   let runtimeFatal: { origin: string; error: unknown } | null = null;
@@ -1368,32 +1358,19 @@ async function main(): Promise<number> {
     },
   });
 
-  const muxUiStatePersistenceEnabled = loadedConfig.error === null;
-  const persistMuxUiStateNow = (): void => {
-    if (!muxUiStatePersistenceEnabled) {
-      return;
-    }
-    if (muxUiStatePersistTimer !== null) {
-      clearTimeout(muxUiStatePersistTimer);
-      muxUiStatePersistTimer = null;
-    }
-    const pending = pendingMuxUiStatePersist;
-    if (pending === null) {
-      return;
-    }
-    pendingMuxUiStatePersist = null;
-    if (
-      pending.paneWidthPercent === persistedMuxUiState.paneWidthPercent &&
-      pending.repositoriesCollapsed === persistedMuxUiState.repositoriesCollapsed &&
-      pending.shortcutsCollapsed === persistedMuxUiState.shortcutsCollapsed
-    ) {
-      return;
-    }
-    try {
+  const muxUiStatePersistence = new MuxUiStatePersistence({
+    enabled: loadedConfig.error === null,
+    initialState: {
+      paneWidthPercent: paneWidthPercentFromLayout(layout),
+      repositoriesCollapsed: configuredMuxUi.repositoriesCollapsed,
+      shortcutsCollapsed: configuredMuxUi.shortcutsCollapsed,
+    },
+    debounceMs: UI_STATE_PERSIST_DEBOUNCE_MS,
+    persistState: (pending) => {
       const updated = updateHarnessMuxUiConfig(pending, {
         filePath: loadedConfig.filePath,
       });
-      persistedMuxUiState = {
+      return {
         paneWidthPercent:
           updated.mux.ui.paneWidthPercent === null
             ? paneWidthPercentFromLayout(layout)
@@ -1401,28 +1378,22 @@ async function main(): Promise<number> {
         repositoriesCollapsed: updated.mux.ui.repositoriesCollapsed,
         shortcutsCollapsed: updated.mux.ui.shortcutsCollapsed,
       };
-      workspace.repositoriesCollapsed = updated.mux.ui.repositoriesCollapsed;
-      workspace.shortcutsCollapsed = updated.mux.ui.shortcutsCollapsed;
-    } catch (error: unknown) {
-      process.stderr.write(
-        `[config] unable to persist mux ui state: ${error instanceof Error ? error.message : String(error)}\n`,
-      );
-    }
+    },
+    applyState: (state) => {
+      workspace.repositoriesCollapsed = state.repositoriesCollapsed;
+      workspace.shortcutsCollapsed = state.shortcutsCollapsed;
+    },
+    writeStderr: (text) => process.stderr.write(text),
+  });
+  const persistMuxUiStateNow = (): void => {
+    muxUiStatePersistence.persistNow();
   };
   const queuePersistMuxUiState = (): void => {
-    if (!muxUiStatePersistenceEnabled) {
-      return;
-    }
-    pendingMuxUiStatePersist = {
+    muxUiStatePersistence.queue({
       paneWidthPercent: paneWidthPercentFromLayout(layout),
       repositoriesCollapsed: workspace.repositoriesCollapsed,
       shortcutsCollapsed: workspace.shortcutsCollapsed,
-    };
-    if (muxUiStatePersistTimer !== null) {
-      clearTimeout(muxUiStatePersistTimer);
-    }
-    muxUiStatePersistTimer = setTimeout(persistMuxUiStateNow, UI_STATE_PERSIST_DEBOUNCE_MS);
-    muxUiStatePersistTimer.unref?.();
+    });
   };
 
   const startupBackgroundProbeService = new StartupBackgroundProbeService({
