@@ -187,6 +187,7 @@ import { RecordingService } from '../src/services/recording.ts';
 import { StartupBackgroundProbeService } from '../src/services/startup-background-probe.ts';
 import { StartupBackgroundResumeService } from '../src/services/startup-background-resume.ts';
 import { StartupOutputTracker } from '../src/services/startup-output-tracker.ts';
+import { StartupPaintTracker } from '../src/services/startup-paint-tracker.ts';
 import { StartupSettledGate } from '../src/services/startup-settled-gate.ts';
 import { StartupSpanTracker } from '../src/services/startup-span-tracker.ts';
 import { StartupVisibility } from '../src/services/startup-visibility.ts';
@@ -622,6 +623,13 @@ async function main(): Promise<number> {
   const startupOutputTracker = new StartupOutputTracker({
     startupSequencer,
     startupSpanTracker,
+    recordPerfEvent,
+  });
+  const startupPaintTracker = new StartupPaintTracker({
+    startupSequencer,
+    startupSpanTracker,
+    startupVisibility,
+    startupSettledGate,
     recordPerfEvent,
   });
 
@@ -3110,65 +3118,12 @@ async function main(): Promise<number> {
     const changedRowCount = flushResult.changedRowCount;
 
     if (flushResult.wroteOutput) {
-      if (
-        active !== null &&
-        rightFrame !== null &&
-        startupSpanTracker.firstPaintTargetSessionId !== null &&
-        conversationManager.activeConversationId === startupSpanTracker.firstPaintTargetSessionId &&
-        startupSequencer.snapshot().firstOutputObserved &&
-        !startupSequencer.snapshot().firstPaintObserved
-      ) {
-        const glyphCells = startupVisibility.visibleGlyphCellCount(active);
-        if (
-          startupSequencer.markFirstPaintVisible(
-            startupSpanTracker.firstPaintTargetSessionId,
-            glyphCells,
-          )
-        ) {
-          recordPerfEvent('mux.startup.active-first-visible-paint', {
-            sessionId: startupSpanTracker.firstPaintTargetSessionId,
-            changedRows: changedRowCount,
-            glyphCells,
-          });
-          startupSpanTracker.endFirstPaintSpan({
-            observed: true,
-            changedRows: changedRowCount,
-            glyphCells,
-          });
-        }
-      }
-      if (
-        active !== null &&
-        rightFrame !== null &&
-        startupSpanTracker.firstPaintTargetSessionId !== null &&
-        conversationManager.activeConversationId === startupSpanTracker.firstPaintTargetSessionId &&
-        startupSequencer.snapshot().firstOutputObserved
-      ) {
-        const glyphCells = startupVisibility.visibleGlyphCellCount(active);
-        if (
-          startupSequencer.markHeaderVisible(
-            startupSpanTracker.firstPaintTargetSessionId,
-            startupVisibility.codexHeaderVisible(active),
-          )
-        ) {
-          recordPerfEvent('mux.startup.active-header-visible', {
-            sessionId: startupSpanTracker.firstPaintTargetSessionId,
-            glyphCells,
-          });
-        }
-        const selectedGate = startupSequencer.maybeSelectSettleGate(
-          startupSpanTracker.firstPaintTargetSessionId,
-          glyphCells,
-        );
-        if (selectedGate !== null) {
-          recordPerfEvent('mux.startup.active-settle-gate', {
-            sessionId: startupSpanTracker.firstPaintTargetSessionId,
-            gate: selectedGate,
-            glyphCells,
-          });
-        }
-        startupSettledGate.scheduleProbe(startupSpanTracker.firstPaintTargetSessionId);
-      }
+      startupPaintTracker.onRenderFlush({
+        activeConversation: active,
+        activeConversationId: conversationManager.activeConversationId,
+        rightFrameVisible: rightFrame !== null,
+        changedRowCount,
+      });
       if (muxRecordingWriter !== null && muxRecordingOracle !== null) {
         const recordingCursorStyle: ScreenCursorStyle =
           rightFrame === null ? { shape: 'block', blinking: false } : rightFrame.cursor.style;
@@ -3225,18 +3180,13 @@ async function main(): Promise<number> {
         outputSampleInactiveChunks += 1;
       }
       startupOutputTracker.onOutputChunk(envelope.sessionId, chunk.length);
+      startupPaintTracker.onOutputChunk(envelope.sessionId);
       if (outputIngest.cursorRegressed) {
         recordPerfEvent('mux.output.cursor-regression', {
           sessionId: envelope.sessionId,
           previousCursor: outputIngest.previousCursor,
           cursor: envelope.cursor,
         });
-      }
-      if (
-        startupSpanTracker.firstPaintTargetSessionId !== null &&
-        envelope.sessionId === startupSpanTracker.firstPaintTargetSessionId
-      ) {
-        startupSettledGate.scheduleProbe(envelope.sessionId);
       }
 
       const normalized = mapTerminalOutputToNormalizedEvent(chunk, conversation.scope, idFactory);
