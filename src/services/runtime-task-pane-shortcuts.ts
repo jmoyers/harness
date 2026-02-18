@@ -1,0 +1,186 @@
+import type { WorkspaceModel } from '../domain/workspace.ts';
+import {
+  createTaskComposerBuffer as createTaskComposerBufferFrame,
+  normalizeTaskComposerBuffer as normalizeTaskComposerBufferFrame,
+  taskFieldsFromComposerText as taskFieldsFromComposerTextFrame,
+  type TaskComposerBuffer,
+} from '../mux/task-composer.ts';
+import {
+  handleTaskPaneShortcutInput as handleTaskPaneShortcutInputFrame,
+} from '../mux/live-mux/task-pane-shortcuts.ts';
+import type { ResolvedTaskScreenKeybindings } from '../mux/task-screen-keybindings.ts';
+
+type TaskPaneShortcutAction = Parameters<
+  Parameters<typeof handleTaskPaneShortcutInputFrame>[0]['runTaskPaneAction']
+>[0];
+
+interface TaskRecordShape {
+  readonly taskId: string;
+  readonly repositoryId: string | null;
+  readonly title: string;
+  readonly description: string;
+}
+
+interface RuntimeTaskPaneShortcutsOptions<TTaskRecord extends TaskRecordShape> {
+  readonly workspace: WorkspaceModel;
+  readonly taskScreenKeybindings: ResolvedTaskScreenKeybindings;
+  readonly repositoriesHas: (repositoryId: string) => boolean;
+  readonly activeRepositoryIds: () => readonly string[];
+  readonly selectRepositoryById: (repositoryId: string) => void;
+  readonly taskComposerForTask: (taskId: string) => TaskComposerBuffer | null;
+  readonly setTaskComposerForTask: (taskId: string, buffer: TaskComposerBuffer) => void;
+  readonly scheduleTaskComposerPersist: (taskId: string) => void;
+  readonly selectedRepositoryTaskRecords: () => readonly TTaskRecord[];
+  readonly focusTaskComposer: (taskId: string) => void;
+  readonly focusDraftComposer: () => void;
+  readonly runTaskPaneAction: (action: TaskPaneShortcutAction) => void;
+  readonly queueControlPlaneOp: (task: () => Promise<void>, label?: string) => void;
+  readonly createTask: (payload: {
+    repositoryId: string;
+    title: string;
+    description: string;
+  }) => Promise<TTaskRecord>;
+  readonly applyTaskRecord: (task: TTaskRecord) => void;
+  readonly syncTaskPaneSelection: () => void;
+  readonly markDirty: () => void;
+  readonly createTaskComposerBuffer?: typeof createTaskComposerBufferFrame;
+  readonly normalizeTaskComposerBuffer?: typeof normalizeTaskComposerBufferFrame;
+  readonly taskFieldsFromComposerText?: typeof taskFieldsFromComposerTextFrame;
+  readonly handleTaskPaneShortcutInput?: typeof handleTaskPaneShortcutInputFrame;
+}
+
+export class RuntimeTaskPaneShortcuts<TTaskRecord extends TaskRecordShape> {
+  private readonly createTaskComposerBuffer: typeof createTaskComposerBufferFrame;
+  private readonly normalizeTaskComposerBuffer: typeof normalizeTaskComposerBufferFrame;
+  private readonly taskFieldsFromComposerText: typeof taskFieldsFromComposerTextFrame;
+  private readonly handleTaskPaneShortcutInput: typeof handleTaskPaneShortcutInputFrame;
+
+  constructor(private readonly options: RuntimeTaskPaneShortcutsOptions<TTaskRecord>) {
+    this.createTaskComposerBuffer = options.createTaskComposerBuffer ?? createTaskComposerBufferFrame;
+    this.normalizeTaskComposerBuffer =
+      options.normalizeTaskComposerBuffer ?? normalizeTaskComposerBufferFrame;
+    this.taskFieldsFromComposerText = options.taskFieldsFromComposerText ?? taskFieldsFromComposerTextFrame;
+    this.handleTaskPaneShortcutInput =
+      options.handleTaskPaneShortcutInput ?? handleTaskPaneShortcutInputFrame;
+  }
+
+  homeEditorBuffer(): TaskComposerBuffer {
+    const taskEditorTarget = this.options.workspace.taskEditorTarget;
+    if (taskEditorTarget.kind === 'task') {
+      return this.options.taskComposerForTask(taskEditorTarget.taskId) ?? this.createTaskComposerBuffer('');
+    }
+    return this.options.workspace.taskDraftComposer;
+  }
+
+  updateHomeEditorBuffer(next: TaskComposerBuffer): void {
+    const taskEditorTarget = this.options.workspace.taskEditorTarget;
+    if (taskEditorTarget.kind === 'task') {
+      this.options.setTaskComposerForTask(taskEditorTarget.taskId, next);
+      this.options.scheduleTaskComposerPersist(taskEditorTarget.taskId);
+    } else {
+      this.options.workspace.taskDraftComposer = this.normalizeTaskComposerBuffer(next);
+    }
+    this.options.markDirty();
+  }
+
+  selectRepositoryByDirection(direction: 1 | -1): void {
+    const orderedIds = this.options.activeRepositoryIds();
+    if (orderedIds.length === 0) {
+      return;
+    }
+    const currentIndex = Math.max(
+      0,
+      orderedIds.indexOf(this.options.workspace.taskPaneSelectedRepositoryId ?? ''),
+    );
+    const nextIndex = Math.max(0, Math.min(orderedIds.length - 1, currentIndex + direction));
+    const nextRepositoryId = orderedIds[nextIndex];
+    if (nextRepositoryId !== undefined) {
+      this.options.selectRepositoryById(nextRepositoryId);
+    }
+  }
+
+  submitDraftTaskFromComposer(): void {
+    const repositoryId = this.options.workspace.taskPaneSelectedRepositoryId;
+    if (repositoryId === null || !this.options.repositoriesHas(repositoryId)) {
+      this.options.workspace.taskPaneNotice = 'select a repository first';
+      this.options.markDirty();
+      return;
+    }
+    const fields = this.taskFieldsFromComposerText(this.options.workspace.taskDraftComposer.text);
+    if (fields.title.length === 0) {
+      this.options.workspace.taskPaneNotice = 'first line is required';
+      this.options.markDirty();
+      return;
+    }
+    this.options.queueControlPlaneOp(async () => {
+      const task = await this.options.createTask({
+        repositoryId,
+        title: fields.title,
+        description: fields.description,
+      });
+      this.options.applyTaskRecord(task);
+      this.options.workspace.taskDraftComposer = this.createTaskComposerBuffer('');
+      this.options.workspace.taskPaneNotice = null;
+      this.options.syncTaskPaneSelection();
+      this.options.markDirty();
+    }, 'task-composer-create');
+  }
+
+  moveTaskEditorFocusUp(): void {
+    const workspace = this.options.workspace;
+    const scopedTasks = this.options.selectedRepositoryTaskRecords();
+    if (workspace.taskEditorTarget.kind === 'draft') {
+      const fallback = scopedTasks[scopedTasks.length - 1];
+      if (fallback !== undefined) {
+        this.options.focusTaskComposer(fallback.taskId);
+      }
+      return;
+    }
+
+    const focusedTaskId = workspace.taskEditorTarget.taskId;
+    const index = scopedTasks.findIndex((task) => task.taskId === focusedTaskId);
+    if (index <= 0) {
+      return;
+    }
+    const target = scopedTasks[index - 1];
+    if (target !== undefined) {
+      this.options.focusTaskComposer(target.taskId);
+    }
+  }
+
+  handleInput(input: Buffer): boolean {
+    const workspace = this.options.workspace;
+    return this.handleTaskPaneShortcutInput({
+      input,
+      mainPaneMode: workspace.mainPaneMode,
+      taskScreenKeybindings: this.options.taskScreenKeybindings,
+      taskEditorTarget: workspace.taskEditorTarget,
+      homeEditorBuffer: () => this.homeEditorBuffer(),
+      updateHomeEditorBuffer: (next) => {
+        this.updateHomeEditorBuffer(next);
+      },
+      moveTaskEditorFocusUp: () => {
+        this.moveTaskEditorFocusUp();
+      },
+      focusDraftComposer: () => {
+        this.options.focusDraftComposer();
+      },
+      submitDraftTaskFromComposer: () => {
+        this.submitDraftTaskFromComposer();
+      },
+      runTaskPaneAction: (action) => {
+        this.options.runTaskPaneAction(action);
+      },
+      selectRepositoryByDirection: (direction) => {
+        this.selectRepositoryByDirection(direction);
+      },
+      getTaskRepositoryDropdownOpen: () => workspace.taskRepositoryDropdownOpen,
+      setTaskRepositoryDropdownOpen: (open) => {
+        workspace.taskRepositoryDropdownOpen = open;
+      },
+      markDirty: () => {
+        this.options.markDirty();
+      },
+    });
+  }
+}

@@ -131,7 +131,6 @@ import {
   type PaneSelection,
   writeTextToClipboard,
 } from '../src/mux/live-mux/selection.ts';
-import { handleTaskPaneShortcutInput as handleTaskPaneShortcutInputFn } from '../src/mux/live-mux/task-pane-shortcuts.ts';
 import {
   applyObservedGitStatusEvent as applyObservedGitStatusEventFn,
   deleteDirectoryGitState as deleteDirectoryGitStateFn,
@@ -195,6 +194,7 @@ import { RuntimeRightPaneRender } from '../src/services/runtime-right-pane-rende
 import { RuntimeRenderState } from '../src/services/runtime-render-state.ts';
 import { RuntimeRenderLifecycle } from '../src/services/runtime-render-lifecycle.ts';
 import { RuntimeShutdownService } from '../src/services/runtime-shutdown.ts';
+import { RuntimeTaskPaneShortcuts } from '../src/services/runtime-task-pane-shortcuts.ts';
 import { TaskPaneSelectionActions } from '../src/services/task-pane-selection-actions.ts';
 import { TaskPlanningHydrationService } from '../src/services/task-planning-hydration.ts';
 import { TaskPlanningObservedEvents } from '../src/services/task-planning-observed-events.ts';
@@ -2139,6 +2139,29 @@ async function main(): Promise<number> {
       queueTaskReorderByIds,
     });
   };
+  const runtimeTaskPaneShortcuts = new RuntimeTaskPaneShortcuts<ControlPlaneTaskRecord>({
+    workspace,
+    taskScreenKeybindings,
+    repositoriesHas: (repositoryId) => repositories.has(repositoryId),
+    activeRepositoryIds,
+    selectRepositoryById,
+    taskComposerForTask,
+    setTaskComposerForTask,
+    scheduleTaskComposerPersist,
+    selectedRepositoryTaskRecords,
+    focusTaskComposer,
+    focusDraftComposer,
+    runTaskPaneAction: (shortcutAction) => {
+      runTaskPaneAction(shortcutAction);
+    },
+    queueControlPlaneOp,
+    createTask: async (payload) => {
+      return await controlPlaneService.createTask(payload);
+    },
+    applyTaskRecord,
+    syncTaskPaneSelection,
+    markDirty,
+  });
 
   const openNewThreadPrompt = (directoryId: string): void => {
     openNewThreadPromptFn({
@@ -2750,104 +2773,6 @@ async function main(): Promise<number> {
     },
   });
 
-  const homeEditorBuffer = (): TaskComposerBuffer => {
-    if (workspace.taskEditorTarget.kind === 'task') {
-      return taskComposerForTask(workspace.taskEditorTarget.taskId) ?? createTaskComposerBuffer('');
-    }
-    return workspace.taskDraftComposer;
-  };
-
-  const updateHomeEditorBuffer = (next: TaskComposerBuffer): void => {
-    if (workspace.taskEditorTarget.kind === 'task') {
-      setTaskComposerForTask(workspace.taskEditorTarget.taskId, next);
-      scheduleTaskComposerPersist(workspace.taskEditorTarget.taskId);
-    } else {
-      workspace.taskDraftComposer = normalizeTaskComposerBuffer(next);
-    }
-    markDirty();
-  };
-
-  const selectRepositoryByDirection = (direction: 1 | -1): void => {
-    const orderedIds = activeRepositoryIds();
-    if (orderedIds.length === 0) {
-      return;
-    }
-    const currentIndex = Math.max(0, orderedIds.indexOf(workspace.taskPaneSelectedRepositoryId ?? ''));
-    const nextIndex = Math.max(0, Math.min(orderedIds.length - 1, currentIndex + direction));
-    selectRepositoryById(orderedIds[nextIndex]!);
-  };
-
-  const submitDraftTaskFromComposer = (): void => {
-    const repositoryId = workspace.taskPaneSelectedRepositoryId;
-    if (repositoryId === null || !repositories.has(repositoryId)) {
-      workspace.taskPaneNotice = 'select a repository first';
-      markDirty();
-      return;
-    }
-    const fields = taskFieldsFromComposerText(workspace.taskDraftComposer.text);
-    if (fields.title.length === 0) {
-      workspace.taskPaneNotice = 'first line is required';
-      markDirty();
-      return;
-    }
-    queueControlPlaneOp(async () => {
-      const parsed = await controlPlaneService.createTask({
-        repositoryId,
-        title: fields.title,
-        description: fields.description,
-      });
-      applyTaskRecord(parsed);
-      workspace.taskDraftComposer = createTaskComposerBuffer('');
-      workspace.taskPaneNotice = null;
-      syncTaskPaneSelection();
-      markDirty();
-    }, 'task-composer-create');
-  };
-
-  const moveTaskEditorFocusUp = (): void => {
-    if (workspace.taskEditorTarget.kind === 'draft') {
-      const scopedTasks = selectedRepositoryTaskRecords();
-      const fallback = scopedTasks[scopedTasks.length - 1];
-      if (fallback !== undefined) {
-        focusTaskComposer(fallback.taskId);
-      }
-      return;
-    }
-    const focusedTaskId = workspace.taskEditorTarget.taskId;
-    const scopedTasks = selectedRepositoryTaskRecords();
-    const index = scopedTasks.findIndex((task) => task.taskId === focusedTaskId);
-    if (index <= 0) {
-      return;
-    }
-    const target = scopedTasks[index - 1];
-    if (target !== undefined) {
-      focusTaskComposer(target.taskId);
-    }
-  };
-
-  const handleTaskPaneShortcutInput = (input: Buffer): boolean => {
-    return handleTaskPaneShortcutInputFn({
-      input,
-      mainPaneMode: workspace.mainPaneMode,
-      taskScreenKeybindings,
-      taskEditorTarget: workspace.taskEditorTarget,
-      homeEditorBuffer,
-      updateHomeEditorBuffer,
-      moveTaskEditorFocusUp,
-      focusDraftComposer,
-      submitDraftTaskFromComposer,
-      runTaskPaneAction: (action) => {
-        runTaskPaneAction(action);
-      },
-      selectRepositoryByDirection,
-      getTaskRepositoryDropdownOpen: () => workspace.taskRepositoryDropdownOpen,
-      setTaskRepositoryDropdownOpen: (open) => {
-        workspace.taskRepositoryDropdownOpen = open;
-      },
-      markDirty,
-    });
-  };
-
   const leftNavInput = new LeftNavInput({
     getLatestRailRows: () => latestRailViewRows,
     getCurrentSelection: () => workspace.leftNavSelection,
@@ -3143,7 +3068,7 @@ async function main(): Promise<number> {
       repositoryFoldInput.handleRepositoryFoldChords(input) ||
       repositoryFoldInput.handleRepositoryTreeArrow(input),
     handleGlobalShortcutInput: (input) => globalShortcutInput.handleInput(input),
-    handleTaskPaneShortcutInput: (input) => handleTaskPaneShortcutInput(input),
+    handleTaskPaneShortcutInput: (input) => runtimeTaskPaneShortcuts.handleInput(input),
     handleCopyShortcutInput: (input) => {
       if (
         workspace.mainPaneMode !== 'conversation' ||

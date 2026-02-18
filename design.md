@@ -187,6 +187,7 @@ Control-plane boundaries:
 - Input token-loop routing is moving behind a class-based `InputTokenRouter` (`src/ui/input-token-router.ts`) so runtime delegates mouse/text token classification + dispatch ordering instead of carrying the full inline token loop.
 - Conversation input forwarding is moving behind a class-based `ConversationInputForwarder` (`src/ui/conversation-input-forwarder.ts`) so runtime delegates parse/token/forward orchestration and controller-gated PTY writes instead of keeping tail routing inline.
 - Input preflight gating is moving behind a class-based `InputPreflight` (`src/ui/input-preflight.ts`) so runtime delegates early shutdown/modal/escape/focus/shortcut gates before forwarding sanitized input.
+- Task-pane shortcut/editor orchestration is moving into a class-based `RuntimeTaskPaneShortcuts` service (`src/services/runtime-task-pane-shortcuts.ts`) so runtime delegates home-editor buffer reads/writes, repository cycle selection, draft-task submit flow, and shortcut handler callback wiring instead of keeping task-pane shortcut lifecycle helpers inline.
 
 This separation prevents UI-only behavior and enables reliable automation without computer-use tooling.
 

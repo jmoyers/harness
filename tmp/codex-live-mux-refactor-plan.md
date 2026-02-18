@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~3140 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~3071 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -1462,6 +1462,27 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3140 non-empty LOC
+
+### Checkpoint CA (2026-02-18): Task-pane shortcut/editor orchestration extracted into class service
+
+- Added `src/services/runtime-task-pane-shortcuts.ts` with class-based `RuntimeTaskPaneShortcuts` to own:
+  - home task-editor buffer resolution (`draft` vs per-task composer)
+  - home editor buffer updates (task autosave scheduling + draft normalization)
+  - repository cycle selection by direction
+  - draft-task submit orchestration (validation + queued create + selection resync)
+  - task-editor upward focus transitions
+  - callback wiring into `handleTaskPaneShortcutInput(...)`
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate task-pane shortcut handling through `RuntimeTaskPaneShortcuts` and removed a temporary wrapper function so `InputPreflight` calls the service directly.
+- Added `test/services-runtime-task-pane-shortcuts.test.ts` with branch coverage for:
+  - task/draft editor buffer branches and normalization path
+  - repository selection boundary and undefined-id no-op branches
+  - draft submit validation/error/success branches
+  - editor focus transition branches
+  - injected shortcut handler callback wiring branch
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3071 non-empty LOC
 
 ### Next focus (yield-first)
 
