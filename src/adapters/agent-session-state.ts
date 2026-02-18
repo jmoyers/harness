@@ -175,11 +175,17 @@ export function mergeAdapterStateFromSessionEvent(
   if (agentType !== 'cursor') {
     return null;
   }
-  const sessionId =
+  const conversationId =
     readNonEmptyString(payload?.['conversation_id']) ??
-    readNonEmptyString(payload?.['conversationId']) ??
-    readNonEmptyString(payload?.['session_id']) ??
-    readNonEmptyString(payload?.['sessionId']);
+    readNonEmptyString(payload?.['conversationId']);
+  const rawSessionId =
+    readNonEmptyString(payload?.['session_id']) ?? readNonEmptyString(payload?.['sessionId']);
+  const harnessSessionId =
+    readNonEmptyString(payload?.['harness_session_id']) ??
+    readNonEmptyString(payload?.['harnessSessionId']);
+  const sessionId =
+    conversationId ??
+    (rawSessionId !== null && rawSessionId !== harnessSessionId ? rawSessionId : null);
   if (sessionId === null) {
     return null;
   }

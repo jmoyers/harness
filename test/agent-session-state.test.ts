@@ -219,6 +219,49 @@ void test('mergeAdapterStateFromSessionEvent updates cursor session resume id fr
     ),
     null,
   );
+  assert.deepEqual(
+    mergeAdapterStateFromSessionEvent(
+      'cursor',
+      {},
+      {
+        type: 'notify',
+        record: {
+          ts: '2026-02-14T00:00:03.000Z',
+          payload: {
+            event: 'beforeSubmitPrompt',
+            session_id: 'cursor-session-legacy',
+            harness_session_id: 'conversation-1',
+          },
+        },
+      },
+      '2026-02-14T00:00:04.000Z',
+    ),
+    {
+      cursor: {
+        resumeSessionId: 'cursor-session-legacy',
+        lastObservedAt: '2026-02-14T00:00:04.000Z',
+      },
+    },
+  );
+  assert.equal(
+    mergeAdapterStateFromSessionEvent(
+      'cursor',
+      {},
+      {
+        type: 'notify',
+        record: {
+          ts: '2026-02-14T00:00:05.000Z',
+          payload: {
+            event: 'beforeSubmitPrompt',
+            session_id: 'conversation-1',
+            harness_session_id: 'conversation-1',
+          },
+        },
+      },
+      '2026-02-14T00:00:06.000Z',
+    ),
+    null,
+  );
 });
 
 void test('mergeAdapterStateFromSessionEvent ignores unsupported agents and malformed claude payloads', () => {

@@ -66,9 +66,6 @@ function main(): number {
     if (typeof payload['harness_session_id'] !== 'string') {
       payload['harness_session_id'] = sessionId;
     }
-    if (typeof payload['session_id'] !== 'string') {
-      payload['session_id'] = sessionId;
-    }
   }
   const record = {
     ts: new Date().toISOString(),
