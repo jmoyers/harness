@@ -362,7 +362,7 @@ void test('split module coverage: session runtime notify mapping covers fallback
   const cursorAfterTool = notifyKeyEventFromPayload(
     'cursor',
     {
-      event: 'afterMCPTool',
+      event: 'afterMCPExecution',
     },
     FIXED_TS,
   );

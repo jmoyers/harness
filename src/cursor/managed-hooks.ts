@@ -10,9 +10,14 @@ const DEFAULT_CURSOR_MANAGED_HOOK_EVENTS = [
   'beforeSubmitPrompt',
   'beforeShellExecution',
   'afterShellExecution',
-  'beforeMCPTool',
-  'afterMCPTool',
+  'beforeMCPExecution',
+  'afterMCPExecution',
   'stop',
+] as const;
+
+const LEGACY_CURSOR_HOOK_EVENT_MIGRATIONS = [
+  ['beforeMCPTool', 'beforeMCPExecution'],
+  ['afterMCPTool', 'afterMCPExecution'],
 ] as const;
 
 interface CursorHookEntryRecord {
@@ -171,6 +176,19 @@ function removeManagedHooks(hooksByEvent: Record<string, CursorHookEntryRecord[]
   return removedCount;
 }
 
+function migrateLegacyHookEvents(hooksByEvent: Record<string, CursorHookEntryRecord[]>): void {
+  for (const [legacyEventName, nextEventName] of LEGACY_CURSOR_HOOK_EVENT_MIGRATIONS) {
+    const legacyEntries = hooksByEvent[legacyEventName];
+    if (legacyEntries === undefined) {
+      continue;
+    }
+    const nextEntries = hooksByEvent[nextEventName] ?? [];
+    nextEntries.push(...legacyEntries);
+    hooksByEvent[nextEventName] = nextEntries;
+    delete hooksByEvent[legacyEventName];
+  }
+}
+
 function resolveManagedEvents(events: readonly string[] | undefined): readonly string[] {
   if (events === undefined) {
     return DEFAULT_CURSOR_MANAGED_HOOK_EVENTS;
@@ -211,6 +229,7 @@ export function ensureManagedCursorHooksInstalled(
   const parsed = parseCursorHooksFile(filePath);
   const nextHooksByEvent = cloneHooksByEvent(parsed.hooksByEvent);
   const removedCount = removeManagedHooks(nextHooksByEvent);
+  migrateLegacyHookEvents(nextHooksByEvent);
   const managedEvents = resolveManagedEvents(options.managedEvents);
   let addedCount = 0;
   for (const eventName of managedEvents) {

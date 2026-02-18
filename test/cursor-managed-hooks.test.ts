@@ -186,6 +186,59 @@ void test('cursor managed hooks install handles missing files and empty managed 
     assert.equal(result.addedCount > 0, true);
     const parsed = readJson(hooksFilePath);
     assert.equal(parsed['version'], 1);
+    const hooks = parsed['hooks'] as Record<string, Array<Record<string, unknown>>>;
+    assert.equal(Array.isArray(hooks['beforeMCPExecution']), true);
+    assert.equal(Array.isArray(hooks['afterMCPExecution']), true);
+    assert.equal(hooks['beforeMCPTool'] === undefined, true);
+    assert.equal(hooks['afterMCPTool'] === undefined, true);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('cursor managed hooks install migrates legacy mcp tool event names', () => {
+  const workspace = mkdtempSync(join(tmpdir(), 'cursor-managed-hooks-legacy-mcp-tool-'));
+  const hooksFilePath = join(workspace, 'hooks.json');
+  writeFileSync(
+    hooksFilePath,
+    JSON.stringify({
+      version: 1,
+      hooks: {
+        beforeMCPTool: [
+          {
+            command: `/usr/bin/env node /old/cursor-hook-relay.ts --managed-hook-id '${CURSOR_MANAGED_HOOK_ID_PREFIX}:beforeMCPTool'`,
+          },
+          { command: 'echo keep-before' },
+        ],
+        afterMCPTool: [
+          {
+            command: `/usr/bin/env node /old/cursor-hook-relay.ts --managed-hook-id '${CURSOR_MANAGED_HOOK_ID_PREFIX}:afterMCPTool'`,
+          },
+          { command: 'echo keep-after' },
+        ],
+      },
+    }),
+    'utf8',
+  );
+
+  try {
+    const result = ensureManagedCursorHooksInstalled({
+      hooksFilePath,
+      relayCommand: '/usr/bin/env node /new/cursor-hook-relay.ts',
+    });
+    assert.equal(result.changed, true);
+    const parsed = readJson(hooksFilePath);
+    const hooks = parsed['hooks'] as Record<string, Array<Record<string, unknown>>>;
+    assert.equal(hooks['beforeMCPTool'] === undefined, true);
+    assert.equal(hooks['afterMCPTool'] === undefined, true);
+    assert.equal(
+      hooks['beforeMCPExecution']?.some((entry) => entry['command'] === 'echo keep-before'),
+      true,
+    );
+    assert.equal(
+      hooks['afterMCPExecution']?.some((entry) => entry['command'] === 'echo keep-after'),
+      true,
+    );
   } finally {
     rmSync(workspace, { recursive: true, force: true });
   }
