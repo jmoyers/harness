@@ -451,7 +451,7 @@ void test('archiveConversation falls back to project pane or dirty mark when no 
   });
   assert.deepEqual(calls, [
     'setActiveConversationId',
-    'enterProjectPane:dir-fallback',
+    'enterProjectPane:dir-a',
     'markDirty',
   ]);
 
@@ -462,7 +462,7 @@ void test('archiveConversation falls back to project pane or dirty mark when no 
       [
         'session-a',
         {
-          directoryId: 'dir-a',
+          directoryId: null,
           live: false,
         },
       ],

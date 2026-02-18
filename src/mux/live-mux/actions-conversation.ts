@@ -173,7 +173,7 @@ export async function archiveConversation(options: ArchiveConversationOptions): 
       await options.activateConversation(nextConversationId);
       return;
     }
-    const fallbackDirectoryId = options.resolveActiveDirectoryId();
+    const fallbackDirectoryId = archivedDirectoryId ?? options.resolveActiveDirectoryId();
     if (fallbackDirectoryId !== null) {
       options.enterProjectPane(fallbackDirectoryId);
       options.markDirty();
