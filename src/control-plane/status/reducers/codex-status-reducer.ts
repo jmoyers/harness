@@ -42,12 +42,6 @@ export class CodexStatusReducer extends BaseAgentStatusReducer {
           phaseHint: 'working',
         };
       }
-      if (summary.includes('response.completed')) {
-        return {
-          text: 'inactive',
-          phaseHint: 'idle',
-        };
-      }
     }
     return null;
   }

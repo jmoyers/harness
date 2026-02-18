@@ -141,7 +141,7 @@ void test('parseOtlpLogEvents parses records, thread ids, summaries, and status 
   assert.equal(events[0]?.statusHint, 'running');
   assert.equal(events[0]?.summary, 'prompt: prompt accepted');
   assert.equal(events[1]?.observedAt, '2023-11-14T22:13:21.000Z');
-  assert.equal(events[1]?.statusHint, 'completed');
+  assert.equal(events[1]?.statusHint, null);
   assert.equal(events[2]?.eventName, null);
   assert.equal(events[2]?.summary, null);
   assert.equal(events[2]?.statusHint, null);
@@ -542,7 +542,7 @@ void test('parseOtlpLogEvents derives status hints through nested payload and fa
   assert.equal(events[1]?.statusHint, null);
   assert.equal(events[2]?.statusHint, null);
   assert.equal(events[3]?.summary, 'stream response.completed');
-  assert.equal(events[3]?.statusHint, 'completed');
+  assert.equal(events[3]?.statusHint, null);
   assert.equal(events[4]?.statusHint, 'needs-input');
   assert.equal(events[5]?.statusHint, null);
   assert.equal(events[6]?.summary?.endsWith('…'), true);
@@ -787,12 +787,10 @@ void test('parseOtlpLifecycleTraceEvents keeps lifecycle/high-signal spans only'
     '2026-02-15T00:00:00.000Z',
   );
 
-  assert.equal(events.length, 2);
+  assert.equal(events.length, 1);
   assert.equal(events[0]?.eventName, 'codex.turn.e2e_duration_ms');
   assert.equal(events[0]?.providerThreadId, 'thread-life-trace');
   assert.equal(events[0]?.statusHint, 'completed');
-  assert.equal(events[1]?.eventName, 'codex.sse_event');
-  assert.equal(events[1]?.statusHint, 'completed');
 });
 
 void test('parseOtlpLifecycleLogEvents covers text-value and summary fallback branches', () => {

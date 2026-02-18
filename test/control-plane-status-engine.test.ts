@@ -40,7 +40,7 @@ void test('session status engine projects codex/claude/cursor telemetry into sta
   assert.equal(codexActive.detailText, 'active');
   assert.equal(codexActive.glyph, '◆');
 
-  const codexCompleted = expectStatusModel(engine.project({
+  const codexResponseCompleted = expectStatusModel(engine.project({
     agentType: 'codex',
     runtimeStatus: 'running',
     attentionReason: null,
@@ -54,8 +54,8 @@ void test('session status engine projects codex/claude/cursor telemetry into sta
     observedAt: '2026-02-18T00:00:01.000Z',
     previous: codexActive,
   }));
-  assert.equal(codexCompleted.phase, 'idle');
-  assert.equal(codexCompleted.detailText, 'inactive');
+  assert.equal(codexResponseCompleted.phase, 'working');
+  assert.equal(codexResponseCompleted.detailText, 'active');
 
   const claudeStopped = expectStatusModel(engine.project({
     agentType: 'claude',

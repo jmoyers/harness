@@ -459,19 +459,6 @@ function deriveStatusHint(
 
   const payloadAttributes = asRecord(payload['attributes']) ?? {};
   const payloadBody = payload['body'];
-  if (normalizedEventName === 'codex.sse_event') {
-    const kindHint =
-      pickFieldText(payloadAttributes, payloadBody, [
-        'kind',
-        'event.kind',
-        'event_type',
-        'event.type',
-        'type',
-      ])?.toLowerCase() ?? '';
-    if (kindHint.includes('response.completed')) {
-      return 'completed';
-    }
-  }
   const outcomeHint = statusFromOutcomeText(
     pickFieldText(payloadAttributes, payloadBody, [
       'status',
@@ -970,18 +957,6 @@ function lifecycleStatusHintFromAttributes(
   }
   if (normalizedEventName === 'codex.turn.e2e_duration_ms') {
     return 'completed';
-  }
-  if (normalizedEventName === 'codex.sse_event') {
-    const kind = pickAttributeText(attributes, [
-      'kind',
-      'event.kind',
-      'event_type',
-      'event.type',
-      'type',
-    ]);
-    if ((kind?.toLowerCase() ?? '').includes('response.completed')) {
-      return 'completed';
-    }
   }
   const statusToken =
     pickAttributeText(attributes, [

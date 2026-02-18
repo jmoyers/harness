@@ -397,7 +397,7 @@ void test('mux runtime wiring integration updates rail status line and icon from
       const completedConversation = conversations.get('conversation-runtime');
       assert.notEqual(completedConversation, undefined);
       assert.equal(completedConversation?.status, 'running');
-      assert.equal(completedConversation?.lastKnownWork, 'inactive');
+      assert.equal(completedConversation?.lastKnownWork, 'active');
 
       const delayedMetricResponse = await postJson(
         {
