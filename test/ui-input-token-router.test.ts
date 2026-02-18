@@ -1,0 +1,270 @@
+import assert from 'node:assert/strict';
+import { test } from 'bun:test';
+import { computeDualPaneLayout } from '../src/mux/dual-pane-core.ts';
+import type { TerminalSnapshotFrameCore } from '../src/terminal/snapshot-oracle.ts';
+import { InputTokenRouter } from '../src/ui/input-token-router.ts';
+
+function createFrame(label: string): TerminalSnapshotFrameCore {
+  return {
+    rows: 4,
+    cols: 8,
+    activeScreen: 'primary',
+    modes: {
+      bracketedPaste: false,
+    },
+    cursor: {
+      row: 1,
+      col: 1,
+      visible: true,
+      style: {
+        shape: 'block',
+        blinking: true,
+      },
+    },
+    viewport: {
+      top: 0,
+      totalRows: 4,
+      followOutput: true,
+    },
+    lines: [label],
+    richLines: [],
+  };
+}
+
+function mouseToken(code: number, col: number, row: number) {
+  return {
+    kind: 'mouse' as const,
+    event: {
+      sequence: `\u001b[<${code};${col};${row}M`,
+      code,
+      col,
+      row,
+      final: 'M' as const,
+    },
+  };
+}
+
+void test('input token router delegates staged mouse routing and preserves passthrough tokens', () => {
+  const layout = computeDualPaneLayout(100, 24);
+  const rightCol = layout.rightStartCol;
+  const frameBefore = createFrame('before');
+  const frameAfter = createFrame('after');
+  const consumed = {
+    divider: false,
+    release: false,
+    separator: false,
+    wheel: false,
+    move: false,
+    project: false,
+    home: false,
+    leftRail: false,
+    selectionTrue: false,
+    selectionFalse: false,
+  };
+  let clearSelectionLength = 0;
+  let wheelDelta = 0;
+  let snapshotReadCount = 0;
+  let selectionFrameLabel = '';
+
+  const router = new InputTokenRouter({
+    getMainPaneMode: () => 'conversation',
+    pointerRoutingInput: {
+      handlePaneDividerDrag: ({ code }) => {
+        if (code === 11) {
+          consumed.divider = true;
+          return true;
+        }
+        return false;
+      },
+      handleHomePaneDragRelease: ({ rowIndex }) => {
+        if (rowIndex === 1) {
+          consumed.release = true;
+          return true;
+        }
+        return false;
+      },
+      handleSeparatorPointerPress: ({ code }) => {
+        if (code === 13) {
+          consumed.separator = true;
+          return true;
+        }
+        return false;
+      },
+      handleMainPaneWheel: ({ code }, onConversationWheel) => {
+        if (code === 64) {
+          consumed.wheel = true;
+          onConversationWheel(3);
+          return true;
+        }
+        return false;
+      },
+      handleHomePaneDragMove: ({ code }) => {
+        if (code === 14) {
+          consumed.move = true;
+          return true;
+        }
+        return false;
+      },
+    },
+    mainPanePointerInput: {
+      handleProjectPanePointerClick: ({ code }) => {
+        if (code === 15) {
+          consumed.project = true;
+          return true;
+        }
+        return false;
+      },
+      handleHomePanePointerClick: ({ code }) => {
+        if (code === 16) {
+          consumed.home = true;
+          return true;
+        }
+        return false;
+      },
+    },
+    leftRailPointerInput: {
+      handlePointerClick: ({ clickEligible, pointerRow }) => {
+        if (pointerRow === 8) {
+          consumed.leftRail = clickEligible;
+          return true;
+        }
+        return false;
+      },
+    },
+    conversationSelectionInput: {
+      clearSelectionOnTextToken: (textLength) => {
+        clearSelectionLength += textLength;
+        return false;
+      },
+      handleMouseSelection: ({ event, frame }) => {
+        selectionFrameLabel = frame.lines[0] ?? '';
+        if (event.code === 17) {
+          consumed.selectionTrue = true;
+          return true;
+        }
+        consumed.selectionFalse = true;
+        return false;
+      },
+    },
+  });
+
+  const conversation = {
+    oracle: {
+      scrollViewport: (delta: number) => {
+        wheelDelta = delta;
+      },
+      snapshotWithoutHash: () => {
+        snapshotReadCount += 1;
+        return frameAfter;
+      },
+    },
+  };
+
+  const tokenFinal = mouseToken(18, rightCol, 10);
+  const result = router.routeTokens({
+    tokens: [
+      {
+        kind: 'passthrough',
+        text: 'abc',
+      },
+      mouseToken(11, rightCol, 1),
+      mouseToken(12, rightCol, 2),
+      mouseToken(13, layout.separatorCol, 3),
+      mouseToken(64, rightCol, 4),
+      mouseToken(14, rightCol, 5),
+      mouseToken(15, rightCol, 6),
+      mouseToken(16, rightCol, 7),
+      mouseToken(0, 1, 8),
+      mouseToken(17, rightCol, 9),
+      tokenFinal,
+    ],
+    layout,
+    conversation,
+    snapshotForInput: frameBefore,
+  });
+
+  assert.equal(clearSelectionLength, 3);
+  assert.equal(wheelDelta, 3);
+  assert.equal(snapshotReadCount, 1);
+  assert.equal(selectionFrameLabel, 'after');
+  assert.equal(consumed.divider, true);
+  assert.equal(consumed.release, true);
+  assert.equal(consumed.separator, true);
+  assert.equal(consumed.wheel, true);
+  assert.equal(consumed.move, true);
+  assert.equal(consumed.project, true);
+  assert.equal(consumed.home, true);
+  assert.equal(consumed.leftRail, true);
+  assert.equal(consumed.selectionTrue, true);
+  assert.equal(consumed.selectionFalse, true);
+  assert.equal(result.snapshotForInput, frameAfter);
+  assert.deepEqual(result.routedTokens, [
+    {
+      kind: 'passthrough',
+      text: 'abc',
+    },
+    tokenFinal,
+  ]);
+});
+
+void test('input token router supports dependency overrides and null-conversation wheel path', () => {
+  const layout = computeDualPaneLayout(80, 10);
+  const calls: string[] = [];
+  let selectionCalled = false;
+
+  const router = new InputTokenRouter(
+    {
+      getMainPaneMode: () => 'home',
+      pointerRoutingInput: {
+        handlePaneDividerDrag: () => false,
+        handleHomePaneDragRelease: () => false,
+        handleSeparatorPointerPress: () => false,
+        handleMainPaneWheel: ({ code }, onConversationWheel) => {
+          if (code === 64) {
+            calls.push('wheel');
+            onConversationWheel(5);
+            return true;
+          }
+          return false;
+        },
+        handleHomePaneDragMove: () => false,
+      },
+      mainPanePointerInput: {
+        handleProjectPanePointerClick: () => false,
+        handleHomePanePointerClick: () => false,
+      },
+      leftRailPointerInput: {
+        handlePointerClick: ({ clickEligible }) => {
+          calls.push(`left-rail:${clickEligible}`);
+          return false;
+        },
+      },
+      conversationSelectionInput: {
+        clearSelectionOnTextToken: () => false,
+        handleMouseSelection: () => {
+          selectionCalled = true;
+          return false;
+        },
+      },
+    },
+    {
+      classifyPaneAt: () => 'left',
+      isLeftButtonPress: () => true,
+      hasAltModifier: () => true,
+      isMotionMouseCode: () => false,
+    },
+  );
+
+  const tokenRouted = mouseToken(5, 1, 2);
+  const result = router.routeTokens({
+    tokens: [mouseToken(64, 1, 1), tokenRouted],
+    layout,
+    conversation: null,
+    snapshotForInput: null,
+  });
+
+  assert.deepEqual(calls, ['wheel', 'left-rail:false']);
+  assert.equal(selectionCalled, false);
+  assert.deepEqual(result.routedTokens, [tokenRouted]);
+  assert.equal(result.snapshotForInput, null);
+});

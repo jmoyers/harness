@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~4141 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~4027 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -159,6 +159,7 @@ bun run loc:verify:enforce
 - Avoid helper-fragment churn; each extraction must reduce runtime responsibility and improve ownership clarity.
 - Do not carry parallel legacy paths longer than one checkpoint after equivalent behavior is verified.
 - If any phase causes UI parity regression, halt and fix before continuing.
+- Second-pass target after Phase 8 extraction: collapse callback/options bags so UI input modules depend on domain managers/services via constructor-owned references instead of runtime closure callbacks.
 
 ## Checkpoint Log
 
@@ -860,3 +861,17 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4141 non-empty LOC
+
+### Checkpoint AP (2026-02-18): Phase 8 continues with class-based input token routing
+
+- Added `src/ui/input-token-router.ts` with a class-based `InputTokenRouter` that owns:
+  - `onInput` token-loop orchestration for mouse/text token routing
+  - pane-target classification + pointer-handler dispatch ordering
+  - conversation viewport snapshot refresh on wheel-scroll routing
+  - left-rail click eligibility gating and conversation-selection fallback routing
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate the inline `for (token of parsed.tokens)` mouse/text routing loop to `InputTokenRouter`.
+- Added `test/ui-input-token-router.test.ts` for staged routing behavior coverage, dependency-override coverage, and null-conversation wheel path coverage.
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4027 non-empty LOC

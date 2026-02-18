@@ -135,10 +135,7 @@ import {
 } from '../src/mux/live-mux/event-mapping.ts';
 import { parseMuxArgs } from '../src/mux/live-mux/args.ts';
 import {
-  hasAltModifier,
   isCopyShortcutInput,
-  isLeftButtonPress,
-  isMotionMouseCode,
   renderSelectionOverlay,
   selectionText,
   selectionVisibleRows,
@@ -206,6 +203,7 @@ import { MainPanePointerInput } from '../src/ui/main-pane-pointer-input.ts';
 import { PointerRoutingInput } from '../src/ui/pointer-routing-input.ts';
 import { ConversationSelectionInput } from '../src/ui/conversation-selection-input.ts';
 import { GlobalShortcutInput } from '../src/ui/global-shortcut-input.ts';
+import { InputTokenRouter } from '../src/ui/input-token-router.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -3929,6 +3927,13 @@ async function main(): Promise<number> {
       leftNavInput.cycleSelection(direction);
     },
   });
+  const inputTokenRouter = new InputTokenRouter({
+    getMainPaneMode: () => workspace.mainPaneMode,
+    pointerRoutingInput,
+    mainPanePointerInput,
+    leftRailPointerInput,
+    conversationSelectionInput,
+  });
 
   const onInput = (chunk: Buffer): void => {
     if (shuttingDown) {
@@ -4001,135 +4006,13 @@ async function main(): Promise<number> {
     inputRemainder = parsed.remainder;
 
     const inputConversation = conversationManager.getActiveConversation();
-    let snapshotForInput =
-      inputConversation === null ? null : inputConversation.oracle.snapshotWithoutHash();
-    const routedTokens: Array<(typeof parsed.tokens)[number]> = [];
-    for (const token of parsed.tokens) {
-      if (token.kind !== 'mouse') {
-        conversationSelectionInput.clearSelectionOnTextToken(token.text.length);
-        routedTokens.push(token);
-        continue;
-      }
-
-      if (
-        pointerRoutingInput.handlePaneDividerDrag({
-          code: token.event.code,
-          final: token.event.final,
-          col: token.event.col,
-        })
-      ) {
-        continue;
-      }
-
-      const target = classifyPaneAt(layout, token.event.col, token.event.row);
-      const rowIndex = Math.max(0, Math.min(layout.paneRows - 1, token.event.row - 1));
-      if (
-        pointerRoutingInput.handleHomePaneDragRelease({
-          final: token.event.final,
-          target,
-          rowIndex,
-        })
-      ) {
-        continue;
-      }
-      if (
-        pointerRoutingInput.handleSeparatorPointerPress({
-          target,
-          code: token.event.code,
-          final: token.event.final,
-          col: token.event.col,
-        })
-      ) {
-        continue;
-      }
-      const isMainPaneTarget = target === 'right';
-      if (
-        pointerRoutingInput.handleMainPaneWheel(
-          {
-            target,
-            code: token.event.code,
-          },
-          (delta) => {
-            if (inputConversation !== null) {
-              inputConversation.oracle.scrollViewport(delta);
-              snapshotForInput = inputConversation.oracle.snapshotWithoutHash();
-            }
-          },
-        )
-      ) {
-        continue;
-      }
-      if (
-        pointerRoutingInput.handleHomePaneDragMove({
-          target,
-          code: token.event.code,
-          final: token.event.final,
-          rowIndex,
-        })
-      ) {
-        continue;
-      }
-      if (
-        mainPanePointerInput.handleProjectPanePointerClick({
-          target,
-          code: token.event.code,
-          final: token.event.final,
-          row: token.event.row,
-          col: token.event.col,
-          rightCols: layout.rightCols,
-          paneRows: layout.paneRows,
-          rightStartCol: layout.rightStartCol,
-        })
-      ) {
-        continue;
-      }
-      if (
-        mainPanePointerInput.handleHomePanePointerClick({
-          target,
-          code: token.event.code,
-          final: token.event.final,
-          row: token.event.row,
-          col: token.event.col,
-          paneRows: layout.paneRows,
-          rightCols: layout.rightCols,
-          rightStartCol: layout.rightStartCol,
-        })
-      ) {
-        continue;
-      }
-      const leftPaneConversationSelect =
-        target === 'left' &&
-        isLeftButtonPress(token.event.code, token.event.final) &&
-        !hasAltModifier(token.event.code) &&
-        !isMotionMouseCode(token.event.code);
-      if (
-        leftRailPointerInput.handlePointerClick({
-          clickEligible: leftPaneConversationSelect,
-          paneRows: layout.paneRows,
-          leftCols: layout.leftCols,
-          pointerRow: token.event.row,
-          pointerCol: token.event.col,
-        })
-      ) {
-          continue;
-      }
-      if (snapshotForInput === null || workspace.mainPaneMode !== 'conversation') {
-        routedTokens.push(token);
-        continue;
-      }
-      if (
-        conversationSelectionInput.handleMouseSelection({
-          layout,
-          frame: snapshotForInput,
-          isMainPaneTarget,
-          event: token.event,
-        })
-      ) {
-        continue;
-      }
-
-      routedTokens.push(token);
-    }
+    const { routedTokens } = inputTokenRouter.routeTokens({
+      tokens: parsed.tokens,
+      layout,
+      conversation: inputConversation,
+      snapshotForInput:
+        inputConversation === null ? null : inputConversation.oracle.snapshotWithoutHash(),
+    });
 
     const { mainPaneScrollRows, forwardToSession } = routeInputTokensForConversationFn({
       tokens: routedTokens,
