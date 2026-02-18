@@ -9,6 +9,14 @@ import {
   type RuntimeConversationStarterOptions,
 } from './runtime-conversation-starter.ts';
 import {
+  RuntimeConversationActivation,
+  type RuntimeConversationActivationOptions,
+} from './runtime-conversation-activation.ts';
+import {
+  RuntimeConversationActions,
+  type RuntimeConversationActionsOptions,
+} from './runtime-conversation-actions.ts';
+import {
   RuntimeStreamSubscriptions,
   type RuntimeStreamSubscriptionsOptions,
 } from './runtime-stream-subscriptions.ts';
@@ -22,6 +30,7 @@ interface ConversationLifecycleOptions<
   TConversation extends RuntimeConversationStarterConversationRecord &
     StartupQueueConversationRecord,
   TSessionSummary extends SessionSummaryLike,
+  TControllerRecord,
 > {
   readonly streamSubscriptions: RuntimeStreamSubscriptionsOptions;
   readonly starter: Omit<
@@ -36,19 +45,27 @@ interface ConversationLifecycleOptions<
     StartupPersistedConversationQueueServiceOptions<TConversation>,
     'startConversation'
   >;
+  readonly activation: Omit<RuntimeConversationActivationOptions, 'startConversation'>;
+  readonly actions: Omit<
+    RuntimeConversationActionsOptions<TControllerRecord>,
+    'startConversation' | 'activateConversation'
+  >;
 }
 
 export class ConversationLifecycle<
   TConversation extends RuntimeConversationStarterConversationRecord &
     StartupQueueConversationRecord,
   TSessionSummary extends SessionSummaryLike,
+  TControllerRecord,
 > {
   private readonly streamSubscriptions: RuntimeStreamSubscriptions;
   private readonly starter: RuntimeConversationStarter<TConversation, TSessionSummary>;
   private readonly startupHydration: ConversationStartupHydrationService<TSessionSummary>;
   private readonly startupQueue: StartupPersistedConversationQueueService<TConversation>;
+  private readonly activation: RuntimeConversationActivation;
+  private readonly actions: RuntimeConversationActions<TControllerRecord>;
 
-  constructor(options: ConversationLifecycleOptions<TConversation, TSessionSummary>) {
+  constructor(options: ConversationLifecycleOptions<TConversation, TSessionSummary, TControllerRecord>) {
     this.streamSubscriptions = new RuntimeStreamSubscriptions(options.streamSubscriptions);
     this.starter = new RuntimeConversationStarter({
       ...options.starter,
@@ -66,6 +83,21 @@ export class ConversationLifecycle<
       ...options.startupQueue,
       startConversation: async (sessionId) => {
         await this.startConversation(sessionId);
+      },
+    });
+    this.activation = new RuntimeConversationActivation({
+      ...options.activation,
+      startConversation: async (sessionId) => {
+        await this.startConversation(sessionId);
+      },
+    });
+    this.actions = new RuntimeConversationActions({
+      ...options.actions,
+      startConversation: async (sessionId) => {
+        await this.startConversation(sessionId);
+      },
+      activateConversation: async (sessionId) => {
+        await this.activateConversation(sessionId);
       },
     });
   }
@@ -88,6 +120,25 @@ export class ConversationLifecycle<
 
   async startConversation(sessionId: string): Promise<TConversation> {
     return await this.starter.startConversation(sessionId);
+  }
+
+  async activateConversation(sessionId: string): Promise<void> {
+    await this.activation.activateConversation(sessionId);
+  }
+
+  async createAndActivateConversationInDirectory(
+    directoryId: string,
+    agentType: string,
+  ): Promise<void> {
+    await this.actions.createAndActivateConversationInDirectory(directoryId, agentType);
+  }
+
+  async openOrCreateCritiqueConversationInDirectory(directoryId: string): Promise<void> {
+    await this.actions.openOrCreateCritiqueConversationInDirectory(directoryId);
+  }
+
+  async takeoverConversation(sessionId: string): Promise<void> {
+    await this.actions.takeoverConversation(sessionId);
   }
 
   async hydrateConversationList(): Promise<void> {

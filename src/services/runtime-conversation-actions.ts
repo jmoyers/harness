@@ -27,7 +27,7 @@ interface RuntimeConversationActionService<TControllerRecord> {
   }): Promise<TControllerRecord | null>;
 }
 
-interface RuntimeConversationActionsOptions<TControllerRecord> {
+export interface RuntimeConversationActionsOptions<TControllerRecord> {
   readonly controlPlaneService: RuntimeConversationActionService<TControllerRecord>;
   readonly createConversationId: () => string;
   readonly ensureConversation: (

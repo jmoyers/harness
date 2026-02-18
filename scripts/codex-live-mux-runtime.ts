@@ -148,8 +148,6 @@ import { RecordingService } from '../src/services/recording.ts';
 import { SessionProjectionInstrumentation } from '../src/services/session-projection-instrumentation.ts';
 import { StartupOrchestrator } from '../src/services/startup-orchestrator.ts';
 import { RuntimeProcessWiring } from '../src/services/runtime-process-wiring.ts';
-import { RuntimeConversationActions } from '../src/services/runtime-conversation-actions.ts';
-import { RuntimeConversationActivation } from '../src/services/runtime-conversation-activation.ts';
 import { RuntimeControlPlaneOps } from '../src/services/runtime-control-plane-ops.ts';
 import { RuntimeControlActions } from '../src/services/runtime-control-actions.ts';
 import { RuntimeConversationTitleEditService } from '../src/services/runtime-conversation-title-edit.ts';
@@ -753,7 +751,8 @@ async function main(): Promise<number> {
 
   const conversationLifecycle = new ConversationLifecycle<
     ConversationState,
-    ControlPlaneSessionSummary
+    ControlPlaneSessionSummary,
+    ConversationState['controller']
   >({
     streamSubscriptions: {
       subscribePtyEvents: async (sessionId) => {
@@ -875,6 +874,99 @@ async function main(): Promise<number> {
         markDirty();
       },
     },
+    activation: {
+      getActiveConversationId: () => conversationManager.activeConversationId,
+      setActiveConversationId: (sessionId) => {
+        conversationManager.setActiveConversationId(sessionId);
+      },
+      isConversationPaneMode: () => workspace.mainPaneMode === 'conversation',
+      enterConversationPaneForActiveSession: (sessionId) => {
+        workspace.mainPaneMode = 'conversation';
+        workspace.selectLeftNavConversation(sessionId);
+        screen.resetFrameCache();
+      },
+      enterConversationPaneForSessionSwitch: (sessionId) => {
+        workspace.mainPaneMode = 'conversation';
+        workspace.selectLeftNavConversation(sessionId);
+        workspace.homePaneDragState = null;
+        workspace.taskPaneTaskEditClickState = null;
+        workspace.taskPaneRepositoryEditClickState = null;
+        workspace.projectPaneSnapshot = null;
+        workspace.projectPaneScrollTop = 0;
+        screen.resetFrameCache();
+      },
+      stopConversationTitleEditForOtherSession: (sessionId) => {
+        if (
+          workspace.conversationTitleEdit !== null &&
+          workspace.conversationTitleEdit.conversationId !== sessionId
+        ) {
+          stopConversationTitleEdit(true);
+        }
+      },
+      clearSelectionState: () => {
+        workspace.selection = null;
+        workspace.selectionDrag = null;
+        releaseViewportPinForSelection();
+      },
+      detachConversation: async (sessionId) => {
+        await detachConversation(sessionId);
+      },
+      conversationById: (sessionId) => conversationManager.get(sessionId),
+      noteGitActivity: (directoryId) => {
+        noteGitActivity(directoryId);
+      },
+      attachConversation: async (sessionId) => {
+        await attachConversation(sessionId);
+      },
+      isSessionNotFoundError,
+      isSessionNotLiveError,
+      markSessionUnavailable: (sessionId) => {
+        conversationManager.markSessionUnavailable(sessionId);
+      },
+      schedulePtyResizeImmediate: () => {
+        schedulePtyResize(
+          {
+            cols: layout.rightCols,
+            rows: layout.paneRows,
+          },
+          true,
+        );
+      },
+      markDirty: () => {
+        markDirty();
+      },
+    },
+    actions: {
+      controlPlaneService,
+      createConversationId: () => `conversation-${randomUUID()}`,
+      ensureConversation,
+      noteGitActivity: (directoryId) => {
+        noteGitActivity(directoryId);
+      },
+      orderedConversationIds: () => conversationManager.orderedIds(),
+      conversationById: (sessionId) => {
+        const conversation = conversationManager.get(sessionId);
+        if (conversation === undefined) {
+          return null;
+        }
+        return {
+          directoryId: conversation.directoryId,
+          agentType: conversation.agentType,
+        };
+      },
+      conversationsHas: (sessionId) => conversationManager.has(sessionId),
+      applyController: (sessionId, controller) => {
+        conversationManager.setController(sessionId, controller);
+      },
+      setLastEventNow: (sessionId) => {
+        conversationManager.setLastEventAt(sessionId, new Date().toISOString());
+      },
+      muxControllerId,
+      muxControllerLabel,
+      markDirty: () => {
+        markDirty();
+      },
+    },
   });
 
   const subscribeConversationEvents = async (sessionId: string): Promise<void> => {
@@ -882,10 +974,6 @@ async function main(): Promise<number> {
   };
   const unsubscribeConversationEvents = async (sessionId: string): Promise<void> => {
     await conversationLifecycle.unsubscribeConversationEvents(sessionId);
-  };
-
-  const startConversation = async (sessionId: string): Promise<ConversationState> => {
-    return await conversationLifecycle.startConversation(sessionId);
   };
 
   const queuePersistedConversationsInBackground = (activeSessionId: string | null): number => {
@@ -1597,63 +1685,8 @@ async function main(): Promise<number> {
     await conversationLifecycle.unsubscribeTaskPlanningEvents();
   }
 
-  const runtimeConversationActivation = new RuntimeConversationActivation({
-    getActiveConversationId: () => conversationManager.activeConversationId,
-    setActiveConversationId: (sessionId) => {
-      conversationManager.setActiveConversationId(sessionId);
-    },
-    isConversationPaneMode: () => workspace.mainPaneMode === 'conversation',
-    enterConversationPaneForActiveSession: (sessionId) => {
-      workspace.mainPaneMode = 'conversation';
-      workspace.selectLeftNavConversation(sessionId);
-      screen.resetFrameCache();
-    },
-    enterConversationPaneForSessionSwitch: (sessionId) => {
-      workspace.mainPaneMode = 'conversation';
-      workspace.selectLeftNavConversation(sessionId);
-      workspace.homePaneDragState = null;
-      workspace.taskPaneTaskEditClickState = null;
-      workspace.taskPaneRepositoryEditClickState = null;
-      workspace.projectPaneSnapshot = null;
-      workspace.projectPaneScrollTop = 0;
-      screen.resetFrameCache();
-    },
-    stopConversationTitleEditForOtherSession: (sessionId) => {
-      if (
-        workspace.conversationTitleEdit !== null &&
-        workspace.conversationTitleEdit.conversationId !== sessionId
-      ) {
-        stopConversationTitleEdit(true);
-      }
-    },
-    clearSelectionState: () => {
-      workspace.selection = null;
-      workspace.selectionDrag = null;
-      releaseViewportPinForSelection();
-    },
-    detachConversation,
-    conversationById: (sessionId) => conversationManager.get(sessionId),
-    noteGitActivity,
-    startConversation,
-    attachConversation,
-    isSessionNotFoundError,
-    isSessionNotLiveError,
-    markSessionUnavailable: (sessionId) => {
-      conversationManager.markSessionUnavailable(sessionId);
-    },
-    schedulePtyResizeImmediate: () => {
-      schedulePtyResize(
-        {
-          cols: layout.rightCols,
-          rows: layout.paneRows,
-        },
-        true,
-      );
-    },
-    markDirty,
-  });
   const activateConversation = async (sessionId: string): Promise<void> => {
-    await runtimeConversationActivation.activateConversation(sessionId);
+    await conversationLifecycle.activateConversation(sessionId);
   };
   activateConversationForStartupOrchestrator = activateConversation;
 
@@ -1805,35 +1838,6 @@ async function main(): Promise<number> {
     markDirty,
   });
 
-  const runtimeConversationActions = new RuntimeConversationActions({
-    controlPlaneService,
-    createConversationId: () => `conversation-${randomUUID()}`,
-    ensureConversation,
-    noteGitActivity,
-    startConversation,
-    activateConversation,
-    orderedConversationIds: () => conversationManager.orderedIds(),
-    conversationById: (sessionId) => {
-      const conversation = conversationManager.get(sessionId);
-      if (conversation === undefined) {
-        return null;
-      }
-      return {
-        directoryId: conversation.directoryId,
-        agentType: conversation.agentType,
-      };
-    },
-    conversationsHas: (sessionId) => conversationManager.has(sessionId),
-    applyController: (sessionId, controller) => {
-      conversationManager.setController(sessionId, controller);
-    },
-    setLastEventNow: (sessionId) => {
-      conversationManager.setLastEventAt(sessionId, new Date().toISOString());
-    },
-    muxControllerId,
-    muxControllerLabel,
-    markDirty,
-  });
   const runtimeDirectoryActions = new RuntimeDirectoryActions({
     controlPlaneService,
     conversations: () => conversationRecords,
@@ -1908,7 +1912,7 @@ async function main(): Promise<number> {
     directoryId: string,
     agentType: ThreadAgentType,
   ): Promise<void> => {
-    await runtimeConversationActions.createAndActivateConversationInDirectory(
+    await conversationLifecycle.createAndActivateConversationInDirectory(
       directoryId,
       String(agentType),
     );
@@ -1917,7 +1921,7 @@ async function main(): Promise<number> {
   const openOrCreateCritiqueConversationInDirectory = async (
     directoryId: string,
   ): Promise<void> => {
-    await runtimeConversationActions.openOrCreateCritiqueConversationInDirectory(directoryId);
+    await conversationLifecycle.openOrCreateCritiqueConversationInDirectory(directoryId);
   };
 
   const archiveConversation = async (sessionId: string): Promise<void> => {
@@ -1925,7 +1929,7 @@ async function main(): Promise<number> {
   };
 
   const takeoverConversation = async (sessionId: string): Promise<void> => {
-    await runtimeConversationActions.takeoverConversation(sessionId);
+    await conversationLifecycle.takeoverConversation(sessionId);
   };
 
   const interruptConversation = async (sessionId: string): Promise<void> => {

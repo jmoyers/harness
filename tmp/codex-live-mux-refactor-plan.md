@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~2622 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~2627 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2173 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -1772,10 +1772,31 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2622 non-empty LOC
 
+### Checkpoint CR (2026-02-18): Activation/actions folded behind ConversationLifecycle facade
+
+- Extended `src/services/conversation-lifecycle.ts` to compose and own:
+  - `RuntimeConversationActivation`
+  - `RuntimeConversationActions`
+  - in addition to starter/hydration/stream-subscription/startup-queue composition
+- Updated `scripts/codex-live-mux-runtime.ts` to stop constructing conversation activation/actions services directly:
+  - runtime now delegates `activateConversation(...)` to `ConversationLifecycle`
+  - runtime now delegates `createAndActivateConversationInDirectory(...)`, `openOrCreateCritiqueConversationInDirectory(...)`, and `takeoverConversation(...)` to `ConversationLifecycle`
+- Added lifecycle-focused coverage in `test/services-conversation-lifecycle.test.ts` for:
+  - activation path that requires starting a non-live conversation
+  - action delegation for create-and-activate, critique-open-or-create, and takeover flows
+- Exported options interfaces for typed subsystem composition:
+  - `RuntimeConversationActivationOptions`
+  - `RuntimeConversationActionsOptions`
+- Validation at checkpoint:
+  - `bun run verify`: pass (`1003` pass / `0` fail, global lines/functions/branches = `100%`)
+  - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2627 non-empty LOC
+  - Note: runtime LOC rose slightly in this checkpoint because wiring moved earlier into the subsystem constructor option bag; follow-up slices should reduce runtime LOC as direct conversation wrappers are removed.
+
 ### Next focus (yield-first)
 
 - Consolidation order (updated from critique review):
-  - continue subsystem rollup: fold conversation activation/actions/title-edit behind the `ConversationLifecycle` facade
+  - continue subsystem rollup: fold conversation title-edit lifecycle behind the `ConversationLifecycle` facade and remove direct runtime title-edit service wiring
   - remove `_unsafe*` runtime escape hatches by exposing manager-owned read APIs/projections
   - reduce callback/options bags in input/router modules by passing manager/service dependencies directly
   - after ownership consolidation, rename/merge `runtime-*` service modules so names match stable responsibilities rather than extraction history

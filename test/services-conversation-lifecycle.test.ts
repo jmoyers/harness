@@ -8,6 +8,7 @@ interface TestConversation {
   agentType: string;
   adapterState: Record<string, unknown>;
   live: boolean;
+  status: string;
   lastOutputCursor: number;
   launchCommand: string | null;
 }
@@ -27,6 +28,7 @@ void test('conversation lifecycle composes subscriptions starter hydration and b
     agentType: 'codex',
     adapterState: {},
     live: false,
+    status: 'running',
     lastOutputCursor: 0,
     launchCommand: null,
   };
@@ -37,11 +39,16 @@ void test('conversation lifecycle composes subscriptions starter hydration and b
     agentType: 'codex',
     adapterState: {},
     live: false,
+    status: 'running',
     lastOutputCursor: 0,
     launchCommand: null,
   });
 
-  const lifecycle = new ConversationLifecycle<TestConversation, TestSessionSummary>({
+  const lifecycle = new ConversationLifecycle<
+    TestConversation,
+    TestSessionSummary,
+    { controllerId: string }
+  >({
     streamSubscriptions: {
       subscribePtyEvents: async (sessionId) => {
         calls.push(`subscribe-pty:${sessionId}`);
@@ -73,6 +80,7 @@ void test('conversation lifecycle composes subscriptions starter hydration and b
           agentType: 'codex',
           adapterState: {},
           live: false,
+          status: 'running',
           lastOutputCursor: 0,
           launchCommand: null,
         };
@@ -145,6 +153,50 @@ void test('conversation lifecycle composes subscriptions starter hydration and b
         calls.push('queue-mark-dirty');
       },
     },
+    activation: {
+      getActiveConversationId: () => null,
+      setActiveConversationId: () => {},
+      isConversationPaneMode: () => true,
+      enterConversationPaneForActiveSession: () => {},
+      enterConversationPaneForSessionSwitch: () => {},
+      stopConversationTitleEditForOtherSession: () => {},
+      clearSelectionState: () => {},
+      detachConversation: async () => {},
+      conversationById: (sessionId) => conversations.get(sessionId),
+      noteGitActivity: () => {},
+      attachConversation: async () => {},
+      isSessionNotFoundError: () => false,
+      isSessionNotLiveError: () => false,
+      markSessionUnavailable: () => {},
+      schedulePtyResizeImmediate: () => {},
+      markDirty: () => {},
+    },
+    actions: {
+      controlPlaneService: {
+        createConversation: async () => {},
+        claimSession: async () => null,
+      },
+      createConversationId: () => 'conversation-unused',
+      ensureConversation: () => {},
+      noteGitActivity: () => {},
+      orderedConversationIds: () => ['session-1', 'session-2'],
+      conversationById: (sessionId) => {
+        const conversation = conversations.get(sessionId);
+        if (conversation === undefined) {
+          return null;
+        }
+        return {
+          directoryId: conversation.directoryId,
+          agentType: conversation.agentType,
+        };
+      },
+      conversationsHas: (sessionId) => conversations.has(sessionId),
+      applyController: () => {},
+      setLastEventNow: () => {},
+      muxControllerId: 'mux-controller',
+      muxControllerLabel: 'mux-controller',
+      markDirty: () => {},
+    },
   });
 
   await lifecycle.subscribeConversationEvents('session-1');
@@ -183,4 +235,228 @@ void test('conversation lifecycle composes subscriptions starter hydration and b
     'subscribe-pty:session-2',
     'queue-mark-dirty',
   ]);
+});
+
+void test('conversation lifecycle delegates activation and conversation actions through subsystem surface', async () => {
+  const calls: string[] = [];
+  const conversations = new Map<string, TestConversation>([
+    [
+      'session-1',
+      {
+        sessionId: 'session-1',
+        directoryId: 'directory-1',
+        agentType: 'codex',
+        adapterState: {},
+        live: true,
+        status: 'running',
+        lastOutputCursor: 0,
+        launchCommand: null,
+      },
+    ],
+    [
+      'session-cold',
+      {
+        sessionId: 'session-cold',
+        directoryId: 'directory-cold',
+        agentType: 'codex',
+        adapterState: {},
+        live: false,
+        status: 'running',
+        lastOutputCursor: 0,
+        launchCommand: null,
+      },
+    ],
+  ]);
+  let activeSessionId: string | null = null;
+
+  const lifecycle = new ConversationLifecycle<
+    TestConversation,
+    TestSessionSummary,
+    { controllerId: string }
+  >({
+    streamSubscriptions: {
+      subscribePtyEvents: async (sessionId) => {
+        calls.push(`subscribe-pty:${sessionId}`);
+      },
+      unsubscribePtyEvents: async () => {},
+      isSessionNotFoundError: () => false,
+      isSessionNotLiveError: () => false,
+      subscribeObservedStream: async () => 'subscription-id',
+      unsubscribeObservedStream: async () => {},
+    },
+    starter: {
+      runWithStartInFlight: async (_sessionId, run) => await run(),
+      conversationById: (sessionId) => conversations.get(sessionId),
+      ensureConversation: (sessionId) => {
+        const existing = conversations.get(sessionId);
+        if (existing !== undefined) {
+          return existing;
+        }
+        const next: TestConversation = {
+          sessionId,
+          directoryId: null,
+          agentType: 'codex',
+          adapterState: {},
+          live: false,
+          status: 'running',
+          lastOutputCursor: 0,
+          launchCommand: null,
+        };
+        conversations.set(sessionId, next);
+        return next;
+      },
+      normalizeThreadAgentType: (agentType) => agentType,
+      codexArgs: [],
+      critiqueDefaultArgs: [],
+      sessionCwdForConversation: () => '/tmp',
+      buildLaunchArgs: () => ['resume'],
+      launchCommandForAgent: () => 'codex',
+      formatCommandForDebugBar: (command, args) => [command, ...args].join(' '),
+      startConversationSpan: () => ({
+        end: () => {},
+      }),
+      firstPaintTargetSessionId: () => null,
+      endStartCommandSpan: () => {},
+      layout: () => ({
+        rightCols: 120,
+        paneRows: 40,
+      }),
+      startPtySession: async (input) => {
+        calls.push(`start-pty:${input.sessionId}`);
+        const conversation = conversations.get(input.sessionId);
+        if (conversation !== undefined) {
+          conversation.live = true;
+        }
+      },
+      setPtySize: () => {},
+      sendResize: () => {},
+      sessionEnv: {},
+      worktreeId: undefined,
+      terminalForegroundHex: undefined,
+      terminalBackgroundHex: undefined,
+      recordStartCommand: () => {},
+      getSessionStatus: async () => null,
+      upsertFromSessionSummary: () => {},
+    },
+    startupHydration: {
+      startHydrationSpan: () => ({
+        end: () => {},
+      }),
+      hydrateDirectoryList: async () => {},
+      directoryIds: () => [],
+      hydratePersistedConversationsForDirectory: async () => 0,
+      listSessions: async () => [],
+      upsertFromSessionSummary: () => {},
+    },
+    startupQueue: {
+      orderedConversationIds: () => [],
+      conversationById: () => undefined,
+      queueBackgroundOp: () => {},
+      markDirty: () => {},
+    },
+    activation: {
+      getActiveConversationId: () => activeSessionId,
+      setActiveConversationId: (sessionId) => {
+        activeSessionId = sessionId;
+        calls.push(`set-active:${sessionId}`);
+      },
+      isConversationPaneMode: () => false,
+      enterConversationPaneForActiveSession: (sessionId) => {
+        calls.push(`enter-active-pane:${sessionId}`);
+      },
+      enterConversationPaneForSessionSwitch: (sessionId) => {
+        calls.push(`enter-switch-pane:${sessionId}`);
+      },
+      stopConversationTitleEditForOtherSession: (sessionId) => {
+        calls.push(`stop-title-edit-for-other:${sessionId}`);
+      },
+      clearSelectionState: () => {
+        calls.push('clear-selection');
+      },
+      detachConversation: async (sessionId) => {
+        calls.push(`detach:${sessionId}`);
+      },
+      conversationById: (sessionId) => conversations.get(sessionId),
+      noteGitActivity: (directoryId) => {
+        calls.push(`note-git:${directoryId}`);
+      },
+      attachConversation: async (sessionId) => {
+        calls.push(`attach:${sessionId}`);
+      },
+      isSessionNotFoundError: () => false,
+      isSessionNotLiveError: () => false,
+      markSessionUnavailable: (sessionId) => {
+        calls.push(`mark-unavailable:${sessionId}`);
+      },
+      schedulePtyResizeImmediate: () => {
+        calls.push('schedule-resize');
+      },
+      markDirty: () => {
+        calls.push('mark-dirty');
+      },
+    },
+    actions: {
+      controlPlaneService: {
+        createConversation: async (input) => {
+          calls.push(
+            `create-conversation:${input.conversationId}:${input.directoryId}:${input.agentType}`,
+          );
+        },
+        claimSession: async () => ({ controllerId: 'controller-1' }),
+      },
+      createConversationId: () => 'conversation-new',
+      ensureConversation: (sessionId, seed) => {
+        conversations.set(sessionId, {
+          sessionId,
+          directoryId: seed.directoryId,
+          agentType: seed.agentType,
+          adapterState: seed.adapterState,
+          live: false,
+          status: 'running',
+          lastOutputCursor: 0,
+          launchCommand: null,
+        });
+      },
+      noteGitActivity: (directoryId) => {
+        calls.push(`note-git:${directoryId}`);
+      },
+      orderedConversationIds: () => [...conversations.keys()],
+      conversationById: (sessionId) => {
+        const conversation = conversations.get(sessionId);
+        if (conversation === undefined) {
+          return null;
+        }
+        return {
+          directoryId: conversation.directoryId,
+          agentType: conversation.agentType,
+        };
+      },
+      conversationsHas: (sessionId) => conversations.has(sessionId),
+      applyController: (sessionId, controller) => {
+        calls.push(`apply-controller:${sessionId}:${controller.controllerId}`);
+      },
+      setLastEventNow: (sessionId) => {
+        calls.push(`set-last-event-now:${sessionId}`);
+      },
+      muxControllerId: 'mux-controller',
+      muxControllerLabel: 'mux-controller',
+      markDirty: () => {
+        calls.push('mark-dirty');
+      },
+    },
+  });
+
+  await lifecycle.activateConversation('session-cold');
+  await lifecycle.activateConversation('session-1');
+  await lifecycle.createAndActivateConversationInDirectory('directory-2', 'critique');
+  await lifecycle.openOrCreateCritiqueConversationInDirectory('directory-2');
+  await lifecycle.takeoverConversation('session-1');
+
+  assert.ok(calls.includes('set-active:session-1'));
+  assert.ok(calls.includes('start-pty:session-cold'));
+  assert.ok(calls.includes('create-conversation:conversation-new:directory-2:critique'));
+  assert.ok(calls.includes('start-pty:conversation-new'));
+  assert.ok(calls.includes('set-active:conversation-new'));
+  assert.ok(calls.includes('apply-controller:session-1:controller-1'));
+  assert.ok(calls.includes('set-last-event-now:session-1'));
 });

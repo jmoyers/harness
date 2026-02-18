@@ -4,7 +4,7 @@ interface RuntimeActivationConversationRecord {
   readonly status: string;
 }
 
-interface RuntimeConversationActivationOptions {
+export interface RuntimeConversationActivationOptions {
   readonly getActiveConversationId: () => string | null;
   readonly setActiveConversationId: (sessionId: string) => void;
   readonly isConversationPaneMode: () => boolean;
