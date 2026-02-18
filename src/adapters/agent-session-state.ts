@@ -211,6 +211,29 @@ function hasCursorResumeArg(args: readonly string[]): boolean {
   return false;
 }
 
+function hasCursorPrintOrHeadlessArg(args: readonly string[]): boolean {
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === '--print' || arg === '--headless') {
+      return true;
+    }
+    if (arg === '--mode') {
+      const next = args[index + 1];
+      if (next === 'headless') {
+        return true;
+      }
+      continue;
+    }
+    if (arg?.startsWith('--mode=')) {
+      const mode = arg.slice('--mode='.length);
+      if (mode === 'headless') {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 function hasClaudeResumeArg(args: readonly string[]): boolean {
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -280,10 +303,18 @@ export function buildAgentStartArgs(
   if (agentType === 'cursor') {
     const cursorLaunchMode = options?.cursorLaunchMode ?? 'standard';
     const argsWithLaunchMode = [...baseArgs];
-    if (cursorLaunchMode === 'yolo' && !argsWithLaunchMode.includes('--force')) {
-      argsWithLaunchMode.push('--force');
+    if (
+      cursorLaunchMode === 'yolo' &&
+      !argsWithLaunchMode.includes('--yolo') &&
+      !argsWithLaunchMode.includes('--force')
+    ) {
+      argsWithLaunchMode.push('--yolo');
     }
-    if (cursorLaunchMode === 'yolo' && !argsWithLaunchMode.includes('--trust')) {
+    if (
+      cursorLaunchMode === 'yolo' &&
+      hasCursorPrintOrHeadlessArg(argsWithLaunchMode) &&
+      !argsWithLaunchMode.includes('--trust')
+    ) {
       argsWithLaunchMode.push('--trust');
     }
 
