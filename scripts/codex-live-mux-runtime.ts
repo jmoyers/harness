@@ -155,10 +155,7 @@ import {
   addDirectoryByPath as addDirectoryByPathFn,
   archiveConversation as archiveConversationFn,
   closeDirectory as closeDirectoryFn,
-  createAndActivateConversationInDirectory as createAndActivateConversationInDirectoryFn,
-  openOrCreateCritiqueConversationInDirectory as openOrCreateCritiqueConversationInDirectoryFn,
   openNewThreadPrompt as openNewThreadPromptFn,
-  takeoverConversation as takeoverConversationFn,
 } from '../src/mux/live-mux/actions-conversation.ts';
 import { toggleGatewayProfiler as toggleGatewayProfilerFn } from '../src/mux/live-mux/gateway-profiler.ts';
 import {
@@ -186,6 +183,7 @@ import { StartupBackgroundResumeService } from '../src/services/startup-backgrou
 import { StartupOutputTracker } from '../src/services/startup-output-tracker.ts';
 import { StartupPaintTracker } from '../src/services/startup-paint-tracker.ts';
 import { RuntimeProcessWiring } from '../src/services/runtime-process-wiring.ts';
+import { RuntimeConversationActions } from '../src/services/runtime-conversation-actions.ts';
 import { RuntimeRenderLifecycle } from '../src/services/runtime-render-lifecycle.ts';
 import { RuntimeShutdownService } from '../src/services/runtime-shutdown.ts';
 import { StartupShutdownService } from '../src/services/startup-shutdown.ts';
@@ -2380,53 +2378,49 @@ async function main(): Promise<number> {
     });
   };
 
+  const runtimeConversationActions = new RuntimeConversationActions({
+    controlPlaneService,
+    createConversationId: () => `conversation-${randomUUID()}`,
+    ensureConversation,
+    noteGitActivity,
+    startConversation,
+    activateConversation,
+    orderedConversationIds: () => conversationManager.orderedIds(),
+    conversationById: (sessionId) => {
+      const conversation = conversationManager.get(sessionId);
+      if (conversation === undefined) {
+        return null;
+      }
+      return {
+        directoryId: conversation.directoryId,
+        agentType: conversation.agentType,
+      };
+    },
+    conversationsHas: (sessionId) => conversationManager.has(sessionId),
+    applyController: (sessionId, controller) => {
+      conversationManager.setController(sessionId, controller);
+    },
+    setLastEventNow: (sessionId) => {
+      conversationManager.setLastEventAt(sessionId, new Date().toISOString());
+    },
+    muxControllerId,
+    muxControllerLabel,
+    markDirty,
+  });
   const createAndActivateConversationInDirectory = async (
     directoryId: string,
     agentType: ThreadAgentType,
   ): Promise<void> => {
-    await createAndActivateConversationInDirectoryFn({
+    await runtimeConversationActions.createAndActivateConversationInDirectory(
       directoryId,
-      agentType,
-      createConversationId: () => `conversation-${randomUUID()}`,
-      createConversationRecord: async (sessionId, targetDirectoryId, targetAgentType) => {
-        await controlPlaneService.createConversation({
-          conversationId: sessionId,
-          directoryId: targetDirectoryId,
-          title: '',
-          agentType: String(targetAgentType),
-          adapterState: {},
-        });
-      },
-      ensureConversation: (sessionId, seed) => {
-        ensureConversation(sessionId, seed);
-      },
-      noteGitActivity,
-      startConversation,
-      activateConversation,
-    });
+      String(agentType),
+    );
   };
 
   const openOrCreateCritiqueConversationInDirectory = async (
     directoryId: string,
   ): Promise<void> => {
-    await openOrCreateCritiqueConversationInDirectoryFn({
-      directoryId,
-      orderedConversationIds: () => conversationManager.orderedIds(),
-      conversationById: (sessionId) => {
-        const conversation = conversationManager.get(sessionId);
-        if (conversation === undefined) {
-          return null;
-        }
-        return {
-          directoryId: conversation.directoryId,
-          agentType: conversation.agentType,
-        };
-      },
-      activateConversation,
-      createAndActivateCritiqueConversationInDirectory: async (targetDirectoryId) => {
-        await createAndActivateConversationInDirectory(targetDirectoryId, 'critique');
-      },
-    });
+    await runtimeConversationActions.openOrCreateCritiqueConversationInDirectory(directoryId);
   };
 
   const archiveConversation = async (sessionId: string): Promise<void> => {
@@ -2460,27 +2454,7 @@ async function main(): Promise<number> {
   };
 
   const takeoverConversation = async (sessionId: string): Promise<void> => {
-    await takeoverConversationFn({
-      sessionId,
-      conversationsHas: (targetSessionId) => conversationManager.has(targetSessionId),
-      claimSession: async (targetSessionId) => {
-        return await controlPlaneService.claimSession({
-          sessionId: targetSessionId,
-          controllerId: muxControllerId,
-          controllerType: 'human',
-          controllerLabel: muxControllerLabel,
-          reason: 'human takeover',
-          takeover: true,
-        });
-      },
-      applyController: (targetSessionId, controller) => {
-        conversationManager.setController(targetSessionId, controller);
-      },
-      setLastEventNow: (targetSessionId) => {
-        conversationManager.setLastEventAt(targetSessionId, new Date().toISOString());
-      },
-      markDirty,
-    });
+    await runtimeConversationActions.takeoverConversation(sessionId);
   };
 
   const addDirectoryByPath = async (rawPath: string): Promise<void> => {

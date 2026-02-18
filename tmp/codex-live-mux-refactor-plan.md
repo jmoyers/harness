@@ -1180,6 +1180,26 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3381 non-empty LOC
 
+### Checkpoint BJ (2026-02-18): Action-handler extraction starts with conversation lifecycle orchestration
+
+- Added `src/services/runtime-conversation-actions.ts` with a class-based `RuntimeConversationActions` that owns orchestration for:
+  - create + activate conversation in directory
+  - open-or-create critique conversation flow
+  - takeover conversation claim/apply/dirty flow
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate these conversation action handlers to `RuntimeConversationActions`, removing three large inline callback-bag wrappers from runtime.
+- Added `test/services-runtime-conversation-actions.test.ts` with branch coverage for:
+  - create-and-activate sequencing
+  - critique existing-vs-create path selection
+  - takeover success and missing-session no-op behavior
+- Removed tracked editor swap artifact `.README.md.swp` to keep workspace hygiene gates clean.
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3355 non-empty LOC
+
 ### Next focus (yield-first)
 
-- Action-handler bundle extraction (conversation/directory orchestration) is now the top priority before further input-wiring cleanup.
+- Continue action-handler extraction before wiring cleanup:
+  - conversation archive/add-directory/close-directory orchestration bundle
+  - task + selection transition ownership into workspace/task domain methods
+  - hydration flow extraction into manager/service-owned methods
