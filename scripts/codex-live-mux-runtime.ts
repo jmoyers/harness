@@ -164,11 +164,9 @@ import { RuntimeRenderLifecycle } from '../src/services/runtime-render-lifecycle
 import { RuntimeShutdownService } from '../src/services/runtime-shutdown.ts';
 import { RuntimeTaskEditorActions } from '../src/services/runtime-task-editor-actions.ts';
 import { RuntimeInputPipeline } from '../src/services/runtime-input-pipeline.ts';
-import { RuntimeMainPaneInput } from '../src/services/runtime-main-pane-input.ts';
-import { RuntimeRailInput } from '../src/services/runtime-rail-input.ts';
+import { RuntimeInputRouter } from '../src/services/runtime-input-router.ts';
 import { RuntimeTaskComposerPersistenceService } from '../src/services/runtime-task-composer-persistence.ts';
 import { RuntimeTaskPane } from '../src/services/runtime-task-pane.ts';
-import { RuntimeModalInput } from '../src/services/runtime-modal-input.ts';
 import { TaskPaneSelectionActions } from '../src/services/task-pane-selection-actions.ts';
 import { TaskPlanningHydrationService } from '../src/services/task-planning-hydration.ts';
 import { TaskPlanningObservedEvents } from '../src/services/task-planning-observed-events.ts';
@@ -2172,109 +2170,93 @@ async function main(): Promise<number> {
   await startupOrchestrator.activateInitialConversation(initialActiveId);
   startupOrchestrator.finalizeStartup(initialActiveId);
 
-  const runtimeModalInput = new RuntimeModalInput({
-    workspace,
-    conversations: conversationRecords,
-    workspaceActions: runtimeWorkspaceActions,
-    taskEditorActions: runtimeTaskEditorActions,
-    isModalDismissShortcut: (rawInput) =>
-      detectMuxGlobalShortcut(rawInput, modalDismissShortcutBindings) === 'mux.app.quit',
-    isArchiveConversationShortcut: (rawInput) => {
-      const action = detectMuxGlobalShortcut(rawInput, shortcutBindings);
-      return action === 'mux.conversation.archive' || action === 'mux.conversation.delete';
+  const runtimeInputRouter = new RuntimeInputRouter({
+    modal: {
+      workspace,
+      conversations: conversationRecords,
+      workspaceActions: runtimeWorkspaceActions,
+      taskEditorActions: runtimeTaskEditorActions,
+      isModalDismissShortcut: (rawInput) =>
+        detectMuxGlobalShortcut(rawInput, modalDismissShortcutBindings) === 'mux.app.quit',
+      isArchiveConversationShortcut: (rawInput) => {
+        const action = detectMuxGlobalShortcut(rawInput, shortcutBindings);
+        return action === 'mux.conversation.archive' || action === 'mux.conversation.delete';
+      },
+      dismissOnOutsideClick: (rawInput, dismiss, onInsidePointerPress) =>
+        dismissModalOnOutsideClick(rawInput, dismiss, onInsidePointerPress),
+      buildConversationTitleModalOverlay: () => buildConversationTitleModalOverlay(layout.rows),
+      buildNewThreadModalOverlay: () => buildNewThreadModalOverlay(layout.rows),
+      resolveNewThreadPromptAgentByRow,
+      stopConversationTitleEdit,
+      queueControlPlaneOp,
+      normalizeGitHubRemoteUrl,
+      repositoriesHas: (repositoryId) => repositories.has(repositoryId),
+      markDirty,
+      scheduleConversationTitlePersist,
     },
-    dismissOnOutsideClick: (rawInput, dismiss, onInsidePointerPress) =>
-      dismissModalOnOutsideClick(rawInput, dismiss, onInsidePointerPress),
-    buildConversationTitleModalOverlay: () => buildConversationTitleModalOverlay(layout.rows),
-    buildNewThreadModalOverlay: () => buildNewThreadModalOverlay(layout.rows),
-    resolveNewThreadPromptAgentByRow,
-    stopConversationTitleEdit,
-    queueControlPlaneOp,
-    normalizeGitHubRemoteUrl,
-    repositoriesHas: (repositoryId) => repositories.has(repositoryId),
-    markDirty,
-    scheduleConversationTitlePersist,
-  });
-
-  const runtimeRailInput = new RuntimeRailInput({
-    workspace,
-    shortcutBindings,
-    queueControlPlaneOp,
-    runtimeWorkspaceActions,
-    requestStop,
-    resolveDirectoryForAction,
-    openNewThreadPrompt,
-    firstDirectoryForRepositoryGroup,
-    enterHomePane,
-    enterProjectPane,
-    markDirty,
-    queuePersistMuxUiState,
-    conversations: conversationRecords,
-    repositoryGroupIdForDirectory,
-    toggleRepositoryGroup,
-    collapseRepositoryGroup,
-    expandRepositoryGroup,
-    collapseAllRepositoryGroups,
-    expandAllRepositoryGroups,
-    directoriesHas: (directoryId) => directoryManager.hasDirectory(directoryId),
-    conversationDirectoryId: (sessionId) => conversationManager.directoryIdOf(sessionId),
-    conversationsHas: (sessionId) => conversationManager.has(sessionId),
-    getMainPaneMode: () => workspace.mainPaneMode,
-    getActiveConversationId: () => conversationManager.activeConversationId,
-    getActiveDirectoryId: () => workspace.activeDirectoryId,
-    repositoriesHas: (repositoryId) => repositories.has(repositoryId),
-    chordTimeoutMs: REPOSITORY_TOGGLE_CHORD_TIMEOUT_MS,
-    collapseAllChordPrefix: REPOSITORY_COLLAPSE_ALL_CHORD_PREFIX,
-    stopConversationTitleEdit,
-    releaseViewportPinForSelection,
-    beginConversationTitleEdit,
-    resetConversationPaneFrameCache: () => {
-      screen.resetFrameCache();
+    rail: {
+      workspace,
+      shortcutBindings,
+      queueControlPlaneOp,
+      runtimeWorkspaceActions,
+      requestStop,
+      resolveDirectoryForAction,
+      openNewThreadPrompt,
+      firstDirectoryForRepositoryGroup,
+      enterHomePane,
+      enterProjectPane,
+      markDirty,
+      queuePersistMuxUiState,
+      conversations: conversationRecords,
+      repositoryGroupIdForDirectory,
+      toggleRepositoryGroup,
+      collapseRepositoryGroup,
+      expandRepositoryGroup,
+      collapseAllRepositoryGroups,
+      expandAllRepositoryGroups,
+      directoriesHas: (directoryId) => directoryManager.hasDirectory(directoryId),
+      conversationDirectoryId: (sessionId) => conversationManager.directoryIdOf(sessionId),
+      conversationsHas: (sessionId) => conversationManager.has(sessionId),
+      getMainPaneMode: () => workspace.mainPaneMode,
+      getActiveConversationId: () => conversationManager.activeConversationId,
+      getActiveDirectoryId: () => workspace.activeDirectoryId,
+      repositoriesHas: (repositoryId) => repositories.has(repositoryId),
+      chordTimeoutMs: REPOSITORY_TOGGLE_CHORD_TIMEOUT_MS,
+      collapseAllChordPrefix: REPOSITORY_COLLAPSE_ALL_CHORD_PREFIX,
+      stopConversationTitleEdit,
+      releaseViewportPinForSelection,
+      beginConversationTitleEdit,
+      resetConversationPaneFrameCache: () => {
+        screen.resetFrameCache();
+      },
+      conversationTitleEditDoubleClickWindowMs: CONVERSATION_TITLE_EDIT_DOUBLE_CLICK_WINDOW_MS,
     },
-    conversationTitleEditDoubleClickWindowMs: CONVERSATION_TITLE_EDIT_DOUBLE_CLICK_WINDOW_MS,
-  });
-  const runtimeMainPaneInput = new RuntimeMainPaneInput({
-    workspace,
-    leftRailPointerInput: runtimeRailInput,
-    workspaceActions: {
-      runTaskPaneAction: (action) => {
-        runtimeWorkspaceActions.runTaskPaneAction(action);
-      },
-      openTaskEditPrompt: (taskId) => {
-        runtimeWorkspaceActions.openTaskEditPrompt(taskId);
-      },
-      openRepositoryPromptForEdit: (repositoryId) => {
-        runtimeWorkspaceActions.openRepositoryPromptForEdit(repositoryId);
-      },
-      reorderTaskByDrop: (draggedTaskId, targetTaskId) => {
-        runtimeWorkspaceActions.reorderTaskByDrop(draggedTaskId, targetTaskId);
-      },
-      reorderRepositoryByDrop: (draggedRepositoryId, targetRepositoryId) => {
-        runtimeWorkspaceActions.reorderRepositoryByDrop(draggedRepositoryId, targetRepositoryId);
-      },
+    mainPane: {
+      workspace,
+      workspaceActions: runtimeWorkspaceActions,
+      projectPaneActionAtRow,
+      openNewThreadPrompt,
+      queueCloseDirectory: (directoryId) =>
+        queueControlPlaneOp(async () => {
+          await runtimeWorkspaceActions.closeDirectory(directoryId);
+        }, 'project-pane-close-project'),
+      selectTaskById,
+      selectRepositoryById,
+      taskPaneActionAtCell: taskFocusedPaneActionAtCell,
+      taskPaneActionAtRow: taskFocusedPaneActionAtRow,
+      taskPaneTaskIdAtRow: taskFocusedPaneTaskIdAtRow,
+      taskPaneRepositoryIdAtRow: taskFocusedPaneRepositoryIdAtRow,
+      applyPaneDividerAtCol,
+      pinViewportForSelection,
+      releaseViewportPinForSelection,
+      markDirty,
+      homePaneEditDoubleClickWindowMs: HOME_PANE_EDIT_DOUBLE_CLICK_WINDOW_MS,
     },
-    projectPaneActionAtRow,
-    openNewThreadPrompt,
-    queueCloseDirectory: (directoryId) =>
-      queueControlPlaneOp(async () => {
-        await runtimeWorkspaceActions.closeDirectory(directoryId);
-      }, 'project-pane-close-project'),
-    selectTaskById,
-    selectRepositoryById,
-    taskPaneActionAtCell: taskFocusedPaneActionAtCell,
-    taskPaneActionAtRow: taskFocusedPaneActionAtRow,
-    taskPaneTaskIdAtRow: taskFocusedPaneTaskIdAtRow,
-    taskPaneRepositoryIdAtRow: taskFocusedPaneRepositoryIdAtRow,
-    applyPaneDividerAtCol,
-    pinViewportForSelection,
-    releaseViewportPinForSelection,
-    markDirty,
-    homePaneEditDoubleClickWindowMs: HOME_PANE_EDIT_DOUBLE_CLICK_WINDOW_MS,
   });
   const runtimeInputPipeline = new RuntimeInputPipeline({
     preflight: {
       isShuttingDown: () => shuttingDown,
-      routeModalInput: (input) => runtimeModalInput.routeModalInput(input),
+      routeModalInput: (input) => runtimeInputRouter.routeModalInput(input),
       handleEscapeInput: (input) => {
         if (workspace.selection !== null || workspace.selectionDrag !== null) {
           workspace.selection = null;
@@ -2296,8 +2278,8 @@ async function main(): Promise<number> {
       onFocusOut: () => {
         markDirty();
       },
-      handleRepositoryFoldInput: (input) => runtimeRailInput.handleRepositoryFoldInput(input),
-      handleGlobalShortcutInput: (input) => runtimeRailInput.handleGlobalShortcutInput(input),
+      handleRepositoryFoldInput: (input) => runtimeInputRouter.handleRepositoryFoldInput(input),
+      handleGlobalShortcutInput: (input) => runtimeInputRouter.handleGlobalShortcutInput(input),
       handleTaskPaneShortcutInput: (input) =>
         runtimeWorkspaceActions.handleTaskPaneShortcutInput(input),
       handleCopyShortcutInput: (input) => {
@@ -2327,7 +2309,7 @@ async function main(): Promise<number> {
       },
       getMainPaneMode: () => workspace.mainPaneMode,
       getLayout: () => layout,
-      inputTokenRouter: runtimeMainPaneInput,
+      inputTokenRouter: runtimeInputRouter.inputTokenRouter(),
       getActiveConversation: () => conversationManager.getActiveConversation(),
       markDirty,
       isControlledByLocalHuman: (input) => conversationManager.isControlledByLocalHuman(input),

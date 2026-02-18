@@ -1967,6 +1967,22 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2349 non-empty LOC
 
+### Checkpoint DC (2026-02-18): Input router subsystem composes modal/rail/main-pane wiring under one surface
+
+- Added `src/services/runtime-input-router.ts` with class-based `RuntimeInputRouter` that composes:
+  - `RuntimeModalInput`
+  - `RuntimeRailInput`
+  - `RuntimeMainPaneInput`
+- Updated `scripts/codex-live-mux-runtime.ts` to replace direct construction of modal/rail/main-pane input services with one `RuntimeInputRouter` instance:
+  - preflight modal routing now delegates to `runtimeInputRouter.routeModalInput(...)`
+  - preflight repository/global shortcuts now delegate to `runtimeInputRouter.handleRepositoryFoldInput(...)` and `runtimeInputRouter.handleGlobalShortcutInput(...)`
+  - input forwarding now consumes `runtimeInputRouter.inputTokenRouter()` instead of directly wiring `RuntimeMainPaneInput`
+- Added `test/services-runtime-input-router.test.ts` with coverage for composed modal/rail/main-pane routing surfaces and token-router passthrough behavior.
+- Validation at checkpoint:
+  - `bun run verify`: pass (`1020` pass / `0` fail, global lines/functions/branches = `100%`)
+  - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2332 non-empty LOC
+
 ### Next focus (yield-first)
 
 - Consolidation order (updated from critique review):
