@@ -186,6 +186,8 @@ import { RuntimeDirectoryActions } from '../src/services/runtime-directory-actio
 import { RuntimeRenderLifecycle } from '../src/services/runtime-render-lifecycle.ts';
 import { RuntimeShutdownService } from '../src/services/runtime-shutdown.ts';
 import { TaskPaneSelectionActions } from '../src/services/task-pane-selection-actions.ts';
+import { TaskPlanningHydrationService } from '../src/services/task-planning-hydration.ts';
+import { TaskPlanningObservedEvents } from '../src/services/task-planning-observed-events.ts';
 import { StartupShutdownService } from '../src/services/startup-shutdown.ts';
 import { StartupSettledGate } from '../src/services/startup-settled-gate.ts';
 import { StartupSpanTracker } from '../src/services/startup-span-tracker.ts';
@@ -1817,75 +1819,54 @@ async function main(): Promise<number> {
     markDirty();
   };
 
-  async function hydrateTaskPlanningState(): Promise<void> {
-    repositories.clear();
-    for (const repository of await controlPlaneService.listRepositories()) {
+  const taskPlanningHydrationService = new TaskPlanningHydrationService<
+    ControlPlaneRepositoryRecord,
+    ControlPlaneTaskRecord
+  >({
+    controlPlaneService,
+    clearRepositories: () => {
+      repositories.clear();
+    },
+    setRepository: (repository) => {
       repositories.set(repository.repositoryId, repository);
-    }
-    syncTaskPaneRepositorySelection();
-
-    taskManager.clearTasks();
-    for (const task of await controlPlaneService.listTasks(1000)) {
+    },
+    syncTaskPaneRepositorySelection,
+    clearTasks: () => {
+      taskManager.clearTasks();
+    },
+    setTask: (task) => {
       taskManager.setTask(task);
-    }
-    syncTaskPaneSelection();
-    syncTaskPaneRepositorySelection();
-    markDirty();
+    },
+    syncTaskPaneSelection,
+    markDirty,
+    taskLimit: 1000,
+  });
+
+  async function hydrateTaskPlanningState(): Promise<void> {
+    await taskPlanningHydrationService.hydrate();
   }
 
+  const taskPlanningObservedEvents = new TaskPlanningObservedEvents<
+    ControlPlaneRepositoryRecord,
+    ControlPlaneTaskRecord
+  >({
+    parseRepositoryRecord,
+    parseTaskRecord,
+    getRepository: (repositoryId) => repositories.get(repositoryId),
+    setRepository: (repositoryId, repository) => {
+      repositories.set(repositoryId, repository);
+    },
+    setTask: (task) => {
+      taskManager.setTask(task);
+    },
+    deleteTask: (taskId) => taskManager.deleteTask(taskId),
+    syncTaskPaneRepositorySelection,
+    syncTaskPaneSelection,
+    markDirty,
+  });
+
   const applyObservedTaskPlanningEvent = (observed: StreamObservedEvent): void => {
-    if (observed.type === 'repository-upserted' || observed.type === 'repository-updated') {
-      const repository = parseRepositoryRecord(observed.repository);
-      if (repository !== null) {
-        repositories.set(repository.repositoryId, repository);
-        syncTaskPaneRepositorySelection();
-        markDirty();
-      }
-      return;
-    }
-    if (observed.type === 'repository-archived') {
-      const repository = repositories.get(observed.repositoryId);
-      if (repository !== undefined) {
-        repositories.set(observed.repositoryId, {
-          ...repository,
-          archivedAt: observed.ts,
-        });
-        syncTaskPaneRepositorySelection();
-        markDirty();
-      }
-      return;
-    }
-    if (observed.type === 'task-created' || observed.type === 'task-updated') {
-      const task = parseTaskRecord(observed.task);
-      if (task !== null) {
-        taskManager.setTask(task);
-        syncTaskPaneSelection();
-        markDirty();
-      }
-      return;
-    }
-    if (observed.type === 'task-deleted') {
-      if (taskManager.deleteTask(observed.taskId)) {
-        syncTaskPaneSelection();
-        markDirty();
-      }
-      return;
-    }
-    if (observed.type === 'task-reordered') {
-      let changed = false;
-      for (const value of observed.tasks) {
-        const task = parseTaskRecord(value);
-        if (task === null) {
-          continue;
-        }
-        taskManager.setTask(task);
-        changed = true;
-      }
-      if (changed) {
-        syncTaskPaneSelection();
-        markDirty();
-      }
-    }
+    taskPlanningObservedEvents.apply(observed);
   };
 
   const subscribeTaskPlanningEvents = async (afterCursor: number | null): Promise<void> => {

@@ -1273,8 +1273,23 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3213 non-empty LOC
 
+### Checkpoint BP (2026-02-18): Task-planning hydration + observed reducers extracted into class services
+
+- Added `src/services/task-planning-hydration.ts` with class-based `TaskPlanningHydrationService` to own task-planning hydration sequencing (`listRepositories` -> repo sync -> `listTasks` -> task sync -> dirty mark).
+- Added `src/services/task-planning-observed-events.ts` with class-based `TaskPlanningObservedEvents` to own repository/task observed-event branch reducers.
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate:
+  - `hydrateTaskPlanningState()` to `TaskPlanningHydrationService`
+  - `applyObservedTaskPlanningEvent(...)` to `TaskPlanningObservedEvents`
+- Added tests:
+  - `test/services-task-planning-hydration.test.ts`
+  - `test/services-task-planning-observed-events.test.ts`
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3193 non-empty LOC
+
 ### Next focus (yield-first)
 
 - Continue action-handler extraction before wiring cleanup:
-  - hydration flow extraction into manager/service-owned methods
-  - migrate startup/task-planning hydrate flows into manager/service-owned orchestration classes
+  - continue hydration extraction for directory/conversation startup flows (`hydrateDirectoryList`, `hydrateConversationList`)
+  - keep collapsing remaining inline startup orchestration in runtime into class services
