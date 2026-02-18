@@ -184,6 +184,7 @@ import { DirectoryManager } from '../src/domain/directories.ts';
 import { TaskManager } from '../src/domain/tasks.ts';
 import { ControlPlaneService } from '../src/services/control-plane.ts';
 import { RecordingService } from '../src/services/recording.ts';
+import { StartupSettledGate } from '../src/services/startup-settled-gate.ts';
 import { StartupSpanTracker } from '../src/services/startup-span-tracker.ts';
 import { StartupVisibility } from '../src/services/startup-visibility.ts';
 import { Screen, type ScreenCursorStyle } from '../src/ui/screen.ts';
@@ -608,39 +609,14 @@ async function main(): Promise<number> {
   });
   const startupSpanTracker = new StartupSpanTracker(startPerfSpan, startupSettleQuietMs);
   const startupVisibility = new StartupVisibility();
+  const startupSettledGate = new StartupSettledGate({
+    startupSequencer,
+    startupSpanTracker,
+    getConversation: (sessionId) => conversationManager.get(sessionId),
+    visibleGlyphCellCount: (conversation) => startupVisibility.visibleGlyphCellCount(conversation),
+    recordPerfEvent,
+  });
   const startupSessionFirstOutputObserved = new Set<string>();
-
-  const clearStartupSettledTimer = (): void => {
-    startupSequencer.clearSettledTimer();
-  };
-
-  const signalStartupActiveSettled = (): void => {
-    startupSequencer.signalSettled();
-  };
-
-  const scheduleStartupSettledProbe = (sessionId: string): void => {
-    startupSequencer.scheduleSettledProbe(sessionId, (event) => {
-      if (startupSpanTracker.firstPaintTargetSessionId !== event.sessionId) {
-        return;
-      }
-      const conversation = conversationManager.get(event.sessionId);
-      const glyphCells =
-        conversation === undefined ? 0 : startupVisibility.visibleGlyphCellCount(conversation);
-      recordPerfEvent('mux.startup.active-settled', {
-        sessionId: event.sessionId,
-        gate: event.gate,
-        quietMs: event.quietMs,
-        glyphCells,
-      });
-      startupSpanTracker.endSettledSpan({
-        observed: true,
-        gate: event.gate,
-        quietMs: event.quietMs,
-        glyphCells,
-      });
-      signalStartupActiveSettled();
-    });
-  };
 
   const resolveActiveDirectoryId = (): string | null => {
     workspace.activeDirectoryId = directoryManager.resolveActiveDirectoryId(workspace.activeDirectoryId);
@@ -3206,7 +3182,7 @@ async function main(): Promise<number> {
             glyphCells,
           });
         }
-        scheduleStartupSettledProbe(startupSpanTracker.firstPaintTargetSessionId);
+        startupSettledGate.scheduleProbe(startupSpanTracker.firstPaintTargetSessionId);
       }
       if (muxRecordingWriter !== null && muxRecordingOracle !== null) {
         const recordingCursorStyle: ScreenCursorStyle =
@@ -3297,7 +3273,7 @@ async function main(): Promise<number> {
         startupSpanTracker.firstPaintTargetSessionId !== null &&
         envelope.sessionId === startupSpanTracker.firstPaintTargetSessionId
       ) {
-        scheduleStartupSettledProbe(envelope.sessionId);
+        startupSettledGate.scheduleProbe(envelope.sessionId);
       }
 
       const normalized = mapTerminalOutputToNormalizedEvent(chunk, conversation.scope, idFactory);
@@ -4048,12 +4024,12 @@ async function main(): Promise<number> {
     startupSpanTracker.endFirstPaintSpan({
       observed: startupSnapshot.firstPaintObserved,
     });
-    clearStartupSettledTimer();
+    startupSettledGate.clearTimer();
     startupSpanTracker.endSettledSpan({
       observed: startupSnapshot.settledObserved,
       gate: startupSnapshot.settleGate ?? 'none',
     });
-    signalStartupActiveSettled();
+    startupSettledGate.signalSettled();
     shutdownPerfCore();
   }
 

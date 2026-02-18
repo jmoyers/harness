@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~3898 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~3877 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -941,3 +941,16 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3898 non-empty LOC
+
+### Checkpoint AV (2026-02-18): Service extraction continues with class-based startup settled-gate orchestration
+
+- Added `src/services/startup-settled-gate.ts` with a class-based `StartupSettledGate` that owns:
+  - startup settled-probe scheduling callbacks from `StartupSequencer`
+  - settled-gate perf event emission + settled-span completion coordination
+  - settled timer clear/signal passthrough lifecycle used at shutdown and steady state
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate startup settled timer/probe orchestration to `StartupSettledGate`, removing inline settled-probe helper closures.
+- Added `test/services-startup-settled-gate.test.ts` with coverage for clear/signal passthrough, non-target probe ignore behavior, and settled event emission with both visible-glyph and zero-glyph fallback paths.
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3877 non-empty LOC
