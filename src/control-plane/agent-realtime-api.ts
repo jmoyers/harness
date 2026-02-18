@@ -260,6 +260,8 @@ export interface AgentTask {
   userId: string;
   workspaceId: string;
   repositoryId: string | null;
+  scopeKind: 'global' | 'repository' | 'project';
+  projectId: string | null;
   title: string;
   description: string;
   status: AgentTaskStatus;
@@ -278,6 +280,7 @@ export interface AgentTask {
 export interface AgentTaskCreateInput extends AgentScopeQuery {
   taskId?: string;
   repositoryId?: string;
+  projectId?: string;
   title: string;
   description?: string;
   linear?: AgentTaskLinearInput;
@@ -285,6 +288,8 @@ export interface AgentTaskCreateInput extends AgentScopeQuery {
 
 export interface AgentTaskListQuery extends AgentScopeQuery {
   repositoryId?: string;
+  projectId?: string;
+  scopeKind?: 'global' | 'repository' | 'project';
   status?: AgentTaskStatus;
   limit?: number;
 }
@@ -293,6 +298,7 @@ export interface AgentTaskUpdateInput {
   title?: string;
   description?: string;
   repositoryId?: string | null;
+  projectId?: string | null;
   linear?: AgentTaskLinearInput | null;
 }
 
@@ -302,6 +308,45 @@ export interface AgentTaskClaimInput {
   projectId?: string;
   branchName?: string;
   baseBranch?: string;
+}
+
+export interface AgentTaskPullInput extends AgentScopeQuery {
+  controllerId: string;
+  projectId?: string;
+  repositoryId?: string;
+  branchName?: string;
+  baseBranch?: string;
+}
+
+export interface AgentProjectSettings {
+  directoryId: string;
+  tenantId: string;
+  userId: string;
+  workspaceId: string;
+  pinnedBranch: string | null;
+  taskFocusMode: 'balanced' | 'own-only';
+  threadSpawnMode: 'new-thread' | 'reuse-thread';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AgentProjectSettingsUpdateInput {
+  pinnedBranch?: string | null;
+  taskFocusMode?: 'balanced' | 'own-only';
+  threadSpawnMode?: 'new-thread' | 'reuse-thread';
+}
+
+export interface AgentAutomationPolicy {
+  policyId: string;
+  tenantId: string;
+  userId: string;
+  workspaceId: string;
+  scope: 'global' | 'repository' | 'project';
+  scopeId: string | null;
+  automationEnabled: boolean;
+  frozen: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface AgentTaskReorderInput {
@@ -463,6 +508,26 @@ function parseTaskStatus(value: unknown): AgentTaskStatus | null {
   return null;
 }
 
+function parseTaskScopeKind(
+  value: unknown,
+  repositoryId: string | null | undefined,
+  projectId: string | null | undefined,
+): 'global' | 'repository' | 'project' | null {
+  if (value === 'global' || value === 'repository' || value === 'project') {
+    return value;
+  }
+  if (projectId !== null) {
+    return 'project';
+  }
+  if (repositoryId !== null) {
+    return 'repository';
+  }
+  if (value === undefined || value === null) {
+    return 'global';
+  }
+  return null;
+}
+
 function parseRuntimeStatus(value: unknown): StreamSessionRuntimeStatus | null {
   if (
     value === 'running' ||
@@ -544,6 +609,89 @@ function parseProjectRecord(value: unknown): AgentProject | null {
     path,
     createdAt,
     archivedAt,
+  };
+}
+
+function parseProjectSettingsRecord(value: unknown): AgentProjectSettings | null {
+  const record = asRecord(value);
+  if (record === null) {
+    return null;
+  }
+  const directoryId = readString(record['directoryId']);
+  const tenantId = readString(record['tenantId']);
+  const userId = readString(record['userId']);
+  const workspaceId = readString(record['workspaceId']);
+  const pinnedBranch = readNullableString(record['pinnedBranch']);
+  const taskFocusMode = record['taskFocusMode'];
+  const threadSpawnMode = record['threadSpawnMode'];
+  const createdAt = readString(record['createdAt']);
+  const updatedAt = readString(record['updatedAt']);
+  if (
+    directoryId === null ||
+    tenantId === null ||
+    userId === null ||
+    workspaceId === null ||
+    pinnedBranch === undefined ||
+    (taskFocusMode !== 'balanced' && taskFocusMode !== 'own-only') ||
+    (threadSpawnMode !== 'new-thread' && threadSpawnMode !== 'reuse-thread') ||
+    createdAt === null ||
+    updatedAt === null
+  ) {
+    return null;
+  }
+  return {
+    directoryId,
+    tenantId,
+    userId,
+    workspaceId,
+    pinnedBranch,
+    taskFocusMode,
+    threadSpawnMode,
+    createdAt,
+    updatedAt,
+  };
+}
+
+function parseAutomationPolicyRecord(value: unknown): AgentAutomationPolicy | null {
+  const record = asRecord(value);
+  if (record === null) {
+    return null;
+  }
+  const policyId = readString(record['policyId']);
+  const tenantId = readString(record['tenantId']);
+  const userId = readString(record['userId']);
+  const workspaceId = readString(record['workspaceId']);
+  const scope = record['scope'];
+  const scopeId = readNullableString(record['scopeId']);
+  const automationEnabled = readBoolean(record['automationEnabled']);
+  const frozen = readBoolean(record['frozen']);
+  const createdAt = readString(record['createdAt']);
+  const updatedAt = readString(record['updatedAt']);
+  if (
+    policyId === null ||
+    tenantId === null ||
+    userId === null ||
+    workspaceId === null ||
+    (scope !== 'global' && scope !== 'repository' && scope !== 'project') ||
+    scopeId === undefined ||
+    automationEnabled === null ||
+    frozen === null ||
+    createdAt === null ||
+    updatedAt === null
+  ) {
+    return null;
+  }
+  return {
+    policyId,
+    tenantId,
+    userId,
+    workspaceId,
+    scope,
+    scopeId,
+    automationEnabled,
+    frozen,
+    createdAt,
+    updatedAt,
   };
 }
 
@@ -732,9 +880,11 @@ function parseTaskRecord(value: unknown): AgentTask | null {
   const userId = readString(record['userId']);
   const workspaceId = readString(record['workspaceId']);
   const repositoryId = readNullableString(record['repositoryId']);
+  const projectId = readNullableString(record['projectId']);
   const title = readString(record['title']);
   const description = readString(record['description']);
   const status = parseTaskStatus(record['status']);
+  const scopeKind = parseTaskScopeKind(record['scopeKind'], repositoryId, projectId);
   const orderIndex = readNumber(record['orderIndex']);
   const claimedByControllerId = readNullableString(record['claimedByControllerId']);
   const claimedByProjectId = readNullableString(record['claimedByDirectoryId']);
@@ -751,6 +901,8 @@ function parseTaskRecord(value: unknown): AgentTask | null {
     userId === null ||
     workspaceId === null ||
     repositoryId === undefined ||
+    projectId === undefined ||
+    scopeKind === null ||
     title === null ||
     description === null ||
     status === null ||
@@ -773,6 +925,8 @@ function parseTaskRecord(value: unknown): AgentTask | null {
     userId,
     workspaceId,
     repositoryId,
+    scopeKind,
+    projectId,
     title,
     description,
     status,
@@ -1067,6 +1221,16 @@ export class HarnessAgentRealtimeClient {
     ): Promise<AgentProject> => await this.updateProject(projectId, input),
     archive: async (projectId: string): Promise<AgentProject> =>
       await this.archiveProject(projectId),
+    status: async (projectId: string): Promise<Record<string, unknown>> =>
+      await this.projectStatus(projectId),
+    settings: {
+      get: async (projectId: string): Promise<AgentProjectSettings> =>
+        await this.getProjectSettings(projectId),
+      update: async (
+        projectId: string,
+        update: AgentProjectSettingsUpdateInput,
+      ): Promise<AgentProjectSettings> => await this.updateProjectSettings(projectId, update),
+    },
   };
 
   readonly threads = {
@@ -1111,12 +1275,41 @@ export class HarnessAgentRealtimeClient {
       await this.updateTask(taskId, update),
     delete: async (taskId: string): Promise<{ deleted: boolean }> => await this.deleteTask(taskId),
     claim: async (input: AgentTaskClaimInput): Promise<AgentTask> => await this.claimTask(input),
+    pull: async (
+      input: AgentTaskPullInput,
+    ): Promise<{
+      task: AgentTask | null;
+      directoryId: string | null;
+      availability: string;
+      reason: string | null;
+      settings: AgentProjectSettings | null;
+      repositoryId: string | null;
+    }> => await this.pullTask(input),
     complete: async (taskId: string): Promise<AgentTask> => await this.completeTask(taskId),
     ready: async (taskId: string): Promise<AgentTask> => await this.readyTask(taskId),
     draft: async (taskId: string): Promise<AgentTask> => await this.draftTask(taskId),
     queue: async (taskId: string): Promise<AgentTask> => await this.queueTask(taskId),
     reorder: async (input: AgentTaskReorderInput): Promise<readonly AgentTask[]> =>
       await this.reorderTasks(input),
+  };
+
+  readonly automation = {
+    getPolicy: async (input: {
+      scope: 'global' | 'repository' | 'project';
+      scopeId?: string;
+      tenantId?: string;
+      userId?: string;
+      workspaceId?: string;
+    }): Promise<AgentAutomationPolicy> => await this.getAutomationPolicy(input),
+    setPolicy: async (input: {
+      scope: 'global' | 'repository' | 'project';
+      scopeId?: string;
+      tenantId?: string;
+      userId?: string;
+      workspaceId?: string;
+      automationEnabled?: boolean;
+      frozen?: boolean;
+    }): Promise<AgentAutomationPolicy> => await this.setAutomationPolicy(input),
   };
 
   readonly sessions = {
@@ -1399,6 +1592,41 @@ export class HarnessAgentRealtimeClient {
     );
   }
 
+  async projectStatus(projectId: string): Promise<Record<string, unknown>> {
+    return await this.client.sendCommand({
+      type: 'project.status',
+      directoryId: projectId,
+    });
+  }
+
+  async getProjectSettings(projectId: string): Promise<AgentProjectSettings> {
+    const result = await this.client.sendCommand({
+      type: 'project.settings-get',
+      directoryId: projectId,
+    });
+    return requireParsed(
+      result['settings'],
+      parseProjectSettingsRecord,
+      'control-plane project.settings-get returned malformed settings',
+    );
+  }
+
+  async updateProjectSettings(
+    projectId: string,
+    update: AgentProjectSettingsUpdateInput,
+  ): Promise<AgentProjectSettings> {
+    const result = await this.client.sendCommand({
+      type: 'project.settings-update',
+      directoryId: projectId,
+      ...update,
+    });
+    return requireParsed(
+      result['settings'],
+      parseProjectSettingsRecord,
+      'control-plane project.settings-update returned malformed settings',
+    );
+  }
+
   async createThread(input: AgentThreadCreateInput): Promise<AgentThread> {
     const result = await this.client.sendCommand({
       type: 'conversation.create',
@@ -1576,6 +1804,7 @@ export class HarnessAgentRealtimeClient {
       ...optionalField('userId', input.userId),
       ...optionalField('workspaceId', input.workspaceId),
       ...optionalField('repositoryId', input.repositoryId),
+      ...optionalField('projectId', input.projectId),
       title: input.title,
       ...optionalField('description', input.description),
       ...optionalField('linear', input.linear),
@@ -1606,6 +1835,8 @@ export class HarnessAgentRealtimeClient {
       ...optionalField('userId', query.userId),
       ...optionalField('workspaceId', query.workspaceId),
       ...optionalField('repositoryId', query.repositoryId),
+      ...optionalField('projectId', query.projectId),
+      ...optionalField('scopeKind', query.scopeKind),
       ...optionalField('status', query.status),
       ...optionalField('limit', query.limit),
     });
@@ -1657,6 +1888,65 @@ export class HarnessAgentRealtimeClient {
       parseTaskRecord,
       'control-plane task.claim returned malformed task',
     );
+  }
+
+  async pullTask(input: AgentTaskPullInput): Promise<{
+    task: AgentTask | null;
+    directoryId: string | null;
+    availability: string;
+    reason: string | null;
+    settings: AgentProjectSettings | null;
+    repositoryId: string | null;
+  }> {
+    const result = await this.client.sendCommand({
+      type: 'task.pull',
+      ...optionalField('tenantId', input.tenantId),
+      ...optionalField('userId', input.userId),
+      ...optionalField('workspaceId', input.workspaceId),
+      controllerId: input.controllerId,
+      ...optionalField('directoryId', input.projectId),
+      ...optionalField('repositoryId', input.repositoryId),
+      ...optionalField('branchName', input.branchName),
+      ...optionalField('baseBranch', input.baseBranch),
+    });
+    const taskRaw = result['task'];
+    const task =
+      taskRaw === null || taskRaw === undefined
+        ? null
+        : requireParsed(
+            taskRaw,
+            parseTaskRecord,
+            'control-plane task.pull returned malformed task',
+          );
+    const directoryId = readNullableString(result['directoryId']);
+    const availability = result['availability'];
+    const reason = readNullableString(result['reason']);
+    const settingsRaw = result['settings'];
+    const settings =
+      settingsRaw === null || settingsRaw === undefined
+        ? null
+        : requireParsed(
+            settingsRaw,
+            parseProjectSettingsRecord,
+            'control-plane task.pull returned malformed settings',
+          );
+    const repositoryId = readNullableString(result['repositoryId']);
+    if (
+      directoryId === undefined ||
+      typeof availability !== 'string' ||
+      reason === undefined ||
+      repositoryId === undefined
+    ) {
+      throw new Error('control-plane task.pull returned malformed response');
+    }
+    return {
+      task,
+      directoryId,
+      availability,
+      reason,
+      settings,
+      repositoryId,
+    };
   }
 
   async completeTask(taskId: string): Promise<AgentTask> {
@@ -1719,6 +2009,54 @@ export class HarnessAgentRealtimeClient {
       result['tasks'],
       parseTaskRecord,
       'control-plane task.reorder returned malformed tasks',
+    );
+  }
+
+  async getAutomationPolicy(input: {
+    scope: 'global' | 'repository' | 'project';
+    scopeId?: string;
+    tenantId?: string;
+    userId?: string;
+    workspaceId?: string;
+  }): Promise<AgentAutomationPolicy> {
+    const result = await this.client.sendCommand({
+      type: 'automation.policy-get',
+      scope: input.scope,
+      ...optionalField('scopeId', input.scopeId),
+      ...optionalField('tenantId', input.tenantId),
+      ...optionalField('userId', input.userId),
+      ...optionalField('workspaceId', input.workspaceId),
+    });
+    return requireParsed(
+      result['policy'],
+      parseAutomationPolicyRecord,
+      'control-plane automation.policy-get returned malformed policy',
+    );
+  }
+
+  async setAutomationPolicy(input: {
+    scope: 'global' | 'repository' | 'project';
+    scopeId?: string;
+    tenantId?: string;
+    userId?: string;
+    workspaceId?: string;
+    automationEnabled?: boolean;
+    frozen?: boolean;
+  }): Promise<AgentAutomationPolicy> {
+    const result = await this.client.sendCommand({
+      type: 'automation.policy-set',
+      scope: input.scope,
+      ...optionalField('scopeId', input.scopeId),
+      ...optionalField('tenantId', input.tenantId),
+      ...optionalField('userId', input.userId),
+      ...optionalField('workspaceId', input.workspaceId),
+      ...optionalField('automationEnabled', input.automationEnabled),
+      ...optionalField('frozen', input.frozen),
+    });
+    return requireParsed(
+      result['policy'],
+      parseAutomationPolicyRecord,
+      'control-plane automation.policy-set returned malformed policy',
     );
   }
 

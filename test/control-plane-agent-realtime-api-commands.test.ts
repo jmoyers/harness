@@ -325,12 +325,37 @@ void test('agent realtime client exposes typed CRUD wrappers for projects thread
     ...repositoryUpdatedRecord,
     archivedAt: timestamp,
   };
+  const projectSettingsRecord = {
+    directoryId: 'directory-1',
+    tenantId: 'tenant-local',
+    userId: 'user-local',
+    workspaceId: 'workspace-local',
+    pinnedBranch: 'main',
+    taskFocusMode: 'balanced',
+    threadSpawnMode: 'new-thread',
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+  const automationPolicyRecord = {
+    policyId: 'policy-1',
+    tenantId: 'tenant-local',
+    userId: 'user-local',
+    workspaceId: 'workspace-local',
+    scope: 'project',
+    scopeId: 'directory-1',
+    automationEnabled: true,
+    frozen: false,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
   const taskRecord = {
     taskId: 'task-1',
     tenantId: 'tenant-local',
     userId: 'user-local',
     workspaceId: 'workspace-local',
     repositoryId: 'repository-1',
+    scopeKind: 'repository',
+    projectId: null,
     title: 'implement api',
     description: 'details',
     status: 'ready',
@@ -444,6 +469,43 @@ void test('agent realtime client exposes typed CRUD wrappers for projects thread
   });
   mockClient.queueResult('directory.archive', {
     directory: projectArchivedRecord,
+  });
+  mockClient.queueResult('project.status', {
+    availability: 'ready',
+    reason: null,
+    repositoryId: 'repository-1',
+    settings: projectSettingsRecord,
+    project: projectRecord,
+    git: null,
+    automation: {
+      enabled: true,
+      frozen: false,
+      source: 'default',
+    },
+    liveThreadCount: 0,
+  });
+  mockClient.queueResult('project.settings-get', {
+    settings: projectSettingsRecord,
+  });
+  mockClient.queueResult('project.settings-get', {
+    settings: {
+      ...projectSettingsRecord,
+      taskFocusMode: 'unsupported',
+    },
+  });
+  mockClient.queueResult('project.settings-update', {
+    settings: {
+      ...projectSettingsRecord,
+      pinnedBranch: null,
+      taskFocusMode: 'own-only',
+      threadSpawnMode: 'reuse-thread',
+    },
+  });
+  mockClient.queueResult('project.settings-update', {
+    settings: {
+      ...projectSettingsRecord,
+      threadSpawnMode: 'unsupported',
+    },
   });
 
   mockClient.queueResult('conversation.create', {
@@ -565,6 +627,38 @@ void test('agent realtime client exposes typed CRUD wrappers for projects thread
   mockClient.queueResult('task.claim', {
     task: taskClaimedRecord,
   });
+  mockClient.queueResult('task.pull', {
+    task: taskClaimedRecord,
+    directoryId: 'directory-1',
+    availability: 'ready',
+    reason: null,
+    settings: projectSettingsRecord,
+    repositoryId: 'repository-1',
+  });
+  mockClient.queueResult('task.pull', {
+    task: null,
+    directoryId: null,
+    availability: 'blocked-untracked',
+    reason: 'no eligible project available',
+    settings: null,
+    repositoryId: null,
+  });
+  mockClient.queueResult('task.pull', {
+    task: [],
+    directoryId: 'directory-1',
+    availability: 'ready',
+    reason: null,
+    settings: projectSettingsRecord,
+    repositoryId: 'repository-1',
+  });
+  mockClient.queueResult('task.pull', {
+    task: null,
+    directoryId: 7,
+    availability: 'blocked-untracked',
+    reason: null,
+    settings: null,
+    repositoryId: null,
+  });
   mockClient.queueResult('task.complete', {
     task: taskCompletedRecord,
   });
@@ -576,6 +670,32 @@ void test('agent realtime client exposes typed CRUD wrappers for projects thread
   });
   mockClient.queueResult('task.reorder', {
     tasks: [taskRecord],
+  });
+  mockClient.queueResult('automation.policy-get', {
+    policy: automationPolicyRecord,
+  });
+  mockClient.queueResult('automation.policy-get', {
+    policy: {
+      ...automationPolicyRecord,
+      scope: 'unsupported',
+    },
+  });
+  mockClient.queueResult('automation.policy-set', {
+    policy: {
+      ...automationPolicyRecord,
+      scope: 'repository',
+      scopeId: 'repository-1',
+      automationEnabled: false,
+      frozen: true,
+    },
+  });
+  mockClient.queueResult('automation.policy-set', {
+    policy: {
+      ...automationPolicyRecord,
+      scope: 'repository',
+      scopeId: 'repository-1',
+      automationEnabled: 'invalid',
+    },
   });
 
   const createdSub = await realtime.client.subscriptions.create({
@@ -632,6 +752,26 @@ void test('agent realtime client exposes typed CRUD wrappers for projects thread
   await assert.rejects(realtime.client.projects.get('directory-missing'), /project not found/);
   const archivedProject = await realtime.client.projects.archive('directory-1');
   assert.equal(archivedProject.archivedAt, timestamp);
+  const projectStatus = await realtime.client.projects.status('directory-1');
+  assert.equal(projectStatus['availability'], 'ready');
+  const projectSettings = await realtime.client.projects.settings.get('directory-1');
+  assert.equal(projectSettings.pinnedBranch, 'main');
+  await assert.rejects(
+    realtime.client.projects.settings.get('directory-1'),
+    /project\.settings-get returned malformed settings/,
+  );
+  const updatedProjectSettings = await realtime.client.projects.settings.update('directory-1', {
+    pinnedBranch: null,
+    taskFocusMode: 'own-only',
+    threadSpawnMode: 'reuse-thread',
+  });
+  assert.equal(updatedProjectSettings.taskFocusMode, 'own-only');
+  await assert.rejects(
+    realtime.client.projects.settings.update('directory-1', {
+      threadSpawnMode: 'reuse-thread',
+    }),
+    /project\.settings-update returned malformed settings/,
+  );
   await assert.rejects(
     realtime.client.upsertProject({
       path: '/tmp/bad',
@@ -798,6 +938,33 @@ void test('agent realtime client exposes typed CRUD wrappers for projects thread
     baseBranch: 'main',
   });
   assert.equal(claimedTask.claimedByProjectId, 'directory-1');
+  const pulledTask = await realtime.client.tasks.pull({
+    controllerId: 'agent-1',
+    projectId: 'directory-1',
+    repositoryId: 'repository-1',
+  });
+  assert.equal(pulledTask.task?.taskId, 'task-1');
+  assert.equal(pulledTask.settings?.threadSpawnMode, 'new-thread');
+  const blockedPull = await realtime.client.tasks.pull({
+    controllerId: 'agent-1',
+    repositoryId: 'repository-1',
+  });
+  assert.equal(blockedPull.task, null);
+  assert.equal(blockedPull.availability, 'blocked-untracked');
+  await assert.rejects(
+    realtime.client.tasks.pull({
+      controllerId: 'agent-1',
+      projectId: 'directory-1',
+    }),
+    /task\.pull returned malformed task/,
+  );
+  await assert.rejects(
+    realtime.client.tasks.pull({
+      controllerId: 'agent-1',
+      repositoryId: 'repository-1',
+    }),
+    /task\.pull returned malformed response/,
+  );
   const completedTask = await realtime.client.tasks.complete('task-1');
   assert.equal(completedTask.status, 'completed');
   const readyTask = await realtime.client.tasks.ready('task-1');
@@ -811,6 +978,32 @@ void test('agent realtime client exposes typed CRUD wrappers for projects thread
     orderedTaskIds: ['task-1'],
   });
   assert.equal(reorderedTasks.length, 1);
+  const fetchedPolicy = await realtime.client.automation.getPolicy({
+    scope: 'project',
+    scopeId: 'directory-1',
+  });
+  assert.equal(fetchedPolicy.scope, 'project');
+  await assert.rejects(
+    realtime.client.automation.getPolicy({
+      scope: 'project',
+      scopeId: 'directory-1',
+    }),
+    /automation\.policy-get returned malformed policy/,
+  );
+  const updatedPolicy = await realtime.client.automation.setPolicy({
+    scope: 'repository',
+    scopeId: 'repository-1',
+    automationEnabled: false,
+    frozen: true,
+  });
+  assert.equal(updatedPolicy.frozen, true);
+  await assert.rejects(
+    realtime.client.automation.setPolicy({
+      scope: 'repository',
+      scopeId: 'repository-1',
+    }),
+    /automation\.policy-set returned malformed policy/,
+  );
 
   mockClient.queueError('stream.unsubscribe', new Error('unsubscribe failed'));
   await realtime.client.close();
@@ -855,6 +1048,8 @@ void test('agent realtime client accepts draft task status and completed thread 
         userId: 'user-local',
         workspaceId: 'workspace-local',
         repositoryId: null,
+        scopeKind: 'global',
+        projectId: null,
         title: 'Draft task',
         description: '',
         status: 'draft',
@@ -892,6 +1087,8 @@ void test('agent realtime client rejects malformed linear task payloads', async 
       userId: 'user-local',
       workspaceId: 'workspace-local',
       repositoryId: null,
+      scopeKind: 'global',
+      projectId: null,
       title: 'invalid linear payload',
       description: '',
       status: 'ready',
@@ -928,6 +1125,8 @@ void test('agent realtime client linear parser covers malformed shape branches',
     userId: 'user-local',
     workspaceId: 'workspace-local',
     repositoryId: null,
+    scopeKind: 'global',
+    projectId: null,
     title: 'linear parser branches',
     description: '',
     status: 'ready',
@@ -1342,6 +1541,8 @@ void test('agent realtime sessions aliases and draft task helper issue expected 
       userId: 'user-local',
       workspaceId: 'workspace-local',
       repositoryId: null,
+      scopeKind: 'global',
+      projectId: null,
       title: 'Draft task',
       description: '',
       status: 'draft',

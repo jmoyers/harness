@@ -207,9 +207,23 @@ void test('control-plane store manages repositories and task lifecycle', () => {
       repositoryId: 'repo-2',
       title: 'task c',
     });
+    const taskProject = store.createTask({
+      taskId: 'task-project',
+      tenantId: 'tenant-task',
+      userId: 'user-task',
+      workspaceId: 'workspace-task',
+      projectId: 'dir-task-a',
+      title: 'project scoped',
+    });
     assert.equal(taskA.orderIndex, 0);
     assert.equal(taskB.orderIndex, 1);
     assert.equal(taskC.orderIndex, 2);
+    assert.equal(taskProject.scopeKind, 'project');
+    assert.equal(taskProject.projectId, 'dir-task-a');
+    assert.equal(taskA.scopeKind, 'global');
+    assert.equal(taskA.projectId, null);
+    assert.equal(taskB.scopeKind, 'repository');
+    assert.equal(taskB.projectId, null);
     assert.equal(taskA.linear.issueId, null);
     assert.equal(taskA.linear.labelIds.length, 0);
     assert.equal(taskB.linear.identifier, 'ENG-42');
@@ -261,6 +275,18 @@ void test('control-plane store manages repositories and task lifecycle', () => {
           title: 'bad',
         }),
       /scope mismatch/,
+    );
+    assert.throws(
+      () =>
+        store.createTask({
+          taskId: 'task-project-missing',
+          tenantId: 'tenant-task',
+          userId: 'user-task',
+          workspaceId: 'workspace-task',
+          projectId: 'dir-does-not-exist',
+          title: 'bad project',
+        }),
+      /directory not found/,
     );
     assert.throws(
       () =>
@@ -318,17 +344,21 @@ void test('control-plane store manages repositories and task lifecycle', () => {
     assert.deepEqual(taskLinearNullLabels.linear.labelIds, []);
 
     assert.equal(store.getTask('missing-task'), null);
-    assert.equal(store.listTasks().length, 4);
+    assert.equal(store.listTasks().length, 5);
     assert.equal(
       store.listTasks({
         tenantId: 'tenant-task',
         userId: 'user-task',
         workspaceId: 'workspace-task',
       }).length,
-      4,
+      5,
     );
     assert.equal(store.listTasks({ repositoryId: 'repo-1' }).length, 1);
-    assert.equal(store.listTasks({ status: 'draft' }).length, 4);
+    assert.equal(store.listTasks({ projectId: 'dir-task-a' }).length, 1);
+    assert.equal(store.listTasks({ scopeKind: 'project' }).length, 1);
+    assert.equal(store.listTasks({ scopeKind: 'repository' }).length, 2);
+    assert.equal(store.listTasks({ scopeKind: 'global' }).length, 2);
+    assert.equal(store.listTasks({ status: 'draft' }).length, 5);
 
     assert.equal(store.updateTask('missing-task', { title: 'x' }), null);
     const updateTaskFull = store.updateTask('task-a', {
@@ -358,6 +388,13 @@ void test('control-plane store manages repositories and task lifecycle', () => {
       repositoryId: null,
     });
     assert.equal(updateTaskClearRepository?.repositoryId, null);
+    assert.equal(updateTaskClearRepository?.scopeKind, 'global');
+
+    const updateTaskToProjectScope = store.updateTask('task-a', {
+      projectId: 'dir-task-a',
+    });
+    assert.equal(updateTaskToProjectScope?.scopeKind, 'project');
+    assert.equal(updateTaskToProjectScope?.projectId, 'dir-task-a');
     const updateTaskResetLinear = store.updateTask('task-a', {
       linear: null,
     });
@@ -365,6 +402,13 @@ void test('control-plane store manages repositories and task lifecycle', () => {
     assert.equal(updateTaskResetLinear?.linear.priority, null);
     assert.deepEqual(updateTaskResetLinear?.linear.labelIds, []);
 
+    assert.throws(
+      () =>
+        store.updateTask('task-a', {
+          projectId: 'missing-directory',
+        }),
+      /directory not found/,
+    );
     assert.throws(
       () =>
         store.updateTask('task-a', {
@@ -414,6 +458,68 @@ void test('control-plane store manages repositories and task lifecycle', () => {
       /cannot claim draft task/,
     );
 
+    const defaultProjectSettings = store.getProjectSettings('dir-task-a');
+    assert.equal(defaultProjectSettings.pinnedBranch, null);
+    assert.equal(defaultProjectSettings.taskFocusMode, 'balanced');
+    assert.equal(defaultProjectSettings.threadSpawnMode, 'new-thread');
+    const updatedProjectSettings = store.updateProjectSettings({
+      directoryId: 'dir-task-a',
+      pinnedBranch: 'main',
+      taskFocusMode: 'own-only',
+      threadSpawnMode: 'reuse-thread',
+    });
+    assert.equal(updatedProjectSettings.pinnedBranch, 'main');
+    assert.equal(updatedProjectSettings.taskFocusMode, 'own-only');
+    assert.equal(updatedProjectSettings.threadSpawnMode, 'reuse-thread');
+    assert.throws(() => store.getProjectSettings('missing-directory'), /directory not found/);
+
+    const defaultGlobalPolicy = store.getAutomationPolicy({
+      tenantId: 'tenant-task',
+      userId: 'user-task',
+      workspaceId: 'workspace-task',
+      scope: 'global',
+    });
+    assert.equal(defaultGlobalPolicy, null);
+    const globalPolicy = store.updateAutomationPolicy({
+      tenantId: 'tenant-task',
+      userId: 'user-task',
+      workspaceId: 'workspace-task',
+      scope: 'global',
+      frozen: true,
+      automationEnabled: true,
+    });
+    assert.equal(globalPolicy.frozen, true);
+    const repoPolicy = store.updateAutomationPolicy({
+      tenantId: 'tenant-task',
+      userId: 'user-task',
+      workspaceId: 'workspace-task',
+      scope: 'repository',
+      scopeId: 'repo-1',
+      frozen: false,
+      automationEnabled: true,
+    });
+    assert.equal(repoPolicy.scope, 'repository');
+    const projectPolicy = store.updateAutomationPolicy({
+      tenantId: 'tenant-task',
+      userId: 'user-task',
+      workspaceId: 'workspace-task',
+      scope: 'project',
+      scopeId: 'dir-task-a',
+      automationEnabled: false,
+      frozen: false,
+    });
+    assert.equal(projectPolicy.scope, 'project');
+    assert.equal(
+      store.getAutomationPolicy({
+        tenantId: 'tenant-task',
+        userId: 'user-task',
+        workspaceId: 'workspace-task',
+        scope: 'project',
+        scopeId: 'dir-task-a',
+      })?.automationEnabled,
+      false,
+    );
+
     const readyTaskA = store.readyTask('task-a');
     assert.equal(readyTaskA.status, 'ready');
 
@@ -448,6 +554,16 @@ void test('control-plane store manages repositories and task lifecycle', () => {
     assert.equal(claimedTaskA.claimedByDirectoryId, 'dir-task-a');
     assert.equal(claimedTaskA.branchName, 'feature/task-a');
     assert.equal(claimedTaskA.baseBranch, 'main');
+
+    assert.throws(
+      () =>
+        store.claimTask({
+          taskId: 'task-a',
+          controllerId: 'agent-2',
+          directoryId: 'dir-task-a',
+        }),
+      /task already claimed/,
+    );
 
     const completedTaskA = store.completeTask('task-a');
     assert.equal(completedTaskA.status, 'completed');

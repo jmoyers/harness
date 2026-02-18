@@ -153,6 +153,11 @@ Required command categories:
 - Conversation lifecycle: create, fork, resume, interrupt, archive, delete, rename.
 - Turn control: send user turn, steer active turn, cancel/interrupt active turn.
 - Queueing: enqueue turn, reorder queue, pause queue, resume queue, drop queued turn.
+- Task orchestration:
+  - task lifecycle (`task.create`, `task.list`, `task.update`, `task.delete`, `task.claim`, `task.reorder`)
+  - scheduler pull (`task.pull`) with readiness gating
+  - project policy/settings (`project.status`, `project.settings-get`, `project.settings-update`)
+  - automation policy (`automation.policy-get`, `automation.policy-set`) at `global`, `repository`, and `project` scopes
 - Approval/input: approve/decline command or file changes, answer tool input requests.
 - Diff/history: fetch current turn diff, fetch conversation diff timeline, fetch event timeline.
 - Terminal/session: attach PTY, detach PTY, list active sessions.
@@ -179,6 +184,25 @@ Required read/stream categories:
 - Streaming orchestration/meta event feed for queueing, scheduling, and handoff behavior.
 - Query access to structured logs by workspace/worktree/conversation/turn/time range.
 - Query access to performance traces/latency measurements by component and time range.
+
+## Task Orchestration Model
+
+- Task scope is explicit and normalized: `global`, `repository`, or `project`.
+- Pull eligibility is status-gated: only `ready` tasks are pull candidates (`draft` is never auto-pulled).
+- Project-level pull order:
+  - project-scoped `ready` tasks first
+  - then repository/global fallback unless project `taskFocusMode` is `own-only`
+- Repository fan-out uses oldest eligible project ordering (stable by creation time, then id).
+- Project availability checks are hard gates before claim:
+  - automation enabled (not disabled/frozen by policy scope)
+  - tracked repository/git state available
+  - repository match when requested
+  - pinned branch match (if configured)
+  - clean git status (no pending changes)
+  - no live thread occupancy
+- Branch pinning is a project setting (`pinnedBranch`), and branch/base-branch assignment from pull is record-only (no auto-branch creation).
+- Thread spawn behavior is policy-driven per project (`new-thread` default; optional `reuse-thread`).
+- Automation distribution is optional and controllable at each scope (`global`, `repository`, `project`) via `automationEnabled` and `frozen`.
 
 Pass-through stream invariants:
 
@@ -538,11 +562,19 @@ Core tables:
 - `worktrees`
 - `repositories`
 - `tasks`
+- `project_settings`
+- `automation_policies`
 - `conversations`
 - `turns`
 - `events` (append-only canonical state history)
 - `attention_queue`
 - `notifications_sent`
+
+Task/policy schema notes:
+
+- `tasks` includes `scope_kind` and `project_id` to model project/repository/global planning explicitly.
+- `project_settings` stores per-project orchestration controls (`pinned_branch`, `task_focus_mode`, `thread_spawn_mode`).
+- `automation_policies` stores optional scope overrides (`automation_enabled`, `frozen`) for global/repository/project control.
 
 Design constraints:
 

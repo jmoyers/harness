@@ -24,9 +24,13 @@ import type {
   AgentTaskLinearPriority,
   AgentTaskLinearRecord,
   AgentTaskListQuery,
+  AgentTaskPullInput,
   AgentTaskReorderInput,
   AgentTaskStatus,
   AgentTaskUpdateInput,
+  AgentProjectSettings,
+  AgentProjectSettingsUpdateInput,
+  AgentAutomationPolicy,
   AgentThread,
   AgentThreadCreateInput,
   AgentThreadListQuery,
@@ -46,6 +50,9 @@ import type {
   StreamTelemetryStatusHint,
 } from '../src/control-plane/stream-protocol.ts';
 import type {
+  ControlPlaneProjectTaskFocusMode,
+  ControlPlaneProjectThreadSpawnMode,
+  ControlPlaneTaskScopeKind,
   ControlPlaneTaskLinearRecord,
   ControlPlaneTaskRecord,
   ControlPlaneTelemetryRecord,
@@ -232,6 +239,42 @@ void test('public api exports stay importable and structurally typed', () => {
     branchName: 'task-branch',
     baseBranch: 'main',
   };
+  const taskPullInput: AgentTaskPullInput = {
+    ...scope,
+    controllerId: 'agent-1',
+    projectId: 'directory-1',
+    repositoryId: 'repository-1',
+    branchName: 'task-branch',
+    baseBranch: 'main',
+  };
+  const projectSettings: AgentProjectSettings = {
+    directoryId: 'directory-1',
+    tenantId: 'tenant-local',
+    userId: 'user-local',
+    workspaceId: 'workspace-local',
+    pinnedBranch: 'main',
+    taskFocusMode: 'balanced',
+    threadSpawnMode: 'new-thread',
+    createdAt: new Date(0).toISOString(),
+    updatedAt: new Date(0).toISOString(),
+  };
+  const projectSettingsUpdate: AgentProjectSettingsUpdateInput = {
+    pinnedBranch: null,
+    taskFocusMode: 'own-only',
+    threadSpawnMode: 'reuse-thread',
+  };
+  const automationPolicy: AgentAutomationPolicy = {
+    policyId: 'policy-1',
+    tenantId: 'tenant-local',
+    userId: 'user-local',
+    workspaceId: 'workspace-local',
+    scope: 'project',
+    scopeId: 'directory-1',
+    automationEnabled: true,
+    frozen: false,
+    createdAt: new Date(0).toISOString(),
+    updatedAt: new Date(0).toISOString(),
+  };
   const project: AgentProject = {
     projectId: 'directory-1',
     tenantId: 'tenant-local',
@@ -276,7 +319,9 @@ void test('public api exports stay importable and structurally typed', () => {
     tenantId: 'tenant-local',
     userId: 'user-local',
     workspaceId: 'workspace-local',
+    scopeKind: 'repository',
     repositoryId: 'repository-1',
+    projectId: null,
     title: 'Task',
     description: 'details',
     status: 'ready',
@@ -312,6 +357,9 @@ void test('public api exports stay importable and structurally typed', () => {
     orderedTaskIds: ['task-1'],
   };
   const storeTaskStatus: ControlPlaneTaskRecord['status'] = 'ready';
+  const storeTaskScopeKind: ControlPlaneTaskScopeKind = 'project';
+  const storeTaskFocusMode: ControlPlaneProjectTaskFocusMode = 'own-only';
+  const storeThreadSpawnMode: ControlPlaneProjectThreadSpawnMode = 'new-thread';
   const subscriptionHandle = null as unknown as AgentRealtimeSubscription;
 
   assert.equal(connectOptions.host, '127.0.0.1');
@@ -346,12 +394,19 @@ void test('public api exports stay importable and structurally typed', () => {
   assert.equal(taskListQuery.repositoryId, 'repository-1');
   assert.equal(taskUpdateInput.title, 'updated');
   assert.equal(taskClaimInput.taskId, 'task-1');
+  assert.equal(taskPullInput.controllerId, 'agent-1');
+  assert.equal(projectSettings.threadSpawnMode, 'new-thread');
+  assert.equal(projectSettingsUpdate.taskFocusMode, 'own-only');
+  assert.equal(automationPolicy.scope, 'project');
   assert.equal(project.projectId, 'directory-1');
   assert.equal(thread.threadId, 'conversation-1');
   assert.equal(repository.repositoryId, 'repository-1');
   assert.equal(task.taskId, 'task-1');
   assert.equal(taskReorderInput.orderedTaskIds.length, 1);
   assert.equal(storeTaskStatus, 'ready');
+  assert.equal(storeTaskScopeKind, 'project');
+  assert.equal(storeTaskFocusMode, 'own-only');
+  assert.equal(storeThreadSpawnMode, 'new-thread');
   assert.equal(subscriptionHandle as unknown, null as unknown);
   assert.equal(typeof HarnessAgentRealtimeClient.connect, 'function');
 });

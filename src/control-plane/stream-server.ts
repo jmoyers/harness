@@ -1891,6 +1891,8 @@ export class ControlPlaneStreamServer {
       userId: task.userId,
       workspaceId: task.workspaceId,
       repositoryId: task.repositoryId,
+      scopeKind: task.scopeKind,
+      projectId: task.projectId,
       title: task.title,
       description: task.description,
       status: task.status,

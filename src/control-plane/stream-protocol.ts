@@ -99,7 +99,11 @@ interface ConversationDeleteCommand {
 }
 
 type StreamTaskStatus = 'draft' | 'ready' | 'in-progress' | 'completed';
+type StreamTaskScopeKind = 'global' | 'repository' | 'project';
 type StreamTaskLinearPriority = 0 | 1 | 2 | 3 | 4;
+type StreamProjectTaskFocusMode = 'balanced' | 'own-only';
+type StreamProjectThreadSpawnMode = 'new-thread' | 'reuse-thread';
+type StreamAutomationPolicyScope = 'global' | 'repository' | 'project';
 
 interface StreamTaskLinearInput {
   issueId?: string | null;
@@ -164,6 +168,7 @@ interface TaskCreateCommand {
   userId?: string;
   workspaceId?: string;
   repositoryId?: string;
+  projectId?: string;
   title: string;
   description?: string;
   linear?: StreamTaskLinearInput;
@@ -180,6 +185,8 @@ interface TaskListCommand {
   userId?: string;
   workspaceId?: string;
   repositoryId?: string;
+  projectId?: string;
+  scopeKind?: StreamTaskScopeKind;
   status?: StreamTaskStatus;
   limit?: number;
 }
@@ -190,6 +197,7 @@ interface TaskUpdateCommand {
   title?: string;
   description?: string;
   repositoryId?: string | null;
+  projectId?: string | null;
   linear?: StreamTaskLinearInput | null;
 }
 
@@ -203,6 +211,18 @@ interface TaskClaimCommand {
   taskId: string;
   controllerId: string;
   directoryId?: string;
+  branchName?: string;
+  baseBranch?: string;
+}
+
+interface TaskPullCommand {
+  type: 'task.pull';
+  tenantId?: string;
+  userId?: string;
+  workspaceId?: string;
+  controllerId: string;
+  directoryId?: string;
+  repositoryId?: string;
   branchName?: string;
   baseBranch?: string;
 }
@@ -233,6 +253,44 @@ interface TaskReorderCommand {
   userId: string;
   workspaceId: string;
   orderedTaskIds: string[];
+}
+
+interface ProjectSettingsGetCommand {
+  type: 'project.settings-get';
+  directoryId: string;
+}
+
+interface ProjectSettingsUpdateCommand {
+  type: 'project.settings-update';
+  directoryId: string;
+  pinnedBranch?: string | null;
+  taskFocusMode?: StreamProjectTaskFocusMode;
+  threadSpawnMode?: StreamProjectThreadSpawnMode;
+}
+
+interface ProjectStatusCommand {
+  type: 'project.status';
+  directoryId: string;
+}
+
+interface AutomationPolicyGetCommand {
+  type: 'automation.policy-get';
+  tenantId?: string;
+  userId?: string;
+  workspaceId?: string;
+  scope: StreamAutomationPolicyScope;
+  scopeId?: string;
+}
+
+interface AutomationPolicySetCommand {
+  type: 'automation.policy-set';
+  tenantId?: string;
+  userId?: string;
+  workspaceId?: string;
+  scope: StreamAutomationPolicyScope;
+  scopeId?: string;
+  automationEnabled?: boolean;
+  frozen?: boolean;
 }
 
 interface StreamSubscribeCommand {
@@ -375,11 +433,17 @@ export type StreamCommand =
   | TaskUpdateCommand
   | TaskDeleteCommand
   | TaskClaimCommand
+  | TaskPullCommand
   | TaskCompleteCommand
   | TaskQueueCommand
   | TaskReadyCommand
   | TaskDraftCommand
   | TaskReorderCommand
+  | ProjectSettingsGetCommand
+  | ProjectSettingsUpdateCommand
+  | ProjectStatusCommand
+  | AutomationPolicyGetCommand
+  | AutomationPolicySetCommand
   | StreamSubscribeCommand
   | StreamUnsubscribeCommand
   | SessionListCommand

@@ -1,12 +1,18 @@
 import type { StreamSessionRuntimeStatus } from '../control-plane/stream-protocol.ts';
 import type { CodexTelemetrySource } from '../control-plane/codex-telemetry.ts';
 import type {
+  ControlPlaneAutomationPolicyRecord,
+  ControlPlaneAutomationPolicyScope,
   ControlPlaneConversationRecord,
   ControlPlaneDirectoryRecord,
+  ControlPlaneProjectSettingsRecord,
+  ControlPlaneProjectTaskFocusMode,
+  ControlPlaneProjectThreadSpawnMode,
   ControlPlaneRepositoryRecord,
   ControlPlaneTaskLinearPriority,
   ControlPlaneTaskLinearRecord,
   ControlPlaneTaskRecord,
+  ControlPlaneTaskScopeKind,
   ControlPlaneTaskStatus,
   ControlPlaneTelemetryRecord,
   TaskLinearInput,
@@ -443,6 +449,50 @@ function normalizeTaskStatus(value: unknown): ControlPlaneTaskStatus {
   throw new Error('expected task status enum value');
 }
 
+function normalizeTaskScopeKind(
+  value: unknown,
+  repositoryId: string | null,
+  projectId: string | null,
+): ControlPlaneTaskScopeKind {
+  if (typeof value === 'string') {
+    if (value === 'global' || value === 'repository' || value === 'project') {
+      return value;
+    }
+    throw new Error('expected task scope enum value');
+  }
+  if (projectId !== null) {
+    return 'project';
+  }
+  if (repositoryId !== null) {
+    return 'repository';
+  }
+  return 'global';
+}
+
+function normalizeProjectTaskFocusMode(value: unknown): ControlPlaneProjectTaskFocusMode {
+  const mode = asString(value, 'task_focus_mode');
+  if (mode === 'balanced' || mode === 'own-only') {
+    return mode;
+  }
+  throw new Error('expected project task focus enum value');
+}
+
+function normalizeProjectThreadSpawnMode(value: unknown): ControlPlaneProjectThreadSpawnMode {
+  const mode = asString(value, 'thread_spawn_mode');
+  if (mode === 'new-thread' || mode === 'reuse-thread') {
+    return mode;
+  }
+  throw new Error('expected project thread spawn enum value');
+}
+
+function normalizeAutomationPolicyScope(value: unknown): ControlPlaneAutomationPolicyScope {
+  const scope = asString(value, 'scope_type');
+  if (scope === 'global' || scope === 'repository' || scope === 'project') {
+    return scope;
+  }
+  throw new Error('expected automation policy scope enum value');
+}
+
 export function normalizeRepositoryRow(value: unknown): ControlPlaneRepositoryRecord {
   const row = asRecord(value);
   return {
@@ -461,12 +511,16 @@ export function normalizeRepositoryRow(value: unknown): ControlPlaneRepositoryRe
 
 export function normalizeTaskRow(value: unknown): ControlPlaneTaskRecord {
   const row = asRecord(value);
+  const repositoryId = asStringOrNull(row.repository_id, 'repository_id');
+  const projectId = asStringOrNull(row.project_id, 'project_id');
   return {
     taskId: asString(row.task_id, 'task_id'),
     tenantId: asString(row.tenant_id, 'tenant_id'),
     userId: asString(row.user_id, 'user_id'),
     workspaceId: asString(row.workspace_id, 'workspace_id'),
-    repositoryId: asStringOrNull(row.repository_id, 'repository_id'),
+    repositoryId,
+    scopeKind: normalizeTaskScopeKind(row.scope_kind, repositoryId, projectId),
+    projectId,
     title: asString(row.title, 'title'),
     description: asString(row.description, 'description'),
     status: normalizeTaskStatus(row.status),
@@ -478,6 +532,39 @@ export function normalizeTaskRow(value: unknown): ControlPlaneTaskRecord {
     claimedAt: asStringOrNull(row.claimed_at, 'claimed_at'),
     completedAt: asStringOrNull(row.completed_at, 'completed_at'),
     linear: normalizeTaskLinear(row.linear_json),
+    createdAt: asString(row.created_at, 'created_at'),
+    updatedAt: asString(row.updated_at, 'updated_at'),
+  };
+}
+
+export function normalizeProjectSettingsRow(value: unknown): ControlPlaneProjectSettingsRecord {
+  const row = asRecord(value);
+  return {
+    directoryId: asString(row.directory_id, 'directory_id'),
+    tenantId: asString(row.tenant_id, 'tenant_id'),
+    userId: asString(row.user_id, 'user_id'),
+    workspaceId: asString(row.workspace_id, 'workspace_id'),
+    pinnedBranch: asStringOrNull(row.pinned_branch, 'pinned_branch'),
+    taskFocusMode: normalizeProjectTaskFocusMode(row.task_focus_mode),
+    threadSpawnMode: normalizeProjectThreadSpawnMode(row.thread_spawn_mode),
+    createdAt: asString(row.created_at, 'created_at'),
+    updatedAt: asString(row.updated_at, 'updated_at'),
+  };
+}
+
+export function normalizeAutomationPolicyRow(value: unknown): ControlPlaneAutomationPolicyRecord {
+  const row = asRecord(value);
+  const scope = normalizeAutomationPolicyScope(row.scope_type);
+  const scopeId = asStringOrNull(row.scope_id, 'scope_id');
+  return {
+    policyId: asString(row.policy_id, 'policy_id'),
+    tenantId: asString(row.tenant_id, 'tenant_id'),
+    userId: asString(row.user_id, 'user_id'),
+    workspaceId: asString(row.workspace_id, 'workspace_id'),
+    scope,
+    scopeId: scope === 'global' ? null : normalizeNonEmptyLabel(scopeId ?? '', 'scope_id'),
+    automationEnabled: asBooleanFromInt(row.automation_enabled, 'automation_enabled'),
+    frozen: asBooleanFromInt(row.frozen, 'frozen'),
     createdAt: asString(row.created_at, 'created_at'),
     updatedAt: asString(row.updated_at, 'updated_at'),
   };

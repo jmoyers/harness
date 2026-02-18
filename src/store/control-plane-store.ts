@@ -1,10 +1,13 @@
 import { DatabaseSync } from './sqlite.ts';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import {
   applyTaskLinearInput,
+  normalizeAutomationPolicyRow,
   asNumberOrNull,
   asRecord,
+  normalizeProjectSettingsRow,
   asString,
   asStringOrNull,
   defaultTaskLinearRecord,
@@ -22,11 +25,17 @@ import {
   uniqueValues,
 } from './control-plane-store-normalize.ts';
 import type {
+  ControlPlaneAutomationPolicyRecord,
+  ControlPlaneAutomationPolicyScope,
   ControlPlaneConversationRecord,
   ControlPlaneDirectoryRecord,
+  ControlPlaneProjectSettingsRecord,
+  ControlPlaneProjectTaskFocusMode,
+  ControlPlaneProjectThreadSpawnMode,
   ControlPlaneRepositoryRecord,
   ControlPlaneTaskLinearRecord,
   ControlPlaneTaskRecord,
+  ControlPlaneTaskScopeKind,
   ControlPlaneTaskStatus,
   ControlPlaneTelemetryRecord,
   ControlPlaneTelemetrySummary,
@@ -37,11 +46,17 @@ import type { CodexTelemetrySource } from '../control-plane/codex-telemetry.ts';
 import type { StreamSessionRuntimeStatus } from '../control-plane/stream-protocol.ts';
 
 export type {
+  ControlPlaneAutomationPolicyRecord,
+  ControlPlaneAutomationPolicyScope,
   ControlPlaneConversationRecord,
   ControlPlaneDirectoryRecord,
+  ControlPlaneProjectSettingsRecord,
+  ControlPlaneProjectTaskFocusMode,
+  ControlPlaneProjectThreadSpawnMode,
   ControlPlaneRepositoryRecord,
   ControlPlaneTaskLinearRecord,
   ControlPlaneTaskRecord,
+  ControlPlaneTaskScopeKind,
   ControlPlaneTelemetryRecord,
   ControlPlaneTelemetrySummary,
 } from './control-plane-store-types.ts';
@@ -134,6 +149,7 @@ interface CreateTaskInput {
   userId: string;
   workspaceId: string;
   repositoryId?: string;
+  projectId?: string;
   title: string;
   description?: string;
   linear?: TaskLinearInput;
@@ -143,6 +159,7 @@ interface UpdateTaskInput {
   title?: string;
   description?: string;
   repositoryId?: string | null;
+  projectId?: string | null;
   linear?: TaskLinearInput | null;
 }
 
@@ -151,6 +168,8 @@ interface ListTaskQuery {
   userId?: string;
   workspaceId?: string;
   repositoryId?: string;
+  projectId?: string;
+  scopeKind?: ControlPlaneTaskScopeKind;
   status?: ControlPlaneTaskStatus;
   limit?: number;
 }
@@ -168,6 +187,31 @@ interface ReorderTasksInput {
   userId: string;
   workspaceId: string;
   orderedTaskIds: readonly string[];
+}
+
+interface UpdateProjectSettingsInput {
+  directoryId: string;
+  pinnedBranch?: string | null;
+  taskFocusMode?: ControlPlaneProjectTaskFocusMode;
+  threadSpawnMode?: ControlPlaneProjectThreadSpawnMode;
+}
+
+interface GetAutomationPolicyInput {
+  tenantId: string;
+  userId: string;
+  workspaceId: string;
+  scope: ControlPlaneAutomationPolicyScope;
+  scopeId?: string | null;
+}
+
+interface UpsertAutomationPolicyInput {
+  tenantId: string;
+  userId: string;
+  workspaceId: string;
+  scope: ControlPlaneAutomationPolicyScope;
+  scopeId?: string | null;
+  automationEnabled?: boolean;
+  frozen?: boolean;
 }
 
 export class SqliteControlPlaneStore {
@@ -1081,10 +1125,17 @@ export class SqliteControlPlaneStore {
       if (existing !== null) {
         throw new Error(`task already exists: ${input.taskId}`);
       }
-      if (input.repositoryId !== undefined) {
-        const repository = this.getActiveRepository(input.repositoryId);
+      const repositoryId = input.repositoryId ?? null;
+      const projectId = input.projectId ?? null;
+      if (repositoryId !== null) {
+        const repository = this.getActiveRepository(repositoryId);
         this.assertScopeMatch(input, repository, 'task');
       }
+      if (projectId !== null) {
+        const directory = this.getActiveDirectory(projectId);
+        this.assertScopeMatch(input, directory, 'task');
+      }
+      const scopeKind = this.deriveTaskScopeKind(repositoryId, projectId);
       const createdAt = new Date().toISOString();
       const orderIndex = this.nextTaskOrderIndex(input.tenantId, input.userId, input.workspaceId);
       this.db
@@ -1096,6 +1147,8 @@ export class SqliteControlPlaneStore {
             user_id,
             workspace_id,
             repository_id,
+            scope_kind,
+            project_id,
             title,
             description,
             linear_json,
@@ -1109,7 +1162,7 @@ export class SqliteControlPlaneStore {
             completed_at,
             created_at,
             updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?)
         `,
         )
         .run(
@@ -1117,7 +1170,9 @@ export class SqliteControlPlaneStore {
           input.tenantId,
           input.userId,
           input.workspaceId,
-          input.repositoryId ?? null,
+          repositoryId,
+          scopeKind,
+          projectId,
           title,
           description,
           serializeTaskLinear(linear),
@@ -1147,6 +1202,8 @@ export class SqliteControlPlaneStore {
           user_id,
           workspace_id,
           repository_id,
+          scope_kind,
+          project_id,
           title,
           description,
           linear_json,
@@ -1190,6 +1247,14 @@ export class SqliteControlPlaneStore {
       clauses.push('repository_id = ?');
       args.push(query.repositoryId);
     }
+    if (query.projectId !== undefined) {
+      clauses.push('project_id = ?');
+      args.push(query.projectId);
+    }
+    if (query.scopeKind !== undefined) {
+      clauses.push('scope_kind = ?');
+      args.push(query.scopeKind);
+    }
     if (query.status !== undefined) {
       clauses.push('status = ?');
       args.push(query.status);
@@ -1205,6 +1270,8 @@ export class SqliteControlPlaneStore {
           user_id,
           workspace_id,
           repository_id,
+          scope_kind,
+          project_id,
           title,
           description,
           linear_json,
@@ -1239,6 +1306,7 @@ export class SqliteControlPlaneStore {
       update.description === undefined ? existing.description : update.description;
     const repositoryId =
       update.repositoryId === undefined ? existing.repositoryId : update.repositoryId;
+    const projectId = update.projectId === undefined ? existing.projectId : update.projectId;
     const linear =
       update.linear === undefined
         ? existing.linear
@@ -1249,6 +1317,11 @@ export class SqliteControlPlaneStore {
       const repository = this.getActiveRepository(repositoryId);
       this.assertScopeMatch(existing, repository, 'task');
     }
+    if (projectId !== null) {
+      const directory = this.getActiveDirectory(projectId);
+      this.assertScopeMatch(existing, directory, 'task');
+    }
+    const scopeKind = this.deriveTaskScopeKind(repositoryId, projectId);
     const updatedAt = new Date().toISOString();
     this.db
       .prepare(
@@ -1256,6 +1329,8 @@ export class SqliteControlPlaneStore {
         UPDATE tasks
         SET
           repository_id = ?,
+          scope_kind = ?,
+          project_id = ?,
           title = ?,
           description = ?,
           linear_json = ?,
@@ -1263,7 +1338,16 @@ export class SqliteControlPlaneStore {
         WHERE task_id = ?
       `,
       )
-      .run(repositoryId, title, description, serializeTaskLinear(linear), updatedAt, taskId);
+      .run(
+        repositoryId,
+        scopeKind,
+        projectId,
+        title,
+        description,
+        serializeTaskLinear(linear),
+        updatedAt,
+        taskId,
+      );
     return this.getTask(taskId);
   }
 
@@ -1303,6 +1387,13 @@ export class SqliteControlPlaneStore {
       }
       if (task.status === 'draft') {
         throw new Error(`cannot claim draft task: ${input.taskId}`);
+      }
+      if (
+        task.status === 'in-progress' &&
+        task.claimedByControllerId !== null &&
+        task.claimedByControllerId !== controllerId
+      ) {
+        throw new Error(`task already claimed: ${input.taskId}`);
       }
       let claimedByDirectoryId: string | null = null;
       if (input.directoryId !== undefined) {
@@ -1517,6 +1608,207 @@ export class SqliteControlPlaneStore {
     }
   }
 
+  getProjectSettings(directoryId: string): ControlPlaneProjectSettingsRecord {
+    const directory = this.getActiveDirectory(directoryId);
+    const row = this.db
+      .prepare(
+        `
+        SELECT
+          directory_id,
+          tenant_id,
+          user_id,
+          workspace_id,
+          pinned_branch,
+          task_focus_mode,
+          thread_spawn_mode,
+          created_at,
+          updated_at
+        FROM project_settings
+        WHERE directory_id = ?
+      `,
+      )
+      .get(directoryId);
+    if (row === undefined) {
+      return {
+        directoryId: directory.directoryId,
+        tenantId: directory.tenantId,
+        userId: directory.userId,
+        workspaceId: directory.workspaceId,
+        pinnedBranch: null,
+        taskFocusMode: 'balanced',
+        threadSpawnMode: 'new-thread',
+        createdAt: directory.createdAt,
+        updatedAt: directory.createdAt,
+      };
+    }
+    return normalizeProjectSettingsRow(row);
+  }
+
+  updateProjectSettings(input: UpdateProjectSettingsInput): ControlPlaneProjectSettingsRecord {
+    this.db.exec('BEGIN IMMEDIATE TRANSACTION');
+    try {
+      const current = this.getProjectSettings(input.directoryId);
+      const pinnedBranch =
+        input.pinnedBranch === undefined
+          ? current.pinnedBranch
+          : input.pinnedBranch === null
+            ? null
+            : normalizeNonEmptyLabel(input.pinnedBranch, 'pinnedBranch');
+      const taskFocusMode = input.taskFocusMode ?? current.taskFocusMode;
+      const threadSpawnMode = input.threadSpawnMode ?? current.threadSpawnMode;
+      const now = new Date().toISOString();
+      this.db
+        .prepare(
+          `
+          INSERT INTO project_settings (
+            directory_id,
+            tenant_id,
+            user_id,
+            workspace_id,
+            pinned_branch,
+            task_focus_mode,
+            thread_spawn_mode,
+            created_at,
+            updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(directory_id) DO UPDATE SET
+            pinned_branch = excluded.pinned_branch,
+            task_focus_mode = excluded.task_focus_mode,
+            thread_spawn_mode = excluded.thread_spawn_mode,
+            updated_at = excluded.updated_at
+        `,
+        )
+        .run(
+          current.directoryId,
+          current.tenantId,
+          current.userId,
+          current.workspaceId,
+          pinnedBranch,
+          taskFocusMode,
+          threadSpawnMode,
+          current.createdAt,
+          now,
+        );
+      const updated = this.getProjectSettings(input.directoryId);
+      this.db.exec('COMMIT');
+      return updated;
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  getAutomationPolicy(input: GetAutomationPolicyInput): ControlPlaneAutomationPolicyRecord | null {
+    const normalized = this.normalizeAutomationScope(input.scope, input.scopeId ?? null);
+    const row = this.db
+      .prepare(
+        `
+        SELECT
+          policy_id,
+          tenant_id,
+          user_id,
+          workspace_id,
+          scope_type,
+          scope_id,
+          automation_enabled,
+          frozen,
+          created_at,
+          updated_at
+        FROM automation_policies
+        WHERE
+          tenant_id = ? AND
+          user_id = ? AND
+          workspace_id = ? AND
+          scope_type = ? AND
+          scope_id = ?
+      `,
+      )
+      .get(
+        input.tenantId,
+        input.userId,
+        input.workspaceId,
+        normalized.scope,
+        normalized.scopeKey,
+      );
+    if (row === undefined) {
+      return null;
+    }
+    return normalizeAutomationPolicyRow(row);
+  }
+
+  updateAutomationPolicy(input: UpsertAutomationPolicyInput): ControlPlaneAutomationPolicyRecord {
+    this.db.exec('BEGIN IMMEDIATE TRANSACTION');
+    try {
+      const normalized = this.normalizeAutomationScope(input.scope, input.scopeId ?? null);
+      if (normalized.scope === 'repository') {
+        const repository = this.getActiveRepository(normalized.scopeId as string);
+        this.assertScopeMatch(input, repository, 'automation policy');
+      } else if (normalized.scope === 'project') {
+        const directory = this.getActiveDirectory(normalized.scopeId as string);
+        this.assertScopeMatch(input, directory, 'automation policy');
+      }
+      const existing = this.getAutomationPolicy({
+        tenantId: input.tenantId,
+        userId: input.userId,
+        workspaceId: input.workspaceId,
+        scope: normalized.scope,
+        scopeId: normalized.scopeId,
+      });
+      const automationEnabled = input.automationEnabled ?? existing?.automationEnabled ?? true;
+      const frozen = input.frozen ?? existing?.frozen ?? false;
+      const now = new Date().toISOString();
+      const policyId = existing?.policyId ?? `policy-${randomUUID()}`;
+      this.db
+        .prepare(
+          `
+          INSERT INTO automation_policies (
+            policy_id,
+            tenant_id,
+            user_id,
+            workspace_id,
+            scope_type,
+            scope_id,
+            automation_enabled,
+            frozen,
+            created_at,
+            updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(tenant_id, user_id, workspace_id, scope_type, scope_id) DO UPDATE SET
+            automation_enabled = excluded.automation_enabled,
+            frozen = excluded.frozen,
+            updated_at = excluded.updated_at
+        `,
+        )
+        .run(
+          policyId,
+          input.tenantId,
+          input.userId,
+          input.workspaceId,
+          normalized.scope,
+          normalized.scopeKey,
+          automationEnabled ? 1 : 0,
+          frozen ? 1 : 0,
+          existing?.createdAt ?? now,
+          now,
+        );
+      const updated = this.getAutomationPolicy({
+        tenantId: input.tenantId,
+        userId: input.userId,
+        workspaceId: input.workspaceId,
+        scope: normalized.scope,
+        scopeId: normalized.scopeId,
+      });
+      if (updated === null) {
+        throw new Error('automation policy missing after update');
+      }
+      this.db.exec('COMMIT');
+      return updated;
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
   private findRepositoryByScopeRemoteUrl(
     tenantId: string,
     userId: string,
@@ -1576,6 +1868,42 @@ export class SqliteControlPlaneStore {
     ) {
       throw new Error(`${context} scope mismatch`);
     }
+  }
+
+  private deriveTaskScopeKind(
+    repositoryId: string | null,
+    projectId: string | null,
+  ): ControlPlaneTaskScopeKind {
+    if (projectId !== null) {
+      return 'project';
+    }
+    if (repositoryId !== null) {
+      return 'repository';
+    }
+    return 'global';
+  }
+
+  private normalizeAutomationScope(
+    scope: ControlPlaneAutomationPolicyScope,
+    scopeId: string | null,
+  ): {
+    scope: ControlPlaneAutomationPolicyScope;
+    scopeId: string | null;
+    scopeKey: string;
+  } {
+    if (scope === 'global') {
+      return {
+        scope,
+        scopeId: null,
+        scopeKey: '',
+      };
+    }
+    const normalizedScopeId = normalizeNonEmptyLabel(scopeId ?? '', 'scopeId');
+    return {
+      scope,
+      scopeId: normalizedScopeId,
+      scopeKey: normalizedScopeId,
+    };
   }
 
   private nextTaskOrderIndex(tenantId: string, userId: string, workspaceId: string): number {
@@ -1721,6 +2049,8 @@ export class SqliteControlPlaneStore {
         user_id TEXT NOT NULL,
         workspace_id TEXT NOT NULL,
         repository_id TEXT REFERENCES repositories(repository_id),
+        scope_kind TEXT NOT NULL DEFAULT 'global',
+        project_id TEXT REFERENCES directories(directory_id),
         title TEXT NOT NULL,
         description TEXT NOT NULL DEFAULT '',
         linear_json TEXT NOT NULL DEFAULT '{}',
@@ -1741,10 +2071,68 @@ export class SqliteControlPlaneStore {
       ON tasks (tenant_id, user_id, workspace_id, order_index, created_at, task_id);
     `);
     this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_tasks_scope_kind
+      ON tasks (tenant_id, user_id, workspace_id, scope_kind, repository_id, project_id, order_index);
+    `);
+    this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_tasks_status
       ON tasks (status, updated_at, task_id);
     `);
     this.ensureColumnExists('tasks', 'linear_json', `linear_json TEXT NOT NULL DEFAULT '{}'`);
+    this.ensureColumnExists('tasks', 'scope_kind', `scope_kind TEXT NOT NULL DEFAULT 'global'`);
+    this.ensureColumnExists('tasks', 'project_id', `project_id TEXT REFERENCES directories(directory_id)`);
+    this.db.exec(`
+      UPDATE tasks
+      SET scope_kind = CASE
+        WHEN project_id IS NOT NULL THEN 'project'
+        WHEN repository_id IS NOT NULL THEN 'repository'
+        ELSE 'global'
+      END
+      WHERE scope_kind NOT IN ('global', 'repository', 'project');
+    `);
+    this.db.exec(`
+      UPDATE tasks
+      SET scope_kind = 'repository'
+      WHERE scope_kind = 'global' AND repository_id IS NOT NULL AND project_id IS NULL;
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS project_settings (
+        directory_id TEXT PRIMARY KEY REFERENCES directories(directory_id),
+        tenant_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        pinned_branch TEXT,
+        task_focus_mode TEXT NOT NULL DEFAULT 'balanced',
+        thread_spawn_mode TEXT NOT NULL DEFAULT 'new-thread',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_project_settings_scope
+      ON project_settings (tenant_id, user_id, workspace_id, directory_id);
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS automation_policies (
+        policy_id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        scope_type TEXT NOT NULL,
+        scope_id TEXT NOT NULL,
+        automation_enabled INTEGER NOT NULL,
+        frozen INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE (tenant_id, user_id, workspace_id, scope_type, scope_id)
+      );
+    `);
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_automation_policies_scope
+      ON automation_policies (tenant_id, user_id, workspace_id, scope_type, scope_id);
+    `);
   }
 
   private configureConnection(): void {

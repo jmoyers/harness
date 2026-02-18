@@ -232,6 +232,20 @@ void test('parseStreamCommand parses repository and task commands', () => {
   );
   assert.deepEqual(
     parseStreamCommand({
+      type: 'task.list',
+      projectId: 'directory-1',
+      scopeKind: 'project',
+      status: 'ready',
+    }),
+    {
+      type: 'task.list',
+      projectId: 'directory-1',
+      scopeKind: 'project',
+      status: 'ready',
+    },
+  );
+  assert.deepEqual(
+    parseStreamCommand({
       type: 'task.update',
       taskId: 'task-1',
       title: 'Implement task API v2',
@@ -256,6 +270,98 @@ void test('parseStreamCommand parses repository and task commands', () => {
   );
   assert.deepEqual(
     parseStreamCommand({
+      type: 'task.pull',
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      controllerId: 'agent-1',
+      directoryId: 'directory-1',
+      repositoryId: 'repository-1',
+      branchName: 'main',
+      baseBranch: 'main',
+    }),
+    {
+      type: 'task.pull',
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      controllerId: 'agent-1',
+      directoryId: 'directory-1',
+      repositoryId: 'repository-1',
+      branchName: 'main',
+      baseBranch: 'main',
+    },
+  );
+  assert.deepEqual(
+    parseStreamCommand({
+      type: 'project.settings-get',
+      directoryId: 'directory-1',
+    }),
+    {
+      type: 'project.settings-get',
+      directoryId: 'directory-1',
+    },
+  );
+  assert.deepEqual(
+    parseStreamCommand({
+      type: 'project.settings-update',
+      directoryId: 'directory-1',
+      pinnedBranch: null,
+      taskFocusMode: 'own-only',
+      threadSpawnMode: 'reuse-thread',
+    }),
+    {
+      type: 'project.settings-update',
+      directoryId: 'directory-1',
+      pinnedBranch: null,
+      taskFocusMode: 'own-only',
+      threadSpawnMode: 'reuse-thread',
+    },
+  );
+  assert.deepEqual(
+    parseStreamCommand({
+      type: 'project.status',
+      directoryId: 'directory-1',
+    }),
+    {
+      type: 'project.status',
+      directoryId: 'directory-1',
+    },
+  );
+  assert.deepEqual(
+    parseStreamCommand({
+      type: 'automation.policy-get',
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      scope: 'repository',
+      scopeId: 'repository-1',
+    }),
+    {
+      type: 'automation.policy-get',
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      scope: 'repository',
+      scopeId: 'repository-1',
+    },
+  );
+  assert.deepEqual(
+    parseStreamCommand({
+      type: 'automation.policy-set',
+      scope: 'global',
+      automationEnabled: false,
+      frozen: true,
+    }),
+    {
+      type: 'automation.policy-set',
+      scope: 'global',
+      automationEnabled: false,
+      frozen: true,
+    },
+  );
+  assert.deepEqual(
+    parseStreamCommand({
       type: 'task.update',
       taskId: 'task-2',
       title: 'No repository update',
@@ -266,6 +372,30 @@ void test('parseStreamCommand parses repository and task commands', () => {
       taskId: 'task-2',
       title: 'No repository update',
       linear: null,
+    },
+  );
+  assert.deepEqual(
+    parseStreamCommand({
+      type: 'task.update',
+      taskId: 'task-project-null',
+      projectId: null,
+    }),
+    {
+      type: 'task.update',
+      taskId: 'task-project-null',
+      projectId: null,
+    },
+  );
+  assert.deepEqual(
+    parseStreamCommand({
+      type: 'task.update',
+      taskId: 'task-project-string',
+      projectId: 'directory-1',
+    }),
+    {
+      type: 'task.update',
+      taskId: 'task-project-string',
+      projectId: 'directory-1',
     },
   );
   assert.deepEqual(
@@ -413,6 +543,30 @@ void test('parseStreamCommand rejects unknown or malformed command shapes', () =
       type: 'session.release',
       sessionId: 'session-1',
       reason: 1,
+    }),
+    null,
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'project.settings-update',
+      directoryId: 'directory-1',
+      taskFocusMode: 'invalid',
+    }),
+    null,
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'automation.policy-get',
+      scope: 'global',
+      scopeId: 'not-allowed',
+    }),
+    null,
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'automation.policy-set',
+      scope: 'repository',
+      automationEnabled: 'yes',
     }),
     null,
   );
@@ -637,6 +791,13 @@ void test('parseStreamCommand rejects unknown or malformed command shapes', () =
   );
   assert.equal(
     parseStreamCommand({
+      type: 'task.list',
+      scopeKind: 'invalid-scope',
+    }),
+    null,
+  );
+  assert.equal(
+    parseStreamCommand({
       type: 'task.update',
       title: 'missing task id',
     }),
@@ -667,6 +828,14 @@ void test('parseStreamCommand rejects unknown or malformed command shapes', () =
       type: 'task.update',
       taskId: 'task-1',
       repositoryId: 5,
+    }),
+    null,
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'task.update',
+      taskId: 'task-1',
+      projectId: 5,
     }),
     null,
   );
@@ -717,6 +886,100 @@ void test('parseStreamCommand rejects unknown or malformed command shapes', () =
       taskId: 'task-1',
       controllerId: 'agent-1',
       branchName: 99,
+    }),
+    null,
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'task.pull',
+      controllerId: 'agent-1',
+      baseBranch: 99,
+    }),
+    null,
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'project.settings-get',
+    }),
+    null,
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'project.settings-update',
+    }),
+    null,
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'project.settings-update',
+      directoryId: 'directory-1',
+      pinnedBranch: 7,
+    }),
+    null,
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'project.settings-update',
+      directoryId: 'directory-1',
+      threadSpawnMode: 'invalid',
+    }),
+    null,
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'project.status',
+    }),
+    null,
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'automation.policy-get',
+      scope: 'invalid',
+      scopeId: 'scope-1',
+    }),
+    null,
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'automation.policy-get',
+      scope: 'project',
+    }),
+    null,
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'automation.policy-get',
+      scope: 'repository',
+      scopeId: 9,
+    }),
+    null,
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'automation.policy-set',
+      scope: 'invalid',
+      scopeId: 'scope-1',
+      automationEnabled: true,
+      frozen: false,
+    }),
+    null,
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'automation.policy-set',
+      scope: 'global',
+      scopeId: 'forbidden',
+      automationEnabled: true,
+      frozen: false,
+    }),
+    null,
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'automation.policy-set',
+      scope: 'repository',
+      automationEnabled: true,
+      frozen: false,
     }),
     null,
   );

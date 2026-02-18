@@ -584,6 +584,7 @@ function parseTaskCreate(record: CommandRecord): StreamCommand | null {
   const userId = readOptionalString(record, 'userId');
   const workspaceId = readOptionalString(record, 'workspaceId');
   const repositoryId = readOptionalString(record, 'repositoryId');
+  const projectId = readOptionalString(record, 'projectId');
   const description = readOptionalString(record, 'description');
   if (
     taskId === undefined ||
@@ -591,6 +592,7 @@ function parseTaskCreate(record: CommandRecord): StreamCommand | null {
     userId === undefined ||
     workspaceId === undefined ||
     repositoryId === undefined ||
+    projectId === undefined ||
     description === undefined
   ) {
     return null;
@@ -613,6 +615,9 @@ function parseTaskCreate(record: CommandRecord): StreamCommand | null {
   }
   if (repositoryId !== null) {
     command.repositoryId = repositoryId;
+  }
+  if (projectId !== null) {
+    command.projectId = projectId;
   }
   if (description !== null) {
     command.description = description;
@@ -643,6 +648,8 @@ function parseTaskList(record: CommandRecord): StreamCommand | null {
   const userId = readOptionalString(record, 'userId');
   const workspaceId = readOptionalString(record, 'workspaceId');
   const repositoryId = readOptionalString(record, 'repositoryId');
+  const projectId = readOptionalString(record, 'projectId');
+  const scopeKind = readOptionalString(record, 'scopeKind');
   const status = readOptionalString(record, 'status');
   const limit = readOptionalInteger(record, 'limit', 1);
   if (
@@ -650,8 +657,18 @@ function parseTaskList(record: CommandRecord): StreamCommand | null {
     userId === undefined ||
     workspaceId === undefined ||
     repositoryId === undefined ||
+    projectId === undefined ||
+    scopeKind === undefined ||
     status === undefined ||
     limit === undefined
+  ) {
+    return null;
+  }
+  if (
+    scopeKind !== null &&
+    scopeKind !== 'global' &&
+    scopeKind !== 'repository' &&
+    scopeKind !== 'project'
   ) {
     return null;
   }
@@ -680,6 +697,12 @@ function parseTaskList(record: CommandRecord): StreamCommand | null {
   if (repositoryId !== null) {
     command.repositoryId = repositoryId;
   }
+  if (projectId !== null) {
+    command.projectId = projectId;
+  }
+  if (scopeKind !== null) {
+    command.scopeKind = scopeKind;
+  }
   if (status !== null) {
     command.status = status === 'queued' ? 'ready' : status;
   }
@@ -700,12 +723,22 @@ function parseTaskUpdate(record: CommandRecord): StreamCommand | null {
     return null;
   }
   let repositoryId: string | null | undefined;
+  let projectId: string | null | undefined;
   if (record['repositoryId'] === undefined) {
     repositoryId = undefined;
   } else if (record['repositoryId'] === null) {
     repositoryId = null;
   } else if (typeof record['repositoryId'] === 'string') {
     repositoryId = record['repositoryId'];
+  } else {
+    return null;
+  }
+  if (record['projectId'] === undefined) {
+    projectId = undefined;
+  } else if (record['projectId'] === null) {
+    projectId = null;
+  } else if (typeof record['projectId'] === 'string') {
+    projectId = record['projectId'];
   } else {
     return null;
   }
@@ -722,6 +755,9 @@ function parseTaskUpdate(record: CommandRecord): StreamCommand | null {
   }
   if (repositoryId !== undefined) {
     command.repositoryId = repositoryId;
+  }
+  if (projectId !== undefined) {
+    command.projectId = projectId;
   }
   if (record['linear'] !== undefined) {
     if (record['linear'] === null) {
@@ -767,6 +803,55 @@ function parseTaskClaim(record: CommandRecord): StreamCommand | null {
   };
   if (directoryId !== null) {
     command.directoryId = directoryId;
+  }
+  if (branchName !== null) {
+    command.branchName = branchName;
+  }
+  if (baseBranch !== null) {
+    command.baseBranch = baseBranch;
+  }
+  return command;
+}
+
+function parseTaskPull(record: CommandRecord): StreamCommand | null {
+  const tenantId = readOptionalString(record, 'tenantId');
+  const userId = readOptionalString(record, 'userId');
+  const workspaceId = readOptionalString(record, 'workspaceId');
+  const controllerId = readString(record['controllerId']);
+  const directoryId = readOptionalString(record, 'directoryId');
+  const repositoryId = readOptionalString(record, 'repositoryId');
+  const branchName = readOptionalString(record, 'branchName');
+  const baseBranch = readOptionalString(record, 'baseBranch');
+  if (
+    tenantId === undefined ||
+    userId === undefined ||
+    workspaceId === undefined ||
+    controllerId === null ||
+    directoryId === undefined ||
+    repositoryId === undefined ||
+    branchName === undefined ||
+    baseBranch === undefined
+  ) {
+    return null;
+  }
+  const command: StreamCommand = {
+    type: 'task.pull',
+    controllerId,
+  };
+  if (tenantId !== null) {
+    command.tenantId = tenantId;
+  }
+  if (userId !== null) {
+    command.userId = userId;
+  }
+  if (workspaceId !== null) {
+    command.workspaceId = workspaceId;
+  }
+  if (directoryId !== null) {
+    command.directoryId = directoryId;
+  }
+  if (repositoryId !== null) {
+    command.repositoryId = repositoryId;
   }
   if (branchName !== null) {
     command.branchName = branchName;
@@ -841,6 +926,165 @@ function parseTaskReorder(record: CommandRecord): StreamCommand | null {
     workspaceId,
     orderedTaskIds,
   };
+}
+
+function parseProjectSettingsGet(record: CommandRecord): StreamCommand | null {
+  const directoryId = readString(record['directoryId']);
+  if (directoryId === null) {
+    return null;
+  }
+  return {
+    type: 'project.settings-get',
+    directoryId,
+  };
+}
+
+function parseProjectSettingsUpdate(record: CommandRecord): StreamCommand | null {
+  const directoryId = readString(record['directoryId']);
+  if (directoryId === null) {
+    return null;
+  }
+  const pinnedBranch = readOptionalNullableString(record, 'pinnedBranch');
+  const taskFocusMode = readOptionalString(record, 'taskFocusMode');
+  const threadSpawnMode = readOptionalString(record, 'threadSpawnMode');
+  if (
+    pinnedBranch === INVALID_OPTIONAL ||
+    taskFocusMode === undefined ||
+    threadSpawnMode === undefined
+  ) {
+    return null;
+  }
+  if (taskFocusMode !== null && taskFocusMode !== 'balanced' && taskFocusMode !== 'own-only') {
+    return null;
+  }
+  if (
+    threadSpawnMode !== null &&
+    threadSpawnMode !== 'new-thread' &&
+    threadSpawnMode !== 'reuse-thread'
+  ) {
+    return null;
+  }
+  const command: StreamCommand = {
+    type: 'project.settings-update',
+    directoryId,
+  };
+  if (pinnedBranch !== undefined) {
+    command.pinnedBranch = pinnedBranch;
+  }
+  if (taskFocusMode !== null) {
+    command.taskFocusMode = taskFocusMode;
+  }
+  if (threadSpawnMode !== null) {
+    command.threadSpawnMode = threadSpawnMode;
+  }
+  return command;
+}
+
+function parseProjectStatus(record: CommandRecord): StreamCommand | null {
+  const directoryId = readString(record['directoryId']);
+  if (directoryId === null) {
+    return null;
+  }
+  return {
+    type: 'project.status',
+    directoryId,
+  };
+}
+
+function parseAutomationPolicyGet(record: CommandRecord): StreamCommand | null {
+  const tenantId = readOptionalString(record, 'tenantId');
+  const userId = readOptionalString(record, 'userId');
+  const workspaceId = readOptionalString(record, 'workspaceId');
+  const scope = readString(record['scope']);
+  const scopeId = readOptionalString(record, 'scopeId');
+  if (
+    tenantId === undefined ||
+    userId === undefined ||
+    workspaceId === undefined ||
+    scope === null ||
+    scopeId === undefined
+  ) {
+    return null;
+  }
+  if (scope !== 'global' && scope !== 'repository' && scope !== 'project') {
+    return null;
+  }
+  if (scope === 'global' && scopeId !== null) {
+    return null;
+  }
+  if (scope !== 'global' && scopeId === null) {
+    return null;
+  }
+  const command: StreamCommand = {
+    type: 'automation.policy-get',
+    scope,
+  };
+  if (tenantId !== null) {
+    command.tenantId = tenantId;
+  }
+  if (userId !== null) {
+    command.userId = userId;
+  }
+  if (workspaceId !== null) {
+    command.workspaceId = workspaceId;
+  }
+  if (scopeId !== null) {
+    command.scopeId = scopeId;
+  }
+  return command;
+}
+
+function parseAutomationPolicySet(record: CommandRecord): StreamCommand | null {
+  const tenantId = readOptionalString(record, 'tenantId');
+  const userId = readOptionalString(record, 'userId');
+  const workspaceId = readOptionalString(record, 'workspaceId');
+  const scope = readString(record['scope']);
+  const scopeId = readOptionalString(record, 'scopeId');
+  const automationEnabled = readOptionalBoolean(record, 'automationEnabled');
+  const frozen = readOptionalBoolean(record, 'frozen');
+  if (
+    tenantId === undefined ||
+    userId === undefined ||
+    workspaceId === undefined ||
+    scope === null ||
+    scopeId === undefined ||
+    automationEnabled === undefined ||
+    frozen === undefined
+  ) {
+    return null;
+  }
+  if (scope !== 'global' && scope !== 'repository' && scope !== 'project') {
+    return null;
+  }
+  if (scope === 'global' && scopeId !== null) {
+    return null;
+  }
+  if (scope !== 'global' && scopeId === null) {
+    return null;
+  }
+  const command: StreamCommand = {
+    type: 'automation.policy-set',
+    scope,
+  };
+  if (tenantId !== null) {
+    command.tenantId = tenantId;
+  }
+  if (userId !== null) {
+    command.userId = userId;
+  }
+  if (workspaceId !== null) {
+    command.workspaceId = workspaceId;
+  }
+  if (scopeId !== null) {
+    command.scopeId = scopeId;
+  }
+  if (automationEnabled !== null) {
+    command.automationEnabled = automationEnabled;
+  }
+  if (frozen !== null) {
+    command.frozen = frozen;
+  }
+  return command;
 }
 
 function parseStreamSubscribe(record: CommandRecord): StreamCommand | null {
@@ -1218,11 +1462,17 @@ export const DEFAULT_STREAM_COMMAND_PARSERS: StreamCommandParserRegistry = {
   'task.update': parseTaskUpdate,
   'task.delete': parseTaskDelete,
   'task.claim': parseTaskClaim,
+  'task.pull': parseTaskPull,
   'task.complete': parseTaskComplete,
   'task.queue': parseTaskQueue,
   'task.ready': parseTaskReady,
   'task.draft': parseTaskDraft,
   'task.reorder': parseTaskReorder,
+  'project.settings-get': parseProjectSettingsGet,
+  'project.settings-update': parseProjectSettingsUpdate,
+  'project.status': parseProjectStatus,
+  'automation.policy-get': parseAutomationPolicyGet,
+  'automation.policy-set': parseAutomationPolicySet,
   'stream.subscribe': parseStreamSubscribe,
   'stream.unsubscribe': parseStreamUnsubscribe,
   'session.list': parseSessionList,

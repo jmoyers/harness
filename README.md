@@ -12,6 +12,8 @@ Run many agent threads in parallel across `codex`, `claude`, `cursor`, `terminal
 - Use `critique` threads for very fast diff/review loops, with native terminal access when you need to drop to commands.
 - Keep long-running threads alive in the detached gateway so reconnects do not kill work.
 - Add automation last through the typed realtime API (`projects`, `threads`, `repositories`, `tasks`, subscriptions).
+- Plan work as scoped tasks (`project`, `repository`, `global`) and pull only `ready` tasks.
+- Gate automation globally/per-repository/per-project (enable/disable + freeze), with optional project branch pinning and project-local task focus mode.
 - See project/thread lifecycle updates from other connected clients in real time (no client restart rehydration loop).
 
 ## Demo
@@ -77,6 +79,13 @@ client.on('session.status', ({ observed }) => {
 
 await client.close();
 ```
+
+Key orchestration calls are available in the same client:
+
+- `client.tasks.pull(...)`
+- `client.projects.status(projectId)`
+- `client.projects.settings.get(projectId)` / `client.projects.settings.update(projectId, update)`
+- `client.automation.getPolicy(...)` / `client.automation.setPolicy(...)`
 
 ## Configuration
 

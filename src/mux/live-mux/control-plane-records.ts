@@ -63,6 +63,7 @@ interface ControlPlaneDirectoryGitStatusRecord {
 }
 
 type TaskStatus = 'draft' | 'ready' | 'in-progress' | 'completed';
+type TaskScopeKind = 'global' | 'repository' | 'project';
 
 interface ControlPlaneTaskRecord {
   readonly taskId: string;
@@ -70,6 +71,8 @@ interface ControlPlaneTaskRecord {
   readonly userId: string;
   readonly workspaceId: string;
   readonly repositoryId: string | null;
+  readonly scopeKind: TaskScopeKind;
+  readonly projectId: string | null;
   readonly title: string;
   readonly description: string;
   readonly status: TaskStatus;
@@ -346,6 +349,24 @@ export function parseTaskStatus(value: unknown): TaskStatus | null {
   return null;
 }
 
+function parseTaskScopeKind(
+  value: unknown,
+  repositoryId: string | null | undefined,
+  projectId: string | null | undefined,
+): TaskScopeKind | null {
+  if (value === 'global' || value === 'repository' || value === 'project') {
+    return value;
+  }
+  if (projectId !== null) {
+    return 'project';
+  }
+  if (repositoryId !== null) {
+    return 'repository';
+  }
+  if (value === null || value === undefined) return 'global';
+  return null;
+}
+
 export function parseTaskRecord(value: unknown): ControlPlaneTaskRecord | null {
   const record = asRecord(value);
   if (record === null) {
@@ -357,9 +378,11 @@ export function parseTaskRecord(value: unknown): ControlPlaneTaskRecord | null {
   const userId = asRequiredString(record['userId']);
   const workspaceId = asRequiredString(record['workspaceId']);
   const repositoryId = asOptionalString(record['repositoryId']);
+  const projectId = asOptionalString(record['projectId']);
   const title = asRequiredString(record['title']);
   const description = asRequiredString(record['description']);
   const status = parseTaskStatus(record['status']);
+  const scopeKind = parseTaskScopeKind(record['scopeKind'], repositoryId, projectId);
   const orderIndex = record['orderIndex'];
   const claimedByControllerId = asOptionalString(record['claimedByControllerId']);
   const claimedByDirectoryId = asOptionalString(record['claimedByDirectoryId']);
@@ -376,6 +399,8 @@ export function parseTaskRecord(value: unknown): ControlPlaneTaskRecord | null {
     userId === null ||
     workspaceId === null ||
     repositoryId === undefined ||
+    projectId === undefined ||
+    scopeKind === null ||
     title === null ||
     description === null ||
     status === null ||
@@ -398,6 +423,8 @@ export function parseTaskRecord(value: unknown): ControlPlaneTaskRecord | null {
     userId,
     workspaceId,
     repositoryId,
+    scopeKind,
+    projectId,
     title,
     description,
     status,

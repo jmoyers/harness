@@ -6,8 +6,11 @@ import type {
   StreamSessionRuntimeStatus,
 } from './stream-protocol.ts';
 import type {
+  ControlPlaneAutomationPolicyRecord,
+  ControlPlaneAutomationPolicyScope,
   ControlPlaneConversationRecord,
   ControlPlaneDirectoryRecord,
+  ControlPlaneProjectSettingsRecord,
   ControlPlaneRepositoryRecord,
   ControlPlaneTaskRecord,
 } from '../store/control-plane-store.ts';
@@ -133,6 +136,7 @@ interface ExecuteCommandContext {
       workspaceId: string;
       path: string;
     }): ControlPlaneDirectoryRecord;
+    getDirectory(directoryId: string): ControlPlaneDirectoryRecord | null;
     listDirectories(query: {
       tenantId?: string;
       userId?: string;
@@ -197,6 +201,7 @@ interface ExecuteCommandContext {
       userId: string;
       workspaceId: string;
       repositoryId?: string;
+      projectId?: string;
       title: string;
       description?: string;
       linear?: Record<string, unknown>;
@@ -207,6 +212,8 @@ interface ExecuteCommandContext {
       userId?: string;
       workspaceId?: string;
       repositoryId?: string;
+      projectId?: string;
+      scopeKind?: 'global' | 'repository' | 'project';
       status?: 'draft' | 'ready' | 'in-progress' | 'completed';
       limit?: number;
     }): ControlPlaneTaskRecord[];
@@ -216,6 +223,7 @@ interface ExecuteCommandContext {
         title?: string;
         description?: string;
         repositoryId?: string | null;
+        projectId?: string | null;
         linear?: Record<string, unknown> | null;
       },
     ): ControlPlaneTaskRecord | null;
@@ -236,6 +244,29 @@ interface ExecuteCommandContext {
       workspaceId: string;
       orderedTaskIds: readonly string[];
     }): ControlPlaneTaskRecord[];
+    getProjectSettings(directoryId: string): ControlPlaneProjectSettingsRecord;
+    updateProjectSettings(input: {
+      directoryId: string;
+      pinnedBranch?: string | null;
+      taskFocusMode?: 'balanced' | 'own-only';
+      threadSpawnMode?: 'new-thread' | 'reuse-thread';
+    }): ControlPlaneProjectSettingsRecord;
+    getAutomationPolicy(input: {
+      tenantId: string;
+      userId: string;
+      workspaceId: string;
+      scope: ControlPlaneAutomationPolicyScope;
+      scopeId?: string | null;
+    }): ControlPlaneAutomationPolicyRecord | null;
+    updateAutomationPolicy(input: {
+      tenantId: string;
+      userId: string;
+      workspaceId: string;
+      scope: ControlPlaneAutomationPolicyScope;
+      scopeId?: string | null;
+      automationEnabled?: boolean;
+      frozen?: boolean;
+    }): ControlPlaneAutomationPolicyRecord;
   };
   readonly gitStatusDirectoriesById: Map<string, ControlPlaneDirectoryRecord>;
   readonly gitStatusMonitor: {
@@ -371,6 +402,222 @@ export function executeStreamServerCommand(
   connection: ConnectionState,
   command: StreamCommand,
 ): Record<string, unknown> {
+  const liveThreadCountByDirectory = (directoryId: string): number =>
+    [...ctx.sessions.values()].filter(
+      (sessionState) => sessionState.directoryId === directoryId && sessionState.session !== null,
+    ).length;
+
+  const effectiveAutomationPolicy = (input: {
+    tenantId: string;
+    userId: string;
+    workspaceId: string;
+    repositoryId: string | null;
+    directoryId: string;
+  }): {
+    automationEnabled: boolean;
+    frozen: boolean;
+    source: 'default' | 'global' | 'repository' | 'project';
+  } => {
+    const globalPolicy = ctx.stateStore.getAutomationPolicy({
+      tenantId: input.tenantId,
+      userId: input.userId,
+      workspaceId: input.workspaceId,
+      scope: 'global',
+      scopeId: null,
+    });
+    const repositoryPolicy =
+      input.repositoryId === null
+        ? null
+        : ctx.stateStore.getAutomationPolicy({
+            tenantId: input.tenantId,
+            userId: input.userId,
+            workspaceId: input.workspaceId,
+            scope: 'repository',
+            scopeId: input.repositoryId,
+          });
+    const projectPolicy = ctx.stateStore.getAutomationPolicy({
+      tenantId: input.tenantId,
+      userId: input.userId,
+      workspaceId: input.workspaceId,
+      scope: 'project',
+      scopeId: input.directoryId,
+    });
+    if (projectPolicy !== null) {
+      return {
+        automationEnabled: projectPolicy.automationEnabled,
+        frozen: projectPolicy.frozen,
+        source: 'project',
+      };
+    }
+    if (repositoryPolicy !== null) {
+      return {
+        automationEnabled: repositoryPolicy.automationEnabled,
+        frozen: repositoryPolicy.frozen,
+        source: 'repository',
+      };
+    }
+    if (globalPolicy !== null) {
+      return {
+        automationEnabled: globalPolicy.automationEnabled,
+        frozen: globalPolicy.frozen,
+        source: 'global',
+      };
+    }
+    return {
+      automationEnabled: true,
+      frozen: false,
+      source: 'default',
+    };
+  };
+
+  const evaluateProjectAvailability = (input: {
+    directory: ControlPlaneDirectoryRecord;
+    requiredRepositoryId: string | null;
+  }): {
+    availability:
+      | 'ready'
+      | 'blocked-disabled'
+      | 'blocked-frozen'
+      | 'blocked-untracked'
+      | 'blocked-pinned-branch'
+      | 'blocked-dirty'
+      | 'blocked-occupied'
+      | 'blocked-repository-mismatch';
+    reason: string | null;
+    settings: ControlPlaneProjectSettingsRecord;
+    repositoryId: string | null;
+    branch: string | null;
+    changedFiles: number;
+    liveThreadCount: number;
+    automationEnabled: boolean;
+    frozen: boolean;
+    automationSource: 'default' | 'global' | 'repository' | 'project';
+  } => {
+    const settings = ctx.stateStore.getProjectSettings(input.directory.directoryId);
+    const gitStatus = ctx.gitStatusByDirectoryId.get(input.directory.directoryId);
+    const repositoryId = gitStatus?.repositoryId ?? null;
+    const branch = gitStatus?.summary.branch ?? null;
+    const changedFiles = gitStatus?.summary.changedFiles ?? 0;
+    const liveThreadCount = liveThreadCountByDirectory(input.directory.directoryId);
+    const automation = effectiveAutomationPolicy({
+      tenantId: input.directory.tenantId,
+      userId: input.directory.userId,
+      workspaceId: input.directory.workspaceId,
+      repositoryId,
+      directoryId: input.directory.directoryId,
+    });
+    if (!automation.automationEnabled) {
+      return {
+        availability: 'blocked-disabled',
+        reason: 'automation disabled',
+        settings,
+        repositoryId,
+        branch,
+        changedFiles,
+        liveThreadCount,
+        automationEnabled: automation.automationEnabled,
+        frozen: automation.frozen,
+        automationSource: automation.source,
+      };
+    }
+    if (automation.frozen) {
+      return {
+        availability: 'blocked-frozen',
+        reason: 'project/repository/global automation freeze',
+        settings,
+        repositoryId,
+        branch,
+        changedFiles,
+        liveThreadCount,
+        automationEnabled: automation.automationEnabled,
+        frozen: automation.frozen,
+        automationSource: automation.source,
+      };
+    }
+    if (gitStatus === undefined || repositoryId === null || branch === null) {
+      return {
+        availability: 'blocked-untracked',
+        reason: 'project has no tracked repository status',
+        settings,
+        repositoryId,
+        branch,
+        changedFiles,
+        liveThreadCount,
+        automationEnabled: automation.automationEnabled,
+        frozen: automation.frozen,
+        automationSource: automation.source,
+      };
+    }
+    if (input.requiredRepositoryId !== null && repositoryId !== input.requiredRepositoryId) {
+      return {
+        availability: 'blocked-repository-mismatch',
+        reason: 'project repository does not match requested repository',
+        settings,
+        repositoryId,
+        branch,
+        changedFiles,
+        liveThreadCount,
+        automationEnabled: automation.automationEnabled,
+        frozen: automation.frozen,
+        automationSource: automation.source,
+      };
+    }
+    if (settings.pinnedBranch !== null && settings.pinnedBranch !== branch) {
+      return {
+        availability: 'blocked-pinned-branch',
+        reason: `project pinned to ${settings.pinnedBranch} but current branch is ${branch}`,
+        settings,
+        repositoryId,
+        branch,
+        changedFiles,
+        liveThreadCount,
+        automationEnabled: automation.automationEnabled,
+        frozen: automation.frozen,
+        automationSource: automation.source,
+      };
+    }
+    if (changedFiles > 0) {
+      return {
+        availability: 'blocked-dirty',
+        reason: 'project has pending git changes',
+        settings,
+        repositoryId,
+        branch,
+        changedFiles,
+        liveThreadCount,
+        automationEnabled: automation.automationEnabled,
+        frozen: automation.frozen,
+        automationSource: automation.source,
+      };
+    }
+    if (liveThreadCount > 0) {
+      return {
+        availability: 'blocked-occupied',
+        reason: 'project has a live thread',
+        settings,
+        repositoryId,
+        branch,
+        changedFiles,
+        liveThreadCount,
+        automationEnabled: automation.automationEnabled,
+        frozen: automation.frozen,
+        automationSource: automation.source,
+      };
+    }
+    return {
+      availability: 'ready',
+      reason: null,
+      settings,
+      repositoryId,
+      branch,
+      changedFiles,
+      liveThreadCount,
+      automationEnabled: automation.automationEnabled,
+      frozen: automation.frozen,
+      automationSource: automation.source,
+    };
+  };
+
   if (command.type === 'directory.upsert') {
     const directory = ctx.stateStore.upsertDirectory({
       directoryId: command.directoryId ?? `directory-${randomUUID()}`,
@@ -527,6 +774,73 @@ export function executeStreamServerCommand(
     });
     return {
       gitStatuses,
+    };
+  }
+
+  if (command.type === 'project.settings-get') {
+    const settings = ctx.stateStore.getProjectSettings(command.directoryId);
+    return {
+      settings,
+    };
+  }
+
+  if (command.type === 'project.settings-update') {
+    const settings = ctx.stateStore.updateProjectSettings({
+      directoryId: command.directoryId,
+      ...(command.pinnedBranch !== undefined ? { pinnedBranch: command.pinnedBranch } : {}),
+      ...(command.taskFocusMode !== undefined ? { taskFocusMode: command.taskFocusMode } : {}),
+      ...(command.threadSpawnMode !== undefined
+        ? { threadSpawnMode: command.threadSpawnMode }
+        : {}),
+    });
+    return {
+      settings,
+    };
+  }
+
+  if (command.type === 'automation.policy-get') {
+    const tenantId = command.tenantId ?? DEFAULT_TENANT_ID;
+    const userId = command.userId ?? DEFAULT_USER_ID;
+    const workspaceId = command.workspaceId ?? DEFAULT_WORKSPACE_ID;
+    const policy =
+      ctx.stateStore.getAutomationPolicy({
+        tenantId,
+        userId,
+        workspaceId,
+        scope: command.scope,
+        scopeId: command.scope === 'global' ? null : (command.scopeId ?? null),
+      }) ??
+      {
+        policyId: `policy-default-${command.scope}`,
+        tenantId,
+        userId,
+        workspaceId,
+        scope: command.scope,
+        scopeId: command.scope === 'global' ? null : (command.scopeId ?? null),
+        automationEnabled: true,
+        frozen: false,
+        createdAt: new Date(0).toISOString(),
+        updatedAt: new Date(0).toISOString(),
+      };
+    return {
+      policy,
+    };
+  }
+
+  if (command.type === 'automation.policy-set') {
+    const policy = ctx.stateStore.updateAutomationPolicy({
+      tenantId: command.tenantId ?? DEFAULT_TENANT_ID,
+      userId: command.userId ?? DEFAULT_USER_ID,
+      workspaceId: command.workspaceId ?? DEFAULT_WORKSPACE_ID,
+      scope: command.scope,
+      scopeId: command.scope === 'global' ? null : (command.scopeId ?? null),
+      ...(command.automationEnabled !== undefined
+        ? { automationEnabled: command.automationEnabled }
+        : {}),
+      ...(command.frozen !== undefined ? { frozen: command.frozen } : {}),
+    });
+    return {
+      policy,
     };
   }
 
@@ -816,6 +1130,7 @@ export function executeStreamServerCommand(
       userId: string;
       workspaceId: string;
       repositoryId?: string;
+      projectId?: string;
       title: string;
       description?: string;
       linear?: {
@@ -842,6 +1157,9 @@ export function executeStreamServerCommand(
     };
     if (command.repositoryId !== undefined) {
       input.repositoryId = command.repositoryId;
+    }
+    if (command.projectId !== undefined) {
+      input.projectId = command.projectId;
     }
     if (command.description !== undefined) {
       input.description = command.description;
@@ -884,6 +1202,8 @@ export function executeStreamServerCommand(
       userId?: string;
       workspaceId?: string;
       repositoryId?: string;
+      projectId?: string;
+      scopeKind?: 'global' | 'repository' | 'project';
       status?: 'draft' | 'ready' | 'in-progress' | 'completed';
       limit?: number;
     } = {};
@@ -898,6 +1218,12 @@ export function executeStreamServerCommand(
     }
     if (command.repositoryId !== undefined) {
       query.repositoryId = command.repositoryId;
+    }
+    if (command.projectId !== undefined) {
+      query.projectId = command.projectId;
+    }
+    if (command.scopeKind !== undefined) {
+      query.scopeKind = command.scopeKind;
     }
     if (command.status !== undefined) {
       query.status = command.status;
@@ -916,6 +1242,7 @@ export function executeStreamServerCommand(
       title?: string;
       description?: string;
       repositoryId?: string | null;
+      projectId?: string | null;
       linear?: {
         issueId?: string | null;
         identifier?: string | null;
@@ -940,6 +1267,9 @@ export function executeStreamServerCommand(
     }
     if (command.repositoryId !== undefined) {
       update.repositoryId = command.repositoryId;
+    }
+    if (command.projectId !== undefined) {
+      update.projectId = command.projectId;
     }
     if (command.linear !== undefined) {
       update.linear = command.linear;
@@ -1027,6 +1357,269 @@ export function executeStreamServerCommand(
     );
     return {
       task: ctx.taskRecord(task),
+    };
+  }
+
+  if (command.type === 'project.status') {
+    const directory = ctx.stateStore.getDirectory(command.directoryId);
+    if (directory === null || directory.archivedAt !== null) {
+      throw new Error(`directory not found: ${command.directoryId}`);
+    }
+    const availability = evaluateProjectAvailability({
+      directory,
+      requiredRepositoryId: null,
+    });
+    const gitStatus = ctx.gitStatusByDirectoryId.get(directory.directoryId);
+    return {
+      project: ctx.directoryRecord(directory),
+      repositoryId: availability.repositoryId,
+      git:
+        gitStatus === undefined
+          ? null
+          : {
+              branch: gitStatus.summary.branch,
+              changedFiles: gitStatus.summary.changedFiles,
+              additions: gitStatus.summary.additions,
+              deletions: gitStatus.summary.deletions,
+            },
+      settings: availability.settings,
+      automation: {
+        enabled: availability.automationEnabled,
+        frozen: availability.frozen,
+        source: availability.automationSource,
+      },
+      liveThreadCount: availability.liveThreadCount,
+      availability: availability.availability,
+      reason: availability.reason,
+    };
+  }
+
+  if (command.type === 'task.pull') {
+    const tenantId = command.tenantId ?? DEFAULT_TENANT_ID;
+    const userId = command.userId ?? DEFAULT_USER_ID;
+    const workspaceId = command.workspaceId ?? DEFAULT_WORKSPACE_ID;
+    const controllerId = command.controllerId;
+
+    const tryClaimTask = (
+      task: ControlPlaneTaskRecord,
+      directoryId: string,
+      settings: ControlPlaneProjectSettingsRecord,
+    ): ControlPlaneTaskRecord | null => {
+      try {
+        return ctx.stateStore.claimTask({
+          taskId: task.taskId,
+          controllerId,
+          directoryId,
+          ...(command.branchName !== undefined
+            ? { branchName: command.branchName }
+            : settings.pinnedBranch === null
+              ? {}
+              : { branchName: settings.pinnedBranch }),
+          ...(command.baseBranch !== undefined
+            ? { baseBranch: command.baseBranch }
+            : settings.pinnedBranch === null
+              ? {}
+              : { baseBranch: settings.pinnedBranch }),
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.startsWith('task already claimed:')) {
+          return null;
+        }
+        throw error;
+      }
+    };
+
+    const pullForDirectory = (
+      directory: ControlPlaneDirectoryRecord,
+      requiredRepositoryId: string | null,
+    ):
+      | {
+          task: ControlPlaneTaskRecord;
+          availability: ReturnType<typeof evaluateProjectAvailability>;
+        }
+      | {
+          task: null;
+          availability: ReturnType<typeof evaluateProjectAvailability>;
+        } => {
+      const availability = evaluateProjectAvailability({
+        directory,
+        requiredRepositoryId,
+      });
+      if (availability.availability !== 'ready') {
+        return {
+          task: null,
+          availability,
+        };
+      }
+      const readyProjectTasks = ctx.stateStore.listTasks({
+        tenantId,
+        userId,
+        workspaceId,
+        scopeKind: 'project',
+        projectId: directory.directoryId,
+        status: 'ready',
+        limit: 10000,
+      });
+      for (const task of readyProjectTasks) {
+        const claimed = tryClaimTask(task, directory.directoryId, availability.settings);
+        if (claimed !== null) {
+          return {
+            task: claimed,
+            availability,
+          };
+        }
+      }
+
+      if (availability.settings.taskFocusMode !== 'own-only') {
+        const repositoryId = requiredRepositoryId ?? availability.repositoryId;
+        if (repositoryId !== null) {
+          const readyRepositoryTasks = ctx.stateStore.listTasks({
+            tenantId,
+            userId,
+            workspaceId,
+            scopeKind: 'repository',
+            repositoryId,
+            status: 'ready',
+            limit: 10000,
+          });
+          for (const task of readyRepositoryTasks) {
+            const claimed = tryClaimTask(task, directory.directoryId, availability.settings);
+            if (claimed !== null) {
+              return {
+                task: claimed,
+                availability,
+              };
+            }
+          }
+        }
+
+        const readyGlobalTasks = ctx.stateStore.listTasks({
+          tenantId,
+          userId,
+          workspaceId,
+          scopeKind: 'global',
+          status: 'ready',
+          limit: 10000,
+        });
+        for (const task of readyGlobalTasks) {
+          const claimed = tryClaimTask(task, directory.directoryId, availability.settings);
+          if (claimed !== null) {
+            return {
+              task: claimed,
+              availability,
+            };
+          }
+        }
+      }
+
+      return {
+        task: null,
+        availability,
+      };
+    };
+
+    const publishPulledTask = (task: ControlPlaneTaskRecord): void => {
+      ctx.publishObservedEvent(
+        {
+          tenantId: task.tenantId,
+          userId: task.userId,
+          workspaceId: task.workspaceId,
+          directoryId: null,
+          conversationId: null,
+        },
+        {
+          type: 'task-updated',
+          task: ctx.taskRecord(task),
+        },
+      );
+    };
+
+    if (command.directoryId !== undefined) {
+      const directory = ctx.stateStore.getDirectory(command.directoryId);
+      if (directory === null || directory.archivedAt !== null) {
+        throw new Error(`directory not found: ${command.directoryId}`);
+      }
+      if (
+        directory.tenantId !== tenantId ||
+        directory.userId !== userId ||
+        directory.workspaceId !== workspaceId
+      ) {
+        throw new Error('task pull scope mismatch');
+      }
+      const result = pullForDirectory(directory, command.repositoryId ?? null);
+      if (result.task !== null) {
+        publishPulledTask(result.task);
+      }
+      return {
+        task: result.task === null ? null : ctx.taskRecord(result.task),
+        directoryId: directory.directoryId,
+        availability: result.availability.availability,
+        reason:
+          result.task === null
+            ? (result.availability.reason ?? 'no ready task available')
+            : null,
+        settings: result.availability.settings,
+        repositoryId: result.availability.repositoryId,
+      };
+    }
+
+    if (command.repositoryId === undefined) {
+      throw new Error('task pull requires directoryId or repositoryId');
+    }
+
+    const repositoryId = command.repositoryId;
+    const directories = ctx.stateStore
+      .listDirectories({
+        tenantId,
+        userId,
+        workspaceId,
+        includeArchived: false,
+        limit: 10000,
+      })
+      .sort(
+        (left, right) =>
+          Date.parse(left.createdAt) - Date.parse(right.createdAt) ||
+          left.directoryId.localeCompare(right.directoryId),
+      );
+
+    let bestBlocked: {
+      directoryId: string;
+      availability: string;
+      reason: string | null;
+      settings: ControlPlaneProjectSettingsRecord;
+      repositoryId: string | null;
+    } | null = null;
+    for (const directory of directories) {
+      const pulled = pullForDirectory(directory, repositoryId);
+      if (pulled.task !== null) {
+        publishPulledTask(pulled.task);
+        return {
+          task: ctx.taskRecord(pulled.task),
+          directoryId: directory.directoryId,
+          availability: pulled.availability.availability,
+          reason: null,
+          settings: pulled.availability.settings,
+          repositoryId: pulled.availability.repositoryId,
+        };
+      }
+      if (bestBlocked === null) {
+        bestBlocked = {
+          directoryId: directory.directoryId,
+          availability: pulled.availability.availability,
+          reason: pulled.availability.reason,
+          settings: pulled.availability.settings,
+          repositoryId: pulled.availability.repositoryId,
+        };
+      }
+    }
+    return {
+      task: null,
+      directoryId: bestBlocked?.directoryId ?? null,
+      availability: bestBlocked?.availability ?? 'blocked-untracked',
+      reason: bestBlocked?.reason ?? 'no eligible project available',
+      settings: bestBlocked?.settings ?? null,
+      repositoryId: bestBlocked?.repositoryId ?? null,
     };
   }
 

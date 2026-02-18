@@ -54,7 +54,11 @@ export interface ControlPlaneTelemetrySummary {
 }
 
 export type ControlPlaneTaskStatus = 'draft' | 'ready' | 'in-progress' | 'completed';
+export type ControlPlaneTaskScopeKind = 'global' | 'repository' | 'project';
 export type ControlPlaneTaskLinearPriority = 0 | 1 | 2 | 3 | 4;
+export type ControlPlaneProjectTaskFocusMode = 'balanced' | 'own-only';
+export type ControlPlaneProjectThreadSpawnMode = 'new-thread' | 'reuse-thread';
+export type ControlPlaneAutomationPolicyScope = 'global' | 'repository' | 'project';
 
 export interface ControlPlaneTaskLinearRecord {
   readonly issueId: string | null;
@@ -107,6 +111,8 @@ export interface ControlPlaneTaskRecord {
   readonly userId: string;
   readonly workspaceId: string;
   readonly repositoryId: string | null;
+  readonly scopeKind: ControlPlaneTaskScopeKind;
+  readonly projectId: string | null;
   readonly title: string;
   readonly description: string;
   readonly status: ControlPlaneTaskStatus;
@@ -118,6 +124,31 @@ export interface ControlPlaneTaskRecord {
   readonly claimedAt: string | null;
   readonly completedAt: string | null;
   readonly linear: ControlPlaneTaskLinearRecord;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface ControlPlaneProjectSettingsRecord {
+  readonly directoryId: string;
+  readonly tenantId: string;
+  readonly userId: string;
+  readonly workspaceId: string;
+  readonly pinnedBranch: string | null;
+  readonly taskFocusMode: ControlPlaneProjectTaskFocusMode;
+  readonly threadSpawnMode: ControlPlaneProjectThreadSpawnMode;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface ControlPlaneAutomationPolicyRecord {
+  readonly policyId: string;
+  readonly tenantId: string;
+  readonly userId: string;
+  readonly workspaceId: string;
+  readonly scope: ControlPlaneAutomationPolicyScope;
+  readonly scopeId: string | null;
+  readonly automationEnabled: boolean;
+  readonly frozen: boolean;
   readonly createdAt: string;
   readonly updatedAt: string;
 }

@@ -325,6 +325,97 @@ void test('parseTaskRecord validates optional fields and required scalar types',
   assert.equal(parsed?.taskId, 'task-1');
   assert.equal(parsed?.repositoryId, null);
   assert.equal(parsed?.claimedByDirectoryId, null);
+  assert.equal(parsed?.scopeKind, 'global');
+
+  const explicitProjectScope = parseTaskRecord({
+    taskId: 'task-project-explicit',
+    tenantId: 't1',
+    userId: 'u1',
+    workspaceId: 'w1',
+    repositoryId: null,
+    projectId: 'directory-1',
+    scopeKind: 'project',
+    title: 'Fix thing',
+    description: 'Details',
+    status: 'ready',
+    orderIndex: 3,
+    claimedByControllerId: null,
+    claimedByDirectoryId: null,
+    branchName: null,
+    baseBranch: null,
+    claimedAt: null,
+    completedAt: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-02T00:00:00.000Z',
+  });
+  assert.equal(explicitProjectScope?.scopeKind, 'project');
+
+  const inferredProjectScope = parseTaskRecord({
+    taskId: 'task-project-inferred',
+    tenantId: 't1',
+    userId: 'u1',
+    workspaceId: 'w1',
+    repositoryId: null,
+    projectId: 'directory-1',
+    title: 'Fix thing',
+    description: 'Details',
+    status: 'ready',
+    orderIndex: 3,
+    claimedByControllerId: null,
+    claimedByDirectoryId: null,
+    branchName: null,
+    baseBranch: null,
+    claimedAt: null,
+    completedAt: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-02T00:00:00.000Z',
+  });
+  assert.equal(inferredProjectScope?.scopeKind, 'project');
+
+  const inferredRepositoryScope = parseTaskRecord({
+    taskId: 'task-repository-inferred',
+    tenantId: 't1',
+    userId: 'u1',
+    workspaceId: 'w1',
+    repositoryId: 'repo-1',
+    projectId: null,
+    title: 'Fix thing',
+    description: 'Details',
+    status: 'ready',
+    orderIndex: 3,
+    claimedByControllerId: null,
+    claimedByDirectoryId: null,
+    branchName: null,
+    baseBranch: null,
+    claimedAt: null,
+    completedAt: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-02T00:00:00.000Z',
+  });
+  assert.equal(inferredRepositoryScope?.scopeKind, 'repository');
+
+  const explicitNullScopeFallsBackGlobal = parseTaskRecord({
+    taskId: 'task-global-inferred',
+    tenantId: 't1',
+    userId: 'u1',
+    workspaceId: 'w1',
+    repositoryId: null,
+    projectId: null,
+    scopeKind: null,
+    title: 'Fix thing',
+    description: 'Details',
+    status: 'ready',
+    orderIndex: 3,
+    claimedByControllerId: null,
+    claimedByDirectoryId: null,
+    branchName: null,
+    baseBranch: null,
+    claimedAt: null,
+    completedAt: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-02T00:00:00.000Z',
+  });
+  assert.equal(explicitNullScopeFallsBackGlobal?.scopeKind, 'global');
 
   assert.equal(
     parseTaskRecord({
