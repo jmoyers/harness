@@ -21,6 +21,12 @@ interface CapturedRepositoryFoldOptions {
 
 interface CapturedGlobalShortcutOptions {
   cycleLeftNavSelection(direction: 'next' | 'previous'): void;
+  openOrCreateCritiqueConversationInDirectory(directoryId: string): Promise<void>;
+  toggleGatewayProfile(): Promise<void>;
+  archiveConversation(sessionId: string): Promise<void>;
+  interruptConversation(sessionId: string): Promise<void>;
+  takeoverConversation(sessionId: string): Promise<void>;
+  closeDirectory(directoryId: string): Promise<void>;
 }
 
 function createWorkspace(): WorkspaceModel {
@@ -234,4 +240,103 @@ void test('runtime navigation input default dependency path is usable', () => {
   assert.equal(typeof cycleResult, 'boolean');
   assert.equal(typeof foldResult, 'boolean');
   assert.equal(shortcutResult, false);
+});
+
+void test('runtime navigation input preserves workspace action method context', async () => {
+  const calls: string[] = [];
+  const workspace = createWorkspace();
+
+  class MethodContextWorkspaceActions {
+    constructor(private readonly sink: string[]) {}
+
+    async activateConversation(sessionId: string): Promise<void> {
+      this.sink.push(`activateConversation:${sessionId}`);
+    }
+
+    async openOrCreateCritiqueConversationInDirectory(directoryId: string): Promise<void> {
+      this.sink.push(`openOrCreateCritiqueConversationInDirectory:${directoryId}`);
+    }
+
+    async toggleGatewayProfiler(): Promise<void> {
+      this.sink.push('toggleGatewayProfiler');
+    }
+
+    async archiveConversation(sessionId: string): Promise<void> {
+      this.sink.push(`archiveConversation:${sessionId}`);
+    }
+
+    async interruptConversation(sessionId: string): Promise<void> {
+      this.sink.push(`interruptConversation:${sessionId}`);
+    }
+
+    async takeoverConversation(sessionId: string): Promise<void> {
+      this.sink.push(`takeoverConversation:${sessionId}`);
+    }
+
+    async closeDirectory(directoryId: string): Promise<void> {
+      this.sink.push(`closeDirectory:${directoryId}`);
+    }
+  }
+
+  const workspaceActions = new MethodContextWorkspaceActions(calls);
+  let capturedLeftNavOptions: CapturedLeftNavOptions | null = null;
+  let capturedGlobalShortcutOptions: CapturedGlobalShortcutOptions | null = null;
+
+  const runtimeNavigationInput = new RuntimeNavigationInput(
+    {
+      ...createNavigationOptions(workspace, []),
+      workspaceActions: workspaceActions as ConstructorParameters<
+        typeof RuntimeNavigationInput
+      >[0]['workspaceActions'],
+    },
+    {
+      createLeftNavInput: (leftNavOptions) => {
+        capturedLeftNavOptions = leftNavOptions as unknown as CapturedLeftNavOptions;
+        return {
+          cycleSelection: () => false,
+        };
+      },
+      createRepositoryFoldInput: () => {
+        return {
+          handleRepositoryFoldChords: () => false,
+          handleRepositoryTreeArrow: () => false,
+        };
+      },
+      createGlobalShortcutInput: (globalShortcutOptions) => {
+        capturedGlobalShortcutOptions = globalShortcutOptions as unknown as CapturedGlobalShortcutOptions;
+        return {
+          handleInput: () => false,
+        };
+      },
+    },
+  );
+
+  void runtimeNavigationInput;
+
+  const leftNavOptions = expectCaptured(
+    capturedLeftNavOptions as CapturedLeftNavOptions | null,
+    'captured left-nav options should be populated',
+  );
+  const globalShortcutOptions = expectCaptured(
+    capturedGlobalShortcutOptions as CapturedGlobalShortcutOptions | null,
+    'captured global-shortcut options should be populated',
+  );
+
+  await leftNavOptions.activateConversation('session-ctx');
+  await globalShortcutOptions.openOrCreateCritiqueConversationInDirectory('dir-ctx');
+  await globalShortcutOptions.toggleGatewayProfile();
+  await globalShortcutOptions.archiveConversation('session-ctx');
+  await globalShortcutOptions.interruptConversation('session-ctx');
+  await globalShortcutOptions.takeoverConversation('session-ctx');
+  await globalShortcutOptions.closeDirectory('dir-ctx');
+
+  assert.deepEqual(calls, [
+    'activateConversation:session-ctx',
+    'openOrCreateCritiqueConversationInDirectory:dir-ctx',
+    'toggleGatewayProfiler',
+    'archiveConversation:session-ctx',
+    'interruptConversation:session-ctx',
+    'takeoverConversation:session-ctx',
+    'closeDirectory:dir-ctx',
+  ]);
 });

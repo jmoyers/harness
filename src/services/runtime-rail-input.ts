@@ -118,14 +118,29 @@ export class RuntimeRailInput {
       getActiveConversationId: options.getActiveConversationId,
       getActiveDirectoryId: options.getActiveDirectoryId,
       workspaceActions: {
-        activateConversation: options.runtimeWorkspaceActions.activateConversation,
-        openOrCreateCritiqueConversationInDirectory:
-          options.runtimeWorkspaceActions.openOrCreateCritiqueConversationInDirectory,
-        toggleGatewayProfiler: options.runtimeWorkspaceActions.toggleGatewayProfiler,
-        archiveConversation: options.runtimeWorkspaceActions.archiveConversation,
-        interruptConversation: options.runtimeWorkspaceActions.interruptConversation,
-        takeoverConversation: options.runtimeWorkspaceActions.takeoverConversation,
-        closeDirectory: options.runtimeWorkspaceActions.closeDirectory,
+        activateConversation: async (sessionId) => {
+          await options.runtimeWorkspaceActions.activateConversation(sessionId);
+        },
+        openOrCreateCritiqueConversationInDirectory: async (directoryId) => {
+          await options.runtimeWorkspaceActions.openOrCreateCritiqueConversationInDirectory(
+            directoryId,
+          );
+        },
+        toggleGatewayProfiler: async () => {
+          await options.runtimeWorkspaceActions.toggleGatewayProfiler();
+        },
+        archiveConversation: async (sessionId) => {
+          await options.runtimeWorkspaceActions.archiveConversation(sessionId);
+        },
+        interruptConversation: async (sessionId) => {
+          await options.runtimeWorkspaceActions.interruptConversation(sessionId);
+        },
+        takeoverConversation: async (sessionId) => {
+          await options.runtimeWorkspaceActions.takeoverConversation(sessionId);
+        },
+        closeDirectory: async (directoryId) => {
+          await options.runtimeWorkspaceActions.closeDirectory(directoryId);
+        },
       },
       chordTimeoutMs: options.chordTimeoutMs,
       collapseAllChordPrefix: options.collapseAllChordPrefix,

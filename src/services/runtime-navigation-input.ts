@@ -102,7 +102,9 @@ export class RuntimeNavigationInput {
       directoriesHas: options.directoriesHas,
       conversationDirectoryId: options.conversationDirectoryId,
       queueControlPlaneOp: options.queueControlPlaneOp,
-      activateConversation: options.workspaceActions.activateConversation,
+      activateConversation: async (sessionId) => {
+        await options.workspaceActions.activateConversation(sessionId);
+      },
       conversationsHas: options.conversationsHas,
     });
 
@@ -130,20 +132,31 @@ export class RuntimeNavigationInput {
       requestStop: options.requestStop,
       resolveDirectoryForAction: options.resolveDirectoryForAction,
       openNewThreadPrompt: options.openNewThreadPrompt,
-      openOrCreateCritiqueConversationInDirectory:
-        options.workspaceActions.openOrCreateCritiqueConversationInDirectory,
-      toggleGatewayProfile: options.workspaceActions.toggleGatewayProfiler,
+      openOrCreateCritiqueConversationInDirectory: async (directoryId) => {
+        await options.workspaceActions.openOrCreateCritiqueConversationInDirectory(directoryId);
+      },
+      toggleGatewayProfile: async () => {
+        await options.workspaceActions.toggleGatewayProfiler();
+      },
       getMainPaneMode: options.getMainPaneMode,
       getActiveConversationId: options.getActiveConversationId,
       conversationsHas: options.conversationsHas,
       queueControlPlaneOp: options.queueControlPlaneOp,
-      archiveConversation: options.workspaceActions.archiveConversation,
-      interruptConversation: options.workspaceActions.interruptConversation,
-      takeoverConversation: options.workspaceActions.takeoverConversation,
+      archiveConversation: async (sessionId) => {
+        await options.workspaceActions.archiveConversation(sessionId);
+      },
+      interruptConversation: async (sessionId) => {
+        await options.workspaceActions.interruptConversation(sessionId);
+      },
+      takeoverConversation: async (sessionId) => {
+        await options.workspaceActions.takeoverConversation(sessionId);
+      },
       openAddDirectoryPrompt: options.openAddDirectoryPrompt,
       getActiveDirectoryId: options.getActiveDirectoryId,
       directoryExists: options.directoriesHas,
-      closeDirectory: options.workspaceActions.closeDirectory,
+      closeDirectory: async (directoryId) => {
+        await options.workspaceActions.closeDirectory(directoryId);
+      },
       cycleLeftNavSelection: (direction) => {
         this.leftNavInput.cycleSelection(direction);
       },

@@ -6,6 +6,15 @@ import { RuntimeRailInput } from '../src/services/runtime-rail-input.ts';
 
 interface CapturedNavigationOptions {
   openAddDirectoryPrompt(): void;
+  workspaceActions: {
+    activateConversation(sessionId: string): Promise<void>;
+    openOrCreateCritiqueConversationInDirectory(directoryId: string): Promise<void>;
+    toggleGatewayProfiler(): Promise<void>;
+    archiveConversation(sessionId: string): Promise<void>;
+    interruptConversation(sessionId: string): Promise<void>;
+    takeoverConversation(sessionId: string): Promise<void>;
+    closeDirectory(directoryId: string): Promise<void>;
+  };
 }
 
 interface CapturedLeftRailOptions {
@@ -316,4 +325,108 @@ void test('runtime rail input default dependency path is usable', () => {
   assert.equal(typeof foldResult, 'boolean');
   assert.equal(shortcutResult, false);
   assert.equal(pointerResult, false);
+});
+
+void test('runtime rail input preserves runtime workspace action method context', async () => {
+  const calls: string[] = [];
+  const workspace = createWorkspace();
+
+  class MethodContextRuntimeWorkspaceActions {
+    constructor(private readonly sink: string[]) {}
+
+    async activateConversation(sessionId: string): Promise<void> {
+      this.sink.push(`activateConversation:${sessionId}`);
+    }
+
+    async openOrCreateCritiqueConversationInDirectory(directoryId: string): Promise<void> {
+      this.sink.push(`openOrCreateCritiqueConversationInDirectory:${directoryId}`);
+    }
+
+    async toggleGatewayProfiler(): Promise<void> {
+      this.sink.push('toggleGatewayProfiler');
+    }
+
+    async archiveConversation(sessionId: string): Promise<void> {
+      this.sink.push(`archiveConversation:${sessionId}`);
+    }
+
+    async interruptConversation(sessionId: string): Promise<void> {
+      this.sink.push(`interruptConversation:${sessionId}`);
+    }
+
+    async takeoverConversation(sessionId: string): Promise<void> {
+      this.sink.push(`takeoverConversation:${sessionId}`);
+    }
+
+    async closeDirectory(directoryId: string): Promise<void> {
+      this.sink.push(`closeDirectory:${directoryId}`);
+    }
+
+    openRepositoryPromptForCreate(): void {
+      this.sink.push('openRepositoryPromptForCreate');
+    }
+
+    openRepositoryPromptForEdit(repositoryId: string): void {
+      this.sink.push(`openRepositoryPromptForEdit:${repositoryId}`);
+    }
+
+    async archiveRepositoryById(repositoryId: string): Promise<void> {
+      this.sink.push(`archiveRepositoryById:${repositoryId}`);
+    }
+  }
+
+  const workspaceActions = new MethodContextRuntimeWorkspaceActions(calls);
+  let capturedNavigationOptions: CapturedNavigationOptions | null = null;
+
+  const runtimeRailInput = new RuntimeRailInput(
+    {
+      ...createOptions(workspace, []),
+      runtimeWorkspaceActions: workspaceActions as ConstructorParameters<
+        typeof RuntimeRailInput
+      >[0]['runtimeWorkspaceActions'],
+    },
+    {
+      createRuntimeNavigationInput: (navigationOptions: unknown) => {
+        capturedNavigationOptions = navigationOptions as CapturedNavigationOptions;
+        return {
+          cycleLeftNavSelection: () => false,
+          handleRepositoryFoldInput: () => false,
+          handleGlobalShortcutInput: () => false,
+        };
+      },
+      createLeftRailPointerInput: () => {
+        return {
+          handlePointerClick: () => false,
+        };
+      },
+    },
+  );
+
+  void runtimeRailInput;
+
+  const navigationOptions = capturedNavigationOptions as CapturedNavigationOptions | null;
+  assert.notEqual(navigationOptions, null);
+  if (navigationOptions === null) {
+    throw new Error('captured navigation options should be populated');
+  }
+
+  await navigationOptions.workspaceActions.activateConversation('session-ctx');
+  await navigationOptions.workspaceActions.openOrCreateCritiqueConversationInDirectory(
+    'dir-ctx',
+  );
+  await navigationOptions.workspaceActions.toggleGatewayProfiler();
+  await navigationOptions.workspaceActions.archiveConversation('session-ctx');
+  await navigationOptions.workspaceActions.interruptConversation('session-ctx');
+  await navigationOptions.workspaceActions.takeoverConversation('session-ctx');
+  await navigationOptions.workspaceActions.closeDirectory('dir-ctx');
+
+  assert.deepEqual(calls, [
+    'activateConversation:session-ctx',
+    'openOrCreateCritiqueConversationInDirectory:dir-ctx',
+    'toggleGatewayProfiler',
+    'archiveConversation:session-ctx',
+    'interruptConversation:session-ctx',
+    'takeoverConversation:session-ctx',
+    'closeDirectory:dir-ctx',
+  ]);
 });
