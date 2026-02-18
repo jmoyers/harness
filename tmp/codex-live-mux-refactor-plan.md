@@ -501,3 +501,25 @@ bun run loc:verify:enforce
     - `global lines=100.00 functions=100.00 branches=100.00`
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4582 non-empty LOC
+
+### Checkpoint U (2026-02-18): Repository fold ownership moved into RepositoryManager
+
+- Continued Phase 3 ownership work by moving repository fold state out of runtime locals and into `RepositoryManager`.
+- Extended `src/domain/repositories.ts` with class-owned fold state + methods:
+  - `readonlyCollapsedRepositoryGroupIds()`
+  - `collapseRepositoryGroup(...)`
+  - `expandRepositoryGroup(...)`
+  - `toggleRepositoryGroup(...)`
+  - `collapseAllRepositoryGroups()`
+  - `expandAllRepositoryGroups()`
+- Updated `scripts/codex-live-mux-runtime.ts`:
+  - removed local `collapsedRepositoryGroupIds` / `expandedRepositoryGroupIds` state
+  - delegated fold mutations and collapse/expand-all actions to manager APIs
+  - rail rendering now consumes `repositoryManager.readonlyCollapsedRepositoryGroupIds()`
+- Expanded `test/domain-repositories.test.ts` to cover manager-owned fold transitions.
+- Validation at checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun run verify`: pass
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4598 non-empty LOC

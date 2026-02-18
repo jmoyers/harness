@@ -121,15 +121,10 @@ import {
   cycleLeftNavSelection as cycleLeftNavSelectionFn,
 } from '../src/mux/live-mux/left-nav-activation.ts';
 import {
-  collapseAllRepositoryGroups as collapseAllRepositoryGroupsFn,
-  collapseRepositoryGroup as collapseRepositoryGroupFn,
-  expandAllRepositoryGroups as expandAllRepositoryGroupsFn,
-  expandRepositoryGroup as expandRepositoryGroupFn,
   firstDirectoryForRepositoryGroup as firstDirectoryForRepositoryGroupFn,
   reduceRepositoryFoldChordInput,
   repositoryTreeArrowAction,
   selectedRepositoryGroupIdForLeftNav,
-  toggleRepositoryGroup as toggleRepositoryGroupFn,
 } from '../src/mux/live-mux/repository-folding.ts';
 import {
   readObservedStreamCursorBaseline,
@@ -610,8 +605,6 @@ async function main(): Promise<number> {
     repositoriesCollapsed: configuredMuxUi.repositoriesCollapsed,
     shortcutsCollapsed: configuredMuxUi.shortcutsCollapsed,
   });
-  const collapsedRepositoryGroupIds = new Set<string>();
-  const expandedRepositoryGroupIds = new Set<string>();
   workspace.repositoryToggleChordPrefixAtMs = null;
   workspace.projectPaneSnapshot = null;
   workspace.projectPaneScrollTop = 0;
@@ -788,45 +781,24 @@ async function main(): Promise<number> {
     repositoryManager.repositoryGroupIdForDirectory(directoryId, UNTRACKED_REPOSITORY_GROUP_ID);
 
   const collapseRepositoryGroup = (repositoryGroupId: string): void => {
-    collapseRepositoryGroupFn(
-      repositoryGroupId,
-      workspace.repositoriesCollapsed,
-      expandedRepositoryGroupIds,
-      collapsedRepositoryGroupIds,
-    );
+    repositoryManager.collapseRepositoryGroup(repositoryGroupId, workspace.repositoriesCollapsed);
   };
 
   const expandRepositoryGroup = (repositoryGroupId: string): void => {
-    expandRepositoryGroupFn(
-      repositoryGroupId,
-      workspace.repositoriesCollapsed,
-      expandedRepositoryGroupIds,
-      collapsedRepositoryGroupIds,
-    );
+    repositoryManager.expandRepositoryGroup(repositoryGroupId, workspace.repositoriesCollapsed);
   };
 
   const toggleRepositoryGroup = (repositoryGroupId: string): void => {
-    toggleRepositoryGroupFn(
-      repositoryGroupId,
-      workspace.repositoriesCollapsed,
-      expandedRepositoryGroupIds,
-      collapsedRepositoryGroupIds,
-    );
+    repositoryManager.toggleRepositoryGroup(repositoryGroupId, workspace.repositoriesCollapsed);
   };
 
   const collapseAllRepositoryGroups = (): void => {
-    workspace.repositoriesCollapsed = collapseAllRepositoryGroupsFn(
-      collapsedRepositoryGroupIds,
-      expandedRepositoryGroupIds,
-    );
+    workspace.repositoriesCollapsed = repositoryManager.collapseAllRepositoryGroups();
     queuePersistMuxUiState();
   };
 
   const expandAllRepositoryGroups = (): void => {
-    workspace.repositoriesCollapsed = expandAllRepositoryGroupsFn(
-      collapsedRepositoryGroupIds,
-      expandedRepositoryGroupIds,
-    );
+    workspace.repositoriesCollapsed = repositoryManager.expandAllRepositoryGroups();
     queuePersistMuxUiState();
   };
 
@@ -3421,7 +3393,7 @@ async function main(): Promise<number> {
       repositorySelectionEnabled: workspace.leftNavSelection.kind === 'repository',
       homeSelectionEnabled: workspace.leftNavSelection.kind === 'home',
       repositoriesCollapsed: workspace.repositoriesCollapsed,
-      collapsedRepositoryGroupIds,
+      collapsedRepositoryGroupIds: repositoryManager.readonlyCollapsedRepositoryGroupIds(),
       shortcutsCollapsed: workspace.shortcutsCollapsed,
       gitSummaryByDirectoryId: _unsafeDirectoryGitSummaryMap,
       processUsageBySessionId,

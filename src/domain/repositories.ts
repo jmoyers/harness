@@ -2,6 +2,8 @@ export class RepositoryManager<TRepositoryRecord, TRepositorySnapshot> {
   private readonly repositories = new Map<string, TRepositoryRecord>();
   private readonly repositoryAssociationByDirectoryId = new Map<string, string>();
   private readonly directoryRepositorySnapshotByDirectoryId = new Map<string, TRepositorySnapshot>();
+  private readonly collapsedRepositoryGroupIds = new Set<string>();
+  private readonly expandedRepositoryGroupIds = new Set<string>();
 
   constructor() {}
 
@@ -17,8 +19,58 @@ export class RepositoryManager<TRepositoryRecord, TRepositorySnapshot> {
     return this.directoryRepositorySnapshotByDirectoryId;
   }
 
+  readonlyCollapsedRepositoryGroupIds(): ReadonlySet<string> {
+    return this.collapsedRepositoryGroupIds;
+  }
+
   clearRepositories(): void {
     this.repositories.clear();
+  }
+
+  private isRepositoryGroupCollapsed(
+    repositoryGroupId: string,
+    repositoriesCollapsed: boolean,
+  ): boolean {
+    if (repositoriesCollapsed) {
+      return !this.expandedRepositoryGroupIds.has(repositoryGroupId);
+    }
+    return this.collapsedRepositoryGroupIds.has(repositoryGroupId);
+  }
+
+  collapseRepositoryGroup(repositoryGroupId: string, repositoriesCollapsed: boolean): void {
+    if (repositoriesCollapsed) {
+      this.expandedRepositoryGroupIds.delete(repositoryGroupId);
+      return;
+    }
+    this.collapsedRepositoryGroupIds.add(repositoryGroupId);
+  }
+
+  expandRepositoryGroup(repositoryGroupId: string, repositoriesCollapsed: boolean): void {
+    if (repositoriesCollapsed) {
+      this.expandedRepositoryGroupIds.add(repositoryGroupId);
+      return;
+    }
+    this.collapsedRepositoryGroupIds.delete(repositoryGroupId);
+  }
+
+  toggleRepositoryGroup(repositoryGroupId: string, repositoriesCollapsed: boolean): void {
+    if (this.isRepositoryGroupCollapsed(repositoryGroupId, repositoriesCollapsed)) {
+      this.expandRepositoryGroup(repositoryGroupId, repositoriesCollapsed);
+      return;
+    }
+    this.collapseRepositoryGroup(repositoryGroupId, repositoriesCollapsed);
+  }
+
+  collapseAllRepositoryGroups(): true {
+    this.collapsedRepositoryGroupIds.clear();
+    this.expandedRepositoryGroupIds.clear();
+    return true;
+  }
+
+  expandAllRepositoryGroups(): false {
+    this.collapsedRepositoryGroupIds.clear();
+    this.expandedRepositoryGroupIds.clear();
+    return false;
   }
 
   repositoryGroupIdForDirectory(directoryId: string, fallbackGroupId: string): string {

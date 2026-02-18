@@ -51,3 +51,31 @@ void test('repository manager repository-map lifecycle helpers remain determinis
   manager.clearRepositories();
   assert.equal(repositories.size, 0);
 });
+
+void test('repository manager owns repository-group fold state transitions', () => {
+  const manager = new RepositoryManager<TestRepository, TestSnapshot>();
+  assert.equal(manager.readonlyCollapsedRepositoryGroupIds().size, 0);
+
+  manager.collapseRepositoryGroup('repo-a', false);
+  assert.equal(manager.readonlyCollapsedRepositoryGroupIds().has('repo-a'), true);
+  manager.expandRepositoryGroup('repo-a', false);
+  assert.equal(manager.readonlyCollapsedRepositoryGroupIds().has('repo-a'), false);
+
+  manager.collapseRepositoryGroup('repo-a', true);
+  assert.equal(manager.readonlyCollapsedRepositoryGroupIds().has('repo-a'), false);
+  manager.expandRepositoryGroup('repo-a', true);
+  assert.equal(manager.readonlyCollapsedRepositoryGroupIds().has('repo-a'), false);
+
+  manager.toggleRepositoryGroup('repo-a', false);
+  assert.equal(manager.readonlyCollapsedRepositoryGroupIds().has('repo-a'), true);
+  manager.toggleRepositoryGroup('repo-a', false);
+  assert.equal(manager.readonlyCollapsedRepositoryGroupIds().has('repo-a'), false);
+
+  manager.toggleRepositoryGroup('repo-b', true);
+  manager.collapseRepositoryGroup('repo-c', false);
+  assert.equal(manager.readonlyCollapsedRepositoryGroupIds().has('repo-c'), true);
+  assert.equal(manager.collapseAllRepositoryGroups(), true);
+  assert.equal(manager.readonlyCollapsedRepositoryGroupIds().size, 0);
+  assert.equal(manager.expandAllRepositoryGroups(), false);
+  assert.equal(manager.readonlyCollapsedRepositoryGroupIds().size, 0);
+});
