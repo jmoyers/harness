@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~2838 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~2737 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2172 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -1680,6 +1680,25 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2838 non-empty LOC
+
+### Checkpoint CM (2026-02-18): Runtime layout/resize orchestration extracted into class service
+
+- Added `src/services/runtime-layout-resize.ts` with class-based `RuntimeLayoutResize` to own:
+  - PTY resize settle queue + dedupe behavior
+  - terminal resize throttle queue and delayed flush sequencing
+  - pane-divider drag layout updates and persisted UI-state trigger
+  - layout recompute/apply flow (including conversation + recording resize side effects)
+- Updated `scripts/codex-live-mux-runtime.ts` to remove inline resize/layout orchestration and delegate via `RuntimeLayoutResize`.
+- Added `test/services-runtime-layout-resize.test.ts` with coverage for:
+  - immediate and delayed PTY resize behavior
+  - layout-change application and conversation resize side effects
+  - throttled resize queue timing
+  - follow-up resize scheduling when pending size appears during apply
+  - pane-divider update and timer-clear paths
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2737 non-empty LOC
 
 ### Next focus (yield-first)
 

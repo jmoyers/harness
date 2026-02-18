@@ -161,6 +161,7 @@ import { RuntimeLeftRailRender } from '../src/services/runtime-left-rail-render.
 import { RuntimeRenderOrchestrator } from '../src/services/runtime-render-orchestrator.ts';
 import { RuntimeRepositoryActions } from '../src/services/runtime-repository-actions.ts';
 import { RuntimeGitState } from '../src/services/runtime-git-state.ts';
+import { RuntimeLayoutResize } from '../src/services/runtime-layout-resize.ts';
 import { RuntimeRightPaneRender } from '../src/services/runtime-right-pane-render.ts';
 import { RuntimeRenderState } from '../src/services/runtime-render-state.ts';
 import { RuntimeRenderLifecycle } from '../src/services/runtime-render-lifecycle.ts';
@@ -995,12 +996,7 @@ async function main(): Promise<number> {
     getRepositoryPrompt: () => workspace.repositoryPrompt,
     getConversationTitleEdit: () => workspace.conversationTitleEdit,
   });
-  let resizeTimer: NodeJS.Timeout | null = null;
-  let pendingSize: { cols: number; rows: number } | null = null;
-  let lastResizeApplyAtMs = 0;
-  let ptyResizeTimer: NodeJS.Timeout | null = null;
   let homePaneBackgroundTimer: ReturnType<typeof setInterval> | null = null;
-  let pendingPtySize: { cols: number; rows: number } | null = null;
   const ptySizeByConversationId = new Map<string, { cols: number; rows: number }>();
 
   const requestStop = (): void => {
@@ -1190,154 +1186,55 @@ async function main(): Promise<number> {
   }, HOME_PANE_BACKGROUND_INTERVAL_MS);
   homePaneBackgroundTimer.unref?.();
 
-  const applyPtyResizeToSession = (
-    sessionId: string,
-    ptySize: { cols: number; rows: number },
-    force = false,
-  ): void => {
-    const conversation = conversationManager.get(sessionId);
-    if (conversation === undefined || !conversationManager.isLive(sessionId)) {
-      return;
-    }
-    const currentPtySize = ptySizeByConversationId.get(sessionId);
-    if (
-      !force &&
-      currentPtySize !== undefined &&
-      currentPtySize.cols === ptySize.cols &&
-      currentPtySize.rows === ptySize.rows
-    ) {
-      return;
-    }
-    ptySizeByConversationId.set(sessionId, {
-      cols: ptySize.cols,
-      rows: ptySize.rows,
-    });
-    conversation.oracle.resize(ptySize.cols, ptySize.rows);
-    streamClient.sendResize(sessionId, ptySize.cols, ptySize.rows);
-    markDirty();
-  };
-
-  const applyPtyResize = (ptySize: { cols: number; rows: number }): void => {
-    const activeConversationId = conversationManager.activeConversationId;
-    if (activeConversationId === null) {
-      return;
-    }
-    applyPtyResizeToSession(activeConversationId, ptySize, false);
-  };
-
-  const flushPendingPtyResize = (): void => {
-    ptyResizeTimer = null;
-    const ptySize = pendingPtySize;
-    if (ptySize === null) {
-      return;
-    }
-    pendingPtySize = null;
-    applyPtyResize(ptySize);
-  };
+  const runtimeLayoutResize = new RuntimeLayoutResize<ConversationState>({
+    getSize: () => size,
+    setSize: (nextSize) => {
+      size = nextSize;
+    },
+    getLayout: () => layout,
+    setLayout: (nextLayout) => {
+      layout = nextLayout;
+    },
+    getLeftPaneColsOverride: () => leftPaneColsOverride,
+    setLeftPaneColsOverride: (nextLeftPaneColsOverride) => {
+      leftPaneColsOverride = nextLeftPaneColsOverride;
+    },
+    conversationManager,
+    ptySizeByConversationId,
+    sendResize: (sessionId, cols, rows) => {
+      streamClient.sendResize(sessionId, cols, rows);
+    },
+    markDirty,
+    resetFrameCache: () => {
+      screen.resetFrameCache();
+    },
+    resizeRecordingOracle: (nextLayout) => {
+      if (muxRecordingOracle !== null) {
+        muxRecordingOracle.resize(nextLayout.cols, nextLayout.rows);
+      }
+    },
+    queuePersistMuxUiState,
+    resizeMinIntervalMs,
+    ptyResizeSettleMs,
+  });
 
   const schedulePtyResize = (ptySize: { cols: number; rows: number }, immediate = false): void => {
-    pendingPtySize = ptySize;
-    if (immediate) {
-      if (ptyResizeTimer !== null) {
-        clearTimeout(ptyResizeTimer);
-        ptyResizeTimer = null;
-      }
-      flushPendingPtyResize();
-      return;
-    }
-
-    if (ptyResizeTimer !== null) {
-      clearTimeout(ptyResizeTimer);
-    }
-    ptyResizeTimer = setTimeout(flushPendingPtyResize, ptyResizeSettleMs);
+    runtimeLayoutResize.schedulePtyResize(ptySize, immediate);
   };
 
   const applyLayout = (
     nextSize: { cols: number; rows: number },
     forceImmediatePtyResize = false,
   ): void => {
-    const nextLayout = computeDualPaneLayout(nextSize.cols, nextSize.rows, {
-      leftCols: leftPaneColsOverride,
-    });
-    schedulePtyResize(
-      {
-        cols: nextLayout.rightCols,
-        rows: nextLayout.paneRows,
-      },
-      forceImmediatePtyResize,
-    );
-    if (
-      nextLayout.cols === layout.cols &&
-      nextLayout.rows === layout.rows &&
-      nextLayout.leftCols === layout.leftCols &&
-      nextLayout.rightCols === layout.rightCols &&
-      nextLayout.paneRows === layout.paneRows
-    ) {
-      return;
-    }
-    size = nextSize;
-    layout = nextLayout;
-    for (const conversation of conversationManager.values()) {
-      conversation.oracle.resize(nextLayout.rightCols, nextLayout.paneRows);
-      if (conversation.live) {
-        applyPtyResizeToSession(
-          conversation.sessionId,
-          {
-            cols: nextLayout.rightCols,
-            rows: nextLayout.paneRows,
-          },
-          true,
-        );
-      }
-    }
-    if (muxRecordingOracle !== null) {
-      muxRecordingOracle.resize(nextLayout.cols, nextLayout.rows);
-    }
-    // Force a full clear on actual layout changes to avoid stale diagonal artifacts during drag.
-    screen.resetFrameCache();
-    markDirty();
-  };
-
-  const flushPendingResize = (): void => {
-    resizeTimer = null;
-    const nextSize = pendingSize;
-    if (nextSize === null) {
-      return;
-    }
-
-    const nowMs = Date.now();
-    const elapsedMs = nowMs - lastResizeApplyAtMs;
-    if (elapsedMs < resizeMinIntervalMs) {
-      resizeTimer = setTimeout(flushPendingResize, resizeMinIntervalMs - elapsedMs);
-      return;
-    }
-
-    pendingSize = null;
-    applyLayout(nextSize);
-    lastResizeApplyAtMs = Date.now();
-
-    if (pendingSize !== null && resizeTimer === null) {
-      resizeTimer = setTimeout(flushPendingResize, resizeMinIntervalMs);
-    }
+    runtimeLayoutResize.applyLayout(nextSize, forceImmediatePtyResize);
   };
 
   const queueResize = (nextSize: { cols: number; rows: number }): void => {
-    pendingSize = nextSize;
-    if (resizeTimer !== null) {
-      return;
-    }
-
-    const nowMs = Date.now();
-    const elapsedMs = nowMs - lastResizeApplyAtMs;
-    const delayMs = elapsedMs >= resizeMinIntervalMs ? 0 : resizeMinIntervalMs - elapsedMs;
-    resizeTimer = setTimeout(flushPendingResize, delayMs);
+    runtimeLayoutResize.queueResize(nextSize);
   };
 
   const applyPaneDividerAtCol = (col: number): void => {
-    const normalizedCol = Math.max(1, Math.min(size.cols, col));
-    leftPaneColsOverride = Math.max(1, normalizedCol - 1);
-    applyLayout(size);
-    queuePersistMuxUiState();
+    runtimeLayoutResize.applyPaneDividerAtCol(col);
   };
 
   const runtimeConversationTitleEdit = new RuntimeConversationTitleEditService<ConversationState>({
@@ -2886,16 +2783,10 @@ async function main(): Promise<number> {
     outputLoadSampler,
     startupBackgroundProbeService: startupOrchestrator,
     clearResizeTimer: () => {
-      if (resizeTimer !== null) {
-        clearTimeout(resizeTimer);
-        resizeTimer = null;
-      }
+      runtimeLayoutResize.clearResizeTimer();
     },
     clearPtyResizeTimer: () => {
-      if (ptyResizeTimer !== null) {
-        clearTimeout(ptyResizeTimer);
-        ptyResizeTimer = null;
-      }
+      runtimeLayoutResize.clearPtyResizeTimer();
     },
     clearHomePaneBackgroundTimer: () => {
       if (homePaneBackgroundTimer !== null) {
