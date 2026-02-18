@@ -135,7 +135,7 @@ bun run loc:verify:enforce
 
 ## Current State Snapshot
 
-- Current primary over-limit file: `scripts/codex-live-mux-runtime.ts` (~4606 LOC).
+- Current primary over-limit file: `scripts/codex-live-mux-runtime.ts` (~4597 LOC).
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
 
@@ -324,3 +324,25 @@ bun run loc:verify:enforce
   - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4606 non-empty LOC
+
+### Checkpoint L (2026-02-18): ConversationManager query API adoption
+
+- Extended `src/domain/conversations.ts` with query/update helpers:
+  - `getActiveConversation()`
+  - `directoryIdOf(...)`
+  - `isLive(...)`
+  - `setController(...)`
+  - `setLastEventAt(...)`
+  - `findConversationIdByDirectory(...)`
+- Updated `scripts/codex-live-mux-runtime.ts` to replace callback/threaded map access with manager API calls across:
+  - archive/takeover wiring
+  - add-directory + close-directory wiring
+  - left-nav activation/global shortcut conversation lookups
+  - active conversation resolution in render/input paths
+- Validation at checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4597 non-empty LOC

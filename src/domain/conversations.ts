@@ -114,6 +114,13 @@ export class ConversationManager {
     this.conversations.set(state.sessionId, state);
   }
 
+  getActiveConversation(): ConversationState | null {
+    if (this.activeConversationId === null) {
+      return null;
+    }
+    return this.conversations.get(this.activeConversationId) ?? null;
+  }
+
   clearRemoved(sessionId: string): void {
     this.removedConversationIds.delete(sessionId);
   }
@@ -145,6 +152,47 @@ export class ConversationManager {
 
   orderedIds(): readonly string[] {
     return [...this.conversations.keys()];
+  }
+
+  directoryIdOf(sessionId: string): string | null {
+    return this.conversations.get(sessionId)?.directoryId ?? null;
+  }
+
+  isLive(sessionId: string): boolean {
+    return this.conversations.get(sessionId)?.live === true;
+  }
+
+  setController(
+    sessionId: string,
+    controller: ConversationState['controller'],
+  ): ConversationState | null {
+    const conversation = this.conversations.get(sessionId);
+    if (conversation === undefined) {
+      return null;
+    }
+    conversation.controller = controller;
+    return conversation;
+  }
+
+  setLastEventAt(sessionId: string, lastEventAt: string): ConversationState | null {
+    const conversation = this.conversations.get(sessionId);
+    if (conversation === undefined) {
+      return null;
+    }
+    conversation.lastEventAt = lastEventAt;
+    return conversation;
+  }
+
+  findConversationIdByDirectory(
+    directoryId: string,
+    orderedIds: readonly string[] = this.orderedIds(),
+  ): string | null {
+    for (const sessionId of orderedIds) {
+      if (this.directoryIdOf(sessionId) === directoryId) {
+        return sessionId;
+      }
+    }
+    return null;
   }
 
   setActiveConversationId(sessionId: string | null): void {

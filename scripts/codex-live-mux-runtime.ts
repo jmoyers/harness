@@ -3185,8 +3185,7 @@ async function main(): Promise<number> {
         conversationManager.setActiveConversationId(next);
       },
       orderedConversationIds: () => conversationManager.orderedIds(),
-      conversationDirectoryId: (targetSessionId) =>
-        conversations.get(targetSessionId)?.directoryId ?? null,
+      conversationDirectoryId: (targetSessionId) => conversationManager.directoryIdOf(targetSessionId),
       resolveActiveDirectoryId,
       enterProjectPane,
       activateConversation,
@@ -3197,7 +3196,7 @@ async function main(): Promise<number> {
   const takeoverConversation = async (sessionId: string): Promise<void> => {
     await takeoverConversationFn({
       sessionId,
-      conversationsHas: (targetSessionId) => conversations.has(targetSessionId),
+      conversationsHas: (targetSessionId) => conversationManager.has(targetSessionId),
       claimSession: async (targetSessionId) => {
         const result = await streamClient.sendCommand({
           type: 'session.claim',
@@ -3211,16 +3210,10 @@ async function main(): Promise<number> {
         return parseSessionControllerRecord(result['controller']);
       },
       applyController: (targetSessionId, controller) => {
-        const target = conversations.get(targetSessionId);
-        if (target !== undefined) {
-          target.controller = controller;
-        }
+        conversationManager.setController(targetSessionId, controller);
       },
       setLastEventNow: (targetSessionId) => {
-        const target = conversations.get(targetSessionId);
-        if (target !== undefined) {
-          target.lastEventAt = new Date().toISOString();
-        }
+        conversationManager.setLastEventAt(targetSessionId, new Date().toISOString());
       },
       markDirty,
     });
@@ -3253,10 +3246,10 @@ async function main(): Promise<number> {
       noteGitActivity,
       hydratePersistedConversationsForDirectory,
       findConversationIdByDirectory: (directoryId) =>
-        conversationManager.orderedIds().find((sessionId) => {
-          const conversation = conversations.get(sessionId);
-          return conversation?.directoryId === directoryId;
-        }) ?? null,
+        conversationManager.findConversationIdByDirectory(
+          directoryId,
+          conversationManager.orderedIds(),
+        ),
       activateConversation,
       enterProjectPane,
       markDirty,
@@ -3268,8 +3261,8 @@ async function main(): Promise<number> {
       directoryId,
       directoriesHas: (targetDirectoryId) => directories.has(targetDirectoryId),
       orderedConversationIds: () => conversationManager.orderedIds(),
-      conversationDirectoryId: (sessionId) => conversations.get(sessionId)?.directoryId ?? null,
-      conversationLive: (sessionId) => conversations.get(sessionId)?.live === true,
+      conversationDirectoryId: (sessionId) => conversationManager.directoryIdOf(sessionId),
+      conversationLive: (sessionId) => conversationManager.isLive(sessionId),
       closePtySession: async (sessionId) => {
         await streamClient.sendCommand({
           type: 'pty.close',
@@ -3362,8 +3355,7 @@ async function main(): Promise<number> {
     }
     const renderStartedAtNs = perfNowNs();
 
-    const active =
-      conversationManager.activeConversationId === null ? null : (conversations.get(conversationManager.activeConversationId) ?? null);
+    const active = conversationManager.getActiveConversation();
     if (!projectPaneActive && !homePaneActive && active === null) {
       dirty = false;
       return;
@@ -4123,10 +4115,10 @@ async function main(): Promise<number> {
       markDirty,
       directoriesHas: (directoryId) => directories.has(directoryId),
       visibleTargetsForState: visibleLeftNavTargetsForState,
-      conversationDirectoryId: (sessionId) => conversations.get(sessionId)?.directoryId ?? null,
+      conversationDirectoryId: (sessionId) => conversationManager.directoryIdOf(sessionId),
       queueControlPlaneOp,
       activateConversation,
-      conversationsHas: (sessionId) => conversations.has(sessionId),
+      conversationsHas: (sessionId) => conversationManager.has(sessionId),
     });
   };
 
@@ -4210,9 +4202,9 @@ async function main(): Promise<number> {
         releaseViewportPinForSelection();
         markDirty();
       }
-      if (workspace.mainPaneMode === 'conversation' && conversationManager.activeConversationId !== null) {
-        const escapeTarget = conversations.get(conversationManager.activeConversationId);
-        if (escapeTarget !== undefined) {
+      if (workspace.mainPaneMode === 'conversation') {
+        const escapeTarget = conversationManager.getActiveConversation();
+        if (escapeTarget !== null) {
           streamClient.sendInput(escapeTarget.sessionId, chunk);
         }
       }
@@ -4247,7 +4239,7 @@ async function main(): Promise<number> {
         openNewThreadPrompt,
         resolveConversationForAction: () =>
           workspace.mainPaneMode === 'conversation' ? conversationManager.activeConversationId : null,
-        conversationsHas: (sessionId) => conversations.has(sessionId),
+        conversationsHas: (sessionId) => conversationManager.has(sessionId),
         queueControlPlaneOp,
         archiveConversation,
         takeoverConversation,
@@ -4296,8 +4288,7 @@ async function main(): Promise<number> {
     const parsed = parseMuxInputChunk(inputRemainder, focusExtraction.sanitized);
     inputRemainder = parsed.remainder;
 
-    const inputConversation =
-      conversationManager.activeConversationId === null ? null : (conversations.get(conversationManager.activeConversationId) ?? null);
+    const inputConversation = conversationManager.getActiveConversation();
     let snapshotForInput =
       inputConversation === null ? null : inputConversation.oracle.snapshotWithoutHash();
     const routedTokens: Array<(typeof parsed.tokens)[number]> = [];
