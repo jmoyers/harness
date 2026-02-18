@@ -21,7 +21,6 @@ Run many agent threads in parallel across `codex`, `claude`, `cursor`, `terminal
 - Track repositories and tasks with full CRUD through the control plane (`repository.*`, `task.*`).
 - Use strict human/agent control semantics (claim, release, takeover).
 - Keep long-running sessions alive in the detached gateway while clients reconnect.
-- Toggle gateway CPU profiling from the client (`ctrl+p` by default), using the same `harness profile start|stop` behavior.
 - Subscribe to typed realtime events for status, output, telemetry, and lifecycle activity.
 - Keep UI responsiveness high under heavy output and rapid thread switching.
 
@@ -107,8 +106,7 @@ Example (critique defaults + hotkey override):
   },
   "mux": {
     "keybindings": {
-      "mux.conversation.critique.open-or-create": ["ctrl+g"],
-      "mux.gateway.profile.toggle": ["ctrl+p"]
+      "mux.conversation.critique.open-or-create": ["ctrl+g"]
     }
   }
 }
