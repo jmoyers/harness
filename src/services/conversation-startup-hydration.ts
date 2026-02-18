@@ -1,4 +1,4 @@
-interface SessionSummaryLike {
+export interface SessionSummaryLike {
   readonly sessionId: string;
   readonly live: boolean;
 }
@@ -7,7 +7,9 @@ interface PerfSpanLike {
   end(input?: Record<string, unknown>): void;
 }
 
-interface ConversationStartupHydrationServiceOptions<TSessionSummary extends SessionSummaryLike> {
+export interface ConversationStartupHydrationServiceOptions<
+  TSessionSummary extends SessionSummaryLike,
+> {
   readonly startHydrationSpan: () => PerfSpanLike;
   readonly hydrateDirectoryList: () => Promise<void>;
   readonly directoryIds: () => readonly string[];

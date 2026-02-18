@@ -138,7 +138,7 @@ import { RepositoryManager } from '../src/domain/repositories.ts';
 import { DirectoryManager } from '../src/domain/directories.ts';
 import { TaskManager } from '../src/domain/tasks.ts';
 import { ControlPlaneService } from '../src/services/control-plane.ts';
-import { ConversationStartupHydrationService } from '../src/services/conversation-startup-hydration.ts';
+import { ConversationLifecycle } from '../src/services/conversation-lifecycle.ts';
 import { DirectoryHydrationService } from '../src/services/directory-hydration.ts';
 import { EventPersistence } from '../src/services/event-persistence.ts';
 import { MuxUiStatePersistence } from '../src/services/mux-ui-state-persistence.ts';
@@ -147,11 +147,9 @@ import { ProcessUsageRefreshService } from '../src/services/process-usage-refres
 import { RecordingService } from '../src/services/recording.ts';
 import { SessionProjectionInstrumentation } from '../src/services/session-projection-instrumentation.ts';
 import { StartupOrchestrator } from '../src/services/startup-orchestrator.ts';
-import { StartupPersistedConversationQueueService } from '../src/services/startup-persisted-conversation-queue.ts';
 import { RuntimeProcessWiring } from '../src/services/runtime-process-wiring.ts';
 import { RuntimeConversationActions } from '../src/services/runtime-conversation-actions.ts';
 import { RuntimeConversationActivation } from '../src/services/runtime-conversation-activation.ts';
-import { RuntimeConversationStarter } from '../src/services/runtime-conversation-starter.ts';
 import { RuntimeControlPlaneOps } from '../src/services/runtime-control-plane-ops.ts';
 import { RuntimeControlActions } from '../src/services/runtime-control-actions.ts';
 import { RuntimeConversationTitleEditService } from '../src/services/runtime-conversation-title-edit.ts';
@@ -167,7 +165,6 @@ import { RuntimeRightPaneRender } from '../src/services/runtime-right-pane-rende
 import { RuntimeRenderState } from '../src/services/runtime-render-state.ts';
 import { RuntimeRenderLifecycle } from '../src/services/runtime-render-lifecycle.ts';
 import { RuntimeShutdownService } from '../src/services/runtime-shutdown.ts';
-import { RuntimeStreamSubscriptions } from '../src/services/runtime-stream-subscriptions.ts';
 import { RuntimeTaskPaneActions } from '../src/services/runtime-task-pane-actions.ts';
 import { RuntimeTaskComposerPersistenceService } from '../src/services/runtime-task-composer-persistence.ts';
 import { RuntimeTaskPaneShortcuts } from '../src/services/runtime-task-pane-shortcuts.ts';
@@ -754,154 +751,149 @@ async function main(): Promise<number> {
     return persistedRows.length;
   };
 
-  const runtimeStreamSubscriptions = new RuntimeStreamSubscriptions({
-    subscribePtyEvents: async (sessionId) => {
-      await controlPlaneService.subscribePtyEvents(sessionId);
-    },
-    unsubscribePtyEvents: async (sessionId) => {
-      await controlPlaneService.unsubscribePtyEvents(sessionId);
-    },
-    isSessionNotFoundError,
-    isSessionNotLiveError,
-    subscribeObservedStream: async (afterCursor) => {
-      return await subscribeObservedStream(streamClient, options.scope, afterCursor);
-    },
-    unsubscribeObservedStream: async (subscriptionId) => {
-      await unsubscribeObservedStream(streamClient, subscriptionId);
-    },
-  });
-  const subscribeConversationEvents = async (sessionId: string): Promise<void> => {
-    await runtimeStreamSubscriptions.subscribeConversationEvents(sessionId);
-  };
-  const unsubscribeConversationEvents = async (sessionId: string): Promise<void> => {
-    await runtimeStreamSubscriptions.unsubscribeConversationEvents(sessionId);
-  };
-
-  const runtimeConversationStarter = new RuntimeConversationStarter<
+  const conversationLifecycle = new ConversationLifecycle<
     ConversationState,
     ControlPlaneSessionSummary
   >({
-    runWithStartInFlight: async (sessionId, run) => {
-      return await conversationManager.runWithStartInFlight(sessionId, run);
+    streamSubscriptions: {
+      subscribePtyEvents: async (sessionId) => {
+        await controlPlaneService.subscribePtyEvents(sessionId);
+      },
+      unsubscribePtyEvents: async (sessionId) => {
+        await controlPlaneService.unsubscribePtyEvents(sessionId);
+      },
+      isSessionNotFoundError,
+      isSessionNotLiveError,
+      subscribeObservedStream: async (afterCursor) => {
+        return await subscribeObservedStream(streamClient, options.scope, afterCursor);
+      },
+      unsubscribeObservedStream: async (subscriptionId) => {
+        await unsubscribeObservedStream(streamClient, subscriptionId);
+      },
     },
-    conversationById: (sessionId) => conversationManager.get(sessionId),
-    ensureConversation,
-    normalizeThreadAgentType,
-    codexArgs: options.codexArgs,
-    critiqueDefaultArgs: configuredCritique.launch.defaultArgs,
-    sessionCwdForConversation: (conversation) => {
-      const configuredDirectoryPath =
-        conversation.directoryId === null
-          ? null
-          : (directoryManager.getDirectory(conversation.directoryId)?.path ?? null);
-      return resolveWorkspacePathForMux(
-        options.invocationDirectory,
-        configuredDirectoryPath ?? options.invocationDirectory,
-      );
+    starter: {
+      runWithStartInFlight: async (sessionId, run) => {
+        return await conversationManager.runWithStartInFlight(sessionId, run);
+      },
+      conversationById: (sessionId) => conversationManager.get(sessionId),
+      ensureConversation,
+      normalizeThreadAgentType,
+      codexArgs: options.codexArgs,
+      critiqueDefaultArgs: configuredCritique.launch.defaultArgs,
+      sessionCwdForConversation: (conversation) => {
+        const configuredDirectoryPath =
+          conversation.directoryId === null
+            ? null
+            : (directoryManager.getDirectory(conversation.directoryId)?.path ?? null);
+        return resolveWorkspacePathForMux(
+          options.invocationDirectory,
+          configuredDirectoryPath ?? options.invocationDirectory,
+        );
+      },
+      buildLaunchArgs: (input) => {
+        return buildAgentSessionStartArgs(
+          input.agentType,
+          input.baseArgsForAgent,
+          input.adapterState,
+          {
+            directoryPath: input.sessionCwd,
+            codexLaunchDefaultMode: configuredCodexLaunch.defaultMode,
+            codexLaunchModeByDirectoryPath: codexLaunchModeByDirectoryPath,
+            claudeLaunchDefaultMode: configuredClaudeLaunch.defaultMode,
+            claudeLaunchModeByDirectoryPath: claudeLaunchModeByDirectoryPath,
+            cursorLaunchDefaultMode: configuredCursorLaunch.defaultMode,
+            cursorLaunchModeByDirectoryPath: cursorLaunchModeByDirectoryPath,
+          },
+        );
+      },
+      launchCommandForAgent,
+      formatCommandForDebugBar,
+      startConversationSpan: (sessionId) =>
+        startPerfSpan('mux.conversation.start', {
+          sessionId,
+        }),
+      firstPaintTargetSessionId: () => startupOrchestrator.firstPaintTargetSessionId,
+      endStartCommandSpan: (input) => {
+        startupOrchestrator.endStartCommandSpan(input);
+      },
+      layout: () => layout,
+      startPtySession: async (input) => {
+        await controlPlaneService.startPtySession(input);
+      },
+      setPtySize: (sessionId, size) => {
+        ptySizeByConversationId.set(sessionId, size);
+      },
+      sendResize: (sessionId, cols, rows) => {
+        streamClient.sendResize(sessionId, cols, rows);
+      },
+      sessionEnv,
+      worktreeId: options.scope.worktreeId,
+      terminalForegroundHex: process.env.HARNESS_TERM_FG ?? probedPalette.foregroundHex,
+      terminalBackgroundHex: process.env.HARNESS_TERM_BG ?? probedPalette.backgroundHex,
+      recordStartCommand: (sessionId, launchArgs) => {
+        recordPerfEvent('mux.conversation.start.command', {
+          sessionId,
+          argCount: launchArgs.length,
+          resumed: launchArgs[0] === 'resume',
+        });
+      },
+      getSessionStatus: async (sessionId) => {
+        return await controlPlaneService.getSessionStatus(sessionId);
+      },
+      upsertFromSessionSummary: (summary) => {
+        conversationManager.upsertFromSessionSummary({
+          summary,
+          ensureConversation,
+        });
+      },
     },
-    buildLaunchArgs: (input) => {
-      return buildAgentSessionStartArgs(
-        input.agentType,
-        input.baseArgsForAgent,
-        input.adapterState,
-        {
-          directoryPath: input.sessionCwd,
-          codexLaunchDefaultMode: configuredCodexLaunch.defaultMode,
-          codexLaunchModeByDirectoryPath: codexLaunchModeByDirectoryPath,
-          claudeLaunchDefaultMode: configuredClaudeLaunch.defaultMode,
-          claudeLaunchModeByDirectoryPath: claudeLaunchModeByDirectoryPath,
-          cursorLaunchDefaultMode: configuredCursorLaunch.defaultMode,
-          cursorLaunchModeByDirectoryPath: cursorLaunchModeByDirectoryPath,
-        },
-      );
+    startupHydration: {
+      startHydrationSpan: () => startPerfSpan('mux.startup.hydrate-conversations'),
+      hydrateDirectoryList,
+      directoryIds: () => directoryManager.directoryIds(),
+      hydratePersistedConversationsForDirectory,
+      listSessions: async () => {
+        return await controlPlaneService.listSessions({
+          worktreeId: options.scope.worktreeId,
+          sort: 'started-asc',
+        });
+      },
+      upsertFromSessionSummary: (summary) => {
+        conversationManager.upsertFromSessionSummary({
+          summary,
+          ensureConversation,
+        });
+      },
     },
-    launchCommandForAgent,
-    formatCommandForDebugBar,
-    startConversationSpan: (sessionId) =>
-      startPerfSpan('mux.conversation.start', {
-        sessionId,
-      }),
-    firstPaintTargetSessionId: () => startupOrchestrator.firstPaintTargetSessionId,
-    endStartCommandSpan: (input) => {
-      startupOrchestrator.endStartCommandSpan(input);
-    },
-    layout: () => layout,
-    startPtySession: async (input) => {
-      await controlPlaneService.startPtySession(input);
-    },
-    setPtySize: (sessionId, size) => {
-      ptySizeByConversationId.set(sessionId, size);
-    },
-    sendResize: (sessionId, cols, rows) => {
-      streamClient.sendResize(sessionId, cols, rows);
-    },
-    sessionEnv,
-    worktreeId: options.scope.worktreeId,
-    terminalForegroundHex: process.env.HARNESS_TERM_FG ?? probedPalette.foregroundHex,
-    terminalBackgroundHex: process.env.HARNESS_TERM_BG ?? probedPalette.backgroundHex,
-    recordStartCommand: (sessionId, launchArgs) => {
-      recordPerfEvent('mux.conversation.start.command', {
-        sessionId,
-        argCount: launchArgs.length,
-        resumed: launchArgs[0] === 'resume',
-      });
-    },
-    getSessionStatus: async (sessionId) => {
-      return await controlPlaneService.getSessionStatus(sessionId);
-    },
-    upsertFromSessionSummary: (summary) => {
-      conversationManager.upsertFromSessionSummary({
-        summary,
-        ensureConversation,
-      });
-    },
-    subscribeConversationEvents,
-  });
-
-  const startConversation = async (sessionId: string): Promise<ConversationState> => {
-    return await runtimeConversationStarter.startConversation(sessionId);
-  };
-
-  const startupPersistedConversationQueueService =
-    new StartupPersistedConversationQueueService<ConversationState>({
+    startupQueue: {
       orderedConversationIds: () => conversationManager.orderedIds(),
       conversationById: (sessionId) => conversationManager.get(sessionId),
       queueBackgroundOp: (task, label) => {
         queueBackgroundControlPlaneOp(task, label);
       },
-      startConversation,
       markDirty: () => {
         markDirty();
       },
-    });
-  const queuePersistedConversationsInBackground = (activeSessionId: string | null): number => {
-    return startupPersistedConversationQueueService.queuePersistedConversationsInBackground(
-      activeSessionId,
-    );
-  };
-
-  const conversationStartupHydrationService = new ConversationStartupHydrationService({
-    startHydrationSpan: () => startPerfSpan('mux.startup.hydrate-conversations'),
-    hydrateDirectoryList,
-    directoryIds: () => directoryManager.directoryIds(),
-    hydratePersistedConversationsForDirectory,
-    listSessions: async () => {
-      return await controlPlaneService.listSessions({
-        worktreeId: options.scope.worktreeId,
-        sort: 'started-asc',
-      });
     },
-    upsertFromSessionSummary: (summary) => {
-      conversationManager.upsertFromSessionSummary({
-        summary,
-        ensureConversation,
-      });
-    },
-    subscribeConversationEvents,
   });
 
+  const subscribeConversationEvents = async (sessionId: string): Promise<void> => {
+    await conversationLifecycle.subscribeConversationEvents(sessionId);
+  };
+  const unsubscribeConversationEvents = async (sessionId: string): Promise<void> => {
+    await conversationLifecycle.unsubscribeConversationEvents(sessionId);
+  };
+
+  const startConversation = async (sessionId: string): Promise<ConversationState> => {
+    return await conversationLifecycle.startConversation(sessionId);
+  };
+
+  const queuePersistedConversationsInBackground = (activeSessionId: string | null): number => {
+    return conversationLifecycle.queuePersistedConversationsInBackground(activeSessionId);
+  };
+
   const hydrateConversationList = async (): Promise<void> => {
-    await conversationStartupHydrationService.hydrateConversationList();
+    await conversationLifecycle.hydrateConversationList();
   };
   const startupStateHydrationService = new StartupStateHydrationService<
     ControlPlaneRepositoryRecord,
@@ -1598,11 +1590,11 @@ async function main(): Promise<number> {
   };
 
   async function subscribeTaskPlanningEvents(afterCursor: number | null): Promise<void> {
-    await runtimeStreamSubscriptions.subscribeTaskPlanningEvents(afterCursor);
+    await conversationLifecycle.subscribeTaskPlanningEvents(afterCursor);
   }
 
   async function unsubscribeTaskPlanningEvents(): Promise<void> {
-    await runtimeStreamSubscriptions.unsubscribeTaskPlanningEvents();
+    await conversationLifecycle.unsubscribeTaskPlanningEvents();
   }
 
   const runtimeConversationActivation = new RuntimeConversationActivation({

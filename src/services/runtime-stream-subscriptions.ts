@@ -1,4 +1,4 @@
-interface RuntimeStreamSubscriptionsOptions {
+export interface RuntimeStreamSubscriptionsOptions {
   readonly subscribePtyEvents: (sessionId: string) => Promise<void>;
   readonly unsubscribePtyEvents: (sessionId: string) => Promise<void>;
   readonly isSessionNotFoundError: (error: unknown) => boolean;

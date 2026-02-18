@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~2629 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~2622 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2173 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -1750,9 +1750,32 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2629 non-empty LOC
 
+### Checkpoint CQ (2026-02-18): Conversation lifecycle subsystem facade introduced
+
+- Added `src/services/conversation-lifecycle.ts` with class-based `ConversationLifecycle` facade that composes:
+  - `RuntimeStreamSubscriptions`
+  - `RuntimeConversationStarter`
+  - `ConversationStartupHydrationService`
+  - `StartupPersistedConversationQueueService`
+- Updated `scripts/codex-live-mux-runtime.ts` to consume `ConversationLifecycle` for:
+  - conversation subscribe/unsubscribe operations
+  - task-planning observed-stream subscribe lifecycle
+  - conversation start/hydration/startup-queue orchestration
+- Exported constructor option types from composed services so subsystem composition is type-safe:
+  - `RuntimeStreamSubscriptionsOptions`
+  - `RuntimeConversationStarterOptions`
+  - `ConversationStartupHydrationServiceOptions`
+  - `StartupPersistedConversationQueueServiceOptions`
+- Added `test/services-conversation-lifecycle.test.ts` covering composed behavior and delegation paths.
+- Validation at checkpoint:
+  - `bun run verify`: pass (`1002` pass / `0` fail, global lines/functions/branches = `100%`)
+  - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2622 non-empty LOC
+
 ### Next focus (yield-first)
 
 - Consolidation order (updated from critique review):
+  - continue subsystem rollup: fold conversation activation/actions/title-edit behind the `ConversationLifecycle` facade
   - remove `_unsafe*` runtime escape hatches by exposing manager-owned read APIs/projections
   - reduce callback/options bags in input/router modules by passing manager/service dependencies directly
   - after ownership consolidation, rename/merge `runtime-*` service modules so names match stable responsibilities rather than extraction history

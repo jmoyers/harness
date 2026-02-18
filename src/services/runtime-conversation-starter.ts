@@ -1,4 +1,4 @@
-interface RuntimeConversationStarterConversationRecord {
+export interface RuntimeConversationStarterConversationRecord {
   readonly sessionId: string;
   readonly directoryId: string | null;
   readonly agentType: string;
@@ -33,7 +33,7 @@ interface RuntimeConversationStarterLaunchArgsInput {
 
 type RuntimeConversationStarterSpanAttributes = Record<string, string | number | boolean>;
 
-interface RuntimeConversationStarterOptions<
+export interface RuntimeConversationStarterOptions<
   TConversation extends RuntimeConversationStarterConversationRecord,
   TSessionSummary,
 > {

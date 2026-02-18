@@ -1,8 +1,8 @@
-interface StartupQueueConversationRecord {
+export interface StartupQueueConversationRecord {
   readonly live: boolean;
 }
 
-interface StartupPersistedConversationQueueServiceOptions<
+export interface StartupPersistedConversationQueueServiceOptions<
   TConversation extends StartupQueueConversationRecord,
 > {
   readonly orderedConversationIds: () => readonly string[];
