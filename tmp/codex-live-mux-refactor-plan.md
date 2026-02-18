@@ -1898,10 +1898,24 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2563 non-empty LOC
 
+### Checkpoint CY (2026-02-18): Input preflight + forwarding composition folded into unified class service
+
+- Added `src/services/runtime-input-pipeline.ts` with class-based `RuntimeInputPipeline` that composes:
+  - `InputPreflight`
+  - `ConversationInputForwarder`
+- Updated `scripts/codex-live-mux-runtime.ts` to replace inline preflight/forwarder wiring and sanitized-input closure with one `runtimeInputPipeline.handleInput(...)` surface.
+- Added `test/services-runtime-input-pipeline.test.ts` with coverage for:
+  - injected dependency composition (only sanitized preflight input is forwarded)
+  - default dependency path via native preflight/forwarder constructors
+- Validation at checkpoint:
+  - `bun run verify`: pass (`1012` pass / `0` fail, global lines/functions/branches = `100%`)
+  - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2561 non-empty LOC
+
 ### Next focus (yield-first)
 
 - Consolidation order (updated from critique review):
-  - continue subsystem rollup: extract left-rail/main-pane/pointer/preflight input composition block into a single runtime input-composition service
+  - continue subsystem rollup: extract the remaining `onInput` mouse-token classification loop into a dedicated token-router/orchestrator service
   - remove `_unsafe*` runtime escape hatches by exposing manager-owned read APIs/projections
   - reduce callback/options bags in input/router modules by passing manager/service dependencies directly
   - after ownership consolidation, rename/merge `runtime-*` service modules so names match stable responsibilities rather than extraction history

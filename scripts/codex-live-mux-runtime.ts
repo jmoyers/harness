@@ -163,6 +163,7 @@ import { RuntimeRenderState } from '../src/services/runtime-render-state.ts';
 import { RuntimeRenderLifecycle } from '../src/services/runtime-render-lifecycle.ts';
 import { RuntimeShutdownService } from '../src/services/runtime-shutdown.ts';
 import { RuntimeTaskEditorActions } from '../src/services/runtime-task-editor-actions.ts';
+import { RuntimeInputPipeline } from '../src/services/runtime-input-pipeline.ts';
 import { RuntimeTaskComposerPersistenceService } from '../src/services/runtime-task-composer-persistence.ts';
 import { RuntimeTaskPane } from '../src/services/runtime-task-pane.ts';
 import { RuntimeModalInput } from '../src/services/runtime-modal-input.ts';
@@ -188,8 +189,6 @@ import { PointerRoutingInput } from '../src/ui/pointer-routing-input.ts';
 import { ConversationSelectionInput } from '../src/ui/conversation-selection-input.ts';
 import { GlobalShortcutInput } from '../src/ui/global-shortcut-input.ts';
 import { InputTokenRouter } from '../src/ui/input-token-router.ts';
-import { ConversationInputForwarder } from '../src/ui/conversation-input-forwarder.ts';
-import { InputPreflight } from '../src/ui/input-preflight.ts';
 
 type ControlPlaneDirectoryRecord = Awaited<ReturnType<ControlPlaneService['upsertDirectory']>>;
 type ControlPlaneConversationRecord = NonNullable<ReturnType<typeof parseConversationRecord>>;
@@ -2482,79 +2481,78 @@ async function main(): Promise<number> {
     leftRailPointerInput,
     conversationSelectionInput,
   });
-  const conversationInputForwarder = new ConversationInputForwarder({
-    getInputRemainder: () => inputRemainder,
-    setInputRemainder: (next) => {
-      inputRemainder = next;
-    },
-    getMainPaneMode: () => workspace.mainPaneMode,
-    getLayout: () => layout,
-    inputTokenRouter,
-    getActiveConversation: () => conversationManager.getActiveConversation(),
-    markDirty,
-    isControlledByLocalHuman: (input) => conversationManager.isControlledByLocalHuman(input),
-    controllerId: muxControllerId,
-    sendInputToSession: (sessionId, chunk) => {
-      streamClient.sendInput(sessionId, chunk);
-    },
-    noteGitActivity,
-  });
-  const inputPreflight = new InputPreflight({
-    isShuttingDown: () => shuttingDown,
-    routeModalInput: (input) => runtimeModalInput.routeModalInput(input),
-    handleEscapeInput: (input) => {
-      if (workspace.selection !== null || workspace.selectionDrag !== null) {
-        workspace.selection = null;
-        workspace.selectionDrag = null;
-        releaseViewportPinForSelection();
-        markDirty();
-      }
-      if (workspace.mainPaneMode === 'conversation') {
-        const escapeTarget = conversationManager.getActiveConversation();
-        if (escapeTarget !== null) {
-          streamClient.sendInput(escapeTarget.sessionId, input);
+  const runtimeInputPipeline = new RuntimeInputPipeline({
+    preflight: {
+      isShuttingDown: () => shuttingDown,
+      routeModalInput: (input) => runtimeModalInput.routeModalInput(input),
+      handleEscapeInput: (input) => {
+        if (workspace.selection !== null || workspace.selectionDrag !== null) {
+          workspace.selection = null;
+          workspace.selectionDrag = null;
+          releaseViewportPinForSelection();
+          markDirty();
         }
-      }
-    },
-    onFocusIn: () => {
-      inputModeManager.enable();
-      markDirty();
-    },
-    onFocusOut: () => {
-      markDirty();
-    },
-    handleRepositoryFoldInput: (input) =>
-      repositoryFoldInput.handleRepositoryFoldChords(input) ||
-      repositoryFoldInput.handleRepositoryTreeArrow(input),
-    handleGlobalShortcutInput: (input) => globalShortcutInput.handleInput(input),
-    handleTaskPaneShortcutInput: (input) => runtimeWorkspaceActions.handleTaskPaneShortcutInput(input),
-    handleCopyShortcutInput: (input) => {
-      if (
-        workspace.mainPaneMode !== 'conversation' ||
-        workspace.selection === null ||
-        !isCopyShortcutInput(input)
-      ) {
-        return false;
-      }
-      const active = conversationManager.getActiveConversation();
-      if (active === null) {
-        return true;
-      }
-      const selectedFrame = active.oracle.snapshotWithoutHash();
-      const copied = writeTextToClipboard(selectionText(selectedFrame, workspace.selection));
-      if (copied) {
+        if (workspace.mainPaneMode === 'conversation') {
+          const escapeTarget = conversationManager.getActiveConversation();
+          if (escapeTarget !== null) {
+            streamClient.sendInput(escapeTarget.sessionId, input);
+          }
+        }
+      },
+      onFocusIn: () => {
+        inputModeManager.enable();
         markDirty();
-      }
-      return true;
+      },
+      onFocusOut: () => {
+        markDirty();
+      },
+      handleRepositoryFoldInput: (input) =>
+        repositoryFoldInput.handleRepositoryFoldChords(input) ||
+        repositoryFoldInput.handleRepositoryTreeArrow(input),
+      handleGlobalShortcutInput: (input) => globalShortcutInput.handleInput(input),
+      handleTaskPaneShortcutInput: (input) =>
+        runtimeWorkspaceActions.handleTaskPaneShortcutInput(input),
+      handleCopyShortcutInput: (input) => {
+        if (
+          workspace.mainPaneMode !== 'conversation' ||
+          workspace.selection === null ||
+          !isCopyShortcutInput(input)
+        ) {
+          return false;
+        }
+        const active = conversationManager.getActiveConversation();
+        if (active === null) {
+          return true;
+        }
+        const selectedFrame = active.oracle.snapshotWithoutHash();
+        const copied = writeTextToClipboard(selectionText(selectedFrame, workspace.selection));
+        if (copied) {
+          markDirty();
+        }
+        return true;
+      },
+    },
+    forwarder: {
+      getInputRemainder: () => inputRemainder,
+      setInputRemainder: (next) => {
+        inputRemainder = next;
+      },
+      getMainPaneMode: () => workspace.mainPaneMode,
+      getLayout: () => layout,
+      inputTokenRouter,
+      getActiveConversation: () => conversationManager.getActiveConversation(),
+      markDirty,
+      isControlledByLocalHuman: (input) => conversationManager.isControlledByLocalHuman(input),
+      controllerId: muxControllerId,
+      sendInputToSession: (sessionId, chunk) => {
+        streamClient.sendInput(sessionId, chunk);
+      },
+      noteGitActivity,
     },
   });
 
   const onInput = (chunk: Buffer): void => {
-    const sanitized = inputPreflight.nextInput(chunk);
-    if (sanitized === null) {
-      return;
-    }
-    conversationInputForwarder.handleInput(sanitized);
+    runtimeInputPipeline.handleInput(chunk);
   };
 
   const onResize = (): void => {
