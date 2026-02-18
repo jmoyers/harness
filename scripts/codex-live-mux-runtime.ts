@@ -155,8 +155,6 @@ import { toggleGatewayProfiler as toggleGatewayProfilerFn } from '../src/mux/liv
 import {
   WorkspaceModel,
   type ConversationTitleEditState,
-  type RepositoryPromptState,
-  type TaskEditorPromptState,
 } from '../src/domain/workspace.ts';
 import {
   ConversationManager,
@@ -222,7 +220,6 @@ import { ConversationInputForwarder } from '../src/ui/conversation-input-forward
 import { InputPreflight } from '../src/ui/input-preflight.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
-type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
 type ControlPlaneDirectoryRecord = Awaited<ReturnType<ControlPlaneService['upsertDirectory']>>;
 type ControlPlaneRepositoryRecord = NonNullable<ReturnType<typeof parseRepositoryRecord>>;
 type ControlPlaneTaskRecord = NonNullable<ReturnType<typeof parseTaskRecord>>;
@@ -1020,30 +1017,19 @@ async function main(): Promise<number> {
   const leftRailPane = new LeftRailPane();
   let stop = false;
   let inputRemainder = '';
-  let latestRailViewRows: ReturnType<typeof buildWorkspaceRailViewRows> = [];
   let shuttingDown = false;
-  let selection: PaneSelection | null = null;
-  let selectionDrag: PaneSelectionDrag | null = null;
-  let selectionPinnedFollowOutput: boolean | null = null;
-  let repositoryPrompt: RepositoryPromptState | null = null;
-  let newThreadPrompt: NewThreadPromptState | null = null;
-  let addDirectoryPrompt: { value: string; error: string | null } | null = null;
-  let taskEditorPrompt: TaskEditorPromptState | null = null;
-  let conversationTitleEdit: ConversationTitleEditState | null = null;
-  let conversationTitleEditClickState: { conversationId: string; atMs: number } | null = null;
   const debugFooterNotice = new DebugFooterNotice({
     ttlMs: DEBUG_FOOTER_NOTICE_TTL_MS,
   });
   const modalManager = new ModalManager({
     theme: MUX_MODAL_THEME,
     resolveRepositoryName: (repositoryId) => repositories.get(repositoryId)?.name ?? null,
-    getNewThreadPrompt: () => newThreadPrompt,
-    getAddDirectoryPrompt: () => addDirectoryPrompt,
-    getTaskEditorPrompt: () => taskEditorPrompt,
-    getRepositoryPrompt: () => repositoryPrompt,
-    getConversationTitleEdit: () => conversationTitleEdit,
+    getNewThreadPrompt: () => workspace.newThreadPrompt,
+    getAddDirectoryPrompt: () => workspace.addDirectoryPrompt,
+    getTaskEditorPrompt: () => workspace.taskEditorPrompt,
+    getRepositoryPrompt: () => workspace.repositoryPrompt,
+    getConversationTitleEdit: () => workspace.conversationTitleEdit,
   });
-  let paneDividerDragActive = false;
   let resizeTimer: NodeJS.Timeout | null = null;
   let pendingSize: { cols: number; rows: number } | null = null;
   let lastResizeApplyAtMs = 0;
@@ -1055,7 +1041,7 @@ async function main(): Promise<number> {
   const requestStop = (): void => {
     requestStopFn({
       stop,
-      hasConversationTitleEdit: conversationTitleEdit !== null,
+      hasConversationTitleEdit: workspace.conversationTitleEdit !== null,
       stopConversationTitleEdit: () => stopConversationTitleEdit(true),
       activeTaskEditorTaskId:
         'taskId' in workspace.taskEditorTarget && typeof workspace.taskEditorTarget.taskId === 'string'
@@ -1487,7 +1473,7 @@ async function main(): Promise<number> {
         });
         const persistedTitle = parsed?.title ?? titleToPersist;
         const latestConversation = conversationManager.get(edit.conversationId);
-        const latestEdit = conversationTitleEdit;
+        const latestEdit = workspace.conversationTitleEdit;
         const shouldApplyToConversation =
           latestEdit === null ||
           latestEdit.conversationId !== edit.conversationId ||
@@ -1502,7 +1488,7 @@ async function main(): Promise<number> {
           }
         }
       } catch (error: unknown) {
-        const latestEdit = conversationTitleEdit;
+        const latestEdit = workspace.conversationTitleEdit;
         if (
           latestEdit !== null &&
           latestEdit.conversationId === edit.conversationId &&
@@ -1512,7 +1498,7 @@ async function main(): Promise<number> {
         }
         throw error;
       } finally {
-        const latestEdit = conversationTitleEdit;
+        const latestEdit = workspace.conversationTitleEdit;
         if (latestEdit !== null && latestEdit.conversationId === edit.conversationId) {
           latestEdit.persistInFlight = false;
         }
@@ -1522,13 +1508,13 @@ async function main(): Promise<number> {
   };
 
   const scheduleConversationTitlePersist = (): void => {
-    const edit = conversationTitleEdit;
+    const edit = workspace.conversationTitleEdit;
     if (edit === null) {
       return;
     }
     clearConversationTitleEditTimer(edit);
     edit.debounceTimer = setTimeout(() => {
-      const latestEdit = conversationTitleEdit;
+      const latestEdit = workspace.conversationTitleEdit;
       if (latestEdit === null || latestEdit.conversationId !== edit.conversationId) {
         return;
       }
@@ -1539,7 +1525,7 @@ async function main(): Promise<number> {
   };
 
   const stopConversationTitleEdit = (persistPending: boolean): void => {
-    const edit = conversationTitleEdit;
+    const edit = workspace.conversationTitleEdit;
     if (edit === null) {
       return;
     }
@@ -1547,7 +1533,7 @@ async function main(): Promise<number> {
     if (persistPending) {
       queueConversationTitlePersist(edit, 'flush');
     }
-    conversationTitleEdit = null;
+    workspace.conversationTitleEdit = null;
     markDirty();
   };
 
@@ -1556,13 +1542,13 @@ async function main(): Promise<number> {
     if (target === undefined) {
       return;
     }
-    if (conversationTitleEdit?.conversationId === conversationId) {
+    if (workspace.conversationTitleEdit?.conversationId === conversationId) {
       return;
     }
-    if (conversationTitleEdit !== null) {
+    if (workspace.conversationTitleEdit !== null) {
       stopConversationTitleEdit(true);
     }
-    conversationTitleEdit = {
+    workspace.conversationTitleEdit = {
       conversationId,
       value: target.title,
       lastSavedValue: target.title,
@@ -1800,8 +1786,8 @@ async function main(): Promise<number> {
 
   const enterHomePane = (): void => {
     workspace.enterHomePane();
-    selection = null;
-    selectionDrag = null;
+    workspace.selection = null;
+    workspace.selectionDrag = null;
     releaseViewportPinForSelection();
     syncTaskPaneSelection();
     syncTaskPaneRepositorySelection();
@@ -1901,13 +1887,13 @@ async function main(): Promise<number> {
       screen.resetFrameCache();
     },
     stopConversationTitleEditForOtherSession: (sessionId) => {
-      if (conversationTitleEdit !== null && conversationTitleEdit.conversationId !== sessionId) {
+      if (workspace.conversationTitleEdit !== null && workspace.conversationTitleEdit.conversationId !== sessionId) {
         stopConversationTitleEdit(true);
       }
     },
     clearSelectionState: () => {
-      selection = null;
-      selectionDrag = null;
+      workspace.selection = null;
+      workspace.selectionDrag = null;
       releaseViewportPinForSelection();
     },
     detachConversation,
@@ -1936,7 +1922,7 @@ async function main(): Promise<number> {
   };
 
   const removeConversationState = (sessionId: string): void => {
-    if (conversationTitleEdit?.conversationId === sessionId) {
+    if (workspace.conversationTitleEdit?.conversationId === sessionId) {
       stopConversationTitleEdit(false);
     }
     conversationManager.remove(sessionId);
@@ -2031,21 +2017,21 @@ async function main(): Promise<number> {
       directoryId,
       directoriesHas: (nextDirectoryId) => directoryManager.hasDirectory(nextDirectoryId),
       clearAddDirectoryPrompt: () => {
-        addDirectoryPrompt = null;
+        workspace.addDirectoryPrompt = null;
       },
       clearRepositoryPrompt: () => {
-        repositoryPrompt = null;
+        workspace.repositoryPrompt = null;
       },
-      hasConversationTitleEdit: conversationTitleEdit !== null,
+      hasConversationTitleEdit: workspace.conversationTitleEdit !== null,
       stopConversationTitleEdit: () => {
         stopConversationTitleEdit(true);
       },
       clearConversationTitleEditClickState: () => {
-        conversationTitleEditClickState = null;
+        workspace.conversationTitleEditClickState = null;
       },
       createNewThreadPromptState,
       setNewThreadPrompt: (prompt) => {
-        newThreadPrompt = prompt;
+        workspace.newThreadPrompt = prompt;
       },
       markDirty,
     });
@@ -2054,20 +2040,20 @@ async function main(): Promise<number> {
   const openRepositoryPromptForCreate = (): void => {
     openRepositoryPromptForCreateFn({
       clearNewThreadPrompt: () => {
-        newThreadPrompt = null;
+        workspace.newThreadPrompt = null;
       },
       clearAddDirectoryPrompt: () => {
-        addDirectoryPrompt = null;
+        workspace.addDirectoryPrompt = null;
       },
-      hasConversationTitleEdit: conversationTitleEdit !== null,
+      hasConversationTitleEdit: workspace.conversationTitleEdit !== null,
       stopConversationTitleEdit: () => {
         stopConversationTitleEdit(true);
       },
       clearConversationTitleEditClickState: () => {
-        conversationTitleEditClickState = null;
+        workspace.conversationTitleEditClickState = null;
       },
       setRepositoryPrompt: (prompt) => {
-        repositoryPrompt = prompt;
+        workspace.repositoryPrompt = prompt;
       },
       markDirty,
     });
@@ -2078,20 +2064,20 @@ async function main(): Promise<number> {
       repositoryId,
       repositories,
       clearNewThreadPrompt: () => {
-        newThreadPrompt = null;
+        workspace.newThreadPrompt = null;
       },
       clearAddDirectoryPrompt: () => {
-        addDirectoryPrompt = null;
+        workspace.addDirectoryPrompt = null;
       },
-      hasConversationTitleEdit: conversationTitleEdit !== null,
+      hasConversationTitleEdit: workspace.conversationTitleEdit !== null,
       stopConversationTitleEdit: () => {
         stopConversationTitleEdit(true);
       },
       clearConversationTitleEditClickState: () => {
-        conversationTitleEditClickState = null;
+        workspace.conversationTitleEditClickState = null;
       },
       setRepositoryPrompt: (prompt) => {
-        repositoryPrompt = prompt;
+        workspace.repositoryPrompt = prompt;
       },
       setTaskPaneSelectionFocusRepository: () => {
         workspace.taskPaneSelectionFocus = 'repository';
@@ -2341,7 +2327,7 @@ async function main(): Promise<number> {
   };
 
   const pinViewportForSelection = (): void => {
-    if (selectionPinnedFollowOutput !== null) {
+    if (workspace.selectionPinnedFollowOutput !== null) {
       return;
     }
     const active = conversationManager.getActiveConversation();
@@ -2349,18 +2335,18 @@ async function main(): Promise<number> {
       return;
     }
     const follow = active.oracle.snapshotWithoutHash().viewport.followOutput;
-    selectionPinnedFollowOutput = follow;
+    workspace.selectionPinnedFollowOutput = follow;
     if (follow) {
       active.oracle.setFollowOutput(false);
     }
   };
 
   const releaseViewportPinForSelection = (): void => {
-    if (selectionPinnedFollowOutput === null) {
+    if (workspace.selectionPinnedFollowOutput === null) {
       return;
     }
-    const shouldRepin = selectionPinnedFollowOutput;
-    selectionPinnedFollowOutput = null;
+    const shouldRepin = workspace.selectionPinnedFollowOutput;
+    workspace.selectionPinnedFollowOutput = null;
     if (shouldRepin) {
       const active = conversationManager.getActiveConversation();
       if (active === null) {
@@ -2511,7 +2497,7 @@ async function main(): Promise<number> {
       runtimeRenderState.prepareRenderState(renderSelection, renderSelectionDrag),
     renderLeftRail: (renderLayout) => runtimeLeftRailRender.render(renderLayout),
     setLatestRailViewRows: (rows) => {
-      latestRailViewRows = rows;
+      workspace.latestRailViewRows = rows;
     },
     renderRightRows: (input) =>
       runtimeRightPaneRender.renderRightRows({
@@ -2531,8 +2517,8 @@ async function main(): Promise<number> {
     runtimeRenderOrchestrator.render({
       shuttingDown,
       layout,
-      selection,
-      selectionDrag,
+      selection: workspace.selection,
+      selectionDrag: workspace.selectionDrag,
     });
   };
 
@@ -2649,9 +2635,9 @@ async function main(): Promise<number> {
     markDirty,
     conversations: _unsafeConversationMap,
     scheduleConversationTitlePersist,
-    getTaskEditorPrompt: () => taskEditorPrompt,
+    getTaskEditorPrompt: () => workspace.taskEditorPrompt,
     setTaskEditorPrompt: (next) => {
-      taskEditorPrompt = next;
+      workspace.taskEditorPrompt = next;
     },
     submitTaskEditorPayload: (payload) => {
       queueControlPlaneOp(async () => {
@@ -2673,11 +2659,11 @@ async function main(): Promise<number> {
               description: payload.description,
             }));
           }
-          taskEditorPrompt = null;
+          workspace.taskEditorPrompt = null;
           workspace.taskPaneNotice = null;
         } catch (error: unknown) {
-          if (taskEditorPrompt !== null) {
-            taskEditorPrompt.error = error instanceof Error ? error.message : String(error);
+          if (workspace.taskEditorPrompt !== null) {
+            workspace.taskEditorPrompt.error = error instanceof Error ? error.message : String(error);
           } else {
             workspace.taskPaneNotice = error instanceof Error ? error.message : String(error);
           }
@@ -2686,23 +2672,23 @@ async function main(): Promise<number> {
         }
       }, payload.commandLabel);
     },
-    getConversationTitleEdit: () => conversationTitleEdit,
-    getNewThreadPrompt: () => newThreadPrompt,
+    getConversationTitleEdit: () => workspace.conversationTitleEdit,
+    getNewThreadPrompt: () => workspace.newThreadPrompt,
     setNewThreadPrompt: (prompt) => {
-      newThreadPrompt = prompt;
+      workspace.newThreadPrompt = prompt;
     },
-    getAddDirectoryPrompt: () => addDirectoryPrompt,
+    getAddDirectoryPrompt: () => workspace.addDirectoryPrompt,
     setAddDirectoryPrompt: (next) => {
-      addDirectoryPrompt = next;
+      workspace.addDirectoryPrompt = next;
     },
-    getRepositoryPrompt: () => repositoryPrompt,
+    getRepositoryPrompt: () => workspace.repositoryPrompt,
     setRepositoryPrompt: (next) => {
-      repositoryPrompt = next;
+      workspace.repositoryPrompt = next;
     },
   });
 
   const leftNavInput = new LeftNavInput({
-    getLatestRailRows: () => latestRailViewRows,
+    getLatestRailRows: () => workspace.latestRailViewRows,
     getCurrentSelection: () => workspace.leftNavSelection,
     enterHomePane,
     firstDirectoryForRepositoryGroup,
@@ -2746,22 +2732,22 @@ async function main(): Promise<number> {
     }, label);
   };
   const leftRailPointerInput = new LeftRailPointerInput({
-    getLatestRailRows: () => latestRailViewRows,
-    hasConversationTitleEdit: () => conversationTitleEdit !== null,
-    conversationTitleEditConversationId: () => conversationTitleEdit?.conversationId ?? null,
+    getLatestRailRows: () => workspace.latestRailViewRows,
+    hasConversationTitleEdit: () => workspace.conversationTitleEdit !== null,
+    conversationTitleEditConversationId: () => workspace.conversationTitleEdit?.conversationId ?? null,
     stopConversationTitleEdit: () => {
       stopConversationTitleEdit(true);
     },
-    hasSelection: () => selection !== null || selectionDrag !== null,
+    hasSelection: () => workspace.selection !== null || workspace.selectionDrag !== null,
     clearSelection: () => {
-      selection = null;
-      selectionDrag = null;
+      workspace.selection = null;
+      workspace.selectionDrag = null;
       releaseViewportPinForSelection();
     },
     activeConversationId: () => conversationManager.activeConversationId,
     repositoriesCollapsed: () => workspace.repositoriesCollapsed,
     clearConversationTitleEditClickState: () => {
-      conversationTitleEditClickState = null;
+      workspace.conversationTitleEditClickState = null;
     },
     resolveDirectoryForAction,
     openNewThreadPrompt,
@@ -2771,8 +2757,8 @@ async function main(): Promise<number> {
       }, 'mouse-archive-conversation');
     },
     openAddDirectoryPrompt: () => {
-      repositoryPrompt = null;
-      addDirectoryPrompt = {
+      workspace.repositoryPrompt = null;
+      workspace.addDirectoryPrompt = {
         value: '',
         error: null,
       };
@@ -2797,9 +2783,9 @@ async function main(): Promise<number> {
       workspace.shortcutsCollapsed = !workspace.shortcutsCollapsed;
       queuePersistMuxUiState();
     },
-    previousConversationClickState: () => conversationTitleEditClickState,
+    previousConversationClickState: () => workspace.conversationTitleEditClickState,
     setConversationClickState: (next) => {
-      conversationTitleEditClickState = next;
+      workspace.conversationTitleEditClickState = next;
     },
     nowMs: () => Date.now(),
     conversationTitleEditDoubleClickWindowMs: CONVERSATION_TITLE_EDIT_DOUBLE_CLICK_WINDOW_MS,
@@ -2882,9 +2868,9 @@ async function main(): Promise<number> {
     markDirty,
   });
   const pointerRoutingInput = new PointerRoutingInput({
-    getPaneDividerDragActive: () => paneDividerDragActive,
+    getPaneDividerDragActive: () => workspace.paneDividerDragActive,
     setPaneDividerDragActive: (active) => {
-      paneDividerDragActive = active;
+      workspace.paneDividerDragActive = active;
     },
     applyPaneDividerAtCol,
     getHomePaneDragState: () => workspace.homePaneDragState,
@@ -2908,13 +2894,13 @@ async function main(): Promise<number> {
     markDirty,
   });
   const conversationSelectionInput = new ConversationSelectionInput({
-    getSelection: () => selection,
+    getSelection: () => workspace.selection,
     setSelection: (next) => {
-      selection = next;
+      workspace.selection = next;
     },
-    getSelectionDrag: () => selectionDrag,
+    getSelectionDrag: () => workspace.selectionDrag,
     setSelectionDrag: (next) => {
-      selectionDrag = next;
+      workspace.selectionDrag = next;
     },
     pinViewportForSelection,
     releaseViewportPinForSelection,
@@ -2936,8 +2922,8 @@ async function main(): Promise<number> {
     archiveConversation,
     takeoverConversation,
     openAddDirectoryPrompt: () => {
-      repositoryPrompt = null;
-      addDirectoryPrompt = {
+      workspace.repositoryPrompt = null;
+      workspace.addDirectoryPrompt = {
         value: '',
         error: null,
       };
@@ -2978,9 +2964,9 @@ async function main(): Promise<number> {
     isShuttingDown: () => shuttingDown,
     routeModalInput: (input) => inputRouter.routeModalInput(input),
     handleEscapeInput: (input) => {
-      if (selection !== null || selectionDrag !== null) {
-        selection = null;
-        selectionDrag = null;
+      if (workspace.selection !== null || workspace.selectionDrag !== null) {
+        workspace.selection = null;
+        workspace.selectionDrag = null;
         releaseViewportPinForSelection();
         markDirty();
       }
@@ -3006,7 +2992,7 @@ async function main(): Promise<number> {
     handleCopyShortcutInput: (input) => {
       if (
         workspace.mainPaneMode !== 'conversation' ||
-        selection === null ||
+        workspace.selection === null ||
         !isCopyShortcutInput(input)
       ) {
         return false;
@@ -3016,7 +3002,7 @@ async function main(): Promise<number> {
         return true;
       }
       const selectedFrame = active.oracle.snapshotWithoutHash();
-      const copied = writeTextToClipboard(selectionText(selectedFrame, selection));
+      const copied = writeTextToClipboard(selectionText(selectedFrame, workspace.selection));
       if (copied) {
         markDirty();
       }
@@ -3074,8 +3060,8 @@ async function main(): Promise<number> {
     },
     persistMuxUiStateNow,
     clearConversationTitleEditTimer: () => {
-      if (conversationTitleEdit !== null) {
-        clearConversationTitleEditTimer(conversationTitleEdit);
+      if (workspace.conversationTitleEdit !== null) {
+        clearConversationTitleEditTimer(workspace.conversationTitleEdit);
       }
     },
     flushTaskComposerPersist: () => {

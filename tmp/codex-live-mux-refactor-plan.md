@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~3009 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~2995 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -157,6 +157,7 @@ bun run loc:verify:enforce
 ## Notes
 
 - Avoid helper-fragment churn; each extraction must reduce runtime responsibility and improve ownership clarity.
+- Consolidation-first mode is now active: prioritize ownership convergence and module merging over creating more small wrapper files.
 - Do not carry parallel legacy paths longer than one checkpoint after equivalent behavior is verified.
 - If any phase causes UI parity regression, halt and fix before continuing.
 - Second-pass target after Phase 8 extraction: collapse callback/options bags so UI input modules depend on domain managers/services via constructor-owned references instead of runtime closure callbacks.
@@ -1505,9 +1506,27 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 3009 non-empty LOC
 
+### Checkpoint CC (2026-02-18): Interaction state ownership moved into WorkspaceModel
+
+- Updated `scripts/codex-live-mux-runtime.ts` to stop maintaining duplicate local interaction-state variables for:
+  - selection + selection drag + selection viewport pinning
+  - modal prompt states (`newThread`, `addDirectory`, `repository`, `taskEditor`)
+  - conversation title-edit lifecycle state + click-state
+  - left-rail view row snapshot and pane-divider drag state
+- Runtime, modal manager, pointer/input handlers, and render paths now read/write those values through `workspace.*` fields directly.
+- This removes the split-brain state pattern where both local runtime `let` variables and `WorkspaceModel` existed for the same concerns.
+- Validation at checkpoint:
+  - `bun run typecheck`: pass
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: pass
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: pass
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2995 non-empty LOC
+
 ### Next focus (yield-first)
 
-- Continue startup/runtime orchestration extraction before callback-bag cleanup:
-  - continue action-handler consolidation on remaining non-task orchestration bundles
-  - start callback-bag reduction pass for input/router modules (`InputRouter`, pointer handlers)
-  - perform a small runtime cleanup pass to collapse temporary type-heavy wiring now that render seams are in place
+- Consolidation order (updated from critique review):
+  - collapse startup orchestration ownership into a single `StartupOrchestrator` seam (hydrate + settle + background probe/resume lifecycle)
+  - remove `_unsafe*` runtime escape hatches by exposing manager-owned read APIs/projections
+  - reduce callback/options bags in input/router modules by passing manager/service dependencies directly
+  - after ownership consolidation, rename/merge `runtime-*` service modules so names match stable responsibilities rather than extraction history
