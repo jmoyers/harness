@@ -6,7 +6,7 @@ export interface TaskEditorPromptInputState {
   fieldIndex: 0 | 1 | 2;
 }
 
-export interface TaskEditorPromptReduction {
+interface TaskEditorPromptReduction {
   title: string;
   description: string;
   repositoryIndex: number;
@@ -14,7 +14,7 @@ export interface TaskEditorPromptReduction {
   submit: boolean;
 }
 
-export interface LinePromptReduction {
+interface LinePromptReduction {
   value: string;
   submit: boolean;
 }

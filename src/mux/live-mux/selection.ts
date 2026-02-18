@@ -1,6 +1,6 @@
 import type { TerminalSnapshotFrameCore } from '../../terminal/snapshot-oracle.ts';
 
-export interface SelectionPoint {
+interface SelectionPoint {
   readonly rowAbs: number;
   readonly col: number;
 }

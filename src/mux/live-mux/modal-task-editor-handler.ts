@@ -3,7 +3,7 @@ import {
   type TaskEditorPromptInputState,
 } from './modal-input-reducers.ts';
 
-export interface TaskEditorPromptState extends TaskEditorPromptInputState {
+interface TaskEditorPromptState extends TaskEditorPromptInputState {
   mode: 'create' | 'edit';
   taskId: string | null;
   error: string | null;

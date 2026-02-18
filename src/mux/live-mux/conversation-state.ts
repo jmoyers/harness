@@ -36,7 +36,7 @@ export interface ConversationState {
   controller: StreamSessionController | null;
 }
 
-export function createConversationScope(
+function createConversationScope(
   baseScope: EventScope,
   conversationId: string,
   turnId: string,
@@ -122,12 +122,6 @@ export function conversationSummary(conversation: ConversationState): Conversati
     startedAt: conversation.startedAt,
     lastEventAt: conversation.lastEventAt,
   };
-}
-
-export function conversationOrder(
-  conversations: ReadonlyMap<string, ConversationState>,
-): readonly string[] {
-  return [...conversations.keys()];
 }
 
 export function compactDebugText(value: string | null): string {

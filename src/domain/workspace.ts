@@ -6,7 +6,7 @@ import type { TaskComposerBuffer } from '../mux/task-composer.ts';
 import type { TaskFocusedPaneView } from '../mux/task-focused-pane.ts';
 import type { buildWorkspaceRailViewRows } from '../mux/workspace-rail-model.ts';
 
-export type MainPaneMode = 'conversation' | 'project' | 'home';
+type MainPaneMode = 'conversation' | 'project' | 'home';
 
 export interface ConversationTitleEditState {
   conversationId: string;
@@ -35,7 +35,7 @@ export interface TaskEditorPromptState {
   error: string | null;
 }
 
-export interface HomePaneDragState {
+interface HomePaneDragState {
   readonly kind: 'task' | 'repository';
   readonly itemId: string;
   readonly startedRowIndex: number;
@@ -43,7 +43,7 @@ export interface HomePaneDragState {
   readonly hasDragged: boolean;
 }
 
-export type TaskEditorTarget = { kind: 'draft' } | { kind: 'task'; taskId: string };
+type TaskEditorTarget = { kind: 'draft' } | { kind: 'task'; taskId: string };
 
 interface WorkspaceModelInit {
   activeDirectoryId: string | null;

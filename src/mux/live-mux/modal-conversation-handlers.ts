@@ -8,7 +8,7 @@ import { reduceLinePromptInput } from './modal-input-reducers.ts';
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 
-export interface ConversationTitleEditState {
+interface ConversationTitleEditState {
   conversationId: string;
   value: string;
   lastSavedValue: string;

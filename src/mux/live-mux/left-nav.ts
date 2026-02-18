@@ -30,7 +30,7 @@ export function leftNavTargetKey(target: LeftNavSelection): string {
   return `conversation:${target.sessionId}`;
 }
 
-export function leftNavTargetFromRow(
+function leftNavTargetFromRow(
   rows: ReturnType<typeof buildWorkspaceRailViewRows>,
   rowIndex: number,
 ): LeftNavSelection | null {

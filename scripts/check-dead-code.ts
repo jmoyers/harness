@@ -139,9 +139,13 @@ function main(): number {
   const root = process.cwd();
   const srcRoot = resolve(root, 'src');
   const testRoot = resolve(root, 'test');
+  const scriptsRoot = resolve(root, 'scripts');
   const srcFiles = ts.sys.readDirectory(srcRoot, ['.ts'], undefined, ['**/*.ts']).map(normalizePath);
   const testFiles = ts.sys.readDirectory(testRoot, ['.ts'], undefined, ['**/*.ts']).map(normalizePath);
-  const allFiles = [...srcFiles, ...testFiles];
+  const scriptFiles = ts.sys
+    .readDirectory(scriptsRoot, ['.ts'], undefined, ['**/*.ts'])
+    .map(normalizePath);
+  const allFiles = [...new Set([...srcFiles, ...testFiles, ...scriptFiles])];
 
   const importedNamesByFile = new Map<string, Set<string>>();
   const referencedSourceFiles = new Set<string>();

@@ -9,14 +9,14 @@ import type { StreamSessionController } from '../../control-plane/stream-protoco
 type ResolvedMuxShortcutBindings = ReturnType<typeof resolveMuxShortcutBindings>;
 type WorkspaceRailModel = Parameters<typeof renderWorkspaceRailAnsiRows>[0];
 
-export interface GitSummary {
+interface GitSummary {
   readonly branch: string;
   readonly changedFiles: number;
   readonly additions: number;
   readonly deletions: number;
 }
 
-export interface GitRepositorySnapshot {
+interface GitRepositorySnapshot {
   readonly normalizedRemoteUrl: string | null;
   readonly commitCount: number | null;
   readonly lastCommitAt: string | null;
@@ -25,18 +25,18 @@ export interface GitRepositorySnapshot {
   readonly defaultBranch: string | null;
 }
 
-export interface MuxRailRepositoryRecord {
+interface MuxRailRepositoryRecord {
   readonly repositoryId: string;
   readonly name: string;
   readonly remoteUrl: string;
 }
 
-export interface MuxRailDirectoryRecord {
+interface MuxRailDirectoryRecord {
   readonly directoryId: string;
   readonly path: string;
 }
 
-export interface MuxRailConversationRecord {
+interface MuxRailConversationRecord {
   readonly sessionId: string;
   readonly directoryId: string | null;
   readonly title: string;
@@ -51,7 +51,7 @@ export interface MuxRailConversationRecord {
   readonly controller: StreamSessionController | null;
 }
 
-export interface MuxRailProcessUsageSample {
+interface MuxRailProcessUsageSample {
   readonly cpuPercent: number | null;
   readonly memoryMb: number | null;
 }

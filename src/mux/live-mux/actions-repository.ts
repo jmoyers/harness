@@ -71,7 +71,7 @@ export function openRepositoryPromptForEdit(options: OpenRepositoryPromptForEdit
   options.markDirty();
 }
 
-export function repositoryHomePriority(repository: RepositoryRecordWithMetadata): number | null {
+function repositoryHomePriority(repository: RepositoryRecordWithMetadata): number | null {
   const raw = repository.metadata['homePriority'];
   if (typeof raw !== 'number' || !Number.isFinite(raw)) {
     return null;

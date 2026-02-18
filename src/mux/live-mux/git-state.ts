@@ -16,7 +16,7 @@ export interface GitRepositorySnapshot {
   readonly defaultBranch: string | null;
 }
 
-export function gitSummaryEqual(left: GitSummary, right: GitSummary): boolean {
+function gitSummaryEqual(left: GitSummary, right: GitSummary): boolean {
   return (
     left.branch === right.branch &&
     left.changedFiles === right.changedFiles &&
@@ -25,7 +25,7 @@ export function gitSummaryEqual(left: GitSummary, right: GitSummary): boolean {
   );
 }
 
-export function gitRepositorySnapshotEqual(
+function gitRepositorySnapshotEqual(
   left: GitRepositorySnapshot,
   right: GitRepositorySnapshot,
 ): boolean {
@@ -39,16 +39,6 @@ export function gitRepositorySnapshotEqual(
   );
 }
 
-export function ensureDirectoryGitState(
-  gitSummaryByDirectoryId: Map<string, GitSummary>,
-  directoryId: string,
-  loadingSummary: GitSummary,
-): void {
-  if (!gitSummaryByDirectoryId.has(directoryId)) {
-    gitSummaryByDirectoryId.set(directoryId, loadingSummary);
-  }
-}
-
 export function deleteDirectoryGitState(
   directoryId: string,
   gitSummaryByDirectoryId: Map<string, GitSummary>,
@@ -58,40 +48,6 @@ export function deleteDirectoryGitState(
   gitSummaryByDirectoryId.delete(directoryId);
   directoryRepositorySnapshotByDirectoryId.delete(directoryId);
   repositoryAssociationByDirectoryId.delete(directoryId);
-}
-
-interface SyncGitStateWithDirectoriesOptions {
-  directoryIds: readonly string[];
-  directoriesHas: (directoryId: string) => boolean;
-  gitSummaryByDirectoryId: Map<string, GitSummary>;
-  directoryRepositorySnapshotByDirectoryId: Map<string, GitRepositorySnapshot>;
-  repositoryAssociationByDirectoryId: Map<string, string>;
-  loadingSummary: GitSummary;
-}
-
-export function syncGitStateWithDirectories(options: SyncGitStateWithDirectoriesOptions): void {
-  const {
-    directoryIds,
-    directoriesHas,
-    gitSummaryByDirectoryId,
-    directoryRepositorySnapshotByDirectoryId,
-    repositoryAssociationByDirectoryId,
-    loadingSummary,
-  } = options;
-  for (const directoryId of directoryIds) {
-    ensureDirectoryGitState(gitSummaryByDirectoryId, directoryId, loadingSummary);
-  }
-  const staleDirectoryIds = [...gitSummaryByDirectoryId.keys()].filter(
-    (directoryId) => !directoriesHas(directoryId),
-  );
-  for (const directoryId of staleDirectoryIds) {
-    deleteDirectoryGitState(
-      directoryId,
-      gitSummaryByDirectoryId,
-      directoryRepositorySnapshotByDirectoryId,
-      repositoryAssociationByDirectoryId,
-    );
-  }
 }
 
 interface ApplyObservedGitStatusEventOptions<TRepositoryRecord extends { repositoryId: string }> {

@@ -135,7 +135,7 @@ bun run loc:verify:enforce
 
 ## Current State Snapshot
 
-- Current primary over-limit file: `scripts/codex-live-mux-runtime.ts` (~4585 LOC).
+- Current primary over-limit file: `scripts/codex-live-mux-runtime.ts` (~4582 LOC).
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
 
@@ -407,3 +407,44 @@ bun run loc:verify:enforce
   - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4585 non-empty LOC
+
+### Checkpoint Q (2026-02-18): DirectoryManager extraction start
+
+- Added `src/domain/directories.ts` with class-owned directory and git-summary state:
+  - directory record map + active-directory helpers (`firstDirectoryId`, `resolveActiveDirectoryId`)
+  - git-summary map + synchronization helpers (`ensureGitSummary`, `syncGitSummariesWithDirectories`)
+- Updated `scripts/codex-live-mux-runtime.ts` to instantiate/use `DirectoryManager` and delegate:
+  - directory map lifecycle operations (hydrate/set/get/has/delete/size/keys)
+  - active-directory resolution through manager API
+  - git-summary defaulting/sync through manager API
+  - helper callsites now consume `_unsafeDirectoryMap` / `_unsafeDirectoryGitSummaryMap` transitional views
+- Added unit coverage in `test/domain-directories.test.ts` for:
+  - active-directory resolution semantics
+  - git-summary synchronization with directory lifecycle
+- Validation at checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun test test/domain-directories.test.ts`: 2 pass / 0 fail
+  - `bun test test/codex-live-mux-startup.integration.test.ts`: 9 pass / 0 fail
+  - `bun test test/mux-runtime-wiring.integration.test.ts`: 2 pass / 0 fail
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4582 non-empty LOC
+
+### Checkpoint R (2026-02-18): Strict dead-code hygiene + full-verify cadence
+
+- Kept dead-code gate strict and moved toward compliance instead of relaxing thresholds:
+  - dead exported type surfaces removed where no external use existed
+  - dead helper exports/functions removed from transitional mux modules
+  - dead-code checker now scans `scripts/**/*.ts` imports so script-owned runtime modules are treated as live references
+- Added/refined targeted unit tests:
+  - `test/domain-directories.test.ts` expanded to exercise all `DirectoryManager` public methods
+  - `test/mux-live-mux-selection.test.ts` now covers `reduceConversationMouseSelection(...)` branches
+  - `test/mux-live-mux-rail-layout.test.ts` now covers repository snapshot merge and missing-session filtering paths
+- Validation at checkpoint:
+  - `bun run lint`: pass
+  - `bun run typecheck`: pass
+  - `bun scripts/check-dead-code.ts`: pass
+  - `bun run verify`: **fails at `coverage:check` only**
+    - remaining blocker: missing coverage-report entries for 34 transitional mux/domain files
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4582 non-empty LOC

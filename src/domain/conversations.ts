@@ -11,7 +11,7 @@ export interface ConversationSeed {
   adapterState?: Record<string, unknown>;
 }
 
-export interface PersistedConversationRecord {
+interface PersistedConversationRecord {
   conversationId: string;
   directoryId: string;
   tenantId: string;

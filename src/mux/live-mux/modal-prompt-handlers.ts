@@ -1,11 +1,11 @@
 import { reduceLinePromptInput } from './modal-input-reducers.ts';
 
-export interface AddDirectoryPromptState {
+interface AddDirectoryPromptState {
   value: string;
   error: string | null;
 }
 
-export interface RepositoryPromptState {
+interface RepositoryPromptState {
   readonly mode: 'add' | 'edit';
   readonly repositoryId: string | null;
   readonly value: string;

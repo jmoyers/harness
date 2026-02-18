@@ -10,26 +10,6 @@ interface ResolveDirectoryForActionOptions {
   directoriesHas: (directoryId: string) => boolean;
 }
 
-export function firstDirectoryId<TDirectory>(
-  directories: ReadonlyMap<string, TDirectory>,
-): string | null {
-  const iterator = directories.keys().next();
-  if (iterator.done === true) {
-    return null;
-  }
-  return iterator.value;
-}
-
-export function resolveActiveDirectoryId<TDirectory>(
-  activeDirectoryId: string | null,
-  directories: ReadonlyMap<string, TDirectory>,
-): string | null {
-  if (activeDirectoryId !== null && directories.has(activeDirectoryId)) {
-    return activeDirectoryId;
-  }
-  return firstDirectoryId(directories);
-}
-
 export function resolveDirectoryForAction(options: ResolveDirectoryForActionOptions): string | null {
   if (options.mainPaneMode === 'project') {
     if (options.activeDirectoryId !== null && options.directoriesHas(options.activeDirectoryId)) {

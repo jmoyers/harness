@@ -206,15 +206,11 @@ import { handleGlobalShortcut as handleGlobalShortcutFn } from '../src/mux/live-
 import {
   applyObservedGitStatusEvent as applyObservedGitStatusEventFn,
   deleteDirectoryGitState as deleteDirectoryGitStateFn,
-  ensureDirectoryGitState as ensureDirectoryGitStateFn,
-  syncGitStateWithDirectories as syncGitStateWithDirectoriesFn,
   type GitRepositorySnapshot,
   type GitSummary,
 } from '../src/mux/live-mux/git-state.ts';
 import { refreshProcessUsageSnapshots as refreshProcessUsageSnapshotsFn } from '../src/mux/live-mux/process-usage.ts';
 import {
-  firstDirectoryId as firstDirectoryIdFn,
-  resolveActiveDirectoryId as resolveActiveDirectoryIdFn,
   resolveDirectoryForAction as resolveDirectoryForActionFn,
 } from '../src/mux/live-mux/directory-resolution.ts';
 import { requestStop as requestStopFn } from '../src/mux/live-mux/runtime-shutdown.ts';
@@ -263,6 +259,7 @@ import {
   type ConversationSeed,
 } from '../src/domain/conversations.ts';
 import { RepositoryManager } from '../src/domain/repositories.ts';
+import { DirectoryManager } from '../src/domain/directories.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -628,9 +625,10 @@ async function main(): Promise<number> {
     ...sanitizeProcessEnv(),
     TERM: process.env.TERM ?? 'xterm-256color',
   };
-  const directories = new Map<string, ControlPlaneDirectoryRecord>([
-    [persistedDirectory.directoryId, persistedDirectory],
-  ]);
+  const directoryManager = new DirectoryManager<ControlPlaneDirectoryRecord, GitSummary>();
+  directoryManager.setDirectory(persistedDirectory.directoryId, persistedDirectory);
+  const _unsafeDirectoryMap = directoryManager.readonlyDirectories();
+  const _unsafeDirectoryGitSummaryMap = directoryManager.mutableGitSummaries();
   const repositoryManager = new RepositoryManager<
     ControlPlaneRepositoryRecord,
     GitRepositorySnapshot
@@ -762,7 +760,7 @@ async function main(): Promise<number> {
   };
 
   const resolveActiveDirectoryId = (): string | null => {
-    workspace.activeDirectoryId = resolveActiveDirectoryIdFn(workspace.activeDirectoryId, directories);
+    workspace.activeDirectoryId = directoryManager.resolveActiveDirectoryId(workspace.activeDirectoryId);
     return workspace.activeDirectoryId;
   };
 
@@ -772,7 +770,7 @@ async function main(): Promise<number> {
       activeDirectoryId: workspace.activeDirectoryId,
       activeConversationId: conversationManager.activeConversationId,
       conversations: _unsafeConversationMap,
-      directoriesHas: (directoryId) => directories.has(directoryId),
+      directoriesHas: (directoryId) => directoryManager.hasDirectory(directoryId),
     });
   };
 
@@ -823,7 +821,11 @@ async function main(): Promise<number> {
   };
 
   const firstDirectoryForRepositoryGroup = (repositoryGroupId: string): string | null => {
-    return firstDirectoryForRepositoryGroupFn(directories, repositoryGroupIdForDirectory, repositoryGroupId);
+    return firstDirectoryForRepositoryGroupFn(
+      _unsafeDirectoryMap,
+      repositoryGroupIdForDirectory,
+      repositoryGroupId,
+    );
   };
 
   const selectLeftNavHome = (): void => {
@@ -899,7 +901,7 @@ async function main(): Promise<number> {
       workspaceId: options.scope.workspaceId,
     });
     const rows = Array.isArray(listed['directories']) ? listed['directories'] : [];
-    directories.clear();
+    directoryManager.clearDirectories();
     for (const row of rows) {
       const record = parseDirectoryRecord(row);
       if (record === null) {
@@ -916,13 +918,16 @@ async function main(): Promise<number> {
           path: normalizedPath,
         });
         const repairedRecord = parseDirectoryRecord(repairedResult['directory']);
-        directories.set(record.directoryId, repairedRecord ?? { ...record, path: normalizedPath });
+        directoryManager.setDirectory(
+          record.directoryId,
+          repairedRecord ?? { ...record, path: normalizedPath },
+        );
         continue;
       }
-      directories.set(record.directoryId, record);
+      directoryManager.setDirectory(record.directoryId, record);
     }
-    if (!directories.has(persistedDirectory.directoryId)) {
-      directories.set(persistedDirectory.directoryId, persistedDirectory);
+    if (!directoryManager.hasDirectory(persistedDirectory.directoryId)) {
+      directoryManager.setDirectory(persistedDirectory.directoryId, persistedDirectory);
     }
     if (resolveActiveDirectoryId() === null) {
       throw new Error('no active directory available after hydrate');
@@ -930,7 +935,7 @@ async function main(): Promise<number> {
   };
 
   const syncRepositoryAssociationsWithDirectorySnapshots = (): void => {
-    repositoryManager.syncWithDirectories((directoryId) => directories.has(directoryId));
+    repositoryManager.syncWithDirectories((directoryId) => directoryManager.hasDirectory(directoryId));
   };
 
   const hydrateRepositoryList = async (): Promise<void> => {
@@ -968,7 +973,7 @@ async function main(): Promise<number> {
       if (record === null) {
         continue;
       }
-      gitSummaryByDirectoryId.set(record.directoryId, record.summary);
+      _unsafeDirectoryGitSummaryMap.set(record.directoryId, record.summary);
       repositoryManager.setDirectoryRepositorySnapshot(record.directoryId, record.repositorySnapshot);
       repositoryManager.setDirectoryRepositoryAssociation(record.directoryId, record.repositoryId);
       if (record.repository !== null) {
@@ -1044,7 +1049,7 @@ async function main(): Promise<number> {
       const configuredDirectoryPath =
         targetConversation.directoryId === null
           ? null
-          : (directories.get(targetConversation.directoryId)?.path ?? null);
+          : (directoryManager.getDirectory(targetConversation.directoryId)?.path ?? null);
       const sessionCwd = resolveWorkspacePathForMux(
         options.invocationDirectory,
         configuredDirectoryPath ?? options.invocationDirectory,
@@ -1166,7 +1171,7 @@ async function main(): Promise<number> {
     const hydrateSpan = startPerfSpan('mux.startup.hydrate-conversations');
     await hydrateDirectoryList();
     let persistedCount = 0;
-    for (const directoryId of directories.keys()) {
+    for (const directoryId of directoryManager.directoryIds()) {
       persistedCount += await hydratePersistedConversationsForDirectory(directoryId);
     }
 
@@ -1210,7 +1215,6 @@ async function main(): Promise<number> {
     }
   }
 
-  const gitSummaryByDirectoryId = new Map<string, GitSummary>();
   const processUsageBySessionId = new Map<string, ProcessUsageSample>();
   const selectorIndexBySessionId = new Map<
     string,
@@ -1266,7 +1270,7 @@ async function main(): Promise<number> {
 
   const refreshSelectorInstrumentation = (reason: string): void => {
     const orderedIds = conversationManager.orderedIds();
-    const entries = buildSelectorIndexEntries(directories, _unsafeConversationMap, orderedIds);
+    const entries = buildSelectorIndexEntries(_unsafeDirectoryMap, _unsafeConversationMap, orderedIds);
     const hash = entries
       .map(
         (entry) =>
@@ -1350,32 +1354,25 @@ async function main(): Promise<number> {
     left.cpuPercent === right.cpuPercent && left.memoryMb === right.memoryMb;
 
   const ensureDirectoryGitState = (directoryId: string): void => {
-    ensureDirectoryGitStateFn(gitSummaryByDirectoryId, directoryId, GIT_SUMMARY_LOADING);
+    directoryManager.ensureGitSummary(directoryId, GIT_SUMMARY_LOADING);
   };
 
   const deleteDirectoryGitState = (directoryId: string): void => {
     deleteDirectoryGitStateFn(
       directoryId,
-      gitSummaryByDirectoryId,
+      _unsafeDirectoryGitSummaryMap,
       directoryRepositorySnapshotByDirectoryId,
       repositoryAssociationByDirectoryId,
     );
   };
 
   const syncGitStateWithDirectories = (): void => {
-    syncGitStateWithDirectoriesFn({
-      directoryIds: [...directories.keys()],
-      directoriesHas: (directoryId) => directories.has(directoryId),
-      gitSummaryByDirectoryId,
-      directoryRepositorySnapshotByDirectoryId,
-      repositoryAssociationByDirectoryId,
-      loadingSummary: GIT_SUMMARY_LOADING,
-    });
+    directoryManager.syncGitSummariesWithDirectories(GIT_SUMMARY_LOADING);
     syncRepositoryAssociationsWithDirectorySnapshots();
   };
 
   const noteGitActivity = (directoryId: string | null): void => {
-    if (directoryId === null || !directories.has(directoryId)) {
+    if (directoryId === null || !directoryManager.hasDirectory(directoryId)) {
       return;
     }
     ensureDirectoryGitState(directoryId);
@@ -1385,7 +1382,7 @@ async function main(): Promise<number> {
     const reduced = applyObservedGitStatusEventFn({
       enabled: configuredMuxGit.enabled,
       observed,
-      gitSummaryByDirectoryId,
+      gitSummaryByDirectoryId: _unsafeDirectoryGitSummaryMap,
       loadingSummary: GIT_SUMMARY_LOADING,
       directoryRepositorySnapshotByDirectoryId,
       emptyRepositorySnapshot: GIT_REPOSITORY_NONE,
@@ -2307,7 +2304,7 @@ async function main(): Promise<number> {
   };
 
   const refreshProjectPaneSnapshot = (directoryId: string): void => {
-    const directory = directories.get(directoryId);
+    const directory = directoryManager.getDirectory(directoryId);
     if (directory === undefined) {
       workspace.projectPaneSnapshot = null;
       return;
@@ -2316,7 +2313,7 @@ async function main(): Promise<number> {
   };
 
   const enterProjectPane = (directoryId: string): void => {
-    if (!directories.has(directoryId)) {
+    if (!directoryManager.hasDirectory(directoryId)) {
       return;
     }
     workspace.activeDirectoryId = directoryId;
@@ -3002,7 +2999,7 @@ async function main(): Promise<number> {
   const openNewThreadPrompt = (directoryId: string): void => {
     openNewThreadPromptFn({
       directoryId,
-      directoriesHas: (nextDirectoryId) => directories.has(nextDirectoryId),
+      directoriesHas: (nextDirectoryId) => directoryManager.hasDirectory(nextDirectoryId),
       clearAddDirectoryPrompt: () => {
         addDirectoryPrompt = null;
       },
@@ -3253,7 +3250,7 @@ async function main(): Promise<number> {
         return parseDirectoryRecord(directoryResult['directory']);
       },
       setDirectory: (directory) => {
-        directories.set(directory.directoryId, directory);
+        directoryManager.setDirectory(directory.directoryId, directory);
       },
       directoryIdOf: (directory) => directory.directoryId,
       setActiveDirectoryId: (directoryId) => {
@@ -3276,7 +3273,7 @@ async function main(): Promise<number> {
   const closeDirectory = async (directoryId: string): Promise<void> => {
     await closeDirectoryFn({
       directoryId,
-      directoriesHas: (targetDirectoryId) => directories.has(targetDirectoryId),
+      directoriesHas: (targetDirectoryId) => directoryManager.hasDirectory(targetDirectoryId),
       orderedConversationIds: () => conversationManager.orderedIds(),
       conversationDirectoryId: (sessionId) => conversationManager.directoryIdOf(sessionId),
       conversationLive: (sessionId) => conversationManager.isLive(sessionId),
@@ -3305,7 +3302,7 @@ async function main(): Promise<number> {
         });
       },
       deleteDirectory: (targetDirectoryId) => {
-        directories.delete(targetDirectoryId);
+        directoryManager.deleteDirectory(targetDirectoryId);
       },
       deleteDirectoryGitState,
       projectPaneSnapshotDirectoryId: workspace.projectPaneSnapshot?.directoryId ?? null,
@@ -3313,14 +3310,14 @@ async function main(): Promise<number> {
         workspace.projectPaneSnapshot = null;
         workspace.projectPaneScrollTop = 0;
       },
-      directoriesSize: () => directories.size,
+      directoriesSize: () => directoryManager.directoriesSize(),
       addDirectoryByPath,
       invocationDirectory: options.invocationDirectory,
       activeDirectoryId: workspace.activeDirectoryId,
       setActiveDirectoryId: (targetDirectoryId) => {
         workspace.activeDirectoryId = targetDirectoryId;
       },
-      firstDirectoryId: () => firstDirectoryIdFn(directories),
+      firstDirectoryId: () => directoryManager.firstDirectoryId(),
       noteGitActivity,
       resolveActiveDirectoryId,
       activateConversation,
@@ -3366,7 +3363,7 @@ async function main(): Promise<number> {
     const projectPaneActive =
       workspace.mainPaneMode === 'project' &&
       workspace.activeDirectoryId !== null &&
-      directories.has(workspace.activeDirectoryId);
+      directoryManager.hasDirectory(workspace.activeDirectoryId);
     const homePaneActive = workspace.mainPaneMode === 'home';
     if (!projectPaneActive && !homePaneActive && conversationManager.activeConversationId === null) {
       dirty = false;
@@ -3402,7 +3399,7 @@ async function main(): Promise<number> {
       repositories,
       repositoryAssociationByDirectoryId,
       directoryRepositorySnapshotByDirectoryId,
-      directories,
+      directories: _unsafeDirectoryMap,
       conversations: _unsafeConversationMap,
       orderedIds,
       activeProjectId: workspace.activeDirectoryId,
@@ -3414,7 +3411,7 @@ async function main(): Promise<number> {
       repositoriesCollapsed: workspace.repositoriesCollapsed,
       collapsedRepositoryGroupIds,
       shortcutsCollapsed: workspace.shortcutsCollapsed,
-      gitSummaryByDirectoryId,
+      gitSummaryByDirectoryId: _unsafeDirectoryGitSummaryMap,
       processUsageBySessionId,
       shortcutBindings,
       loadingGitSummary: GIT_SUMMARY_LOADING,
@@ -4132,7 +4129,7 @@ async function main(): Promise<number> {
       },
       selectLeftNavRepository,
       markDirty,
-      directoriesHas: (directoryId) => directories.has(directoryId),
+      directoriesHas: (directoryId) => directoryManager.hasDirectory(directoryId),
       visibleTargetsForState: visibleLeftNavTargetsForState,
       conversationDirectoryId: (sessionId) => conversationManager.directoryIdOf(sessionId),
       queueControlPlaneOp,
@@ -4274,7 +4271,7 @@ async function main(): Promise<number> {
         resolveClosableDirectoryId: () =>
           workspace.mainPaneMode === 'project' &&
           workspace.activeDirectoryId !== null &&
-          directories.has(workspace.activeDirectoryId)
+          directoryManager.hasDirectory(workspace.activeDirectoryId)
             ? workspace.activeDirectoryId
             : null,
         closeDirectory,
@@ -4585,7 +4582,7 @@ async function main(): Promise<number> {
                   beginConversationTitleEdit(conversationId);
                 }, 'mouse-activate-edit-conversation');
               },
-              directoriesHas: (directoryId) => directories.has(directoryId),
+              directoriesHas: (directoryId) => directoryManager.hasDirectory(directoryId),
               enterProjectPane,
               markDirty,
             });

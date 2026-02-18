@@ -107,15 +107,7 @@ export function reduceRepositoryFoldChordInput(
   };
 }
 
-export function repositoryGroupIdForDirectory(
-  repositoryAssociationByDirectoryId: ReadonlyMap<string, string>,
-  directoryId: string,
-  untrackedRepositoryGroupId: string,
-): string {
-  return repositoryAssociationByDirectoryId.get(directoryId) ?? untrackedRepositoryGroupId;
-}
-
-export function isRepositoryGroupCollapsed(
+function isRepositoryGroupCollapsed(
   repositoryGroupId: string,
   repositoriesCollapsed: boolean,
   expandedRepositoryGroupIds: ReadonlySet<string>,

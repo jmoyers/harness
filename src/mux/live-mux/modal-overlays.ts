@@ -13,7 +13,7 @@ import { buildUiModalOverlay } from '../../ui/kit.ts';
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
 type UiModalThemeInput = NonNullable<Parameters<typeof buildUiModalOverlay>[0]['theme']>;
 
-export interface TaskEditorPromptOverlayState {
+interface TaskEditorPromptOverlayState {
   mode: 'create' | 'edit';
   title: string;
   description: string;
@@ -23,13 +23,13 @@ export interface TaskEditorPromptOverlayState {
   error: string | null;
 }
 
-export interface RepositoryPromptOverlayState {
+interface RepositoryPromptOverlayState {
   readonly mode: 'add' | 'edit';
   readonly value: string;
   readonly error: string | null;
 }
 
-export interface ConversationTitleOverlayState {
+interface ConversationTitleOverlayState {
   value: string;
   lastSavedValue: string;
   error: string | null;

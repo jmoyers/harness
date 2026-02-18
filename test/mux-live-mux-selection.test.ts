@@ -14,6 +14,7 @@ import {
   mergeUniqueRows,
   normalizeSelection,
   pointFromMouseEvent,
+  reduceConversationMouseSelection,
   renderSelectionOverlay,
   selectionPointsEqual,
   selectionText,
@@ -296,4 +297,107 @@ void test('copy shortcut detection and clipboard writing support positive and ne
   } finally {
     restoreWrite();
   }
+});
+
+void test('mouse selection reducer covers start, drag, release, clear, and passthrough branches', () => {
+  const pointA = { rowAbs: 3, col: 4 };
+  const pointB = { rowAbs: 4, col: 6 };
+
+  const start = reduceConversationMouseSelection({
+    selection: null,
+    selectionDrag: null,
+    point: pointA,
+    isMainPaneTarget: true,
+    isLeftButtonPress: true,
+    isSelectionDrag: false,
+    isMouseRelease: false,
+    isWheelMouseCode: false,
+    selectionTextForPane: () => ''
+  });
+  assert.equal(start.pinViewport, true);
+  assert.equal(start.selection, null);
+  assert.deepEqual(start.selectionDrag, {
+    anchor: pointA,
+    focus: pointA,
+    hasDragged: false
+  });
+
+  const drag = reduceConversationMouseSelection({
+    selection: null,
+    selectionDrag: start.selectionDrag,
+    point: pointB,
+    isMainPaneTarget: true,
+    isLeftButtonPress: false,
+    isSelectionDrag: true,
+    isMouseRelease: false,
+    isWheelMouseCode: false,
+    selectionTextForPane: () => ''
+  });
+  assert.equal(drag.selectionDrag?.hasDragged, true);
+
+  const releaseDragged = reduceConversationMouseSelection({
+    selection: null,
+    selectionDrag: drag.selectionDrag,
+    point: pointB,
+    isMainPaneTarget: true,
+    isLeftButtonPress: false,
+    isSelectionDrag: false,
+    isMouseRelease: true,
+    isWheelMouseCode: false,
+    selectionTextForPane: () => 'captured'
+  });
+  assert.equal(releaseDragged.selectionDrag, null);
+  assert.equal(releaseDragged.selection?.text, 'captured');
+  assert.equal(releaseDragged.releaseViewportPin, false);
+
+  const releaseClickOnly = reduceConversationMouseSelection({
+    selection: null,
+    selectionDrag: {
+      anchor: pointA,
+      focus: pointA,
+      hasDragged: false
+    },
+    point: pointA,
+    isMainPaneTarget: true,
+    isLeftButtonPress: false,
+    isSelectionDrag: false,
+    isMouseRelease: true,
+    isWheelMouseCode: false,
+    selectionTextForPane: () => ''
+  });
+  assert.equal(releaseClickOnly.selection, null);
+  assert.equal(releaseClickOnly.releaseViewportPin, true);
+
+  const clearOnTyping = reduceConversationMouseSelection({
+    selection: {
+      anchor: pointA,
+      focus: pointB,
+      text: 'text'
+    },
+    selectionDrag: null,
+    point: pointA,
+    isMainPaneTarget: false,
+    isLeftButtonPress: false,
+    isSelectionDrag: false,
+    isMouseRelease: false,
+    isWheelMouseCode: false,
+    selectionTextForPane: () => ''
+  });
+  assert.equal(clearOnTyping.selection, null);
+  assert.equal(clearOnTyping.consumed, false);
+  assert.equal(clearOnTyping.releaseViewportPin, true);
+
+  const passthrough = reduceConversationMouseSelection({
+    selection: null,
+    selectionDrag: null,
+    point: pointA,
+    isMainPaneTarget: false,
+    isLeftButtonPress: false,
+    isSelectionDrag: false,
+    isMouseRelease: false,
+    isWheelMouseCode: true,
+    selectionTextForPane: () => ''
+  });
+  assert.equal(passthrough.markDirty, false);
+  assert.equal(passthrough.consumed, false);
 });

@@ -170,3 +170,91 @@ void test('live-mux rail layout shortcut hint collapses next/previous into singl
   assert.equal(visible.includes('ctrl+n switch nav'), true);
   assert.equal(visible.includes('ctrl+n/ctrl+n switch nav'), false);
 });
+
+void test('live-mux rail model selects latest repository snapshot metadata and skips missing sessions', () => {
+  const model = buildRailModel({
+    repositories: new Map([
+      [
+        'repo-1',
+        {
+          repositoryId: 'repo-1',
+          name: 'repo-one',
+          remoteUrl: 'https://github.com/example/repo-one',
+        },
+      ],
+    ]),
+    repositoryAssociationByDirectoryId: new Map([
+      ['dir-no-snapshot', 'repo-1'],
+      ['dir-older', 'repo-1'],
+      ['dir-newer', 'repo-1'],
+    ]),
+    directoryRepositorySnapshotByDirectoryId: new Map([
+      [
+        'dir-older',
+        {
+          normalizedRemoteUrl: 'https://github.com/example/repo-one',
+          commitCount: 11,
+          lastCommitAt: '2026-02-17T00:00:01.000Z',
+          shortCommitHash: 'oldhash',
+          inferredName: 'repo-one',
+          defaultBranch: 'main',
+        },
+      ],
+      [
+        'dir-newer',
+        {
+          normalizedRemoteUrl: 'https://github.com/example/repo-one',
+          commitCount: 12,
+          lastCommitAt: '2026-02-17T00:00:05.000Z',
+          shortCommitHash: 'newhash',
+          inferredName: 'repo-one',
+          defaultBranch: 'main',
+        },
+      ],
+    ]),
+    directories: new Map([
+      ['dir-no-snapshot', { directoryId: 'dir-no-snapshot', path: '/tmp/no-snapshot' }],
+      ['dir-older', { directoryId: 'dir-older', path: '/tmp/older' }],
+      ['dir-newer', { directoryId: 'dir-newer', path: '/tmp/newer' }],
+    ]),
+    conversations: new Map([
+      [
+        'session-1',
+        {
+          sessionId: 'session-1',
+          directoryId: 'dir-older',
+          title: 'thread-1',
+          agentType: 'codex',
+          status: 'running',
+          attentionReason: null,
+          live: true,
+          startedAt: '2026-02-17T00:00:00.000Z',
+          lastEventAt: '2026-02-17T00:00:01.000Z',
+          lastKnownWork: null,
+          lastKnownWorkAt: null,
+          controller: null,
+        },
+      ],
+    ]),
+    orderedIds: ['session-1', 'session-missing'],
+    activeProjectId: 'dir-older',
+    activeRepositoryId: 'repo-1',
+    activeConversationId: 'session-1',
+    projectSelectionEnabled: true,
+    repositorySelectionEnabled: false,
+    homeSelectionEnabled: false,
+    repositoriesCollapsed: false,
+    collapsedRepositoryGroupIds: new Set<string>(),
+    shortcutsCollapsed: false,
+    gitSummaryByDirectoryId: new Map(),
+    processUsageBySessionId: new Map(),
+    shortcutBindings: resolveMuxShortcutBindings({}),
+    loadingGitSummary: LOADING_GIT_SUMMARY,
+  });
+
+  const repository = (model.repositories ?? []).find((entry) => entry.repositoryId === 'repo-1');
+  assert.equal(repository?.associatedProjectCount, 3);
+  assert.equal(repository?.commitCount, 12);
+  assert.equal(repository?.shortCommitHash, 'newhash');
+  assert.equal(model.conversations.length, 1);
+});
