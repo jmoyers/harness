@@ -1,7 +1,25 @@
 export class RepositoryManager<TRepositoryRecord, TRepositorySnapshot> {
-  readonly repositories = new Map<string, TRepositoryRecord>();
-  readonly repositoryAssociationByDirectoryId = new Map<string, string>();
-  readonly directoryRepositorySnapshotByDirectoryId = new Map<string, TRepositorySnapshot>();
+  private readonly repositories = new Map<string, TRepositoryRecord>();
+  private readonly repositoryAssociationByDirectoryId = new Map<string, string>();
+  private readonly directoryRepositorySnapshotByDirectoryId = new Map<string, TRepositorySnapshot>();
+
+  constructor() {}
+
+  unsafeMutableRepositories(): Map<string, TRepositoryRecord> {
+    return this.repositories;
+  }
+
+  unsafeMutableDirectoryAssociations(): Map<string, string> {
+    return this.repositoryAssociationByDirectoryId;
+  }
+
+  unsafeMutableDirectorySnapshots(): Map<string, TRepositorySnapshot> {
+    return this.directoryRepositorySnapshotByDirectoryId;
+  }
+
+  clearRepositories(): void {
+    this.repositories.clear();
+  }
 
   repositoryGroupIdForDirectory(directoryId: string, fallbackGroupId: string): string {
     return this.repositoryAssociationByDirectoryId.get(directoryId) ?? fallbackGroupId;

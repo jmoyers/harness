@@ -448,3 +448,28 @@ bun run loc:verify:enforce
     - remaining blocker: missing coverage-report entries for 34 transitional mux/domain files
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4582 non-empty LOC
+
+### Checkpoint S (2026-02-18): Repository manager hardening + high-yield coverage debt burn-down
+
+- Hardened manager ownership in `src/domain/repositories.ts`:
+  - repository/association/snapshot maps are now private
+  - transitional accessors are explicitly named unsafe
+  - added explicit `clearRepositories()` lifecycle helper
+- Updated `scripts/codex-live-mux-runtime.ts` to consume `RepositoryManager` unsafe transitional accessors instead of direct public map fields.
+- Added focused coverage suites for extracted and transitional modules:
+  - `test/domain-repositories.test.ts`
+  - `test/domain-workspace.test.ts`
+  - `test/mux-live-mux-uncovered-small.test.ts`
+  - `test/mux-live-mux-uncovered-dispatchers.test.ts`
+- Expanded existing suites to close per-file deficits:
+  - `test/mux-live-mux-actions-conversation.test.ts`
+  - `test/mux-live-mux-conversation-state.test.ts`
+  - `test/config-core.test.ts`
+- Validation at checkpoint:
+  - `bun run lint`: pass
+  - `bun run typecheck`: pass
+  - `bun scripts/check-dead-code.ts`: pass
+  - `bun run verify`: **fails at `coverage:check` only**
+    - remaining missing coverage-report entries reduced from 34 -> 10 files
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4582 non-empty LOC

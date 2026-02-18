@@ -642,10 +642,11 @@ async function main(): Promise<number> {
     ControlPlaneRepositoryRecord,
     GitRepositorySnapshot
   >();
-  const repositories = repositoryManager.repositories;
-  const repositoryAssociationByDirectoryId = repositoryManager.repositoryAssociationByDirectoryId;
+  const repositories = repositoryManager.unsafeMutableRepositories();
+  const repositoryAssociationByDirectoryId =
+    repositoryManager.unsafeMutableDirectoryAssociations();
   const directoryRepositorySnapshotByDirectoryId =
-    repositoryManager.directoryRepositorySnapshotByDirectoryId;
+    repositoryManager.unsafeMutableDirectorySnapshots();
   const muxControllerId = `human-mux-${process.pid}-${randomUUID()}`;
   const muxControllerLabel = `human mux ${process.pid}`;
   const conversationManager = new ConversationManager();

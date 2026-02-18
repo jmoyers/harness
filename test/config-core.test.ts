@@ -640,6 +640,29 @@ void test('parseHarnessConfigText falls back for invalid critique settings', () 
   assert.deepEqual(parsed.critique, DEFAULT_HARNESS_CONFIG.critique);
 });
 
+void test('parseHarnessConfigText critique fallback handles non-object launch/install and non-array defaultArgs', () => {
+  const parsedWithNullSections = parseHarnessConfigText(`
+    {
+      "critique": {
+        "launch": true,
+        "install": 7
+      }
+    }
+  `);
+  assert.deepEqual(parsedWithNullSections.critique, DEFAULT_HARNESS_CONFIG.critique);
+
+  const parsedWithBadDefaultArgs = parseHarnessConfigText(`
+    {
+      "critique": {
+        "launch": {
+          "defaultArgs": "not-an-array"
+        }
+      }
+    }
+  `);
+  assert.deepEqual(parsedWithBadDefaultArgs.critique.launch, DEFAULT_HARNESS_CONFIG.critique.launch);
+});
+
 void test('parseHarnessConfigText falls back for invalid claude settings', () => {
   const parsed = parseHarnessConfigText(`
     {
