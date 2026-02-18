@@ -164,6 +164,7 @@ import { RuntimeRenderLifecycle } from '../src/services/runtime-render-lifecycle
 import { RuntimeShutdownService } from '../src/services/runtime-shutdown.ts';
 import { RuntimeTaskEditorActions } from '../src/services/runtime-task-editor-actions.ts';
 import { RuntimeInputPipeline } from '../src/services/runtime-input-pipeline.ts';
+import { RuntimeMainPaneInput } from '../src/services/runtime-main-pane-input.ts';
 import { RuntimeTaskComposerPersistenceService } from '../src/services/runtime-task-composer-persistence.ts';
 import { RuntimeTaskPane } from '../src/services/runtime-task-pane.ts';
 import { RuntimeModalInput } from '../src/services/runtime-modal-input.ts';
@@ -184,11 +185,7 @@ import { ModalManager } from '../src/ui/modals/manager.ts';
 import { RepositoryFoldInput } from '../src/ui/repository-fold-input.ts';
 import { LeftNavInput } from '../src/ui/left-nav-input.ts';
 import { LeftRailPointerInput } from '../src/ui/left-rail-pointer-input.ts';
-import { MainPanePointerInput } from '../src/ui/main-pane-pointer-input.ts';
-import { PointerRoutingInput } from '../src/ui/pointer-routing-input.ts';
-import { ConversationSelectionInput } from '../src/ui/conversation-selection-input.ts';
 import { GlobalShortcutInput } from '../src/ui/global-shortcut-input.ts';
-import { InputTokenRouter } from '../src/ui/input-token-router.ts';
 
 type ControlPlaneDirectoryRecord = Awaited<ReturnType<ControlPlaneService['upsertDirectory']>>;
 type ControlPlaneConversationRecord = NonNullable<ReturnType<typeof parseConversationRecord>>;
@@ -2336,102 +2333,41 @@ async function main(): Promise<number> {
     enterProjectPane,
     markDirty,
   });
-  const mainPanePointerInput = new MainPanePointerInput({
-    getMainPaneMode: () => workspace.mainPaneMode,
-    getProjectPaneSnapshot: () => workspace.projectPaneSnapshot,
-    getProjectPaneScrollTop: () => workspace.projectPaneScrollTop,
+  const runtimeMainPaneInput = new RuntimeMainPaneInput({
+    workspace,
+    leftRailPointerInput,
+    workspaceActions: {
+      runTaskPaneAction: (action) => {
+        runtimeWorkspaceActions.runTaskPaneAction(action);
+      },
+      openTaskEditPrompt: (taskId) => {
+        runtimeWorkspaceActions.openTaskEditPrompt(taskId);
+      },
+      openRepositoryPromptForEdit: (repositoryId) => {
+        runtimeWorkspaceActions.openRepositoryPromptForEdit(repositoryId);
+      },
+      reorderTaskByDrop: (draggedTaskId, targetTaskId) => {
+        runtimeWorkspaceActions.reorderTaskByDrop(draggedTaskId, targetTaskId);
+      },
+      reorderRepositoryByDrop: (draggedRepositoryId, targetRepositoryId) => {
+        runtimeWorkspaceActions.reorderRepositoryByDrop(draggedRepositoryId, targetRepositoryId);
+      },
+    },
     projectPaneActionAtRow,
     openNewThreadPrompt,
     queueCloseDirectory: (directoryId) =>
       queueCloseDirectoryMouseAction(directoryId, 'project-pane-close-project'),
-    actionAtCell: (rowIndex, colIndex) =>
-      taskFocusedPaneActionAtCell(workspace.latestTaskPaneView, rowIndex, colIndex),
-    actionAtRow: (rowIndex) => taskFocusedPaneActionAtRow(workspace.latestTaskPaneView, rowIndex),
-    clearTaskEditClickState: () => {
-      workspace.taskPaneTaskEditClickState = null;
-    },
-    clearRepositoryEditClickState: () => {
-      workspace.taskPaneRepositoryEditClickState = null;
-    },
-    clearHomePaneDragState: () => {
-      workspace.homePaneDragState = null;
-    },
-    getTaskRepositoryDropdownOpen: () => workspace.taskRepositoryDropdownOpen,
-    setTaskRepositoryDropdownOpen: (open) => {
-      workspace.taskRepositoryDropdownOpen = open;
-    },
-    taskIdAtRow: (rowIndex) => taskFocusedPaneTaskIdAtRow(workspace.latestTaskPaneView, rowIndex),
-    repositoryIdAtRow: (rowIndex) =>
-      taskFocusedPaneRepositoryIdAtRow(workspace.latestTaskPaneView, rowIndex),
     selectTaskById,
     selectRepositoryById,
-    runTaskPaneAction: (action) => {
-      runtimeWorkspaceActions.runTaskPaneAction(action);
-    },
-    nowMs: () => Date.now(),
-    homePaneEditDoubleClickWindowMs: HOME_PANE_EDIT_DOUBLE_CLICK_WINDOW_MS,
-    getTaskEditClickState: () => workspace.taskPaneTaskEditClickState,
-    getRepositoryEditClickState: () => workspace.taskPaneRepositoryEditClickState,
-    clearTaskPaneNotice: () => {
-      workspace.taskPaneNotice = null;
-    },
-    setTaskEditClickState: (next) => {
-      workspace.taskPaneTaskEditClickState = next;
-    },
-    setRepositoryEditClickState: (next) => {
-      workspace.taskPaneRepositoryEditClickState = next;
-    },
-    setHomePaneDragState: (next) => {
-      workspace.homePaneDragState = next;
-    },
-    openTaskEditPrompt: (taskId) => {
-      runtimeWorkspaceActions.openTaskEditPrompt(taskId);
-    },
-    openRepositoryPromptForEdit: (repositoryId) => {
-      runtimeWorkspaceActions.openRepositoryPromptForEdit(repositoryId);
-    },
-    markDirty,
-  });
-  const pointerRoutingInput = new PointerRoutingInput({
-    getPaneDividerDragActive: () => workspace.paneDividerDragActive,
-    setPaneDividerDragActive: (active) => {
-      workspace.paneDividerDragActive = active;
-    },
+    taskPaneActionAtCell: taskFocusedPaneActionAtCell,
+    taskPaneActionAtRow: taskFocusedPaneActionAtRow,
+    taskPaneTaskIdAtRow: taskFocusedPaneTaskIdAtRow,
+    taskPaneRepositoryIdAtRow: taskFocusedPaneRepositoryIdAtRow,
     applyPaneDividerAtCol,
-    getHomePaneDragState: () => workspace.homePaneDragState,
-    setHomePaneDragState: (next) => {
-      workspace.homePaneDragState = next;
-    },
-    getMainPaneMode: () => workspace.mainPaneMode,
-    taskIdAtRow: (index) => taskFocusedPaneTaskIdAtRow(workspace.latestTaskPaneView, index),
-    repositoryIdAtRow: (index) =>
-      taskFocusedPaneRepositoryIdAtRow(workspace.latestTaskPaneView, index),
-    reorderTaskByDrop: (draggedTaskId, targetTaskId) => {
-      runtimeWorkspaceActions.reorderTaskByDrop(draggedTaskId, targetTaskId);
-    },
-    reorderRepositoryByDrop: (draggedRepositoryId, targetRepositoryId) => {
-      runtimeWorkspaceActions.reorderRepositoryByDrop(draggedRepositoryId, targetRepositoryId);
-    },
-    onProjectWheel: (delta) => {
-      workspace.projectPaneScrollTop = Math.max(0, workspace.projectPaneScrollTop + delta);
-    },
-    onHomeWheel: (delta) => {
-      workspace.taskPaneScrollTop = Math.max(0, workspace.taskPaneScrollTop + delta);
-    },
-    markDirty,
-  });
-  const conversationSelectionInput = new ConversationSelectionInput({
-    getSelection: () => workspace.selection,
-    setSelection: (next) => {
-      workspace.selection = next;
-    },
-    getSelectionDrag: () => workspace.selectionDrag,
-    setSelectionDrag: (next) => {
-      workspace.selectionDrag = next;
-    },
     pinViewportForSelection,
     releaseViewportPinForSelection,
     markDirty,
+    homePaneEditDoubleClickWindowMs: HOME_PANE_EDIT_DOUBLE_CLICK_WINDOW_MS,
   });
   const globalShortcutInput = new GlobalShortcutInput({
     shortcutBindings,
@@ -2473,13 +2409,6 @@ async function main(): Promise<number> {
     cycleLeftNavSelection: (direction) => {
       leftNavInput.cycleSelection(direction);
     },
-  });
-  const inputTokenRouter = new InputTokenRouter({
-    getMainPaneMode: () => workspace.mainPaneMode,
-    pointerRoutingInput,
-    mainPanePointerInput,
-    leftRailPointerInput,
-    conversationSelectionInput,
   });
   const runtimeInputPipeline = new RuntimeInputPipeline({
     preflight: {
@@ -2539,7 +2468,7 @@ async function main(): Promise<number> {
       },
       getMainPaneMode: () => workspace.mainPaneMode,
       getLayout: () => layout,
-      inputTokenRouter,
+      inputTokenRouter: runtimeMainPaneInput,
       getActiveConversation: () => conversationManager.getActiveConversation(),
       markDirty,
       isControlledByLocalHuman: (input) => conversationManager.isControlledByLocalHuman(input),

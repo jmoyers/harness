@@ -1912,10 +1912,27 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2561 non-empty LOC
 
+### Checkpoint CZ (2026-02-18): Main-pane pointer/selection/token routing folded into unified class service
+
+- Added `src/services/runtime-main-pane-input.ts` with class-based `RuntimeMainPaneInput` that composes:
+  - `MainPanePointerInput`
+  - `PointerRoutingInput`
+  - `ConversationSelectionInput`
+  - `InputTokenRouter`
+- Updated `scripts/codex-live-mux-runtime.ts` to replace inline main-pane pointer/drag/selection/token-router wiring with one `RuntimeMainPaneInput` instance consumed by `RuntimeInputPipeline`.
+- Added `test/services-runtime-main-pane-input.test.ts` with strict coverage for:
+  - constructor wiring and routing delegation through injected dependencies
+  - default dependency path with live `InputTokenRouter`
+  - default `nowMs` fallback path to keep function coverage at `100%`
+- Validation at checkpoint:
+  - `bun run verify`: pass (`1015` pass / `0` fail, global lines/functions/branches = `100%`)
+  - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2490 non-empty LOC
+
 ### Next focus (yield-first)
 
 - Consolidation order (updated from critique review):
-  - continue subsystem rollup: extract the remaining `onInput` mouse-token classification loop into a dedicated token-router/orchestrator service
+  - continue subsystem rollup: fold remaining left-nav/repository-fold/global-shortcut/left-rail-pointer wiring into one class-owned input subsystem
   - remove `_unsafe*` runtime escape hatches by exposing manager-owned read APIs/projections
   - reduce callback/options bags in input/router modules by passing manager/service dependencies directly
   - after ownership consolidation, rename/merge `runtime-*` service modules so names match stable responsibilities rather than extraction history
