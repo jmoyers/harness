@@ -126,7 +126,6 @@ import {
   expandAllRepositoryGroups as expandAllRepositoryGroupsFn,
   expandRepositoryGroup as expandRepositoryGroupFn,
   firstDirectoryForRepositoryGroup as firstDirectoryForRepositoryGroupFn,
-  repositoryGroupIdForDirectory as repositoryGroupIdForDirectoryFn,
   reduceRepositoryFoldChordInput,
   repositoryTreeArrowAction,
   selectedRepositoryGroupIdForLeftNav,
@@ -262,6 +261,7 @@ import {
   ConversationManager,
   type ConversationSeed,
 } from '../src/domain/conversations.ts';
+import { RepositoryManager } from '../src/domain/repositories.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -627,9 +627,14 @@ async function main(): Promise<number> {
   const directories = new Map<string, ControlPlaneDirectoryRecord>([
     [persistedDirectory.directoryId, persistedDirectory],
   ]);
-  const repositories = new Map<string, ControlPlaneRepositoryRecord>();
-  const repositoryAssociationByDirectoryId = new Map<string, string>();
-  const directoryRepositorySnapshotByDirectoryId = new Map<string, GitRepositorySnapshot>();
+  const repositoryManager = new RepositoryManager<
+    ControlPlaneRepositoryRecord,
+    GitRepositorySnapshot
+  >();
+  const repositories = repositoryManager.repositories;
+  const repositoryAssociationByDirectoryId = repositoryManager.repositoryAssociationByDirectoryId;
+  const directoryRepositorySnapshotByDirectoryId =
+    repositoryManager.directoryRepositorySnapshotByDirectoryId;
   const muxControllerId = `human-mux-${process.pid}-${randomUUID()}`;
   const muxControllerLabel = `human mux ${process.pid}`;
   const conversationManager = new ConversationManager();
@@ -768,11 +773,7 @@ async function main(): Promise<number> {
   };
 
   const repositoryGroupIdForDirectory = (directoryId: string): string =>
-    repositoryGroupIdForDirectoryFn(
-      repositoryAssociationByDirectoryId,
-      directoryId,
-      UNTRACKED_REPOSITORY_GROUP_ID,
-    );
+    repositoryManager.repositoryGroupIdForDirectory(directoryId, UNTRACKED_REPOSITORY_GROUP_ID);
 
   const collapseRepositoryGroup = (repositoryGroupId: string): void => {
     collapseRepositoryGroupFn(
@@ -925,16 +926,7 @@ async function main(): Promise<number> {
   };
 
   const syncRepositoryAssociationsWithDirectorySnapshots = (): void => {
-    for (const directoryId of repositoryAssociationByDirectoryId.keys()) {
-      if (!directories.has(directoryId)) {
-        repositoryAssociationByDirectoryId.delete(directoryId);
-      }
-    }
-    for (const directoryId of directoryRepositorySnapshotByDirectoryId.keys()) {
-      if (!directories.has(directoryId)) {
-        directoryRepositorySnapshotByDirectoryId.delete(directoryId);
-      }
-    }
+    repositoryManager.syncWithDirectories((directoryId) => directories.has(directoryId));
   };
 
   const hydrateRepositoryList = async (): Promise<void> => {
@@ -973,14 +965,10 @@ async function main(): Promise<number> {
         continue;
       }
       gitSummaryByDirectoryId.set(record.directoryId, record.summary);
-      directoryRepositorySnapshotByDirectoryId.set(record.directoryId, record.repositorySnapshot);
-      if (record.repositoryId === null) {
-        repositoryAssociationByDirectoryId.delete(record.directoryId);
-      } else {
-        repositoryAssociationByDirectoryId.set(record.directoryId, record.repositoryId);
-      }
+      repositoryManager.setDirectoryRepositorySnapshot(record.directoryId, record.repositorySnapshot);
+      repositoryManager.setDirectoryRepositoryAssociation(record.directoryId, record.repositoryId);
       if (record.repository !== null) {
-        repositories.set(record.repository.repositoryId, record.repository);
+        repositoryManager.setRepository(record.repository.repositoryId, record.repository);
       }
     }
     syncRepositoryAssociationsWithDirectorySnapshots();
