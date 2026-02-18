@@ -696,9 +696,9 @@ async function main(): Promise<number> {
     }
     if (event.type === 'session-status') {
       if (event.live) {
-        void subscribeConversationEvents(event.sessionId).catch(() => {});
+        void conversationLifecycle.subscribeConversationEvents(event.sessionId).catch(() => {});
       } else {
-        void unsubscribeConversationEvents(event.sessionId).catch(() => {});
+        void conversationLifecycle.unsubscribeConversationEvents(event.sessionId).catch(() => {});
       }
     }
     sessionProjectionInstrumentation.refreshSelectorSnapshot(
@@ -982,13 +982,6 @@ async function main(): Promise<number> {
     },
   });
 
-  const subscribeConversationEvents = async (sessionId: string): Promise<void> => {
-    await conversationLifecycle.subscribeConversationEvents(sessionId);
-  };
-  const unsubscribeConversationEvents = async (sessionId: string): Promise<void> => {
-    await conversationLifecycle.unsubscribeConversationEvents(sessionId);
-  };
-
   const queuePersistedConversationsInBackground = (activeSessionId: string | null): number => {
     return conversationLifecycle.queuePersistedConversationsInBackground(activeSessionId);
   };
@@ -1027,7 +1020,9 @@ async function main(): Promise<number> {
       repositoryManager.setDirectoryRepositoryAssociation(directoryId, repositoryId);
     },
     hydrateTaskPlanningState,
-    subscribeTaskPlanningEvents,
+    subscribeTaskPlanningEvents: async (afterCursor) => {
+      await conversationLifecycle.subscribeTaskPlanningEvents(afterCursor);
+    },
     ensureActiveConversationId: () => {
       conversationManager.ensureActiveConversationId();
     },
@@ -1662,7 +1657,9 @@ async function main(): Promise<number> {
     },
     hasDirectory: (directoryId) => directoryManager.hasDirectory(directoryId),
     resolveActiveDirectoryId,
-    unsubscribeConversationEvents,
+    unsubscribeConversationEvents: async (sessionId) => {
+      await conversationLifecycle.unsubscribeConversationEvents(sessionId);
+    },
     stopConversationTitleEdit: (persistPending) => {
       stopConversationTitleEdit(persistPending);
     },
@@ -1670,7 +1667,7 @@ async function main(): Promise<number> {
     enterHomePane,
     queueControlPlaneOp,
     activateConversation: async (sessionId) => {
-      await activateConversation(sessionId);
+      await conversationLifecycle.activateConversation(sessionId);
     },
     markDirty,
   });
@@ -1679,18 +1676,9 @@ async function main(): Promise<number> {
     runtimeWorkspaceObservedEvents.apply(observed);
   };
 
-  async function subscribeTaskPlanningEvents(afterCursor: number | null): Promise<void> {
-    await conversationLifecycle.subscribeTaskPlanningEvents(afterCursor);
-  }
-
-  async function unsubscribeTaskPlanningEvents(): Promise<void> {
-    await conversationLifecycle.unsubscribeTaskPlanningEvents();
-  }
-
-  const activateConversation = async (sessionId: string): Promise<void> => {
+  activateConversationForStartupOrchestrator = async (sessionId: string): Promise<void> => {
     await conversationLifecycle.activateConversation(sessionId);
   };
-  activateConversationForStartupOrchestrator = activateConversation;
 
   const removeConversationState = (sessionId: string): void => {
     if (workspace.conversationTitleEdit?.conversationId === sessionId) {
@@ -1847,12 +1835,16 @@ async function main(): Promise<number> {
     conversationDirectoryId: (sessionId) => conversationManager.directoryIdOf(sessionId),
     conversationLive: (sessionId) => conversationManager.isLive(sessionId),
     removeConversationState,
-    unsubscribeConversationEvents,
+    unsubscribeConversationEvents: async (sessionId) => {
+      await conversationLifecycle.unsubscribeConversationEvents(sessionId);
+    },
     activeConversationId: () => conversationManager.activeConversationId,
     setActiveConversationId: (sessionId) => {
       conversationManager.setActiveConversationId(sessionId);
     },
-    activateConversation,
+    activateConversation: async (sessionId) => {
+      await conversationLifecycle.activateConversation(sessionId);
+    },
     resolveActiveDirectoryId,
     enterProjectPane,
     markDirty,
@@ -1910,28 +1902,8 @@ async function main(): Promise<number> {
       debugFooterNotice.set(message);
     },
   });
-  const createAndActivateConversationInDirectory = async (
-    directoryId: string,
-    agentType: ThreadAgentType,
-  ): Promise<void> => {
-    await conversationLifecycle.createAndActivateConversationInDirectory(
-      directoryId,
-      String(agentType),
-    );
-  };
-
-  const openOrCreateCritiqueConversationInDirectory = async (
-    directoryId: string,
-  ): Promise<void> => {
-    await conversationLifecycle.openOrCreateCritiqueConversationInDirectory(directoryId);
-  };
-
   const archiveConversation = async (sessionId: string): Promise<void> => {
     await runtimeDirectoryActions.archiveConversation(sessionId);
-  };
-
-  const takeoverConversation = async (sessionId: string): Promise<void> => {
-    await conversationLifecycle.takeoverConversation(sessionId);
   };
 
   const interruptConversation = async (sessionId: string): Promise<void> => {
@@ -2242,7 +2214,12 @@ async function main(): Promise<number> {
     stopConversationTitleEdit,
     queueControlPlaneOp,
     archiveConversation,
-    createAndActivateConversationInDirectory,
+    createAndActivateConversationInDirectory: async (directoryId, agentType) => {
+      await conversationLifecycle.createAndActivateConversationInDirectory(
+        directoryId,
+        String(agentType as ThreadAgentType),
+      );
+    },
     addDirectoryByPath,
     normalizeGitHubRemoteUrl,
     upsertRepositoryByRemoteUrl,
@@ -2323,7 +2300,9 @@ async function main(): Promise<number> {
     directoriesHas: (directoryId) => directoryManager.hasDirectory(directoryId),
     conversationDirectoryId: (sessionId) => conversationManager.directoryIdOf(sessionId),
     queueControlPlaneOp,
-    activateConversation,
+    activateConversation: async (sessionId) => {
+      await conversationLifecycle.activateConversation(sessionId);
+    },
     conversationsHas: (sessionId) => conversationManager.has(sessionId),
   });
   const repositoryFoldInput = new RepositoryFoldInput({
@@ -2422,12 +2401,12 @@ async function main(): Promise<number> {
     beginConversationTitleEdit,
     queueActivateConversation: (conversationId) => {
       queueControlPlaneOp(async () => {
-        await activateConversation(conversationId);
+        await conversationLifecycle.activateConversation(conversationId);
       }, 'mouse-activate-conversation');
     },
     queueActivateConversationAndEdit: (conversationId) => {
       queueControlPlaneOp(async () => {
-        await activateConversation(conversationId);
+        await conversationLifecycle.activateConversation(conversationId);
         beginConversationTitleEdit(conversationId);
       }, 'mouse-activate-edit-conversation');
     },
@@ -2533,7 +2512,9 @@ async function main(): Promise<number> {
     requestStop,
     resolveDirectoryForAction,
     openNewThreadPrompt,
-    openOrCreateCritiqueConversationInDirectory,
+    openOrCreateCritiqueConversationInDirectory: async (directoryId) => {
+      await conversationLifecycle.openOrCreateCritiqueConversationInDirectory(directoryId);
+    },
     toggleGatewayProfile: async () => {
       await toggleGatewayProfiler();
     },
@@ -2543,7 +2524,9 @@ async function main(): Promise<number> {
     queueControlPlaneOp,
     archiveConversation,
     interruptConversation,
-    takeoverConversation,
+    takeoverConversation: async (sessionId) => {
+      await conversationLifecycle.takeoverConversation(sessionId);
+    },
     openAddDirectoryPrompt: () => {
       workspace.repositoryPrompt = null;
       workspace.addDirectoryPrompt = {
@@ -2697,7 +2680,9 @@ async function main(): Promise<number> {
       runtimeProcessWiring.detach();
     },
     removeEnvelopeListener,
-    unsubscribeTaskPlanningEvents,
+    unsubscribeTaskPlanningEvents: async () => {
+      await conversationLifecycle.unsubscribeTaskPlanningEvents();
+    },
     closeKeyEventSubscription: async () => {
       if (keyEventSubscription !== null) {
         await keyEventSubscription.close();

@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~2630 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~2621 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2173 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -1808,10 +1808,21 @@ bun run loc:verify:enforce
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2630 non-empty LOC
   - Note: runtime LOC increased slightly due to subsystem constructor wiring growth; this is expected before the next consolidation pass that removes remaining runtime wrapper glue.
 
+### Checkpoint CT (2026-02-18): Runtime conversation wrapper glue collapsed into lifecycle-bound call sites
+
+- Updated `scripts/codex-live-mux-runtime.ts` to remove remaining local wrapper functions that just forwarded to `ConversationLifecycle`:
+  - removed local wrappers for conversation subscribe/unsubscribe, task-planning subscribe/unsubscribe, activation, create-and-activate, critique-open-or-create, and takeover
+  - replaced wrapper usage with direct lifecycle-bound closures at call sites (`startup hydration`, `workspace observed events`, `directory actions`, `input router`, `left nav`, `pointer input`, `global shortcuts`, and `runtime shutdown`)
+- This reduces runtime indirection and keeps conversation ownership consolidated in the subsystem while preserving behavior.
+- Validation at checkpoint:
+  - `bun run verify`: pass (`1003` pass / `0` fail, global lines/functions/branches = `100%`)
+  - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2621 non-empty LOC
+
 ### Next focus (yield-first)
 
 - Consolidation order (updated from critique review):
-  - continue subsystem rollup: collapse remaining conversation wrapper glue in runtime now that starter/activation/actions/title-edit are owned by `ConversationLifecycle`
+  - continue subsystem rollup: build a `WorkspaceActions`-style facade for directory/repository/task/control actions to collapse runtime action wiring next
   - remove `_unsafe*` runtime escape hatches by exposing manager-owned read APIs/projections
   - reduce callback/options bags in input/router modules by passing manager/service dependencies directly
   - after ownership consolidation, rename/merge `runtime-*` service modules so names match stable responsibilities rather than extraction history
