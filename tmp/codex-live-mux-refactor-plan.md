@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~4147 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~4141 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -847,3 +847,16 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4147 non-empty LOC
+
+### Checkpoint AO (2026-02-18): Phase 8 continues with class-based global shortcut routing
+
+- Added `src/ui/global-shortcut-input.ts` with a class-based `GlobalShortcutInput` that owns:
+  - shortcut detection delegation via `detectMuxGlobalShortcut`
+  - global shortcut handler wiring via `handleGlobalShortcut`
+  - project/conversation mode-aware resolvers for archive/takeover/close flows
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate global shortcut detection + handler option assembly to `GlobalShortcutInput` from `onInput`.
+- Added `test/ui-global-shortcut-input.test.ts` to cover injected dependency wiring and default no-match fallback behavior.
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4141 non-empty LOC

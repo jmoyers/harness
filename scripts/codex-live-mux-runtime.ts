@@ -147,7 +147,6 @@ import {
   writeTextToClipboard,
 } from '../src/mux/live-mux/selection.ts';
 import { handleTaskPaneShortcutInput as handleTaskPaneShortcutInputFn } from '../src/mux/live-mux/task-pane-shortcuts.ts';
-import { handleGlobalShortcut as handleGlobalShortcutFn } from '../src/mux/live-mux/global-shortcut-handlers.ts';
 import {
   applyObservedGitStatusEvent as applyObservedGitStatusEventFn,
   deleteDirectoryGitState as deleteDirectoryGitStateFn,
@@ -206,6 +205,7 @@ import { LeftRailPointerInput } from '../src/ui/left-rail-pointer-input.ts';
 import { MainPanePointerInput } from '../src/ui/main-pane-pointer-input.ts';
 import { PointerRoutingInput } from '../src/ui/pointer-routing-input.ts';
 import { ConversationSelectionInput } from '../src/ui/conversation-selection-input.ts';
+import { GlobalShortcutInput } from '../src/ui/global-shortcut-input.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -3899,6 +3899,36 @@ async function main(): Promise<number> {
     releaseViewportPinForSelection,
     markDirty,
   });
+  const globalShortcutInput = new GlobalShortcutInput({
+    shortcutBindings,
+    requestStop,
+    resolveDirectoryForAction,
+    openNewThreadPrompt,
+    openOrCreateCritiqueConversationInDirectory,
+    toggleGatewayProfile: async () => {
+      await toggleGatewayProfiler();
+    },
+    getMainPaneMode: () => workspace.mainPaneMode,
+    getActiveConversationId: () => conversationManager.activeConversationId,
+    conversationsHas: (sessionId) => conversationManager.has(sessionId),
+    queueControlPlaneOp,
+    archiveConversation,
+    takeoverConversation,
+    openAddDirectoryPrompt: () => {
+      repositoryPrompt = null;
+      addDirectoryPrompt = {
+        value: '',
+        error: null,
+      };
+      markDirty();
+    },
+    getActiveDirectoryId: () => workspace.activeDirectoryId,
+    directoryExists: (directoryId) => directoryManager.hasDirectory(directoryId),
+    closeDirectory,
+    cycleLeftNavSelection: (direction) => {
+      leftNavInput.cycleSelection(direction);
+    },
+  });
 
   const onInput = (chunk: Buffer): void => {
     if (shuttingDown) {
@@ -3943,43 +3973,7 @@ async function main(): Promise<number> {
       return;
     }
 
-    const globalShortcut = detectMuxGlobalShortcut(focusExtraction.sanitized, shortcutBindings);
-    if (
-      handleGlobalShortcutFn({
-        shortcut: globalShortcut,
-        requestStop,
-        resolveDirectoryForAction,
-        openNewThreadPrompt,
-        openOrCreateCritiqueConversationInDirectory,
-        toggleGatewayProfile: async () => {
-          await toggleGatewayProfiler();
-        },
-        resolveConversationForAction: () =>
-          workspace.mainPaneMode === 'conversation' ? conversationManager.activeConversationId : null,
-        conversationsHas: (sessionId) => conversationManager.has(sessionId),
-        queueControlPlaneOp,
-        archiveConversation,
-        takeoverConversation,
-        openAddDirectoryPrompt: () => {
-          repositoryPrompt = null;
-          addDirectoryPrompt = {
-            value: '',
-            error: null,
-          };
-          markDirty();
-        },
-        resolveClosableDirectoryId: () =>
-          workspace.mainPaneMode === 'project' &&
-          workspace.activeDirectoryId !== null &&
-          directoryManager.hasDirectory(workspace.activeDirectoryId)
-            ? workspace.activeDirectoryId
-            : null,
-        closeDirectory,
-        cycleLeftNavSelection: (direction) => {
-          leftNavInput.cycleSelection(direction);
-        },
-      })
-    ) {
+    if (globalShortcutInput.handleInput(focusExtraction.sanitized)) {
       return;
     }
     if (handleTaskPaneShortcutInput(focusExtraction.sanitized)) {

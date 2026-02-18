@@ -147,6 +147,7 @@ Control-plane boundaries:
 - Main-pane pointer click routing is moving behind a class-based `MainPanePointerInput` (`src/ui/main-pane-pointer-input.ts`) so runtime delegates project/home click eligibility and dispatch instead of keeping inline right-pane click orchestration branches.
 - Pointer helper routing for divider/home-drag/wheel paths is moving behind a class-based `PointerRoutingInput` (`src/ui/pointer-routing-input.ts`) so runtime delegates pointer-reducer wiring instead of assembling per-branch callback option objects inline.
 - Conversation mouse-selection transitions are moving behind a class-based `ConversationSelectionInput` (`src/ui/conversation-selection-input.ts`) so runtime delegates selection clear/reduce/pin behavior instead of keeping selection-state transition logic inline.
+- Global shortcut detection/dispatch is moving behind a class-based `GlobalShortcutInput` (`src/ui/global-shortcut-input.ts`) so runtime delegates shortcut detection + action resolver wiring instead of maintaining inline global-shortcut callback trees.
 
 This separation prevents UI-only behavior and enables reliable automation without computer-use tooling.
 
