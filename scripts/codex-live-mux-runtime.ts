@@ -166,6 +166,7 @@ import { RuntimeRightPaneRender } from '../src/services/runtime-right-pane-rende
 import { RuntimeRenderState } from '../src/services/runtime-render-state.ts';
 import { RuntimeRenderLifecycle } from '../src/services/runtime-render-lifecycle.ts';
 import { RuntimeShutdownService } from '../src/services/runtime-shutdown.ts';
+import { RuntimeStreamSubscriptions } from '../src/services/runtime-stream-subscriptions.ts';
 import { RuntimeTaskPaneActions } from '../src/services/runtime-task-pane-actions.ts';
 import { RuntimeTaskComposerPersistenceService } from '../src/services/runtime-task-composer-persistence.ts';
 import { RuntimeTaskPaneShortcuts } from '../src/services/runtime-task-pane-shortcuts.ts';
@@ -582,7 +583,6 @@ async function main(): Promise<number> {
   const conversationManager = new ConversationManager();
   const conversationRecords = conversationManager.readonlyConversations();
   const taskManager = new TaskManager<ControlPlaneTaskRecord, TaskComposerBuffer, NodeJS.Timeout>();
-  let observedStreamSubscriptionId: string | null = null;
   let keyEventSubscription: Awaited<ReturnType<typeof subscribeControlPlaneKeyEvents>> | null =
     null;
   let hydrateStartupStateForStartupOrchestrator = async (
@@ -753,25 +753,28 @@ async function main(): Promise<number> {
     return persistedRows.length;
   };
 
-  async function subscribeConversationEvents(sessionId: string): Promise<void> {
-    try {
+  const runtimeStreamSubscriptions = new RuntimeStreamSubscriptions({
+    subscribePtyEvents: async (sessionId) => {
       await controlPlaneService.subscribePtyEvents(sessionId);
-    } catch (error: unknown) {
-      if (!isSessionNotFoundError(error) && !isSessionNotLiveError(error)) {
-        throw error;
-      }
-    }
-  }
-
-  async function unsubscribeConversationEvents(sessionId: string): Promise<void> {
-    try {
+    },
+    unsubscribePtyEvents: async (sessionId) => {
       await controlPlaneService.unsubscribePtyEvents(sessionId);
-    } catch (error: unknown) {
-      if (!isSessionNotFoundError(error) && !isSessionNotLiveError(error)) {
-        throw error;
-      }
-    }
-  }
+    },
+    isSessionNotFoundError,
+    isSessionNotLiveError,
+    subscribeObservedStream: async (afterCursor) => {
+      return await subscribeObservedStream(streamClient, options.scope, afterCursor);
+    },
+    unsubscribeObservedStream: async (subscriptionId) => {
+      await unsubscribeObservedStream(streamClient, subscriptionId);
+    },
+  });
+  const subscribeConversationEvents = async (sessionId: string): Promise<void> => {
+    await runtimeStreamSubscriptions.subscribeConversationEvents(sessionId);
+  };
+  const unsubscribeConversationEvents = async (sessionId: string): Promise<void> => {
+    await runtimeStreamSubscriptions.unsubscribeConversationEvents(sessionId);
+  };
 
   const runtimeConversationStarter = new RuntimeConversationStarter<
     ConversationState,
@@ -1594,23 +1597,11 @@ async function main(): Promise<number> {
   };
 
   async function subscribeTaskPlanningEvents(afterCursor: number | null): Promise<void> {
-    if (observedStreamSubscriptionId !== null) {
-      return;
-    }
-    observedStreamSubscriptionId = await subscribeObservedStream(
-      streamClient,
-      options.scope,
-      afterCursor,
-    );
+    await runtimeStreamSubscriptions.subscribeTaskPlanningEvents(afterCursor);
   }
 
   async function unsubscribeTaskPlanningEvents(): Promise<void> {
-    if (observedStreamSubscriptionId === null) {
-      return;
-    }
-    const subscriptionId = observedStreamSubscriptionId;
-    observedStreamSubscriptionId = null;
-    await unsubscribeObservedStream(streamClient, subscriptionId);
+    await runtimeStreamSubscriptions.unsubscribeTaskPlanningEvents();
   }
 
   const runtimeConversationActivation = new RuntimeConversationActivation({

@@ -136,8 +136,8 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~2646 non-empty LOC)
-  - `src/control-plane/stream-server.ts` (~2172 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~2638 non-empty LOC)
+  - `src/control-plane/stream-server.ts` (~2173 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
 
@@ -1718,6 +1718,20 @@ bun run loc:verify:enforce
   - `bun run verify`: pass (global lines/functions/branches = 100%)
   - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2646 non-empty LOC
+
+### Checkpoint CO (2026-02-18): Stream subscription runtime orchestration extracted into class service
+
+- Added `src/services/runtime-stream-subscriptions.ts` with class-based `RuntimeStreamSubscriptions` to own:
+  - conversation observed-stream subscribe/unsubscribe operations with recoverable error guards
+  - task-planning observed-stream subscription lifecycle and dedupe state
+- Updated `scripts/codex-live-mux-runtime.ts` to remove inline observed-stream subscription state/handlers and delegate through `RuntimeStreamSubscriptions`.
+- Added `test/services-runtime-stream-subscriptions.test.ts` with branch coverage for:
+  - recoverable and non-recoverable conversation subscribe/unsubscribe error branches
+  - task-planning subscribe dedupe and unsubscribe state-reset behavior
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2638 non-empty LOC
 
 ### Next focus (yield-first)
 
