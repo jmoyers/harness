@@ -13,14 +13,15 @@ void test('new thread prompt defaults and normalization are stable', () => {
   const state = createNewThreadPromptState('directory-1');
   assert.equal(state.directoryId, 'directory-1');
   assert.equal(state.selectedAgentType, 'codex');
-  assert.equal(normalizeThreadAgentType('claude'), 'claude');
-  assert.equal(normalizeThreadAgentType('terminal'), 'terminal');
-  assert.equal(normalizeThreadAgentType('critique'), 'critique');
   assert.equal(normalizeThreadAgentType('codex'), 'codex');
   assert.equal(normalizeThreadAgentType('claude'), 'claude');
+  assert.equal(normalizeThreadAgentType('cursor'), 'cursor');
+  assert.equal(normalizeThreadAgentType('terminal'), 'terminal');
+  assert.equal(normalizeThreadAgentType('critique'), 'critique');
   assert.equal(normalizeThreadAgentType('other'), 'codex');
   assert.equal(nextThreadAgentType('codex'), 'claude');
-  assert.equal(nextThreadAgentType('claude'), 'terminal');
+  assert.equal(nextThreadAgentType('claude'), 'cursor');
+  assert.equal(nextThreadAgentType('cursor'), 'terminal');
   assert.equal(nextThreadAgentType('terminal'), 'critique');
   assert.equal(nextThreadAgentType('critique'), 'codex');
 });
@@ -45,16 +46,30 @@ void test('new thread prompt reduces keyboard input into selection and submit', 
   assert.equal(claudeFromShortcut.nextState.selectedAgentType, 'claude');
   assert.equal(claudeFromShortcut.submit, false);
 
-  const terminalFromShortcut = reduceNewThreadPromptInput(
+  const cursorFromShortcut = reduceNewThreadPromptInput(
     claudeFromShortcut.nextState,
-    Uint8Array.from([0x74, 0x54, 0x33])
+    Uint8Array.from([0x75, 0x55, 0x33])
+  );
+  assert.equal(cursorFromShortcut.nextState.selectedAgentType, 'cursor');
+  assert.equal(cursorFromShortcut.submit, false);
+
+  const terminalFromShortcut = reduceNewThreadPromptInput(
+    cursorFromShortcut.nextState,
+    Uint8Array.from([0x74, 0x54, 0x34])
   );
   assert.equal(terminalFromShortcut.nextState.selectedAgentType, 'terminal');
   assert.equal(terminalFromShortcut.submit, false);
 
-  const submitted = reduceNewThreadPromptInput(terminalFromShortcut.nextState, Uint8Array.from([0x0d]));
+  const critiqueFromShortcut = reduceNewThreadPromptInput(
+    terminalFromShortcut.nextState,
+    Uint8Array.from([0x72, 0x52, 0x35])
+  );
+  assert.equal(critiqueFromShortcut.nextState.selectedAgentType, 'critique');
+  assert.equal(critiqueFromShortcut.submit, false);
+
+  const submitted = reduceNewThreadPromptInput(critiqueFromShortcut.nextState, Uint8Array.from([0x0d]));
   assert.equal(submitted.submit, true);
-  assert.equal(submitted.nextState.selectedAgentType, 'terminal');
+  assert.equal(submitted.nextState.selectedAgentType, 'critique');
 });
 
 void test('new thread prompt decodes encoded key protocols and ignores unrelated escape sequences', () => {
@@ -113,17 +128,21 @@ void test('new thread prompt decodes encoded key protocols and ignores unrelated
   assert.equal(newlineSubmit.submit, true);
 });
 
-void test('new thread prompt accepts numeric claude and terminal shortcut keys', () => {
+void test('new thread prompt accepts numeric claude/cursor/terminal/critique shortcut keys', () => {
   const initial = createNewThreadPromptState('directory-numeric');
   const claudeSelected = reduceNewThreadPromptInput(initial, Uint8Array.from([0x32]));
   assert.equal(claudeSelected.nextState.selectedAgentType, 'claude');
   assert.equal(claudeSelected.submit, false);
 
-  const selected = reduceNewThreadPromptInput(claudeSelected.nextState, Uint8Array.from([0x33]));
-  assert.equal(selected.nextState.selectedAgentType, 'terminal');
-  assert.equal(selected.submit, false);
+  const cursorSelected = reduceNewThreadPromptInput(claudeSelected.nextState, Uint8Array.from([0x33]));
+  assert.equal(cursorSelected.nextState.selectedAgentType, 'cursor');
+  assert.equal(cursorSelected.submit, false);
 
-  const critiqueSelected = reduceNewThreadPromptInput(selected.nextState, Uint8Array.from([0x34]));
+  const terminalSelected = reduceNewThreadPromptInput(cursorSelected.nextState, Uint8Array.from([0x34]));
+  assert.equal(terminalSelected.nextState.selectedAgentType, 'terminal');
+  assert.equal(terminalSelected.submit, false);
+
+  const critiqueSelected = reduceNewThreadPromptInput(terminalSelected.nextState, Uint8Array.from([0x35]));
   assert.equal(critiqueSelected.nextState.selectedAgentType, 'critique');
   assert.equal(critiqueSelected.submit, false);
 });
@@ -133,53 +152,76 @@ void test('new thread prompt row mapping and body lines remain deterministic', (
   const body = newThreadPromptBodyLines(state, {
     codexButtonLabel: '[ codex ]',
     claudeButtonLabel: '[ claude ]',
+    cursorButtonLabel: '[ cursor ]',
     terminalButtonLabel: '[ terminal ]',
     critiqueButtonLabel: '[ critique ]'
   });
   assert.equal(body[2], '● [ codex ]');
   assert.equal(body[3], '○ [ claude ]');
-  assert.equal(body[4], '○ [ terminal ]');
-  assert.equal(body[5], '○ [ critique ]');
+  assert.equal(body[4], '○ [ cursor ]');
+  assert.equal(body[5], '○ [ terminal ]');
+  assert.equal(body[6], '○ [ critique ]');
 
   const withClaude = reduceNewThreadPromptInput(state, Uint8Array.from([0x20])).nextState;
   const bodyClaude = newThreadPromptBodyLines(withClaude, {
     codexButtonLabel: '[ codex ]',
     claudeButtonLabel: '[ claude ]',
+    cursorButtonLabel: '[ cursor ]',
     terminalButtonLabel: '[ terminal ]',
     critiqueButtonLabel: '[ critique ]'
   });
   assert.equal(bodyClaude[2], '○ [ codex ]');
   assert.equal(bodyClaude[3], '● [ claude ]');
-  assert.equal(bodyClaude[4], '○ [ terminal ]');
-  assert.equal(bodyClaude[5], '○ [ critique ]');
+  assert.equal(bodyClaude[4], '○ [ cursor ]');
+  assert.equal(bodyClaude[5], '○ [ terminal ]');
+  assert.equal(bodyClaude[6], '○ [ critique ]');
 
-  const withTerminal = reduceNewThreadPromptInput(withClaude, Uint8Array.from([0x20])).nextState;
+  const withCursor = reduceNewThreadPromptInput(withClaude, Uint8Array.from([0x20])).nextState;
+  const bodyCursor = newThreadPromptBodyLines(withCursor, {
+    codexButtonLabel: '[ codex ]',
+    claudeButtonLabel: '[ claude ]',
+    cursorButtonLabel: '[ cursor ]',
+    terminalButtonLabel: '[ terminal ]',
+    critiqueButtonLabel: '[ critique ]'
+  });
+  assert.equal(bodyCursor[2], '○ [ codex ]');
+  assert.equal(bodyCursor[3], '○ [ claude ]');
+  assert.equal(bodyCursor[4], '● [ cursor ]');
+  assert.equal(bodyCursor[5], '○ [ terminal ]');
+  assert.equal(bodyCursor[6], '○ [ critique ]');
+
+  const withTerminal = reduceNewThreadPromptInput(withCursor, Uint8Array.from([0x20])).nextState;
   const bodyTerminal = newThreadPromptBodyLines(withTerminal, {
     codexButtonLabel: '[ codex ]',
     claudeButtonLabel: '[ claude ]',
+    cursorButtonLabel: '[ cursor ]',
     terminalButtonLabel: '[ terminal ]',
     critiqueButtonLabel: '[ critique ]'
   });
   assert.equal(bodyTerminal[2], '○ [ codex ]');
   assert.equal(bodyTerminal[3], '○ [ claude ]');
-  assert.equal(bodyTerminal[4], '● [ terminal ]');
-  assert.equal(bodyTerminal[5], '○ [ critique ]');
+  assert.equal(bodyTerminal[4], '○ [ cursor ]');
+  assert.equal(bodyTerminal[5], '● [ terminal ]');
+  assert.equal(bodyTerminal[6], '○ [ critique ]');
 
   const withCritique = reduceNewThreadPromptInput(withTerminal, Uint8Array.from([0x20])).nextState;
   const bodyCritique = newThreadPromptBodyLines(withCritique, {
     codexButtonLabel: '[ codex ]',
     claudeButtonLabel: '[ claude ]',
+    cursorButtonLabel: '[ cursor ]',
     terminalButtonLabel: '[ terminal ]',
     critiqueButtonLabel: '[ critique ]'
   });
   assert.equal(bodyCritique[2], '○ [ codex ]');
   assert.equal(bodyCritique[3], '○ [ claude ]');
-  assert.equal(bodyCritique[4], '○ [ terminal ]');
-  assert.equal(bodyCritique[5], '● [ critique ]');
+  assert.equal(bodyCritique[4], '○ [ cursor ]');
+  assert.equal(bodyCritique[5], '○ [ terminal ]');
+  assert.equal(bodyCritique[6], '● [ critique ]');
 
   assert.equal(resolveNewThreadPromptAgentByRow(10, 15), 'codex');
   assert.equal(resolveNewThreadPromptAgentByRow(10, 16), 'claude');
-  assert.equal(resolveNewThreadPromptAgentByRow(10, 17), 'terminal');
-  assert.equal(resolveNewThreadPromptAgentByRow(10, 18), 'critique');
+  assert.equal(resolveNewThreadPromptAgentByRow(10, 17), 'cursor');
+  assert.equal(resolveNewThreadPromptAgentByRow(10, 18), 'terminal');
+  assert.equal(resolveNewThreadPromptAgentByRow(10, 19), 'critique');
   assert.equal(resolveNewThreadPromptAgentByRow(10, 14), null);
 });

@@ -360,6 +360,79 @@ void test('harness rejects invalid session names', async () => {
   }
 });
 
+void test('harness cursor-hooks install creates managed cursor hooks in user scope', async () => {
+  const workspace = createWorkspace();
+  const fakeHome = join(workspace, 'fake-home');
+  const hooksFilePath = join(fakeHome, '.cursor/hooks.json');
+  try {
+    const result = await runHarness(workspace, ['cursor-hooks', 'install'], {
+      HOME: fakeHome,
+    });
+    assert.equal(result.code, 0);
+    assert.equal(result.stdout.includes('cursor hooks install:'), true);
+    assert.equal(existsSync(hooksFilePath), true);
+    const parsed = JSON.parse(readFileSync(hooksFilePath, 'utf8')) as Record<string, unknown>;
+    const hooks = parsed['hooks'] as Record<string, Array<Record<string, unknown>>>;
+    const managedBeforeSubmit = hooks['beforeSubmitPrompt'] ?? [];
+    assert.equal(
+      managedBeforeSubmit.some(
+        (entry) =>
+          typeof entry['command'] === 'string' &&
+          (entry['command'] as string).includes("harness-cursor-hook-v1:beforeSubmitPrompt"),
+      ),
+      true,
+    );
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('harness cursor-hooks uninstall removes only managed cursor entries', async () => {
+  const workspace = createWorkspace();
+  const fakeHome = join(workspace, 'fake-home');
+  const hooksFilePath = join(fakeHome, '.cursor/hooks.json');
+  mkdirSync(join(fakeHome, '.cursor'), { recursive: true });
+  writeFileSync(
+    hooksFilePath,
+    JSON.stringify({
+      version: 1,
+      hooks: {
+        beforeSubmitPrompt: [
+          { command: 'echo user-hook' },
+          {
+            command:
+              "/usr/bin/env node /tmp/cursor-hook-relay.ts --managed-hook-id 'harness-cursor-hook-v1:beforeSubmitPrompt'",
+          },
+        ],
+      },
+    }),
+    'utf8',
+  );
+  try {
+    const result = await runHarness(workspace, ['cursor-hooks', 'uninstall'], {
+      HOME: fakeHome,
+    });
+    assert.equal(result.code, 0);
+    assert.equal(result.stdout.includes('cursor hooks uninstall:'), true);
+    const parsed = JSON.parse(readFileSync(hooksFilePath, 'utf8')) as Record<string, unknown>;
+    const hooks = parsed['hooks'] as Record<string, Array<Record<string, unknown>>>;
+    assert.equal(
+      hooks['beforeSubmitPrompt']?.some((entry) => entry['command'] === 'echo user-hook'),
+      true,
+    );
+    assert.equal(
+      hooks['beforeSubmitPrompt']?.some(
+        (entry) =>
+          typeof entry['command'] === 'string' &&
+          (entry['command'] as string).includes('harness-cursor-hook-v1'),
+      ),
+      false,
+    );
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 void test('harness animate --help prints usage', async () => {
   const workspace = createWorkspace();
   try {

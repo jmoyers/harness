@@ -107,6 +107,22 @@ void test('runtime wiring summarizes telemetry text deterministically', () => {
   );
   assert.equal(
     telemetrySummaryText({
+      source: 'otlp-log',
+      eventName: 'cursor.beforesubmitprompt',
+      summary: null
+    }),
+    'active'
+  );
+  assert.equal(
+    telemetrySummaryText({
+      source: 'otlp-log',
+      eventName: 'cursor.stop',
+      summary: 'turn complete (aborted)'
+    }),
+    'inactive'
+  );
+  assert.equal(
+    telemetrySummaryText({
       source: 'otlp-trace',
       eventName: null,
       summary: null
@@ -689,6 +705,32 @@ void test('runtime wiring handles telemetry status hints and preserves exited st
   assert.equal(runningConversation?.status, 'running');
   assert.equal(runningConversation?.attentionReason, null);
   assert.equal(runningConversation?.directoryId, 'directory-y');
+
+  const cursorRunningConversation = applyMuxControlPlaneKeyEvent(
+    {
+      type: 'session-telemetry',
+      sessionId: 'conversation-telemetry',
+      keyEvent: {
+        source: 'otlp-log',
+        eventName: 'cursor.beforesubmitprompt',
+        severity: null,
+        summary: 'prompt submitted',
+        observedAt: '2026-02-15T00:00:04.500Z',
+        statusHint: 'running'
+      },
+      ts: '2026-02-15T00:00:04.500Z',
+      directoryId: 'directory-y',
+      conversationId: 'conversation-telemetry',
+      cursor: 5.5
+    },
+    {
+      removedConversationIds: new Set(),
+      ensureConversation
+    }
+  );
+  assert.notEqual(cursorRunningConversation, null);
+  assert.equal(cursorRunningConversation?.status, 'running');
+  assert.equal(cursorRunningConversation?.attentionReason, null);
 
   const completedConversation = applyMuxControlPlaneKeyEvent(
     {

@@ -1,4 +1,4 @@
-type ThreadAgentType = 'codex' | 'claude' | 'terminal' | 'critique';
+type ThreadAgentType = 'codex' | 'claude' | 'cursor' | 'terminal' | 'critique';
 
 const EMPTY_NEW_THREAD_PROMPT_INPUT = new Uint8Array();
 
@@ -20,7 +20,7 @@ export function createNewThreadPromptState(directoryId: string): NewThreadPrompt
 }
 
 export function normalizeThreadAgentType(value: string): ThreadAgentType {
-  if (value === 'terminal' || value === 'claude' || value === 'critique') {
+  if (value === 'terminal' || value === 'claude' || value === 'cursor' || value === 'critique') {
     return value;
   }
   return 'codex';
@@ -31,6 +31,9 @@ export function nextThreadAgentType(value: ThreadAgentType): ThreadAgentType {
     return 'claude';
   }
   if (value === 'claude') {
+    return 'cursor';
+  }
+  if (value === 'cursor') {
     return 'terminal';
   }
   if (value === 'terminal') {
@@ -89,9 +92,11 @@ export function reduceNewThreadPromptInput(
       selectedAgentType = 'codex';
     } else if (byte === 0x32 || byte === 0x61 || byte === 0x41) {
       selectedAgentType = 'claude';
-    } else if (byte === 0x33 || byte === 0x74 || byte === 0x54) {
+    } else if (byte === 0x33 || byte === 0x75 || byte === 0x55) {
+      selectedAgentType = 'cursor';
+    } else if (byte === 0x34 || byte === 0x74 || byte === 0x54) {
       selectedAgentType = 'terminal';
-    } else if (byte === 0x34 || byte === 0x72 || byte === 0x52) {
+    } else if (byte === 0x35 || byte === 0x72 || byte === 0x52) {
       selectedAgentType = 'critique';
     }
   }
@@ -110,13 +115,17 @@ export function resolveNewThreadPromptAgentByRow(
 ): ThreadAgentType | null {
   const codexRow = overlayTopRowZeroBased + 4;
   const claudeRow = overlayTopRowZeroBased + 5;
-  const terminalRow = overlayTopRowZeroBased + 6;
-  const critiqueRow = overlayTopRowZeroBased + 7;
+  const cursorRow = overlayTopRowZeroBased + 6;
+  const terminalRow = overlayTopRowZeroBased + 7;
+  const critiqueRow = overlayTopRowZeroBased + 8;
   if (rowOneBased - 1 === codexRow) {
     return 'codex';
   }
   if (rowOneBased - 1 === claudeRow) {
     return 'claude';
+  }
+  if (rowOneBased - 1 === cursorRow) {
+    return 'cursor';
   }
   if (rowOneBased - 1 === terminalRow) {
     return 'terminal';
@@ -132,12 +141,14 @@ export function newThreadPromptBodyLines(
   labels: {
     readonly codexButtonLabel: string;
     readonly claudeButtonLabel: string;
+    readonly cursorButtonLabel: string;
     readonly terminalButtonLabel: string;
     readonly critiqueButtonLabel: string;
   }
 ): readonly string[] {
   const codexSelected = state.selectedAgentType === 'codex';
   const claudeSelected = state.selectedAgentType === 'claude';
+  const cursorSelected = state.selectedAgentType === 'cursor';
   const terminalSelected = state.selectedAgentType === 'terminal';
   const critiqueSelected = state.selectedAgentType === 'critique';
   return [
@@ -145,9 +156,10 @@ export function newThreadPromptBodyLines(
     '',
     `${codexSelected ? '●' : '○'} ${labels.codexButtonLabel}`,
     `${claudeSelected ? '●' : '○'} ${labels.claudeButtonLabel}`,
+    `${cursorSelected ? '●' : '○'} ${labels.cursorButtonLabel}`,
     `${terminalSelected ? '●' : '○'} ${labels.terminalButtonLabel}`,
     `${critiqueSelected ? '●' : '○'} ${labels.critiqueButtonLabel}`,
     '',
-    'c/a/t/r toggle'
+    'c/a/u/t/r toggle'
   ];
 }

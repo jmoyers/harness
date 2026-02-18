@@ -32,7 +32,7 @@ Harness is built for developers who want to:
 - `ctrl+j/k` cycles the full left-nav order of visible items (Home, repository groups, project headers, then project threads).
 - `left/right` collapses or expands the selected repository group; `ctrl+k ctrl+0` collapses all groups, `ctrl+k ctrl+j` expands all groups.
 - Projects can remain empty; threads start only via explicit `new thread` actions.
-- Parallel `codex`, `claude`, `terminal`, and `critique` threads in the same workspace.
+- Parallel `codex`, `claude`, `cursor`, `terminal`, and `critique` threads in the same workspace.
 - Fresh context per thread by default (plus persisted continuity when supported).
 - Session control ownership: claim/release/takeover semantics for human-agent handoff.
 - Thread lifecycle management: create, rename, archive, and restore-ready metadata.
@@ -55,9 +55,12 @@ Harness is built for developers who want to:
 - Codex history enrichment is ingested incrementally from appended bytes (non-blocking) instead of full-file rereads each poll.
 - Codex notify-hook relay support on the same stream (`session-event notify`, including `agent-turn-complete` payloads).
 - Claude Code hook relay support on the same stream (`session-event notify` + derived `session-key-event` status updates from explicit `UserPromptSubmit`/`PreToolUse`/`Stop` hook events and structured `Notification.notification_type` values).
+- Cursor CLI managed-hook relay support on the same stream (`session-event notify` + derived `session-key-event` status updates from `beforeSubmitPrompt`, tool hooks, and `stop`/abort events).
 - Lifecycle hook connectors for external integrations (sound packs, webhooks, automation).
 - Directory-scoped Codex launch policy with configurable default mode (`yolo` by default).
+- Directory-scoped Cursor launch policy with configurable default mode (`yolo` by default, mapped to `--force --trust`).
 - One shared launch-args abstraction is used by both mux interactive starts and gateway startup auto-resume, so Codex `resume` + launch-mode behavior stays consistent after daemon restarts.
+- Managed Cursor hooks are installed non-destructively (merge-only) and can be removed with `harness cursor-hooks uninstall`.
 - Config-first behavior through one canonical file: `harness.config.jsonc`.
 - Detached gateway runtime: client disconnects do not stop running threads; gateway startup eagerly restores non-archived thread runtimes, and `harness gateway stop` is the explicit shutdown boundary for child sessions.
 - When a thread/terminal process owns the main pane, the bottom status row switches to a single-line debug bar showing the spawned command.
@@ -167,7 +170,7 @@ Harness is built to expose operational truth, not hide it.
 
 - Canonical thread/session lifecycle events.
 - Typed telemetry events for status hints and recent work summaries.
-- Deliberately minimal work-status projection: Codex prompt/SSE progress and Claude `UserPromptSubmit`/`PreToolUse` hooks mark `active`; Codex turn-e2e metrics and Claude `Stop` hooks mark `inactive`; Claude `Notification` status hints are derived only from explicit `notification_type` values (no summary-text heuristics); controller ownership never overrides status text.
+- Deliberately minimal work-status projection: Codex prompt/SSE progress, Claude `UserPromptSubmit`/`PreToolUse`, and Cursor `beforeSubmitPrompt`/tool-start hooks mark `active`; Codex turn-e2e, Claude `Stop`, and Cursor `stop`/`sessionEnd` (including abort-style terminal states) mark `inactive`; Claude `Notification` status hints are derived only from explicit `notification_type` values (no summary-text heuristics); controller ownership never overrides status text.
 - Lifecycle telemetry is default-first: `codex.telemetry.captureVerboseEvents` defaults to `false`, and `codex.telemetry.ingestMode` defaults to `lifecycle-fast` so ingest keeps lifecycle/high-signal events while avoiding full OTLP payload expansion on the hot path; set `ingestMode` to `full` when deep payload diagnostics are needed.
 - `session.status`/`session.list` summaries include per-session diagnostics counters (telemetry ingested/retained/dropped totals, last-60s ingest rate, fanout enqueue bytes/events, and backpressure/disconnect signals).
 - Mux projection instrumentation (`mux.session-projection.transition`) for icon/status-line timeline debugging.
@@ -197,6 +200,7 @@ Harness is built to expose operational truth, not hide it.
 - Rust toolchain (for PTY helper build)
 - Codex CLI (for `codex` thread type)
 - Claude Code CLI (for `claude` thread type)
+- Cursor CLI (for `cursor` thread type)
 - Critique CLI (optional; Harness can auto-run via `bunx` for `critique` thread type)
 
 ### Migrate Older Checkout To Bun
@@ -288,6 +292,8 @@ harness --session perf-a profile stop
 
 Configuration is file-first via `harness.config.jsonc`.
 Codex launch mode is controlled under `codex.launch` with `defaultMode` and per-directory `directoryModes` overrides.
+Cursor launch mode is controlled under `cursor.launch` with `defaultMode` and per-directory `directoryModes` overrides.
+Managed Cursor hooks can be installed/removed with `harness cursor-hooks install` / `harness cursor-hooks uninstall` (override relay script path with `HARNESS_CURSOR_HOOK_RELAY_SCRIPT_PATH` when needed).
 Codex telemetry ingest defaults to `codex.telemetry.ingestMode: "lifecycle-fast"`; switch to `"full"` when troubleshooting raw OTLP payload detail.
 Process-bootstrap secrets can be stored in `.harness/secrets.env` (for example `ANTHROPIC_API_KEY=...`); existing exported environment values take precedence.
 To expose Bun debugger protocol endpoints for live profile attach control, configure `debug.inspect` and restart the gateway once:

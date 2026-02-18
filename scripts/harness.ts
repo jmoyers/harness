@@ -35,6 +35,11 @@ import {
 import { loadHarnessConfig } from '../src/config/config-core.ts';
 import { loadHarnessSecrets } from '../src/config/secrets-core.ts';
 import {
+  buildCursorManagedHookRelayCommand,
+  ensureManagedCursorHooksInstalled,
+  uninstallManagedCursorHooks,
+} from '../src/cursor/managed-hooks.ts';
+import {
   buildInspectorProfileStartExpression,
   buildInspectorProfileStopExpression,
   connectGatewayInspector,
@@ -48,6 +53,7 @@ import {
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_DAEMON_SCRIPT_PATH = resolve(SCRIPT_DIR, 'control-plane-daemon.ts');
 const DEFAULT_MUX_SCRIPT_PATH = resolve(SCRIPT_DIR, 'harness-core.ts');
+const DEFAULT_CURSOR_HOOK_RELAY_SCRIPT_PATH = resolve(SCRIPT_DIR, 'cursor-hook-relay.ts');
 const DEFAULT_GATEWAY_START_RETRY_WINDOW_MS = 6000;
 const DEFAULT_GATEWAY_START_RETRY_DELAY_MS = 40;
 const DEFAULT_GATEWAY_STOP_TIMEOUT_MS = 5000;
@@ -102,6 +108,11 @@ interface ParsedProfileStopCommand {
 }
 
 type ParsedProfileCommand = ParsedProfileRunCommand | ParsedProfileStartCommand | ParsedProfileStopCommand;
+
+interface ParsedCursorHooksCommand {
+  type: 'install' | 'uninstall';
+  hooksFilePath: string | null;
+}
 
 interface RuntimeCpuProfileOptions {
   cpuProfileDir: string;
@@ -341,6 +352,43 @@ function parseProfileCommand(argv: readonly string[]): ParsedProfileCommand {
   return parseProfileRunCommand(argv);
 }
 
+function parseCursorHooksOptions(argv: readonly string[]): { hooksFilePath: string | null } {
+  const options = {
+    hooksFilePath: null as string | null,
+  };
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index]!;
+    if (arg === '--hooks-file') {
+      options.hooksFilePath = readCliValue(argv, index, '--hooks-file');
+      index += 1;
+      continue;
+    }
+    throw new Error(`unknown cursor-hooks option: ${arg}`);
+  }
+  return options;
+}
+
+function parseCursorHooksCommand(argv: readonly string[]): ParsedCursorHooksCommand {
+  if (argv.length === 0) {
+    throw new Error('missing cursor-hooks subcommand');
+  }
+  const subcommand = argv[0]!;
+  const options = parseCursorHooksOptions(argv.slice(1));
+  if (subcommand === 'install') {
+    return {
+      type: 'install',
+      hooksFilePath: options.hooksFilePath,
+    };
+  }
+  if (subcommand === 'uninstall') {
+    return {
+      type: 'uninstall',
+      hooksFilePath: options.hooksFilePath,
+    };
+  }
+  throw new Error(`unknown cursor-hooks subcommand: ${subcommand}`);
+}
+
 function buildCpuProfileRuntimeArgs(options: RuntimeCpuProfileOptions): readonly string[] {
   return [
     '--cpu-prof',
@@ -550,6 +598,8 @@ function printUsage(): void {
       '  harness [--session <name>] profile stop [--timeout-ms <ms>]',
       '  harness [--session <name>] profile run [--profile-dir <path>] [mux-args...]',
       '  harness [--session <name>] profile [--profile-dir <path>] [mux-args...]',
+      '  harness cursor-hooks install [--hooks-file <path>]',
+      '  harness cursor-hooks uninstall [--hooks-file <path>]',
       '  harness animate [--fps <fps>] [--frames <count>] [--duration-ms <ms>] [--seed <seed>] [--no-color]',
       '',
       'session naming:',
@@ -1910,6 +1960,35 @@ async function runProfileCommandEntry(
   );
 }
 
+async function runCursorHooksCommandEntry(
+  invocationDirectory: string,
+  command: ParsedCursorHooksCommand,
+): Promise<number> {
+  const hooksFilePath = command.hooksFilePath === null ? undefined : resolve(invocationDirectory, command.hooksFilePath);
+  if (command.type === 'install') {
+    const relayScriptPath = resolveScriptPath(
+      process.env.HARNESS_CURSOR_HOOK_RELAY_SCRIPT_PATH,
+      DEFAULT_CURSOR_HOOK_RELAY_SCRIPT_PATH,
+      invocationDirectory,
+    );
+    const result = ensureManagedCursorHooksInstalled({
+      relayCommand: buildCursorManagedHookRelayCommand(relayScriptPath),
+      ...(hooksFilePath === undefined ? {} : { hooksFilePath }),
+    });
+    process.stdout.write(
+      `cursor hooks install: ${result.changed ? 'updated' : 'already up-to-date'} file=${result.filePath} removed=${String(result.removedCount)} added=${String(result.addedCount)}\n`,
+    );
+    return 0;
+  }
+  const result = uninstallManagedCursorHooks(
+    hooksFilePath === undefined ? {} : { hooksFilePath },
+  );
+  process.stdout.write(
+    `cursor hooks uninstall: ${result.changed ? 'updated' : 'no changes'} file=${result.filePath} removed=${String(result.removedCount)}\n`,
+  );
+  return 0;
+}
+
 async function main(): Promise<number> {
   const invocationDirectory = resolveInvocationDirectory(process.env, process.cwd());
   loadHarnessSecrets({ cwd: invocationDirectory });
@@ -1959,6 +2038,11 @@ async function main(): Promise<number> {
       argv.slice(1),
       runtimeOptions,
     );
+  }
+
+  if (argv.length > 0 && argv[0] === 'cursor-hooks') {
+    const command = parseCursorHooksCommand(argv.slice(1));
+    return await runCursorHooksCommandEntry(invocationDirectory, command);
   }
 
   if (argv.length > 0 && argv[0] === 'animate') {

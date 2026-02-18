@@ -32,6 +32,7 @@ const CLAUDE_EXPLICIT_SUBCOMMANDS = new Set([
 
 type CodexLaunchMode = 'yolo' | 'standard';
 type ClaudeLaunchMode = 'yolo' | 'standard';
+type CursorLaunchMode = 'yolo' | 'standard';
 
 interface BuildAgentSessionStartArgsOptions {
   readonly directoryPath?: string | null;
@@ -39,6 +40,8 @@ interface BuildAgentSessionStartArgsOptions {
   readonly codexLaunchModeByDirectoryPath?: Readonly<Record<string, CodexLaunchMode>>;
   readonly claudeLaunchDefaultMode?: ClaudeLaunchMode;
   readonly claudeLaunchModeByDirectoryPath?: Readonly<Record<string, ClaudeLaunchMode>>;
+  readonly cursorLaunchDefaultMode?: CursorLaunchMode;
+  readonly cursorLaunchModeByDirectoryPath?: Readonly<Record<string, CursorLaunchMode>>;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -116,39 +119,96 @@ export function claudeResumeSessionIdFromAdapterState(
   return readNonEmptyString(claude['sessionId']);
 }
 
+export function cursorResumeSessionIdFromAdapterState(
+  adapterState: Record<string, unknown>
+): string | null {
+  const cursor = asRecord(adapterState['cursor']);
+  if (cursor === null) {
+    return null;
+  }
+  const resumeSessionId = readNonEmptyString(cursor['resumeSessionId']);
+  if (resumeSessionId !== null) {
+    return resumeSessionId;
+  }
+  const conversationId = readNonEmptyString(cursor['conversationId']);
+  if (conversationId !== null) {
+    return conversationId;
+  }
+  return readNonEmptyString(cursor['sessionId']);
+}
+
 export function mergeAdapterStateFromSessionEvent(
   agentType: string,
   _currentState?: Record<string, unknown>,
   _event?: StreamSessionEvent,
   _observedAt?: string
 ): Record<string, unknown> | null {
-  if (agentType !== 'claude' || _event?.type !== 'notify') {
+  if (_event?.type !== 'notify') {
     return null;
   }
   const payload = asRecord(_event.record.payload);
+  if (agentType === 'claude') {
+    const sessionId =
+      readNonEmptyString(payload?.['session_id']) ?? readNonEmptyString(payload?.['sessionId']);
+    if (sessionId === null) {
+      return null;
+    }
+
+    const currentState = normalizeAdapterState(_currentState ?? {});
+    const claude = asRecord(currentState['claude']) ?? {};
+    const currentResumeSessionId = readNonEmptyString(claude['resumeSessionId']);
+    const lastObservedAt = readNonEmptyString(claude['lastObservedAt']);
+    const nextObservedAt = readNonEmptyString(_observedAt) ?? lastObservedAt ?? null;
+    if (currentResumeSessionId === sessionId && nextObservedAt === lastObservedAt) {
+      return null;
+    }
+
+    return {
+      ...currentState,
+      claude: {
+        ...claude,
+        resumeSessionId: sessionId,
+        ...(nextObservedAt === null ? {} : { lastObservedAt: nextObservedAt })
+      }
+    };
+  }
+  if (agentType !== 'cursor') {
+    return null;
+  }
   const sessionId =
-    readNonEmptyString(payload?.['session_id']) ?? readNonEmptyString(payload?.['sessionId']);
+    readNonEmptyString(payload?.['conversation_id']) ??
+    readNonEmptyString(payload?.['conversationId']) ??
+    readNonEmptyString(payload?.['session_id']) ??
+    readNonEmptyString(payload?.['sessionId']);
   if (sessionId === null) {
     return null;
   }
-
   const currentState = normalizeAdapterState(_currentState ?? {});
-  const claude = asRecord(currentState['claude']) ?? {};
-  const currentResumeSessionId = readNonEmptyString(claude['resumeSessionId']);
-  const lastObservedAt = readNonEmptyString(claude['lastObservedAt']);
+  const cursor = asRecord(currentState['cursor']) ?? {};
+  const currentResumeSessionId = readNonEmptyString(cursor['resumeSessionId']);
+  const lastObservedAt = readNonEmptyString(cursor['lastObservedAt']);
   const nextObservedAt = readNonEmptyString(_observedAt) ?? lastObservedAt ?? null;
   if (currentResumeSessionId === sessionId && nextObservedAt === lastObservedAt) {
     return null;
   }
-
   return {
     ...currentState,
-    claude: {
-      ...claude,
+    cursor: {
+      ...cursor,
       resumeSessionId: sessionId,
       ...(nextObservedAt === null ? {} : { lastObservedAt: nextObservedAt })
     }
   };
+}
+
+function hasCursorResumeArg(args: readonly string[]): boolean {
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === '--resume' || arg === '-r') {
+      return true;
+    }
+  }
+  return false;
 }
 
 function hasClaudeResumeArg(args: readonly string[]): boolean {
@@ -174,6 +234,7 @@ export function buildAgentStartArgs(
   options?: {
     codexLaunchMode?: CodexLaunchMode;
     claudeLaunchMode?: ClaudeLaunchMode;
+    cursorLaunchMode?: CursorLaunchMode;
   }
 ): string[] {
   if (agentType === 'codex') {
@@ -216,6 +277,26 @@ export function buildAgentStartArgs(
     return ['--resume', resumeSessionId, ...argsWithLaunchMode];
   }
 
+  if (agentType === 'cursor') {
+    const cursorLaunchMode = options?.cursorLaunchMode ?? 'standard';
+    const argsWithLaunchMode = [...baseArgs];
+    if (cursorLaunchMode === 'yolo' && !argsWithLaunchMode.includes('--force')) {
+      argsWithLaunchMode.push('--force');
+    }
+    if (cursorLaunchMode === 'yolo' && !argsWithLaunchMode.includes('--trust')) {
+      argsWithLaunchMode.push('--trust');
+    }
+
+    if (hasCursorResumeArg(baseArgs)) {
+      return argsWithLaunchMode;
+    }
+    const resumeSessionId = cursorResumeSessionIdFromAdapterState(adapterState);
+    if (resumeSessionId === null) {
+      return argsWithLaunchMode;
+    }
+    return ['--resume', resumeSessionId, ...argsWithLaunchMode];
+  }
+
   return [...baseArgs];
 }
 
@@ -250,6 +331,19 @@ export function buildAgentSessionStartArgs(
 
     return buildAgentStartArgs(agentType, baseArgs, adapterState, {
       claudeLaunchMode,
+    });
+  }
+
+  if (agentType === 'cursor') {
+    const defaultMode = options.cursorLaunchDefaultMode ?? 'standard';
+    const directoryModes = options.cursorLaunchModeByDirectoryPath ?? {};
+    const cursorLaunchMode =
+      normalizedDirectoryPath.length > 0
+        ? (directoryModes[normalizedDirectoryPath] ?? defaultMode)
+        : defaultMode;
+
+    return buildAgentStartArgs(agentType, baseArgs, adapterState, {
+      cursorLaunchMode,
     });
   }
 

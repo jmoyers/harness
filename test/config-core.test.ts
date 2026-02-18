@@ -693,6 +693,84 @@ void test('parseHarnessConfigText falls back for invalid claude settings', () =>
   assert.deepEqual(parsedWithNullLaunch.claude.launch, DEFAULT_HARNESS_CONFIG.claude.launch);
 });
 
+void test('parseHarnessConfigText parses cursor launch settings', () => {
+  const parsed = parseHarnessConfigText(`
+    {
+      "cursor": {
+        "launch": {
+          "defaultMode": "standard",
+          "directoryModes": {
+            ".": "yolo",
+            "./sandbox": "standard"
+          }
+        }
+      }
+    }
+  `);
+  assert.deepEqual(parsed.cursor, {
+    launch: {
+      defaultMode: 'standard',
+      directoryModes: {
+        '.': 'yolo',
+        './sandbox': 'standard'
+      }
+    }
+  });
+});
+
+void test('parseHarnessConfigText falls back for invalid cursor settings', () => {
+  const parsed = parseHarnessConfigText(`
+    {
+      "cursor": {
+        "launch": {
+          "defaultMode": "unsafe",
+          "directoryModes": {
+            ".": "unsafe",
+            "": "yolo",
+            "./safe": "standard"
+          }
+        }
+      }
+    }
+  `);
+  assert.deepEqual(parsed.cursor, {
+    launch: {
+      defaultMode: DEFAULT_HARNESS_CONFIG.cursor.launch.defaultMode,
+      directoryModes: {
+        './safe': 'standard'
+      }
+    }
+  });
+
+  const parsedWithBadShapes = parseHarnessConfigText(`
+    {
+      "cursor": []
+    }
+  `);
+  assert.deepEqual(parsedWithBadShapes.cursor, DEFAULT_HARNESS_CONFIG.cursor);
+
+  const parsedWithBadLaunchShapes = parseHarnessConfigText(`
+    {
+      "cursor": {
+        "launch": {
+          "defaultMode": 7,
+          "directoryModes": null
+        }
+      }
+    }
+  `);
+  assert.deepEqual(parsedWithBadLaunchShapes.cursor.launch, DEFAULT_HARNESS_CONFIG.cursor.launch);
+
+  const parsedWithNullLaunch = parseHarnessConfigText(`
+    {
+      "cursor": {
+        "launch": null
+      }
+    }
+  `);
+  assert.deepEqual(parsedWithNullLaunch.cursor.launch, DEFAULT_HARNESS_CONFIG.cursor.launch);
+});
+
 void test('parseHarnessConfigText parses lifecycle hook connectors and event filters', () => {
   const parsed = parseHarnessConfigText(`
     {
@@ -736,6 +814,7 @@ void test('parseHarnessConfigText parses lifecycle hook connectors and event fil
   assert.deepEqual(parsed.hooks.lifecycle.providers, {
     codex: true,
     claude: false,
+    cursor: true,
     controlPlane: true,
   });
   assert.deepEqual(parsed.hooks.lifecycle.peonPing, {

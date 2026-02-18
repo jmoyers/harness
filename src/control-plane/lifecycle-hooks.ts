@@ -11,7 +11,7 @@ import type {
   StreamTelemetrySource
 } from './stream-protocol.ts';
 
-type HarnessLifecycleProvider = 'codex' | 'claude' | 'control-plane' | 'unknown';
+type HarnessLifecycleProvider = 'codex' | 'claude' | 'cursor' | 'control-plane' | 'unknown';
 
 interface LifecycleObservedScope {
   tenantId: string;
@@ -197,6 +197,9 @@ function providerFromSessionKeyEvent(event: Extract<StreamObservedEvent, { type:
     eventName.includes('userpromptsubmit')
   ) {
     return 'claude';
+  }
+  if (eventName.startsWith('cursor.')) {
+    return 'cursor';
   }
   if (eventName.startsWith('codex.')) {
     return 'codex';
@@ -509,7 +512,12 @@ export class LifecycleHooksRuntime {
     const eventName = event.keyEvent.eventName?.toLowerCase() ?? '';
     const summary = event.keyEvent.summary?.toLowerCase() ?? '';
 
-    if (eventName.includes('tool_call') || eventName.includes('pretooluse')) {
+    if (
+      eventName.includes('tool_call') ||
+      eventName.includes('pretooluse') ||
+      eventName === 'cursor.beforeshellexecution' ||
+      eventName === 'cursor.beforemcptool'
+    ) {
       lifecycleEvents.push(
         this.buildLifecycleEvent(scope, event, cursor, provider, 'tool.started', {
           sessionId: event.sessionId,
@@ -521,7 +529,12 @@ export class LifecycleHooksRuntime {
         })
       );
     }
-    if (eventName.includes('tool_result') || eventName.includes('posttooluse')) {
+    if (
+      eventName.includes('tool_result') ||
+      eventName.includes('posttooluse') ||
+      eventName === 'cursor.aftershellexecution' ||
+      eventName === 'cursor.aftermcptool'
+    ) {
       const toolFailed = maybeToolFailure(event.keyEvent.summary, event.keyEvent.severity);
       lifecycleEvents.push(
         this.buildLifecycleEvent(
@@ -542,7 +555,11 @@ export class LifecycleHooksRuntime {
         )
       );
     }
-    if (eventName.includes('user_prompt') || eventName.includes('userpromptsubmit')) {
+    if (
+      eventName.includes('user_prompt') ||
+      eventName.includes('userpromptsubmit') ||
+      eventName === 'cursor.beforesubmitprompt'
+    ) {
       lifecycleEvents.push(
         this.buildLifecycleEvent(scope, event, cursor, provider, 'turn.started', {
           sessionId: event.sessionId,
@@ -667,9 +684,12 @@ export class LifecycleHooksRuntime {
     if (provider === 'claude') {
       return this.providers.claude;
     }
+    if (provider === 'cursor') {
+      return this.providers.cursor;
+    }
     if (provider === 'control-plane') {
       return this.providers.controlPlane;
     }
-    return this.providers.codex || this.providers.claude;
+    return this.providers.codex || this.providers.claude || this.providers.cursor;
   }
 }

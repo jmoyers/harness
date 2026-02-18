@@ -67,6 +67,7 @@ Build a high-performance, terminal-first harness that manages many concurrent AI
                      +--> [Codex Live Adapter -> pty-hosted codex CLI]
                      |      +--> [Codex OTel + history ingestion (status + thread-id hints)]
                      +--> [Claude Adapter -> hooks + CLI]
+                     +--> [Cursor Adapter -> managed hooks + CLI]
                      +--> [Generic Adapter -> PTY parser fallback]
 ```
 
@@ -86,7 +87,7 @@ Tenant
 
 ```ts
 export interface AgentAdapter {
-  id: 'codex' | 'claude' | 'generic';
+  id: 'codex' | 'claude' | 'cursor' | 'generic';
   capabilities: {
     structuredEvents: boolean;
     diffStreaming: boolean;
@@ -195,7 +196,7 @@ Pass-through stream invariants:
 - Project rows in the left rail are selectable; selecting a project switches the right pane into a project view and scopes project actions to that explicit selection.
 - `new thread` preserves thread-project affinity when a thread row is selected; in project view it uses the selected project.
 - Projects may remain thread-empty; mux does not auto-seed a thread on startup/project-add/fallback and instead exposes explicit `new thread` entry points.
-- Creating a thread uses a modal agent-type chooser (`codex`, `claude`, `terminal`, or `critique`); terminal threads launch a plain interactive shell over the same PTY/control-plane path, while critique threads default to `critique --watch` (with optional bunx auto-install launch mode).
+- Creating a thread uses a modal agent-type chooser (`codex`, `claude`, `cursor`, `terminal`, or `critique`); terminal threads launch a plain interactive shell over the same PTY/control-plane path, while critique threads default to `critique --watch` (with optional bunx auto-install launch mode).
 - Clicking the active thread title row enters inline title-edit mode; edits update locally immediately and persist through debounced `conversation.update` control-plane commands.
 - The pane separator is draggable; divider moves recompute layout and PTY resize through the normal mux resize path.
 - The mux status row is performance-focused: live FPS and throughput (`KB/s`) plus render/output/event-loop timing stats.
@@ -268,7 +269,7 @@ The daemon computes derived status from both classes without dropping provider-l
 ### Lifecycle Hook Adapter Model
 
 - Hooks are config-governed in `harness.config.jsonc` under `hooks.lifecycle.*`.
-- A normalized lifecycle envelope is produced from stream-observed events (`conversation-*`, `session-status`, `session-event`, `session-key-event`) with provider tagging (`codex`, `claude`, `control-plane`, `unknown`).
+- A normalized lifecycle envelope is produced from stream-observed events (`conversation-*`, `session-status`, `session-event`, `session-key-event`) with provider tagging (`codex`, `claude`, `cursor`, `control-plane`, `unknown`).
 - Provider filters are first-class (`hooks.lifecycle.providers.*`) so operators can enable/disable lifecycle dispatch per provider family without changing runtime code.
 - Hook dispatch runs asynchronously behind an internal queue so control-plane command/PTY hot paths are not blocked by connector IO.
 - Connector model is pluggable and currently includes:
@@ -313,8 +314,8 @@ session exit -> exited
 
 High-signal classification rules:
 
-- Start-work signal: `codex.user_prompt`, `codex.sse_event` progress kinds (`response.created`, `response.in_progress`, `response.output_text.delta`, `response.output_item.added`, `response.function_call_arguments.delta`), and Claude hook `claude.userpromptsubmit`.
-- Turn-complete signal: `otlp-metric` `codex.turn.e2e_duration_ms` and Claude hook `claude.stop`.
+- Start-work signal: `codex.user_prompt`, `codex.sse_event` progress kinds (`response.created`, `response.in_progress`, `response.output_text.delta`, `response.output_item.added`, `response.function_call_arguments.delta`), Claude hook `claude.userpromptsubmit`, and Cursor hook `cursor.beforesubmitprompt` (plus Cursor tool-start hooks).
+- Turn-complete signal: `otlp-metric` `codex.turn.e2e_duration_ms`, Claude hook `claude.stop`, and Cursor hooks `cursor.stop` / `cursor.sessionend` (including aborted/cancelled terminal states normalized to completed).
 - Attention signal: explicit `needs-input`/approval-required values from structured payload fields only (severity/error-like and summary-text fallbacks are intentionally disabled).
 - Notify signal transport: provider hook records are surfaced as `session-event notify` on the same stream (for example Codex payload type `agent-turn-complete` and Claude hook payloads).
 - Status-neutral noise: tool/api/websocket chatter, trace churn, and task-complete fallback text do not mutate the status line.
@@ -597,9 +598,10 @@ Design constraints:
 - No competing runtime config sources for core behavior (no shadow config files, no duplicate per-module configs).
 - Runtime behavior toggles are config-first; environment variables are reserved for bootstrap/transport wiring and test harness injection, not the primary control surface.
 - Bootstrap secrets may be loaded from `.harness/secrets.env` (dotenv-style `KEY=VALUE`) into process env before startup; explicitly exported environment variables remain authoritative over file-provided values.
-- Codex launch policy is config-governed under `codex.launch` with:
-  - `defaultMode` (`yolo` or `standard`) as the fallback for all directories
-  - `directoryModes` for per-directory overrides keyed by workspace path
+- Launch policy is config-governed under each provider section:
+  - `codex.launch`, `claude.launch`, and `cursor.launch`
+  - each supports `defaultMode` (`yolo` or `standard`) as the fallback for all directories
+  - each supports `directoryModes` for per-directory overrides keyed by workspace path
 - Config lifecycle:
   - parse -> validate -> publish immutable runtime snapshot
   - on reload, replace snapshot atomically
@@ -1126,8 +1128,8 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - lifecycle hook connectors are config-governed (`hooks.lifecycle.*`) with provider filters and adapter-specific controls; current adapters are `peon-ping` and generic outbound `webhooks`.
     - session runtime changes and directory/conversation mutations are persisted in `src/store/control-plane-store.ts` (tenanted SQLite state store) and published through the same stream.
     - conversation persistence now includes adapter-scoped state (`adapter_state_json`) so provider-native resume identifiers can survive daemon/client restarts.
-    - per-session adapter state is updated from scoped provider events and reused on next launch, enabling conversation continuity (for Codex: `codex resume <session-id>`).
-    - Codex launch mode defaults are config-first and directory-aware (`codex.launch.defaultMode` + `codex.launch.directoryModes`), with repo default set to `yolo`.
+    - per-session adapter state is updated from scoped provider events and reused on next launch, enabling conversation continuity (for Codex: `codex resume <session-id>`; for Cursor: `--resume <session-id>`).
+    - Codex and Cursor launch mode defaults are config-first and directory-aware (`codex.launch.*` / `cursor.launch.*`), with repo defaults set to `yolo`.
     - session-start argument composition is centralized in one shared adapter abstraction and reused by mux starts + gateway auto-resume so resume/mode behavior cannot silently diverge.
     - repository/task planning primitives are persisted in the same SQLite store:
       - `repositories` (`repository_id`, remote URL, default branch, metadata, archive state)
@@ -1163,6 +1165,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - `harness profile ...` (or `harness profile run ...`) runs a dedicated profiled client+gateway lifecycle, writes Bun CPU profiles to `.harness/profiles[/<session>]/{client,gateway}.cpuprofile`, and auto-stops the profiled gateway so both artifacts are flushed.
     - `harness profile start|stop` supports long-lived gateway-only profiling for incident windows via live inspector attach: `start` requires a running inspect-enabled session gateway, starts profiler capture in-process, and records active profile state; `stop` stops capture, writes `gateway.cpuprofile` under `.harness/profiles[/<session>]/`, and leaves the gateway running.
     - `harness gateway stop` performs best-effort workspace-scoped orphan cleanup by default (orphan gateway daemon processes, orphan PTY helpers, relay-linked orphan agent processes, and `sqlite3`), with force-stop signaling the gateway process group to drain child runtimes; `--no-cleanup-orphans` disables this defensive cleanup.
+    - `harness cursor-hooks install|uninstall` manages Cursor hook registrations in a non-destructive merge-only mode (removing only Harness-managed entries on uninstall).
     - `harness animate` is a first-party high-FPS terminal benchmark scene (ASCII tunnel/starfield) for stressing render throughput independent of gateway lifecycle.
     - default gateway state is persisted as a gateway-of-record file (`.harness/gateway.json`) with host/port/auth/pid metadata; stale records are pruned on startup/stop flows.
     - client disconnect (including `Ctrl+C` in mux) does not kill the gateway; only explicit gateway stop/shutdown tears down child sessions.
@@ -1193,7 +1196,7 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - Home-pane key actions are config-first under `mux.keybindings` (`mux.home.*`) so local keymaps are remappable without code changes
     - Home pane state is hydrated from `repository.list` + `task.list` and kept live through scoped `stream.subscribe` updates
     - when a project has zero threads, mux stays in project view and surfaces explicit `new thread` actions instead of auto-starting a thread
-    - thread creation opens a modal selector (`codex`, `claude`, or `terminal`), and terminal threads launch plain shells under the same control-plane session lifecycle
+    - thread creation opens a modal selector (`codex`, `claude`, `cursor`, or `terminal`), and terminal threads launch plain shells under the same control-plane session lifecycle
     - left rail composition uses repository-grouped project/thread tree blocks; tracked project headers show `(branch)` when diff counters are zero and `(branch:+N,-M)` when non-zero, while untracked projects omit git suffix
     - thread status detail lines align to thread label text and suppress connector overhang under last-thread elbows
     - repository groups expose project/active counts and collapse state (`[+]`/`[-]`) directly in the group header rows
@@ -1207,6 +1210,8 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - telemetry capture is lifecycle-first by default: `codex.telemetry.captureVerboseEvents=false` with `codex.telemetry.ingestMode=lifecycle-fast` stores/publishes lifecycle events (`codex.conversation_starts`, `codex.user_prompt`, `codex.turn.e2e_duration_ms`) plus non-verbose high-signal events with explicit status hints while skipping expensive full-payload expansion; verbose/full modes remain opt-in.
     - Codex notify hook relay support streams `session-event notify` records (for example `agent-turn-complete`) without introducing side-channel status heuristics.
     - Claude Code sessions inject ephemeral hook settings at launch (`UserPromptSubmit`, `PreToolUse`, `Stop`, `Notification`) and relay hook payloads through the same notify stream; control-plane derives scoped `session-key-event` status hints from explicit hook fields (including structured `notification_type`) and persists Claude resume session IDs for subsequent `--resume` launches.
+    - Cursor sessions install managed hooks (default `~/.cursor/hooks.json`) in merge-only mode, relay hook payloads through `scripts/cursor-hook-relay.ts`, and map abort-style terminal states to `completed` so status semantics stay parity-safe with other providers.
+    - Cursor yolo launch mode appends `--force --trust` (unless already present) and reuses persisted Cursor resume IDs for `--resume` session continuity.
     - mux status reduction now separates high-signal status transitions from noisy telemetry chatter: trace spans are status-neutral, non-turn metrics are status-neutral, stream deltas collapse into stable human-readable progress text, and the working glyph is static (non-blinking) to reduce visual noise while preserving live progress detail in the second line.
     - OTLP timestamp normalization now treats zero/invalid nano timestamps as fallback wall-clock observations (instead of epoch `1970`), keeping telemetry timelines orderable and reducing false recency artifacts.
     - takeover-aware interaction so humans can explicitly claim/take over sessions currently controlled by automation

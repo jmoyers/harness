@@ -121,6 +121,17 @@ interface HarnessClaudeConfig {
   readonly launch: HarnessClaudeLaunchConfig;
 }
 
+type HarnessCursorLaunchMode = 'yolo' | 'standard';
+
+interface HarnessCursorLaunchConfig {
+  readonly defaultMode: HarnessCursorLaunchMode;
+  readonly directoryModes: Readonly<Record<string, HarnessCursorLaunchMode>>;
+}
+
+interface HarnessCursorConfig {
+  readonly launch: HarnessCursorLaunchConfig;
+}
+
 interface HarnessCritiqueLaunchConfig {
   readonly defaultArgs: readonly string[];
 }
@@ -138,6 +149,7 @@ interface HarnessCritiqueConfig {
 interface HarnessLifecycleProviderConfig {
   readonly codex: boolean;
   readonly claude: boolean;
+  readonly cursor: boolean;
   readonly controlPlane: boolean;
 }
 
@@ -174,6 +186,7 @@ interface HarnessConfig {
   readonly debug: HarnessDebugConfig;
   readonly codex: HarnessCodexConfig;
   readonly claude: HarnessClaudeConfig;
+  readonly cursor: HarnessCursorConfig;
   readonly critique: HarnessCritiqueConfig;
   readonly hooks: HarnessHooksConfig;
 }
@@ -252,6 +265,12 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
       directoryModes: {}
     }
   },
+  cursor: {
+    launch: {
+      defaultMode: 'yolo',
+      directoryModes: {}
+    }
+  },
   critique: {
     launch: {
       defaultArgs: ['--watch'],
@@ -267,6 +286,7 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
       providers: {
         codex: true,
         claude: true,
+        cursor: true,
         controlPlane: true,
       },
       peonPing: {
@@ -849,6 +869,62 @@ function normalizeClaudeConfig(input: unknown): HarnessClaudeConfig {
   };
 }
 
+function readCursorLaunchMode(value: unknown): HarnessCursorLaunchMode | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'yolo' || normalized === 'standard') {
+    return normalized;
+  }
+  return null;
+}
+
+function normalizeCursorDirectoryModesConfig(
+  input: unknown
+): Readonly<Record<string, HarnessCursorLaunchMode>> {
+  const record = asRecord(input);
+  if (record === null) {
+    return DEFAULT_HARNESS_CONFIG.cursor.launch.directoryModes;
+  }
+  const out: Record<string, HarnessCursorLaunchMode> = {};
+  for (const [rawPath, rawMode] of Object.entries(record)) {
+    const path = rawPath.trim();
+    if (path.length === 0) {
+      continue;
+    }
+    const mode = readCursorLaunchMode(rawMode);
+    if (mode === null) {
+      continue;
+    }
+    out[path] = mode;
+  }
+  return out;
+}
+
+function normalizeCursorLaunchConfig(input: unknown): HarnessCursorLaunchConfig {
+  const record = asRecord(input);
+  if (record === null) {
+    return DEFAULT_HARNESS_CONFIG.cursor.launch;
+  }
+  const defaultMode =
+    readCursorLaunchMode(record['defaultMode']) ?? DEFAULT_HARNESS_CONFIG.cursor.launch.defaultMode;
+  return {
+    defaultMode,
+    directoryModes: normalizeCursorDirectoryModesConfig(record['directoryModes'])
+  };
+}
+
+function normalizeCursorConfig(input: unknown): HarnessCursorConfig {
+  const record = asRecord(input);
+  if (record === null) {
+    return DEFAULT_HARNESS_CONFIG.cursor;
+  }
+  return {
+    launch: normalizeCursorLaunchConfig(record['launch'])
+  };
+}
+
 function normalizeStringArray(input: unknown, fallback: readonly string[]): readonly string[] {
   if (!Array.isArray(input)) {
     return fallback;
@@ -943,6 +1019,10 @@ function normalizeLifecycleProviders(input: unknown): HarnessLifecycleProviderCo
       typeof record['claude'] === 'boolean'
         ? record['claude']
         : DEFAULT_HARNESS_CONFIG.hooks.lifecycle.providers.claude,
+    cursor:
+      typeof record['cursor'] === 'boolean'
+        ? record['cursor']
+        : DEFAULT_HARNESS_CONFIG.hooks.lifecycle.providers.cursor,
     controlPlane:
       typeof record['controlPlane'] === 'boolean'
         ? record['controlPlane']
@@ -1079,6 +1159,7 @@ export function parseHarnessConfigText(text: string): HarnessConfig {
   const debug = normalizeDebugConfig(root['debug'], legacyPerf);
   const codex = normalizeCodexConfig(root['codex']);
   const claude = normalizeClaudeConfig(root['claude']);
+  const cursor = normalizeCursorConfig(root['cursor']);
   const critique = normalizeCritiqueConfig(root['critique']);
   const hooks = normalizeLifecycleHooksConfig(asRecord(root['hooks'])?.['lifecycle']);
 
@@ -1091,6 +1172,7 @@ export function parseHarnessConfigText(text: string): HarnessConfig {
     debug,
     codex,
     claude,
+    cursor,
     critique,
     hooks: {
       lifecycle: hooks,

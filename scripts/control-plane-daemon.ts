@@ -140,6 +140,10 @@ async function main(): Promise<number> {
   for (const [directoryPath, mode] of Object.entries(loadedConfig.config.codex.launch.directoryModes)) {
     codexLaunchDirectoryModes[resolve(invocationDirectory, directoryPath)] = mode;
   }
+  const cursorLaunchDirectoryModes: Record<string, 'yolo' | 'standard'> = {};
+  for (const [directoryPath, mode] of Object.entries(loadedConfig.config.cursor.launch.directoryModes)) {
+    cursorLaunchDirectoryModes[resolve(invocationDirectory, directoryPath)] = mode;
+  }
   const startupSpan = startPerfSpan('daemon.startup.total', {
     process: 'daemon'
   });
@@ -162,6 +166,10 @@ async function main(): Promise<number> {
       directoryModes: codexLaunchDirectoryModes
     },
     critique: loadedConfig.config.critique,
+    cursorLaunch: {
+      defaultMode: loadedConfig.config.cursor.launch.defaultMode,
+      directoryModes: cursorLaunchDirectoryModes
+    },
     gitStatus: {
       enabled: loadedConfig.config.mux.git.enabled,
       pollMs: loadedConfig.config.mux.git.idlePollMs,

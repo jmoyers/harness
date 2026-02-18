@@ -169,6 +169,10 @@ export const NEW_THREAD_MODAL_CLAUDE_BUTTON = formatUiButton({
   label: 'claude',
   prefixIcon: '◇'
 });
+export const NEW_THREAD_MODAL_CURSOR_BUTTON = formatUiButton({
+  label: 'cursor',
+  prefixIcon: '◈'
+});
 export const NEW_THREAD_MODAL_TERMINAL_BUTTON = formatUiButton({
   label: 'terminal',
   prefixIcon: '▣'

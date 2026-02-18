@@ -400,6 +400,7 @@ void test('stream server dispatches lifecycle hooks from observed events', async
       providers: {
         codex: true,
         claude: true,
+        cursor: true,
         controlPlane: true,
       },
       peonPing: {

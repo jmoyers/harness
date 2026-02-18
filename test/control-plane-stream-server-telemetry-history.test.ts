@@ -10,6 +10,10 @@ import {
 } from '../src/control-plane/stream-server.ts';
 import { connectControlPlaneStreamClient } from '../src/control-plane/stream-client.ts';
 import {
+  CURSOR_HOOK_NOTIFY_FILE_ENV,
+  CURSOR_HOOK_SESSION_ID_ENV,
+} from '../src/cursor/managed-hooks.ts';
+import {
   FakeLiveSession,
   collectEnvelopes,
   postJson,
@@ -1039,6 +1043,78 @@ void test('stream server launches claude sessions with hook settings and no code
   }
 });
 
+void test('stream server launches cursor sessions with external notify file env and cursor command', async () => {
+  const created: FakeLiveSession[] = [];
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => {
+      const session = new FakeLiveSession(input);
+      created.push(session);
+      return session;
+    },
+    cursorHooks: {
+      managed: false,
+    },
+    codexTelemetry: {
+      enabled: true,
+      host: '127.0.0.1',
+      port: 0,
+      logUserPrompt: true,
+      captureLogs: true,
+      captureMetrics: true,
+      captureTraces: true,
+      captureVerboseEvents: true,
+    },
+    codexHistory: {
+      enabled: true,
+      filePath: '~/.codex/history.jsonl',
+      pollMs: 50,
+    },
+  });
+  const address = server.address();
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port,
+  });
+
+  try {
+    await client.sendCommand({
+      type: 'directory.upsert',
+      directoryId: 'directory-cursor',
+      tenantId: 'tenant-cursor',
+      userId: 'user-cursor',
+      workspaceId: 'workspace-cursor',
+      path: '/tmp/cursor',
+    });
+    await client.sendCommand({
+      type: 'conversation.create',
+      conversationId: 'conversation-cursor',
+      directoryId: 'directory-cursor',
+      title: 'cursor',
+      agentType: 'cursor',
+    });
+    await client.sendCommand({
+      type: 'pty.start',
+      sessionId: 'conversation-cursor',
+      args: ['--foo', 'bar'],
+      initialCols: 80,
+      initialRows: 24,
+    });
+    const launchedInput = created[0]!.input;
+    assert.equal(launchedInput.command, 'cursor-agent');
+    assert.deepEqual(launchedInput.baseArgs, []);
+    assert.equal(launchedInput.useNotifyHook, true);
+    assert.equal(launchedInput.notifyMode, 'external');
+    assert.equal(typeof launchedInput.notifyFilePath, 'string');
+    assert.deepEqual(launchedInput.args, ['--foo', 'bar']);
+    const env = launchedInput.env ?? {};
+    assert.equal(env[CURSOR_HOOK_NOTIFY_FILE_ENV], launchedInput.notifyFilePath);
+    assert.equal(env[CURSOR_HOOK_SESSION_ID_ENV], 'conversation-cursor');
+  } finally {
+    client.close();
+    await server.close();
+  }
+});
+
 void test('stream server launches terminal agents with shell command and no codex base args', async () => {
   const created: FakeLiveSession[] = [];
   const server = await startControlPlaneStreamServer({
@@ -1306,6 +1382,144 @@ void test('stream server maps claude hook notify events into status/key events a
           envelope.kind === 'stream.event' &&
           envelope.event.type === 'session-key-event' &&
           envelope.event.keyEvent.eventName === 'claude.stop'
+      ),
+      true
+    );
+  } finally {
+    client.close();
+    await server.close();
+  }
+});
+
+void test('stream server maps cursor hook notify events and treats aborted stop as completed', async () => {
+  const created: FakeLiveSession[] = [];
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => {
+      const session = new FakeLiveSession(input);
+      created.push(session);
+      return session;
+    },
+    cursorHooks: {
+      managed: false,
+    },
+    codexTelemetry: {
+      enabled: false,
+      host: '127.0.0.1',
+      port: 0,
+      logUserPrompt: true,
+      captureLogs: true,
+      captureMetrics: true,
+      captureTraces: true,
+      captureVerboseEvents: true
+    },
+    codexHistory: {
+      enabled: false,
+      filePath: '~/.codex/history.jsonl',
+      pollMs: 50
+    }
+  });
+  const address = server.address();
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port
+  });
+  const observed = collectEnvelopes(client);
+
+  try {
+    await client.sendCommand({
+      type: 'directory.upsert',
+      directoryId: 'directory-cursor-status',
+      tenantId: 'tenant-cursor-status',
+      userId: 'user-cursor-status',
+      workspaceId: 'workspace-cursor-status',
+      path: '/tmp/cursor-status'
+    });
+    await client.sendCommand({
+      type: 'conversation.create',
+      conversationId: 'conversation-cursor-status',
+      directoryId: 'directory-cursor-status',
+      title: 'cursor status',
+      agentType: 'cursor'
+    });
+    await client.sendCommand({
+      type: 'stream.subscribe',
+      conversationId: 'conversation-cursor-status',
+      includeOutput: false
+    });
+    await client.sendCommand({
+      type: 'pty.start',
+      sessionId: 'conversation-cursor-status',
+      args: ['--foo', 'bar'],
+      initialCols: 80,
+      initialRows: 24
+    });
+    await delay(10);
+    assert.equal(created.length, 1);
+
+    created[0]!.emitEvent({
+      type: 'notify',
+      record: {
+        ts: '2026-02-16T00:00:00.000Z',
+        payload: {
+          event: 'beforeSubmitPrompt',
+          conversation_id: 'cursor-session-123'
+        }
+      }
+    });
+    await delay(10);
+    const runningStatus = await client.sendCommand({
+      type: 'session.status',
+      sessionId: 'conversation-cursor-status'
+    });
+    assert.equal(runningStatus['status'], 'running');
+    assert.equal((runningStatus['telemetry'] as Record<string, unknown>)['eventName'], 'cursor.beforesubmitprompt');
+
+    created[0]!.emitEvent({
+      type: 'notify',
+      record: {
+        ts: '2026-02-16T00:00:01.000Z',
+        payload: {
+          event: 'stop',
+          final_status: 'aborted',
+          reason: 'aborted by user',
+          conversation_id: 'cursor-session-123'
+        }
+      }
+    });
+    await delay(10);
+    const completedStatus = await client.sendCommand({
+      type: 'session.status',
+      sessionId: 'conversation-cursor-status'
+    });
+    assert.equal(completedStatus['status'], 'completed');
+    assert.equal((completedStatus['telemetry'] as Record<string, unknown>)['eventName'], 'cursor.stop');
+
+    const listed = await client.sendCommand({
+      type: 'conversation.list',
+      directoryId: 'directory-cursor-status',
+      includeArchived: true
+    });
+    const conversationRow = (listed['conversations'] as Array<Record<string, unknown>>)[0]!;
+    const adapterState = conversationRow['adapterState'] as Record<string, unknown>;
+    const cursorState = adapterState['cursor'] as Record<string, unknown>;
+    assert.equal(cursorState['resumeSessionId'], 'cursor-session-123');
+    assert.equal(typeof cursorState['lastObservedAt'], 'string');
+
+    assert.equal(
+      observed.some(
+        (envelope) =>
+          envelope.kind === 'stream.event' &&
+          envelope.event.type === 'session-key-event' &&
+          envelope.event.keyEvent.eventName === 'cursor.beforesubmitprompt'
+      ),
+      true
+    );
+    assert.equal(
+      observed.some(
+        (envelope) =>
+          envelope.kind === 'stream.event' &&
+          envelope.event.type === 'session-key-event' &&
+          envelope.event.keyEvent.eventName === 'cursor.stop'
       ),
       true
     );

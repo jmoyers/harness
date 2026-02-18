@@ -158,6 +158,9 @@ export function launchCommandForAgent(agentType: string): string {
   if (normalized === 'critique') {
     return 'critique';
   }
+  if (normalized === 'cursor') {
+    return 'cursor-agent';
+  }
   if (normalized === 'terminal') {
     return resolveTerminalCommandForEnvironment(process.env, process.platform);
   }

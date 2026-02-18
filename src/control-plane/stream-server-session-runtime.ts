@@ -288,7 +288,75 @@ export function notifyKeyEventFromPayload(
     };
   }
   if (agentType !== 'claude') {
-    return null;
+    if (agentType !== 'cursor') {
+      return null;
+    }
+    const hookEventNameRaw =
+      readTrimmedString(payload['hook_event_name']) ??
+      readTrimmedString(payload['hookEventName']) ??
+      readTrimmedString(payload['event_name']) ??
+      readTrimmedString(payload['eventName']) ??
+      readTrimmedString(payload['event']);
+    if (hookEventNameRaw === null) {
+      return null;
+    }
+    const hookEventToken = normalizeEventToken(hookEventNameRaw);
+    if (hookEventToken.length === 0) {
+      return null;
+    }
+    const eventName = `cursor.${hookEventToken}`;
+    const summary =
+      readTrimmedString(payload['summary']) ??
+      readTrimmedString(payload['message']) ??
+      readTrimmedString(payload['reason']) ??
+      readTrimmedString(payload['output']);
+    const finalStatusRaw =
+      readTrimmedString(payload['final_status']) ??
+      readTrimmedString(payload['finalStatus']) ??
+      '';
+    const finalStatus = normalizeEventToken(finalStatusRaw);
+    const reasonToken = normalizeEventToken(readTrimmedString(payload['reason']) ?? '');
+
+    let statusHint: StreamSessionKeyEventRecord['statusHint'] = null;
+    let normalizedSummary = summary;
+    if (hookEventToken === 'beforesubmitprompt') {
+      statusHint = 'running';
+      normalizedSummary ??= 'prompt submitted';
+    } else if (
+      hookEventToken.startsWith('before') &&
+      (hookEventToken.includes('shell') || hookEventToken.includes('mcp') || hookEventToken.includes('tool'))
+    ) {
+      statusHint = 'running';
+      normalizedSummary ??= 'tool started (hook)';
+    } else if (
+      hookEventToken === 'stop' ||
+      hookEventToken === 'sessionend' ||
+      hookEventToken.includes('abort') ||
+      reasonToken.includes('abort') ||
+      finalStatus === 'aborted' ||
+      finalStatus === 'cancelled' ||
+      finalStatus === 'canceled' ||
+      finalStatus === 'completed'
+    ) {
+      statusHint = 'completed';
+      normalizedSummary ??= finalStatus === 'aborted' ? 'turn complete (aborted)' : 'turn complete (hook)';
+    } else if (
+      hookEventToken.startsWith('after') &&
+      (hookEventToken.includes('shell') || hookEventToken.includes('mcp') || hookEventToken.includes('tool'))
+    ) {
+      normalizedSummary ??= 'tool finished (hook)';
+    } else if (normalizedSummary === null) {
+      normalizedSummary = hookEventNameRaw;
+    }
+
+    return {
+      source: 'otlp-log',
+      eventName,
+      severity: null,
+      summary: normalizedSummary,
+      observedAt,
+      statusHint,
+    };
   }
 
   const hookEventNameRaw =

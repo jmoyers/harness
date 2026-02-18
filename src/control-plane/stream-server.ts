@@ -37,6 +37,11 @@ import {
   codexResumeSessionIdFromAdapterState,
   normalizeAdapterState,
 } from '../adapters/agent-session-state.ts';
+import {
+  buildCursorHookRelayEnvironment,
+  buildCursorManagedHookRelayCommand,
+  ensureManagedCursorHooksInstalled,
+} from '../cursor/managed-hooks.ts';
 import { recordPerfEvent } from '../perf/perf-core.ts';
 import {
   buildCodexTelemetryConfigArgs,
@@ -173,6 +178,17 @@ interface CritiqueConfig {
   readonly install: CritiqueInstallConfig;
 }
 
+interface CursorLaunchConfig {
+  readonly defaultMode: 'yolo' | 'standard';
+  readonly directoryModes: Readonly<Record<string, 'yolo' | 'standard'>>;
+}
+
+interface CursorHooksConfig {
+  readonly managed: boolean;
+  readonly hooksFilePath: string | null;
+  readonly relayScriptPath: string;
+}
+
 interface GitStatusMonitorConfig {
   readonly enabled: boolean;
   readonly pollMs: number;
@@ -197,6 +213,8 @@ interface StartControlPlaneStreamServerOptions {
   codexHistory?: CodexHistoryIngestConfig;
   codexLaunch?: CodexLaunchConfig;
   critique?: CritiqueConfig;
+  cursorLaunch?: CursorLaunchConfig;
+  cursorHooks?: Partial<CursorHooksConfig>;
   gitStatus?: GitStatusMonitorConfig;
   readGitDirectorySnapshot?: GitDirectorySnapshotReader;
   lifecycleHooks?: HarnessLifecycleHooksConfig;
@@ -339,6 +357,9 @@ const DEFAULT_CLAUDE_HOOK_RELAY_SCRIPT_PATH = fileURLToPath(
 );
 const DEFAULT_CRITIQUE_DEFAULT_ARGS = ['--watch'] as const;
 const DEFAULT_CRITIQUE_PACKAGE = 'critique@latest';
+const DEFAULT_CURSOR_HOOK_RELAY_SCRIPT_PATH = fileURLToPath(
+  new URL('../../scripts/cursor-hook-relay.ts', import.meta.url)
+);
 const LIFECYCLE_TELEMETRY_EVENT_NAMES = new Set([
   'codex.user_prompt',
   'codex.turn.e2e_duration_ms',
@@ -489,6 +510,30 @@ function normalizeCritiqueConfig(input: CritiqueConfig | undefined): CritiqueCon
       autoInstall: input?.install.autoInstall ?? true,
       package: packageName,
     },
+  };
+}
+
+function normalizeCursorLaunchConfig(input: CursorLaunchConfig | undefined): CursorLaunchConfig {
+  return {
+    defaultMode: input?.defaultMode ?? 'standard',
+    directoryModes: input?.directoryModes ?? {},
+  };
+}
+
+function normalizeCursorHooksConfig(input: Partial<CursorHooksConfig> | undefined): CursorHooksConfig {
+  const relayScriptPath = input?.relayScriptPath;
+  const normalizedRelayScriptPath =
+    typeof relayScriptPath === 'string' && relayScriptPath.trim().length > 0
+      ? resolve(relayScriptPath)
+      : resolve(DEFAULT_CURSOR_HOOK_RELAY_SCRIPT_PATH);
+  const hooksFilePath =
+    typeof input?.hooksFilePath === 'string' && input.hooksFilePath.trim().length > 0
+      ? resolve(input.hooksFilePath)
+      : null;
+  return {
+    managed: input?.managed ?? true,
+    hooksFilePath,
+    relayScriptPath: normalizedRelayScriptPath,
   };
 }
 
@@ -672,6 +717,8 @@ export class ControlPlaneStreamServer {
   private readonly codexHistory: CodexHistoryIngestConfig;
   private readonly codexLaunch: CodexLaunchConfig;
   private readonly critique: CritiqueConfig;
+  private readonly cursorLaunch: CursorLaunchConfig;
+  private readonly cursorHooks: CursorHooksConfig;
   private readonly gitStatusMonitor: GitStatusMonitorConfig;
   private readonly readGitDirectorySnapshot: GitDirectorySnapshotReader;
   private readonly server: Server;
@@ -724,6 +771,8 @@ export class ControlPlaneStreamServer {
     this.codexHistory = normalizeCodexHistoryConfig(options.codexHistory);
     this.codexLaunch = normalizeCodexLaunchConfig(options.codexLaunch);
     this.critique = normalizeCritiqueConfig(options.critique);
+    this.cursorLaunch = normalizeCursorLaunchConfig(options.cursorLaunch);
+    this.cursorHooks = normalizeCursorHooksConfig(options.cursorHooks);
     this.gitStatusMonitor = normalizeGitStatusMonitorConfig(options.gitStatus);
     this.readGitDirectorySnapshot =
       options.readGitDirectorySnapshot ??
@@ -737,6 +786,7 @@ export class ControlPlaneStreamServer {
         providers: {
           codex: true,
           claude: true,
+          cursor: true,
           controlPlane: true,
         },
         peonPing: {
@@ -999,6 +1049,38 @@ export class ControlPlaneStreamServer {
     };
   }
 
+  private cursorHookLaunchConfigForSession(
+    sessionId: string,
+    agentType: string
+  ): {
+    readonly notifyFilePath: string;
+    readonly env: Readonly<Record<string, string>>;
+  } | null {
+    if (agentType !== 'cursor') {
+      return null;
+    }
+    if (this.cursorHooks.managed) {
+      const relayCommand = buildCursorManagedHookRelayCommand(this.cursorHooks.relayScriptPath);
+      const installResult = ensureManagedCursorHooksInstalled({
+        relayCommand,
+        ...(this.cursorHooks.hooksFilePath === null
+          ? {}
+          : { hooksFilePath: this.cursorHooks.hooksFilePath }),
+      });
+      recordPerfEvent('control-plane.cursor-hooks.managed.ensure', {
+        filePath: installResult.filePath,
+        changed: installResult.changed,
+        removedCount: installResult.removedCount,
+        addedCount: installResult.addedCount,
+      });
+    }
+    const notifyFilePath = join(tmpdir(), `harness-cursor-hook-${process.pid}-${sessionId}-${randomUUID()}.jsonl`);
+    return {
+      notifyFilePath,
+      env: buildCursorHookRelayEnvironment(sessionId, notifyFilePath),
+    };
+  }
+
   private resolveTerminalCommand(): string {
     return resolveTerminalCommandForEnvironment(process.env, process.platform);
   }
@@ -1010,6 +1092,12 @@ export class ControlPlaneStreamServer {
     if (agentType === 'claude') {
       return {
         command: 'claude',
+        baseArgs: []
+      };
+    }
+    if (agentType === 'cursor') {
+      return {
+        command: 'cursor-agent',
         baseArgs: []
       };
     }
@@ -1040,6 +1128,8 @@ export class ControlPlaneStreamServer {
         directoryPath: directory?.path ?? null,
         codexLaunchDefaultMode: this.codexLaunch.defaultMode,
         codexLaunchModeByDirectoryPath: this.codexLaunch.directoryModes,
+        cursorLaunchDefaultMode: this.cursorLaunch.defaultMode,
+        cursorLaunchModeByDirectoryPath: this.cursorLaunch.directoryModes,
       });
       try {
         const bootstrapInput: StartSessionRuntimeInput = {
@@ -1084,6 +1174,7 @@ export class ControlPlaneStreamServer {
         : [...command.args];
     const codexLaunchArgs = this.codexLaunchArgsForSession(command.sessionId, agentType);
     const claudeHookLaunchConfig = this.claudeHookLaunchConfigForSession(command.sessionId, agentType);
+    const cursorHookLaunchConfig = this.cursorHookLaunchConfigForSession(command.sessionId, agentType);
     const launchProfile = this.launchProfileForAgent(agentType);
     let launchCommandName = launchProfile.command ?? 'codex';
     let launchArgs = [...codexLaunchArgs, ...(claudeHookLaunchConfig?.args ?? []), ...baseSessionArgs];
@@ -1104,8 +1195,19 @@ export class ControlPlaneStreamServer {
       startInput.useNotifyHook = true;
       startInput.notifyMode = (agentType === 'claude' ? 'external' : 'codex') as LiveSessionNotifyMode;
     }
+    if (agentType === 'cursor') {
+      startInput.useNotifyHook = true;
+      startInput.notifyMode = 'external';
+    }
     if (claudeHookLaunchConfig !== null) {
       startInput.notifyFilePath = claudeHookLaunchConfig.notifyFilePath;
+    }
+    if (cursorHookLaunchConfig !== null) {
+      startInput.notifyFilePath = cursorHookLaunchConfig.notifyFilePath;
+      startInput.env = {
+        ...(command.env ?? {}),
+        ...cursorHookLaunchConfig.env,
+      };
     }
     if (launchProfile.command !== undefined || launchCommandName !== 'codex') {
       startInput.command = launchCommandName;
@@ -1113,7 +1215,7 @@ export class ControlPlaneStreamServer {
     if (launchProfile.baseArgs !== undefined) {
       startInput.baseArgs = [...launchProfile.baseArgs];
     }
-    if (command.env !== undefined) {
+    if (command.env !== undefined && cursorHookLaunchConfig === null) {
       startInput.env = command.env;
     }
     if (command.cwd !== undefined) {

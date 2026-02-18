@@ -273,6 +273,8 @@ void test('split module coverage: session runtime notify mapping covers fallback
   assert.equal(notifyKeyEventFromPayload('terminal', {}, FIXED_TS), null);
   assert.equal(notifyKeyEventFromPayload('claude', {}, FIXED_TS), null);
   assert.equal(notifyKeyEventFromPayload('claude', { hook_event_name: '!!!' }, FIXED_TS), null);
+  assert.equal(notifyKeyEventFromPayload('cursor', {}, FIXED_TS), null);
+  assert.equal(notifyKeyEventFromPayload('cursor', { event: '!!!' }, FIXED_TS), null);
 
   const running = notifyKeyEventFromPayload(
     'claude',
@@ -314,6 +316,27 @@ void test('split module coverage: session runtime notify mapping covers fallback
     FIXED_TS,
   );
   assert.equal(fallback?.summary, 'custom_hook');
+
+  const cursorRunning = notifyKeyEventFromPayload(
+    'cursor',
+    {
+      event: 'beforeSubmitPrompt',
+    },
+    FIXED_TS,
+  );
+  assert.equal(cursorRunning?.eventName, 'cursor.beforesubmitprompt');
+  assert.equal(cursorRunning?.statusHint, 'running');
+
+  const cursorCompletedFromStop = notifyKeyEventFromPayload(
+    'cursor',
+    {
+      event: 'stop',
+      final_status: 'aborted',
+    },
+    FIXED_TS,
+  );
+  assert.equal(cursorCompletedFromStop?.statusHint, 'completed');
+  assert.equal(cursorCompletedFromStop?.summary, 'turn complete (aborted)');
 });
 
 void test('split module coverage: session runtime handles notify key events without status hints', () => {

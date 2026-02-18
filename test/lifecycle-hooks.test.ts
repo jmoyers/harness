@@ -55,6 +55,7 @@ function makeConfig(overrides?: Partial<HarnessLifecycleHooksConfig>): HarnessLi
     providers: {
       codex: true,
       claude: true,
+      cursor: true,
       controlPlane: true
     },
     peonPing: {
@@ -216,6 +217,7 @@ void test('lifecycle hooks respect provider filters for codex vs control-plane e
       providers: {
         codex: false,
         claude: true,
+        cursor: true,
         controlPlane: true
       },
       webhooks: [
@@ -533,12 +535,23 @@ void test('lifecycle hooks normalize codex and claude key events into unified li
   );
 });
 
-void test('lifecycle hooks provider filtering gates claude and unknown provider events', () => {
+void test('lifecycle hooks provider filtering gates claude/cursor/unknown provider events', () => {
   const claudeDisabled = new LifecycleHooksRuntime(
     makeConfig({
       providers: {
         codex: true,
         claude: false,
+        cursor: true,
+        controlPlane: true
+      }
+    })
+  );
+  const cursorDisabled = new LifecycleHooksRuntime(
+    makeConfig({
+      providers: {
+        codex: true,
+        claude: true,
+        cursor: false,
         controlPlane: true
       }
     })
@@ -548,6 +561,7 @@ void test('lifecycle hooks provider filtering gates claude and unknown provider 
       providers: {
         codex: false,
         claude: false,
+        cursor: false,
         controlPlane: true
       }
     })
@@ -570,6 +584,17 @@ void test('lifecycle hooks provider filtering gates claude and unknown provider 
     conversationId: scope.conversationId
   };
   assert.deepEqual(internals(claudeDisabled).normalizeObservedEvent(scope, claudeEvent, 1), []);
+  assert.notEqual(internals(cursorDisabled).normalizeObservedEvent(scope, claudeEvent, 1).length, 0);
+
+  const cursorEvent: StreamObservedEvent = {
+    ...claudeEvent,
+    keyEvent: {
+      ...claudeEvent.keyEvent,
+      eventName: 'cursor.stop',
+      summary: 'turn complete',
+    }
+  };
+  assert.deepEqual(internals(cursorDisabled).normalizeObservedEvent(scope, cursorEvent, 1.5), []);
 
   const unknownProviderEvent: StreamObservedEvent = {
     ...claudeEvent,

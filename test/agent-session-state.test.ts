@@ -5,6 +5,7 @@ import {
   buildAgentStartArgs,
   claudeResumeSessionIdFromAdapterState,
   codexResumeSessionIdFromAdapterState,
+  cursorResumeSessionIdFromAdapterState,
   mergeAdapterStateFromSessionEvent,
   normalizeAdapterState
 } from '../src/adapters/agent-session-state.ts';
@@ -72,6 +73,40 @@ void test('claudeResumeSessionIdFromAdapterState reads canonical and legacy keys
   );
 });
 
+void test('cursorResumeSessionIdFromAdapterState reads canonical and legacy keys', () => {
+  assert.equal(cursorResumeSessionIdFromAdapterState({}), null);
+  assert.equal(
+    cursorResumeSessionIdFromAdapterState({
+      cursor: {}
+    }),
+    null
+  );
+  assert.equal(
+    cursorResumeSessionIdFromAdapterState({
+      cursor: {
+        resumeSessionId: 'cursor-canonical'
+      }
+    }),
+    'cursor-canonical'
+  );
+  assert.equal(
+    cursorResumeSessionIdFromAdapterState({
+      cursor: {
+        conversationId: 'cursor-conversation'
+      }
+    }),
+    'cursor-conversation'
+  );
+  assert.equal(
+    cursorResumeSessionIdFromAdapterState({
+      cursor: {
+        sessionId: 'cursor-session'
+      }
+    }),
+    'cursor-session'
+  );
+});
+
 void test('mergeAdapterStateFromSessionEvent returns null for codex session events', () => {
   assert.equal(
     mergeAdapterStateFromSessionEvent(
@@ -130,6 +165,54 @@ void test('mergeAdapterStateFromSessionEvent updates claude session resume id fr
           payload: {
             hook_event_name: 'UserPromptSubmit',
             session_id: 'session-claude-1'
+          }
+        }
+      }
+    ),
+    null
+  );
+});
+
+void test('mergeAdapterStateFromSessionEvent updates cursor session resume id from notify hooks', () => {
+  assert.deepEqual(
+    mergeAdapterStateFromSessionEvent(
+      'cursor',
+      {},
+      {
+        type: 'notify',
+        record: {
+          ts: '2026-02-14T00:00:00.000Z',
+          payload: {
+            event: 'beforeSubmitPrompt',
+            conversation_id: 'cursor-conversation-1'
+          }
+        }
+      },
+      '2026-02-14T00:00:01.000Z'
+    ),
+    {
+      cursor: {
+        resumeSessionId: 'cursor-conversation-1',
+        lastObservedAt: '2026-02-14T00:00:01.000Z'
+      }
+    }
+  );
+  assert.equal(
+    mergeAdapterStateFromSessionEvent(
+      'cursor',
+      {
+        cursor: {
+          resumeSessionId: 'cursor-conversation-1',
+          lastObservedAt: '2026-02-14T00:00:01.000Z'
+        }
+      },
+      {
+        type: 'notify',
+        record: {
+          ts: '2026-02-14T00:00:02.000Z',
+          payload: {
+            event: 'beforeSubmitPrompt',
+            conversation_id: 'cursor-conversation-1'
           }
         }
       }
@@ -484,5 +567,101 @@ void test('buildAgentStartArgs applies configurable claude yolo launch mode', ()
       {}
     ),
     ['--print']
+  );
+});
+
+void test('buildAgentStartArgs applies cursor yolo launch mode with force/trust and resume', () => {
+  assert.deepEqual(
+    buildAgentStartArgs(
+      'cursor',
+      [],
+      {
+        cursor: {
+          resumeSessionId: 'cursor-session-1'
+        }
+      },
+      {
+        cursorLaunchMode: 'yolo'
+      }
+    ),
+    ['--resume', 'cursor-session-1', '--force', '--trust']
+  );
+
+  assert.deepEqual(
+    buildAgentStartArgs(
+      'cursor',
+      ['--resume', 'explicit'],
+      {
+        cursor: {
+          resumeSessionId: 'cursor-session-1'
+        }
+      },
+      {
+        cursorLaunchMode: 'yolo'
+      }
+    ),
+    ['--resume', 'explicit', '--force', '--trust']
+  );
+
+  assert.deepEqual(
+    buildAgentStartArgs(
+      'cursor',
+      ['--trust'],
+      {},
+      {
+        cursorLaunchMode: 'yolo'
+      }
+    ),
+    ['--trust', '--force']
+  );
+
+  assert.deepEqual(
+    buildAgentStartArgs(
+      'cursor',
+      ['--force', '--trust'],
+      {},
+      {
+        cursorLaunchMode: 'yolo'
+      }
+    ),
+    ['--force', '--trust']
+  );
+});
+
+void test('buildAgentSessionStartArgs applies cursor launch defaults and directory overrides', () => {
+  const directoryModes = {
+    '/tmp/cursor-standard': 'standard' as const
+  };
+
+  assert.deepEqual(
+    buildAgentSessionStartArgs(
+      'cursor',
+      [],
+      {
+        cursor: {
+          resumeSessionId: 'cursor-session-2'
+        }
+      },
+      {
+        directoryPath: '/tmp/cursor-yolo',
+        cursorLaunchDefaultMode: 'yolo',
+        cursorLaunchModeByDirectoryPath: directoryModes
+      }
+    ),
+    ['--resume', 'cursor-session-2', '--force', '--trust']
+  );
+
+  assert.deepEqual(
+    buildAgentSessionStartArgs(
+      'cursor',
+      [],
+      {},
+      {
+        directoryPath: '/tmp/cursor-standard',
+        cursorLaunchDefaultMode: 'yolo',
+        cursorLaunchModeByDirectoryPath: directoryModes
+      }
+    ),
+    []
   );
 });

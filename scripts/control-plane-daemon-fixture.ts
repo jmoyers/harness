@@ -150,6 +150,10 @@ async function main(): Promise<number> {
   configureProcessPerf(invocationDirectory);
   const loadedConfig = loadHarnessConfig({ cwd: invocationDirectory });
   const serverSnapshotModelEnabled = loadedConfig.config.debug.mux.serverSnapshotModelEnabled;
+  const cursorLaunchDirectoryModes: Record<string, 'yolo' | 'standard'> = {};
+  for (const [directoryPath, mode] of Object.entries(loadedConfig.config.cursor.launch.directoryModes)) {
+    cursorLaunchDirectoryModes[resolve(invocationDirectory, directoryPath)] = mode;
+  }
   const startupSpan = startPerfSpan('daemon-fixture.startup.total', {
     process: 'daemon-fixture'
   });
@@ -168,6 +172,10 @@ async function main(): Promise<number> {
     codexTelemetry: loadedConfig.config.codex.telemetry,
     codexHistory: loadedConfig.config.codex.history,
     critique: loadedConfig.config.critique,
+    cursorLaunch: {
+      defaultMode: loadedConfig.config.cursor.launch.defaultMode,
+      directoryModes: cursorLaunchDirectoryModes
+    },
     gitStatus: {
       enabled: loadedConfig.config.mux.git.enabled,
       pollMs: loadedConfig.config.mux.git.idlePollMs,

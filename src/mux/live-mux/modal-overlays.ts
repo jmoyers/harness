@@ -3,6 +3,7 @@ import {
   NEW_THREAD_MODAL_CLAUDE_BUTTON,
   NEW_THREAD_MODAL_CODEX_BUTTON,
   NEW_THREAD_MODAL_CRITIQUE_BUTTON,
+  NEW_THREAD_MODAL_CURSOR_BUTTON,
   NEW_THREAD_MODAL_TERMINAL_BUTTON,
   resolveGoldenModalSize,
 } from '../harness-core-ui.ts';
@@ -46,7 +47,7 @@ export function buildNewThreadModalOverlay(
     return null;
   }
   const modalSize = resolveGoldenModalSize(layoutCols, viewportRows, {
-    preferredHeight: 14,
+    preferredHeight: 15,
     minWidth: 22,
     maxWidth: 36,
   });
@@ -61,6 +62,7 @@ export function buildNewThreadModalOverlay(
     bodyLines: newThreadPromptBodyLines(prompt, {
       codexButtonLabel: NEW_THREAD_MODAL_CODEX_BUTTON,
       claudeButtonLabel: NEW_THREAD_MODAL_CLAUDE_BUTTON,
+      cursorButtonLabel: NEW_THREAD_MODAL_CURSOR_BUTTON,
       terminalButtonLabel: NEW_THREAD_MODAL_TERMINAL_BUTTON,
       critiqueButtonLabel: NEW_THREAD_MODAL_CRITIQUE_BUTTON,
     }),
