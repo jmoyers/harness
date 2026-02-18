@@ -9,6 +9,27 @@ import { ProjectPane } from '../src/ui/panes/project.ts';
 import { LeftRailPane } from '../src/ui/panes/left-rail.ts';
 import type { ProjectPaneSnapshot } from '../src/mux/harness-core-ui.ts';
 
+function stripAnsi(value: string): string {
+  let output = '';
+  let index = 0;
+  while (index < value.length) {
+    const char = value[index]!;
+    if (char === '\u001b' && value[index + 1] === '[') {
+      index += 2;
+      while (index < value.length && value[index] !== 'm') {
+        index += 1;
+      }
+      if (index < value.length && value[index] === 'm') {
+        index += 1;
+      }
+      continue;
+    }
+    output += char;
+    index += 1;
+  }
+  return output;
+}
+
 void test('conversation pane renders rows from terminal snapshot frame', () => {
   const oracle = new TerminalSnapshotOracle(12, 3);
   oracle.ingest('hello');
@@ -22,7 +43,7 @@ void test('conversation pane renders rows from terminal snapshot frame', () => {
 });
 
 void test('home pane renders task-focused view from repositories and tasks', () => {
-  const pane = new HomePane();
+  const pane = new HomePane(undefined, undefined, () => 0);
   const view = pane.render({
     layout: {
       rightCols: 40,
@@ -62,6 +83,30 @@ void test('home pane renders task-focused view from repositories and tasks', () 
   });
   assert.equal(view.rows.length, 8);
   assert.equal(view.selectedRepositoryId, 'repo-1');
+  assert.equal(view.rows.some((row) => row.includes('\u001b[')), true);
+  assert.equal(stripAnsi(view.rows[0] ?? '').length, 40);
+});
+
+void test('home pane renders startup overlay when repositories and tasks are empty', () => {
+  const pane = new HomePane(undefined, undefined, () => 0);
+  const view = pane.render({
+    layout: {
+      rightCols: 64,
+      paneRows: 10,
+    },
+    repositories: new Map(),
+    tasks: new Map(),
+    selectedRepositoryId: null,
+    repositoryDropdownOpen: false,
+    editorTarget: { kind: 'draft' },
+    draftBuffer: createTaskComposerBuffer(''),
+    taskBufferById: new Map(),
+    notice: null,
+    scrollTop: 0,
+  });
+  const stripped = view.rows.map((row) => stripAnsi(row));
+  assert.equal(stripped.some((row) => row.includes('GSV Just Read The Instructions')), true);
+  assert.equal(stripped.some((row) => row.includes('- harness v0.1.0 -')), true);
 });
 
 void test('project pane renders blank fallback and snapshot rows', () => {

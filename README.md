@@ -9,6 +9,7 @@ Run many agent threads in parallel across `codex`, `claude`, `cursor`, `terminal
 - Run many agent threads in parallel across `codex`, `claude`, `cursor`, `terminal`, and `critique`.
 - Keep native CLI ergonomics while working from one keyboard-first workspace.
 - Jump between threads in milliseconds, with 400+ FPS rendering under local workloads.
+- Land on a Unicode-safe animated gridfire background in the main home pane at startup.
 - Use `critique` threads for very fast diff/review loops, with native terminal access when you need to drop to commands.
 - Keep long-running threads alive in the detached gateway so reconnects do not kill work.
 - Add automation last through the typed realtime API (`projects`, `threads`, `repositories`, `tasks`, subscriptions).

@@ -241,6 +241,7 @@ const DEFAULT_CONVERSATION_TITLE_EDIT_DEBOUNCE_MS = 250;
 const DEFAULT_TASK_EDITOR_AUTOSAVE_DEBOUNCE_MS = 250;
 const CONVERSATION_TITLE_EDIT_DOUBLE_CLICK_WINDOW_MS = 350;
 const HOME_PANE_EDIT_DOUBLE_CLICK_WINDOW_MS = 350;
+const HOME_PANE_BACKGROUND_INTERVAL_MS = 80;
 const UI_STATE_PERSIST_DEBOUNCE_MS = 200;
 const REPOSITORY_TOGGLE_CHORD_TIMEOUT_MS = 1250;
 const REPOSITORY_COLLAPSE_ALL_CHORD_PREFIX = Buffer.from([0x0b]);
@@ -1052,6 +1053,7 @@ async function main(): Promise<number> {
   let pendingSize: { cols: number; rows: number } | null = null;
   let lastResizeApplyAtMs = 0;
   let ptyResizeTimer: NodeJS.Timeout | null = null;
+  let homePaneBackgroundTimer: ReturnType<typeof setInterval> | null = null;
   let pendingPtySize: { cols: number; rows: number } | null = null;
   const ptySizeByConversationId = new Map<string, { cols: number; rows: number }>();
 
@@ -1230,6 +1232,13 @@ async function main(): Promise<number> {
     onStatusRowChanged: markDirty,
   });
   outputLoadSampler.start();
+  homePaneBackgroundTimer = setInterval(() => {
+    if (shuttingDown || workspace.mainPaneMode !== 'home') {
+      return;
+    }
+    markDirty();
+  }, HOME_PANE_BACKGROUND_INTERVAL_MS);
+  homePaneBackgroundTimer.unref?.();
 
   const applyPtyResizeToSession = (
     sessionId: string,
@@ -3257,6 +3266,12 @@ async function main(): Promise<number> {
       if (ptyResizeTimer !== null) {
         clearTimeout(ptyResizeTimer);
         ptyResizeTimer = null;
+      }
+    },
+    clearHomePaneBackgroundTimer: () => {
+      if (homePaneBackgroundTimer !== null) {
+        clearInterval(homePaneBackgroundTimer);
+        homePaneBackgroundTimer = null;
       }
     },
     persistMuxUiStateNow,

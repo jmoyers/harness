@@ -1276,6 +1276,8 @@ Milestone 6: Agent Operator Parity (Wake, Query, Interact)
     - background resume checkpointing now records explicit begin/skip events (`mux.startup.background-start.begin` / `mux.startup.background-start.skipped`) for startup tradeoff diagnosis
     - archive/delete controls wired through the same control-plane path used by human and automation clients
     - project/task pane and modal sizing UI internals are factored into `src/mux/harness-core-ui.ts` so UI-only changes land outside the launcher script and reduce merge-conflict hotspots
+    - home-pane rendering now layers a Unicode-safe animated gridfire background (`src/ui/panes/home-gridfire.ts`) under task-focused home content, with startup-only centered title/subtitle overlays
+    - home-pane animation is driven by a scoped low-frequency repaint interval while home mode is active (still using dirty-row diff flush; no global fixed-frame render loop)
     - when a live thread/terminal owns the main pane, the bottom row renders a single-line debug bar with the spawned command for fast launch-path verification.
   - recording timestamps are monotonic relative wall-clock samples with footer close-time; GIF frame delays are quantized with drift compensation to preserve elapsed timing semantics.
   - `scripts/terminal-recording-gif-lib.ts` + `scripts/terminal-recording-to-gif.ts` provide offline recording-to-GIF export, enabling visual regression artifacts from mux render captures.
