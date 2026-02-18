@@ -37,7 +37,7 @@ export const SINGLE_LINE_UI_BOX_GLYPHS: UiBoxGlyphs = {
   vertical: '│',
 };
 
-interface UiModalTheme {
+export interface UiModalTheme {
   readonly frameStyle: UiStyle;
   readonly titleStyle: UiStyle;
   readonly bodyStyle: UiStyle;

@@ -175,6 +175,7 @@ import { HomePane } from '../src/ui/panes/home.ts';
 import { ProjectPane } from '../src/ui/panes/project.ts';
 import { LeftRailPane } from '../src/ui/panes/left-rail.ts';
 import { ModalManager } from '../src/ui/modals/manager.ts';
+import { resolveConfiguredMuxTheme, setActiveMuxTheme } from '../src/ui/mux-theme.ts';
 
 type ControlPlaneDirectoryRecord = Awaited<ReturnType<ControlPlaneService['upsertDirectory']>>;
 type ControlPlaneConversationRecord = NonNullable<ReturnType<typeof parseConversationRecord>>;
@@ -221,29 +222,6 @@ const GIT_REPOSITORY_NONE: GitRepositorySnapshot = {
   inferredName: null,
   defaultBranch: null,
 };
-
-const MUX_MODAL_THEME = {
-  frameStyle: {
-    fg: { kind: 'indexed', index: 252 },
-    bg: { kind: 'indexed', index: 236 },
-    bold: true,
-  },
-  titleStyle: {
-    fg: { kind: 'indexed', index: 231 },
-    bg: { kind: 'indexed', index: 236 },
-    bold: true,
-  },
-  bodyStyle: {
-    fg: { kind: 'indexed', index: 253 },
-    bg: { kind: 'indexed', index: 236 },
-    bold: false,
-  },
-  footerStyle: {
-    fg: { kind: 'indexed', index: 247 },
-    bg: { kind: 'indexed', index: 236 },
-    bold: false,
-  },
-} as const;
 
 async function main(): Promise<number> {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
@@ -322,6 +300,14 @@ async function main(): Promise<number> {
     rows: size.rows,
   });
   const configuredMuxUi = loadedConfig.config.mux.ui;
+  const resolvedMuxTheme = resolveConfiguredMuxTheme({
+    config: configuredMuxUi.theme,
+    cwd: options.invocationDirectory,
+  });
+  if (resolvedMuxTheme.error !== null) {
+    process.stderr.write(`[theme] ${resolvedMuxTheme.error}; using preset fallback\n`);
+  }
+  setActiveMuxTheme(resolvedMuxTheme.theme);
   const configuredMuxGit = loadedConfig.config.mux.git;
   const configuredCodexLaunch = loadedConfig.config.codex.launch;
   const configuredCritique = loadedConfig.config.critique;
@@ -397,6 +383,14 @@ async function main(): Promise<number> {
     hasForeground: probedPalette.foregroundHex !== undefined,
     hasBackground: probedPalette.backgroundHex !== undefined,
   });
+  const resolvedTerminalForegroundHex =
+    resolvedMuxTheme.theme.terminalForegroundHex ??
+    process.env.HARNESS_TERM_FG ??
+    probedPalette.foregroundHex;
+  const resolvedTerminalBackgroundHex =
+    resolvedMuxTheme.theme.terminalBackgroundHex ??
+    process.env.HARNESS_TERM_BG ??
+    probedPalette.backgroundHex;
   let muxRecordingWriter: ReturnType<typeof createTerminalRecordingWriter> | null = null;
   let muxRecordingOracle: TerminalSnapshotOracle | null = null;
   if (options.recordingPath !== null) {
@@ -405,8 +399,8 @@ async function main(): Promise<number> {
     const recordingWriterOptions: Parameters<typeof createTerminalRecordingWriter>[0] = {
       filePath: options.recordingPath,
       source: 'codex-live-mux',
-      defaultForegroundHex: process.env.HARNESS_TERM_FG ?? probedPalette.foregroundHex ?? 'd0d7de',
-      defaultBackgroundHex: process.env.HARNESS_TERM_BG ?? probedPalette.backgroundHex ?? '0f1419',
+      defaultForegroundHex: resolvedTerminalForegroundHex ?? 'd0d7de',
+      defaultBackgroundHex: resolvedTerminalBackgroundHex ?? '0f1419',
       minFrameIntervalMs: recordIntervalMs,
     };
     if (probedPalette.indexedHexByCode !== undefined) {
@@ -811,8 +805,8 @@ async function main(): Promise<number> {
       },
       sessionEnv,
       worktreeId: options.scope.worktreeId,
-      terminalForegroundHex: process.env.HARNESS_TERM_FG ?? probedPalette.foregroundHex,
-      terminalBackgroundHex: process.env.HARNESS_TERM_BG ?? probedPalette.backgroundHex,
+      terminalForegroundHex: resolvedTerminalForegroundHex,
+      terminalBackgroundHex: resolvedTerminalBackgroundHex,
       recordStartCommand: (sessionId, launchArgs) => {
         recordPerfEvent('mux.conversation.start.command', {
           sessionId,
@@ -1066,7 +1060,7 @@ async function main(): Promise<number> {
     ttlMs: DEBUG_FOOTER_NOTICE_TTL_MS,
   });
   const modalManager = new ModalManager({
-    theme: MUX_MODAL_THEME,
+    theme: resolvedMuxTheme.theme.modalTheme,
     resolveRepositoryName: (repositoryId) => repositories.get(repositoryId)?.name ?? null,
     getNewThreadPrompt: () => workspace.newThreadPrompt,
     getAddDirectoryPrompt: () => workspace.addDirectoryPrompt,

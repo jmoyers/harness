@@ -646,6 +646,11 @@ Design constraints:
   - `codex.launch`, `claude.launch`, and `cursor.launch`
   - each supports `defaultMode` (`yolo` or `standard`) as the fallback for all directories
   - each supports `directoryModes` for per-directory overrides keyed by workspace path
+- Mux theme policy is config-governed under `mux.ui.theme`:
+  - `preset` selects a built-in OpenCode-compatible theme pack
+  - `mode` selects `dark` or `light` variant resolution
+  - `customThemePath` optionally loads a local OpenCode theme JSON file (`https://opencode.ai/theme.json`) and overrides preset colors when valid
+  - invalid custom files or unknown presets must fall back deterministically to a safe preset while keeping mux startup healthy
 - Config lifecycle:
   - parse -> validate -> publish immutable runtime snapshot
   - on reload, replace snapshot atomically

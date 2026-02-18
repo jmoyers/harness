@@ -35,10 +35,19 @@ interface HarnessMuxConfig {
   readonly git: HarnessMuxGitConfig;
 }
 
+type HarnessMuxThemeMode = 'dark' | 'light';
+
+export interface HarnessMuxThemeConfig {
+  readonly preset: string;
+  readonly mode: HarnessMuxThemeMode;
+  readonly customThemePath: string | null;
+}
+
 interface HarnessMuxUiConfig {
   readonly paneWidthPercent: number | null;
   readonly repositoriesCollapsed: boolean;
   readonly shortcutsCollapsed: boolean;
+  readonly theme: HarnessMuxThemeConfig | null;
 }
 
 interface HarnessMuxGitConfig {
@@ -205,6 +214,7 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
       paneWidthPercent: null,
       repositoriesCollapsed: false,
       shortcutsCollapsed: false,
+      theme: null,
     },
     git: {
       enabled: true,
@@ -476,6 +486,39 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
+function normalizeMuxThemeMode(value: unknown, fallback: HarnessMuxThemeMode): HarnessMuxThemeMode {
+  if (value === 'dark' || value === 'light') {
+    return value;
+  }
+  return fallback;
+}
+
+function normalizeMuxThemeConfig(input: unknown): HarnessMuxThemeConfig | null {
+  if (input === null || input === false) {
+    return null;
+  }
+  const record = asRecord(input);
+  if (record === null) {
+    return null;
+  }
+  const presetRaw = record['preset'];
+  const preset = typeof presetRaw === 'string' ? presetRaw.trim() : '';
+  if (preset.length === 0) {
+    return null;
+  }
+  const customThemePathRaw = record['customThemePath'];
+  const customThemePath =
+    typeof customThemePathRaw === 'string' && customThemePathRaw.trim().length > 0
+      ? customThemePathRaw.trim()
+      : null;
+  const mode = normalizeMuxThemeMode(record['mode'], 'dark');
+  return {
+    preset,
+    mode,
+    customThemePath,
+  };
+}
+
 function normalizeMuxUiConfig(input: unknown): HarnessMuxUiConfig {
   const record = asRecord(input);
   if (record === null) {
@@ -497,6 +540,7 @@ function normalizeMuxUiConfig(input: unknown): HarnessMuxUiConfig {
     paneWidthPercent,
     repositoriesCollapsed,
     shortcutsCollapsed,
+    theme: normalizeMuxThemeConfig(record['theme']),
   };
 }
 
@@ -1299,6 +1343,7 @@ export function updateHarnessMuxUiConfig(
               nextPaneWidthPercent === null ? null : roundUiPercent(nextPaneWidthPercent),
             repositoriesCollapsed: nextRepositoriesCollapsed,
             shortcutsCollapsed: nextShortcutsCollapsed,
+            theme: current.mux.ui.theme,
           },
         },
       };

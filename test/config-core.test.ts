@@ -24,6 +24,7 @@ const DEFAULT_UI = {
   paneWidthPercent: null,
   repositoriesCollapsed: false,
   shortcutsCollapsed: false,
+  theme: null,
 } as const;
 const DEFAULT_GIT = DEFAULT_HARNESS_CONFIG.mux.git;
 
@@ -98,6 +99,7 @@ void test('parseHarnessConfigText normalizes mux ui and falls back for invalid v
     paneWidthPercent: 37.375,
     repositoriesCollapsed: true,
     shortcutsCollapsed: true,
+    theme: null,
   });
 
   const invalid = parseHarnessConfigText(`
@@ -122,6 +124,71 @@ void test('parseHarnessConfigText normalizes mux ui and falls back for invalid v
     }
   `);
   assert.deepEqual(nonNumeric.mux.ui, DEFAULT_UI);
+});
+
+void test('parseHarnessConfigText parses mux ui theme selection and normalizes invalid theme values', () => {
+  const parsed = parseHarnessConfigText(`
+    {
+      "mux": {
+        "ui": {
+          "theme": {
+            "preset": "tokyonight",
+            "mode": "light",
+            "customThemePath": " themes/custom.json "
+          }
+        }
+      }
+    }
+  `);
+  assert.deepEqual(parsed.mux.ui.theme, {
+    preset: 'tokyonight',
+    mode: 'light',
+    customThemePath: 'themes/custom.json',
+  });
+
+  const invalid = parseHarnessConfigText(`
+    {
+      "mux": {
+        "ui": {
+          "theme": {
+            "preset": " ",
+            "mode": "invalid",
+            "customThemePath": "   "
+          }
+        }
+      }
+    }
+  `);
+  assert.equal(invalid.mux.ui.theme, null);
+
+  const invalidMode = parseHarnessConfigText(`
+    {
+      "mux": {
+        "ui": {
+          "theme": {
+            "preset": "github",
+            "mode": "not-a-mode"
+          }
+        }
+      }
+    }
+  `);
+  assert.deepEqual(invalidMode.mux.ui.theme, {
+    preset: 'github',
+    mode: 'dark',
+    customThemePath: null,
+  });
+
+  const explicitNull = parseHarnessConfigText(`
+    {
+      "mux": {
+        "ui": {
+          "theme": null
+        }
+      }
+    }
+  `);
+  assert.equal(explicitNull.mux.ui.theme, null);
 });
 
 void test('parseHarnessConfigText falls back for invalid root shapes', () => {
@@ -183,6 +250,7 @@ void test('loadHarnessConfig reads valid config file', () => {
       paneWidthPercent: 41,
       repositoriesCollapsed: false,
       shortcutsCollapsed: true,
+      theme: null,
     },
     git: DEFAULT_GIT,
   });
@@ -207,6 +275,7 @@ void test('loadHarnessConfig falls back atomically on parse errors', () => {
           paneWidthPercent: 30,
           repositoriesCollapsed: false,
           shortcutsCollapsed: true,
+          theme: null,
         },
         git: DEFAULT_GIT,
       },
@@ -226,6 +295,7 @@ void test('loadHarnessConfig falls back atomically on parse errors', () => {
         paneWidthPercent: 30,
         repositoriesCollapsed: false,
         shortcutsCollapsed: true,
+        theme: null,
       },
       git: DEFAULT_GIT,
     },
@@ -1098,6 +1168,7 @@ void test('updateHarnessMuxUiConfig persists mux ui state and rounds percentage'
     paneWidthPercent: 33.33,
     repositoriesCollapsed: false,
     shortcutsCollapsed: true,
+    theme: null,
   });
   assert.deepEqual(updated.mux.keybindings, {
     'mux.conversation.new': ['ctrl+t'],
@@ -1108,6 +1179,7 @@ void test('updateHarnessMuxUiConfig persists mux ui state and rounds percentage'
     paneWidthPercent: 33.33,
     repositoriesCollapsed: false,
     shortcutsCollapsed: true,
+    theme: null,
   });
 });
 
@@ -1153,6 +1225,43 @@ void test('updateHarnessMuxUiConfig rejects invalid percent and preserves existi
   assert.equal(updatedPartial.mux.ui.shortcutsCollapsed, true);
 });
 
+void test('updateHarnessMuxUiConfig preserves existing theme configuration', () => {
+  const baseDir = mkdtempSync(join(tmpdir(), 'harness-config-ui-theme-preserve-'));
+  const filePath = join(baseDir, HARNESS_CONFIG_FILE_NAME);
+  writeFileSync(
+    filePath,
+    JSON.stringify({
+      mux: {
+        ui: {
+          paneWidthPercent: 44,
+          repositoriesCollapsed: false,
+          shortcutsCollapsed: false,
+          theme: {
+            preset: 'tokyonight',
+            mode: 'dark',
+            customThemePath: 'themes/custom.json',
+          },
+        },
+      },
+    }),
+    'utf8',
+  );
+
+  const updated = updateHarnessMuxUiConfig(
+    {
+      shortcutsCollapsed: true,
+    },
+    {
+      filePath,
+    },
+  );
+  assert.deepEqual(updated.mux.ui.theme, {
+    preset: 'tokyonight',
+    mode: 'dark',
+    customThemePath: 'themes/custom.json',
+  });
+});
+
 void test('updateHarnessConfig writes new config file when absent', () => {
   const baseDir = mkdtempSync(join(tmpdir(), 'harness-config-write-missing-'));
   const filePath = join(baseDir, HARNESS_CONFIG_FILE_NAME);
@@ -1169,6 +1278,7 @@ void test('updateHarnessConfig writes new config file when absent', () => {
           paneWidthPercent: 25,
           repositoriesCollapsed: false,
           shortcutsCollapsed: true,
+          theme: null,
         },
       },
     }),
@@ -1181,6 +1291,7 @@ void test('updateHarnessConfig writes new config file when absent', () => {
       paneWidthPercent: 25,
       repositoriesCollapsed: false,
       shortcutsCollapsed: true,
+      theme: null,
     },
     git: DEFAULT_GIT,
   });
@@ -1248,6 +1359,7 @@ void test('updateHarnessMuxUiConfig supports cwd-only config path resolution', (
           paneWidthPercent: 35,
           repositoriesCollapsed: false,
           shortcutsCollapsed: false,
+          theme: null,
         },
       },
     }),
@@ -1265,5 +1377,6 @@ void test('updateHarnessMuxUiConfig supports cwd-only config path resolution', (
     paneWidthPercent: 35,
     repositoriesCollapsed: false,
     shortcutsCollapsed: true,
+    theme: null,
   });
 });

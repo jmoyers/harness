@@ -91,7 +91,7 @@ Key orchestration calls are available in the same client:
 
 Runtime behavior is config-first via `harness.config.jsonc`.
 
-Example (critique defaults + hotkey override):
+Example (critique defaults + hotkey override + OpenCode theme selection):
 
 ```jsonc
 {
@@ -105,12 +105,21 @@ Example (critique defaults + hotkey override):
     }
   },
   "mux": {
+    "ui": {
+      "theme": {
+        "preset": "tokyonight",
+        "mode": "dark",
+        "customThemePath": null
+      }
+    },
     "keybindings": {
       "mux.conversation.critique.open-or-create": ["ctrl+g"]
     }
   }
 }
 ```
+
+`mux.ui.theme.customThemePath` can point to any local JSON file that follows the OpenCode theme schema (`https://opencode.ai/theme.json`).
 
 ## Operational Commands
 
