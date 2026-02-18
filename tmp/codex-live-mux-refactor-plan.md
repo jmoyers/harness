@@ -136,7 +136,7 @@ bun run loc:verify:enforce
 ## Current State Snapshot
 
 - Current over-limit files:
-  - `scripts/codex-live-mux-runtime.ts` (~4583 non-empty LOC)
+  - `scripts/codex-live-mux-runtime.ts` (~4582 non-empty LOC)
   - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
@@ -562,3 +562,21 @@ bun run loc:verify:enforce
   - `bun run verify`: pass
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4583 non-empty LOC
+
+### Checkpoint X (2026-02-18): Task composer buffer ownership moved into TaskManager
+
+- Continued Phase 4 by moving per-task editor buffer state into `TaskManager`.
+- Extended `src/domain/tasks.ts` with composer buffer APIs:
+  - `readonlyTaskComposers()`
+  - `getTaskComposer(...)`
+  - `setTaskComposer(...)`
+  - `deleteTaskComposer(...)`
+  - `clearTaskComposers()`
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate task editor buffer reads/writes through `TaskManager` instead of a standalone runtime map.
+- Expanded `test/domain-tasks.test.ts` to cover composer buffer lifecycle methods.
+- Validation at checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun run verify`: pass
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4582 non-empty LOC

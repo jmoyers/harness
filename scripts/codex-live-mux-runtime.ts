@@ -616,7 +616,6 @@ async function main(): Promise<number> {
   workspace.taskEditorTarget = {
     kind: 'draft',
   };
-  const taskComposerByTaskId = new Map<string, TaskComposerBuffer>();
   const taskAutosaveTimerByTaskId = new Map<string, NodeJS.Timeout>();
   workspace.taskPaneSelectionFocus = 'task';
   workspace.taskPaneNotice = null;
@@ -645,7 +644,7 @@ async function main(): Promise<number> {
   const muxControllerLabel = `human mux ${process.pid}`;
   const conversationManager = new ConversationManager();
   const _unsafeConversationMap = conversationManager.readonlyMap();
-  const taskManager = new TaskManager<ControlPlaneTaskRecord>();
+  const taskManager = new TaskManager<ControlPlaneTaskRecord, TaskComposerBuffer>();
   let observedStreamSubscriptionId: string | null = null;
   let keyEventSubscription: Awaited<ReturnType<typeof subscribeControlPlaneKeyEvents>> | null =
     null;
@@ -2298,7 +2297,7 @@ async function main(): Promise<number> {
   }
 
   const taskComposerForTask = (taskId: string): TaskComposerBuffer | null => {
-    const existing = taskComposerByTaskId.get(taskId);
+    const existing = taskManager.getTaskComposer(taskId);
     if (existing !== undefined) {
       return existing;
     }
@@ -2312,7 +2311,7 @@ async function main(): Promise<number> {
   };
 
   const setTaskComposerForTask = (taskId: string, buffer: TaskComposerBuffer): void => {
-    taskComposerByTaskId.set(taskId, normalizeTaskComposerBuffer(buffer));
+    taskManager.setTaskComposer(taskId, normalizeTaskComposerBuffer(buffer));
   };
 
   const clearTaskAutosaveTimer = (taskId: string): void => {
@@ -2332,7 +2331,7 @@ async function main(): Promise<number> {
 
   const queuePersistTaskComposer = (taskId: string, reason: string): void => {
     const task = taskManager.getTask(taskId);
-    const buffer = taskComposerByTaskId.get(taskId);
+    const buffer = taskManager.getTaskComposer(taskId);
     if (task === undefined || buffer === undefined) {
       return;
     }
@@ -2359,9 +2358,9 @@ async function main(): Promise<number> {
       }
       const persistedText =
         parsed.description.length === 0 ? parsed.title : `${parsed.title}\n${parsed.description}`;
-      const latestBuffer = taskComposerByTaskId.get(taskId);
+      const latestBuffer = taskManager.getTaskComposer(taskId);
       if (latestBuffer !== undefined && latestBuffer.text === persistedText) {
-        taskComposerByTaskId.delete(taskId);
+        taskManager.deleteTaskComposer(taskId);
       }
     }, `task-editor-save:${reason}:${taskId}`);
   };
@@ -2915,7 +2914,7 @@ async function main(): Promise<number> {
             taskId,
           });
           taskManager.deleteTask(taskId);
-          taskComposerByTaskId.delete(taskId);
+          taskManager.deleteTaskComposer(taskId);
           if (workspace.taskEditorTarget.kind === 'task' && workspace.taskEditorTarget.taskId === taskId) {
             workspace.taskEditorTarget = {
               kind: 'draft',
@@ -3400,7 +3399,7 @@ async function main(): Promise<number> {
         repositoryDropdownOpen: workspace.taskRepositoryDropdownOpen,
         editorTarget: workspace.taskEditorTarget,
         draftBuffer: workspace.taskDraftComposer,
-        taskBufferById: taskComposerByTaskId,
+        taskBufferById: taskManager.readonlyTaskComposers(),
         notice: workspace.taskPaneNotice,
         cols: layout.rightCols,
         rows: layout.paneRows,
