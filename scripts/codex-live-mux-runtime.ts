@@ -153,7 +153,6 @@ import {
 import { toggleGatewayProfiler as toggleGatewayProfilerFn } from '../src/mux/live-mux/gateway-profiler.ts';
 import {
   WorkspaceModel,
-  type ConversationTitleEditState,
 } from '../src/domain/workspace.ts';
 import {
   ConversationManager,
@@ -177,6 +176,7 @@ import { RuntimeProcessWiring } from '../src/services/runtime-process-wiring.ts'
 import { RuntimeConversationActions } from '../src/services/runtime-conversation-actions.ts';
 import { RuntimeConversationActivation } from '../src/services/runtime-conversation-activation.ts';
 import { RuntimeConversationStarter } from '../src/services/runtime-conversation-starter.ts';
+import { RuntimeConversationTitleEditService } from '../src/services/runtime-conversation-title-edit.ts';
 import { RuntimeDirectoryActions } from '../src/services/runtime-directory-actions.ts';
 import { RuntimeEnvelopeHandler } from '../src/services/runtime-envelope-handler.ts';
 import { RuntimeRenderFlush } from '../src/services/runtime-render-flush.ts';
@@ -1422,115 +1422,27 @@ async function main(): Promise<number> {
     controlPlaneQueue.enqueueBackground(task, label);
   };
 
-  const clearConversationTitleEditTimer = (edit: ConversationTitleEditState): void => {
-    if (edit.debounceTimer !== null) {
-      clearTimeout(edit.debounceTimer);
-      edit.debounceTimer = null;
-    }
-  };
-
-  const queueConversationTitlePersist = (
-    edit: ConversationTitleEditState,
-    reason: 'debounced' | 'flush',
-  ): void => {
-    const titleToPersist = edit.value;
-    if (titleToPersist === edit.lastSavedValue) {
-      return;
-    }
-    edit.persistInFlight = true;
-    markDirty();
-    queueControlPlaneOp(async () => {
-      try {
-        const parsed = await controlPlaneService.updateConversationTitle({
-          conversationId: edit.conversationId,
-          title: titleToPersist,
-        });
-        const persistedTitle = parsed?.title ?? titleToPersist;
-        const latestConversation = conversationManager.get(edit.conversationId);
-        const latestEdit = workspace.conversationTitleEdit;
-        const shouldApplyToConversation =
-          latestEdit === null ||
-          latestEdit.conversationId !== edit.conversationId ||
-          latestEdit.value === titleToPersist;
-        if (latestConversation !== undefined && shouldApplyToConversation) {
-          latestConversation.title = persistedTitle;
-        }
-        if (latestEdit !== null && latestEdit.conversationId === edit.conversationId) {
-          latestEdit.lastSavedValue = persistedTitle;
-          if (latestEdit.value === titleToPersist) {
-            latestEdit.error = null;
-          }
-        }
-      } catch (error: unknown) {
-        const latestEdit = workspace.conversationTitleEdit;
-        if (
-          latestEdit !== null &&
-          latestEdit.conversationId === edit.conversationId &&
-          latestEdit.value === titleToPersist
-        ) {
-          latestEdit.error = error instanceof Error ? error.message : String(error);
-        }
-        throw error;
-      } finally {
-        const latestEdit = workspace.conversationTitleEdit;
-        if (latestEdit !== null && latestEdit.conversationId === edit.conversationId) {
-          latestEdit.persistInFlight = false;
-        }
-        markDirty();
-      }
-    }, `title-edit-${reason}:${edit.conversationId}`);
-  };
+  const runtimeConversationTitleEdit = new RuntimeConversationTitleEditService<ConversationState>({
+    workspace,
+    updateConversationTitle: async (input) => {
+      return await controlPlaneService.updateConversationTitle(input);
+    },
+    conversationById: (conversationId) => conversationManager.get(conversationId),
+    markDirty,
+    queueControlPlaneOp,
+    debounceMs: DEFAULT_CONVERSATION_TITLE_EDIT_DEBOUNCE_MS,
+  });
 
   const scheduleConversationTitlePersist = (): void => {
-    const edit = workspace.conversationTitleEdit;
-    if (edit === null) {
-      return;
-    }
-    clearConversationTitleEditTimer(edit);
-    edit.debounceTimer = setTimeout(() => {
-      const latestEdit = workspace.conversationTitleEdit;
-      if (latestEdit === null || latestEdit.conversationId !== edit.conversationId) {
-        return;
-      }
-      latestEdit.debounceTimer = null;
-      queueConversationTitlePersist(latestEdit, 'debounced');
-    }, DEFAULT_CONVERSATION_TITLE_EDIT_DEBOUNCE_MS);
-    edit.debounceTimer.unref?.();
+    runtimeConversationTitleEdit.schedulePersist();
   };
 
   const stopConversationTitleEdit = (persistPending: boolean): void => {
-    const edit = workspace.conversationTitleEdit;
-    if (edit === null) {
-      return;
-    }
-    clearConversationTitleEditTimer(edit);
-    if (persistPending) {
-      queueConversationTitlePersist(edit, 'flush');
-    }
-    workspace.conversationTitleEdit = null;
-    markDirty();
+    runtimeConversationTitleEdit.stop(persistPending);
   };
 
   const beginConversationTitleEdit = (conversationId: string): void => {
-    const target = conversationManager.get(conversationId);
-    if (target === undefined) {
-      return;
-    }
-    if (workspace.conversationTitleEdit?.conversationId === conversationId) {
-      return;
-    }
-    if (workspace.conversationTitleEdit !== null) {
-      stopConversationTitleEdit(true);
-    }
-    workspace.conversationTitleEdit = {
-      conversationId,
-      value: target.title,
-      lastSavedValue: target.title,
-      error: null,
-      persistInFlight: false,
-      debounceTimer: null,
-    };
-    markDirty();
+    runtimeConversationTitleEdit.begin(conversationId);
   };
 
   const buildNewThreadModalOverlay = (
@@ -3021,9 +2933,7 @@ async function main(): Promise<number> {
     },
     persistMuxUiStateNow,
     clearConversationTitleEditTimer: () => {
-      if (workspace.conversationTitleEdit !== null) {
-        clearConversationTitleEditTimer(workspace.conversationTitleEdit);
-      }
+      runtimeConversationTitleEdit.clearCurrentTimer();
     },
     flushTaskComposerPersist: () => {
       if (

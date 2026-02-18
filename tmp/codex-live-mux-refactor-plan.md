@@ -1575,6 +1575,26 @@ bun run loc:verify:enforce
   - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2956 non-empty LOC
 
+### Checkpoint CG (2026-02-18): Conversation title-edit lifecycle extracted into class service
+
+- Added `src/services/runtime-conversation-title-edit.ts` with class-based `RuntimeConversationTitleEditService` to own:
+  - title-edit begin/stop transitions
+  - debounce timer lifecycle and shutdown timer cleanup
+  - debounced + flush persist queueing through control-plane ops
+  - persist success/error reconciliation against current workspace edit state
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate conversation title-edit lifecycle through `RuntimeConversationTitleEditService`:
+  - removed inline title-edit timer/persist/begin/stop function block
+  - routed shutdown timer cleanup through service-owned `clearCurrentTimer()`
+- Added `test/services-runtime-conversation-title-edit.test.ts` with branch coverage for:
+  - begin + debounced persist success path
+  - stop/begin guard branches and flush queueing
+  - persist failure paths with current-edit and stale-edit guards
+  - timer cleanup behavior for empty and active edit states
+- Validation at checkpoint:
+  - `bun run verify`: pass (global lines/functions/branches = 100%)
+  - `bun run loc:verify`: advisory pass (runtime + stream-server still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 2867 non-empty LOC
+
 ### Next focus (yield-first)
 
 - Consolidation order (updated from critique review):
