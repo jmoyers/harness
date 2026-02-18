@@ -135,7 +135,9 @@ bun run loc:verify:enforce
 
 ## Current State Snapshot
 
-- Current primary over-limit file: `scripts/codex-live-mux-runtime.ts` (~4582 LOC).
+- Current over-limit files:
+  - `scripts/codex-live-mux-runtime.ts` (~4583 non-empty LOC)
+  - `src/control-plane/stream-server.ts` (~2145 non-empty LOC)
 - Existing extracted modules under `src/mux/live-mux/*` are transitional and should be absorbed into domain/service/ui ownership above.
 - `scripts/check-max-loc.ts` now prints responsibility-first refactor guidance in advisory and enforce modes.
 
@@ -145,7 +147,7 @@ bun run loc:verify:enforce
 - [x] Phase 1: WorkspaceModel extraction completed.
 - [~] Phase 2: ConversationManager extraction in progress.
 - [~] Phase 3: RepositoryManager + DirectoryManager extraction in progress.
-- [ ] Phase 4: TaskManager extraction.
+- [~] Phase 4: TaskManager extraction.
 - [ ] Phase 5: ControlPlaneService extraction.
 - [ ] Phase 6: Screen extraction.
 - [ ] Phase 7: Pane extraction.
@@ -540,3 +542,23 @@ bun run loc:verify:enforce
   - `bun run verify`: pass
   - `bun run loc:verify`: advisory pass (runtime still over limit)
   - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4581 non-empty LOC
+
+### Checkpoint W (2026-02-18): Task map ownership moved into TaskManager
+
+- Started Phase 4 by moving runtime-owned task map lifecycle into `TaskManager`.
+- Added `src/domain/tasks.ts` with class-owned task state APIs:
+  - `readonlyTasks()`
+  - `values()`
+  - `getTask(...)`
+  - `hasTask(...)`
+  - `setTask(...)`
+  - `deleteTask(...)`
+  - `clearTasks()`
+- Updated `scripts/codex-live-mux-runtime.ts` to delegate task map reads/writes through `TaskManager` instead of a direct local `Map`.
+- Added `test/domain-tasks.test.ts` to cover manager lifecycle and CRUD methods.
+- Validation at checkpoint:
+  - `bun run typecheck`: pass
+  - `bun run lint`: pass
+  - `bun run verify`: pass
+  - `bun run loc:verify`: advisory pass (runtime still over limit)
+  - Runtime LOC snapshot: `scripts/codex-live-mux-runtime.ts` = 4583 non-empty LOC

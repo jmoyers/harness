@@ -255,6 +255,7 @@ import {
 } from '../src/domain/conversations.ts';
 import { RepositoryManager } from '../src/domain/repositories.ts';
 import { DirectoryManager } from '../src/domain/directories.ts';
+import { TaskManager } from '../src/domain/tasks.ts';
 
 type ThreadAgentType = ReturnType<typeof normalizeThreadAgentType>;
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
@@ -644,7 +645,7 @@ async function main(): Promise<number> {
   const muxControllerLabel = `human mux ${process.pid}`;
   const conversationManager = new ConversationManager();
   const _unsafeConversationMap = conversationManager.readonlyMap();
-  const tasks = new Map<string, ControlPlaneTaskRecord>();
+  const taskManager = new TaskManager<ControlPlaneTaskRecord>();
   let observedStreamSubscriptionId: string | null = null;
   let keyEventSubscription: Awaited<ReturnType<typeof subscribeControlPlaneKeyEvents>> | null =
     null;
@@ -2289,7 +2290,7 @@ async function main(): Promise<number> {
   };
 
   function orderedTaskRecords(): readonly ControlPlaneTaskRecord[] {
-    return sortTasksByOrder([...tasks.values()]);
+    return sortTasksByOrder([...taskManager.values()]);
   }
 
   function orderedActiveRepositoryRecords(): readonly ControlPlaneRepositoryRecord[] {
@@ -2301,7 +2302,7 @@ async function main(): Promise<number> {
     if (existing !== undefined) {
       return existing;
     }
-    const task = tasks.get(taskId);
+    const task = taskManager.getTask(taskId);
     if (task === undefined) {
       return null;
     }
@@ -2330,7 +2331,7 @@ async function main(): Promise<number> {
   };
 
   const queuePersistTaskComposer = (taskId: string, reason: string): void => {
-    const task = tasks.get(taskId);
+    const task = taskManager.getTask(taskId);
     const buffer = taskComposerByTaskId.get(taskId);
     if (task === undefined || buffer === undefined) {
       return;
@@ -2392,7 +2393,7 @@ async function main(): Promise<number> {
   };
 
   const focusTaskComposer = (taskId: string): void => {
-    if (!tasks.has(taskId)) {
+    if (!taskManager.hasTask(taskId)) {
       return;
     }
     if (workspace.taskEditorTarget.kind === 'task' && workspace.taskEditorTarget.taskId !== taskId) {
@@ -2409,7 +2410,8 @@ async function main(): Promise<number> {
   };
 
   function syncTaskPaneSelectionFocus(): void {
-    const hasTaskSelection = workspace.taskPaneSelectedTaskId !== null && tasks.has(workspace.taskPaneSelectedTaskId);
+    const hasTaskSelection =
+      workspace.taskPaneSelectedTaskId !== null && taskManager.hasTask(workspace.taskPaneSelectedTaskId);
     const hasRepositorySelection =
       workspace.taskPaneSelectedRepositoryId !== null && repositories.has(workspace.taskPaneSelectedRepositoryId);
     if (workspace.taskPaneSelectionFocus === 'task' && hasTaskSelection) {
@@ -2463,11 +2465,11 @@ async function main(): Promise<number> {
     if (workspace.taskPaneSelectedTaskId === null) {
       return null;
     }
-    return tasks.get(workspace.taskPaneSelectedTaskId) ?? null;
+    return taskManager.getTask(workspace.taskPaneSelectedTaskId) ?? null;
   };
 
   const selectTaskById = (taskId: string): void => {
-    const taskRecord = tasks.get(taskId);
+    const taskRecord = taskManager.getTask(taskId);
     if (taskRecord === undefined) {
       return;
     }
@@ -2554,13 +2556,13 @@ async function main(): Promise<number> {
     if (!Array.isArray(tasksRaw)) {
       throw new Error('control-plane task.list returned malformed tasks');
     }
-    tasks.clear();
+    taskManager.clearTasks();
     for (const value of tasksRaw) {
       const task = parseTaskRecord(value);
       if (task === null) {
         throw new Error('control-plane task.list returned malformed task record');
       }
-      tasks.set(task.taskId, task);
+      taskManager.setTask(task);
     }
     syncTaskPaneSelection();
     syncTaskPaneRepositorySelection();
@@ -2592,14 +2594,14 @@ async function main(): Promise<number> {
     if (observed.type === 'task-created' || observed.type === 'task-updated') {
       const task = parseTaskRecord(observed.task);
       if (task !== null) {
-        tasks.set(task.taskId, task);
+        taskManager.setTask(task);
         syncTaskPaneSelection();
         markDirty();
       }
       return;
     }
     if (observed.type === 'task-deleted') {
-      if (tasks.delete(observed.taskId)) {
+      if (taskManager.deleteTask(observed.taskId)) {
         syncTaskPaneSelection();
         markDirty();
       }
@@ -2612,7 +2614,7 @@ async function main(): Promise<number> {
         if (task === null) {
           continue;
         }
-        tasks.set(task.taskId, task);
+        taskManager.setTask(task);
         changed = true;
       }
       if (changed) {
@@ -2767,7 +2769,7 @@ async function main(): Promise<number> {
   };
 
   const openTaskEditPrompt = (taskId: string): void => {
-    const task = tasks.get(taskId);
+    const task = taskManager.getTask(taskId);
     if (task === undefined) {
       return;
     }
@@ -2786,7 +2788,7 @@ async function main(): Promise<number> {
     if (parsed === null) {
       return null;
     }
-    tasks.set(parsed.taskId, parsed);
+    taskManager.setTask(parsed);
     workspace.taskPaneSelectedTaskId = parsed.taskId;
     if (parsed.repositoryId !== null && repositories.has(parsed.repositoryId)) {
       workspace.taskPaneSelectedRepositoryId = parsed.repositoryId;
@@ -2808,7 +2810,7 @@ async function main(): Promise<number> {
       if (parsed === null) {
         continue;
       }
-      tasks.set(parsed.taskId, parsed);
+      taskManager.setTask(parsed);
       changed = true;
     }
     if (changed) {
@@ -2850,8 +2852,8 @@ async function main(): Promise<number> {
   const reorderTaskByDrop = (draggedTaskId: string, targetTaskId: string): void => {
     const orderedActiveTasks = orderedTaskRecords().filter((task) => task.status !== 'completed');
     const orderedActiveTaskIds = orderedActiveTasks.map((task) => task.taskId);
-    const draggedTask = tasks.get(draggedTaskId);
-    const targetTask = tasks.get(targetTaskId);
+    const draggedTask = taskManager.getTask(draggedTaskId);
+    const targetTask = taskManager.getTask(targetTaskId);
     if (draggedTask === undefined || targetTask === undefined) {
       return;
     }
@@ -2912,7 +2914,7 @@ async function main(): Promise<number> {
             type: 'task.delete',
             taskId,
           });
-          tasks.delete(taskId);
+          taskManager.deleteTask(taskId);
           taskComposerByTaskId.delete(taskId);
           if (workspace.taskEditorTarget.kind === 'task' && workspace.taskEditorTarget.taskId === taskId) {
             workspace.taskEditorTarget = {
@@ -3393,7 +3395,7 @@ async function main(): Promise<number> {
     } else if (homePaneActive) {
       const view = buildTaskFocusedPaneView({
         repositories,
-        tasks,
+        tasks: taskManager.readonlyTasks(),
         selectedRepositoryId: workspace.taskPaneSelectedRepositoryId,
         repositoryDropdownOpen: workspace.taskRepositoryDropdownOpen,
         editorTarget: workspace.taskEditorTarget,
