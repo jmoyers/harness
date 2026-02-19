@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { test } from 'bun:test';
 import { TerminalSnapshotOracle } from '../src/terminal/snapshot-oracle.ts';
 import { createTaskComposerBuffer } from '../src/mux/task-composer.ts';
@@ -8,6 +10,11 @@ import { HomePane } from '../src/ui/panes/home.ts';
 import { ProjectPane } from '../src/ui/panes/project.ts';
 import { LeftRailPane } from '../src/ui/panes/left-rail.ts';
 import type { ProjectPaneSnapshot } from '../src/mux/harness-core-ui.ts';
+
+const HARNESS_VERSION = String(
+  (JSON.parse(readFileSync(resolve(process.cwd(), 'package.json'), 'utf8')) as { version: unknown })
+    .version,
+);
 
 function stripAnsi(value: string): string {
   let output = '';
@@ -116,7 +123,7 @@ void test('home pane renders startup overlay when repositories and tasks are emp
     true,
   );
   assert.equal(
-    stripped.some((row) => row.includes('- harness v0.1.0 -')),
+    stripped.some((row) => row.includes(`- harness v${HARNESS_VERSION} -`)),
     true,
   );
 });

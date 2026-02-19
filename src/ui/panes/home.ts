@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   buildTaskFocusedPaneView,
   type TaskFocusedPaneEditorTarget,
@@ -7,6 +10,15 @@ import {
 } from '../../mux/task-focused-pane.ts';
 import type { TaskComposerBuffer } from '../../mux/task-composer.ts';
 import { renderHomeGridfireAnsiRows } from './home-gridfire.ts';
+
+const HOME_PACKAGE_JSON_PATH = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  '../../../package.json',
+);
+const HOME_PACKAGE_VERSION = String(
+  (JSON.parse(readFileSync(HOME_PACKAGE_JSON_PATH, 'utf8')) as { version: unknown }).version,
+);
+const HOME_OVERLAY_SUBTITLE = `- harness v${HOME_PACKAGE_VERSION} -`;
 
 interface HomePaneLayout {
   readonly rightCols: number;
@@ -29,12 +41,14 @@ interface HomePaneRenderInput {
 interface HomePaneOptions {
   readonly showTaskPlanningUi?: boolean;
   readonly animateBackground?: boolean;
+  readonly overlaySubtitle?: string;
 }
 
 export class HomePane {
   private readonly showTaskPlanningUi: boolean;
   private readonly animateBackground: boolean;
   private readonly staticBackgroundTimeMs: number;
+  private readonly overlaySubtitle: string;
 
   constructor(
     private readonly renderTaskFocusedPaneView: typeof buildTaskFocusedPaneView = buildTaskFocusedPaneView,
@@ -45,6 +59,7 @@ export class HomePane {
     this.showTaskPlanningUi = options.showTaskPlanningUi ?? false;
     this.animateBackground = options.animateBackground ?? true;
     this.staticBackgroundTimeMs = this.nowMs();
+    this.overlaySubtitle = options.overlaySubtitle ?? HOME_OVERLAY_SUBTITLE;
   }
 
   private hiddenTaskPlanningView(layout: HomePaneLayout): TaskFocusedPaneView {
@@ -87,7 +102,7 @@ export class HomePane {
         contentRows: view.rows,
         timeMs: this.animateBackground ? this.nowMs() : this.staticBackgroundTimeMs,
         overlayTitle: 'GSV Sleeper Service',
-        overlaySubtitle: '- harness v0.1.0 -',
+        overlaySubtitle: this.overlaySubtitle,
       }),
     };
   }
