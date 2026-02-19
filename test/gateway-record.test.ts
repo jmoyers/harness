@@ -3,6 +3,7 @@ import { test } from 'bun:test';
 import {
   DEFAULT_GATEWAY_DB_PATH,
   DEFAULT_GATEWAY_HOST,
+  DEFAULT_GATEWAY_LOCK_PATH,
   DEFAULT_GATEWAY_LOG_PATH,
   DEFAULT_GATEWAY_PORT,
   DEFAULT_GATEWAY_RECORD_PATH,
@@ -13,6 +14,7 @@ import {
   normalizeGatewayStateDbPath,
   parseGatewayRecordText,
   resolveGatewayLogPath,
+  resolveGatewayLockPath,
   resolveGatewayRecordPath,
   resolveInvocationDirectory,
   serializeGatewayRecord,
@@ -31,11 +33,13 @@ void test('gateway record parsing accepts valid records with auth token', () => 
       stateDbPath: '/tmp/control-plane.sqlite',
       startedAt: '2026-02-16T00:00:00.000Z',
       workspaceRoot: '/tmp/workspace',
+      gatewayRunId: 'run-123',
     }),
   );
   assert.notEqual(parsed, null);
   assert.equal(parsed?.authToken, 'secret-token');
   assert.equal(parsed?.pid, 12345);
+  assert.equal(parsed?.gatewayRunId, 'run-123');
 });
 
 void test('gateway record parsing accepts records with null auth token', () => {
@@ -163,6 +167,22 @@ void test('gateway record parsing rejects malformed records', () => {
     ),
     null,
   );
+  assert.equal(
+    parseGatewayRecordText(
+      JSON.stringify({
+        version: GATEWAY_RECORD_VERSION,
+        pid: 1,
+        host: '127.0.0.1',
+        port: 7777,
+        authToken: null,
+        stateDbPath: '/tmp/db.sqlite',
+        startedAt: '2026-02-16T00:00:00.000Z',
+        workspaceRoot: '/tmp/ws',
+        gatewayRunId: 42,
+      }),
+    ),
+    null,
+  );
 });
 
 void test('gateway record serializer writes a trailing newline', () => {
@@ -175,6 +195,7 @@ void test('gateway record serializer writes a trailing newline', () => {
     stateDbPath: '/tmp/control-plane.sqlite',
     startedAt: '2026-02-16T00:00:00.000Z',
     workspaceRoot: '/tmp/workspace',
+    gatewayRunId: 'run-serializer-1',
   };
   const serialized = serializeGatewayRecord(record);
   assert.equal(serialized.endsWith('\n'), true);
@@ -202,8 +223,10 @@ void test('invocation directory and gateway paths resolve deterministically', ()
   const runtimeRoot = resolveHarnessWorkspaceDirectory('/tmp/workspace', env);
   assert.equal(resolveGatewayRecordPath('/tmp/workspace', env), `${runtimeRoot}/gateway.json`);
   assert.equal(resolveGatewayLogPath('/tmp/workspace', env), `${runtimeRoot}/gateway.log`);
+  assert.equal(resolveGatewayLockPath('/tmp/workspace', env), `${runtimeRoot}/gateway.lock`);
   assert.equal(DEFAULT_GATEWAY_RECORD_PATH, '.harness/gateway.json');
   assert.equal(DEFAULT_GATEWAY_LOG_PATH, '.harness/gateway.log');
+  assert.equal(DEFAULT_GATEWAY_LOCK_PATH, '.harness/gateway.lock');
 });
 
 void test('gateway host normalization keeps explicit values and falls back otherwise', () => {

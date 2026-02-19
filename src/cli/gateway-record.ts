@@ -6,6 +6,7 @@ export const DEFAULT_GATEWAY_PORT = 7777;
 export const DEFAULT_GATEWAY_DB_PATH = '.harness/control-plane.sqlite';
 export const DEFAULT_GATEWAY_RECORD_PATH = '.harness/gateway.json';
 export const DEFAULT_GATEWAY_LOG_PATH = '.harness/gateway.log';
+export const DEFAULT_GATEWAY_LOCK_PATH = '.harness/gateway.lock';
 
 export interface GatewayRecord {
   readonly version: number;
@@ -16,6 +17,7 @@ export interface GatewayRecord {
   readonly stateDbPath: string;
   readonly startedAt: string;
   readonly workspaceRoot: string;
+  readonly gatewayRunId?: string;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -72,6 +74,13 @@ export function resolveGatewayLogPath(
   env: NodeJS.ProcessEnv = process.env,
 ): string {
   return resolveHarnessRuntimePath(workspaceRoot, DEFAULT_GATEWAY_LOG_PATH, env);
+}
+
+export function resolveGatewayLockPath(
+  workspaceRoot: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return resolveHarnessRuntimePath(workspaceRoot, DEFAULT_GATEWAY_LOCK_PATH, env);
 }
 
 export function normalizeGatewayHost(
@@ -149,6 +158,9 @@ export function parseGatewayRecordText(text: string): GatewayRecord | null {
   const workspaceRoot = readNonEmptyString(record['workspaceRoot']);
   const authTokenRaw = record['authToken'];
   const authToken = authTokenRaw === null ? null : readNonEmptyString(authTokenRaw);
+  const gatewayRunIdRaw = record['gatewayRunId'];
+  const gatewayRunId =
+    gatewayRunIdRaw === undefined ? undefined : readNonEmptyString(gatewayRunIdRaw);
 
   if (
     pid === null ||
@@ -157,10 +169,12 @@ export function parseGatewayRecordText(text: string): GatewayRecord | null {
     stateDbPath === null ||
     startedAt === null ||
     workspaceRoot === null ||
-    (authToken === null && authTokenRaw !== null)
+    (authToken === null && authTokenRaw !== null) ||
+    (gatewayRunIdRaw !== undefined && gatewayRunId === null)
   ) {
     return null;
   }
+  const parsedGatewayRunId = gatewayRunId === null ? undefined : gatewayRunId;
 
   return {
     version,
@@ -171,6 +185,7 @@ export function parseGatewayRecordText(text: string): GatewayRecord | null {
     stateDbPath,
     startedAt,
     workspaceRoot,
+    ...(parsedGatewayRunId === undefined ? {} : { gatewayRunId: parsedGatewayRunId }),
   };
 }
 

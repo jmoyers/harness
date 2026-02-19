@@ -1,8 +1,11 @@
 import { resolve } from 'node:path';
 import { startCodexLiveSession } from '../src/codex/live-session.ts';
 import { startControlPlaneStreamServer } from '../src/control-plane/stream-server.ts';
-import { loadHarnessConfig } from '../src/config/config-core.ts';
-import { resolveHarnessRuntimePath } from '../src/config/harness-paths.ts';
+import { loadHarnessConfig, resolveHarnessConfigPath } from '../src/config/config-core.ts';
+import {
+  resolveHarnessRuntimePath,
+  resolveHarnessWorkspaceDirectory,
+} from '../src/config/harness-paths.ts';
 import { migrateLegacyHarnessLayout } from '../src/config/harness-runtime-migration.ts';
 import { loadHarnessSecrets } from '../src/config/secrets-core.ts';
 import {
@@ -140,6 +143,11 @@ function parseArgs(argv: string[], invocationDirectory: string): DaemonOptions {
 
 async function main(): Promise<number> {
   const invocationDirectory = resolveInvocationDirectory();
+  const gatewayRunIdRaw = process.env.HARNESS_GATEWAY_RUN_ID;
+  const gatewayRunId =
+    typeof gatewayRunIdRaw === 'string' && gatewayRunIdRaw.trim().length > 0
+      ? gatewayRunIdRaw.trim()
+      : `gateway-run-${process.pid}`;
   migrateLegacyHarnessLayout(invocationDirectory, process.env);
   loadHarnessSecrets({ cwd: invocationDirectory });
   configureProcessPerf(invocationDirectory);
@@ -159,14 +167,22 @@ async function main(): Promise<number> {
   }
   const startupSpan = startPerfSpan('daemon.startup.total', {
     process: 'daemon',
+    gatewayRunId,
   });
   recordPerfEvent('daemon.startup.begin', {
     process: 'daemon',
+    gatewayRunId,
   });
   const options = parseArgs(process.argv.slice(2), invocationDirectory);
+  const workspaceRuntimeRoot = resolveHarnessWorkspaceDirectory(invocationDirectory, process.env);
+  const configPath = resolveHarnessConfigPath(invocationDirectory, process.env);
+  process.stdout.write(
+    `[control-plane] boot runId=${gatewayRunId} pid=${String(process.pid)} ppid=${String(process.ppid)} workspaceRoot=${invocationDirectory} runtimeRoot=${workspaceRuntimeRoot} config=${configPath} db=${options.stateDbPath}\n`,
+  );
 
   const listenSpan = startPerfSpan('daemon.startup.listen', {
     process: 'daemon',
+    gatewayRunId,
   });
   const serverOptions: Parameters<typeof startControlPlaneStreamServer>[0] = {
     host: options.host,
@@ -251,13 +267,14 @@ async function main(): Promise<number> {
   const address = server.address();
   recordPerfEvent('daemon.startup.listening', {
     process: 'daemon',
+    gatewayRunId,
     host: address.address,
     port: address.port,
     auth: options.authToken === null ? 'off' : 'on',
   });
   startupSpan.end({ listening: true });
   process.stdout.write(
-    `[control-plane] listening host=${address.address} port=${String(address.port)} auth=${options.authToken === null ? 'off' : 'on'} db=${options.stateDbPath}\n`,
+    `[control-plane] listening host=${address.address} port=${String(address.port)} auth=${options.authToken === null ? 'off' : 'on'} db=${options.stateDbPath} runId=${gatewayRunId}\n`,
   );
 
   let stopRequested = false;

@@ -7,6 +7,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -470,6 +471,60 @@ void test('harness gateway start ignores stale record state db path and uses run
     assert.equal(record?.stateDbPath, join(runtimeRoot, 'control-plane.sqlite'));
   } finally {
     void runHarness(workspace, ['gateway', 'stop', '--force'], env).catch(() => undefined);
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('harness gateway start adopts an already-reachable daemon when gateway record is missing', async () => {
+  const workspace = createWorkspace();
+  const port = await reservePort();
+  const runtimeRoot = workspaceRuntimeRoot(workspace);
+  const recordPath = join(runtimeRoot, 'gateway.json');
+  const adoptedAuthToken = `adopt-token-${process.pid}-${Date.now()}`;
+  const env = {
+    HARNESS_CONTROL_PLANE_PORT: String(port),
+  };
+  let originalPid: number | null = null;
+  try {
+    const startResult = await runHarness(
+      workspace,
+      ['gateway', 'start', '--port', String(port), '--auth-token', adoptedAuthToken],
+      env,
+    );
+    assert.equal(startResult.code, 0);
+    const originalRecord = parseGatewayRecordText(readFileSync(recordPath, 'utf8'));
+    if (originalRecord === null) {
+      throw new Error('expected initial gateway record');
+    }
+    originalPid = originalRecord.pid;
+    assert.equal(isPidRunning(originalPid), true);
+
+    unlinkSync(recordPath);
+    const adoptionAttempt = await runHarness(
+      workspace,
+      [
+        'gateway',
+        'start',
+        '--port',
+        String(port),
+        '--auth-token',
+        adoptedAuthToken,
+        '--state-db-path',
+        './custom-overwrite-attempt.sqlite',
+      ],
+      env,
+    );
+    assert.equal(adoptionAttempt.code, 0);
+    const adoptedRecord = parseGatewayRecordText(readFileSync(recordPath, 'utf8'));
+    assert.notEqual(adoptedRecord, null);
+    assert.equal(adoptedRecord?.pid, originalRecord.pid);
+    assert.equal(adoptedRecord?.stateDbPath, originalRecord.stateDbPath);
+    assert.equal(adoptedRecord?.authToken, adoptedAuthToken);
+  } finally {
+    void runHarness(workspace, ['gateway', 'stop', '--force'], env).catch(() => undefined);
+    if (originalPid !== null && isPidRunning(originalPid)) {
+      process.kill(originalPid, 'SIGKILL');
+    }
     rmSync(workspace, { recursive: true, force: true });
   }
 });

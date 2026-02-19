@@ -54,6 +54,7 @@
     "codex:live:tail": "bun scripts/codex-live-tail.ts",
     "codex:live:snapshot": "bun scripts/codex-live-snapshot.ts",
     "control-plane:daemon": "bun scripts/control-plane-daemon.ts",
+    "gateway:stress": "bun scripts/gateway-restart-stress.ts",
     "terminal:parity": "bun scripts/terminal-parity.ts",
     "terminal:differential": "bun scripts/terminal-differential-checkpoints.ts",
     "previm:passthrough": "bun run build:ptyd",
