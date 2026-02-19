@@ -6,6 +6,7 @@ import {
   createCommandMenuState,
   filterThemePresetActionsForScope,
   reduceCommandMenuInput,
+  resolveCommandMenuPage,
   resolveCommandMenuMatches,
   resolveSelectedCommandMenuActionId,
   type RegisteredCommandMenuAction,
@@ -76,6 +77,72 @@ void test('command menu matcher supports unbounded result resolution for paged o
   assert.equal(limited.length, 8);
   const unbounded = resolveCommandMenuMatches(actions, 'action', null);
   assert.equal(unbounded.length, 12);
+});
+
+void test('command menu empty query groups agent types first and prefers codex by default', () => {
+  const actions = [
+    { id: 'project.open.repo-a', title: 'Project repo-a' },
+    { id: 'thread.start.cursor', title: 'Start Cursor thread' },
+    { id: 'thread.start.codex', title: 'Start Codex thread' },
+    { id: 'thread.start.claude', title: 'Start Claude thread' },
+    { id: 'thread.start.terminal', title: 'Start Terminal thread' },
+    { id: 'thread.start.critique', title: 'Start Critique thread (diff)' },
+  ] as const;
+
+  const emptyQueryMatches = resolveCommandMenuMatches(actions, '', null);
+  assert.deepEqual(
+    emptyQueryMatches.slice(0, 5).map((match) => match.action.id),
+    [
+      'thread.start.codex',
+      'thread.start.claude',
+      'thread.start.cursor',
+      'thread.start.terminal',
+      'thread.start.critique',
+    ],
+  );
+  assert.equal(emptyQueryMatches[0]?.action.id, 'thread.start.codex');
+
+  const page = resolveCommandMenuPage(actions, createCommandMenuState());
+  assert.deepEqual(
+    page.displayEntries.map((entry) =>
+      entry.kind === 'delimiter' ? `group:${entry.label}` : entry.action.id,
+    ),
+    [
+      'group:agent types',
+      'thread.start.codex',
+      'thread.start.claude',
+      'thread.start.cursor',
+      'thread.start.terminal',
+      'thread.start.critique',
+      'group:actions',
+      'project.open.repo-a',
+    ],
+  );
+});
+
+void test('command menu typed query uses normal score+alpha sorting with no type delimiters', () => {
+  const actions = [
+    { id: 'thread.start.cursor', title: 'Start Cursor thread' },
+    { id: 'thread.start.codex', title: 'Start Codex thread' },
+    { id: 'thread.start.claude', title: 'Start Claude thread' },
+  ] as const;
+
+  const matches = resolveCommandMenuMatches(actions, 'start', null);
+  assert.deepEqual(
+    matches.map((match) => match.action.id),
+    ['thread.start.claude', 'thread.start.codex', 'thread.start.cursor'],
+  );
+
+  const page = resolveCommandMenuPage(
+    actions,
+    createCommandMenuState({
+      query: 'start',
+    }),
+  );
+  assert.equal(
+    page.displayEntries.some((entry) => entry.kind === 'delimiter'),
+    false,
+  );
 });
 
 void test('command menu selected action resolution supports paged selections', () => {

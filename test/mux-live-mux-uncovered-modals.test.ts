@@ -1228,7 +1228,7 @@ void test('modal overlay builders return null for missing state and build overla
     createCommandMenuState(),
     [
       {
-        id: 'start.cursor',
+        id: 'thread.start.cursor',
         title: 'Start Cursor thread',
         aliases: ['cur'],
       },
@@ -1236,6 +1236,10 @@ void test('modal overlay builders return null for missing state and build overla
     theme,
   );
   assert.notEqual(commandMenuOverlay, null);
+  assert.equal(
+    (commandMenuOverlay?.rows ?? []).some((row) => row.includes('-- agent types --')),
+    true,
+  );
   const themeCommandMenuOverlay = buildCommandMenuModalOverlay(
     80,
     24,

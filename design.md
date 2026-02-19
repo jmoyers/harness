@@ -244,6 +244,7 @@ Pass-through stream invariants:
 - Gateway identity is persisted in `gateway.json` (`pid`, `host`, `port`, `authToken`, `stateDbPath`, `startedAt`, `workspaceRoot`, optional `gatewayRunId`).
 - If `gateway.json` is missing but the endpoint is reachable, the CLI may adopt the running daemon by matching process-table host/port/auth/db-path identity; ambiguous matches fail closed.
 - `ctrl+p` and `cmd+p` open the command menu; command search is live-filtered and executes context-aware actions.
+- Empty-query command-menu results are grouped by type with visible delimiters; agent thread types are surfaced first, with default selection on `codex`, and typed input returns to normal score+alpha ordering.
 - Left-rail `[+ thread]` opens a thread-scoped command-menu variant (same matcher/autocomplete path) instead of a dedicated chooser modal.
 - Command-menu `Set a Theme` opens a second autocomplete theme picker; moving selection previews theme changes live, and dismiss restores the pre-picker theme unless confirmed. Confirming with `enter` commits and persists the selected theme.
 - Mux startup is Home-first: initial render enters Home pane even when persisted conversations exist.

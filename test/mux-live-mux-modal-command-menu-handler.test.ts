@@ -286,19 +286,19 @@ void test('command menu handler executes theme selection before menu teardown on
 void test('command menu handler mouse click executes clicked action row', () => {
   let menu: CommandMenuState | null = createCommandMenuState();
   const actions = [
-    { id: 'start.cursor', title: 'Start Cursor thread' },
-    { id: 'start.codex', title: 'Start Codex thread' },
+    { id: 'thread.start.cursor', title: 'Start Cursor thread' },
+    { id: 'thread.start.codex', title: 'Start Codex thread' },
   ];
   const executed: string[] = [];
   let dirtyCount = 0;
 
   const handled = handleCommandMenuInput({
-    input: Buffer.from('\u001b[<0;8;6M', 'utf8'),
+    input: Buffer.from('\u001b[<0;8;7M', 'utf8'),
     menu,
     isQuitShortcut: () => false,
     isToggleShortcut: () => false,
     dismissOnOutsideClick: (_input, _dismiss, onInsidePointerPress) =>
-      onInsidePointerPress?.(8, 6) === true,
+      onInsidePointerPress?.(8, 7) === true,
     buildCommandMenuModalOverlay: () => ({ top: 1 }),
     resolveActions: () => actions,
     executeAction: (actionId: string) => {
@@ -314,7 +314,7 @@ void test('command menu handler mouse click executes clicked action row', () => 
 
   assert.equal(handled, true);
   assert.equal(menu, null);
-  assert.deepEqual(executed, ['start.codex']);
+  assert.deepEqual(executed, ['thread.start.codex']);
   assert.equal(dirtyCount, 1);
 });
 
@@ -368,6 +368,20 @@ void test('command menu handler mouse click guards overlay, empty matches, and o
     },
     markDirty: () => {},
   };
+
+  assert.equal(
+    handleCommandMenuInput({
+      menu: createCommandMenuState(),
+      dismissOnOutsideClick: (_input, _dismiss, onInsidePointerPress) => {
+        assert.equal(onInsidePointerPress?.(8, 6), false);
+        return true;
+      },
+      buildCommandMenuModalOverlay: () => ({ top: 1 }),
+      resolveActions: () => [{ id: 'thread.start.codex', title: 'Start Codex thread' }],
+      ...common,
+    }),
+    true,
+  );
 
   assert.equal(
     handleCommandMenuInput({

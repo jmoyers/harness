@@ -1,6 +1,18 @@
-export const COMMAND_MENU_MAX_RESULTS = 8;
+const COMMAND_MENU_MAX_RESULTS = 8;
+const THREAD_ACTION_ID_PATTERN = /^thread\.(?:start|install)\.([a-z0-9-]+)$/u;
+const AGENT_TYPE_GROUP_LABEL = 'agent types';
+const ACTIONS_GROUP_LABEL = 'actions';
 
 type CommandMenuScope = 'all' | 'thread-start' | 'theme-select';
+type CommandMenuInitialGroup = 'agent-types' | 'actions';
+
+const COMMAND_MENU_AGENT_TYPE_ORDER: Readonly<Record<string, number>> = {
+  codex: 0,
+  claude: 1,
+  cursor: 2,
+  terminal: 3,
+  critique: 4,
+};
 
 export interface CommandMenuState {
   readonly scope: CommandMenuScope;
@@ -35,6 +47,26 @@ export interface RegisteredCommandMenuAction<TContext> extends CommandMenuAction
 interface CommandMenuMatch<TAction extends CommandMenuActionDescriptor> {
   readonly action: TAction;
   readonly score: number;
+}
+
+type CommandMenuDisplayEntry<TAction extends CommandMenuActionDescriptor> =
+  | {
+      readonly kind: 'delimiter';
+      readonly label: string;
+    }
+  | {
+      readonly kind: 'action';
+      readonly absoluteIndex: number;
+      readonly action: TAction;
+      readonly score: number;
+    };
+
+interface CommandMenuPage<TAction extends CommandMenuActionDescriptor> {
+  readonly matches: readonly CommandMenuMatch<TAction>[];
+  readonly selectedIndex: number;
+  readonly pageStart: number;
+  readonly visibleMatches: readonly CommandMenuMatch<TAction>[];
+  readonly displayEntries: readonly CommandMenuDisplayEntry<TAction>[];
 }
 
 type CommandMenuActionProvider<TContext> = (
@@ -77,6 +109,84 @@ function searchableParts(action: CommandMenuActionDescriptor): readonly string[]
     ...normalizedKeywords(action),
   ].filter((value) => value.length > 0);
   return parts;
+}
+
+function threadAgentTypeFromActionId(actionId: string): string | null {
+  const match = THREAD_ACTION_ID_PATTERN.exec(actionId);
+  if (match === null) {
+    return null;
+  }
+  const value = (match[1] ?? '').trim().toLowerCase();
+  return value.length > 0 ? value : null;
+}
+
+function initialGroupForAction(action: CommandMenuActionDescriptor): CommandMenuInitialGroup {
+  return threadAgentTypeFromActionId(action.id) === null ? 'actions' : 'agent-types';
+}
+
+function initialGroupRank(action: CommandMenuActionDescriptor): number {
+  return initialGroupForAction(action) === 'agent-types' ? 0 : 1;
+}
+
+function initialAgentTypeRank(action: CommandMenuActionDescriptor): number {
+  const agentType = threadAgentTypeFromActionId(action.id);
+  if (agentType === null) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+  return COMMAND_MENU_AGENT_TYPE_ORDER[agentType] ?? 100;
+}
+
+function usesInitialTypeSort(query: string): boolean {
+  return normalizedTokens(query).length === 0;
+}
+
+function groupLabelForInitialGroup(group: CommandMenuInitialGroup): string {
+  return group === 'agent-types' ? AGENT_TYPE_GROUP_LABEL : ACTIONS_GROUP_LABEL;
+}
+
+function shouldRenderTypeDelimiters<TAction extends CommandMenuActionDescriptor>(
+  query: string,
+  visibleMatches: readonly CommandMenuMatch<TAction>[],
+): boolean {
+  if (!usesInitialTypeSort(query)) {
+    return false;
+  }
+  return visibleMatches.some((match) => initialGroupForAction(match.action) === 'agent-types');
+}
+
+function buildCommandMenuDisplayEntries<TAction extends CommandMenuActionDescriptor>(
+  visibleMatches: readonly CommandMenuMatch<TAction>[],
+  pageStart: number,
+  query: string,
+): readonly CommandMenuDisplayEntry<TAction>[] {
+  if (!shouldRenderTypeDelimiters(query, visibleMatches)) {
+    return visibleMatches.map((match, index) => ({
+      kind: 'action',
+      absoluteIndex: pageStart + index,
+      action: match.action,
+      score: match.score,
+    }));
+  }
+  const entries: CommandMenuDisplayEntry<TAction>[] = [];
+  let previousGroup: CommandMenuInitialGroup | null = null;
+  for (let index = 0; index < visibleMatches.length; index += 1) {
+    const match = visibleMatches[index]!;
+    const group = initialGroupForAction(match.action);
+    if (group !== previousGroup) {
+      previousGroup = group;
+      entries.push({
+        kind: 'delimiter',
+        label: groupLabelForInitialGroup(group),
+      });
+    }
+    entries.push({
+      kind: 'action',
+      absoluteIndex: pageStart + index,
+      action: match.action,
+      score: match.score,
+    });
+  }
+  return entries;
 }
 
 function actionScore(action: CommandMenuActionDescriptor, query: string): number | null {
@@ -183,12 +293,28 @@ export function resolveCommandMenuMatches<TAction extends CommandMenuActionDescr
   query: string,
   limit: number | null = COMMAND_MENU_MAX_RESULTS,
 ): readonly CommandMenuMatch<TAction>[] {
+  const useInitialSort = usesInitialTypeSort(query);
   const scored = actions
     .flatMap((action) => {
       const score = actionScore(action, query);
       return score === null ? [] : [{ action, score }];
     })
     .sort((left, right) => {
+      if (useInitialSort) {
+        const groupCompare = initialGroupRank(left.action) - initialGroupRank(right.action);
+        if (groupCompare !== 0) {
+          return groupCompare;
+        }
+        const leftGroup = initialGroupForAction(left.action);
+        if (leftGroup === 'agent-types') {
+          const agentCompare =
+            initialAgentTypeRank(left.action) - initialAgentTypeRank(right.action);
+          if (agentCompare !== 0) {
+            return agentCompare;
+          }
+        }
+        return left.action.title.localeCompare(right.action.title);
+      }
       if (left.score !== right.score) {
         return left.score - right.score;
       }
@@ -198,6 +324,27 @@ export function resolveCommandMenuMatches<TAction extends CommandMenuActionDescr
     return scored;
   }
   return scored.slice(0, Math.max(0, limit));
+}
+
+export function resolveCommandMenuPage<TAction extends CommandMenuActionDescriptor>(
+  actions: readonly TAction[],
+  menu: CommandMenuState,
+): CommandMenuPage<TAction> {
+  const matches = resolveCommandMenuMatches(actions, menu.query, null);
+  const selectedIndex = clampSelectedIndex(menu.selectedIndex, matches.length);
+  const pageStart =
+    matches.length === 0
+      ? 0
+      : Math.floor(selectedIndex / COMMAND_MENU_MAX_RESULTS) * COMMAND_MENU_MAX_RESULTS;
+  const visibleMatches = matches.slice(pageStart, pageStart + COMMAND_MENU_MAX_RESULTS);
+  const displayEntries = buildCommandMenuDisplayEntries(visibleMatches, pageStart, menu.query);
+  return {
+    matches,
+    selectedIndex,
+    pageStart,
+    visibleMatches,
+    displayEntries,
+  };
 }
 
 export function resolveSelectedCommandMenuActionId<TAction extends CommandMenuActionDescriptor>(

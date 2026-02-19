@@ -1,8 +1,8 @@
 import {
-  COMMAND_MENU_MAX_RESULTS,
   clampCommandMenuState,
   reduceCommandMenuInput,
   resolveCommandMenuMatches,
+  resolveCommandMenuPage,
   type CommandMenuActionDescriptor,
   type CommandMenuState,
 } from './command-menu.ts';
@@ -34,23 +34,24 @@ function resolveCommandMenuActionIdByRow(
   overlayTopRowZeroBased: number,
   rowOneBased: number,
 ): string | null {
-  const matches = resolveCommandMenuMatches(actions, menu.query, null);
-  if (matches.length === 0) {
+  const page = resolveCommandMenuPage(actions, menu);
+  if (page.matches.length === 0) {
     return null;
   }
-  const selectedIndex = clampCommandMenuState(menu, matches.length).selectedIndex;
-  const pageStart = Math.floor(selectedIndex / COMMAND_MENU_MAX_RESULTS) * COMMAND_MENU_MAX_RESULTS;
-  const visibleMatches = matches.slice(pageStart, pageStart + COMMAND_MENU_MAX_RESULTS);
   const actionStartBodyLine = COMMAND_MENU_ACTION_ROW_START;
   const clickedBodyLine = rowOneBased - 1 - (overlayTopRowZeroBased + COMMAND_MENU_BODY_ROW_OFFSET);
   if (clickedBodyLine < actionStartBodyLine) {
     return null;
   }
-  const visibleIndex = clickedBodyLine - actionStartBodyLine;
-  if (visibleIndex < 0 || visibleIndex >= visibleMatches.length) {
+  const displayEntryIndex = clickedBodyLine - actionStartBodyLine;
+  if (displayEntryIndex < 0 || displayEntryIndex >= page.displayEntries.length) {
     return null;
   }
-  return visibleMatches[visibleIndex]?.action.id ?? null;
+  const entry = page.displayEntries[displayEntryIndex];
+  if (entry === undefined || entry.kind !== 'action') {
+    return null;
+  }
+  return entry.action.id;
 }
 
 export function handleCommandMenuInput(options: HandleCommandMenuInputOptions): boolean {

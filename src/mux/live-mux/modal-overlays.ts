@@ -8,8 +8,7 @@ import {
   resolveGoldenModalSize,
 } from '../harness-core-ui.ts';
 import {
-  COMMAND_MENU_MAX_RESULTS,
-  resolveCommandMenuMatches,
+  resolveCommandMenuPage,
   type CommandMenuActionDescriptor,
   type CommandMenuState,
 } from './command-menu.ts';
@@ -101,27 +100,22 @@ export function buildCommandMenuModalOverlay(
     minWidth: 48,
     maxWidth: 96,
   });
-  const matches = resolveCommandMenuMatches(actions, menu.query, null);
-  const selectedIndex =
-    matches.length === 0 ? 0 : Math.max(0, Math.min(matches.length - 1, menu.selectedIndex));
-  const pageStart =
-    matches.length === 0
-      ? 0
-      : Math.floor(selectedIndex / COMMAND_MENU_MAX_RESULTS) * COMMAND_MENU_MAX_RESULTS;
-  const visibleMatches = matches.slice(pageStart, pageStart + COMMAND_MENU_MAX_RESULTS);
+  const page = resolveCommandMenuPage(actions, menu);
   const bodyLines: string[] = [`${isThemePicker ? 'theme' : 'search'}: ${menu.query}_`, ''];
-  if (matches.length === 0) {
+  if (page.matches.length === 0) {
     bodyLines.push('no actions match');
   } else {
-    for (let index = 0; index < visibleMatches.length; index += 1) {
-      const match = visibleMatches[index]!;
-      const absoluteIndex = pageStart + index;
-      const prefix = absoluteIndex === selectedIndex ? '>' : ' ';
-      const detail = match.action.detail?.trim() ?? '';
+    for (const entry of page.displayEntries) {
+      if (entry.kind === 'delimiter') {
+        bodyLines.push(`  -- ${entry.label} --`);
+        continue;
+      }
+      const prefix = entry.absoluteIndex === page.selectedIndex ? '>' : ' ';
+      const detail = entry.action.detail?.trim() ?? '';
       bodyLines.push(
         detail.length > 0
-          ? `${prefix} ${match.action.title} - ${detail}`
-          : `${prefix} ${match.action.title}`,
+          ? `${prefix} ${entry.action.title} - ${detail}`
+          : `${prefix} ${entry.action.title}`,
       );
     }
   }
