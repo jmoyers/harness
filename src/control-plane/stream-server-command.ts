@@ -1365,14 +1365,18 @@ export async function executeStreamServerCommand(
     if (issue === null) {
       throw new Error(`linear issue not found: ${parsedLinearIssue.identifier}`);
     }
+    if (command.repositoryId === undefined && command.projectId === undefined) {
+      throw new Error('linear issue import requires repositoryId or projectId');
+    }
     const task = ctx.stateStore.createTask({
       taskId: `task-${randomUUID()}`,
       tenantId: command.tenantId ?? DEFAULT_TENANT_ID,
       userId: command.userId ?? DEFAULT_USER_ID,
       workspaceId: command.workspaceId ?? DEFAULT_WORKSPACE_ID,
       ...(command.repositoryId === undefined ? {} : { repositoryId: command.repositoryId }),
+      ...(command.projectId === undefined ? {} : { projectId: command.projectId }),
       title: `${issue.identifier}: ${issue.title}`.trim(),
-      description: [
+      body: [
         issue.url ?? command.url.trim(),
         issue.stateName === null ? null : `state: ${issue.stateName}`,
         issue.teamKey === null ? null : `team: ${issue.teamKey}`,

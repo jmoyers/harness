@@ -354,6 +354,7 @@ interface LinearIssueImportCommand {
   userId?: string;
   workspaceId?: string;
   repositoryId?: string;
+  projectId?: string;
 }
 
 interface StreamSubscribeCommand {

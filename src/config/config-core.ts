@@ -278,6 +278,7 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
   },
   gateway: {
     host: '127.0.0.1',
+  },
   linear: {
     enabled: true,
     apiBaseUrl: 'https://api.linear.app/graphql',

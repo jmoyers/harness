@@ -3230,6 +3230,11 @@ async function main(): Promise<number> {
                 : {
                     repositoryId: context.githubRepositoryId,
                   }),
+              ...(context.activeDirectoryId === null
+                ? {}
+                : {
+                    projectId: context.activeDirectoryId,
+                  }),
             });
             const parsedResult = asRecord(result);
             if (parsedResult === null) {

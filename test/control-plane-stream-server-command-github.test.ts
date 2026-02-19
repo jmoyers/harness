@@ -306,6 +306,7 @@ void test('stream server executes linear issue import command and error branches
     },
   });
   const internals = server as unknown as {
+    stateStore: SqliteControlPlaneStore;
     executeCommand: (
       connection: {
         id: string;
@@ -319,6 +320,24 @@ void test('stream server executes linear issue import command and error branches
   };
 
   try {
+    const scope = {
+      tenantId: 'tenant-linear-command',
+      userId: 'user-linear-command',
+      workspaceId: 'workspace-linear-command',
+    };
+    const directory = internals.stateStore.upsertDirectory({
+      directoryId: 'directory-linear-command',
+      ...scope,
+      path: '/tmp/harness-linear-command',
+    });
+    const repository = internals.stateStore.upsertRepository({
+      repositoryId: 'repository-linear-command',
+      ...scope,
+      name: 'harness-linear',
+      remoteUrl: 'https://github.com/acme/harness-linear.git',
+      defaultBranch: 'main',
+    });
+
     const imported = await internals.executeCommand(
       {
         id: 'connection-linear-command',
@@ -326,6 +345,11 @@ void test('stream server executes linear issue import command and error branches
       {
         type: 'linear.issue.import',
         url: 'https://linear.app/acme/issue/eng-123/fix-startup-flicker',
+        repositoryId: repository.repositoryId,
+        projectId: directory.directoryId,
+        tenantId: scope.tenantId,
+        userId: scope.userId,
+        workspaceId: scope.workspaceId,
       },
     );
     assert.equal(imported['imported'], true);
@@ -335,11 +359,11 @@ void test('stream server executes linear issue import command and error branches
     const importedTask = imported['task'] as Record<string, unknown>;
     assert.equal(importedTask['title'], 'ENG-123: Fix startup flicker');
     assert.match(
-      String(importedTask['description']),
+      String(importedTask['body']),
       /https:\/\/linear\.app\/acme\/issue\/ENG-123\/fix-startup-flicker/u,
     );
-    assert.match(String(importedTask['description']), /state: In Progress/u);
-    assert.match(String(importedTask['description']), /team: ENG/u);
+    assert.match(String(importedTask['body']), /state: In Progress/u);
+    assert.match(String(importedTask['body']), /team: ENG/u);
 
     linearMockMode = 'empty';
     await assert.rejects(
@@ -350,6 +374,10 @@ void test('stream server executes linear issue import command and error branches
         {
           type: 'linear.issue.import',
           url: 'https://linear.app/acme/issue/ENG-404/missing-ticket',
+          repositoryId: repository.repositoryId,
+          tenantId: scope.tenantId,
+          userId: scope.userId,
+          workspaceId: scope.workspaceId,
         },
       ),
       /linear issue not found: ENG-404/,
@@ -364,6 +392,10 @@ void test('stream server executes linear issue import command and error branches
         {
           type: 'linear.issue.import',
           url: 'https://linear.app/acme/issue/ENG-405/malformed-ticket',
+          repositoryId: repository.repositoryId,
+          tenantId: scope.tenantId,
+          userId: scope.userId,
+          workspaceId: scope.workspaceId,
         },
       ),
       /linear issue response malformed/,
@@ -378,6 +410,10 @@ void test('stream server executes linear issue import command and error branches
         {
           type: 'linear.issue.import',
           url: 'https://example.com/acme/issue/ENG-123/fix-startup-flicker',
+          repositoryId: repository.repositoryId,
+          tenantId: scope.tenantId,
+          userId: scope.userId,
+          workspaceId: scope.workspaceId,
         },
       ),
       /linear issue url required/,
@@ -392,6 +428,10 @@ void test('stream server executes linear issue import command and error branches
         {
           type: 'linear.issue.import',
           url: 'https://linear.app/acme/issue/ENG-123/fix-startup-flicker',
+          repositoryId: repository.repositoryId,
+          tenantId: scope.tenantId,
+          userId: scope.userId,
+          workspaceId: scope.workspaceId,
         },
       ),
       /linear integration is disabled/,
@@ -407,9 +447,30 @@ void test('stream server executes linear issue import command and error branches
         {
           type: 'linear.issue.import',
           url: 'https://linear.app/acme/issue/ENG-123/fix-startup-flicker',
+          repositoryId: repository.repositoryId,
+          tenantId: scope.tenantId,
+          userId: scope.userId,
+          workspaceId: scope.workspaceId,
         },
       ),
       /linear api key not configured: set LINEAR_API_KEY/,
+    );
+
+    internals.linear.token = 'linear-token';
+    await assert.rejects(
+      internals.executeCommand(
+        {
+          id: 'connection-linear-command',
+        },
+        {
+          type: 'linear.issue.import',
+          url: 'https://linear.app/acme/issue/ENG-123/fix-startup-flicker',
+          tenantId: scope.tenantId,
+          userId: scope.userId,
+          workspaceId: scope.workspaceId,
+        },
+      ),
+      /linear issue import requires repositoryId or projectId/,
     );
   } finally {
     await server.close();

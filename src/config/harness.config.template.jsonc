@@ -29,6 +29,7 @@
   },
   "gateway": {
     "host": "127.0.0.1",
+  },
   "linear": {
     "enabled": true,
     "apiBaseUrl": "https://api.linear.app/graphql",

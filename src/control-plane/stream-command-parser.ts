@@ -1143,11 +1143,13 @@ function parseLinearIssueImport(record: CommandRecord): StreamCommand | null {
   const userId = readOptionalString(record, 'userId');
   const workspaceId = readOptionalString(record, 'workspaceId');
   const repositoryId = readOptionalString(record, 'repositoryId');
+  const projectId = readOptionalString(record, 'projectId');
   if (
     tenantId === undefined ||
     userId === undefined ||
     workspaceId === undefined ||
-    repositoryId === undefined
+    repositoryId === undefined ||
+    projectId === undefined
   ) {
     return null;
   }
@@ -1166,6 +1168,9 @@ function parseLinearIssueImport(record: CommandRecord): StreamCommand | null {
   }
   if (repositoryId !== null) {
     command.repositoryId = repositoryId;
+  }
+  if (projectId !== null) {
+    command.projectId = projectId;
   }
   return command;
 }
