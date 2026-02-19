@@ -68,6 +68,8 @@ class PtySession extends EventEmitter {
   private nextProbeId = 1;
   private outputWindow = Buffer.alloc(0);
   private static readonly MAX_OUTPUT_WINDOW_BYTES = 8192;
+  private static readonly MAX_PENDING_ROUNDTRIP_PROBES = 64;
+  private static readonly ROUNDTRIP_PROBE_MAX_AGE_NS = 5_000_000_000n;
 
   constructor(child: ChildProcessWithoutNullStreams) {
     super();
@@ -101,6 +103,12 @@ class PtySession extends EventEmitter {
         matchPayloads: PtySession.buildMatchPayloads(payload),
         startedAtNs: perfNowNs(),
       });
+      if (this.pendingRoundtripProbes.length > PtySession.MAX_PENDING_ROUNDTRIP_PROBES) {
+        this.pendingRoundtripProbes.splice(
+          0,
+          this.pendingRoundtripProbes.length - PtySession.MAX_PENDING_ROUNDTRIP_PROBES,
+        );
+      }
       this.nextProbeId += 1;
     }
 
@@ -148,12 +156,25 @@ class PtySession extends EventEmitter {
       );
     }
 
+    const maxMatchPayloadLength = this.compactPendingRoundtripProbes(perfNowNs());
+    if (this.pendingRoundtripProbes.length === 0) {
+      return;
+    }
+    const searchWindowLength = Math.max(
+      1,
+      Math.min(
+        this.outputWindow.length,
+        chunk.length + Math.max(1, maxMatchPayloadLength) - 1,
+      ),
+    );
+    const searchWindow = this.outputWindow.subarray(this.outputWindow.length - searchWindowLength);
+
     let idx = 0;
     while (idx < this.pendingRoundtripProbes.length) {
       const probe = this.pendingRoundtripProbes[idx];
       if (
         probe !== undefined &&
-        probe.matchPayloads.some((matchPayload) => this.outputWindow.includes(matchPayload))
+        probe.matchPayloads.some((matchPayload) => searchWindow.includes(matchPayload))
       ) {
         recordPerfDuration('pty.keystroke.roundtrip', probe.startedAtNs, {
           'probe-id': probe.probeId,
@@ -164,6 +185,33 @@ class PtySession extends EventEmitter {
       }
       idx += 1;
     }
+  }
+
+  private compactPendingRoundtripProbes(nowNs: bigint): number {
+    if (this.pendingRoundtripProbes.length > PtySession.MAX_PENDING_ROUNDTRIP_PROBES) {
+      this.pendingRoundtripProbes.splice(
+        0,
+        this.pendingRoundtripProbes.length - PtySession.MAX_PENDING_ROUNDTRIP_PROBES,
+      );
+    }
+    let maxMatchPayloadLength = 1;
+    let idx = 0;
+    while (idx < this.pendingRoundtripProbes.length) {
+      const probe = this.pendingRoundtripProbes[idx];
+      if (probe === undefined) {
+        idx += 1;
+        continue;
+      }
+      if (nowNs - probe.startedAtNs > PtySession.ROUNDTRIP_PROBE_MAX_AGE_NS) {
+        this.pendingRoundtripProbes.splice(idx, 1);
+        continue;
+      }
+      for (const matchPayload of probe.matchPayloads) {
+        maxMatchPayloadLength = Math.max(maxMatchPayloadLength, matchPayload.length);
+      }
+      idx += 1;
+    }
+    return maxMatchPayloadLength;
   }
 
   private static buildMatchPayloads(payload: Buffer): Buffer[] {

@@ -484,6 +484,138 @@ void test(
 );
 
 void test(
+  'pty-host bounds pending roundtrip probes when probe list grows beyond the cap',
+  async () => {
+    const tempPath = mkdtempSync(join(tmpdir(), 'harness-perf-probe-cap-'));
+    const perfFilePath = join(tempPath, 'perf.jsonl');
+    let session: ReturnType<typeof startPtySession> | null = null;
+
+    try {
+      configurePerfCore({
+        enabled: true,
+        filePath: perfFilePath,
+      });
+
+      session = startPtySession({
+        command: '/bin/cat',
+        commandArgs: [],
+      });
+
+      const internals = session as unknown as {
+        pendingRoundtripProbes: Array<{
+          probeId: number;
+          payloadLength: number;
+          matchPayloads: Buffer[];
+          startedAtNs: bigint;
+        }>;
+        trackRoundtrip: (chunk: Buffer) => void;
+        constructor: {
+          MAX_PENDING_ROUNDTRIP_PROBES: number;
+        };
+      };
+      const maxPending = internals.constructor.MAX_PENDING_ROUNDTRIP_PROBES;
+      assert.ok(maxPending > 0);
+
+      for (let idx = 0; idx < maxPending + 8; idx += 1) {
+        internals.pendingRoundtripProbes.push({
+          probeId: idx + 1,
+          payloadLength: 8,
+          matchPayloads: [Buffer.from(`never-match-${idx}`, 'utf8')],
+          startedAtNs: process.hrtime.bigint(),
+        });
+      }
+      internals.trackRoundtrip(Buffer.from('x', 'utf8'));
+
+      assert.equal(internals.pendingRoundtripProbes.length, maxPending);
+      assert.equal(internals.pendingRoundtripProbes[0]?.probeId, 9);
+      session.write(new Uint8Array([0x04]));
+      const exit = await waitForExit(session, 5000);
+      assert.equal(exit.code, 0);
+      session = null;
+    } finally {
+      if (session !== null) {
+        session.write(new Uint8Array([0x04]));
+        await waitForExit(session, 1000).catch(() => undefined);
+      }
+      configurePerfCore({ enabled: false });
+      shutdownPerfCore();
+      rmSync(tempPath, { recursive: true, force: true });
+    }
+  },
+  { timeout: 10000 },
+);
+
+void test(
+  'pty-host expires stale roundtrip probes before matching',
+  async () => {
+    const tempPath = mkdtempSync(join(tmpdir(), 'harness-perf-probe-expiry-'));
+    const perfFilePath = join(tempPath, 'perf.jsonl');
+    let session: ReturnType<typeof startPtySession> | null = null;
+
+    try {
+      configurePerfCore({
+        enabled: true,
+        filePath: perfFilePath,
+      });
+
+      session = startPtySession({
+        command: '/bin/cat',
+        commandArgs: [],
+      });
+
+      const internals = session as unknown as {
+        pendingRoundtripProbes: Array<{
+          probeId: number;
+          payloadLength: number;
+          matchPayloads: Buffer[];
+          startedAtNs: bigint;
+        }>;
+        trackRoundtrip: (chunk: Buffer) => void;
+        constructor: {
+          ROUNDTRIP_PROBE_MAX_AGE_NS: bigint;
+        };
+      };
+      const ttlNs = internals.constructor.ROUNDTRIP_PROBE_MAX_AGE_NS;
+      assert.ok(ttlNs > 0n);
+      const nowNs = process.hrtime.bigint();
+
+      internals.pendingRoundtripProbes.push(
+        {
+          probeId: 1,
+          payloadLength: 4,
+          matchPayloads: [Buffer.from('stale-probe', 'utf8')],
+          startedAtNs: nowNs - ttlNs - 1n,
+        },
+        {
+          probeId: 2,
+          payloadLength: 4,
+          matchPayloads: [Buffer.from('fresh-probe', 'utf8')],
+          startedAtNs: nowNs,
+        },
+      );
+
+      internals.trackRoundtrip(Buffer.from('zzz', 'utf8'));
+
+      assert.equal(internals.pendingRoundtripProbes.length, 1);
+      assert.equal(internals.pendingRoundtripProbes[0]?.probeId, 2);
+      session.write(new Uint8Array([0x04]));
+      const exit = await waitForExit(session, 5000);
+      assert.equal(exit.code, 0);
+      session = null;
+    } finally {
+      if (session !== null) {
+        session.write(new Uint8Array([0x04]));
+        await waitForExit(session, 1000).catch(() => undefined);
+      }
+      configurePerfCore({ enabled: false });
+      shutdownPerfCore();
+      rmSync(tempPath, { recursive: true, force: true });
+    }
+  },
+  { timeout: 10000 },
+);
+
+void test(
   'pty-host emits keystroke roundtrip instrumentation with low latency',
   async () => {
     const tempPath = mkdtempSync(join(tmpdir(), 'harness-perf-'));
