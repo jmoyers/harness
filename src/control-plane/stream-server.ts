@@ -772,7 +772,9 @@ function normalizeGitHubIntegrationConfig(
   };
 }
 
-function normalizeThreadTitleConfig(input: Partial<ThreadTitleConfig> | undefined): ThreadTitleConfig {
+function normalizeThreadTitleConfig(
+  input: Partial<ThreadTitleConfig> | undefined,
+): ThreadTitleConfig {
   const envApiKeyRaw = process.env.ANTHROPIC_API_KEY;
   const envApiKey =
     typeof envApiKeyRaw === 'string' && envApiKeyRaw.trim().length > 0 ? envApiKeyRaw.trim() : null;

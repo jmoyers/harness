@@ -7,6 +7,7 @@ import {
   parseGitShortstatCounts,
   parseLastCommitLine,
   repositoryNameFromGitHubRemoteUrl,
+  resolveGitHubTrackedBranchForActions,
   shouldShowGitHubPrActions,
 } from '../src/mux/live-mux/git-parsing.ts';
 
@@ -130,6 +131,37 @@ void test('shouldShowGitHubPrActions requires a non-default branch', () => {
       defaultBranch: null,
     }),
     true,
+  );
+});
+
+void test('resolveGitHubTrackedBranchForActions falls back to current branch when tracked state is missing', () => {
+  assert.equal(
+    resolveGitHubTrackedBranchForActions({
+      projectTrackedBranch: null,
+      currentBranch: 'feature/menu',
+    }),
+    'feature/menu',
+  );
+  assert.equal(
+    resolveGitHubTrackedBranchForActions({
+      projectTrackedBranch: '(loading)',
+      currentBranch: 'feature/current',
+    }),
+    'feature/current',
+  );
+  assert.equal(
+    resolveGitHubTrackedBranchForActions({
+      projectTrackedBranch: 'release/1',
+      currentBranch: 'feature/current',
+    }),
+    'release/1',
+  );
+  assert.equal(
+    resolveGitHubTrackedBranchForActions({
+      projectTrackedBranch: '(detached)',
+      currentBranch: 'HEAD',
+    }),
+    null,
   );
 });
 

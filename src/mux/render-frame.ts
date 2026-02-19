@@ -51,7 +51,7 @@ export function buildRenderRows(
   const statusText =
     statusRowDetailText === undefined || statusRowDetailText.length === 0
       ? defaultStatus
-      : `${defaultStatus}  ${statusRowDetailText}`;
+      : `${statusRowDetailText}  ${defaultStatus}`;
   const status = padOrTrimDisplay(statusText, layout.cols);
   rows.push(status);
   return rows;

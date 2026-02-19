@@ -37,7 +37,11 @@ function textResponse(text: string): Response {
   ]);
 }
 
-function promptRecord(text: string | null, observedAt: string, hash: string): StreamSessionPromptRecord {
+function promptRecord(
+  text: string | null,
+  observedAt: string,
+  hash: string,
+): StreamSessionPromptRecord {
   return {
     text,
     hash,

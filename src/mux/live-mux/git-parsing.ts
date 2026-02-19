@@ -98,6 +98,30 @@ export function shouldShowGitHubPrActions(input: {
   return normalizedTrackedBranch !== 'main';
 }
 
+function normalizeTrackedBranchForActions(value: string | null): string | null {
+  const trimmed = value?.trim() ?? '';
+  if (
+    trimmed.length === 0 ||
+    trimmed === '(detached)' ||
+    trimmed === '(loading)' ||
+    trimmed === 'HEAD'
+  ) {
+    return null;
+  }
+  return trimmed;
+}
+
+export function resolveGitHubTrackedBranchForActions(input: {
+  projectTrackedBranch: string | null;
+  currentBranch: string | null;
+}): string | null {
+  const trackedBranch = normalizeTrackedBranchForActions(input.projectTrackedBranch);
+  if (trackedBranch !== null) {
+    return trackedBranch;
+  }
+  return normalizeTrackedBranchForActions(input.currentBranch);
+}
+
 export function parseCommitCount(output: string): number | null {
   const trimmed = output.trim();
   if (trimmed.length === 0 || !/^\d+$/u.test(trimmed)) {

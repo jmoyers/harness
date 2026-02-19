@@ -82,7 +82,8 @@ void test('mux render frame appends debug detail text while preserving perf foot
   );
 
   assert.equal(rows.length, 2);
-  assert.equal((rows[1] ?? '').startsWith('[mux] fps=0.0'), true);
+  assert.equal((rows[1] ?? '').startsWith('[dbg] codex resume thread-123 --yolo'), true);
+  assert.equal((rows[1] ?? '').includes('[mux] fps=0.0'), true);
   assert.equal((rows[1] ?? '').includes('[dbg] codex resume'), true);
   assert.equal((rows[1] ?? '').length, 220);
 });

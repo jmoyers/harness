@@ -37,13 +37,13 @@ const FALLBACK_STOP_WORDS = new Set([
 ]);
 const DEFAULT_HAIKU_MODEL_ID = 'claude-3-5-haiku-latest';
 
-export interface ThreadTitlePromptHistoryEntry {
+interface ThreadTitlePromptHistoryEntry {
   readonly text: string;
   readonly observedAt: string;
   readonly hash: string;
 }
 
-export interface ThreadTitleNamerInput {
+interface ThreadTitleNamerInput {
   readonly conversationId: string;
   readonly agentType: string;
   readonly currentTitle: string;

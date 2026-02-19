@@ -93,6 +93,7 @@ import {
 import {
   normalizeGitHubRemoteUrl,
   repositoryNameFromGitHubRemoteUrl,
+  resolveGitHubTrackedBranchForActions,
   shouldShowGitHubPrActions,
 } from '../src/mux/live-mux/git-parsing.ts';
 import { readProcessUsageSample, runGitCommand } from '../src/mux/live-mux/git-snapshot.ts';
@@ -257,6 +258,13 @@ interface CommandMenuGitHubProjectPrState {
   readonly loading: boolean;
 }
 
+interface GitHubDebugAuthState {
+  enabled: boolean;
+  token: 'env' | 'gh' | 'none';
+  auth: 'ok' | 'no' | 'er' | 'na' | 'uk';
+  projectPr: 'ok' | 'er' | 'na';
+}
+
 interface ThemePickerSessionState {
   readonly initialThemeConfig: HarnessMuxThemeConfig | null;
   committed: boolean;
@@ -404,6 +412,28 @@ function commandExistsOnPath(command: string): boolean {
   }
 }
 
+function readGhAuthTokenForDebug(): string | null {
+  try {
+    const stdout = execFileSync('gh', ['auth', 'token'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 2000,
+      windowsHide: true,
+    });
+    const token = stdout.trim();
+    return token.length > 0 ? token : null;
+  } catch {
+    return null;
+  }
+}
+
+function formatGitHubDebugTokens(state: GitHubDebugAuthState): string {
+  if (!state.enabled) {
+    return '[gh:off tk:na au:na pr:na]';
+  }
+  return `[gh:on tk:${state.token} au:${state.auth} pr:${state.projectPr}]`;
+}
+
 async function main(): Promise<number> {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     process.stderr.write('codex:live:mux requires a TTY stdin/stdout\n');
@@ -502,6 +532,26 @@ async function main(): Promise<number> {
   const resolvedMuxTheme = resolveAndApplyRuntimeTheme(runtimeThemeConfig, true);
   let currentModalTheme = resolvedMuxTheme.theme.modalTheme;
   const configuredMuxGit = loadedConfig.config.mux.git;
+  const githubTokenEnvVar = loadedConfig.config.github.tokenEnvVar;
+  const envGitHubTokenRaw = process.env[githubTokenEnvVar];
+  const hasEnvGitHubToken =
+    typeof envGitHubTokenRaw === 'string' && envGitHubTokenRaw.trim().length > 0;
+  const githubDebugAuthState: GitHubDebugAuthState = {
+    enabled: loadedConfig.config.github.enabled,
+    token: hasEnvGitHubToken ? 'env' : 'none',
+    auth: loadedConfig.config.github.enabled ? (hasEnvGitHubToken ? 'ok' : 'uk') : 'na',
+    projectPr: 'na',
+  };
+  if (githubDebugAuthState.enabled && !hasEnvGitHubToken) {
+    const ghToken = commandExistsOnPath('gh') ? readGhAuthTokenForDebug() : null;
+    if (ghToken !== null) {
+      githubDebugAuthState.token = 'gh';
+      githubDebugAuthState.auth = 'ok';
+    } else {
+      githubDebugAuthState.token = 'none';
+      githubDebugAuthState.auth = 'no';
+    }
+  }
   const configuredCodexLaunch = loadedConfig.config.codex.launch;
   const configuredCritique = loadedConfig.config.critique;
   const codexLaunchModeByDirectoryPath: Record<string, 'yolo' | 'standard'> = {};
@@ -1414,6 +1464,14 @@ async function main(): Promise<number> {
       commandMenuGitHubProjectPrState.directoryId === activeDirectoryId
         ? commandMenuGitHubProjectPrState
         : null;
+    const currentBranchForActions =
+      activeDirectoryId === null
+        ? null
+        : (gitSummaryByDirectoryId.get(activeDirectoryId)?.branch ?? null);
+    const trackedBranchForActions = resolveGitHubTrackedBranchForActions({
+      projectTrackedBranch: githubProjectPrState?.branchName ?? null,
+      currentBranch: currentBranchForActions,
+    });
     const selectedText =
       workspace.selection === null
         ? ''
@@ -1435,7 +1493,7 @@ async function main(): Promise<number> {
       ),
       githubRepositoryUrl: activeDirectoryRepositorySnapshot?.normalizedRemoteUrl ?? null,
       githubDefaultBranch: activeDirectoryRepositorySnapshot?.defaultBranch ?? null,
-      githubTrackedBranch: githubProjectPrState?.branchName ?? null,
+      githubTrackedBranch: trackedBranchForActions,
       githubOpenPrUrl: githubProjectPrState?.openPrUrl ?? null,
       githubProjectPrLoading: githubProjectPrState?.loading ?? false,
     };
@@ -1707,6 +1765,13 @@ async function main(): Promise<number> {
   };
   const githubAuthHintNotice =
     'GitHub PR actions become available after auth (`gh auth login` or `GITHUB_TOKEN`).';
+  const setGitHubDebugAuthState = (
+    update: Partial<Pick<GitHubDebugAuthState, 'token' | 'auth' | 'projectPr'>>,
+  ): void => {
+    githubDebugAuthState.token = update.token ?? githubDebugAuthState.token;
+    githubDebugAuthState.auth = update.auth ?? githubDebugAuthState.auth;
+    githubDebugAuthState.projectPr = update.projectPr ?? githubDebugAuthState.projectPr;
+  };
   const isGitHubAuthUnavailableError = (error: unknown): boolean => {
     const message = formatErrorMessage(error).toLowerCase();
     return (
@@ -1729,7 +1794,14 @@ async function main(): Promise<number> {
           directoryId,
         });
         commandMenuGitHubProjectPrState = parseGitHubProjectPrState(directoryId, result);
-      } catch {
+        setGitHubDebugAuthState({
+          projectPr: 'ok',
+        });
+      } catch (error: unknown) {
+        setGitHubDebugAuthState({
+          projectPr: 'er',
+          auth: isGitHubAuthUnavailableError(error) ? 'no' : githubDebugAuthState.auth,
+        });
         commandMenuGitHubProjectPrState = {
           directoryId,
           branchName: null,
@@ -2928,9 +3000,17 @@ async function main(): Promise<number> {
                 });
               } catch (error: unknown) {
                 if (isGitHubAuthUnavailableError(error)) {
+                  setGitHubDebugAuthState({
+                    auth: 'no',
+                    projectPr: 'er',
+                  });
                   setCommandNotice(githubAuthHintNotice);
                   return;
                 }
+                setGitHubDebugAuthState({
+                  auth: 'er',
+                  projectPr: 'er',
+                });
                 throw error;
               }
               const parsedResult = asRecord(result);
@@ -2939,6 +3019,9 @@ async function main(): Promise<number> {
                 return;
               }
               const state = parseGitHubProjectPrState(directoryId, parsedResult);
+              setGitHubDebugAuthState({
+                projectPr: 'ok',
+              });
               commandMenuGitHubProjectPrState = state;
               if (state.openPrUrl === null) {
                 setCommandNotice('no open pull request for tracked branch');
@@ -2971,9 +3054,15 @@ async function main(): Promise<number> {
                 });
               } catch (error: unknown) {
                 if (isGitHubAuthUnavailableError(error)) {
+                  setGitHubDebugAuthState({
+                    auth: 'no',
+                  });
                   setCommandNotice(githubAuthHintNotice);
                   return;
                 }
+                setGitHubDebugAuthState({
+                  auth: 'er',
+                });
                 throw error;
               }
               const parsedResult = asRecord(result);
@@ -2985,6 +3074,10 @@ async function main(): Promise<number> {
               if (prUrl === null) {
                 throw new Error('github.pr-create returned malformed pr url');
               }
+              setGitHubDebugAuthState({
+                auth: 'ok',
+                projectPr: 'ok',
+              });
               refreshCommandMenuGitHubProjectPrState(directoryId);
               const opened = openUrlInBrowser(prUrl);
               setCommandNotice(
@@ -3093,7 +3186,8 @@ async function main(): Promise<number> {
   >({
     renderFlush: {
       perfNowNs,
-      statusFooterForConversation: (conversation) => debugFooterForConversation(conversation),
+      statusFooterForConversation: (conversation) =>
+        `${formatGitHubDebugTokens(githubDebugAuthState)} ${debugFooterForConversation(conversation)}`,
       currentStatusNotice: () => debugFooterNotice.current(),
       currentStatusRow: () => outputLoadSampler.currentStatusRow(),
       onStatusLineComposed: (input) => {
