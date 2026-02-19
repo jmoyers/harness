@@ -38,8 +38,8 @@ function usage(): string {
   return [
     'Usage: bun run release [--version <semver>] [--bump <major|minor|patch>] [--skip-verify] [--branch <name>] [--remote <name>] [--allow-dirty]',
     '',
-    'Creates and pushes a SemVer tag that triggers GitHub release automation.',
-    'Default tag source is package.json version (prefixed with "v").',
+    'Bumps package.json version, commits, and pushes a SemVer tag that triggers GitHub release automation.',
+    'Default release bump is patch (prefixed tag format: "v<version>").',
   ].join('\n');
 }
 
@@ -177,13 +177,12 @@ function readPackageVersion(runtime: ReleaseRuntime): string {
 }
 
 function resolveReleaseTag(options: ReleaseOptions, runtime: ReleaseRuntime): string {
-  if (options.bump !== null) {
-    return normalizeSemverTag(bumpSemverVersion(readPackageVersion(runtime), options.bump));
-  }
   if (options.version !== null) {
     return normalizeSemverTag(options.version);
   }
-  return normalizeSemverTag(readPackageVersion(runtime));
+  const currentVersion = readPackageVersion(runtime);
+  const bumpLevel = options.bump ?? 'patch';
+  return normalizeSemverTag(bumpSemverVersion(currentVersion, bumpLevel));
 }
 
 function quoteArg(value: string): string {
@@ -249,12 +248,13 @@ function executeRelease(options: ReleaseOptions, runtime: ReleaseRuntime): strin
   }
   runStep('git', ['checkout', options.branch]);
   runStep('git', ['pull', '--ff-only', options.remote, options.branch]);
+  const previousVersion = readPackageVersion(runtime);
   const tag = resolveReleaseTag(options, runtime);
   runtime.stdout(`release tag: ${tag}\n`);
   ensureTagDoesNotExist(tag, options.remote, runtime);
-  if (options.bump !== null) {
-    const previousVersion = readPackageVersion(runtime);
-    runtime.stdout(`bump package version: ${previousVersion} -> ${tag.slice(1)}\n`);
+  const targetVersion = tag.slice(1);
+  if (previousVersion !== targetVersion) {
+    runtime.stdout(`bump package version: ${previousVersion} -> ${targetVersion}\n`);
     updatePackageVersion(tag, runtime);
     runStep('git', ['add', 'package.json']);
     runStep('git', ['commit', '-m', `chore: release ${tag}`]);

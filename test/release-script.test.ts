@@ -181,7 +181,7 @@ void test('release script resolves tag from package version or explicit override
       },
       runtime,
     ),
-    'v2.3.4',
+    'v2.3.5',
   );
   assert.equal(
     __releaseInternals.resolveReleaseTag(
@@ -210,6 +210,26 @@ void test('release script resolves tag from package version or explicit override
       runtime,
     ),
     'v2.4.0',
+  );
+});
+
+void test('release script default flow computes a patch bump tag', () => {
+  const { runtime } = createRuntime({
+    fileText: JSON.stringify({ version: '1.9.9' }),
+  });
+  assert.equal(
+    __releaseInternals.resolveReleaseTag(
+      {
+        version: null,
+        bump: null,
+        skipVerify: false,
+        branch: 'main',
+        remote: 'origin',
+        allowDirty: false,
+      },
+      runtime,
+    ),
+    'v1.9.10',
   );
 });
 
@@ -248,10 +268,10 @@ void test('release script guards against duplicate local and remote tags', () =>
   );
 });
 
-void test('release script executes verify checkout pull tag push sequence', () => {
+void test('release script default flow executes verify, bump commit, and tag sequence', () => {
   const statusKey = ['git', 'status', '--porcelain'].join('\u0000');
-  const localTagKey = ['git', 'tag', '--list', 'v0.1.0'].join('\u0000');
-  const remoteTagKey = ['git', 'ls-remote', '--tags', 'origin', 'refs/tags/v0.1.0'].join('\u0000');
+  const localTagKey = ['git', 'tag', '--list', 'v0.1.1'].join('\u0000');
+  const remoteTagKey = ['git', 'ls-remote', '--tags', 'origin', 'refs/tags/v0.1.1'].join('\u0000');
   const { runtime, runtimeState } = createRuntime({
     captures: new Map<string, string>([
       [statusKey, ''],
@@ -272,20 +292,26 @@ void test('release script executes verify checkout pull tag push sequence', () =
     runtime,
   );
 
-  assert.equal(tag, 'v0.1.0');
+  assert.equal(tag, 'v0.1.1');
+  assert.equal(runtimeState.writeCalls.length, 1);
+  const updated = JSON.parse(runtimeState.fileText) as Record<string, unknown>;
+  assert.equal(updated.version, '0.1.1');
   assert.deepEqual(runtimeState.runCalls, [
     ['bun', 'run', 'verify'].join('\u0000'),
     ['git', 'checkout', 'main'].join('\u0000'),
     ['git', 'pull', '--ff-only', 'origin', 'main'].join('\u0000'),
-    ['git', 'tag', '-a', 'v0.1.0', '-m', 'v0.1.0'].join('\u0000'),
-    ['git', 'push', 'origin', 'v0.1.0'].join('\u0000'),
+    ['git', 'add', 'package.json'].join('\u0000'),
+    ['git', 'commit', '-m', 'chore: release v0.1.1'].join('\u0000'),
+    ['git', 'push', 'origin', 'main'].join('\u0000'),
+    ['git', 'tag', '-a', 'v0.1.1', '-m', 'v0.1.1'].join('\u0000'),
+    ['git', 'push', 'origin', 'v0.1.1'].join('\u0000'),
   ]);
 });
 
 void test('release script skip-verify omits quality gate execution', () => {
   const statusKey = ['git', 'status', '--porcelain'].join('\u0000');
-  const localTagKey = ['git', 'tag', '--list', 'v0.2.0'].join('\u0000');
-  const remoteTagKey = ['git', 'ls-remote', '--tags', 'origin', 'refs/tags/v0.2.0'].join('\u0000');
+  const localTagKey = ['git', 'tag', '--list', 'v0.2.1'].join('\u0000');
+  const remoteTagKey = ['git', 'ls-remote', '--tags', 'origin', 'refs/tags/v0.2.1'].join('\u0000');
   const { runtime, runtimeState } = createRuntime({
     fileText: JSON.stringify({ version: '0.2.0' }),
     captures: new Map<string, string>([
@@ -310,8 +336,11 @@ void test('release script skip-verify omits quality gate execution', () => {
   assert.deepEqual(runtimeState.runCalls, [
     ['git', 'checkout', 'main'].join('\u0000'),
     ['git', 'pull', '--ff-only', 'origin', 'main'].join('\u0000'),
-    ['git', 'tag', '-a', 'v0.2.0', '-m', 'v0.2.0'].join('\u0000'),
-    ['git', 'push', 'origin', 'v0.2.0'].join('\u0000'),
+    ['git', 'add', 'package.json'].join('\u0000'),
+    ['git', 'commit', '-m', 'chore: release v0.2.1'].join('\u0000'),
+    ['git', 'push', 'origin', 'main'].join('\u0000'),
+    ['git', 'tag', '-a', 'v0.2.1', '-m', 'v0.2.1'].join('\u0000'),
+    ['git', 'push', 'origin', 'v0.2.1'].join('\u0000'),
   ]);
 });
 
