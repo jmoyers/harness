@@ -72,6 +72,7 @@ When upgrading from a workspace-local `.harness`, Harness automatically migrates
 
 Common customizations:
 
+- Set `gateway.host` to bind/connect the gateway on a custom host/IP.
 - Set install commands for `codex`, `claude`, `cursor`, and `critique`.
 - Configure critique launch defaults.
 - Customize keybindings.

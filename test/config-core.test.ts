@@ -267,6 +267,26 @@ void test('parseHarnessConfigText falls back for invalid root shapes', () => {
   });
 });
 
+void test('parseHarnessConfigText normalizes gateway host and falls back for invalid values', () => {
+  const parsed = parseHarnessConfigText(`
+    {
+      "gateway": {
+        "host": " 192.168.1.50 "
+      }
+    }
+  `);
+  assert.equal(parsed.gateway.host, '192.168.1.50');
+
+  const invalid = parseHarnessConfigText(`
+    {
+      "gateway": {
+        "host": "   "
+      }
+    }
+  `);
+  assert.equal(invalid.gateway.host, DEFAULT_HARNESS_CONFIG.gateway.host);
+});
+
 void test('resolveHarnessConfigPath resolves XDG and HOME user config directories', () => {
   const xdgEnv: NodeJS.ProcessEnv = {
     XDG_CONFIG_HOME: '/tmp/xdg-home',

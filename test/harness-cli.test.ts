@@ -970,6 +970,53 @@ void test('harness default client auto-starts detached gateway and leaves it run
   }
 });
 
+void test('harness default client uses gateway.host from harness config for gateway and mux connection', async () => {
+  const workspace = createWorkspace();
+  const port = await reservePort();
+  const muxArgsPath = join(workspaceRuntimeRoot(workspace), 'mux-config-host-args.json');
+  const muxStubPath = join(workspace, 'mux-config-host-stub.js');
+  const recordPath = join(workspaceRuntimeRoot(workspace), 'gateway.json');
+  writeWorkspaceHarnessConfig(workspace, {
+    gateway: {
+      host: 'localhost',
+    },
+  });
+  writeFileSync(
+    muxStubPath,
+    [
+      "import { writeFileSync } from 'node:fs';",
+      'const target = process.env.HARNESS_TEST_MUX_ARGS_PATH;',
+      "if (typeof target === 'string' && target.length > 0) {",
+      "  writeFileSync(target, JSON.stringify(process.argv.slice(2)), 'utf8');",
+      '}',
+    ].join('\n'),
+    'utf8',
+  );
+  const env = {
+    HARNESS_CONTROL_PLANE_PORT: String(port),
+    HARNESS_MUX_SCRIPT_PATH: muxStubPath,
+    HARNESS_TEST_MUX_ARGS_PATH: muxArgsPath,
+  };
+  try {
+    const clientResult = await runHarness(workspace, [], env);
+    assert.equal(clientResult.code, 0);
+    assert.equal(existsSync(recordPath), true);
+    assert.equal(existsSync(muxArgsPath), true);
+
+    const record = parseGatewayRecordText(readFileSync(recordPath, 'utf8'));
+    assert.notEqual(record, null);
+    assert.equal(record?.host, 'localhost');
+
+    const muxArgs = JSON.parse(readFileSync(muxArgsPath, 'utf8')) as string[];
+    const hostFlagIndex = muxArgs.indexOf('--harness-server-host');
+    assert.notEqual(hostFlagIndex, -1);
+    assert.equal(muxArgs[hostFlagIndex + 1], 'localhost');
+  } finally {
+    void runHarness(workspace, ['gateway', 'stop', '--force'], env).catch(() => undefined);
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 void test('harness gateway run applies inspect runtime args from harness config', async () => {
   const workspace = createWorkspace();
   const daemonStubPath = join(workspace, 'daemon-inspect-stub.js');

@@ -751,6 +751,8 @@ Design constraints:
 - GitHub sync policy is config-governed under `github.*`:
   - `enabled` defaults to `true`
   - `apiBaseUrl`, `tokenEnvVar`, `pollMs`, `maxConcurrency`, `branchStrategy`, and optional `viewerLogin` are normalized by `config-core`
+- Gateway host policy is config-governed under `gateway.host`:
+  - defaults to loopback (`127.0.0.1`) and is used by `harness` gateway/client startup when no explicit `--host` override is provided
 - Launch policy is config-governed under each provider section:
   - `codex.launch`, `claude.launch`, and `cursor.launch`
   - each supports `defaultMode` (`yolo` or `standard`) as the fallback for all directories

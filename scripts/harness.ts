@@ -663,6 +663,14 @@ function resolveInspectRuntimeOptions(invocationDirectory: string): RuntimeInspe
   };
 }
 
+function resolveGatewayHostFromConfigOrEnv(
+  invocationDirectory: string,
+  env: NodeJS.ProcessEnv,
+): string {
+  const loadedConfig = loadHarnessConfig({ cwd: invocationDirectory, env });
+  return normalizeGatewayHost(env.HARNESS_CONTROL_PLANE_HOST ?? loadedConfig.config.gateway.host);
+}
+
 function removeFileIfExists(filePath: string): void {
   try {
     unlinkSync(filePath);
@@ -1704,7 +1712,7 @@ function resolveGatewaySettings(
   defaultStateDbPath: string,
 ): ResolvedGatewaySettings {
   const host = normalizeGatewayHost(
-    overrides.host ?? record?.host ?? env.HARNESS_CONTROL_PLANE_HOST,
+    overrides.host ?? record?.host ?? resolveGatewayHostFromConfigOrEnv(invocationDirectory, env),
   );
   const port = normalizeGatewayPort(
     overrides.port ?? record?.port ?? env.HARNESS_CONTROL_PLANE_PORT,
@@ -2492,7 +2500,7 @@ async function runProfileRun(
         removeGatewayRecord(sessionPaths.recordPath);
       }
 
-      const host = normalizeGatewayHost(process.env.HARNESS_CONTROL_PLANE_HOST);
+      const host = resolveGatewayHostFromConfigOrEnv(invocationDirectory, process.env);
       const reservedPort = await reservePort(host);
       const settings = resolveGatewaySettings(
         invocationDirectory,

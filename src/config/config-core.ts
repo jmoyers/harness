@@ -84,6 +84,10 @@ interface HarnessGitHubConfig {
   readonly viewerLogin: string | null;
 }
 
+interface HarnessGatewayConfig {
+  readonly host: string;
+}
+
 interface HarnessPerfConfig {
   readonly enabled: boolean;
   readonly filePath: string;
@@ -220,6 +224,7 @@ interface HarnessConfig {
   readonly configVersion: number;
   readonly mux: HarnessMuxConfig;
   readonly github: HarnessGitHubConfig;
+  readonly gateway: HarnessGatewayConfig;
   readonly debug: HarnessDebugConfig;
   readonly codex: HarnessCodexConfig;
   readonly claude: HarnessClaudeConfig;
@@ -263,6 +268,9 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
     maxConcurrency: 1,
     branchStrategy: 'pinned-then-current',
     viewerLogin: null,
+  },
+  gateway: {
+    host: '127.0.0.1',
   },
   debug: {
     enabled: true,
@@ -677,6 +685,16 @@ function normalizeGitHubConfig(input: unknown): HarnessGitHubConfig {
     ),
     branchStrategy: normalizeGitHubBranchStrategy(record['branchStrategy']),
     viewerLogin,
+  };
+}
+
+function normalizeGatewayConfig(input: unknown): HarnessGatewayConfig {
+  const record = asRecord(input);
+  if (record === null) {
+    return DEFAULT_HARNESS_CONFIG.gateway;
+  }
+  return {
+    host: normalizeHost(record['host'], DEFAULT_HARNESS_CONFIG.gateway.host),
   };
 }
 
@@ -1372,6 +1390,7 @@ export function parseHarnessConfigText(text: string): HarnessConfig {
 
   const mux = asRecord(migratedRoot['mux']);
   const github = normalizeGitHubConfig(migratedRoot['github']);
+  const gateway = normalizeGatewayConfig(migratedRoot['gateway']);
   const legacyPerf = normalizePerfConfig(migratedRoot['perf']);
   const debug = normalizeDebugConfig(migratedRoot['debug'], legacyPerf);
   const codex = normalizeCodexConfig(migratedRoot['codex']);
@@ -1388,6 +1407,7 @@ export function parseHarnessConfigText(text: string): HarnessConfig {
       git: mux === null ? DEFAULT_HARNESS_CONFIG.mux.git : normalizeMuxGitConfig(mux['git']),
     },
     github,
+    gateway,
     debug,
     codex,
     claude,

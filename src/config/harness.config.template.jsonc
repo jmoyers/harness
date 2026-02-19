@@ -27,6 +27,9 @@
     "branchStrategy": "pinned-then-current",
     "viewerLogin": null,
   },
+  "gateway": {
+    "host": "127.0.0.1",
+  },
   "debug": {
     "enabled": true,
     "overwriteArtifactsOnStart": true,
