@@ -71,6 +71,7 @@ interface BuildRailModelArgs {
   readonly projectSelectionEnabled: boolean;
   readonly repositorySelectionEnabled: boolean;
   readonly homeSelectionEnabled: boolean;
+  readonly tasksSelectionEnabled?: boolean;
   readonly repositoriesCollapsed: boolean;
   readonly collapsedRepositoryGroupIds: ReadonlySet<string>;
   readonly shortcutsCollapsed: boolean;
@@ -222,6 +223,7 @@ export function buildRailModel(args: BuildRailModelArgs): WorkspaceRailModel {
     projectSelectionEnabled: args.projectSelectionEnabled,
     repositorySelectionEnabled: args.repositorySelectionEnabled,
     homeSelectionEnabled: args.homeSelectionEnabled,
+    tasksSelectionEnabled: args.tasksSelectionEnabled ?? false,
     repositoriesCollapsed: args.repositoriesCollapsed,
     collapsedRepositoryGroupIds: [...args.collapsedRepositoryGroupIds],
     processes: [],

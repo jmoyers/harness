@@ -2306,6 +2306,17 @@ async function main(): Promise<number> {
     markDirty();
   };
 
+  const enterTasksPane = (): void => {
+    workspace.enterTasksPane();
+    workspace.selection = null;
+    workspace.selectionDrag = null;
+    releaseViewportPinForSelection();
+    syncTaskPaneSelection();
+    syncTaskPaneRepositorySelection();
+    screen.resetFrameCache();
+    markDirty();
+  };
+
   const taskPlanningHydrationService = new TaskPlanningHydrationService<
     ControlPlaneRepositoryRecord,
     ControlPlaneTaskRecord
@@ -3649,6 +3660,7 @@ async function main(): Promise<number> {
     toggleCommandMenu,
     firstDirectoryForRepositoryGroup,
     enterHomePane,
+    enterTasksPane,
     enterProjectPane,
     queuePersistMuxUiState,
     repositoryGroupIdForDirectory,

@@ -49,6 +49,7 @@ interface RuntimeInputRouterOptions {
   readonly openNewThreadPrompt: RuntimeRailInputOptions['openNewThreadPrompt'];
   readonly firstDirectoryForRepositoryGroup: RuntimeRailInputOptions['firstDirectoryForRepositoryGroup'];
   readonly enterHomePane: RuntimeRailInputOptions['enterHomePane'];
+  readonly enterTasksPane?: RuntimeRailInputOptions['enterTasksPane'];
   readonly enterProjectPane: RuntimeRailInputOptions['enterProjectPane'];
   readonly queuePersistMuxUiState: RuntimeRailInputOptions['queuePersistMuxUiState'];
   readonly repositoryGroupIdForDirectory: RuntimeRailInputOptions['repositoryGroupIdForDirectory'];
@@ -155,6 +156,11 @@ export class RuntimeInputRouter {
       beginConversationTitleEdit: options.beginConversationTitleEdit,
       resetConversationPaneFrameCache: options.resetConversationPaneFrameCache,
       conversationTitleEditDoubleClickWindowMs: options.conversationTitleEditDoubleClickWindowMs,
+      ...(options.enterTasksPane === undefined
+        ? {}
+        : {
+            enterTasksPane: options.enterTasksPane,
+          }),
     };
     this.railInput = new RuntimeRailInput(runtimeRailOptions);
     this.mainPaneInput = new RuntimeMainPaneInput({

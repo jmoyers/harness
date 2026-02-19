@@ -930,6 +930,7 @@ void test('dismissModalOnOutsideClick handles no-escape, null-overlay, and point
 
 void test('left-nav helpers build stable target keys and dedupe visible targets', () => {
   assert.equal(leftNavTargetKey({ kind: 'home' }), 'home');
+  assert.equal(leftNavTargetKey({ kind: 'tasks' }), 'tasks');
   assert.equal(
     leftNavTargetKey({ kind: 'repository', repositoryId: 'repo-a' }),
     'repository:repo-a',
@@ -949,6 +950,16 @@ void test('left-nav helpers build stable target keys and dedupe visible targets'
       directoryKey: null,
       repositoryId: null,
       railAction: 'home.open',
+      conversationStatus: null,
+    },
+    {
+      kind: 'dir-header',
+      text: 'tasks',
+      active: false,
+      conversationSessionId: null,
+      directoryKey: null,
+      repositoryId: null,
+      railAction: 'tasks.open',
       conversationStatus: null,
     },
     {
@@ -1015,6 +1026,7 @@ void test('left-nav helpers build stable target keys and dedupe visible targets'
 
   assert.deepEqual(visibleLeftNavTargets(rows as unknown as RailRows), [
     { kind: 'home' },
+    { kind: 'tasks' },
     { kind: 'repository', repositoryId: 'repo-a' },
     { kind: 'project', directoryId: 'dir-a' },
     { kind: 'conversation', sessionId: 'session-a' },

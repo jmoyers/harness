@@ -34,6 +34,7 @@ interface RuntimeNavigationInputOptions {
   readonly queueControlPlaneOp: (task: () => Promise<void>, label: string) => void;
   readonly firstDirectoryForRepositoryGroup: (repositoryGroupId: string) => string | null;
   readonly enterHomePane: () => void;
+  readonly enterTasksPane?: () => void;
   readonly enterProjectPane: (directoryId: string) => void;
   readonly markDirty: () => void;
   readonly conversations: ReadonlyMap<
@@ -118,6 +119,11 @@ export class RuntimeNavigationInput {
         await options.workspaceActions.activateConversation(sessionId);
       },
       conversationsHas: options.conversationsHas,
+      ...(options.enterTasksPane === undefined
+        ? {}
+        : {
+            enterTasksPane: options.enterTasksPane,
+          }),
     });
 
     this.repositoryFoldInput = createRepositoryFoldInput({

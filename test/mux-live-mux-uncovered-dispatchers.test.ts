@@ -460,6 +460,9 @@ void test('left-nav activation routes targets and cycle helper handles empty/nor
     enterHomePane: () => {
       calls.push('enterHomePane');
     },
+    enterTasksPane: () => {
+      calls.push('enterTasksPane');
+    },
     firstDirectoryForRepositoryGroup: (repositoryGroupId: string) =>
       repositoryGroupId === 'repo-a' ? 'dir-a' : null,
     enterProjectPane: (directoryId: string) => {
@@ -491,6 +494,12 @@ void test('left-nav activation routes targets and cycle helper handles empty/nor
   };
 
   activateLeftNavTarget({ ...common, target: { kind: 'home' } });
+  activateLeftNavTarget({ ...common, target: { kind: 'tasks' } });
+  activateLeftNavTarget({
+    ...common,
+    enterTasksPane: undefined,
+    target: { kind: 'tasks' },
+  });
   activateLeftNavTarget({ ...common, target: { kind: 'repository', repositoryId: 'repo-a' } });
   activateLeftNavTarget({ ...common, target: { kind: 'repository', repositoryId: 'repo-empty' } });
   activateLeftNavTarget({ ...common, target: { kind: 'project', directoryId: 'dir-a' } });
@@ -505,6 +514,7 @@ void test('left-nav activation routes targets and cycle helper handles empty/nor
     await queued.shift()?.();
   }
   assert.equal(calls.includes('enterHomePane'), true);
+  assert.equal(calls.includes('enterTasksPane'), true);
   assert.equal(calls.includes('enterProjectPane:dir-a'), true);
   assert.equal(calls.includes('setMainPaneProjectMode'), true);
   assert.equal(calls.includes('selectLeftNavRepository:repo-a'), true);
@@ -539,6 +549,23 @@ void test('left-nav activation routes targets and cycle helper handles empty/nor
     true,
   );
   assert.deepEqual(activated, ['project:next']);
+  activated.length = 0;
+  assert.equal(
+    cycleLeftNavSelection({
+      visibleTargets: [
+        { kind: 'home' },
+        { kind: 'tasks' },
+        { kind: 'project', directoryId: 'dir-a' },
+      ],
+      currentSelection: { kind: 'home' },
+      direction: 'next',
+      activateTarget: (target, direction) => {
+        activated.push(`${target.kind}:${direction}`);
+      },
+    }),
+    true,
+  );
+  assert.deepEqual(activated, ['tasks:next']);
 
   let flip = false;
   const unstable = {
@@ -644,6 +671,7 @@ void test('left-rail action click routes all supported actions and default false
     'repository.toggle',
     'repositories.toggle',
     'home.open',
+    'tasks.open',
     'project.close',
     'shortcuts.toggle',
   ] as const;
@@ -664,6 +692,20 @@ void test('left-rail action click routes all supported actions and default false
   assert.equal(calls.includes('enterHomePane'), true);
   assert.equal(calls.includes('queueCloseDirectory:dir-a'), true);
   assert.equal(calls.includes('toggleShortcutsCollapsed'), true);
+  calls.length = 0;
+  assert.equal(
+    handleLeftRailActionClick({
+      ...base,
+      action: 'tasks.open',
+      enterTasksPane: () => {
+        calls.push('enterTasksPane');
+      },
+    }),
+    true,
+  );
+  assert.equal(calls.includes('enterTasksPane'), true);
+  assert.equal(calls.includes('enterHomePane'), false);
+  calls.length = 0;
 
   calls.length = 0;
   assert.equal(

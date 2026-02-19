@@ -35,6 +35,7 @@ interface RuntimeRailInputOptions {
   readonly toggleCommandMenu: () => void;
   readonly firstDirectoryForRepositoryGroup: (repositoryGroupId: string) => string | null;
   readonly enterHomePane: () => void;
+  readonly enterTasksPane?: () => void;
   readonly enterProjectPane: (directoryId: string) => void;
   readonly markDirty: () => void;
   readonly queuePersistMuxUiState: () => void;
@@ -159,6 +160,11 @@ export class RuntimeRailInput {
       chordTimeoutMs: options.chordTimeoutMs,
       collapseAllChordPrefix: options.collapseAllChordPrefix,
       nowMs,
+      ...(options.enterTasksPane === undefined
+        ? {}
+        : {
+            enterTasksPane: options.enterTasksPane,
+          }),
     };
     this.navigationInput = createRuntimeNavigationInput(runtimeNavigationOptions);
 
@@ -249,6 +255,11 @@ export class RuntimeRailInput {
       directoriesHas: options.directoriesHas,
       enterProjectPane: options.enterProjectPane,
       markDirty: options.markDirty,
+      ...(options.enterTasksPane === undefined
+        ? {}
+        : {
+            enterTasksPane: options.enterTasksPane,
+          }),
     });
   }
 

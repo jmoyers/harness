@@ -14,6 +14,9 @@ interface RuntimeWorkspaceStateLike {
         kind: 'home';
       }
     | {
+        kind: 'tasks';
+      }
+    | {
         kind: 'project';
         directoryId: string;
       }

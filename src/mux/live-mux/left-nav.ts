@@ -5,6 +5,9 @@ export type LeftNavSelection =
       readonly kind: 'home';
     }
   | {
+      readonly kind: 'tasks';
+    }
+  | {
       readonly kind: 'repository';
       readonly repositoryId: string;
     }
@@ -20,6 +23,9 @@ export type LeftNavSelection =
 export function leftNavTargetKey(target: LeftNavSelection): string {
   if (target.kind === 'home') {
     return 'home';
+  }
+  if (target.kind === 'tasks') {
+    return 'tasks';
   }
   if (target.kind === 'repository') {
     return `repository:${target.repositoryId}`;
@@ -41,6 +47,11 @@ function leftNavTargetFromRow(
   if (row.railAction === 'home.open') {
     return {
       kind: 'home',
+    };
+  }
+  if (row.railAction === 'tasks.open') {
+    return {
+      kind: 'tasks',
     };
   }
   if (row.kind === 'repository-header' && row.repositoryId !== null) {

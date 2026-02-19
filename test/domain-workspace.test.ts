@@ -86,6 +86,9 @@ void test('workspace model left-nav transition methods own state updates', () =>
   workspace.selectLeftNavHome();
   assert.deepEqual(workspace.leftNavSelection, { kind: 'home' });
 
+  workspace.selectLeftNavTasks();
+  assert.deepEqual(workspace.leftNavSelection, { kind: 'tasks' });
+
   workspace.selectLeftNavRepository('repo-a');
   assert.deepEqual(workspace.leftNavSelection, {
     kind: 'repository',
@@ -176,6 +179,49 @@ void test('workspace model pane transition methods own project/home state update
   assert.equal(workspace.mainPaneMode, 'home');
   assert.deepEqual(workspace.leftNavSelection, {
     kind: 'home',
+  });
+  assert.equal(workspace.projectPaneSnapshot, null);
+  assert.equal(workspace.projectPaneScrollTop, 0);
+  assert.equal(workspace.taskPaneScrollTop, 0);
+  assert.equal(workspace.taskPaneNotice, null);
+  assert.equal(workspace.taskRepositoryDropdownOpen, false);
+  assert.equal(workspace.homePaneDragState, null);
+  assert.equal(workspace.taskPaneTaskEditClickState, null);
+  assert.equal(workspace.taskPaneRepositoryEditClickState, null);
+
+  workspace.homePaneDragState = {
+    kind: 'repository',
+    itemId: 'repo-1',
+    startedRowIndex: 2,
+    latestRowIndex: 3,
+    hasDragged: true,
+  };
+  workspace.taskPaneTaskEditClickState = {
+    entityId: 'task-2',
+    atMs: 3,
+  };
+  workspace.taskPaneRepositoryEditClickState = {
+    entityId: 'repo-2',
+    atMs: 4,
+  };
+  workspace.taskPaneScrollTop = 7;
+  workspace.taskPaneNotice = 'notice-2';
+  workspace.taskRepositoryDropdownOpen = true;
+  workspace.projectPaneSnapshot = {
+    directoryId: 'dir-b',
+    path: '/repo/dir-b',
+    lines: [],
+    actionLineIndexByKind: {
+      conversationNew: 0,
+      projectClose: 1,
+    },
+  };
+  workspace.projectPaneScrollTop = 11;
+
+  workspace.enterTasksPane();
+  assert.equal(workspace.mainPaneMode, 'home');
+  assert.deepEqual(workspace.leftNavSelection, {
+    kind: 'tasks',
   });
   assert.equal(workspace.projectPaneSnapshot, null);
   assert.equal(workspace.projectPaneScrollTop, 0);

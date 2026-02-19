@@ -117,6 +117,12 @@ export class WorkspaceModel {
     };
   }
 
+  selectLeftNavTasks(): void {
+    this.leftNavSelection = {
+      kind: 'tasks',
+    };
+  }
+
   selectLeftNavRepository(repositoryGroupId: string): void {
     this.activeRepositorySelectionId = repositoryGroupId;
     this.leftNavSelection = {
@@ -153,6 +159,19 @@ export class WorkspaceModel {
   enterHomePane(): void {
     this.mainPaneMode = 'home';
     this.selectLeftNavHome();
+    this.projectPaneSnapshot = null;
+    this.projectPaneScrollTop = 0;
+    this.taskPaneScrollTop = 0;
+    this.taskPaneNotice = null;
+    this.taskRepositoryDropdownOpen = false;
+    this.taskPaneTaskEditClickState = null;
+    this.taskPaneRepositoryEditClickState = null;
+    this.homePaneDragState = null;
+  }
+
+  enterTasksPane(): void {
+    this.mainPaneMode = 'home';
+    this.selectLeftNavTasks();
     this.projectPaneSnapshot = null;
     this.projectPaneScrollTop = 0;
     this.taskPaneScrollTop = 0;

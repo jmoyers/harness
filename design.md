@@ -278,7 +278,7 @@ Pass-through stream invariants:
 - Clients do zero status interpretation and zero fallback synthesis: mux/API consumers render the emitted `statusModel` exactly as provided by the gateway (including explicit `null`).
 - Left-rail status detail rendering is intentionally suppressed when `statusModel` is `null` (notably `terminal` and `critique` threads); those rows still render a fixed one-cell type glyph (`⌨` for terminal, `✎` for critique) so thread-title icon alignment stays stable.
 - Mux exposes a dedicated conversation interrupt action (`mux.conversation.interrupt`) mapped to control-plane `session.interrupt` for parity-safe thread interruption without quitting the client.
-- The left rail treats Home as a first-class selectable entry (directory-style block with its own emoji) and renders a `[tasks]` row directly under Home that opens the same pane; `ctrl+j/k` cycles visible left-nav selection in visual order: Home -> repository group -> project header -> project threads -> next visible item.
+- The left rail treats Home as a first-class selectable entry (directory-style block with its own emoji) and renders a dedicated `🗂 tasks` row directly under Home that opens the same pane in task-focused mode; `ctrl+j/k` cycles visible left-nav selection in visual order: Home -> Tasks -> repository group -> project header -> project threads -> next visible item.
 - Repository/task planning is exposed through a dedicated Home entry in the left rail; Home unifies repository and task CRUD in one scrollable right-pane view while control-plane repository/task commands and subscriptions remain the source of truth.
 - Active project directories are scraped for GitHub remotes at startup/refresh; remotes are normalized and deduped, auto-upserted into canonical repository records, and reused for rail grouping.
 - Gateway-side GitHub sync persists PR records + per-PR CI job records and emits realtime observed events (`github-pr-upserted`, `github-pr-closed`, `github-pr-jobs-updated`) so UI/API clients stay live without polling their own GitHub state.
@@ -778,7 +778,7 @@ Design constraints:
 ### TUI (v1)
 
 - Core requirements:
-  - left rail: Home -> repository-group tree -> projects -> conversations, with per-repository collapse and untracked grouping
+  - left rail: Home -> Tasks -> repository-group tree -> projects -> conversations, with per-repository collapse and untracked grouping
   - right pane: active live steerable PTY session
   - left-rail activation via keyboard and mouse with deterministic row hit-testing
   - normalized action-oriented conversation status labels (`starting`, `needs action`, `working`, `idle`, `exited`)
@@ -802,7 +802,7 @@ Target layout sketch:
 ```txt
 ┌───────────────────────────────┬──────────────────────────────────────────────────────┐
 │  ├─ 🏠 home                   │  Active Conversation PTY                             │
-│  │  [tasks]                   │                                                      │
+│  │  └─ 🗂 tasks               │                                                      │
 │  ├─ 📁 harness (3,2) [-]      │  (Codex / terminal shell / vim passthrough)         │
 │  │  ├─ 📁 api (main:+4,-1)    │                                                      │
 │  │  │  ├─ ◆ codex - auth      │                                                      │

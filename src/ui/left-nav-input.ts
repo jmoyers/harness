@@ -12,6 +12,7 @@ interface LeftNavInputOptions {
   readonly getLatestRailRows: () => ReturnType<typeof buildWorkspaceRailViewRows>;
   readonly getCurrentSelection: () => LeftNavSelection;
   readonly enterHomePane: () => void;
+  readonly enterTasksPane?: () => void;
   readonly firstDirectoryForRepositoryGroup: (repositoryGroupId: string) => string | null;
   readonly enterProjectPane: (directoryId: string) => void;
   readonly setMainPaneProjectMode: () => void;
@@ -66,6 +67,11 @@ export class LeftNavInput {
       queueControlPlaneOp: this.options.queueControlPlaneOp,
       activateConversation: this.options.activateConversation,
       conversationsHas: this.options.conversationsHas,
+      ...(this.options.enterTasksPane === undefined
+        ? {}
+        : {
+            enterTasksPane: this.options.enterTasksPane,
+          }),
     });
   }
 

@@ -837,9 +837,9 @@ void test('workspace rail model renders home as a selectable directory-style blo
   assert.equal(homeHeaderIndex >= 0, true);
   assert.equal(rows[homeHeaderIndex]?.active, true);
   assert.equal(rows[homeHeaderIndex]?.railAction, 'home.open');
-  assert.equal(rows[homeHeaderIndex + 1]?.kind, 'action');
-  assert.equal(rows[homeHeaderIndex + 1]?.text.includes('[tasks]'), true);
-  assert.equal(rows[homeHeaderIndex + 1]?.railAction, 'home.open');
+  assert.equal(rows[homeHeaderIndex + 1]?.kind, 'dir-header');
+  assert.equal(rows[homeHeaderIndex + 1]?.text.includes('🗂 tasks'), true);
+  assert.equal(rows[homeHeaderIndex + 1]?.railAction, 'tasks.open');
   assert.equal(rows[homeHeaderIndex + 2]?.kind, 'repository-header');
   assert.equal(
     rows.some((row) => row.kind === 'conversation-title' && row.active),

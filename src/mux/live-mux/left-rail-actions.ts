@@ -18,6 +18,7 @@ interface HandleLeftRailActionClickOptions {
   expandAllRepositoryGroups: () => void;
   collapseAllRepositoryGroups: () => void;
   enterHomePane: () => void;
+  enterTasksPane?: () => void;
   queueCloseDirectory: (directoryId: string) => void;
   toggleShortcutsCollapsed: () => void;
   markDirty: () => void;
@@ -96,6 +97,16 @@ export function handleLeftRailActionClick(options: HandleLeftRailActionClickOpti
   if (options.action === 'home.open') {
     options.clearConversationTitleEditClickState();
     options.enterHomePane();
+    options.markDirty();
+    return true;
+  }
+  if (options.action === 'tasks.open') {
+    options.clearConversationTitleEditClickState();
+    if (options.enterTasksPane !== undefined) {
+      options.enterTasksPane();
+    } else {
+      options.enterHomePane();
+    }
     options.markDirty();
     return true;
   }

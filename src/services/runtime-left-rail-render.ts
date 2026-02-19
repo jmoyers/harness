@@ -44,6 +44,7 @@ interface LeftRailPaneLike<
     projectSelectionEnabled: boolean;
     repositorySelectionEnabled: boolean;
     homeSelectionEnabled: boolean;
+    tasksSelectionEnabled: boolean;
     repositoriesCollapsed: boolean;
     collapsedRepositoryGroupIds: ReadonlySet<string>;
     shortcutsCollapsed: boolean;
@@ -146,6 +147,7 @@ export class RuntimeLeftRailRender<
       projectSelectionEnabled: this.options.workspace.leftNavSelection.kind === 'project',
       repositorySelectionEnabled: this.options.workspace.leftNavSelection.kind === 'repository',
       homeSelectionEnabled: this.options.workspace.leftNavSelection.kind === 'home',
+      tasksSelectionEnabled: this.options.workspace.leftNavSelection.kind === 'tasks',
       repositoriesCollapsed: this.options.workspace.repositoriesCollapsed,
       collapsedRepositoryGroupIds:
         this.options.repositoryManager.readonlyCollapsedRepositoryGroupIds(),

@@ -68,6 +68,7 @@ interface WorkspaceRailModel {
   readonly projectSelectionEnabled?: boolean;
   readonly repositorySelectionEnabled?: boolean;
   readonly homeSelectionEnabled?: boolean;
+  readonly tasksSelectionEnabled?: boolean;
   readonly repositoriesCollapsed?: boolean;
   readonly collapsedRepositoryGroupIds?: readonly string[];
   readonly shortcutHint?: string;
@@ -110,6 +111,7 @@ type WorkspaceRailAction =
   | 'conversation.delete'
   | 'project.add'
   | 'home.open'
+  | 'tasks.open'
   | 'project.close'
   | 'shortcuts.toggle'
   | 'repository.toggle'
@@ -281,6 +283,7 @@ function buildContentRows(
   const rows: WorkspaceRailViewRow[] = [];
   const showTaskPlanningUi = model.showTaskPlanningUi ?? true;
   const homeSelectionEnabled = model.homeSelectionEnabled ?? false;
+  const tasksSelectionEnabled = model.tasksSelectionEnabled ?? false;
   const projectSelectionEnabled = model.projectSelectionEnabled ?? false;
   const repositorySelectionEnabled = model.repositorySelectionEnabled ?? false;
   const collapsedRepositoryGroupIds = new Set(model.collapsedRepositoryGroupIds ?? []);
@@ -367,7 +370,16 @@ function buildContentRows(
 
   if (showTaskPlanningUi) {
     pushRow(rows, 'dir-header', '├─ 🏠 home', homeSelectionEnabled, null, null, null, 'home.open');
-    pushRow(rows, 'action', '│  [tasks]', homeSelectionEnabled, null, null, null, 'home.open');
+    pushRow(
+      rows,
+      'dir-header',
+      '│  └─ 🗂 tasks',
+      tasksSelectionEnabled,
+      null,
+      null,
+      null,
+      'tasks.open',
+    );
   }
 
   if (orderedRepositoryGroupIds.length === 0) {

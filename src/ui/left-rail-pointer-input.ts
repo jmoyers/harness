@@ -34,6 +34,7 @@ interface LeftRailPointerInputOptions {
   readonly expandAllRepositoryGroups: () => void;
   readonly collapseAllRepositoryGroups: () => void;
   readonly enterHomePane: () => void;
+  readonly enterTasksPane?: () => void;
   readonly queueCloseDirectory: (directoryId: string) => void;
   readonly toggleShortcutsCollapsed: () => void;
   readonly previousConversationClickState: () => ConversationTitleClickState | null;
@@ -121,6 +122,11 @@ export class LeftRailPointerInput {
       queueCloseDirectory: this.options.queueCloseDirectory,
       toggleShortcutsCollapsed: this.options.toggleShortcutsCollapsed,
       markDirty: this.options.markDirty,
+      ...(this.options.enterTasksPane === undefined
+        ? {}
+        : {
+            enterTasksPane: this.options.enterTasksPane,
+          }),
     });
   }
 

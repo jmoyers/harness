@@ -5,6 +5,7 @@ interface ActivateLeftNavTargetOptions {
   target: LeftNavSelection;
   direction: 'next' | 'previous';
   enterHomePane: () => void;
+  enterTasksPane?: () => void;
   firstDirectoryForRepositoryGroup: (repositoryGroupId: string) => string | null;
   enterProjectPane: (directoryId: string) => void;
   setMainPaneProjectMode: () => void;
@@ -23,6 +24,7 @@ export function activateLeftNavTarget(options: ActivateLeftNavTargetOptions): vo
     target,
     direction,
     enterHomePane,
+    enterTasksPane,
     firstDirectoryForRepositoryGroup,
     enterProjectPane,
     setMainPaneProjectMode,
@@ -36,6 +38,14 @@ export function activateLeftNavTarget(options: ActivateLeftNavTargetOptions): vo
     conversationsHas,
   } = options;
   if (target.kind === 'home') {
+    enterHomePane();
+    return;
+  }
+  if (target.kind === 'tasks') {
+    if (enterTasksPane !== undefined) {
+      enterTasksPane();
+      return;
+    }
     enterHomePane();
     return;
   }
