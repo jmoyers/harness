@@ -11,7 +11,7 @@ Use it when you want to move faster than a single chat window: keep multiple thr
 - Keep long-running threads alive in the detached gateway so reconnects do not kill work.
 - Open a command palette with `ctrl+p`/`cmd+p`, live-filter registered actions, and execute context-aware thread/project/runtime controls.
 - Open a thread-scoped command palette from left-rail `[+ thread]` (same matcher/autocomplete as `ctrl+p`) to start/install agent CLIs per project.
-- Open `Set a Theme` from the command palette to launch a second autocomplete picker of canonical OpenCode presets, with live preview while you navigate.
+- Open `Set a Theme` from the command palette to launch a second autocomplete picker of canonical OpenCode presets (plus a `default` reset option), with live preview while you navigate.
 - Open or create a GitHub pull request for the currently tracked project branch directly from the command palette.
 
 ## Demo
@@ -161,7 +161,7 @@ Example (install commands + critique defaults + hotkey override + OpenCode theme
 ```
 
 `mux.ui.theme.customThemePath` can point to any local JSON file that follows the OpenCode theme schema (`https://opencode.ai/theme.json`).
-Built-in presets now mirror the canonical OpenCode set (for example `aura`, `ayu`, `carbonfox`, `catppuccin`, `dracula`, `everforest`, `github`, `gruvbox`, `nightowl`, `nord`, `one-dark`, `opencode`, `tokyonight`, `vesper`, `zenburn`, and more).
+Built-in presets now mirror the canonical OpenCode set (for example `aura`, `ayu`, `carbonfox`, `catppuccin`, `dracula`, `everforest`, `github`, `gruvbox`, `nightowl`, `nord`, `one-dark`, `opencode`, `tokyonight`, `vesper`, `zenburn`, and more), plus a special `default` picker option for the legacy default mux theme.
 
 ## Documentation
 

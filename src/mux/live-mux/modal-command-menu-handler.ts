@@ -26,6 +26,7 @@ interface HandleCommandMenuInputOptions {
 
 const COMMAND_MENU_BODY_ROW_OFFSET = 2;
 const COMMAND_MENU_ACTION_ROW_START = 2;
+const THEME_PICKER_SCOPE = 'theme-select';
 
 function resolveCommandMenuActionIdByRow(
   menu: CommandMenuState,
@@ -104,8 +105,13 @@ export function handleCommandMenuInput(options: HandleCommandMenuInputOptions): 
         if (selectedActionId === null) {
           return false;
         }
-        setMenu(null);
-        executeAction(selectedActionId);
+        if (menu.scope === THEME_PICKER_SCOPE) {
+          executeAction(selectedActionId);
+          setMenu(null);
+        } else {
+          setMenu(null);
+          executeAction(selectedActionId);
+        }
         markDirty();
         return true;
       },
@@ -119,9 +125,16 @@ export function handleCommandMenuInput(options: HandleCommandMenuInputOptions): 
   if (reduction.submit) {
     const clamped = clampCommandMenuState(menu, currentMatches.length);
     const selected = currentMatches[clamped.selectedIndex];
-    setMenu(null);
-    if (selected !== undefined) {
-      executeAction(selected.action.id);
+    if (menu.scope === THEME_PICKER_SCOPE) {
+      if (selected !== undefined) {
+        executeAction(selected.action.id);
+      }
+      setMenu(null);
+    } else {
+      setMenu(null);
+      if (selected !== undefined) {
+        executeAction(selected.action.id);
+      }
     }
     markDirty();
     return true;

@@ -28,6 +28,7 @@ void test('muxThemePresetNames returns sorted preset names', () => {
   assert.deepEqual(names, sorted);
   assert.equal(names.includes('aura'), true);
   assert.equal(names.includes('carbonfox'), true);
+  assert.equal(names.includes('default'), true);
   assert.equal(names.includes('github'), true);
   assert.equal(names.includes('tokyonight'), true);
 });
@@ -39,6 +40,21 @@ void test('resolveConfiguredMuxTheme returns legacy defaults when theme config i
   });
   assert.equal(resolved.error, null);
   assert.equal(resolved.theme.name, 'legacy-default');
+  assert.equal(resolved.theme.terminalForegroundHex, null);
+  assert.equal(resolved.theme.terminalBackgroundHex, null);
+});
+
+void test('resolveConfiguredMuxTheme supports special default preset', () => {
+  const resolved = resolveConfiguredMuxTheme({
+    config: {
+      preset: 'default',
+      mode: 'dark',
+      customThemePath: null,
+    },
+    cwd: '/tmp',
+  });
+  assert.equal(resolved.error, null);
+  assert.equal(resolved.theme.name, 'default');
   assert.equal(resolved.theme.terminalForegroundHex, null);
   assert.equal(resolved.theme.terminalBackgroundHex, null);
 });

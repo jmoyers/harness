@@ -84,6 +84,7 @@ const FALLBACK_HEX = {
 const BUILTIN_OPENCODE_PRESETS = BUILTIN_MUX_THEME_PRESETS as Readonly<
   Record<string, OpenCodeThemeDocument>
 >;
+const DEFAULT_MUX_THEME_PRESET = 'default';
 
 const LEGACY_MUX_THEME: ActiveMuxTheme = {
   name: 'legacy-default',
@@ -356,7 +357,7 @@ function buildActiveTheme(name: string, input: OpenCodeThemeInput): ActiveMuxThe
 }
 
 export function muxThemePresetNames(): readonly string[] {
-  return Object.keys(BUILTIN_OPENCODE_PRESETS).sort();
+  return [...new Set([...Object.keys(BUILTIN_OPENCODE_PRESETS), DEFAULT_MUX_THEME_PRESET])].sort();
 }
 
 function resolveBuiltinPreset(name: string): OpenCodeThemeDocument | null {
@@ -408,6 +409,15 @@ export function resolveConfiguredMuxTheme(
   }
 
   if (selectedDocument === null) {
+    if (normalizedPreset === DEFAULT_MUX_THEME_PRESET && configured.customThemePath === null) {
+      return {
+        theme: {
+          ...LEGACY_MUX_THEME,
+          name: DEFAULT_MUX_THEME_PRESET,
+        },
+        error: null,
+      };
+    }
     const fallbackDocument = BUILTIN_OPENCODE_PRESETS.github as OpenCodeThemeDocument;
     selectedDocument = fallbackDocument;
     selectedName = 'github';

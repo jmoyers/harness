@@ -2706,7 +2706,8 @@ async function main(): Promise<number> {
         title: preset,
         aliases: [preset, `theme ${preset}`],
         keywords: ['theme', 'preset', preset],
-        ...(selectedThemeName === preset
+        ...(selectedThemeName === preset ||
+        (preset === 'default' && selectedThemeName === 'legacy-default')
           ? {
               detail: 'current',
             }

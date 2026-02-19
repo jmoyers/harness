@@ -222,6 +222,67 @@ void test('command menu handler down-arrow navigation moves beyond first result 
   assert.deepEqual(executed, ['action.9']);
 });
 
+void test('command menu handler executes theme selection before menu teardown on enter', () => {
+  let menu: CommandMenuState | null = createCommandMenuState({
+    scope: 'theme-select',
+  });
+  const callOrder: string[] = [];
+
+  const handled = handleCommandMenuInput({
+    input: Buffer.from('\n', 'utf8'),
+    menu,
+    isQuitShortcut: () => false,
+    isToggleShortcut: () => false,
+    dismissOnOutsideClick: () => false,
+    buildCommandMenuModalOverlay: () => ({ top: 1 }),
+    resolveActions: () => [{ id: 'theme.set.github', title: 'github' }],
+    executeAction: (actionId) => {
+      callOrder.push(`execute:${actionId}:${menu?.scope ?? 'null'}`);
+    },
+    setMenu: (next) => {
+      menu = next;
+      callOrder.push(`set:${next?.scope ?? 'null'}`);
+    },
+    markDirty: () => {
+      callOrder.push('dirty');
+    },
+  });
+
+  assert.equal(handled, true);
+  assert.deepEqual(callOrder, ['execute:theme.set.github:theme-select', 'set:null', 'dirty']);
+});
+
+void test('command menu handler executes theme selection before menu teardown on click', () => {
+  let menu: CommandMenuState | null = createCommandMenuState({
+    scope: 'theme-select',
+  });
+  const callOrder: string[] = [];
+
+  const handled = handleCommandMenuInput({
+    input: Buffer.from('\u001b[<0;8;6M', 'utf8'),
+    menu,
+    isQuitShortcut: () => false,
+    isToggleShortcut: () => false,
+    dismissOnOutsideClick: (_input, _dismiss, onInsidePointerPress) =>
+      onInsidePointerPress?.(8, 6) === true,
+    buildCommandMenuModalOverlay: () => ({ top: 1 }),
+    resolveActions: () => [{ id: 'theme.set.github', title: 'github' }],
+    executeAction: (actionId) => {
+      callOrder.push(`execute:${actionId}:${menu?.scope ?? 'null'}`);
+    },
+    setMenu: (next) => {
+      menu = next;
+      callOrder.push(`set:${next?.scope ?? 'null'}`);
+    },
+    markDirty: () => {
+      callOrder.push('dirty');
+    },
+  });
+
+  assert.equal(handled, true);
+  assert.deepEqual(callOrder, ['execute:theme.set.github:theme-select', 'set:null', 'dirty']);
+});
+
 void test('command menu handler mouse click executes clicked action row', () => {
   let menu: CommandMenuState | null = createCommandMenuState();
   const actions = [

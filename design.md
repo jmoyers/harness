@@ -241,7 +241,7 @@ Pass-through stream invariants:
 - In embedded/local mode, mux shutdown also closes live PTYs.
 - `ctrl+p` and `cmd+p` open the command menu; command search is live-filtered and executes context-aware actions.
 - Left-rail `[+ thread]` opens a thread-scoped command-menu variant (same matcher/autocomplete path) instead of a dedicated chooser modal.
-- Command-menu `Set a Theme` opens a second autocomplete theme picker; moving selection previews theme changes live, and dismiss restores the pre-picker theme unless confirmed.
+- Command-menu `Set a Theme` opens a second autocomplete theme picker; moving selection previews theme changes live, and dismiss restores the pre-picker theme unless confirmed. Confirming with `enter` commits and persists the selected theme.
 - Gateway profiling moved to `ctrl+shift+p` so command menu invocation and profiling controls do not collide.
 
 ### Command Menu Model
@@ -255,7 +255,7 @@ Pass-through stream invariants:
   - go to project
   - open GitHub for the active-project repository
   - open/create GitHub PR for the tracked active-project non-default branch (open when present, create when absent)
-  - open a theme picker and set a built-in OpenCode preset
+  - open a theme picker and set a built-in OpenCode preset or the special `default` theme
   - start/stop profiler
   - start/stop status logging
   - quit
@@ -738,7 +738,7 @@ Design constraints:
   - `codex.install.command`, `claude.install.command`, `cursor.install.command`, `critique.install.command`
   - values are shell command strings (or `null`) surfaced by `agent.tools.status` and used by thread-scoped install actions
 - Mux theme policy is config-governed under `mux.ui.theme`:
-  - `preset` selects a built-in OpenCode-compatible preset set mirrored from canonical upstream OpenCode themes
+  - `preset` selects a built-in OpenCode-compatible preset set mirrored from canonical upstream OpenCode themes, with special value `default` for the legacy default mux theme
   - `mode` selects `dark` or `light` variant resolution
   - `customThemePath` optionally loads a local OpenCode theme JSON file (`https://opencode.ai/theme.json`) and overrides preset colors when valid
   - invalid custom files or unknown presets must fall back deterministically to a safe preset while keeping mux startup healthy
