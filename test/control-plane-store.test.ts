@@ -16,6 +16,74 @@ function tempStorePath(): string {
   return join(dir, 'control-plane.sqlite');
 }
 
+void test('control-plane store migrates legacy task schema and stamps schema version', () => {
+  const storePath = tempStorePath();
+  const bootstrap = new DatabaseSync(storePath);
+  bootstrap.exec(`
+    CREATE TABLE tasks (
+      task_id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      workspace_id TEXT NOT NULL,
+      repository_id TEXT,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL,
+      order_index INTEGER NOT NULL,
+      claimed_by_controller_id TEXT,
+      claimed_by_directory_id TEXT,
+      branch_name TEXT,
+      base_branch TEXT,
+      claimed_at TEXT,
+      completed_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `);
+  bootstrap.close();
+
+  const store = new SqliteControlPlaneStore(storePath);
+  store.close();
+
+  const verification = new DatabaseSync(storePath);
+  try {
+    const userVersionRow = verification.prepare('PRAGMA user_version;').get() as Record<
+      string,
+      unknown
+    >;
+    assert.equal(userVersionRow['user_version'], 1);
+    const taskColumns = verification
+      .prepare('PRAGMA table_info(tasks);')
+      .all()
+      .map((row) => String((row as Record<string, unknown>)['name']));
+    assert.equal(taskColumns.includes('linear_json'), true);
+    assert.equal(taskColumns.includes('scope_kind'), true);
+    assert.equal(taskColumns.includes('project_id'), true);
+  } finally {
+    verification.close();
+    rmSync(storePath, { force: true });
+    rmSync(dirname(storePath), { recursive: true, force: true });
+  }
+});
+
+void test('control-plane store fails closed when sqlite schema version is newer than supported', () => {
+  const storePath = tempStorePath();
+  const bootstrap = new DatabaseSync(storePath);
+  bootstrap.exec('PRAGMA user_version = 99;');
+  bootstrap.close();
+
+  assert.throws(
+    () => {
+      const store = new SqliteControlPlaneStore(storePath);
+      store.close();
+    },
+    /schema version .* newer than supported version/i,
+  );
+
+  rmSync(storePath, { force: true });
+  rmSync(dirname(storePath), { recursive: true, force: true });
+});
+
 void test('control-plane store upserts directories and persists conversations/runtime', () => {
   const storePath = tempStorePath();
   const store = new SqliteControlPlaneStore(storePath);

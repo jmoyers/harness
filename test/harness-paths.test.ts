@@ -32,8 +32,10 @@ void test('harness paths fall back when home env is blank and sanitize empty wor
     XDG_CONFIG_HOME: join(workspace, '.xdg'),
     HOME: '   ',
   };
+  const runtimeRoot = resolveHarnessWorkspaceDirectory(workspace, env);
 
-  assert.equal(resolveHarnessRuntimePath(workspace, '~', env), resolve(workspace, '~'));
+  assert.equal(resolveHarnessRuntimePath(workspace, '~', env), resolve(runtimeRoot, '~'));
+  assert.equal(resolveHarnessRuntimePath(workspace, 'relative/debug.log', env), resolve(runtimeRoot, 'relative/debug.log'));
 
   const rootWorkspaceRuntime = resolveHarnessWorkspaceDirectory('/', env);
   assert.equal(basename(rootWorkspaceRuntime).startsWith('workspace-'), true);

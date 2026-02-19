@@ -475,6 +475,53 @@ void test('harness gateway start ignores stale record state db path and uses run
   }
 });
 
+void test('harness gateway start ignores HARNESS_CONTROL_PLANE_DB_PATH and uses runtime default', async () => {
+  const workspace = createWorkspace();
+  const port = await reservePort();
+  const runtimeRoot = workspaceRuntimeRoot(workspace);
+  const recordPath = join(runtimeRoot, 'gateway.json');
+  const env = {
+    HARNESS_CONTROL_PLANE_PORT: String(port),
+    HARNESS_CONTROL_PLANE_DB_PATH: join(workspace, '.harness', 'legacy-control-plane.sqlite'),
+  };
+  try {
+    const startResult = await runHarness(
+      workspace,
+      ['gateway', 'start', '--port', String(port)],
+      env,
+    );
+    assert.equal(startResult.code, 0);
+    const recordRaw = readFileSync(recordPath, 'utf8');
+    const record = parseGatewayRecordText(recordRaw);
+    assert.notEqual(record, null);
+    assert.equal(record?.stateDbPath, join(runtimeRoot, 'control-plane.sqlite'));
+  } finally {
+    void runHarness(workspace, ['gateway', 'stop', '--force'], env).catch(() => undefined);
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('harness gateway start rejects local workspace .harness state db path', async () => {
+  const workspace = createWorkspace();
+  const port = await reservePort();
+  const env = {
+    HARNESS_CONTROL_PLANE_PORT: String(port),
+  };
+  const localLegacyDbPath = join(workspace, '.harness', 'control-plane.sqlite');
+  try {
+    const startResult = await runHarness(
+      workspace,
+      ['gateway', 'start', '--port', String(port), '--state-db-path', localLegacyDbPath],
+      env,
+    );
+    assert.equal(startResult.code, 1);
+    assert.equal(startResult.stderr.includes('invalid --state-db-path'), true);
+  } finally {
+    void runHarness(workspace, ['gateway', 'stop', '--force'], env).catch(() => undefined);
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 void test('harness gateway start adopts an already-reachable daemon when gateway record is missing', async () => {
   const workspace = createWorkspace();
   const port = await reservePort();

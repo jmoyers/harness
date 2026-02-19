@@ -39,11 +39,7 @@ export function resolveHarnessWorkspaceDirectory(
   invocationDirectory: string,
   env: NodeJS.ProcessEnv = process.env,
 ): string {
-  const legacyWorkspaceDirectory = resolveLegacyHarnessDirectory(invocationDirectory);
   const configDirectory = resolveHarnessConfigDirectory(invocationDirectory, env);
-  if (resolve(configDirectory) === legacyWorkspaceDirectory) {
-    return legacyWorkspaceDirectory;
-  }
   return resolve(
     configDirectory,
     HARNESS_WORKSPACES_DIRECTORY,
@@ -74,13 +70,14 @@ export function resolveHarnessRuntimePath(
   pathValue: string,
   env: NodeJS.ProcessEnv = process.env,
 ): string {
+  const workspaceRuntimeDirectory = resolveHarnessWorkspaceDirectory(invocationDirectory, env);
   const normalizedPath = pathValue.trim();
   if (normalizedPath.length === 0 || normalizedPath === HARNESS_LEGACY_RELATIVE_ROOT) {
-    return resolveHarnessWorkspaceDirectory(invocationDirectory, env);
+    return workspaceRuntimeDirectory;
   }
   if (normalizedPath.startsWith(`${HARNESS_LEGACY_RELATIVE_ROOT}/`)) {
     return resolve(
-      resolveHarnessWorkspaceDirectory(invocationDirectory, env),
+      workspaceRuntimeDirectory,
       normalizedPath.slice(`${HARNESS_LEGACY_RELATIVE_ROOT}/`.length),
     );
   }
@@ -88,5 +85,5 @@ export function resolveHarnessRuntimePath(
   if (expandedHomePath !== null) {
     return expandedHomePath;
   }
-  return resolve(invocationDirectory, normalizedPath);
+  return resolve(workspaceRuntimeDirectory, normalizedPath);
 }

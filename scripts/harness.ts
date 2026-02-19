@@ -1473,8 +1473,9 @@ function listGatewayDaemonProcesses(): readonly ParsedGatewayDaemonEntry[] {
 function isPathWithinWorkspaceRuntimeScope(
   pathValue: string,
   invocationDirectory: string,
+  env: NodeJS.ProcessEnv = process.env,
 ): boolean {
-  const runtimeRoot = resolveHarnessWorkspaceDirectory(invocationDirectory, process.env);
+  const runtimeRoot = resolveHarnessWorkspaceDirectory(invocationDirectory, env);
   const normalizedRoot = resolve(runtimeRoot);
   const normalizedPath = resolve(pathValue);
   return normalizedPath === normalizedRoot || normalizedPath.startsWith(`${normalizedRoot}/`);
@@ -1702,10 +1703,15 @@ function resolveGatewaySettings(
   const port = normalizeGatewayPort(
     overrides.port ?? record?.port ?? env.HARNESS_CONTROL_PLANE_PORT,
   );
-  const configuredStateDbPath =
-    overrides.stateDbPath ?? env.HARNESS_CONTROL_PLANE_DB_PATH ?? defaultStateDbPath;
+  const configuredStateDbPath = overrides.stateDbPath ?? defaultStateDbPath;
   const stateDbPathRaw = normalizeGatewayStateDbPath(configuredStateDbPath, defaultStateDbPath);
   const stateDbPath = resolveHarnessRuntimePath(invocationDirectory, stateDbPathRaw, env);
+  if (!isPathWithinWorkspaceRuntimeScope(stateDbPath, invocationDirectory, env)) {
+    const runtimeRoot = resolveHarnessWorkspaceDirectory(invocationDirectory, env);
+    throw new Error(
+      `invalid --state-db-path: ${stateDbPath}. state db path must be under workspace runtime root ${runtimeRoot}`,
+    );
+  }
 
   const envToken =
     typeof env.HARNESS_CONTROL_PLANE_AUTH_TOKEN === 'string' &&

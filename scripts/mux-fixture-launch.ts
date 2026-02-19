@@ -6,6 +6,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { loadHarnessConfig } from '../src/config/config-core.ts';
+import { resolveHarnessRuntimePath } from '../src/config/harness-paths.ts';
 import { loadHarnessSecrets } from '../src/config/secrets-core.ts';
 import {
   configurePerfCore,
@@ -178,9 +179,17 @@ function spawnDaemon(
   runId: string,
   runtimeArgs: readonly string[],
 ): ChildProcess {
+  const fixtureStateDbPath = resolveHarnessRuntimePath(
+    invocationDirectory,
+    `.harness/control-plane-fixture-${runId}.sqlite`,
+  );
   return spawn(
     process.execPath,
-    tsRuntimeArgs(DAEMON_SCRIPT, ['--host', host, '--port', String(port)], runtimeArgs),
+    tsRuntimeArgs(
+      DAEMON_SCRIPT,
+      ['--host', host, '--port', String(port), '--state-db-path', fixtureStateDbPath],
+      runtimeArgs,
+    ),
     {
       stdio: ['ignore', 'pipe', 'inherit'],
       env: {
@@ -190,10 +199,6 @@ function spawnDaemon(
         HARNESS_PERF_ENABLED: perfSettings.enabled ? '1' : '0',
         HARNESS_PERF_FILE_PATH: perfSettings.filePath,
         HARNESS_PERF_TRUNCATE_ON_START: '0',
-        HARNESS_CONTROL_PLANE_DB_PATH: resolve(
-          invocationDirectory,
-          `.harness/control-plane-fixture-${runId}.sqlite`,
-        ),
       },
     },
   );
@@ -289,11 +294,7 @@ function spawnMuxClient(
         HARNESS_PERF_ENABLED: perfSettings.enabled ? '1' : '0',
         HARNESS_PERF_FILE_PATH: perfSettings.filePath,
         HARNESS_PERF_TRUNCATE_ON_START: '0',
-        HARNESS_CONTROL_PLANE_DB_PATH: resolve(
-          invocationDirectory,
-          `.harness/control-plane-fixture-${runId}.sqlite`,
-        ),
-        HARNESS_EVENTS_DB_PATH: resolve(
+        HARNESS_EVENTS_DB_PATH: resolveHarnessRuntimePath(
           invocationDirectory,
           `.harness/events-fixture-${runId}.sqlite`,
         ),

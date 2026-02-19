@@ -7,6 +7,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -1438,11 +1439,13 @@ export function resolveHarnessConfigDirectory(
   if (xdgConfigHome !== null) {
     return resolve(xdgConfigHome, HARNESS_CONFIG_XDG_DIRECTORY_NAME);
   }
-  const homeDirectory = readNonEmptyEnvPath(env.HOME);
+  const homeDirectory = readNonEmptyEnvPath(env.HOME) ?? readNonEmptyEnvPath(homedir());
   if (homeDirectory !== null) {
     return resolve(homeDirectory, HARNESS_CONFIG_HOME_DIRECTORY_NAME);
   }
-  return resolve(cwd, HARNESS_CONFIG_HOME_DIRECTORY_NAME);
+  throw new Error(
+    `unable to resolve harness config directory: HOME and XDG_CONFIG_HOME are unset (cwd=${cwd})`,
+  );
 }
 
 export function resolveHarnessConfigPath(

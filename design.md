@@ -675,6 +675,7 @@ Design constraints:
 - Crash-safe resume of all active sessions.
 - Every row is tenant-scoped; user-scoped rows include `user_id`.
 - All queries, streams, and mutations enforce tenant/user boundaries.
+- Schema evolution is explicit and transactional using SQLite `PRAGMA user_version`; unknown newer schema versions fail closed.
 
 ## Logging Architecture
 

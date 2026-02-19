@@ -31,6 +31,8 @@ interface PersistedEvent {
   event: NormalizedEventEnvelope;
 }
 
+const EVENT_STORE_SCHEMA_VERSION = 1;
+
 function asObject(value: unknown): Record<string, unknown> {
   if (typeof value !== 'object' || value === null) {
     throw new Error('expected object row');
@@ -214,6 +216,24 @@ export class SqliteEventStore {
   }
 
   private initializeSchema(): void {
+    this.db.exec('BEGIN IMMEDIATE TRANSACTION');
+    try {
+      const currentVersion = this.readSchemaVersion();
+      if (currentVersion > EVENT_STORE_SCHEMA_VERSION) {
+        throw new Error(
+          `event store schema version ${String(currentVersion)} is newer than supported version ${String(EVENT_STORE_SCHEMA_VERSION)}`,
+        );
+      }
+      this.applySchemaV1();
+      this.writeSchemaVersion(EVENT_STORE_SCHEMA_VERSION);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  private applySchemaV1(): void {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS events (
         row_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -234,6 +254,22 @@ export class SqliteEventStore {
       CREATE INDEX IF NOT EXISTS idx_events_scope_cursor
       ON events (tenant_id, user_id, conversation_id, row_id);
     `);
+  }
+
+  private readSchemaVersion(): number {
+    const row = this.db.prepare('PRAGMA user_version;').get();
+    if (row === undefined) {
+      throw new Error('failed to read event store schema version');
+    }
+    const version = (row as Record<string, unknown>)['user_version'];
+    if (typeof version !== 'number' || !Number.isInteger(version) || version < 0) {
+      throw new Error(`invalid event store schema version value: ${String(version)}`);
+    }
+    return version;
+  }
+
+  private writeSchemaVersion(version: number): void {
+    this.db.exec(`PRAGMA user_version = ${String(version)};`);
   }
 
   private configureConnection(): void {

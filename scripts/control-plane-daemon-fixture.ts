@@ -2,7 +2,10 @@ import { resolve } from 'node:path';
 import { startCodexLiveSession } from '../src/codex/live-session.ts';
 import { startControlPlaneStreamServer } from '../src/control-plane/stream-server.ts';
 import { loadHarnessConfig } from '../src/config/config-core.ts';
-import { resolveHarnessRuntimePath } from '../src/config/harness-paths.ts';
+import {
+  resolveHarnessRuntimePath,
+  resolveHarnessWorkspaceDirectory,
+} from '../src/config/harness-paths.ts';
 import { migrateLegacyHarnessLayout } from '../src/config/harness-runtime-migration.ts';
 import { loadHarnessSecrets } from '../src/config/secrets-core.ts';
 import {
@@ -70,7 +73,7 @@ function parseArgs(argv: string[], invocationDirectory: string): DaemonOptions {
   const defaultAuthToken = process.env.HARNESS_CONTROL_PLANE_AUTH_TOKEN ?? null;
   const defaultStateDbPath = resolveHarnessRuntimePath(
     invocationDirectory,
-    process.env.HARNESS_CONTROL_PLANE_DB_PATH ?? '.harness/control-plane-fixture.sqlite',
+    '.harness/control-plane-fixture.sqlite',
   );
   const defaultFixtureCommand = process.env.HARNESS_FIXTURE_COMMAND ?? '/bin/sh';
 
@@ -117,7 +120,7 @@ function parseArgs(argv: string[], invocationDirectory: string): DaemonOptions {
       if (value === undefined) {
         throw new Error('missing value for --state-db-path');
       }
-      stateDbPath = value;
+      stateDbPath = resolveHarnessRuntimePath(invocationDirectory, value);
       idx += 1;
       continue;
     }
@@ -141,6 +144,17 @@ function parseArgs(argv: string[], invocationDirectory: string): DaemonOptions {
   const loopbackHosts = new Set(['127.0.0.1', 'localhost', '::1']);
   if (!loopbackHosts.has(host) && authToken === null) {
     throw new Error('non-loopback hosts require --auth-token or HARNESS_CONTROL_PLANE_AUTH_TOKEN');
+  }
+  const workspaceRuntimeRoot = resolveHarnessWorkspaceDirectory(invocationDirectory, process.env);
+  const normalizedRuntimeRoot = resolve(workspaceRuntimeRoot);
+  const normalizedStateDbPath = resolve(stateDbPath);
+  if (
+    normalizedStateDbPath !== normalizedRuntimeRoot &&
+    !normalizedStateDbPath.startsWith(`${normalizedRuntimeRoot}/`)
+  ) {
+    throw new Error(
+      `invalid --state-db-path: ${stateDbPath}. state db path must be under workspace runtime root ${workspaceRuntimeRoot}`,
+    );
   }
 
   return {

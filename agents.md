@@ -43,6 +43,7 @@ This project has two core documents:
 - Git is the authoritative source for diffs; adapter diffs are hints only.
 - Persistence is one shared tenanted SQLite store with an append-only `events` table.
 - State and event writes must be transactional in SQLite.
+- SQLite schema migrations must be explicit, transactional, and versioned (`PRAGMA user_version`); unknown newer schema versions must fail closed.
 - All state access and streams must enforce tenant/user boundaries.
 - One logger abstraction (`log-core`) is used everywhere.
 - One canonical structured log file is the source of truth, with one sibling pretty log file.

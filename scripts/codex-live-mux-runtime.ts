@@ -696,7 +696,7 @@ async function main(): Promise<number> {
       await startControlPlaneStreamServer({
         stateStorePath: resolveHarnessRuntimePath(
           options.invocationDirectory,
-          process.env.HARNESS_CONTROL_PLANE_DB_PATH ?? '.harness/control-plane.sqlite',
+          '.harness/control-plane.sqlite',
         ),
         codexTelemetry: loadedConfig.config.codex.telemetry,
         codexHistory: loadedConfig.config.codex.history,

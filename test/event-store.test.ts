@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { test } from 'bun:test';
 import { createNormalizedEvent, type EventScope } from '../src/events/normalized-events.ts';
 import { SqliteEventStore, normalizeStoredRow } from '../src/store/event-store.ts';
+import { DatabaseSync } from '../src/store/sqlite.ts';
 
 function makeScope(overrides: Partial<EventScope> = {}): EventScope {
   return {
@@ -30,6 +31,39 @@ function createThreadEvent(scope: EventScope, eventId: string) {
     () => eventId,
   );
 }
+
+void test('event store stamps schema version during initialization', () => {
+  const dirPath = mkdtempSync(join(tmpdir(), 'harness-event-schema-version-'));
+  const dbPath = join(dirPath, 'events.sqlite');
+  const store = new SqliteEventStore(dbPath);
+  store.close();
+  const db = new DatabaseSync(dbPath);
+  try {
+    const row = db.prepare('PRAGMA user_version;').get() as Record<string, unknown>;
+    assert.equal(row['user_version'], 1);
+  } finally {
+    db.close();
+    rmSync(dirPath, { recursive: true, force: true });
+  }
+});
+
+void test('event store fails closed on newer schema version', () => {
+  const dirPath = mkdtempSync(join(tmpdir(), 'harness-event-schema-newer-'));
+  const dbPath = join(dirPath, 'events.sqlite');
+  const db = new DatabaseSync(dbPath);
+  db.exec('PRAGMA user_version = 99;');
+  db.close();
+
+  assert.throws(
+    () => {
+      const store = new SqliteEventStore(dbPath);
+      store.close();
+    },
+    /schema version .* newer than supported version/i,
+  );
+
+  rmSync(dirPath, { recursive: true, force: true });
+});
 
 void test('event store appends and reads events with tenant user and cursor filters', () => {
   const store = new SqliteEventStore(':memory:');

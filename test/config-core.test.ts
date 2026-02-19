@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { test } from 'bun:test';
 import {
@@ -290,7 +290,7 @@ void test('resolveHarnessConfigPath resolves XDG and HOME user config directorie
   };
   assert.equal(
     resolveHarnessConfigPath('/tmp/cwd', fallbackEnv),
-    '/tmp/cwd/.harness/harness.config.jsonc',
+    resolve(homedir(), '.harness/harness.config.jsonc'),
   );
 
   const blankEnv: NodeJS.ProcessEnv = {
@@ -299,7 +299,7 @@ void test('resolveHarnessConfigPath resolves XDG and HOME user config directorie
   };
   assert.equal(
     resolveHarnessConfigPath('/tmp/cwd', blankEnv),
-    '/tmp/cwd/.harness/harness.config.jsonc',
+    resolve(homedir(), '.harness/harness.config.jsonc'),
   );
 });
 

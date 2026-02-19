@@ -355,6 +355,8 @@ interface ListGitHubSyncStateQuery {
   limit?: number;
 }
 
+const CONTROL_PLANE_SCHEMA_VERSION = 1;
+
 export class SqliteControlPlaneStore {
   private readonly db: DatabaseSync;
 
@@ -2628,6 +2630,24 @@ export class SqliteControlPlaneStore {
   }
 
   private initializeSchema(): void {
+    this.db.exec('BEGIN IMMEDIATE TRANSACTION');
+    try {
+      const currentVersion = this.readSchemaVersion();
+      if (currentVersion > CONTROL_PLANE_SCHEMA_VERSION) {
+        throw new Error(
+          `control-plane schema version ${String(currentVersion)} is newer than supported version ${String(CONTROL_PLANE_SCHEMA_VERSION)}`,
+        );
+      }
+      this.applySchemaV1();
+      this.writeSchemaVersion(CONTROL_PLANE_SCHEMA_VERSION);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  private applySchemaV1(): void {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS directories (
         directory_id TEXT PRIMARY KEY,
@@ -2921,6 +2941,22 @@ export class SqliteControlPlaneStore {
         last_sync_at
       );
     `);
+  }
+
+  private readSchemaVersion(): number {
+    const row = this.db.prepare('PRAGMA user_version;').get();
+    if (row === undefined) {
+      throw new Error('failed to read control-plane schema version');
+    }
+    const version = (row as Record<string, unknown>)['user_version'];
+    if (typeof version !== 'number' || !Number.isInteger(version) || version < 0) {
+      throw new Error(`invalid control-plane schema version value: ${String(version)}`);
+    }
+    return version;
+  }
+
+  private writeSchemaVersion(version: number): void {
+    this.db.exec(`PRAGMA user_version = ${String(version)};`);
   }
 
   private configureConnection(): void {
