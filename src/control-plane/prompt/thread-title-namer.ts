@@ -63,11 +63,7 @@ interface AnthropicThreadTitleNamerOptions {
 }
 
 function resolveModelCandidateIds(modelId: string | undefined): readonly string[] {
-  const ordered = [
-    modelId,
-    DEFAULT_HAIKU_MODEL_ID,
-    ...FALLBACK_HAIKU_MODEL_IDS,
-  ];
+  const ordered = [modelId, DEFAULT_HAIKU_MODEL_ID, ...FALLBACK_HAIKU_MODEL_IDS];
   const deduped: string[] = [];
   for (const candidate of ordered) {
     if (typeof candidate !== 'string') {

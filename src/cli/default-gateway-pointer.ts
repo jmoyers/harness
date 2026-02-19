@@ -7,9 +7,9 @@ const DEFAULT_GATEWAY_POINTER_VERSION = 1;
 const DEFAULT_GATEWAY_RECORD_PATH_PATTERN = /[\\/]gateway\.json$/u;
 const NAMED_SESSION_GATEWAY_RECORD_PATH_PATTERN = /[\\/]sessions[\\/][^\\/]+[\\/]gateway\.json$/u;
 
-export const DEFAULT_GATEWAY_POINTER_FILE_NAME = 'default-gateway.json';
+const DEFAULT_GATEWAY_POINTER_FILE_NAME = 'default-gateway.json';
 
-export interface DefaultGatewayPointerRecord {
+interface DefaultGatewayPointerRecord {
   readonly version: number;
   readonly workspaceRoot: string;
   readonly workspaceRuntimeRoot: string;
@@ -101,6 +101,7 @@ export function parseDefaultGatewayPointerText(text: string): DefaultGatewayPoin
   ) {
     return null;
   }
+  const parsedGatewayRunId = gatewayRunId === null ? undefined : gatewayRunId;
 
   return {
     version: DEFAULT_GATEWAY_POINTER_VERSION,
@@ -112,7 +113,7 @@ export function parseDefaultGatewayPointerText(text: string): DefaultGatewayPoin
     pid,
     startedAt,
     updatedAt,
-    ...(gatewayRunId === undefined ? {} : { gatewayRunId }),
+    ...(parsedGatewayRunId === undefined ? {} : { gatewayRunId: parsedGatewayRunId }),
   };
 }
 
@@ -151,7 +152,7 @@ export function writeDefaultGatewayPointerFromGatewayRecord(
     pid: record.pid,
     startedAt: record.startedAt,
     updatedAt: new Date().toISOString(),
-    ...(record.gatewayRunId === undefined ? {} : { gatewayRunId: record.gatewayRunId }),
+    ...(record.gatewayRunId == null ? {} : { gatewayRunId: record.gatewayRunId }),
   };
   mkdirSync(dirname(pointerPath), { recursive: true });
   writeFileSync(pointerPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');

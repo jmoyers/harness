@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -49,6 +49,7 @@ void test('default gateway pointer parsing accepts valid payloads', () => {
 
 void test('default gateway pointer parsing rejects malformed payloads', () => {
   assert.equal(parseDefaultGatewayPointerText('not-json'), null);
+  assert.equal(parseDefaultGatewayPointerText('[]'), null);
   assert.equal(
     parseDefaultGatewayPointerText(
       JSON.stringify({
@@ -74,6 +75,29 @@ void test('default gateway pointer parsing rejects malformed payloads', () => {
     ),
     null,
   );
+});
+
+void test('default gateway pointer read returns null when pointer file is missing', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'harness-pointer-home-'));
+  try {
+    const env: NodeJS.ProcessEnv = { HOME: home };
+    assert.equal(readDefaultGatewayPointer('/tmp/workspace-missing', env), null);
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+void test('default gateway pointer read returns null when pointer path is unreadable', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'harness-pointer-home-'));
+  try {
+    const env: NodeJS.ProcessEnv = { HOME: home };
+    const workspaceRoot = '/tmp/workspace-unreadable';
+    const pointerPath = resolveDefaultGatewayPointerPath(workspaceRoot, env);
+    mkdirSync(pointerPath, { recursive: true });
+    assert.equal(readDefaultGatewayPointer(workspaceRoot, env), null);
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
 });
 
 void test('default gateway pointer writes and reads for default session records', async () => {
@@ -120,6 +144,24 @@ void test('default gateway pointer ignores named session gateway records', async
   }
 });
 
+void test('default gateway pointer clear ignores non-default session paths and missing pointers', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'harness-pointer-home-'));
+  try {
+    const env: NodeJS.ProcessEnv = { HOME: home };
+    const workspaceRoot = '/tmp/workspace-ignore-clear';
+    clearDefaultGatewayPointerForRecordPath(
+      '/tmp/runtime/sessions/named-a/gateway.json',
+      workspaceRoot,
+      env,
+    );
+    clearDefaultGatewayPointerForRecordPath('/tmp/runtime/gateway.json', workspaceRoot, env);
+    const pointerPath = resolveDefaultGatewayPointerPath(workspaceRoot, env);
+    assert.equal(existsSync(pointerPath), false);
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
 void test('default gateway pointer clears only when record path matches', async () => {
   const home = await mkdtemp(join(tmpdir(), 'harness-pointer-home-'));
   try {
@@ -139,6 +181,56 @@ void test('default gateway pointer clears only when record path matches', async 
     clearDefaultGatewayPointerForRecordPath('/tmp/runtime-a/gateway.json', workspaceRoot, env);
     assert.equal(existsSync(pointerPath), false);
   } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+void test('default gateway pointer clear tolerates unreadable pointer file path', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'harness-pointer-home-'));
+  try {
+    const env: NodeJS.ProcessEnv = { HOME: home };
+    const workspaceRoot = '/tmp/workspace-unreadable-clear';
+    const pointerPath = resolveDefaultGatewayPointerPath(workspaceRoot, env);
+    mkdirSync(pointerPath, { recursive: true });
+    clearDefaultGatewayPointerForRecordPath('/tmp/runtime/gateway.json', workspaceRoot, env);
+    assert.equal(existsSync(pointerPath), true);
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+void test('default gateway pointer clear rethrows non-ENOENT unlink errors', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'harness-pointer-home-'));
+  let pointerDirReadOnly = false;
+  try {
+    const env: NodeJS.ProcessEnv = { HOME: home };
+    const workspaceRoot = '/tmp/workspace-unlink-error';
+    writeDefaultGatewayPointerFromGatewayRecord(
+      '/tmp/runtime-unlink-error/gateway.json',
+      gatewayRecord({
+        workspaceRoot,
+        stateDbPath: '/tmp/runtime-unlink-error/control-plane.sqlite',
+      }),
+      env,
+    );
+    const pointerPath = resolveDefaultGatewayPointerPath(workspaceRoot, env);
+    const pointerDir = join(home, '.harness');
+    chmodSync(pointerDir, 0o555);
+    pointerDirReadOnly = true;
+    assert.throws(() =>
+      clearDefaultGatewayPointerForRecordPath(
+        '/tmp/runtime-unlink-error/gateway.json',
+        workspaceRoot,
+        env,
+      ),
+    );
+    chmodSync(pointerDir, 0o755);
+    pointerDirReadOnly = false;
+    assert.equal(existsSync(pointerPath), true);
+  } finally {
+    if (pointerDirReadOnly) {
+      chmodSync(join(home, '.harness'), 0o755);
+    }
     await rm(home, { recursive: true, force: true });
   }
 });

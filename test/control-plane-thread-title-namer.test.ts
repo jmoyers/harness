@@ -268,3 +268,41 @@ void test('anthropic thread title namer retries with fallback models when prefer
     'claude-haiku-4-5-20251001',
   ]);
 });
+
+void test('anthropic thread title namer falls back when all model attempts finish with errors', async () => {
+  const requestedModels: string[] = [];
+  const namer = createAnthropicThreadTitleNamer({
+    apiKey: 'test-key',
+    fetch: async (_input, init) => {
+      const body = init?.body;
+      const payload =
+        typeof body === 'string' ? JSON.parse(body) : JSON.parse(String(body ?? '{}'));
+      requestedModels.push(String(payload['model'] ?? ''));
+      return createAnthropicResponse([
+        {
+          type: 'error',
+          error: {
+            type: 'api_error',
+            message: 'temporary',
+          },
+        },
+      ]);
+    },
+  });
+
+  const title = await namer.suggest({
+    conversationId: 'conversation-all-errors',
+    agentType: 'claude',
+    currentTitle: 'seed title',
+    promptHistory: [
+      {
+        text: 'Investigate parser regressions',
+        observedAt: '2026-02-19T00:00:00.000Z',
+        hash: 'h1',
+      },
+    ],
+  });
+
+  assert.equal(title, 'investigate parser');
+  assert.equal(requestedModels.length >= 2, true);
+});

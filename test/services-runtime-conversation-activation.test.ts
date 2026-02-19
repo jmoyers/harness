@@ -88,60 +88,57 @@ void test('runtime conversation activation restores conversation pane for alread
   assert.deepEqual(calls, ['enterActive:session-1', 'markDirty']);
 });
 
-void test(
-  'runtime conversation activation readies already-active session when switching from home/project pane',
-  async () => {
-    const calls: string[] = [];
-    const activation = new RuntimeConversationActivation({
-      getActiveConversationId: () => 'session-1',
-      setActiveConversationId: () => {},
-      isConversationPaneMode: () => false,
-      enterConversationPaneForActiveSession: (sessionId) => {
-        calls.push(`enterActive:${sessionId}`);
-      },
-      enterConversationPaneForSessionSwitch: () => {},
-      stopConversationTitleEditForOtherSession: () => {},
-      clearSelectionState: () => {},
-      detachConversation: async () => {},
-      conversationById: () => ({
-        directoryId: 'directory-1',
-        live: false,
-        status: 'running',
-      }),
-      noteGitActivity: (directoryId) => {
-        calls.push(`noteGit:${directoryId}`);
-      },
-      startConversation: async (sessionId) => {
-        calls.push(`start:${sessionId}`);
-      },
-      attachConversation: async (sessionId) => {
-        calls.push(`attach:${sessionId}`);
-      },
-      isSessionNotFoundError: () => false,
-      isSessionNotLiveError: () => false,
-      markSessionUnavailable: () => {
-        calls.push('markUnavailable');
-      },
-      schedulePtyResizeImmediate: () => {
-        calls.push('resize');
-      },
-      markDirty: () => {
-        calls.push('markDirty');
-      },
-    });
+void test('runtime conversation activation readies already-active session when switching from home/project pane', async () => {
+  const calls: string[] = [];
+  const activation = new RuntimeConversationActivation({
+    getActiveConversationId: () => 'session-1',
+    setActiveConversationId: () => {},
+    isConversationPaneMode: () => false,
+    enterConversationPaneForActiveSession: (sessionId) => {
+      calls.push(`enterActive:${sessionId}`);
+    },
+    enterConversationPaneForSessionSwitch: () => {},
+    stopConversationTitleEditForOtherSession: () => {},
+    clearSelectionState: () => {},
+    detachConversation: async () => {},
+    conversationById: () => ({
+      directoryId: 'directory-1',
+      live: false,
+      status: 'running',
+    }),
+    noteGitActivity: (directoryId) => {
+      calls.push(`noteGit:${directoryId}`);
+    },
+    startConversation: async (sessionId) => {
+      calls.push(`start:${sessionId}`);
+    },
+    attachConversation: async (sessionId) => {
+      calls.push(`attach:${sessionId}`);
+    },
+    isSessionNotFoundError: () => false,
+    isSessionNotLiveError: () => false,
+    markSessionUnavailable: () => {
+      calls.push('markUnavailable');
+    },
+    schedulePtyResizeImmediate: () => {
+      calls.push('resize');
+    },
+    markDirty: () => {
+      calls.push('markDirty');
+    },
+  });
 
-    await activation.activateConversation('session-1');
+  await activation.activateConversation('session-1');
 
-    assert.deepEqual(calls, [
-      'enterActive:session-1',
-      'noteGit:directory-1',
-      'start:session-1',
-      'attach:session-1',
-      'resize',
-      'markDirty',
-    ]);
-  },
-);
+  assert.deepEqual(calls, [
+    'enterActive:session-1',
+    'noteGit:directory-1',
+    'start:session-1',
+    'attach:session-1',
+    'resize',
+    'markDirty',
+  ]);
+});
 
 void test('runtime conversation activation switches session and retries attach on recoverable errors', async () => {
   const calls: string[] = [];

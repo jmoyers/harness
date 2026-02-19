@@ -724,6 +724,45 @@ void test('left-rail conversation click handles active, inactive, project fallba
       selectedConversationId: 'session-a',
       selectedProjectId: null,
       supportsConversationTitleEditClick: true,
+      previousClickState: { conversationId: 'session-a', atMs: 980 },
+      nowMs: 1000,
+      conversationTitleEditDoubleClickWindowMs: 50,
+      activeConversationId: 'session-a',
+      isConversationPaneActive: true,
+      setConversationClickState: () => {
+        calls.push('setConversationClickState');
+      },
+      ensureConversationPaneActive: () => {
+        calls.push('ensureConversationPaneActive');
+      },
+      beginConversationTitleEdit: () => {
+        calls.push('beginConversationTitleEdit');
+      },
+      queueActivateConversation: () => {
+        calls.push('queueActivateConversation');
+      },
+      queueActivateConversationAndEdit: () => {
+        calls.push('queueActivateConversationAndEdit');
+      },
+      directoriesHas: () => true,
+      enterProjectPane: () => {
+        calls.push('enterProjectPane');
+      },
+      markDirty: () => {
+        calls.push('markDirty');
+      },
+    }),
+    true,
+  );
+  assert.equal(calls.includes('beginConversationTitleEdit'), true);
+  assert.equal(calls.includes('queueActivateConversationAndEdit'), false);
+  calls.length = 0;
+
+  assert.equal(
+    handleLeftRailConversationClick({
+      selectedConversationId: 'session-a',
+      selectedProjectId: null,
+      supportsConversationTitleEditClick: true,
       previousClickState: null,
       nowMs: 1000,
       conversationTitleEditDoubleClickWindowMs: 200,

@@ -361,6 +361,105 @@ void test('add-directory and repository prompt handlers cover quit dismiss edit 
   );
   assert.equal(
     handleApiKeyPromptInput({
+      input: Buffer.from([0x03]),
+      prompt: {
+        keyName: 'OPENAI_API_KEY',
+        displayName: 'OpenAI API Key',
+        value: 'ignored',
+        error: null,
+        hasExistingValue: false,
+      },
+      isQuitShortcut: () => false,
+      dismissOnOutsideClick: () => false,
+      setPrompt: (next) => {
+        calls.push(`setApiPrompt:${next?.value ?? 'null'}:${next?.error ?? 'null'}`);
+      },
+      markDirty: () => {
+        calls.push('markDirty');
+      },
+      persistApiKey: () => {
+        calls.push('persistApiKey');
+      },
+    }),
+    false,
+  );
+  assert.equal(
+    handleApiKeyPromptInput({
+      input: Buffer.from('q', 'utf8'),
+      prompt: {
+        keyName: 'OPENAI_API_KEY',
+        displayName: 'OpenAI API Key',
+        value: 'ignored',
+        error: null,
+        hasExistingValue: false,
+      },
+      isQuitShortcut: () => true,
+      dismissOnOutsideClick: () => false,
+      setPrompt: (next) => {
+        calls.push(`setApiPrompt:${next?.value ?? 'null'}:${next?.error ?? 'null'}`);
+      },
+      markDirty: () => {
+        calls.push('markDirty');
+      },
+      persistApiKey: () => {
+        calls.push('persistApiKey');
+      },
+    }),
+    true,
+  );
+  assert.equal(
+    handleApiKeyPromptInput({
+      input: Buffer.from('\u001b[<0;10;10M', 'utf8'),
+      prompt: {
+        keyName: 'OPENAI_API_KEY',
+        displayName: 'OpenAI API Key',
+        value: 'ignored',
+        error: null,
+        hasExistingValue: false,
+      },
+      isQuitShortcut: () => false,
+      dismissOnOutsideClick: (_input, dismiss) => {
+        dismiss();
+        return true;
+      },
+      setPrompt: (next) => {
+        calls.push(`setApiPrompt:${next?.value ?? 'null'}:${next?.error ?? 'null'}`);
+      },
+      markDirty: () => {
+        calls.push('markDirty');
+      },
+      persistApiKey: () => {
+        calls.push('persistApiKey');
+      },
+    }),
+    true,
+  );
+  assert.equal(
+    handleApiKeyPromptInput({
+      input: Buffer.from('updated', 'utf8'),
+      prompt: {
+        keyName: 'OPENAI_API_KEY',
+        displayName: 'OpenAI API Key',
+        value: '',
+        error: 'old-error',
+        hasExistingValue: false,
+      },
+      isQuitShortcut: () => false,
+      dismissOnOutsideClick: () => false,
+      setPrompt: (next) => {
+        calls.push(`setApiPrompt:${next?.value ?? 'null'}:${next?.error ?? 'null'}`);
+      },
+      markDirty: () => {
+        calls.push('markDirty');
+      },
+      persistApiKey: () => {
+        calls.push('persistApiKey');
+      },
+    }),
+    true,
+  );
+  assert.equal(
+    handleApiKeyPromptInput({
       input: Buffer.from('\n', 'utf8'),
       prompt: {
         keyName: 'OPENAI_API_KEY',
@@ -407,8 +506,33 @@ void test('add-directory and repository prompt handlers cover quit dismiss edit 
     }),
     true,
   );
+  assert.equal(
+    handleApiKeyPromptInput({
+      input: Buffer.from('broken\n', 'utf8'),
+      prompt: {
+        keyName: 'OPENAI_API_KEY',
+        displayName: 'OpenAI API Key',
+        value: '',
+        error: null,
+        hasExistingValue: false,
+      },
+      isQuitShortcut: () => false,
+      dismissOnOutsideClick: () => false,
+      setPrompt: (next) => {
+        calls.push(`setApiPrompt:${next?.value ?? 'null'}:${next?.error ?? 'null'}`);
+      },
+      markDirty: () => {
+        calls.push('markDirty');
+      },
+      persistApiKey: () => {
+        throw new Error('persist failed');
+      },
+    }),
+    true,
+  );
   assert.equal(persistedKeys.includes('OPENAI_API_KEY:new-key'), true);
   assert.equal(calls.includes('setApiPrompt:null:null'), true);
+  assert.equal(calls.includes('setApiPrompt:broken:persist failed'), true);
 });
 
 void test('task editor handler covers dismiss change and submit validation branches', () => {
@@ -1252,6 +1376,38 @@ void test('modal overlay builders return null for missing state and build overla
   assert.notEqual(apiKeyWarningOverlay, null);
   assert.equal(
     apiKeyWarningOverlay?.rows.some((row) => row.includes('warning: existing value')),
+    true,
+  );
+  const apiKeyErrorOverlay = buildApiKeyModalOverlay(
+    80,
+    24,
+    {
+      keyName: 'OPENAI_API_KEY',
+      displayName: 'OpenAI API Key',
+      value: '',
+      error: 'missing value',
+      hasExistingValue: true,
+    },
+    theme,
+  );
+  assert.equal(
+    apiKeyErrorOverlay?.rows.some((row) => row.includes('error: missing value')),
+    true,
+  );
+  const apiKeyEmptyOverlay = buildApiKeyModalOverlay(
+    80,
+    24,
+    {
+      keyName: 'OPENAI_API_KEY',
+      displayName: 'OpenAI API Key',
+      value: '',
+      error: null,
+      hasExistingValue: false,
+    },
+    theme,
+  );
+  assert.equal(
+    apiKeyEmptyOverlay?.rows.some((row) => row.includes('user-global')),
     true,
   );
 

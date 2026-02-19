@@ -222,3 +222,42 @@ void test('upsertHarnessSecret replaces existing key entries and preserves unrel
   assert.equal((nextText.match(/^OPENAI_API_KEY=/gmu) ?? []).length, 1);
   assert.equal(parseHarnessSecretsText(nextText).OPENAI_API_KEY, 'fresh key value');
 });
+
+void test('upsertHarnessSecret preserves malformed lines and encodes empty values', () => {
+  const workspace = mkdtempSync(join(tmpdir(), 'harness-secrets-upsert-empty-'));
+  const env: NodeJS.ProcessEnv = {
+    XDG_CONFIG_HOME: workspace,
+  };
+  const filePath = resolve(workspace, 'harness/secrets.env');
+  mkdirSync(resolve(workspace, 'harness'), { recursive: true });
+  writeFileSync(filePath, ['INVALID LINE', 'OPENAI_API_KEY=stale', ''].join('\n'), 'utf8');
+
+  const result = upsertHarnessSecret({
+    cwd: workspace,
+    env,
+    key: 'OPENAI_API_KEY',
+    value: '',
+  });
+
+  assert.equal(result.replacedExisting, true);
+  const nextText = readFileSync(filePath, 'utf8');
+  assert.equal(nextText.includes('INVALID LINE'), true);
+  assert.equal(nextText.includes('OPENAI_API_KEY=""'), true);
+});
+
+void test('upsertHarnessSecret rejects invalid keys', () => {
+  const workspace = mkdtempSync(join(tmpdir(), 'harness-secrets-upsert-invalid-key-'));
+  const env: NodeJS.ProcessEnv = {
+    XDG_CONFIG_HOME: workspace,
+  };
+  assert.throws(
+    () =>
+      upsertHarnessSecret({
+        cwd: workspace,
+        env,
+        key: '1BAD_KEY',
+        value: 'secret',
+      }),
+    /invalid secret key/u,
+  );
+});

@@ -209,3 +209,64 @@ void test('runtime modal input default router dependency path is usable', () => 
 
   assert.equal(modalInput.routeModalInput(Buffer.from('x', 'utf8')), false);
 });
+
+void test('runtime modal input wires optional api key prompt accessors when persistApiKey is configured', () => {
+  const workspace = createWorkspace();
+  type InputRouterOptions = ConstructorParameters<typeof InputRouter>[0];
+  let capturedOptions: InputRouterOptions | null = null;
+
+  new RuntimeModalInput(
+    {
+      workspace,
+      conversations: new Map(),
+      workspaceActions: {
+        archiveConversation: async () => {},
+        createAndActivateConversationInDirectory: async () => {},
+        addDirectoryByPath: async () => {},
+        upsertRepositoryByRemoteUrl: async () => {},
+      },
+      taskEditorActions: {
+        submitTaskEditorPayload: () => {},
+      },
+      isModalDismissShortcut: () => false,
+      isCommandMenuToggleShortcut: () => false,
+      isArchiveConversationShortcut: () => false,
+      dismissOnOutsideClick: () => false,
+      buildCommandMenuModalOverlay: () => null,
+      buildConversationTitleModalOverlay: () => null,
+      buildNewThreadModalOverlay: () => null,
+      resolveNewThreadPromptAgentByRow: () => null,
+      stopConversationTitleEdit: () => {},
+      queueControlPlaneOp: () => {},
+      normalizeGitHubRemoteUrl: () => null,
+      repositoriesHas: () => false,
+      scheduleConversationTitlePersist: () => {},
+      resolveCommandMenuActions: () => [],
+      executeCommandMenuAction: () => {},
+      persistApiKey: () => {},
+      markDirty: () => {},
+    },
+    {
+      createInputRouter: (options) => {
+        capturedOptions = options;
+        return {
+          routeModalInput: () => false,
+        };
+      },
+    },
+  );
+
+  assert.notEqual(capturedOptions, null);
+  const options = capturedOptions!;
+  assert.equal(typeof options.getApiKeyPrompt, 'function');
+  assert.equal(typeof options.setApiKeyPrompt, 'function');
+  assert.equal(typeof options.persistApiKey, 'function');
+  options.setApiKeyPrompt?.({
+    keyName: 'OPENAI_API_KEY',
+    displayName: 'OpenAI API Key',
+    value: 'secret',
+    error: null,
+    hasExistingValue: false,
+  });
+  assert.equal(options.getApiKeyPrompt?.()?.keyName, 'OPENAI_API_KEY');
+});
