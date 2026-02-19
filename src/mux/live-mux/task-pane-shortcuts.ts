@@ -35,6 +35,7 @@ interface TaskEditorTargetTask {
 interface HandleTaskPaneShortcutInputOptions {
   input: Buffer;
   mainPaneMode: 'conversation' | 'project' | 'home';
+  taskPaneVisible?: boolean;
   taskScreenKeybindings: Parameters<typeof detectTaskScreenKeybindingAction>[1];
   taskEditorTarget: TaskEditorTargetDraft | TaskEditorTargetTask;
   homeEditorBuffer: () => TaskComposerBuffer;
@@ -53,6 +54,7 @@ export function handleTaskPaneShortcutInput(options: HandleTaskPaneShortcutInput
   const {
     input,
     mainPaneMode,
+    taskPaneVisible = true,
     taskScreenKeybindings,
     taskEditorTarget,
     homeEditorBuffer,
@@ -66,7 +68,7 @@ export function handleTaskPaneShortcutInput(options: HandleTaskPaneShortcutInput
     setTaskRepositoryDropdownOpen,
     markDirty,
   } = options;
-  if (mainPaneMode !== 'home') {
+  if (mainPaneMode !== 'home' || !taskPaneVisible) {
     return false;
   }
   const action = detectTaskScreenKeybindingAction(input, taskScreenKeybindings);

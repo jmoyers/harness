@@ -10,6 +10,7 @@ interface ActivateLeftNavTargetOptions {
   enterProjectPane: (directoryId: string) => void;
   setMainPaneProjectMode: () => void;
   selectLeftNavRepository: (repositoryGroupId: string) => void;
+  selectLeftNavConversation?: (sessionId: string) => void;
   markDirty: () => void;
   directoriesHas: (directoryId: string) => boolean;
   visibleTargetsForState: () => readonly LeftNavSelection[];
@@ -29,6 +30,7 @@ export function activateLeftNavTarget(options: ActivateLeftNavTargetOptions): vo
     enterProjectPane,
     setMainPaneProjectMode,
     selectLeftNavRepository,
+    selectLeftNavConversation,
     markDirty,
     directoriesHas,
     visibleTargetsForState,
@@ -73,6 +75,8 @@ export function activateLeftNavTarget(options: ActivateLeftNavTargetOptions): vo
         conversationDirectoryId(entry.sessionId) === target.directoryId,
     );
     if (fallbackConversation !== undefined) {
+      selectLeftNavConversation?.(fallbackConversation.sessionId);
+      markDirty();
       queueControlPlaneOp(async () => {
         await activateConversation(fallbackConversation.sessionId);
       }, `shortcut-activate-${direction}-directory-fallback`);
@@ -82,6 +86,8 @@ export function activateLeftNavTarget(options: ActivateLeftNavTargetOptions): vo
   if (!conversationsHas(target.sessionId)) {
     return;
   }
+  selectLeftNavConversation?.(target.sessionId);
+  markDirty();
   queueControlPlaneOp(async () => {
     await activateConversation(target.sessionId);
   }, `shortcut-activate-${direction}`);

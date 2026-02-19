@@ -29,6 +29,7 @@ interface HomePaneRenderInput {
   readonly layout: HomePaneLayout;
   readonly repositories: ReadonlyMap<string, TaskFocusedPaneRepositoryRecord>;
   readonly tasks: ReadonlyMap<string, TaskFocusedPaneTaskRecord>;
+  readonly showTaskPlanningUi?: boolean;
   readonly selectedRepositoryId: string | null;
   readonly repositoryDropdownOpen: boolean;
   readonly editorTarget: TaskFocusedPaneEditorTarget;
@@ -79,7 +80,8 @@ export class HomePane {
   }
 
   render(input: HomePaneRenderInput): TaskFocusedPaneView {
-    const view = this.showTaskPlanningUi
+    const showTaskPlanningUi = input.showTaskPlanningUi ?? this.showTaskPlanningUi;
+    const view = showTaskPlanningUi
       ? this.renderTaskFocusedPaneView({
           repositories: input.repositories,
           tasks: input.tasks,

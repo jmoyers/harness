@@ -9,6 +9,7 @@ interface CapturedLeftNavOptions {
   getCurrentSelection(): { kind: string };
   setMainPaneProjectMode(): void;
   selectLeftNavRepository(repositoryGroupId: string): void;
+  selectLeftNavConversation(sessionId: string): void;
   activateConversation(sessionId: string): Promise<void>;
 }
 
@@ -233,10 +234,15 @@ void test('runtime navigation input composes left-nav, fold, and global shortcut
   assert.equal(workspace.mainPaneMode, 'project');
   leftNavOptions.selectLeftNavRepository('group:dir-1');
   assert.equal(workspace.leftNavSelection.kind, 'repository');
+  leftNavOptions.selectLeftNavConversation('session-2');
+  assert.deepEqual(workspace.leftNavSelection, {
+    kind: 'conversation',
+    sessionId: 'session-2',
+  });
   await leftNavOptions.activateConversation('session-2');
 
   workspace.repositoryToggleChordPrefixAtMs = 55;
-  assert.equal(repositoryFoldOptions.getLeftNavSelection().kind, 'repository');
+  assert.equal(repositoryFoldOptions.getLeftNavSelection().kind, 'conversation');
   assert.equal(repositoryFoldOptions.getRepositoryToggleChordPrefixAtMs(), 55);
   repositoryFoldOptions.setRepositoryToggleChordPrefixAtMs(99);
   assert.equal(workspace.repositoryToggleChordPrefixAtMs, 99);

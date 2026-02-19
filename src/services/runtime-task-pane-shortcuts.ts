@@ -156,6 +156,7 @@ export class RuntimeTaskPaneShortcuts<TTaskRecord extends TaskRecordShape> {
     return this.handleTaskPaneShortcutInput({
       input,
       mainPaneMode: workspace.mainPaneMode,
+      taskPaneVisible: workspace.leftNavSelection.kind === 'tasks',
       taskScreenKeybindings: this.options.taskScreenKeybindings,
       taskEditorTarget: workspace.taskEditorTarget,
       homeEditorBuffer: () => this.homeEditorBuffer(),

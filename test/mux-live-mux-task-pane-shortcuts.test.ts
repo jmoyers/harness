@@ -34,6 +34,7 @@ const bindings = resolveTaskScreenKeybindings({
 interface RunOptions {
   input: string | Buffer;
   mainPaneMode?: 'conversation' | 'project' | 'home';
+  taskPaneVisible?: boolean;
   taskEditorTarget?: { kind: 'draft' } | { kind: 'task'; taskId: string };
   initialBuffer?: TaskComposerBuffer;
   dropdownOpen?: boolean;
@@ -51,6 +52,7 @@ function runShortcut(options: RunOptions): {
   const handled = handleTaskPaneShortcutInput({
     input: typeof options.input === 'string' ? Buffer.from(options.input, 'utf8') : options.input,
     mainPaneMode: options.mainPaneMode ?? 'home',
+    taskPaneVisible: options.taskPaneVisible ?? true,
     taskScreenKeybindings: bindings,
     taskEditorTarget: options.taskEditorTarget ?? { kind: 'draft' },
     homeEditorBuffer: () => buffer,
@@ -84,6 +86,12 @@ void test('task pane shortcuts ignore non-home panes and handle escape/raw-input
     mainPaneMode: 'conversation',
   });
   assert.equal(nonHome.handled, false);
+
+  const hiddenTaskPane = runShortcut({
+    input: 'g',
+    taskPaneVisible: false,
+  });
+  assert.equal(hiddenTaskPane.handled, false);
 
   const escapeFallback = runShortcut({
     input: Buffer.from('\u001b[A', 'utf8'),

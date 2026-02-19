@@ -10,7 +10,7 @@ It is built for people who want to move faster than a single chat window: implem
 - One command palette (`ctrl+p` / `cmd+p`) to jump threads, run actions, and control workflow quickly.
 - Long-running work survives reconnects through a detached gateway.
 - Gateway control is resilient: lifecycle operations are lock-serialized per session, and missing stale records can be recovered automatically.
-- Fast left-rail navigation with automatic, readable thread titles.
+- Fast left-rail navigation across `Home`, `Tasks`, repositories, projects, and threads with automatic, readable thread titles.
 - Built-in GitHub actions (`Open GitHub`, `Show My Open Pull Requests`, `Open PR`, `Create PR`) from inside Harness.
 
 ## Demo

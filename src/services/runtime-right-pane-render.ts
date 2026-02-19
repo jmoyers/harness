@@ -25,6 +25,7 @@ interface HomePaneRenderInput<
   readonly layout: RuntimeRightPaneLayout;
   readonly repositories: ReadonlyMap<string, TRepositoryRecord>;
   readonly tasks: ReadonlyMap<string, TTaskRecord>;
+  readonly showTaskPlanningUi?: boolean;
   readonly selectedRepositoryId: string | null;
   readonly repositoryDropdownOpen: boolean;
   readonly editorTarget: WorkspaceModel['taskEditorTarget'];
@@ -95,6 +96,7 @@ export class RuntimeRightPaneRender<
         layout: input.layout,
         repositories: this.options.repositories,
         tasks: this.options.taskManager.readonlyTasks(),
+        showTaskPlanningUi: workspace.leftNavSelection.kind === 'tasks',
         selectedRepositoryId: workspace.taskPaneSelectedRepositoryId,
         repositoryDropdownOpen: workspace.taskRepositoryDropdownOpen,
         editorTarget: workspace.taskEditorTarget,

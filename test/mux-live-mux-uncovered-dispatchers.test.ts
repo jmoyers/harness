@@ -474,6 +474,9 @@ void test('left-nav activation routes targets and cycle helper handles empty/nor
     selectLeftNavRepository: (repositoryId: string) => {
       calls.push(`selectLeftNavRepository:${repositoryId}`);
     },
+    selectLeftNavConversation: (sessionId: string) => {
+      calls.push(`selectLeftNavConversation:${sessionId}`);
+    },
     markDirty: () => {
       calls.push('markDirty');
     },
@@ -495,9 +498,9 @@ void test('left-nav activation routes targets and cycle helper handles empty/nor
 
   activateLeftNavTarget({ ...common, target: { kind: 'home' } });
   activateLeftNavTarget({ ...common, target: { kind: 'tasks' } });
+  const { enterTasksPane: _enterTasksPaneOmitted, ...withoutTasksPane } = common;
   activateLeftNavTarget({
-    ...common,
-    enterTasksPane: undefined,
+    ...withoutTasksPane,
     target: { kind: 'tasks' },
   });
   activateLeftNavTarget({ ...common, target: { kind: 'repository', repositoryId: 'repo-a' } });
@@ -522,6 +525,8 @@ void test('left-nav activation routes targets and cycle helper handles empty/nor
     calls.some((value) => value.startsWith('queueControlPlaneOp:shortcut-activate-next')),
     true,
   );
+  assert.equal(calls.includes('selectLeftNavConversation:session-live'), true);
+  assert.equal(calls.includes('selectLeftNavConversation:session-fallback'), true);
   assert.equal(calls.includes('activateConversation:session-live'), true);
   assert.equal(calls.includes('activateConversation:session-fallback'), true);
 

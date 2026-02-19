@@ -279,8 +279,8 @@ Pass-through stream invariants:
 - Clients do zero status interpretation and zero fallback synthesis: mux/API consumers render the emitted `statusModel` exactly as provided by the gateway (including explicit `null`).
 - Left-rail status detail rendering is intentionally suppressed when `statusModel` is `null` (notably `terminal` and `critique` threads); those rows still render a fixed one-cell type glyph (`⌨` for terminal, `✎` for critique) so thread-title icon alignment stays stable.
 - Mux exposes a dedicated conversation interrupt action (`mux.conversation.interrupt`) mapped to control-plane `session.interrupt` for parity-safe thread interruption without quitting the client.
-- The left rail treats Home as a first-class selectable entry (directory-style block with its own emoji) and renders a dedicated `🗂 tasks` row directly under Home that opens the same pane in task-focused mode; `ctrl+j/k` cycles visible left-nav selection in visual order: Home -> Tasks -> repository group -> project header -> project threads -> next visible item.
-- Repository/task planning is exposed through a dedicated Home entry in the left rail; Home unifies repository and task CRUD in one scrollable right-pane view while control-plane repository/task commands and subscriptions remain the source of truth.
+- The left rail treats Home and Tasks as sibling first-class selectable entries (each with its own row and emoji); `ctrl+j/k` cycles visible left-nav selection in visual order: Home -> Tasks -> repository group -> project header -> project threads -> next visible item.
+- Repository/task planning is exposed through the dedicated Tasks entry in the left rail; Home and Tasks share the same pane container, but task CRUD rendering/shortcuts are active only when Tasks is selected while control-plane repository/task commands and subscriptions remain the source of truth.
 - Active project directories are scraped for GitHub remotes at startup/refresh; remotes are normalized and deduped, auto-upserted into canonical repository records, and reused for rail grouping.
 - Gateway-side GitHub sync persists PR records + per-PR CI job records and emits realtime observed events (`github-pr-upserted`, `github-pr-closed`, `github-pr-jobs-updated`) so UI/API clients stay live without polling their own GitHub state.
 - GitHub auth resolution is lazy and non-fatal: gateway prefers configured token env, falls back to `gh auth token`, and keeps startup healthy when auth is unavailable.
@@ -803,7 +803,7 @@ Target layout sketch:
 ```txt
 ┌───────────────────────────────┬──────────────────────────────────────────────────────┐
 │  ├─ 🏠 home                   │  Active Conversation PTY                             │
-│  │  └─ 🗂 tasks               │                                                      │
+│  ├─ 🗂 tasks                  │                                                      │
 │  ├─ 📁 harness (3,2) [-]      │  (Codex / terminal shell / vim passthrough)         │
 │  │  ├─ 📁 api (main:+4,-1)    │                                                      │
 │  │  │  ├─ ◆ codex - auth      │                                                      │

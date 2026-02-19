@@ -17,6 +17,7 @@ interface LeftNavInputOptions {
   readonly enterProjectPane: (directoryId: string) => void;
   readonly setMainPaneProjectMode: () => void;
   readonly selectLeftNavRepository: (repositoryGroupId: string) => void;
+  readonly selectLeftNavConversation?: (sessionId: string) => void;
   readonly markDirty: () => void;
   readonly directoriesHas: (directoryId: string) => boolean;
   readonly conversationDirectoryId: (sessionId: string) => string | null;
@@ -60,6 +61,11 @@ export class LeftNavInput {
       enterProjectPane: this.options.enterProjectPane,
       setMainPaneProjectMode: this.options.setMainPaneProjectMode,
       selectLeftNavRepository: this.options.selectLeftNavRepository,
+      ...(this.options.selectLeftNavConversation === undefined
+        ? {}
+        : {
+            selectLeftNavConversation: this.options.selectLeftNavConversation,
+          }),
       markDirty: this.options.markDirty,
       directoriesHas: this.options.directoriesHas,
       visibleTargetsForState: () => this.visibleTargets(),

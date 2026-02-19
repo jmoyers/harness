@@ -111,6 +111,9 @@ export class RuntimeNavigationInput {
         options.workspace.mainPaneMode = 'project';
       },
       selectLeftNavRepository,
+      selectLeftNavConversation: (sessionId) => {
+        options.workspace.selectLeftNavConversation(sessionId);
+      },
       markDirty: options.markDirty,
       directoriesHas: options.directoriesHas,
       conversationDirectoryId: options.conversationDirectoryId,
