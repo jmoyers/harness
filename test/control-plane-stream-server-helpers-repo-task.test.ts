@@ -205,7 +205,9 @@ void test('stream server helper internals cover concurrency and git snapshot equ
   );
 
   const originalGithubToken = process.env['GITHUB_TOKEN'];
+  const originalLinearToken = process.env['LINEAR_API_KEY'];
   process.env['GITHUB_TOKEN'] = 'env-token';
+  process.env['LINEAR_API_KEY'] = 'env-linear-token';
   try {
     assert.deepEqual(
       streamServerTestInternals.parseGitHubOwnerRepoFromRemote(
@@ -368,11 +370,39 @@ void test('stream server helper internals cover concurrency and git snapshot equ
     assert.equal(normalizedGitHubFallback.pollMs, 15_000);
     assert.equal(normalizedGitHubFallback.maxConcurrency, 1);
     assert.equal(normalizedGitHubFallback.apiBaseUrl, 'https://api.github.com');
+
+    const normalizedLinearDefaults = streamServerTestInternals.normalizeLinearIntegrationConfig({});
+    assert.equal(normalizedLinearDefaults.enabled, false);
+    assert.equal(normalizedLinearDefaults.tokenEnvVar, 'LINEAR_API_KEY');
+    assert.equal(normalizedLinearDefaults.token, 'env-linear-token');
+    assert.equal(normalizedLinearDefaults.apiBaseUrl, 'https://api.linear.app/graphql');
+    const normalizedLinearCustom = streamServerTestInternals.normalizeLinearIntegrationConfig({
+      enabled: true,
+      tokenEnvVar: 'CUSTOM_LINEAR_TOKEN',
+      token: 'direct-linear-token',
+      apiBaseUrl: 'https://linear.enterprise.local/graphql/',
+    });
+    assert.equal(normalizedLinearCustom.enabled, true);
+    assert.equal(normalizedLinearCustom.tokenEnvVar, 'CUSTOM_LINEAR_TOKEN');
+    assert.equal(normalizedLinearCustom.token, 'direct-linear-token');
+    assert.equal(normalizedLinearCustom.apiBaseUrl, 'https://linear.enterprise.local/graphql');
+    const normalizedLinearFallback = streamServerTestInternals.normalizeLinearIntegrationConfig({
+      tokenEnvVar: ' ',
+      apiBaseUrl: ' ',
+    });
+    assert.equal(normalizedLinearFallback.tokenEnvVar, 'LINEAR_API_KEY');
+    assert.equal(normalizedLinearFallback.token, 'env-linear-token');
+    assert.equal(normalizedLinearFallback.apiBaseUrl, 'https://api.linear.app/graphql');
   } finally {
     if (originalGithubToken === undefined) {
       delete process.env['GITHUB_TOKEN'];
     } else {
       process.env['GITHUB_TOKEN'] = originalGithubToken;
+    }
+    if (originalLinearToken === undefined) {
+      delete process.env['LINEAR_API_KEY'];
+    } else {
+      process.env['LINEAR_API_KEY'] = originalLinearToken;
     }
   }
 });

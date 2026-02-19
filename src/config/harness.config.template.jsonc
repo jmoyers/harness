@@ -29,6 +29,10 @@
   },
   "gateway": {
     "host": "127.0.0.1",
+  "linear": {
+    "enabled": true,
+    "apiBaseUrl": "https://api.linear.app/graphql",
+    "tokenEnvVar": "LINEAR_API_KEY",
   },
   "debug": {
     "enabled": true,

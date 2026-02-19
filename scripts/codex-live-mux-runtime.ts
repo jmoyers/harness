@@ -253,6 +253,7 @@ interface RuntimeCommandMenuContext {
   readonly activeDirectoryId: string | null;
   readonly activeConversationId: string | null;
   readonly selectedText: string;
+  readonly linearEnabled: boolean;
   readonly leftNavSelectionKind: WorkspaceModel['leftNavSelection']['kind'];
   readonly profileRunning: boolean;
   readonly statusTimelineRunning: boolean;
@@ -286,7 +287,7 @@ interface ThemePickerSessionState {
 
 interface AllowedCommandMenuApiKey {
   readonly actionIdSuffix: string;
-  readonly envVar: 'ANTHROPIC_API_KEY' | 'OPENAI_API_KEY';
+  readonly envVar: 'ANTHROPIC_API_KEY' | 'OPENAI_API_KEY' | 'LINEAR_API_KEY';
   readonly displayName: string;
   readonly aliases: readonly string[];
 }
@@ -325,6 +326,12 @@ const COMMAND_MENU_ALLOWED_API_KEYS: readonly AllowedCommandMenuApiKey[] = [
     envVar: 'OPENAI_API_KEY',
     displayName: 'OpenAI API Key',
     aliases: ['openai api key', 'codex api key'],
+  },
+  {
+    actionIdSuffix: 'linear',
+    envVar: 'LINEAR_API_KEY',
+    displayName: 'Linear API Key',
+    aliases: ['linear api key'],
   },
 ];
 const GIT_SUMMARY_LOADING: GitSummary = {
@@ -383,6 +390,36 @@ function parseGitHubUrl(result: Record<string, unknown>): string | null {
   }
   const trimmed = url.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function extractLinearIssueUrl(text: string): string | null {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+  const urlMatches = trimmed.match(/https?:\/\/\S+/gu);
+  const candidates = urlMatches ?? [trimmed];
+  for (const rawCandidate of candidates) {
+    const candidate = rawCandidate.replace(/[),.;!?]+$/u, '');
+    let parsed: URL;
+    try {
+      parsed = new URL(candidate);
+    } catch {
+      continue;
+    }
+    if (parsed.protocol !== 'https:') {
+      continue;
+    }
+    const hostname = parsed.hostname.toLowerCase();
+    if (!(hostname === 'linear.app' || hostname.endsWith('.linear.app'))) {
+      continue;
+    }
+    if (!parsed.pathname.toLowerCase().includes('/issue/')) {
+      continue;
+    }
+    return parsed.toString();
+  }
+  return null;
 }
 
 function commandMenuProjectPathTail(path: string): string {
@@ -764,6 +801,11 @@ async function main(): Promise<number> {
           maxConcurrency: loadedConfig.config.github.maxConcurrency,
           branchStrategy: loadedConfig.config.github.branchStrategy,
           viewerLogin: loadedConfig.config.github.viewerLogin,
+        },
+        linear: {
+          enabled: loadedConfig.config.linear.enabled,
+          apiBaseUrl: loadedConfig.config.linear.apiBaseUrl,
+          tokenEnvVar: loadedConfig.config.linear.tokenEnvVar,
         },
         lifecycleHooks: loadedConfig.config.hooks.lifecycle,
         startSession: (input) => {
@@ -1565,6 +1607,7 @@ async function main(): Promise<number> {
       activeDirectoryId,
       activeConversationId: conversationManager.activeConversationId,
       selectedText,
+      linearEnabled: loadedConfig.config.linear.enabled,
       leftNavSelectionKind: workspace.leftNavSelection.kind,
       profileRunning: hasActiveProfileState(
         resolveProfileStatePath(options.invocationDirectory, muxSessionName),
@@ -3160,6 +3203,52 @@ async function main(): Promise<number> {
         },
       }),
     );
+  });
+
+  commandMenuRegistry.registerProvider('linear.issue.import', (context) => {
+    if (!context.linearEnabled) {
+      return [];
+    }
+    const issueUrl = extractLinearIssueUrl(context.selectedText);
+    if (issueUrl === null) {
+      return [];
+    }
+    return [
+      {
+        id: 'linear.issue.import.selected',
+        title: 'Create Task from Linear Ticket URL',
+        aliases: ['linear ticket', 'import linear issue', 'linear issue to task'],
+        keywords: ['linear', 'issue', 'ticket', 'task', 'import', 'url'],
+        detail: issueUrl,
+        run: async () => {
+          queueControlPlaneOp(async () => {
+            const result = await streamClient.sendCommand({
+              type: 'linear.issue.import',
+              url: issueUrl,
+              ...(context.githubRepositoryId === null
+                ? {}
+                : {
+                    repositoryId: context.githubRepositoryId,
+                  }),
+            });
+            const parsedResult = asRecord(result);
+            if (parsedResult === null) {
+              setCommandNotice('linear import result unavailable');
+              return;
+            }
+            const issue = asRecord(parsedResult['issue']);
+            const task = asRecord(parsedResult['task']);
+            const identifier = typeof issue?.['identifier'] === 'string' ? issue['identifier'] : null;
+            const taskId = typeof task?.['taskId'] === 'string' ? task['taskId'] : null;
+            if (identifier === null || taskId === null) {
+              setCommandNotice('linear import result malformed');
+              return;
+            }
+            setCommandNotice(`imported ${identifier} as ${taskId}`);
+          }, 'command-menu-linear-issue-import');
+        },
+      },
+    ];
   });
 
   commandMenuRegistry.registerProvider('theme.set', () => {

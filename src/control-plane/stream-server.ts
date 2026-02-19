@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { delimiter, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { LinearClient } from '@linear/sdk';
 import { type CodexLiveEvent, type LiveSessionNotifyMode } from '../codex/live-session.ts';
 import type { PtyExit } from '../pty/pty_host.ts';
 import type { TerminalBufferTail, TerminalSnapshotFrame } from '../terminal/snapshot-oracle.ts';
@@ -230,6 +231,13 @@ interface GitHubIntegrationConfig {
   readonly viewerLogin: string | null;
 }
 
+interface LinearIntegrationConfig {
+  readonly enabled: boolean;
+  readonly apiBaseUrl: string;
+  readonly tokenEnvVar: string;
+  readonly token: string | null;
+}
+
 interface ThreadTitleConfig {
   readonly enabled: boolean;
   readonly apiKey: string | null;
@@ -296,6 +304,7 @@ interface StartControlPlaneStreamServerOptions {
   cursorHooks?: Partial<CursorHooksConfig>;
   gitStatus?: GitStatusMonitorConfig;
   github?: Partial<GitHubIntegrationConfig>;
+  linear?: Partial<LinearIntegrationConfig>;
   githubTokenResolver?: GitHubTokenResolver;
   githubExecFile?: GitHubExecFile;
   githubFetch?: typeof fetch;
@@ -441,6 +450,7 @@ const DEFAULT_SESSION_EXIT_TOMBSTONE_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_MAX_STREAM_JOURNAL_ENTRIES = 10000;
 const DEFAULT_GIT_STATUS_POLL_MS = 1200;
 const DEFAULT_GITHUB_POLL_MS = 15_000;
+const DEFAULT_LINEAR_API_BASE_URL = 'https://api.linear.app/graphql';
 const HISTORY_POLL_JITTER_RATIO = 0.35;
 const SESSION_DIAGNOSTICS_BUCKET_MS = 10_000;
 const SESSION_DIAGNOSTICS_BUCKET_COUNT = 6;
@@ -772,6 +782,31 @@ function normalizeGitHubIntegrationConfig(
   };
 }
 
+function normalizeLinearIntegrationConfig(
+  input: Partial<LinearIntegrationConfig> | undefined,
+): LinearIntegrationConfig {
+  const tokenEnvVarRaw = input?.tokenEnvVar;
+  const tokenEnvVar =
+    typeof tokenEnvVarRaw === 'string' && tokenEnvVarRaw.trim().length > 0
+      ? tokenEnvVarRaw.trim()
+      : 'LINEAR_API_KEY';
+  const envToken = process.env[tokenEnvVar];
+  const tokenRaw =
+    input?.token ??
+    (typeof envToken === 'string' && envToken.trim().length > 0 ? envToken.trim() : null);
+  const apiBaseUrlRaw = input?.apiBaseUrl;
+  const apiBaseUrl =
+    typeof apiBaseUrlRaw === 'string' && apiBaseUrlRaw.trim().length > 0
+      ? apiBaseUrlRaw.trim().replace(/\/+$/u, '')
+      : DEFAULT_LINEAR_API_BASE_URL;
+  return {
+    enabled: input?.enabled ?? false,
+    apiBaseUrl,
+    tokenEnvVar,
+    token: tokenRaw,
+  };
+}
+
 function normalizeThreadTitleConfig(
   input: Partial<ThreadTitleConfig> | undefined,
 ): ThreadTitleConfig {
@@ -965,6 +1000,7 @@ const streamServerInternals = {
   gitRepositorySnapshotEqual,
   commandExists,
   normalizeGitHubIntegrationConfig,
+  normalizeLinearIntegrationConfig,
   parseGitHubOwnerRepoFromRemote,
   resolveTrackedBranchName,
   summarizeGitHubCiRollup,
@@ -1098,6 +1134,7 @@ export class ControlPlaneStreamServer {
   private readonly cursorHooks: CursorHooksConfig;
   private readonly gitStatusMonitor: GitStatusMonitorConfig;
   private readonly github: GitHubIntegrationConfig;
+  private readonly linear: LinearIntegrationConfig;
   private readonly githubTokenResolver: GitHubTokenResolver;
   private readonly githubExecFile: GitHubExecFile;
   private readonly githubFetch: typeof fetch;
@@ -1116,6 +1153,18 @@ export class ControlPlaneStreamServer {
       base: string;
       draft: boolean;
     }): Promise<GitHubRemotePullRequest>;
+  };
+  private readonly linearApi: {
+    issueByIdentifier(input: {
+      identifier: string;
+    }): Promise<{
+      identifier: string;
+      title: string;
+      description: string | null;
+      url: string | null;
+      stateName: string | null;
+      teamKey: string | null;
+    } | null>;
   };
   private readonly readGitDirectorySnapshot: GitDirectorySnapshotReader;
   private readonly statusEngine = new SessionStatusEngine();
@@ -1185,6 +1234,7 @@ export class ControlPlaneStreamServer {
     this.cursorHooks = normalizeCursorHooksConfig(options.cursorHooks);
     this.gitStatusMonitor = normalizeGitStatusMonitorConfig(options.gitStatus);
     this.github = normalizeGitHubIntegrationConfig(options.github);
+    this.linear = normalizeLinearIntegrationConfig(options.linear);
     this.githubExecFile = options.githubExecFile ?? execFile;
     this.githubTokenResolver =
       options.githubTokenResolver ?? (async () => await this.readGhAuthToken());
@@ -1192,6 +1242,9 @@ export class ControlPlaneStreamServer {
     this.githubApi = {
       openPullRequestForBranch: async (input) => await this.openGitHubPullRequestForBranch(input),
       createPullRequest: async (input) => await this.createGitHubPullRequest(input),
+    };
+    this.linearApi = {
+      issueByIdentifier: async (input) => await this.fetchLinearIssueByIdentifier(input),
     };
     this.readGitDirectorySnapshot =
       options.readGitDirectorySnapshot ??
@@ -2616,6 +2669,79 @@ export class ControlPlaneStreamServer {
       );
     }
     return await response.json();
+  }
+
+  private async fetchLinearIssueByIdentifier(input: {
+    identifier: string;
+  }): Promise<{
+    identifier: string;
+    title: string;
+    description: string | null;
+    url: string | null;
+    stateName: string | null;
+    teamKey: string | null;
+  } | null> {
+    const token = this.linear.token;
+    if (token === null || token.trim().length === 0) {
+      throw new Error(`linear api key not configured: set ${this.linear.tokenEnvVar}`);
+    }
+    const client = new LinearClient({
+      apiKey: token,
+      apiUrl: this.linear.apiBaseUrl,
+    });
+    const response = await client.client.rawRequest<{
+      issues?: {
+        nodes?: Array<{
+          identifier?: string;
+          title?: string;
+          description?: string | null;
+          url?: string | null;
+          state?: {
+            name?: string | null;
+          } | null;
+          team?: {
+            key?: string | null;
+          } | null;
+        }>;
+      };
+    }, { identifier: string }>(
+      `
+        query HarnessLinearIssueImport($identifier: String!) {
+          issues(filter: { identifier: { eq: $identifier } }, first: 1) {
+            nodes {
+              identifier
+              title
+              description
+              url
+              state {
+                name
+              }
+              team {
+                key
+              }
+            }
+          }
+        }
+      `,
+      {
+        identifier: input.identifier,
+      },
+    );
+    const issue = response.data?.issues?.nodes?.[0];
+    if (issue === undefined) {
+      return null;
+    }
+    if (typeof issue.identifier !== 'string' || typeof issue.title !== 'string') {
+      throw new Error('linear issue response malformed');
+    }
+    return {
+      identifier: issue.identifier,
+      title: issue.title,
+      description: typeof issue.description === 'string' ? issue.description : null,
+      url: typeof issue.url === 'string' ? issue.url : null,
+      stateName: typeof issue.state?.name === 'string' ? issue.state.name : null,
+      teamKey: typeof issue.team?.key === 'string' ? issue.team.key : null,
+    };
   }
 
   private parseGitHubPullRequest(value: unknown): GitHubRemotePullRequest | null {

@@ -416,6 +416,21 @@ interface ExecuteCommandContext {
       closedAt: string | null;
     }>;
   };
+  readonly linear: {
+    enabled: boolean;
+  };
+  readonly linearApi: {
+    issueByIdentifier(input: {
+      identifier: string;
+    }): Promise<{
+      identifier: string;
+      title: string;
+      description: string | null;
+      url: string | null;
+      stateName: string | null;
+      teamKey: string | null;
+    } | null>;
+  };
   readonly streamCursor: number;
   refreshConversationTitle(conversationId: string): Promise<{
     conversation: ControlPlaneConversationRecord;
@@ -562,6 +577,42 @@ function parseGitHubOwnerRepo(remoteUrl: string): { owner: string; repo: string 
   return null;
 }
 
+function parseLinearIssueIdentifierFromUrl(
+  issueUrl: string,
+): {
+  identifier: string;
+} | null {
+  const trimmed = issueUrl.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(trimmed);
+  } catch {
+    return null;
+  }
+  if (parsedUrl.protocol !== 'https:') {
+    return null;
+  }
+  const hostname = parsedUrl.hostname.toLowerCase();
+  if (!(hostname === 'linear.app' || hostname.endsWith('.linear.app'))) {
+    return null;
+  }
+  const segments = parsedUrl.pathname.split('/').filter((segment) => segment.length > 0);
+  const issueSegmentIndex = segments.findIndex((segment) => segment.toLowerCase() === 'issue');
+  if (issueSegmentIndex < 0 || issueSegmentIndex + 1 >= segments.length) {
+    return null;
+  }
+  const identifier = segments[issueSegmentIndex + 1]?.trim().toUpperCase() ?? '';
+  if (!/^[A-Z][A-Z0-9]*-\d+$/u.test(identifier)) {
+    return null;
+  }
+  return {
+    identifier,
+  };
+}
+
 function resolveTrackedBranch(input: {
   strategy: 'pinned-then-current' | 'current-only' | 'pinned-only';
   pinnedBranch: string | null;
@@ -647,6 +698,7 @@ function ciRollupFromJobs(
 
 export const streamServerCommandTestInternals = {
   parseGitHubOwnerRepo,
+  parseLinearIssueIdentifierFromUrl,
   resolveTrackedBranch,
   ciRollupFromJobs,
 };
@@ -1296,6 +1348,62 @@ export async function executeStreamServerCommand(
     const query = encodeURIComponent(`is:pr is:open author:${authorQuery}`);
     return {
       url: `https://github.com/${ownerRepo.owner}/${ownerRepo.repo}/pulls?q=${query}`,
+    };
+  }
+
+  if (command.type === 'linear.issue.import') {
+    if (!ctx.linear.enabled) {
+      throw new Error('linear integration is disabled');
+    }
+    const parsedLinearIssue = parseLinearIssueIdentifierFromUrl(command.url);
+    if (parsedLinearIssue === null) {
+      throw new Error('linear issue url required');
+    }
+    const issue = await ctx.linearApi.issueByIdentifier({
+      identifier: parsedLinearIssue.identifier,
+    });
+    if (issue === null) {
+      throw new Error(`linear issue not found: ${parsedLinearIssue.identifier}`);
+    }
+    const task = ctx.stateStore.createTask({
+      taskId: `task-${randomUUID()}`,
+      tenantId: command.tenantId ?? DEFAULT_TENANT_ID,
+      userId: command.userId ?? DEFAULT_USER_ID,
+      workspaceId: command.workspaceId ?? DEFAULT_WORKSPACE_ID,
+      ...(command.repositoryId === undefined ? {} : { repositoryId: command.repositoryId }),
+      title: `${issue.identifier}: ${issue.title}`.trim(),
+      description: [
+        issue.url ?? command.url.trim(),
+        issue.stateName === null ? null : `state: ${issue.stateName}`,
+        issue.teamKey === null ? null : `team: ${issue.teamKey}`,
+        issue.description,
+      ]
+        .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+        .join('\n'),
+    });
+    ctx.publishObservedEvent(
+      {
+        tenantId: task.tenantId,
+        userId: task.userId,
+        workspaceId: task.workspaceId,
+        directoryId: null,
+        conversationId: null,
+      },
+      {
+        type: 'task-created',
+        task: ctx.taskRecord(task),
+      },
+    );
+    return {
+      imported: true,
+      issue: {
+        identifier: issue.identifier,
+        title: issue.title,
+        url: issue.url ?? command.url.trim(),
+        stateName: issue.stateName,
+        teamKey: issue.teamKey,
+      },
+      task: ctx.taskRecord(task),
     };
   }
 

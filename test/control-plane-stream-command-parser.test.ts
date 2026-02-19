@@ -537,6 +537,24 @@ void test('parseStreamCommand parses github command shapes', () => {
       repositoryId: 'repository-1',
     },
   );
+  assert.deepEqual(
+    parseStreamCommand({
+      type: 'linear.issue.import',
+      url: 'https://linear.app/acme/issue/ENG-123/fix-startup-flicker',
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      repositoryId: 'repository-1',
+    }),
+    {
+      type: 'linear.issue.import',
+      url: 'https://linear.app/acme/issue/ENG-123/fix-startup-flicker',
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      repositoryId: 'repository-1',
+    },
+  );
 });
 
 void test('parseStreamCommand rejects unknown or malformed command shapes', () => {
@@ -798,6 +816,21 @@ void test('parseStreamCommand rejects unknown or malformed command shapes', () =
   assert.equal(
     parseStreamCommand({
       type: 'github.repo-my-prs-url',
+      repositoryId: 7,
+    }),
+    null,
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'linear.issue.import',
+      url: 7,
+    }),
+    null,
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'linear.issue.import',
+      url: 'https://linear.app/acme/issue/ENG-123/fix-startup-flicker',
       repositoryId: 7,
     }),
     null,

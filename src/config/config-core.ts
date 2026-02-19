@@ -84,6 +84,12 @@ interface HarnessGitHubConfig {
   readonly viewerLogin: string | null;
 }
 
+interface HarnessLinearConfig {
+  readonly enabled: boolean;
+  readonly apiBaseUrl: string;
+  readonly tokenEnvVar: string;
+}
+
 interface HarnessGatewayConfig {
   readonly host: string;
 }
@@ -225,6 +231,7 @@ interface HarnessConfig {
   readonly mux: HarnessMuxConfig;
   readonly github: HarnessGitHubConfig;
   readonly gateway: HarnessGatewayConfig;
+  readonly linear: HarnessLinearConfig;
   readonly debug: HarnessDebugConfig;
   readonly codex: HarnessCodexConfig;
   readonly claude: HarnessClaudeConfig;
@@ -271,6 +278,10 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
   },
   gateway: {
     host: '127.0.0.1',
+  linear: {
+    enabled: true,
+    apiBaseUrl: 'https://api.linear.app/graphql',
+    tokenEnvVar: 'LINEAR_API_KEY',
   },
   debug: {
     enabled: true,
@@ -695,6 +706,31 @@ function normalizeGatewayConfig(input: unknown): HarnessGatewayConfig {
   }
   return {
     host: normalizeHost(record['host'], DEFAULT_HARNESS_CONFIG.gateway.host),
+  };
+}
+
+function normalizeLinearConfig(input: unknown): HarnessLinearConfig {
+  const record = asRecord(input);
+  if (record === null) {
+    return DEFAULT_HARNESS_CONFIG.linear;
+  }
+  const tokenEnvVarRaw = record['tokenEnvVar'];
+  const tokenEnvVar =
+    typeof tokenEnvVarRaw === 'string' && tokenEnvVarRaw.trim().length > 0
+      ? tokenEnvVarRaw.trim()
+      : DEFAULT_HARNESS_CONFIG.linear.tokenEnvVar;
+  const apiBaseUrlRaw = record['apiBaseUrl'];
+  const apiBaseUrl =
+    typeof apiBaseUrlRaw === 'string' && apiBaseUrlRaw.trim().length > 0
+      ? apiBaseUrlRaw.trim().replace(/\/+$/u, '')
+      : DEFAULT_HARNESS_CONFIG.linear.apiBaseUrl;
+  return {
+    enabled:
+      typeof record['enabled'] === 'boolean'
+        ? record['enabled']
+        : DEFAULT_HARNESS_CONFIG.linear.enabled,
+    apiBaseUrl,
+    tokenEnvVar,
   };
 }
 
@@ -1391,6 +1427,7 @@ export function parseHarnessConfigText(text: string): HarnessConfig {
   const mux = asRecord(migratedRoot['mux']);
   const github = normalizeGitHubConfig(migratedRoot['github']);
   const gateway = normalizeGatewayConfig(migratedRoot['gateway']);
+  const linear = normalizeLinearConfig(migratedRoot['linear']);
   const legacyPerf = normalizePerfConfig(migratedRoot['perf']);
   const debug = normalizeDebugConfig(migratedRoot['debug'], legacyPerf);
   const codex = normalizeCodexConfig(migratedRoot['codex']);
@@ -1408,6 +1445,7 @@ export function parseHarnessConfigText(text: string): HarnessConfig {
     },
     github,
     gateway,
+    linear,
     debug,
     codex,
     claude,

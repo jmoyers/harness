@@ -347,6 +347,15 @@ interface GitHubRepoMyPrsUrlCommand {
   repositoryId: string;
 }
 
+interface LinearIssueImportCommand {
+  type: 'linear.issue.import';
+  url: string;
+  tenantId?: string;
+  userId?: string;
+  workspaceId?: string;
+  repositoryId?: string;
+}
+
 interface StreamSubscribeCommand {
   type: 'stream.subscribe';
   tenantId?: string;
@@ -509,6 +518,7 @@ export type StreamCommand =
   | GitHubPrCreateCommand
   | GitHubPrJobsListCommand
   | GitHubRepoMyPrsUrlCommand
+  | LinearIssueImportCommand
   | StreamSubscribeCommand
   | StreamUnsubscribeCommand
   | SessionListCommand

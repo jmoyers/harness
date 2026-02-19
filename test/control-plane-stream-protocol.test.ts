@@ -300,6 +300,18 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
     },
     {
       kind: 'command',
+      commandId: 'c0eq-linear',
+      command: {
+        type: 'linear.issue.import',
+        url: 'https://linear.app/acme/issue/ENG-123/fix-startup-flicker',
+        tenantId: 'tenant-local',
+        userId: 'user-local',
+        workspaceId: 'workspace-local',
+        repositoryId: 'repository-1',
+      },
+    },
+    {
+      kind: 'command',
       commandId: 'c0f',
       command: {
         type: 'stream.subscribe',
@@ -814,6 +826,14 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
         userId: 'user-local',
         workspaceId: 'workspace-local',
         orderedTaskIds: 'task-1',
+      },
+    },
+    {
+      kind: 'command',
+      commandId: 'c2linear',
+      command: {
+        type: 'linear.issue.import',
+        url: 7,
       },
     },
     {

@@ -33,6 +33,7 @@ const DEFAULT_UI = {
 } as const;
 const DEFAULT_GIT = DEFAULT_HARNESS_CONFIG.mux.git;
 const DEFAULT_GITHUB = DEFAULT_HARNESS_CONFIG.github;
+const DEFAULT_LINEAR = DEFAULT_HARNESS_CONFIG.linear;
 const TEST_MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 
 function testEnvWithHome(homeDirectory: string): NodeJS.ProcessEnv {
@@ -632,6 +633,36 @@ void test('parseHarnessConfigText normalizes github integration settings', () =>
     ...DEFAULT_GITHUB,
     pollMs: 1000,
     maxConcurrency: 1,
+  });
+});
+
+void test('parseHarnessConfigText normalizes linear integration settings', () => {
+  const parsed = parseHarnessConfigText(`
+    {
+      "linear": {
+        "enabled": false,
+        "apiBaseUrl": " https://linear.enterprise.example/graphql/ ",
+        "tokenEnvVar": " LINEAR_ENTERPRISE_TOKEN "
+      }
+    }
+  `);
+  assert.deepEqual(parsed.linear, {
+    enabled: false,
+    apiBaseUrl: 'https://linear.enterprise.example/graphql',
+    tokenEnvVar: 'LINEAR_ENTERPRISE_TOKEN',
+  });
+
+  const invalid = parseHarnessConfigText(`
+    {
+      "linear": {
+        "enabled": "yes",
+        "apiBaseUrl": "",
+        "tokenEnvVar": " "
+      }
+    }
+  `);
+  assert.deepEqual(invalid.linear, {
+    ...DEFAULT_LINEAR,
   });
 });
 

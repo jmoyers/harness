@@ -231,6 +231,11 @@ async function main(): Promise<number> {
       branchStrategy: loadedConfig.config.github.branchStrategy,
       viewerLogin: loadedConfig.config.github.viewerLogin,
     },
+    linear: {
+      enabled: loadedConfig.config.linear.enabled,
+      apiBaseUrl: loadedConfig.config.linear.apiBaseUrl,
+      tokenEnvVar: loadedConfig.config.linear.tokenEnvVar,
+    },
     lifecycleHooks: loadedConfig.config.hooks.lifecycle,
     startSession: (input) => {
       const sessionOptions: Parameters<typeof startCodexLiveSession>[0] = {

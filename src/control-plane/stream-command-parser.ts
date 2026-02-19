@@ -1134,6 +1134,42 @@ function parseGitHubRepoMyPrsUrl(record: CommandRecord): StreamCommand | null {
   };
 }
 
+function parseLinearIssueImport(record: CommandRecord): StreamCommand | null {
+  const url = readString(record['url']);
+  if (url === null) {
+    return null;
+  }
+  const tenantId = readOptionalString(record, 'tenantId');
+  const userId = readOptionalString(record, 'userId');
+  const workspaceId = readOptionalString(record, 'workspaceId');
+  const repositoryId = readOptionalString(record, 'repositoryId');
+  if (
+    tenantId === undefined ||
+    userId === undefined ||
+    workspaceId === undefined ||
+    repositoryId === undefined
+  ) {
+    return null;
+  }
+  const command: StreamCommand = {
+    type: 'linear.issue.import',
+    url,
+  };
+  if (tenantId !== null) {
+    command.tenantId = tenantId;
+  }
+  if (userId !== null) {
+    command.userId = userId;
+  }
+  if (workspaceId !== null) {
+    command.workspaceId = workspaceId;
+  }
+  if (repositoryId !== null) {
+    command.repositoryId = repositoryId;
+  }
+  return command;
+}
+
 function parseStreamSubscribe(record: CommandRecord): StreamCommand | null {
   const tenantId = readOptionalString(record, 'tenantId');
   const userId = readOptionalString(record, 'userId');
@@ -1546,6 +1582,7 @@ export const DEFAULT_STREAM_COMMAND_PARSERS: StreamCommandParserRegistry = {
   'github.pr-create': parseGitHubPrCreate,
   'github.pr-jobs-list': parseGitHubPrJobsList,
   'github.repo-my-prs-url': parseGitHubRepoMyPrsUrl,
+  'linear.issue.import': parseLinearIssueImport,
   'stream.subscribe': parseStreamSubscribe,
   'stream.unsubscribe': parseStreamUnsubscribe,
   'session.list': parseSessionList,

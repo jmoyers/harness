@@ -269,7 +269,8 @@ Pass-through stream invariants:
   - open GitHub for the active-project repository (`Open GitHub for This Repo (git)`)
   - show a filtered GitHub URL for your open pull requests in the active-project repository (`Show My Open Pull Requests (git)`)
   - open/create GitHub PR for the tracked active-project non-default branch (open when present, create when absent; `Open PR (git)` / `Create PR (git)`)
-  - set supported API keys (`Set Anthropic API Key`, `Set OpenAI API Key`) and persist to `secrets.env`
+  - set supported API keys (`Set Anthropic API Key`, `Set OpenAI API Key`, `Set Linear API Key`) and persist to `secrets.env`
+  - create a Harness task from selected Linear issue text/URL (`Create Task from Linear Ticket URL`) via control-plane command `linear.issue.import`
   - open a theme picker and set a built-in OpenCode preset or the special `default` theme
   - show release notes modal (`Show What's New`)
   - trigger self-update (`Update Harness`, aliases include `update` and `upgrade`) in a terminal thread via `harness update`
@@ -759,6 +760,10 @@ Design constraints:
   - `apiBaseUrl`, `tokenEnvVar`, `pollMs`, `maxConcurrency`, `branchStrategy`, and optional `viewerLogin` are normalized by `config-core`
 - Gateway host policy is config-governed under `gateway.host`:
   - defaults to loopback (`127.0.0.1`) and is used by `harness` gateway/client startup when no explicit `--host` override is provided
+- Linear issue import policy is config-governed under `linear.*`:
+  - `enabled` defaults to `true`
+  - `apiBaseUrl` and `tokenEnvVar` are normalized by `config-core`
+  - control-plane uses `tokenEnvVar` (default `LINEAR_API_KEY`) to resolve the API key at startup
 - Launch policy is config-governed under each provider section:
   - `codex.launch`, `claude.launch`, and `cursor.launch`
   - each supports `defaultMode` (`yolo` or `standard`) as the fallback for all directories

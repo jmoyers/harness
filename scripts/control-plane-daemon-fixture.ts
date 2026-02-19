@@ -213,6 +213,11 @@ async function main(): Promise<number> {
       maxConcurrency: loadedConfig.config.mux.git.maxConcurrency,
       minDirectoryRefreshMs: Math.max(loadedConfig.config.mux.git.idlePollMs, 30_000),
     },
+    linear: {
+      enabled: loadedConfig.config.linear.enabled,
+      apiBaseUrl: loadedConfig.config.linear.apiBaseUrl,
+      tokenEnvVar: loadedConfig.config.linear.tokenEnvVar,
+    },
     lifecycleHooks: loadedConfig.config.hooks.lifecycle,
     startSession: (input) => {
       const sessionOptions: Parameters<typeof startCodexLiveSession>[0] = {

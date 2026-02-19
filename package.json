@@ -88,6 +88,7 @@
     "verify:strict": "bun run verify && bun run loc:verify:enforce"
   },
   "dependencies": {
+    "@linear/sdk": "^75.0.0",
     "@napi-rs/canvas": "^0.1.92",
     "gifenc": "^1.0.3"
   },
