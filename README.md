@@ -17,7 +17,7 @@ Use it when you want to move faster than a single chat window: keep multiple thr
 
 ## Demo
 
-![Harness multi-thread recording](https://raw.githubusercontent.com/jmoyers/harness/main/assets/poem-recording.gif)
+![Harness multi-thread recording](assets/harness.gif)
 
 ## Quick start
 
