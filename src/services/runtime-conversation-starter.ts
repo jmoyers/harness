@@ -33,6 +33,13 @@ interface RuntimeConversationStarterLaunchArgsInput {
 
 type RuntimeConversationStarterSpanAttributes = Record<string, string | number | boolean>;
 
+function isSessionAlreadyExistsError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return error.message.includes('session already exists');
+}
+
 export interface RuntimeConversationStarterOptions<
   TConversation extends RuntimeConversationStarterConversationRecord,
   TSessionSummary,
@@ -134,19 +141,36 @@ export class RuntimeConversationStarter<
       if (this.options.terminalBackgroundHex !== undefined) {
         ptyStartInput.terminalBackgroundHex = this.options.terminalBackgroundHex;
       }
-      await this.options.startPtySession(ptyStartInput);
+      let startedSession = false;
+      try {
+        await this.options.startPtySession(ptyStartInput);
+        startedSession = true;
+      } catch (error: unknown) {
+        if (!isSessionAlreadyExistsError(error)) {
+          throw error;
+        }
+      }
       this.options.setPtySize(sessionId, {
         cols: layout.rightCols,
         rows: layout.paneRows,
       });
       this.options.sendResize(sessionId, layout.rightCols, layout.paneRows);
-      this.endStartCommandSpanIfTarget(sessionId, {
-        alreadyLive: false,
-        argCount: launchArgs.length,
-        resumed: launchArgs[0] === 'resume',
-      });
+      if (startedSession) {
+        this.endStartCommandSpanIfTarget(sessionId, {
+          alreadyLive: false,
+          argCount: launchArgs.length,
+          resumed: launchArgs[0] === 'resume',
+        });
+      } else {
+        this.endStartCommandSpanIfTarget(sessionId, {
+          alreadyLive: true,
+          recoveredDuplicateStart: true,
+        });
+      }
       const state = this.options.ensureConversation(sessionId);
-      this.options.recordStartCommand(sessionId, launchArgs);
+      if (startedSession) {
+        this.options.recordStartCommand(sessionId, launchArgs);
+      }
       const statusSummary = await this.options.getSessionStatus(sessionId);
       if (statusSummary !== null) {
         this.options.upsertFromSessionSummary(statusSummary);

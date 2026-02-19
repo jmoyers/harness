@@ -370,3 +370,155 @@ void test('runtime conversation starter falls back to empty base args for non-co
 
   assert.deepEqual(capturedBaseArgs, []);
 });
+
+void test('runtime conversation starter recovers when pty.start reports existing live session', async () => {
+  const calls: string[] = [];
+  const record: ConversationRecord = {
+    sessionId: 'session-race',
+    directoryId: 'directory-1',
+    agentType: 'codex',
+    adapterState: {},
+    live: false,
+    lastOutputCursor: 9,
+    launchCommand: '',
+  };
+
+  const starter = new RuntimeConversationStarter<
+    ConversationRecord,
+    { readonly sessionId: string }
+  >({
+    runWithStartInFlight: async (_sessionId, run) => {
+      calls.push('runWithStartInFlight');
+      return await run();
+    },
+    conversationById: () => record,
+    ensureConversation: () => {
+      calls.push('ensureConversation');
+      return record;
+    },
+    normalizeThreadAgentType: (agentType) => agentType,
+    codexArgs: ['--codex-default'],
+    critiqueDefaultArgs: ['--critique-default'],
+    sessionCwdForConversation: () => '/workspace',
+    buildLaunchArgs: () => ['resume', '--foo'],
+    launchCommandForAgent: () => 'launch-codex',
+    formatCommandForDebugBar: (command, args) => `${command} ${args.join(' ')}`,
+    startConversationSpan: (sessionId) => ({
+      end: () => {
+        calls.push(`startSpan.end:${sessionId}`);
+      },
+    }),
+    firstPaintTargetSessionId: () => 'session-race',
+    endStartCommandSpan: (input) => {
+      calls.push(`endStartCommandSpan:${JSON.stringify(input)}`);
+    },
+    layout: () => ({
+      rightCols: 120,
+      paneRows: 40,
+    }),
+    startPtySession: async () => {
+      calls.push('startPtySession');
+      throw new Error('session already exists: session-race');
+    },
+    setPtySize: (sessionId, size) => {
+      calls.push(`setPtySize:${sessionId}:${size.cols}x${size.rows}`);
+    },
+    sendResize: (sessionId, cols, rows) => {
+      calls.push(`sendResize:${sessionId}:${cols}x${rows}`);
+    },
+    sessionEnv: {},
+    worktreeId: 'worktree-1',
+    terminalForegroundHex: undefined,
+    terminalBackgroundHex: undefined,
+    recordStartCommand: () => {
+      calls.push('recordStartCommand');
+    },
+    getSessionStatus: async (sessionId) => {
+      calls.push(`getSessionStatus:${sessionId}`);
+      return {
+        sessionId,
+      };
+    },
+    upsertFromSessionSummary: (summary) => {
+      calls.push(`upsertFromSessionSummary:${summary.sessionId}`);
+    },
+    subscribeConversationEvents: async (sessionId) => {
+      calls.push(`subscribeConversationEvents:${sessionId}`);
+    },
+  });
+
+  const result = await starter.startConversation('session-race');
+  assert.equal(result, record);
+  assert.deepEqual(calls, [
+    'runWithStartInFlight',
+    'startPtySession',
+    'setPtySize:session-race:120x40',
+    'sendResize:session-race:120x40',
+    'endStartCommandSpan:{"alreadyLive":true,"recoveredDuplicateStart":true}',
+    'ensureConversation',
+    'getSessionStatus:session-race',
+    'upsertFromSessionSummary:session-race',
+    'subscribeConversationEvents:session-race',
+    'startSpan.end:session-race',
+  ]);
+});
+
+void test('runtime conversation starter rethrows non-duplicate pty.start failures', async () => {
+  const starter = new RuntimeConversationStarter<
+    ConversationRecord,
+    { readonly sessionId: string }
+  >({
+    runWithStartInFlight: async (_sessionId, run) => {
+      return await run();
+    },
+    conversationById: () => ({
+      sessionId: 'session-fail',
+      directoryId: 'directory-1',
+      agentType: 'codex',
+      adapterState: {},
+      live: false,
+      lastOutputCursor: 0,
+      launchCommand: '',
+    }),
+    ensureConversation: () => ({
+      sessionId: 'session-fail',
+      directoryId: 'directory-1',
+      agentType: 'codex',
+      adapterState: {},
+      live: false,
+      lastOutputCursor: 0,
+      launchCommand: '',
+    }),
+    normalizeThreadAgentType: (agentType) => agentType,
+    codexArgs: ['--codex-default'],
+    critiqueDefaultArgs: ['--critique-default'],
+    sessionCwdForConversation: () => '/workspace',
+    buildLaunchArgs: () => ['resume'],
+    launchCommandForAgent: () => 'launch-codex',
+    formatCommandForDebugBar: (command, args) => `${command} ${args.join(' ')}`,
+    startConversationSpan: () => ({
+      end: () => {},
+    }),
+    firstPaintTargetSessionId: () => null,
+    endStartCommandSpan: () => {},
+    layout: () => ({
+      rightCols: 80,
+      paneRows: 24,
+    }),
+    startPtySession: async () => {
+      throw new Error('network timeout');
+    },
+    setPtySize: () => {},
+    sendResize: () => {},
+    sessionEnv: {},
+    worktreeId: undefined,
+    terminalForegroundHex: undefined,
+    terminalBackgroundHex: undefined,
+    recordStartCommand: () => {},
+    getSessionStatus: async () => null,
+    upsertFromSessionSummary: () => {},
+    subscribeConversationEvents: async () => {},
+  });
+
+  await assert.rejects(() => starter.startConversation('session-fail'), /network timeout/);
+});

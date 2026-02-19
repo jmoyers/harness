@@ -290,6 +290,8 @@ export class ConversationManager {
 
   upsertFromPersistedRecord(input: UpsertPersistedConversationInput): ConversationState {
     const { record } = input;
+    const existing = this.conversationsBySessionId.get(record.conversationId);
+    const preserveLiveRuntime = existing?.live === true;
     const conversation = input.ensureConversation(record.conversationId, {
       directoryId: record.directoryId,
       title: record.title,
@@ -299,14 +301,16 @@ export class ConversationManager {
     conversation.scope.tenantId = record.tenantId;
     conversation.scope.userId = record.userId;
     conversation.scope.workspaceId = record.workspaceId;
-    const runtimeStatusModel = record.runtimeStatusModel;
-    conversation.status = record.runtimeStatus;
-    conversation.statusModel = runtimeStatusModel;
-    conversation.attentionReason = runtimeStatusModel?.attentionReason ?? null;
-    conversation.lastKnownWork = runtimeStatusModel?.lastKnownWork ?? null;
-    conversation.lastKnownWorkAt = runtimeStatusModel?.lastKnownWorkAt ?? null;
+    if (!preserveLiveRuntime) {
+      const runtimeStatusModel = record.runtimeStatusModel;
+      conversation.status = record.runtimeStatus;
+      conversation.statusModel = runtimeStatusModel;
+      conversation.attentionReason = runtimeStatusModel?.attentionReason ?? null;
+      conversation.lastKnownWork = runtimeStatusModel?.lastKnownWork ?? null;
+      conversation.lastKnownWorkAt = runtimeStatusModel?.lastKnownWorkAt ?? null;
+    }
     // Persisted runtime flags are advisory; session.list is authoritative for live sessions.
-    conversation.live = false;
+    conversation.live = preserveLiveRuntime ? true : false;
     return conversation;
   }
 

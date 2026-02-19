@@ -284,6 +284,79 @@ void test('stream server deduplicates unchanged git snapshots when using default
   }
 });
 
+void test('stream server marks state store closed and halts background polling on git-status closed-db errors', async () => {
+  const workspace = mkdtempSync(join(tmpdir(), 'harness-git-status-closed-'));
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input),
+    codexHistory: {
+      enabled: true,
+      filePath: join(workspace, 'missing-history.jsonl'),
+      pollMs: 1000,
+    },
+    gitStatus: {
+      enabled: true,
+      pollMs: 60_000,
+      maxConcurrency: 1,
+      minDirectoryRefreshMs: 0,
+    },
+    readGitDirectorySnapshot: async () => ({
+      summary: {
+        branch: 'main',
+        changedFiles: 0,
+        additions: 0,
+        deletions: 0,
+      },
+      repository: {
+        normalizedRemoteUrl: 'https://github.com/example/harness.git',
+        commitCount: 1,
+        lastCommitAt: '2026-02-19T00:00:00.000Z',
+        shortCommitHash: 'deadbeef',
+        inferredName: 'harness',
+        defaultBranch: 'main',
+      },
+    }),
+  });
+  const internals = server as unknown as {
+    stateStore: SqliteControlPlaneStore;
+    stateStoreClosed: boolean;
+    pollGitStatus: () => Promise<void>;
+    gitStatusPollTimer: NodeJS.Timeout | null;
+    historyPollTimer: NodeJS.Timeout | null;
+    gitStatusDirectoriesById: Map<
+      string,
+      {
+        directoryId: string;
+        tenantId: string;
+        userId: string;
+        workspaceId: string;
+        path: string;
+      }
+    >;
+  };
+
+  try {
+    const directory = internals.stateStore.upsertDirectory({
+      directoryId: 'directory-git-status-closed',
+      tenantId: 'tenant-git-status-closed',
+      userId: 'user-git-status-closed',
+      workspaceId: 'workspace-git-status-closed',
+      path: workspace,
+    });
+    internals.gitStatusDirectoriesById.set(directory.directoryId, directory);
+    assert.notEqual(internals.gitStatusPollTimer, null);
+    assert.notEqual(internals.historyPollTimer, null);
+
+    internals.stateStore.close();
+    await assert.doesNotReject(async () => await internals.pollGitStatus());
+    assert.equal(internals.stateStoreClosed, true);
+    assert.equal(internals.gitStatusPollTimer, null);
+    assert.equal(internals.historyPollTimer, null);
+  } finally {
+    await server.close();
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 void test('stream server lists cached directory git status snapshots for startup hydration', async () => {
   const workspace = mkdtempSync(join(tmpdir(), 'harness-git-status-list-'));
   const server = await startControlPlaneStreamServer({

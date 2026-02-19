@@ -1381,7 +1381,18 @@ export class ControlPlaneStreamServer {
   }
 
   private pollHistoryTimerTick(): void {
-    void this.pollHistoryFile();
+    void this.pollHistoryFile().catch((error: unknown) => {
+      if (this.markStateStoreClosedIfDetected(error)) {
+        return;
+      }
+      if (this.shouldSkipStateStoreWork()) {
+        return;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      recordPerfEvent('control-plane.history.poll.failed', {
+        error: message,
+      });
+    });
   }
 
   private stopHistoryPolling(): void {
@@ -1399,9 +1410,9 @@ export class ControlPlaneStreamServer {
       return;
     }
     this.reloadGitStatusDirectoriesFromStore();
-    void this.pollGitStatus();
+    this.triggerGitStatusPoll();
     this.gitStatusPollTimer = setInterval(() => {
-      void this.pollGitStatus();
+      this.triggerGitStatusPoll();
     }, this.gitStatusMonitor.pollMs);
     this.gitStatusPollTimer.unref();
   }
@@ -1494,6 +1505,9 @@ export class ControlPlaneStreamServer {
 
   private triggerGitHubPoll(): void {
     void this.pollGitHub().catch((error: unknown) => {
+      if (this.markStateStoreClosedIfDetected(error)) {
+        return;
+      }
       if (this.shouldIgnoreGitHubPollError(error)) {
         return;
       }
@@ -1504,10 +1518,40 @@ export class ControlPlaneStreamServer {
     });
   }
 
+  private triggerGitStatusPoll(): void {
+    void this.pollGitStatus().catch((error: unknown) => {
+      if (this.markStateStoreClosedIfDetected(error)) {
+        return;
+      }
+      if (this.shouldSkipStateStoreWork()) {
+        return;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      recordPerfEvent('control-plane.git-status.poll.failed', {
+        error: message,
+      });
+    });
+  }
+
   private isStateStoreClosedError(error: unknown): boolean {
     const message = error instanceof Error ? error.message : String(error);
     const normalized = message.trim().toLowerCase();
-    return normalized.includes('database has closed') || normalized.includes('database is closed');
+    return (
+      normalized.includes('database has closed') ||
+      normalized.includes('database is closed') ||
+      normalized.includes('cannot use a closed database')
+    );
+  }
+
+  private markStateStoreClosedIfDetected(error: unknown): boolean {
+    if (!this.isStateStoreClosedError(error)) {
+      return false;
+    }
+    this.stateStoreClosed = true;
+    this.stopGitHubPolling();
+    this.stopGitStatusPolling();
+    this.stopHistoryPolling();
+    return true;
   }
 
   private shouldSkipStateStoreWork(): boolean {
@@ -1526,6 +1570,9 @@ export class ControlPlaneStreamServer {
     try {
       await pollPromise;
     } catch (error: unknown) {
+      if (this.markStateStoreClosedIfDetected(error)) {
+        return;
+      }
       if (!this.shouldIgnoreGitHubPollError(error)) {
         const message = error instanceof Error ? error.message : String(error);
         recordPerfEvent('control-plane.github.poll.failed-on-close', {
@@ -2205,9 +2252,15 @@ export class ControlPlaneStreamServer {
   }
 
   private async pollHistoryFile(): Promise<void> {
-    await pollStreamServerHistoryFile(
-      this as unknown as Parameters<typeof pollStreamServerHistoryFile>[0],
-    );
+    try {
+      await pollStreamServerHistoryFile(
+        this as unknown as Parameters<typeof pollStreamServerHistoryFile>[0],
+      );
+    } catch (error: unknown) {
+      if (!this.markStateStoreClosedIfDetected(error)) {
+        throw error;
+      }
+    }
   }
 
   private async pollHistoryFileUnsafe(): Promise<boolean> {
@@ -2217,9 +2270,15 @@ export class ControlPlaneStreamServer {
   }
 
   private async pollGitStatus(): Promise<void> {
-    await pollStreamServerGitStatus(
-      this as unknown as Parameters<typeof pollStreamServerGitStatus>[0],
-    );
+    try {
+      await pollStreamServerGitStatus(
+        this as unknown as Parameters<typeof pollStreamServerGitStatus>[0],
+      );
+    } catch (error: unknown) {
+      if (!this.markStateStoreClosedIfDetected(error)) {
+        throw error;
+      }
+    }
   }
 
   private async refreshGitStatusForDirectory(
@@ -2314,6 +2373,10 @@ export class ControlPlaneStreamServer {
     this.githubPollPromise = pollPromise;
     try {
       await pollPromise;
+    } catch (error: unknown) {
+      if (!this.markStateStoreClosedIfDetected(error)) {
+        throw error;
+      }
     } finally {
       if (this.githubPollPromise === pollPromise) {
         this.githubPollPromise = null;
@@ -2491,6 +2554,9 @@ export class ControlPlaneStreamServer {
         lastErrorAt: null,
       });
     } catch (error: unknown) {
+      if (this.markStateStoreClosedIfDetected(error)) {
+        return;
+      }
       if (this.shouldIgnoreGitHubPollError(error)) {
         return;
       }
@@ -2510,6 +2576,9 @@ export class ControlPlaneStreamServer {
           lastErrorAt: now,
         });
       } catch (syncStateError: unknown) {
+        if (this.markStateStoreClosedIfDetected(syncStateError)) {
+          return;
+        }
         if (!this.shouldIgnoreGitHubPollError(syncStateError)) {
           throw syncStateError;
         }

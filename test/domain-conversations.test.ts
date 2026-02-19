@@ -440,3 +440,66 @@ void test('conversation manager persistence, summaries, io updates, and attach/d
   assert.equal(detachCalls, 1);
   assert.equal(ioConversation.attached, false);
 });
+
+void test('conversation manager persisted upsert does not regress live state after session-summary hydration', () => {
+  const manager = new ConversationManager();
+  manager.configureEnsureDependencies({
+    resolveDefaultDirectoryId: () => 'dir-default',
+    normalizeAdapterState: (value) => value ?? {},
+    createConversation: (input) =>
+      createState(
+        input.sessionId,
+        input.directoryId,
+        input.title,
+        input.agentType,
+        input.adapterState,
+      ),
+  });
+
+  manager.upsertFromSessionSummary({
+    summary: {
+      sessionId: 'session-race',
+      tenantId: 'tenant-live',
+      userId: 'user-live',
+      workspaceId: 'workspace-live',
+      worktreeId: 'worktree-live',
+      directoryId: 'dir-live',
+      status: 'running',
+      attentionReason: null,
+      statusModel: statusModelFor('running'),
+      latestCursor: 1,
+      attachedClients: 0,
+      eventSubscribers: 1,
+      startedAt: '2026-02-19T00:00:00.000Z',
+      lastEventAt: '2026-02-19T00:00:01.000Z',
+      exitedAt: null,
+      lastExit: null,
+      processId: 101,
+      live: true,
+      launchCommand: 'codex',
+      controller: null,
+      telemetry: null,
+    },
+    ensureConversation: (sessionId, seed) => manager.ensure(sessionId, seed),
+  });
+
+  const persisted = manager.upsertFromPersistedRecord({
+    record: {
+      conversationId: 'session-race',
+      directoryId: 'dir-live',
+      tenantId: 'tenant-live',
+      userId: 'user-live',
+      workspaceId: 'workspace-live',
+      title: 'Live Session',
+      agentType: 'codex',
+      adapterState: { persisted: true },
+      runtimeStatus: 'completed',
+      runtimeStatusModel: statusModelFor('completed'),
+      runtimeLive: false,
+    },
+    ensureConversation: (sessionId, seed) => manager.ensure(sessionId, seed),
+  });
+
+  assert.equal(persisted.live, true);
+  assert.equal(persisted.status, 'running');
+});

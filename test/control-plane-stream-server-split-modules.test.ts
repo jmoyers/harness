@@ -131,6 +131,13 @@ void test('split module coverage: background history polling defensive branches 
   assert.equal(catchCtx.historyPollInFlight, false);
   assert.equal(catchCtx.historyNextAllowedPollAtMs > Date.now(), true);
 
+  const closedDbCtx = createBackgroundContext();
+  closedDbCtx.pollHistoryFileUnsafe = async () => {
+    throw new Error('Cannot use a closed database');
+  };
+  await assert.rejects(() => pollHistoryFile(closedDbCtx), /closed database/i);
+  assert.equal(closedDbCtx.historyPollInFlight, false);
+
   const missingCtx = createBackgroundContext();
   let openedPath = '';
   missingCtx.codexHistory.filePath = '~/does-not-exist-history-file.jsonl';
@@ -239,6 +246,18 @@ void test('split module coverage: background git polling in-flight and error bra
   assert.notEqual(refreshed, undefined);
   assert.equal((refreshed?.lastRefreshedAtMs ?? 0) >= 1, true);
   assert.equal(failingCtx.gitStatusRefreshInFlightDirectoryIds.has(directory.directoryId), false);
+
+  const closedDbGitCtx: Parameters<typeof refreshGitStatusForDirectory>[0] = {
+    ...createBackgroundContext(),
+    readGitDirectorySnapshot: async () => {
+      throw new Error('Database has closed');
+    },
+  };
+  await assert.rejects(
+    () => refreshGitStatusForDirectory(closedDbGitCtx, directory),
+    /database has closed/i,
+  );
+  assert.equal(closedDbGitCtx.gitStatusRefreshInFlightDirectoryIds.has(directory.directoryId), false);
 });
 
 void test('split module coverage: observed filter repository checks include directory-git-updated events', () => {

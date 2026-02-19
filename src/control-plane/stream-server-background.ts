@@ -13,6 +13,16 @@ const HISTORY_POLL_JITTER_RATIO = 0.35;
 const HISTORY_POLL_MAX_DELAY_MS = 60_000;
 const LINE_FEED_BYTE = '\n'.charCodeAt(0);
 
+function isClosedDatabaseError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  const normalized = message.trim().toLowerCase();
+  return (
+    normalized.includes('database has closed') ||
+    normalized.includes('database is closed') ||
+    normalized.includes('cannot use a closed database')
+  );
+}
+
 interface GitStatusSummary {
   branch: string | null;
   changedFiles: number;
@@ -215,7 +225,10 @@ export async function pollHistoryFile(ctx: BackgroundContext): Promise<void> {
       );
       ctx.historyNextAllowedPollAtMs = Date.now() + jitterDelayMs(backoffMs);
     }
-  } catch {
+  } catch (error: unknown) {
+    if (isClosedDatabaseError(error)) {
+      throw error;
+    }
     ctx.historyIdleStreak = Math.min(ctx.historyIdleStreak + 1, 4);
     const backoffMs = Math.min(
       HISTORY_POLL_MAX_DELAY_MS,
@@ -467,7 +480,10 @@ export async function refreshGitStatusForDirectory(
       forcePublished: options.forcePublish ? 1 : 0,
       repositoryLinked: repositoryId === null ? 0 : 1,
     });
-  } catch {
+  } catch (error: unknown) {
+    if (isClosedDatabaseError(error)) {
+      throw error;
+    }
     if (previous !== null) {
       ctx.gitStatusByDirectoryId.set(directory.directoryId, {
         ...previous,

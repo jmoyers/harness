@@ -613,6 +613,97 @@ void test('stream server github polling selects tracked branch targets and dedup
   }
 });
 
+void test('stream server github polling keeps branch sync concurrency bounded under synthetic load', async () => {
+  const maxConcurrency = 3;
+  const targetCount = 24;
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input),
+    github: {
+      enabled: true,
+      token: 'token-test',
+      pollMs: 60_000,
+      branchStrategy: 'current-only',
+      maxConcurrency,
+    },
+    githubFetch: async () => new Response(JSON.stringify([]), { status: 200 }),
+  });
+  const internals = server as unknown as {
+    stateStore: SqliteControlPlaneStore;
+    pollGitHub: () => Promise<void>;
+    syncGitHubBranch: (input: {
+      directory: {
+        directoryId: string;
+      };
+      repository: {
+        repositoryId: string;
+      };
+      owner: string;
+      repo: string;
+      branchName: string;
+    }) => Promise<void>;
+    gitStatusByDirectoryId: Map<string, GitStatusCacheEntryLike>;
+  };
+
+  let active = 0;
+  let peak = 0;
+  let completed = 0;
+  const originalSyncGitHubBranch = internals.syncGitHubBranch.bind(internals);
+  internals.syncGitHubBranch = async () => {
+    active += 1;
+    peak = Math.max(peak, active);
+    await delay(3);
+    completed += 1;
+    active -= 1;
+  };
+
+  try {
+    for (let index = 0; index < targetCount; index += 1) {
+      const directory = internals.stateStore.upsertDirectory({
+        directoryId: `directory-github-load-${String(index)}`,
+        tenantId: 'tenant-github-load',
+        userId: 'user-github-load',
+        workspaceId: 'workspace-github-load',
+        path: `/tmp/harness-github-load-${String(index)}`,
+      });
+      const repository = internals.stateStore.upsertRepository({
+        repositoryId: `repository-github-load-${String(index)}`,
+        tenantId: directory.tenantId,
+        userId: directory.userId,
+        workspaceId: directory.workspaceId,
+        name: `Harness-${String(index)}`,
+        remoteUrl: `https://github.com/acme/harness-${String(index)}.git`,
+        defaultBranch: 'main',
+      });
+      internals.gitStatusByDirectoryId.set(directory.directoryId, {
+        summary: {
+          branch: `feature/load-${String(index)}`,
+          changedFiles: 0,
+          additions: 0,
+          deletions: 0,
+        },
+        repositorySnapshot: {
+          normalizedRemoteUrl: repository.remoteUrl,
+          commitCount: 1,
+          lastCommitAt: FIXED_TS,
+          shortCommitHash: `hash-${String(index)}`,
+          inferredName: repository.name,
+          defaultBranch: repository.defaultBranch,
+        },
+        repositoryId: repository.repositoryId,
+        lastRefreshedAtMs: Date.now(),
+        lastRefreshDurationMs: 1,
+      });
+    }
+
+    await internals.pollGitHub();
+    assert.equal(completed, targetCount);
+    assert.equal(peak <= maxConcurrency, true);
+  } finally {
+    internals.syncGitHubBranch = originalSyncGitHubBranch;
+    await server.close();
+  }
+});
+
 void test('stream server github poll trigger catches and reports unexpected poll failures', async () => {
   const server = await startControlPlaneStreamServer({
     startSession: (input) => new FakeLiveSession(input),
@@ -639,6 +730,74 @@ void test('stream server github poll trigger catches and reports unexpected poll
     await delay(10);
   } finally {
     writableInternals.pollGitHub = originalPollGitHub;
+    await server.close();
+  }
+});
+
+void test('stream server background poll triggers catch and report non-db failures', async () => {
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input),
+    github: {
+      enabled: true,
+      token: 'token-test',
+      pollMs: 60_000,
+    },
+    githubFetch: async () => new Response(JSON.stringify([]), { status: 200 }),
+  });
+  const internals = server as unknown as {
+    triggerGitStatusPoll: () => void;
+    pollGitStatus: () => Promise<void>;
+    pollHistoryTimerTick: () => void;
+    pollHistoryFile: () => Promise<void>;
+  };
+  const writableInternals = internals as unknown as {
+    pollGitStatus: () => Promise<void>;
+    pollHistoryFile: () => Promise<void>;
+  };
+  const originalPollGitStatus = internals.pollGitStatus.bind(internals);
+  const originalPollHistoryFile = internals.pollHistoryFile.bind(internals);
+  writableInternals.pollGitStatus = async () => {
+    throw new Error('forced git-status poll failure');
+  };
+  writableInternals.pollHistoryFile = async () => {
+    throw new Error('forced history poll failure');
+  };
+
+  try {
+    internals.triggerGitStatusPoll();
+    internals.pollHistoryTimerTick();
+    await delay(10);
+  } finally {
+    writableInternals.pollGitStatus = originalPollGitStatus;
+    writableInternals.pollHistoryFile = originalPollHistoryFile;
+    await server.close();
+  }
+});
+
+void test('stream server github polling marks state-store closed and settles after unexpected sqlite close', async () => {
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input),
+    github: {
+      enabled: true,
+      token: 'token-test',
+      pollMs: 60_000,
+    },
+    githubFetch: async () => new Response(JSON.stringify([]), { status: 200 }),
+  });
+  const internals = server as unknown as {
+    stateStore: SqliteControlPlaneStore;
+    stateStoreClosed: boolean;
+    pollGitHub: () => Promise<void>;
+    githubPollTimer: NodeJS.Timeout | null;
+  };
+
+  try {
+    internals.stateStore.close();
+    await assert.doesNotReject(async () => await internals.pollGitHub());
+    assert.equal(internals.stateStoreClosed, true);
+    assert.equal(internals.githubPollTimer, null);
+    await assert.doesNotReject(async () => await internals.pollGitHub());
+  } finally {
     await server.close();
   }
 });
