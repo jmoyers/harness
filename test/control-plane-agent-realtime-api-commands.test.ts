@@ -1070,7 +1070,6 @@ void test('agent realtime client accepts draft task status and completed thread 
   await realtime.client.close();
 });
 
-
 void test('agent realtime connect forwards optional filters and ignores unrelated subscription events', async () => {
   const sockets = new Set<Socket>();
   const harness = await startMockHarnessServer((socket, envelope) => {

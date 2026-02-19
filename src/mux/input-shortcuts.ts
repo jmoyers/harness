@@ -549,30 +549,10 @@ function parseBindingsForAction(rawBindings: readonly string[]): readonly Parsed
     parsed.push(candidate);
   };
 
-  const ctrlMetaAliasStroke = (stroke: KeyStroke): KeyStroke | null => {
-    if (stroke.ctrl === stroke.meta) {
-      return null;
-    }
-    return {
-      key: stroke.key,
-      ctrl: !stroke.ctrl,
-      alt: stroke.alt,
-      shift: stroke.shift,
-      meta: !stroke.meta,
-    };
-  };
-
   for (const raw of rawBindings) {
     const normalized = parseShortcutBinding(raw);
     if (normalized !== null) {
       pushIfUnique(normalized);
-      const aliasStroke = ctrlMetaAliasStroke(normalized.stroke);
-      if (aliasStroke !== null) {
-        pushIfUnique({
-          stroke: aliasStroke,
-          originalText: normalized.originalText,
-        });
-      }
     }
   }
   return parsed;

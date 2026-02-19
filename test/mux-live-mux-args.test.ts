@@ -62,7 +62,10 @@ void test('parseMuxArgs reads control-plane flags and maps --record to .harness/
   assert.equal(parsed.controlPlaneHost, '127.0.0.1');
   assert.equal(parsed.controlPlanePort, 7777);
   assert.equal(parsed.controlPlaneAuthToken, 'secret');
-  assert.equal(parsed.storePath, resolveHarnessRuntimePath('/tmp/work', 'custom-events.sqlite', env));
+  assert.equal(
+    parsed.storePath,
+    resolveHarnessRuntimePath('/tmp/work', 'custom-events.sqlite', env),
+  );
   assert.equal(parsed.initialConversationId, 'conversation-fixed');
   assert.equal(parsed.scope.turnId, 'turn-fixed');
   assert.equal(

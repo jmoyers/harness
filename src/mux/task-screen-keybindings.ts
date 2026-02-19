@@ -445,30 +445,10 @@ function bindingsForAction(raw: readonly string[]): readonly ParsedBinding[] {
     parsed.push(candidate);
   };
 
-  const ctrlMetaAliasStroke = (stroke: KeyStroke): KeyStroke | null => {
-    if (stroke.ctrl === stroke.meta) {
-      return null;
-    }
-    return {
-      key: stroke.key,
-      ctrl: !stroke.ctrl,
-      alt: stroke.alt,
-      shift: stroke.shift,
-      meta: !stroke.meta,
-    };
-  };
-
   for (const value of raw) {
     const next = parseBinding(value);
     if (next !== null) {
       pushIfUnique(next);
-      const aliasStroke = ctrlMetaAliasStroke(next.stroke);
-      if (aliasStroke !== null) {
-        pushIfUnique({
-          stroke: aliasStroke,
-          originalText: next.originalText,
-        });
-      }
     }
   }
   return parsed;

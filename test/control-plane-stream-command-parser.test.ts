@@ -312,11 +312,14 @@ void test('parseStreamCommand parses repository and task commands', () => {
       frozen: true,
     },
   );
-  assert.deepEqual(parseStreamCommand({ type: 'task.update', taskId: 'task-2', title: 'No changes' }), {
-    type: 'task.update',
-    taskId: 'task-2',
-    title: 'No changes',
-  });
+  assert.deepEqual(
+    parseStreamCommand({ type: 'task.update', taskId: 'task-2', title: 'No changes' }),
+    {
+      type: 'task.update',
+      taskId: 'task-2',
+      title: 'No changes',
+    },
+  );
   assert.deepEqual(
     parseStreamCommand({
       type: 'task.update',

@@ -783,7 +783,7 @@ Design constraints:
   - left-rail activation via keyboard and mouse with deterministic row hit-testing
   - normalized action-oriented conversation status labels (`starting`, `needs action`, `working`, `idle`, `exited`)
   - keybindings loaded from `harness.config.jsonc` using action IDs and parseable key strings (including Home task-composer actions under `mux.home.*`)
-  - keybinding matcher aliases `ctrl` and `cmd`/`meta` in both directions for the same chord so configured shortcuts stay cross-platform when terminal/OS delivery allows it
+  - keybinding matcher treats `ctrl` and `cmd`/`meta` as distinct modifiers; cross-platform parity requires explicit bindings for both chords
   - terminal-thread input precedence: when the active conversation agent type is `terminal`, `ctrl`-only chords are treated as shell/readline input and bypass global shortcut dispatch
 - Global shortcuts:
   - switch workspace/worktree/conversation

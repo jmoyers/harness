@@ -125,17 +125,29 @@ void test('detectMuxGlobalShortcut parses kitty and modifyOtherKeys control comb
   );
 });
 
-void test('shortcut bindings alias ctrl and cmd/meta in both directions', () => {
+void test('shortcut bindings do not alias ctrl and cmd/meta implicitly', () => {
   const bindings = resolveMuxShortcutBindings({
     'mux.conversation.new': ['ctrl+t'],
     'mux.app.quit': ['cmd+q'],
+    'mux.app.interrupt-all': ['ctrl+c'],
   });
 
+  assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[116;9u', 'utf8'), bindings), null);
   assert.equal(
-    detectMuxGlobalShortcut(Buffer.from('\u001b[116;9u', 'utf8'), bindings),
-    'mux.conversation.new',
+    detectMuxGlobalShortcut(Buffer.from('\u001b[113;9u', 'utf8'), bindings),
+    'mux.app.quit',
   );
-  assert.equal(detectMuxGlobalShortcut(Buffer.from([0x11]), bindings), 'mux.app.quit');
+  assert.equal(detectMuxGlobalShortcut(Buffer.from([0x11]), bindings), null);
+  assert.equal(detectMuxGlobalShortcut(Buffer.from('\u001b[99;9u', 'utf8'), bindings), null);
+  assert.equal(detectMuxGlobalShortcut(Buffer.from([0x03]), bindings), 'mux.app.interrupt-all');
+});
+
+void test('shortcut bindings deduplicate repeated normalized strokes', () => {
+  const bindings = resolveMuxShortcutBindings({
+    'mux.conversation.new': ['ctrl+t', 'control+t'],
+  });
+
+  assert.equal(detectMuxGlobalShortcut(Buffer.from([0x14]), bindings), 'mux.conversation.new');
 });
 
 void test('resolveMuxShortcutBindings applies config overrides and display helpers', () => {
