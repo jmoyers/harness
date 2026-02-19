@@ -116,6 +116,7 @@ export function applySummaryToConversation(
   target.lastExit = summary.lastExit;
   target.processId = summary.processId;
   target.live = summary.live;
+  target.launchCommand = summary.launchCommand;
   target.controller = summary.controller;
   const statusModel = summary.statusModel;
   target.lastKnownWork = statusModel?.lastKnownWork ?? null;

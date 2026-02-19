@@ -96,6 +96,7 @@ void test('conversation-state create/apply/summary helpers preserve session proj
   assert.equal(state.startedAt, '2026-02-18T00:00:00.000Z');
   assert.equal(state.lastEventAt, '2026-02-18T00:01:00.000Z');
   assert.equal(state.live, false);
+  assert.equal(state.launchCommand, 'codex');
   assert.equal(state.lastKnownWork, 'active');
   assert.equal(state.lastTelemetrySource, null);
 
