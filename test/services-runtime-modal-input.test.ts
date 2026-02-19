@@ -109,7 +109,7 @@ void test('runtime modal input wires input router state accessors and delegates 
     mode: 'create',
     taskId: null,
     title: 'Task',
-    description: 'Desc',
+    body: 'Desc',
     repositoryIds: ['repo-1'],
     repositoryIndex: 0,
     fieldIndex: 0,
@@ -150,7 +150,7 @@ void test('runtime modal input wires input router state accessors and delegates 
     taskId: null,
     repositoryId: 'repo-1',
     title: 'Task',
-    description: 'Desc',
+    body: 'Desc',
     commandLabel: 'tasks-create',
   });
   await options.archiveConversation('session-1');

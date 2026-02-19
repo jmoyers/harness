@@ -268,22 +268,23 @@ export function taskComposerVisibleLines(
   return textWithCursor.split('\n');
 }
 
-export function taskComposerTextFromTaskFields(title: string, description: string): string {
-  if (description.length === 0) {
-    return title;
+export function taskComposerTextFromTaskFields(title: string, body: string): string {
+  if (body.length > 0) {
+    return body;
   }
-  return `${title}\n${description}`;
+  return title;
 }
 
 export function taskFieldsFromComposerText(text: string): {
-  readonly title: string;
-  readonly description: string;
+  readonly title: string | null;
+  readonly body: string;
 } {
-  const lines = text.split('\n');
+  const normalized = text.replace(/\r\n/gu, '\n');
+  const lines = normalized.split('\n');
   const firstLine = lines[0] ?? '';
-  const rest = lines.slice(1).join('\n');
+  const title = firstLine.trim();
   return {
-    title: firstLine.trim(),
-    description: rest,
+    title: title.length === 0 ? null : title,
+    body: normalized,
   };
 }

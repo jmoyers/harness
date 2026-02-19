@@ -1,6 +1,6 @@
 export interface TaskEditorPromptInputState {
   title: string;
-  description: string;
+  body: string;
   repositoryIds: readonly string[];
   repositoryIndex: number;
   fieldIndex: 0 | 1 | 2;
@@ -8,7 +8,7 @@ export interface TaskEditorPromptInputState {
 
 interface TaskEditorPromptReduction {
   title: string;
-  description: string;
+  body: string;
   repositoryIndex: number;
   fieldIndex: 0 | 1 | 2;
   submit: boolean;
@@ -79,7 +79,7 @@ export function reduceTaskEditorPromptInput(
   input: Buffer,
 ): TaskEditorPromptReduction {
   let nextTitle = prompt.title;
-  let nextDescription = prompt.description;
+  let nextBody = prompt.body;
   let nextFieldIndex = prompt.fieldIndex;
   let nextRepositoryIndex = prompt.repositoryIndex;
   let submit = false;
@@ -104,7 +104,7 @@ export function reduceTaskEditorPromptInput(
         if (nextFieldIndex === 0) {
           nextTitle = nextTitle.slice(0, -1);
         } else if (nextFieldIndex === 2) {
-          nextDescription = nextDescription.slice(0, -1);
+          nextBody = nextBody.slice(0, -1);
         }
         continue;
       }
@@ -112,14 +112,14 @@ export function reduceTaskEditorPromptInput(
         if (nextFieldIndex === 0) {
           nextTitle += String.fromCharCode(byte);
         } else if (nextFieldIndex === 2) {
-          nextDescription += String.fromCharCode(byte);
+          nextBody += String.fromCharCode(byte);
         }
       }
     }
   }
   return {
     title: nextTitle,
-    description: nextDescription,
+    body: nextBody,
     repositoryIndex: nextRepositoryIndex,
     fieldIndex: nextFieldIndex,
     submit,

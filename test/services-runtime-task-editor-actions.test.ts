@@ -39,13 +39,13 @@ function createHarness(
     readonly createTask?: (input: {
       repositoryId: string;
       title: string;
-      description: string;
+      body: string;
     }) => Promise<TaskRecord>;
     readonly updateTask?: (input: {
       taskId: string;
       repositoryId: string;
       title: string;
-      description: string;
+      body: string;
     }) => Promise<TaskRecord>;
   } = {},
 ) {
@@ -113,7 +113,7 @@ void test('runtime task editor actions submit create payload applies task and cl
     repositoryIndex: 0,
     fieldIndex: 0,
     title: 'before',
-    description: 'before',
+    body: 'before',
     error: null,
   };
 
@@ -122,7 +122,7 @@ void test('runtime task editor actions submit create payload applies task and cl
     taskId: null,
     repositoryId: 'repo-1',
     title: 'task title',
-    description: 'task description',
+    body: 'task body',
     commandLabel: 'tasks-create',
   });
   await harness.flushQueued();
@@ -146,7 +146,7 @@ void test('runtime task editor actions submit edit payload requires task id and 
     repositoryIndex: 0,
     fieldIndex: 0,
     title: 'before',
-    description: 'before',
+    body: 'before',
     error: null,
   };
 
@@ -155,7 +155,7 @@ void test('runtime task editor actions submit edit payload requires task id and 
     taskId: null,
     repositoryId: 'repo-1',
     title: 'task title',
-    description: 'task description',
+    body: 'task body',
     commandLabel: 'tasks-update',
   });
   await harness.flushQueued();
@@ -177,7 +177,7 @@ void test('runtime task editor actions submit edit payload updates task and fall
     taskId: 'task-9',
     repositoryId: 'repo-1',
     title: 'task title',
-    description: 'task description',
+    body: 'task body',
     commandLabel: 'tasks-update',
   });
   await harness.flushQueued();

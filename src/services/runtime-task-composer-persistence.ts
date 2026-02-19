@@ -1,13 +1,13 @@
 interface TaskComposerFields {
-  readonly title: string;
-  readonly description: string;
+  readonly title: string | null;
+  readonly body: string;
 }
 
 interface TaskRecordShape {
   readonly taskId: string;
   readonly repositoryId: string | null;
   readonly title: string;
-  readonly description: string;
+  readonly body: string;
 }
 
 interface TaskComposerBufferShape {
@@ -33,7 +33,7 @@ interface RuntimeTaskComposerPersistenceOptions<
     taskId: string;
     repositoryId: string | null;
     title: string;
-    description: string;
+    body: string;
   }) => Promise<TTaskRecord>;
   readonly applyTaskRecord: (task: TTaskRecord) => void;
   readonly queueControlPlaneOp: (task: () => Promise<void>, label: string) => void;
@@ -112,24 +112,23 @@ export class RuntimeTaskComposerPersistenceService<
       return;
     }
     const fields = this.options.taskFieldsFromComposerText(buffer.text);
-    if (fields.title.length === 0) {
-      this.options.setTaskPaneNotice('first line is required');
+    if (fields.body.trim().length === 0) {
+      this.options.setTaskPaneNotice('task body is required');
       this.options.markDirty();
       return;
     }
-    if (fields.title === task.title && fields.description === task.description) {
+    if (fields.title === task.title && fields.body === task.body) {
       return;
     }
     this.options.queueControlPlaneOp(async () => {
       const parsed = await this.options.updateTask({
         taskId,
         repositoryId: task.repositoryId,
-        title: fields.title,
-        description: fields.description,
+        title: fields.title ?? '',
+        body: fields.body,
       });
       this.options.applyTaskRecord(parsed);
-      const persistedText =
-        parsed.description.length === 0 ? parsed.title : `${parsed.title}\n${parsed.description}`;
+      const persistedText = parsed.body.length === 0 ? parsed.title : parsed.body;
       const latestBuffer = this.options.getTaskComposer(taskId);
       if (latestBuffer !== undefined && latestBuffer.text === persistedText) {
         this.options.deleteTaskComposer(taskId);

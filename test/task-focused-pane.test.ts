@@ -32,13 +32,13 @@ function task(
   status: TaskFocusedPaneTaskRecord['status'],
   orderIndex: number,
   title = taskId,
-  description = '',
+  body = '',
 ): TaskFocusedPaneTaskRecord {
   return {
     taskId,
     repositoryId,
     title,
-    description,
+    body,
     status,
     orderIndex,
     createdAt: `2026-01-0${String(Math.max(1, orderIndex + 1))}T00:00:00.000Z`,

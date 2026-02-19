@@ -461,19 +461,28 @@ export class ControlPlaneService {
   }
 
   async createTask(input: {
-    repositoryId: string;
-    title: string;
-    description: string;
+    repositoryId?: string;
+    projectId?: string;
+    title?: string | null;
+    body: string;
   }): Promise<ControlPlaneTaskRecord> {
-    const result = await this.client.sendCommand({
+    const command: StreamCommand = {
       type: 'task.create',
       tenantId: this.scope.tenantId,
       userId: this.scope.userId,
       workspaceId: this.scope.workspaceId,
-      repositoryId: input.repositoryId,
-      title: input.title,
-      description: input.description,
-    });
+      body: input.body,
+    };
+    if (input.repositoryId !== undefined) {
+      command.repositoryId = input.repositoryId;
+    }
+    if (input.projectId !== undefined) {
+      command.projectId = input.projectId;
+    }
+    if (input.title !== undefined) {
+      command.title = input.title;
+    }
+    const result = await this.client.sendCommand(command);
     return this.parseTaskFromResult(
       result,
       'control-plane task.create returned malformed task record',
@@ -482,17 +491,28 @@ export class ControlPlaneService {
 
   async updateTask(input: {
     taskId: string;
-    repositoryId: string | null;
-    title: string;
-    description: string;
+    repositoryId?: string | null;
+    projectId?: string | null;
+    title?: string | null;
+    body?: string;
   }): Promise<ControlPlaneTaskRecord> {
-    const result = await this.client.sendCommand({
+    const command: StreamCommand = {
       type: 'task.update',
       taskId: input.taskId,
-      repositoryId: input.repositoryId,
-      title: input.title,
-      description: input.description,
-    });
+    };
+    if (input.repositoryId !== undefined) {
+      command.repositoryId = input.repositoryId;
+    }
+    if (input.projectId !== undefined) {
+      command.projectId = input.projectId;
+    }
+    if (input.title !== undefined) {
+      command.title = input.title;
+    }
+    if (input.body !== undefined) {
+      command.body = input.body;
+    }
+    const result = await this.client.sendCommand(command);
     return this.parseTaskFromResult(
       result,
       'control-plane task.update returned malformed task record',

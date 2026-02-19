@@ -198,7 +198,7 @@ void test('public api exports stay importable and structurally typed', () => {
     taskId: 'task-1',
     repositoryId: 'repository-1',
     title: 'Task',
-    description: 'details',
+    body: 'details',
   };
   const taskListQuery: AgentTaskListQuery = {
     ...scope,
@@ -301,7 +301,7 @@ void test('public api exports stay importable and structurally typed', () => {
     repositoryId: 'repository-1',
     projectId: null,
     title: 'Task',
-    description: 'details',
+    body: 'details',
     status: 'ready',
     orderIndex: 0,
     claimedByControllerId: null,

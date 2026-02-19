@@ -89,6 +89,23 @@ function initialRuntimeStatusModel(
   };
 }
 
+function normalizeTaskTitle(value: string | null | undefined): string {
+  if (value === undefined || value === null) {
+    return '';
+  }
+  return value.trim();
+}
+
+function normalizeTaskBody(value: string, field: string): string {
+  if (typeof value !== 'string') {
+    throw new Error(`expected string for ${field}`);
+  }
+  if (value.trim().length === 0) {
+    throw new Error(`${field} must be non-empty`);
+  }
+  return value;
+}
+
 export type {
   ControlPlaneAutomationPolicyRecord,
   ControlPlaneAutomationPolicyScope,
@@ -198,13 +215,13 @@ interface CreateTaskInput {
   workspaceId: string;
   repositoryId?: string;
   projectId?: string;
-  title: string;
-  description?: string;
+  title?: string | null;
+  body?: string;
 }
 
 interface UpdateTaskInput {
-  title?: string;
-  description?: string;
+  title?: string | null;
+  body?: string;
   repositoryId?: string | null;
   projectId?: string | null;
 }
@@ -1258,8 +1275,8 @@ export class SqliteControlPlaneStore {
   }
 
   createTask(input: CreateTaskInput): ControlPlaneTaskRecord {
-    const title = normalizeNonEmptyLabel(input.title, 'title');
-    const description = input.description ?? '';
+    const title = normalizeTaskTitle(input.title);
+    const body = normalizeTaskBody(input.body ?? title, 'body');
     this.db.exec('BEGIN IMMEDIATE TRANSACTION');
     try {
       const existing = this.getTask(input.taskId);
@@ -1268,6 +1285,9 @@ export class SqliteControlPlaneStore {
       }
       const repositoryId = input.repositoryId ?? null;
       const projectId = input.projectId ?? null;
+      if (repositoryId === null && projectId === null) {
+        throw new Error('task scope required: repositoryId or projectId');
+      }
       if (repositoryId !== null) {
         const repository = this.getActiveRepository(repositoryId);
         this.assertScopeMatch(input, repository, 'task');
@@ -1291,7 +1311,7 @@ export class SqliteControlPlaneStore {
             scope_kind,
             project_id,
             title,
-            description,
+            body,
             status,
             order_index,
             claimed_by_controller_id,
@@ -1314,7 +1334,7 @@ export class SqliteControlPlaneStore {
           scopeKind,
           projectId,
           title,
-          description,
+          body,
           orderIndex,
           createdAt,
           createdAt,
@@ -1344,7 +1364,7 @@ export class SqliteControlPlaneStore {
           scope_kind,
           project_id,
           title,
-          description,
+          body,
           status,
           order_index,
           claimed_by_controller_id,
@@ -1411,7 +1431,7 @@ export class SqliteControlPlaneStore {
           scope_kind,
           project_id,
           title,
-          description,
+          body,
           status,
           order_index,
           claimed_by_controller_id,
@@ -1437,13 +1457,14 @@ export class SqliteControlPlaneStore {
     if (existing === null) {
       return null;
     }
-    const title =
-      update.title === undefined ? existing.title : normalizeNonEmptyLabel(update.title, 'title');
-    const description =
-      update.description === undefined ? existing.description : update.description;
+    const title = update.title === undefined ? existing.title : normalizeTaskTitle(update.title);
+    const body = update.body === undefined ? existing.body : normalizeTaskBody(update.body, 'body');
     const repositoryId =
       update.repositoryId === undefined ? existing.repositoryId : update.repositoryId;
     const projectId = update.projectId === undefined ? existing.projectId : update.projectId;
+    if (repositoryId === null && projectId === null) {
+      throw new Error('task scope required: repositoryId or projectId');
+    }
     if (repositoryId !== null) {
       const repository = this.getActiveRepository(repositoryId);
       this.assertScopeMatch(existing, repository, 'task');
@@ -1463,7 +1484,7 @@ export class SqliteControlPlaneStore {
           scope_kind = ?,
           project_id = ?,
           title = ?,
-          description = ?,
+          body = ?,
           updated_at = ?
         WHERE task_id = ?
       `,
@@ -1473,7 +1494,7 @@ export class SqliteControlPlaneStore {
         scopeKind,
         projectId,
         title,
-        description,
+        body,
         updatedAt,
         taskId,
       );
@@ -2735,7 +2756,7 @@ export class SqliteControlPlaneStore {
         scope_kind TEXT NOT NULL DEFAULT 'global',
         project_id TEXT REFERENCES directories(directory_id),
         title TEXT NOT NULL,
-        description TEXT NOT NULL DEFAULT '',
+        body TEXT NOT NULL DEFAULT '',
         status TEXT NOT NULL,
         order_index INTEGER NOT NULL,
         claimed_by_controller_id TEXT,
@@ -2758,6 +2779,14 @@ export class SqliteControlPlaneStore {
       'project_id',
       `project_id TEXT REFERENCES directories(directory_id)`,
     );
+    this.ensureColumnExists('tasks', 'body', `body TEXT NOT NULL DEFAULT ''`);
+    if (this.columnExists('tasks', 'description')) {
+      this.db.exec(`
+        UPDATE tasks
+        SET body = description
+        WHERE (body IS NULL OR TRIM(body) = '') AND description IS NOT NULL
+      `);
+    }
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_tasks_scope_kind
       ON tasks (tenant_id, user_id, workspace_id, scope_kind, repository_id, project_id, order_index);
@@ -2779,6 +2808,10 @@ export class SqliteControlPlaneStore {
       UPDATE tasks
       SET scope_kind = 'repository'
       WHERE scope_kind = 'global' AND repository_id IS NOT NULL AND project_id IS NULL;
+    `);
+    this.db.exec(`
+      DELETE FROM tasks
+      WHERE repository_id IS NULL AND project_id IS NULL;
     `);
 
     this.db.exec(`
@@ -2942,13 +2975,16 @@ export class SqliteControlPlaneStore {
     this.db.exec('PRAGMA busy_timeout = 2000;');
   }
 
-  private ensureColumnExists(table: string, column: string, definition: string): void {
+  private columnExists(table: string, column: string): boolean {
     const rows = this.db.prepare(`PRAGMA table_info(${table})`).all();
-    const exists = rows.some((row) => {
+    return rows.some((row) => {
       const asRow = row as Record<string, unknown>;
       return asRow['name'] === column;
     });
-    if (exists) {
+  }
+
+  private ensureColumnExists(table: string, column: string, definition: string): void {
+    if (this.columnExists(table, column)) {
       return;
     }
     this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${definition};`);

@@ -133,7 +133,7 @@ void test('parseStreamCommand parses repository and task commands', () => {
       workspaceId: 'workspace-1',
       repositoryId: 'repository-1',
       title: 'Implement task API',
-      description: 'Expose task CRUD via stream commands',
+      body: 'Expose task CRUD via stream commands',
     }),
     {
       type: 'task.create',
@@ -143,7 +143,7 @@ void test('parseStreamCommand parses repository and task commands', () => {
       workspaceId: 'workspace-1',
       repositoryId: 'repository-1',
       title: 'Implement task API',
-      description: 'Expose task CRUD via stream commands',
+      body: 'Expose task CRUD via stream commands',
     },
   );
   assert.deepEqual(
@@ -156,10 +156,18 @@ void test('parseStreamCommand parses repository and task commands', () => {
       taskId: 'task-1',
     },
   );
-  assert.deepEqual(parseStreamCommand({ type: 'task.create', title: 'Simple task' }), {
-    type: 'task.create',
-    title: 'Simple task',
-  });
+  assert.deepEqual(
+    parseStreamCommand({
+      type: 'task.create',
+      repositoryId: 'repository-1',
+      body: 'Simple task',
+    }),
+    {
+      type: 'task.create',
+      repositoryId: 'repository-1',
+      body: 'Simple task',
+    },
+  );
   assert.deepEqual(
     parseStreamCommand({
       type: 'task.list',
@@ -199,15 +207,17 @@ void test('parseStreamCommand parses repository and task commands', () => {
       type: 'task.update',
       taskId: 'task-1',
       title: 'Implement task API v2',
-      description: 'allow null repository',
+      body: 'allow null repository',
       repositoryId: null,
+      projectId: 'directory-1',
     }),
     {
       type: 'task.update',
       taskId: 'task-1',
       title: 'Implement task API v2',
-      description: 'allow null repository',
+      body: 'allow null repository',
       repositoryId: null,
+      projectId: 'directory-1',
     },
   );
   assert.deepEqual(
@@ -1116,7 +1126,7 @@ void test('parseStreamCommand covers repository and task guard branches for miss
     parseStreamCommand({
       type: 'task.update',
       taskId: 'task-1',
-      description: 7,
+      body: 7,
     }),
     null,
   );

@@ -9,7 +9,7 @@ interface TaskRecord {
   readonly repositoryId: string | null;
   readonly status: string;
   readonly title: string;
-  readonly description: string;
+  readonly body: string;
 }
 
 function createWorkspace(): WorkspaceModel {
@@ -51,14 +51,14 @@ void test('runtime task pane composes task actions and shortcuts behind one surf
     repositoryId: 'repo-1',
     status: 'ready',
     title: 'Task A',
-    description: '',
+    body: '',
   });
   tasksById.set('task-b', {
     taskId: 'task-b',
     repositoryId: 'repo-1',
     status: 'ready',
     title: 'Task B',
-    description: '',
+    body: '',
   });
 
   const runtimeTaskPane = new RuntimeTaskPane<TaskRecord>({
@@ -72,7 +72,7 @@ void test('runtime task pane composes task actions and shortcuts behind one surf
             repositoryId: 'repo-1',
             status: 'ready',
             title: taskId,
-            description: '',
+            body: '',
           }));
         },
         deleteTask: async () => {},
@@ -81,21 +81,21 @@ void test('runtime task pane composes task actions and shortcuts behind one surf
           repositoryId: 'repo-1',
           status: 'ready',
           title: taskId,
-          description: '',
+          body: '',
         }),
         taskDraft: async (taskId) => ({
           taskId,
           repositoryId: 'repo-1',
           status: 'draft',
           title: taskId,
-          description: '',
+          body: '',
         }),
         taskComplete: async (taskId) => ({
           taskId,
           repositoryId: 'repo-1',
           status: 'completed',
           title: taskId,
-          description: '',
+          body: '',
         }),
       },
       repositoriesHas: (repositoryId) => repositoryId === 'repo-1',
@@ -161,7 +161,7 @@ void test('runtime task pane composes task actions and shortcuts behind one surf
         repositoryId: 'repo-1',
         status: 'ready',
         title: 'Created',
-        description: '',
+        body: '',
       }),
       syncTaskPaneSelection: () => {},
       markDirty: () => {},
@@ -183,7 +183,7 @@ void test('runtime task pane composes task actions and shortcuts behind one surf
             repositoryId: 'repo-1',
             status: 'ready',
             title: taskId,
-            description: '',
+            body: '',
           }));
         },
         deleteTask: async () => {},
@@ -192,21 +192,21 @@ void test('runtime task pane composes task actions and shortcuts behind one surf
           repositoryId: 'repo-1',
           status: 'ready',
           title: taskId,
-          description: '',
+          body: '',
         }),
         taskDraft: async (taskId) => ({
           taskId,
           repositoryId: 'repo-1',
           status: 'draft',
           title: taskId,
-          description: '',
+          body: '',
         }),
         taskComplete: async (taskId) => ({
           taskId,
           repositoryId: 'repo-1',
           status: 'completed',
           title: taskId,
-          description: '',
+          body: '',
         }),
       },
       repositoriesHas: (repositoryId) => repositoryId === 'repo-1',
@@ -256,7 +256,7 @@ void test('runtime task pane composes task actions and shortcuts behind one surf
         repositoryId: 'repo-1',
         status: 'ready',
         title: 'Created',
-        description: '',
+        body: '',
       }),
       syncTaskPaneSelection: () => {},
       markDirty: () => {},
@@ -273,7 +273,7 @@ void test('runtime task pane composes task actions and shortcuts behind one surf
     repositoryId: 'repo-1',
     status: 'ready',
     title: 'Task New',
-    description: '',
+    body: '',
   });
   assert.equal(applied.taskId, 'task-new');
 

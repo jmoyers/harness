@@ -93,7 +93,7 @@ export interface ControlPlaneTaskRecord {
   readonly scopeKind: ControlPlaneTaskScopeKind;
   readonly projectId: string | null;
   readonly title: string;
-  readonly description: string;
+  readonly body: string;
   readonly status: ControlPlaneTaskStatus;
   readonly orderIndex: number;
   readonly claimedByControllerId: string | null;

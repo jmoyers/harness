@@ -76,7 +76,7 @@ interface ControlPlaneTaskRecord {
   readonly scopeKind: TaskScopeKind;
   readonly projectId: string | null;
   readonly title: string;
-  readonly description: string;
+  readonly body: string;
   readonly status: TaskStatus;
   readonly orderIndex: number;
   readonly claimedByControllerId: string | null;
@@ -457,7 +457,7 @@ export function parseTaskRecord(value: unknown): ControlPlaneTaskRecord | null {
   const repositoryId = asOptionalString(record['repositoryId']);
   const projectId = asOptionalString(record['projectId']);
   const title = asRequiredString(record['title']);
-  const description = asRequiredString(record['description']);
+  const body = asRequiredString(record['body'] ?? record['description']);
   const status = parseTaskStatus(record['status']);
   const scopeKind = parseTaskScopeKind(record['scopeKind'], repositoryId, projectId);
   const orderIndex = record['orderIndex'];
@@ -479,7 +479,7 @@ export function parseTaskRecord(value: unknown): ControlPlaneTaskRecord | null {
     projectId === undefined ||
     scopeKind === null ||
     title === null ||
-    description === null ||
+    body === null ||
     status === null ||
     typeof orderIndex !== 'number' ||
     claimedByControllerId === undefined ||
@@ -503,7 +503,7 @@ export function parseTaskRecord(value: unknown): ControlPlaneTaskRecord | null {
     scopeKind,
     projectId,
     title,
-    description,
+    body,
     status,
     orderIndex,
     claimedByControllerId,

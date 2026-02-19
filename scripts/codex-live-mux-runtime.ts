@@ -2211,9 +2211,7 @@ async function main(): Promise<number> {
       taskManager.deleteTaskAutosaveTimer(taskId);
     },
     buildComposerFromTask: (task) =>
-      createTaskComposerBuffer(
-        task.description.length === 0 ? task.title : `${task.title}\n${task.description}`,
-      ),
+      createTaskComposerBuffer(task.body.length === 0 ? task.title : task.body),
     normalizeTaskComposerBuffer,
     taskFieldsFromComposerText,
     updateTask: async (input) => {

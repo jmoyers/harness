@@ -176,6 +176,7 @@ void test('control-plane store manages repositories and task lifecycle', () => {
       tenantId: 'tenant-task',
       userId: 'user-task',
       workspaceId: 'workspace-task',
+      repositoryId: 'repo-1',
       title: 'task a',
     });
     const taskB = store.createTask({
@@ -185,7 +186,7 @@ void test('control-plane store manages repositories and task lifecycle', () => {
       workspaceId: 'workspace-task',
       repositoryId: 'repo-1',
       title: 'task b',
-      description: 'description b',
+      body: 'body b',
     });
     const taskC = store.createTask({
       taskId: 'task-c',
@@ -208,7 +209,7 @@ void test('control-plane store manages repositories and task lifecycle', () => {
     assert.equal(taskC.orderIndex, 2);
     assert.equal(taskProject.scopeKind, 'project');
     assert.equal(taskProject.projectId, 'dir-task-a');
-    assert.equal(taskA.scopeKind, 'global');
+    assert.equal(taskA.scopeKind, 'repository');
     assert.equal(taskA.projectId, null);
     assert.equal(taskB.scopeKind, 'repository');
     assert.equal(taskB.projectId, null);
@@ -220,6 +221,7 @@ void test('control-plane store manages repositories and task lifecycle', () => {
           tenantId: 'tenant-task',
           userId: 'user-task',
           workspaceId: 'workspace-task',
+          repositoryId: 'repo-1',
           title: 'duplicate',
         }),
       /task already exists/,
@@ -231,9 +233,11 @@ void test('control-plane store manages repositories and task lifecycle', () => {
           tenantId: 'tenant-task',
           userId: 'user-task',
           workspaceId: 'workspace-task',
+          repositoryId: 'repo-1',
           title: '  ',
+          body: '   ',
         }),
-      /expected non-empty title/,
+      /body must be non-empty/,
     );
     assert.throws(
       () =>
@@ -281,17 +285,17 @@ void test('control-plane store manages repositories and task lifecycle', () => {
       }).length,
       4,
     );
-    assert.equal(store.listTasks({ repositoryId: 'repo-1' }).length, 1);
+    assert.equal(store.listTasks({ repositoryId: 'repo-1' }).length, 2);
     assert.equal(store.listTasks({ projectId: 'dir-task-a' }).length, 1);
     assert.equal(store.listTasks({ scopeKind: 'project' }).length, 1);
-    assert.equal(store.listTasks({ scopeKind: 'repository' }).length, 2);
-    assert.equal(store.listTasks({ scopeKind: 'global' }).length, 1);
+    assert.equal(store.listTasks({ scopeKind: 'repository' }).length, 3);
+    assert.equal(store.listTasks({ scopeKind: 'global' }).length, 0);
     assert.equal(store.listTasks({ status: 'draft' }).length, 4);
 
     assert.equal(store.updateTask('missing-task', { title: 'x' }), null);
     const updateTaskFull = store.updateTask('task-a', {
       title: 'task a updated',
-      description: 'description a updated',
+      body: 'body a updated',
       repositoryId: 'repo-1',
     });
     assert.equal(updateTaskFull?.title, 'task a updated');
@@ -302,17 +306,24 @@ void test('control-plane store manages repositories and task lifecycle', () => {
     });
     assert.equal(updateTaskNoop?.title, 'task a renamed only');
 
-    const updateTaskClearRepository = store.updateTask('task-a', {
-      repositoryId: null,
-    });
-    assert.equal(updateTaskClearRepository?.repositoryId, null);
-    assert.equal(updateTaskClearRepository?.scopeKind, 'global');
+    assert.throws(
+      () =>
+        store.updateTask('task-a', {
+          repositoryId: null,
+        }),
+      /task scope required/,
+    );
 
     const updateTaskToProjectScope = store.updateTask('task-a', {
       projectId: 'dir-task-a',
     });
     assert.equal(updateTaskToProjectScope?.scopeKind, 'project');
     assert.equal(updateTaskToProjectScope?.projectId, 'dir-task-a');
+    const updateTaskClearRepository = store.updateTask('task-a', {
+      repositoryId: null,
+    });
+    assert.equal(updateTaskClearRepository?.repositoryId, null);
+    assert.equal(updateTaskClearRepository?.scopeKind, 'project');
 
     assert.throws(
       () =>
@@ -637,7 +648,7 @@ void test('control-plane store repository and task normalization guards are stri
         workspace_id,
         repository_id,
         title,
-        description,
+        body,
         status,
         order_index,
         claimed_by_controller_id,
@@ -676,7 +687,7 @@ void test('control-plane store repository and task normalization guards are stri
         workspace_id,
         repository_id,
         title,
-        description,
+        body,
         status,
         order_index,
         claimed_by_controller_id,
@@ -836,6 +847,7 @@ void test('control-plane store repository and task rollback guards cover impossi
           tenantId: 'tenant-rollback',
           userId: 'user-rollback',
           workspaceId: 'workspace-rollback',
+          repositoryId: 'repo-update-fail',
           title: 'insert fail',
         }),
       /task insert failed/,
@@ -855,6 +867,7 @@ void test('control-plane store repository and task rollback guards cover impossi
       tenantId: 'tenant-rollback',
       userId: 'user-rollback',
       workspaceId: 'workspace-rollback',
+      repositoryId: 'repo-update-fail',
       title: 'claim fail',
     });
     store.readyTask('task-claim-fail');
@@ -884,6 +897,7 @@ void test('control-plane store repository and task rollback guards cover impossi
       tenantId: 'tenant-rollback',
       userId: 'user-rollback',
       workspaceId: 'workspace-rollback',
+      repositoryId: 'repo-update-fail',
       title: 'complete fail',
     });
     let completeFailCalls = 0;
@@ -904,6 +918,7 @@ void test('control-plane store repository and task rollback guards cover impossi
       tenantId: 'tenant-rollback',
       userId: 'user-rollback',
       workspaceId: 'workspace-rollback',
+      repositoryId: 'repo-update-fail',
       title: 'queue fail',
     });
     let queueFailCalls = 0;
@@ -923,6 +938,7 @@ void test('control-plane store repository and task rollback guards cover impossi
       tenantId: 'tenant-rollback',
       userId: 'user-rollback',
       workspaceId: 'workspace-rollback',
+      repositoryId: 'repo-update-fail',
       title: 'draft fail',
     });
     store.readyTask('task-draft-fail');
@@ -979,7 +995,7 @@ void test('control-plane store migrates legacy tasks schema before creating scop
         workspace_id TEXT NOT NULL,
         repository_id TEXT REFERENCES repositories(repository_id),
         title TEXT NOT NULL,
-        description TEXT NOT NULL DEFAULT '',
+        body TEXT NOT NULL DEFAULT '',
         status TEXT NOT NULL,
         order_index INTEGER NOT NULL,
         claimed_by_controller_id TEXT,
@@ -1025,7 +1041,7 @@ void test('control-plane store migrates legacy tasks schema before creating scop
         workspace_id,
         repository_id,
         title,
-        description,
+        body,
         status,
         order_index,
         claimed_by_controller_id,

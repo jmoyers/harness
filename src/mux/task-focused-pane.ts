@@ -31,7 +31,7 @@ export interface TaskFocusedPaneTaskRecord {
   readonly taskId: string;
   readonly repositoryId: string | null;
   readonly title: string;
-  readonly description: string;
+  readonly body: string;
   readonly status: TaskStatus;
   readonly orderIndex: number;
   readonly createdAt: string;
@@ -196,14 +196,14 @@ function taskBufferFromRecord(
 ): TaskComposerBuffer {
   return (
     overrides.get(task.taskId) ?? {
-      text: taskComposerTextFromTaskFields(task.title, task.description),
+      text: taskComposerTextFromTaskFields(task.title, task.body),
       cursor: task.title.length,
     }
   );
 }
 
 function taskPreviewText(task: TaskFocusedPaneTaskRecord): string {
-  const summary = task.description.split('\n')[0] ?? '';
+  const summary = task.body.split('\n')[0] ?? '';
   if (summary.length === 0) {
     return task.title;
   }

@@ -364,7 +364,7 @@ void test('agent realtime client exposes typed CRUD wrappers for projects thread
     scopeKind: 'repository',
     projectId: null,
     title: 'implement api',
-    description: 'details',
+    body: 'details',
     status: 'ready',
     orderIndex: 0,
     claimedByControllerId: null,
@@ -899,12 +899,13 @@ void test('agent realtime client exposes typed CRUD wrappers for projects thread
     taskId: 'task-1',
     repositoryId: 'repository-1',
     title: 'implement api',
-    description: 'details',
+    body: 'details',
   });
   assert.equal(createdTask.taskId, 'task-1');
   await assert.rejects(
     realtime.client.createTask({
       title: 'bad',
+      body: 'bad body',
     }),
     /task\.create returned malformed task/,
   );
@@ -1046,7 +1047,7 @@ void test('agent realtime client accepts draft task status and completed thread 
         scopeKind: 'global',
         projectId: null,
         title: 'Draft task',
-        description: '',
+        body: '',
         status: 'draft',
         orderIndex: 1,
         claimedByControllerId: null,
@@ -1420,7 +1421,7 @@ void test('agent realtime sessions aliases and draft task helper issue expected 
       scopeKind: 'global',
       projectId: null,
       title: 'Draft task',
-      description: '',
+      body: '',
       status: 'draft',
       orderIndex: 1,
       claimedByControllerId: null,

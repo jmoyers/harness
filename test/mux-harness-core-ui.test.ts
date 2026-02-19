@@ -62,7 +62,7 @@ function task(
     taskId: overrides.taskId,
     repositoryId: overrides.repositoryId ?? null,
     title: overrides.title ?? overrides.taskId,
-    description: overrides.description ?? '',
+    body: overrides.body ?? '',
     status: overrides.status ?? 'draft',
     orderIndex: overrides.orderIndex ?? 0,
     completedAt: overrides.completedAt ?? null,

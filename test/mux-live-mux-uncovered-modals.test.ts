@@ -45,14 +45,14 @@ void test('modal input reducers normalize line and task-editor input branches', 
 
   const basePrompt = {
     title: 'Title',
-    description: 'Desc',
+    body: 'Desc',
     repositoryIds: ['repo-a', 'repo-b'],
     repositoryIndex: 0,
     fieldIndex: 0 as 0 | 1 | 2,
   };
   assert.deepEqual(reduceTaskEditorPromptInput(basePrompt, Buffer.from('\u001b[C', 'utf8')), {
     title: 'Title',
-    description: 'Desc',
+    body: 'Desc',
     repositoryIndex: 1,
     fieldIndex: 1,
     submit: false,
@@ -68,7 +68,7 @@ void test('modal input reducers normalize line and task-editor input branches', 
     ),
     {
       title: 'Title',
-      description: 'Desc',
+      body: 'Desc',
       repositoryIndex: 0,
       fieldIndex: 1,
       submit: false,
@@ -84,7 +84,7 @@ void test('modal input reducers normalize line and task-editor input branches', 
     ),
     {
       title: 'Title',
-      description: 'Desc',
+      body: 'Desc',
       repositoryIndex: 0,
       fieldIndex: 1,
       submit: false,
@@ -100,7 +100,7 @@ void test('modal input reducers normalize line and task-editor input branches', 
     ),
     {
       title: 'Title',
-      description: 'Des!',
+      body: 'Des!',
       repositoryIndex: 0,
       fieldIndex: 2,
       submit: false,
@@ -116,7 +116,7 @@ void test('modal input reducers normalize line and task-editor input branches', 
     ),
     {
       title: 'Titl',
-      description: 'Desc',
+      body: 'Desc',
       repositoryIndex: 0,
       fieldIndex: 0,
       submit: false,
@@ -124,7 +124,7 @@ void test('modal input reducers normalize line and task-editor input branches', 
   );
   assert.deepEqual(reduceTaskEditorPromptInput(basePrompt, Buffer.from('\n', 'utf8')), {
     title: 'Title',
-    description: 'Desc',
+    body: 'Desc',
     repositoryIndex: 0,
     fieldIndex: 0,
     submit: true,
@@ -540,7 +540,7 @@ void test('task editor handler covers dismiss change and submit validation branc
     mode: 'create' as const,
     taskId: null,
     title: 'Task',
-    description: 'Desc',
+    body: 'Desc',
     repositoryIds: ['repo-a'],
     repositoryIndex: 0,
     fieldIndex: 0 as 0 | 1 | 2,
@@ -619,7 +619,8 @@ void test('task editor handler covers dismiss change and submit validation branc
     isQuitShortcut: () => false,
     dismissOnOutsideClick: () => false,
   });
-  assert.equal(noTitle.nextPrompt?.error, 'title required');
+  assert.equal(noTitle.nextPrompt, undefined);
+  assert.equal(noTitle.submitPayload?.title, null);
 
   const noRepo = handleTaskEditorPromptInput({
     input: Buffer.from('\n', 'utf8'),
@@ -639,8 +640,9 @@ void test('task editor handler covers dismiss change and submit validation branc
     mode: 'create',
     taskId: null,
     repositoryId: 'repo-a',
+    projectId: null,
     title: 'Task',
-    description: 'Desc',
+    body: 'Desc',
     commandLabel: 'tasks-create',
   });
 
@@ -1310,7 +1312,7 @@ void test('modal overlay builders return null for missing state and build overla
     {
       mode: 'create',
       title: 'Task',
-      description: 'Desc',
+      body: 'Desc',
       repositoryIds: ['repo-a'],
       repositoryIndex: 0,
       fieldIndex: 0,
@@ -1326,7 +1328,7 @@ void test('modal overlay builders return null for missing state and build overla
     {
       mode: 'edit',
       title: 'Task',
-      description: 'Desc',
+      body: 'Desc',
       repositoryIds: [],
       repositoryIndex: 0,
       fieldIndex: 2,

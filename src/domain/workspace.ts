@@ -37,7 +37,7 @@ export interface TaskEditorPromptState {
   mode: 'create' | 'edit';
   taskId: string | null;
   title: string;
-  description: string;
+  body: string;
   repositoryIds: readonly string[];
   repositoryIndex: number;
   fieldIndex: 0 | 1 | 2;

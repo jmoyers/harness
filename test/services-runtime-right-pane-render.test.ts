@@ -16,7 +16,7 @@ interface TaskRecord {
   readonly taskId: string;
   readonly repositoryId: string | null;
   readonly title: string;
-  readonly description: string;
+  readonly body: string;
   readonly status: 'draft' | 'ready' | 'in-progress' | 'completed';
   readonly orderIndex: number;
   readonly createdAt: string;

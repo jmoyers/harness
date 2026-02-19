@@ -15,7 +15,7 @@ interface RouterHarness {
     mode: 'create' | 'edit';
     taskId: string | null;
     title: string;
-    description: string;
+    body: string;
     repositoryIds: readonly string[];
     repositoryIndex: number;
     fieldIndex: 0 | 1 | 2;
@@ -30,7 +30,7 @@ function createHarness(dependencies: ConstructorParameters<typeof InputRouter>[1
     mode: 'create',
     taskId: null,
     title: 'Task',
-    description: 'Desc',
+    body: 'Desc',
     repositoryIds: ['repo-a'],
     repositoryIndex: 0,
     fieldIndex: 0,
@@ -98,7 +98,7 @@ void test('input router task-editor branch updates prompt, dirty state, and subm
     mode: 'edit' as const,
     taskId: 'task-1',
     title: 'Updated',
-    description: 'Desc',
+    body: 'Desc',
     repositoryIds: ['repo-a'],
     repositoryIndex: 0,
     fieldIndex: 1 as const,
@@ -113,7 +113,7 @@ void test('input router task-editor branch updates prompt, dirty state, and subm
       taskId: null,
       repositoryId: 'repo-a',
       title: 'Updated',
-      description: 'Desc',
+      body: 'Desc',
       commandLabel: 'tasks-create',
     },
   };

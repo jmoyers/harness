@@ -110,20 +110,22 @@ void test('property: parseStreamCommand task.create normalization stays canonica
         workspaceId: fc.option(alphaNum, { nil: undefined }),
         repositoryId: fc.option(alphaNum, { nil: undefined }),
         projectId: fc.option(alphaNum, { nil: undefined }),
-        description: fc.option(alphaNum, { nil: undefined }),
+        title: fc.option(alphaNum, { nil: undefined }),
+        body: alphaNum,
       }),
       (optionalFields) => {
-      const parsed = parseStreamCommand({
-        type: 'task.create',
-        title: 'x',
-        ...optionalFields,
-      });
-      assert.notEqual(parsed, null);
-      if (parsed !== null) {
-        assert.equal(parsed.type, 'task.create');
-        assert.deepEqual(parseStreamCommand(parsed), parsed);
-      }
-    }),
+        fc.pre(optionalFields.repositoryId !== undefined || optionalFields.projectId !== undefined);
+        const parsed = parseStreamCommand({
+          type: 'task.create',
+          ...optionalFields,
+        });
+        assert.notEqual(parsed, null);
+        if (parsed !== null) {
+          assert.equal(parsed.type, 'task.create');
+          assert.deepEqual(parseStreamCommand(parsed), parsed);
+        }
+      },
+    ),
     { numRuns: 60 },
   );
 
@@ -131,13 +133,15 @@ void test('property: parseStreamCommand task.create normalization stays canonica
     fc.property(
       fc.anything().filter((value) => value !== undefined && typeof value !== 'string'),
       (badTenantId) => {
-      const parsed = parseStreamCommand({
-        type: 'task.create',
-        title: 'x',
-        tenantId: badTenantId,
-      });
-      assert.equal(parsed, null);
-    }),
+        const parsed = parseStreamCommand({
+          type: 'task.create',
+          repositoryId: 'repository-1',
+          body: 'body',
+          tenantId: badTenantId,
+        });
+        assert.equal(parsed, null);
+      },
+    ),
     { numRuns: 60 },
   );
 });

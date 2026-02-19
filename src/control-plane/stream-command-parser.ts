@@ -476,32 +476,38 @@ function parseRepositoryArchive(record: CommandRecord): StreamCommand | null {
 }
 
 function parseTaskCreate(record: CommandRecord): StreamCommand | null {
-  const title = readString(record['title']);
-  if (title === null) {
+  const body = readString(record['body']);
+  if (body === null) {
     return null;
   }
+  const title = readOptionalNullableString(record, 'title');
   const taskId = readOptionalString(record, 'taskId');
   const tenantId = readOptionalString(record, 'tenantId');
   const userId = readOptionalString(record, 'userId');
   const workspaceId = readOptionalString(record, 'workspaceId');
   const repositoryId = readOptionalString(record, 'repositoryId');
   const projectId = readOptionalString(record, 'projectId');
-  const description = readOptionalString(record, 'description');
   if (
+    title === INVALID_OPTIONAL ||
     taskId === undefined ||
     tenantId === undefined ||
     userId === undefined ||
     workspaceId === undefined ||
     repositoryId === undefined ||
-    projectId === undefined ||
-    description === undefined
+    projectId === undefined
   ) {
+    return null;
+  }
+  if (repositoryId === null && projectId === null) {
     return null;
   }
   const command: StreamCommand = {
     type: 'task.create',
-    title,
+    body,
   };
+  if (title !== undefined) {
+    command.title = title;
+  }
   if (taskId !== null) {
     command.taskId = taskId;
   }
@@ -519,9 +525,6 @@ function parseTaskCreate(record: CommandRecord): StreamCommand | null {
   }
   if (projectId !== null) {
     command.projectId = projectId;
-  }
-  if (description !== null) {
-    command.description = description;
   }
   return command;
 }
@@ -611,9 +614,9 @@ function parseTaskUpdate(record: CommandRecord): StreamCommand | null {
   if (taskId === null) {
     return null;
   }
-  const title = readOptionalString(record, 'title');
-  const description = readOptionalString(record, 'description');
-  if (title === undefined || description === undefined) {
+  const title = readOptionalNullableString(record, 'title');
+  const body = readOptionalString(record, 'body');
+  if (title === INVALID_OPTIONAL || body === undefined) {
     return null;
   }
   let repositoryId: string | null | undefined;
@@ -636,16 +639,19 @@ function parseTaskUpdate(record: CommandRecord): StreamCommand | null {
   } else {
     return null;
   }
+  if (repositoryId === null && projectId === null) {
+    return null;
+  }
 
   const command: StreamCommand = {
     type: 'task.update',
     taskId,
   };
-  if (title !== null) {
+  if (title !== undefined) {
     command.title = title;
   }
-  if (description !== null) {
-    command.description = description;
+  if (body !== null) {
+    command.body = body;
   }
   if (repositoryId !== undefined) {
     command.repositoryId = repositoryId;

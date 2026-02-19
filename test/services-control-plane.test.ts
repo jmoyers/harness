@@ -138,7 +138,7 @@ function taskRecord(
     workspaceId: 'workspace-1',
     repositoryId: 'repo-1',
     title: 'Task',
-    description: '',
+    body: '',
     status,
     orderIndex: 0,
     claimedByControllerId: null,
@@ -181,7 +181,7 @@ void test('control-plane service sends scoped commands and parses repository/tas
       await service.createTask({
         repositoryId: 'repo-1',
         title: 'Create',
-        description: 'desc',
+        body: 'desc',
       })
     ).taskId,
     'task-create',
@@ -192,7 +192,7 @@ void test('control-plane service sends scoped commands and parses repository/tas
         taskId: 'task-update',
         repositoryId: 'repo-1',
         title: 'Update',
-        description: 'desc',
+        body: 'desc',
       })
     ).taskId,
     'task-update',
@@ -540,7 +540,7 @@ void test('control-plane service rejects malformed task record payloads for task
       service.createTask({
         repositoryId: 'repo-1',
         title: 'Create',
-        description: '',
+        body: '',
       }),
     /control-plane task\.create returned malformed task record/,
   );
@@ -552,7 +552,7 @@ void test('control-plane service rejects malformed task record payloads for task
         taskId: 'task-1',
         repositoryId: 'repo-1',
         title: 'Update',
-        description: '',
+        body: '',
       }),
     /control-plane task\.update returned malformed task record/,
   );

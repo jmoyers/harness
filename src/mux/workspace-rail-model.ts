@@ -367,6 +367,7 @@ function buildContentRows(
 
   if (showTaskPlanningUi) {
     pushRow(rows, 'dir-header', '├─ 🏠 home', homeSelectionEnabled, null, null, null, 'home.open');
+    pushRow(rows, 'action', '│  [tasks]', homeSelectionEnabled, null, null, null, 'home.open');
   }
 
   if (orderedRepositoryGroupIds.length === 0) {

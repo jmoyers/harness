@@ -3387,7 +3387,7 @@ export class ControlPlaneStreamServer {
       scopeKind: task.scopeKind,
       projectId: task.projectId,
       title: task.title,
-      description: task.description,
+      body: task.body,
       status: task.status,
       orderIndex: task.orderIndex,
       claimedByControllerId: task.claimedByControllerId,

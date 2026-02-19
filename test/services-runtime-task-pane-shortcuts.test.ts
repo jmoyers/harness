@@ -9,7 +9,7 @@ interface TaskRecord {
   readonly taskId: string;
   readonly repositoryId: string | null;
   readonly title: string;
-  readonly description: string;
+  readonly body: string;
 }
 
 type ShortcutsOptions = ConstructorParameters<typeof RuntimeTaskPaneShortcuts<TaskRecord>>[0];
@@ -47,7 +47,7 @@ function createHarness(overrides: Partial<ShortcutsOptions> = {}) {
   const createdPayloads: Array<{
     repositoryId: string;
     title: string;
-    description: string;
+    body: string;
   }> = [];
   const queued: Promise<void>[] = [];
 
@@ -93,7 +93,7 @@ function createHarness(overrides: Partial<ShortcutsOptions> = {}) {
         taskId: `task-${createdPayloads.length}`,
         repositoryId: payload.repositoryId,
         title: payload.title,
-        description: payload.description,
+        body: payload.body,
       };
       taskRecords.push(created);
       return created;
@@ -249,17 +249,17 @@ void test('runtime task pane shortcuts submitDraftTaskFromComposer requires sele
   assert.deepEqual(harness.calls, ['markDirty']);
 });
 
-void test('runtime task pane shortcuts submitDraftTaskFromComposer requires first-line title', () => {
+void test('runtime task pane shortcuts submitDraftTaskFromComposer requires non-empty body', () => {
   const harness = createHarness();
   harness.workspace.taskPaneSelectedRepositoryId = 'repo-1';
   harness.workspace.taskDraftComposer = {
-    text: '\nbody only',
+    text: '   \n   ',
     cursor: 1,
   };
 
   harness.service.submitDraftTaskFromComposer();
 
-  assert.equal(harness.workspace.taskPaneNotice, 'first line is required');
+  assert.equal(harness.workspace.taskPaneNotice, 'task body is required');
   assert.deepEqual(harness.calls, ['markDirty']);
 });
 
@@ -278,7 +278,7 @@ void test('runtime task pane shortcuts submitDraftTaskFromComposer queues create
     {
       repositoryId: 'repo-1',
       title: 'Title line',
-      description: 'Description line',
+      body: 'Title line\nDescription line',
     },
   ]);
   assert.deepEqual(harness.workspace.taskDraftComposer, {
@@ -302,13 +302,13 @@ void test('runtime task pane shortcuts moveTaskEditorFocusUp focuses last task f
       taskId: 'task-1',
       repositoryId: 'repo-1',
       title: 'Task 1',
-      description: '',
+      body: '',
     },
     {
       taskId: 'task-2',
       repositoryId: 'repo-1',
       title: 'Task 2',
-      description: '',
+      body: '',
     },
   );
 
@@ -323,13 +323,13 @@ void test('runtime task pane shortcuts moveTaskEditorFocusUp handles top and mid
       taskId: 'task-1',
       repositoryId: 'repo-1',
       title: 'Task 1',
-      description: '',
+      body: '',
     },
     {
       taskId: 'task-2',
       repositoryId: 'repo-1',
       title: 'Task 2',
-      description: '',
+      body: '',
     },
   );
 
@@ -357,7 +357,7 @@ void test('runtime task pane shortcuts handleInput delegates through injected sh
     }),
     taskFieldsFromComposerText: () => ({
       title: '',
-      description: '',
+      body: '',
     }),
     handleTaskPaneShortcutInput: (options) => {
       callbackCalls.push('handler');

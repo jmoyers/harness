@@ -6,7 +6,7 @@ interface TaskRecord {
   readonly taskId: string;
   readonly repositoryId: string | null;
   readonly title: string;
-  readonly description: string;
+  readonly body: string;
 }
 
 interface TaskComposerBuffer {
@@ -27,7 +27,7 @@ void test('runtime task composer persistence service resolves composer lookup an
         taskId: 'task-a',
         repositoryId: 'repo-a',
         title: 'Title A',
-        description: '',
+        body: '',
       },
     ],
     [
@@ -36,7 +36,7 @@ void test('runtime task composer persistence service resolves composer lookup an
         taskId: 'task-b',
         repositoryId: 'repo-a',
         title: 'Title B',
-        description: 'Description B',
+        body: 'Description B',
       },
     ],
   ]);
@@ -65,7 +65,7 @@ void test('runtime task composer persistence service resolves composer lookup an
     setTaskAutosaveTimer: () => {},
     deleteTaskAutosaveTimer: () => {},
     buildComposerFromTask: (task) => ({
-      text: task.description.length === 0 ? task.title : `${task.title}\n${task.description}`,
+      text: task.body.length === 0 ? task.title : `${task.title}\n${task.body}`,
       cursor: 0,
     }),
     normalizeTaskComposerBuffer: (buffer) => ({
@@ -74,7 +74,7 @@ void test('runtime task composer persistence service resolves composer lookup an
     }),
     taskFieldsFromComposerText: () => ({
       title: '',
-      description: '',
+      body: '',
     }),
     updateTask: async () => {
       throw new Error('not expected');
@@ -115,12 +115,12 @@ void test('runtime task composer persistence service resolves composer lookup an
   ]);
 });
 
-void test('runtime task composer persistence service clears autosave timers and handles empty-title debounce guard', () => {
+void test('runtime task composer persistence service clears autosave timers and handles empty-body debounce guard', () => {
   const task: TaskRecord = {
     taskId: 'task-a',
     repositoryId: 'repo-a',
     title: 'Title A',
-    description: 'Description A',
+    body: 'Title A\nDescription A',
   };
   const composers = new Map<string, TaskComposerBuffer>([
     [
@@ -166,7 +166,7 @@ void test('runtime task composer persistence service clears autosave timers and 
     normalizeTaskComposerBuffer: (buffer) => buffer,
     taskFieldsFromComposerText: (text) => ({
       title: text.trim(),
-      description: '',
+      body: '',
     }),
     updateTask: async () => task,
     applyTaskRecord: () => {},
@@ -215,7 +215,7 @@ void test('runtime task composer persistence service clears autosave timers and 
 
   assert.equal(timers.has('task-a'), false);
   assert.deepEqual(queuedLabels, []);
-  assert.deepEqual(notices, ['first line is required']);
+  assert.deepEqual(notices, ['task body is required']);
   assert.equal(markDirtyCount, 1);
 });
 
@@ -224,7 +224,7 @@ void test('runtime task composer persistence service queues persist operations a
     taskId: 'task-a',
     repositoryId: 'repo-a',
     title: 'Title A',
-    description: 'Description A',
+    body: 'Title A\nDescription A',
   };
   const composers = new Map<string, TaskComposerBuffer>();
   const queued: Array<{ label: string; task: () => Promise<void> }> = [];
@@ -234,7 +234,7 @@ void test('runtime task composer persistence service queues persist operations a
     taskId: string;
     repositoryId: string | null;
     title: string;
-    description: string;
+    body: string;
   }> = [];
 
   const service = new RuntimeTaskComposerPersistenceService<
@@ -260,10 +260,10 @@ void test('runtime task composer persistence service queues persist operations a
     }),
     normalizeTaskComposerBuffer: (buffer) => buffer,
     taskFieldsFromComposerText: (text) => {
-      const [first, ...rest] = text.split('\n');
+      const [first] = text.split('\n');
       return {
-        title: first ?? '',
-        description: rest.join('\n'),
+        title: first?.trim().length ? first.trim() : null,
+        body: text,
       };
     },
     updateTask: async (input) => {
@@ -272,7 +272,7 @@ void test('runtime task composer persistence service queues persist operations a
         taskId: input.taskId,
         repositoryId: input.repositoryId,
         title: input.title,
-        description: input.description,
+        body: input.body,
       };
     },
     applyTaskRecord: (nextTask) => {
@@ -297,7 +297,7 @@ void test('runtime task composer persistence service queues persist operations a
   assert.equal(queued.length, 0);
 
   composers.set('task-a', {
-    text: 'Updated title\nUpdated description',
+    text: 'Updated title\nUpdated body',
     cursor: 0,
   });
   service.flushTaskComposerPersist('task-a');
@@ -313,7 +313,7 @@ void test('runtime task composer persistence service queues persist operations a
       taskId: 'task-a',
       repositoryId: 'repo-a',
       title: 'Updated title',
-      description: 'Updated description',
+      body: 'Updated title\nUpdated body',
     },
   ]);
   assert.equal(applied.length, 1);
@@ -337,7 +337,7 @@ void test('runtime task composer persistence service clears timer before flush p
     taskId: 'task-a',
     repositoryId: 'repo-a',
     title: 'Title A',
-    description: '',
+    body: '',
   };
   const timers = new Map<string, FakeTimer>([
     [
@@ -373,14 +373,14 @@ void test('runtime task composer persistence service clears timer before flush p
     }),
     normalizeTaskComposerBuffer: (buffer) => buffer,
     taskFieldsFromComposerText: (text) => ({
-      title: text,
-      description: '',
+      title: text.trim().length > 0 ? text.trim() : null,
+      body: text,
     }),
     updateTask: async (input) => ({
       taskId: input.taskId,
       repositoryId: input.repositoryId,
       title: input.title,
-      description: input.description,
+      body: input.body,
     }),
     applyTaskRecord: () => {},
     queueControlPlaneOp: (_task, label) => {
@@ -405,7 +405,7 @@ void test('runtime task composer persistence service default timer fallbacks sch
     taskId: 'task-a',
     repositoryId: 'repo-a',
     title: 'Title A',
-    description: '',
+    body: '',
   };
   const timers = new Map<string, NodeJS.Timeout>();
   const composers = new Map<string, TaskComposerBuffer>([
@@ -437,14 +437,14 @@ void test('runtime task composer persistence service default timer fallbacks sch
     }),
     normalizeTaskComposerBuffer: (buffer) => buffer,
     taskFieldsFromComposerText: (text) => ({
-      title: text,
-      description: '',
+      title: text.trim().length > 0 ? text.trim() : null,
+      body: text,
     }),
     updateTask: async (input) => ({
       taskId: input.taskId,
       repositoryId: input.repositoryId,
       title: input.title,
-      description: input.description,
+      body: input.body,
     }),
     applyTaskRecord: () => {},
     queueControlPlaneOp: (_task, label) => {

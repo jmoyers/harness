@@ -206,8 +206,8 @@ interface ExecuteCommandContext {
       workspaceId: string;
       repositoryId?: string;
       projectId?: string;
-      title: string;
-      description?: string;
+      title?: string | null;
+      body: string;
     }): ControlPlaneTaskRecord;
     getTask(taskId: string): ControlPlaneTaskRecord | null;
     listTasks(query: {
@@ -223,8 +223,8 @@ interface ExecuteCommandContext {
     updateTask(
       taskId: string,
       input: {
-        title?: string;
-        description?: string;
+        title?: string | null;
+        body?: string;
         repositoryId?: string | null;
         projectId?: string | null;
       },
@@ -1595,23 +1595,23 @@ export async function executeStreamServerCommand(
       workspaceId: string;
       repositoryId?: string;
       projectId?: string;
-      title: string;
-      description?: string;
+      title?: string | null;
+      body: string;
     } = {
       taskId: command.taskId ?? `task-${randomUUID()}`,
       tenantId: command.tenantId ?? DEFAULT_TENANT_ID,
       userId: command.userId ?? DEFAULT_USER_ID,
       workspaceId: command.workspaceId ?? DEFAULT_WORKSPACE_ID,
-      title: command.title,
+      body: command.body,
     };
+    if (command.title !== undefined) {
+      input.title = command.title;
+    }
     if (command.repositoryId !== undefined) {
       input.repositoryId = command.repositoryId;
     }
     if (command.projectId !== undefined) {
       input.projectId = command.projectId;
-    }
-    if (command.description !== undefined) {
-      input.description = command.description;
     }
     const task = ctx.stateStore.createTask(input);
     ctx.publishObservedEvent(
@@ -1685,16 +1685,16 @@ export async function executeStreamServerCommand(
 
   if (command.type === 'task.update') {
     const update: {
-      title?: string;
-      description?: string;
+      title?: string | null;
+      body?: string;
       repositoryId?: string | null;
       projectId?: string | null;
     } = {};
     if (command.title !== undefined) {
       update.title = command.title;
     }
-    if (command.description !== undefined) {
-      update.description = command.description;
+    if (command.body !== undefined) {
+      update.body = command.body;
     }
     if (command.repositoryId !== undefined) {
       update.repositoryId = command.repositoryId;

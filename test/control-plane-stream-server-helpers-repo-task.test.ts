@@ -983,7 +983,7 @@ void test('stream server exposes repository and task commands', async () => {
       workspaceId: 'workspace-task-1',
       repositoryId: 'repository-1',
       title: 'Implement repository API',
-      description: 'Add stream commands for repositories',
+      body: 'Add stream commands for repositories',
     });
     await client.sendCommand({
       type: 'task.create',
@@ -991,8 +991,9 @@ void test('stream server exposes repository and task commands', async () => {
       tenantId: 'tenant-task-1',
       userId: 'user-task-1',
       workspaceId: 'workspace-task-1',
+      repositoryId: 'repository-1',
       title: 'Implement task API',
-      description: 'Add stream commands for tasks',
+      body: 'Add stream commands for tasks',
     });
 
     const readyTask = await client.sendCommand({
@@ -1041,10 +1042,10 @@ void test('stream server exposes repository and task commands', async () => {
     const updatedTaskWithoutRepositoryMetadata = await client.sendCommand({
       type: 'task.update',
       taskId: 'task-2',
-      description: 'Add stream commands for tasks',
+      body: 'Add stream commands for tasks',
     });
     assert.equal(
-      (updatedTaskWithoutRepositoryMetadata['task'] as Record<string, unknown>)['description'],
+      (updatedTaskWithoutRepositoryMetadata['task'] as Record<string, unknown>)['body'],
       'Add stream commands for tasks',
     );
 

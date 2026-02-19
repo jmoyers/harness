@@ -209,11 +209,11 @@ Required read/stream categories:
 ## Task Orchestration Model
 
 - Tasks are first-party and provider-agnostic; core task records do not embed third-party issue schemas.
-- Task scope is explicit and normalized: `global`, `repository`, or `project`.
+- Task scope is explicit and required for active records: `repository` or `project` (legacy unscoped/global tasks are pruned).
 - Pull eligibility is status-gated: only `ready` tasks are pull candidates (`draft` is never auto-pulled).
 - Project-level pull order:
   - project-scoped `ready` tasks first
-  - then repository/global fallback unless project `taskFocusMode` is `own-only`
+  - then repository fallback unless project `taskFocusMode` is `own-only`
 - Repository fan-out uses oldest eligible project ordering (stable by creation time, then id).
 - Project availability checks are hard gates before claim:
   - automation enabled (not disabled/frozen by policy scope)
@@ -278,7 +278,7 @@ Pass-through stream invariants:
 - Clients do zero status interpretation and zero fallback synthesis: mux/API consumers render the emitted `statusModel` exactly as provided by the gateway (including explicit `null`).
 - Left-rail status detail rendering is intentionally suppressed when `statusModel` is `null` (notably `terminal` and `critique` threads); those rows still render a fixed one-cell type glyph (`⌨` for terminal, `✎` for critique) so thread-title icon alignment stays stable.
 - Mux exposes a dedicated conversation interrupt action (`mux.conversation.interrupt`) mapped to control-plane `session.interrupt` for parity-safe thread interruption without quitting the client.
-- The left rail treats Home as a first-class selectable entry (directory-style block with its own emoji); `ctrl+j/k` cycles visible left-nav selection in visual order: Home -> repository group -> project header -> project threads -> next visible item.
+- The left rail treats Home as a first-class selectable entry (directory-style block with its own emoji) and renders a `[tasks]` row directly under Home that opens the same pane; `ctrl+j/k` cycles visible left-nav selection in visual order: Home -> repository group -> project header -> project threads -> next visible item.
 - Repository/task planning is exposed through a dedicated Home entry in the left rail; Home unifies repository and task CRUD in one scrollable right-pane view while control-plane repository/task commands and subscriptions remain the source of truth.
 - Active project directories are scraped for GitHub remotes at startup/refresh; remotes are normalized and deduped, auto-upserted into canonical repository records, and reused for rail grouping.
 - Gateway-side GitHub sync persists PR records + per-PR CI job records and emits realtime observed events (`github-pr-upserted`, `github-pr-closed`, `github-pr-jobs-updated`) so UI/API clients stay live without polling their own GitHub state.
@@ -664,7 +664,7 @@ Core tables:
 
 Task/policy schema notes:
 
-- `tasks` includes `scope_kind` and `project_id` to model project/repository/global planning explicitly.
+- `tasks` includes `scope_kind` and `project_id` to model repository/project planning explicitly.
 - `project_settings` stores per-project orchestration controls (`pinned_branch`, `task_focus_mode`, `thread_spawn_mode`).
 - `automation_policies` stores optional scope overrides (`automation_enabled`, `frozen`) for global/repository/project control.
 
@@ -802,6 +802,7 @@ Target layout sketch:
 ```txt
 ┌───────────────────────────────┬──────────────────────────────────────────────────────┐
 │  ├─ 🏠 home                   │  Active Conversation PTY                             │
+│  │  [tasks]                   │                                                      │
 │  ├─ 📁 harness (3,2) [-]      │  (Codex / terminal shell / vim passthrough)         │
 │  │  ├─ 📁 api (main:+4,-1)    │                                                      │
 │  │  │  ├─ ◆ codex - auth      │                                                      │

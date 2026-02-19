@@ -236,7 +236,7 @@ export interface AgentTask {
   scopeKind: 'global' | 'repository' | 'project';
   projectId: string | null;
   title: string;
-  description: string;
+  body: string;
   status: AgentTaskStatus;
   orderIndex: number;
   claimedByControllerId: string | null;
@@ -253,8 +253,8 @@ export interface AgentTaskCreateInput extends AgentScopeQuery {
   taskId?: string;
   repositoryId?: string;
   projectId?: string;
-  title: string;
-  description?: string;
+  title?: string | null;
+  body: string;
 }
 
 export interface AgentTaskListQuery extends AgentScopeQuery {
@@ -266,8 +266,8 @@ export interface AgentTaskListQuery extends AgentScopeQuery {
 }
 
 export interface AgentTaskUpdateInput {
-  title?: string;
-  description?: string;
+  title?: string | null;
+  body?: string;
   repositoryId?: string | null;
   projectId?: string | null;
 }
@@ -818,7 +818,7 @@ function parseTaskRecord(value: unknown): AgentTask | null {
   const repositoryId = readNullableString(record['repositoryId']);
   const projectId = readNullableString(record['projectId']);
   const title = readString(record['title']);
-  const description = readString(record['description']);
+  const body = readString(record['body'] ?? record['description']);
   const status = parseTaskStatus(record['status']);
   const scopeKind = parseTaskScopeKind(record['scopeKind'], repositoryId, projectId);
   const orderIndex = readNumber(record['orderIndex']);
@@ -839,7 +839,7 @@ function parseTaskRecord(value: unknown): AgentTask | null {
     projectId === undefined ||
     scopeKind === null ||
     title === null ||
-    description === null ||
+    body === null ||
     status === null ||
     orderIndex === null ||
     claimedByControllerId === undefined ||
@@ -862,7 +862,7 @@ function parseTaskRecord(value: unknown): AgentTask | null {
     scopeKind,
     projectId,
     title,
-    description,
+    body,
     status,
     orderIndex,
     claimedByControllerId,
@@ -1750,8 +1750,8 @@ export class HarnessAgentRealtimeClient {
       ...optionalField('workspaceId', input.workspaceId),
       ...optionalField('repositoryId', input.repositoryId),
       ...optionalField('projectId', input.projectId),
-      title: input.title,
-      ...optionalField('description', input.description),
+      ...optionalField('title', input.title),
+      body: input.body,
     });
     return requireParsed(
       result['task'],

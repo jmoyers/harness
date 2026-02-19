@@ -135,7 +135,7 @@ void test('command module coverage: repository/task query branches and claim con
         workspaceId: 'workspace-command-coverage',
         repositoryId: repositoryAId,
         title: 'task-a',
-        description: '',
+        body: 'task body',
       })
     )['task'] as Record<string, unknown>;
     const taskB = (
@@ -147,7 +147,7 @@ void test('command module coverage: repository/task query branches and claim con
         workspaceId: 'workspace-command-coverage',
         repositoryId: repositoryBId,
         title: 'task-b',
-        description: '',
+        body: 'task body',
       })
     )['task'] as Record<string, unknown>;
     await clientA.sendCommand({
@@ -354,7 +354,7 @@ void test('command module coverage: task pull enforces project priority, focus m
       workspaceId: 'workspace-pull',
       projectId: 'directory-a',
       title: 'project task',
-      description: '',
+      body: 'task body',
     });
     await client.sendCommand({
       type: 'task.create',
@@ -364,7 +364,7 @@ void test('command module coverage: task pull enforces project priority, focus m
       workspaceId: 'workspace-pull',
       repositoryId: 'repository-pull',
       title: 'repo task',
-      description: '',
+      body: 'task body',
     });
     await client.sendCommand({
       type: 'task.create',
@@ -372,8 +372,9 @@ void test('command module coverage: task pull enforces project priority, focus m
       tenantId: 'tenant-pull',
       userId: 'user-pull',
       workspaceId: 'workspace-pull',
+      repositoryId: 'repository-pull',
       title: 'global task',
-      description: '',
+      body: 'global fallback body',
     });
     await client.sendCommand({ type: 'task.ready', taskId: 'task-project-priority' });
     await client.sendCommand({ type: 'task.ready', taskId: 'task-repository-fanout' });
@@ -780,7 +781,7 @@ void test('command module coverage: task pull handles conflict fallback and vali
       ...scope,
       projectId: 'directory-conflict',
       title: 'project conflict 1',
-      description: '',
+      body: 'task body',
     });
     await client.sendCommand({
       type: 'task.create',
@@ -788,7 +789,7 @@ void test('command module coverage: task pull handles conflict fallback and vali
       ...scope,
       projectId: 'directory-conflict',
       title: 'project conflict 2',
-      description: '',
+      body: 'task body',
     });
     await client.sendCommand({
       type: 'task.create',
@@ -796,14 +797,15 @@ void test('command module coverage: task pull handles conflict fallback and vali
       ...scope,
       repositoryId: 'repository-conflict-a',
       title: 'repo conflict',
-      description: '',
+      body: 'task body',
     });
     await client.sendCommand({
       type: 'task.create',
       taskId: 'task-global-conflict',
       ...scope,
+      repositoryId: 'repository-conflict-a',
       title: 'global conflict',
-      description: '',
+      body: 'global conflict body',
     });
     await client.sendCommand({ type: 'task.ready', taskId: 'task-project-conflict-1' });
     await client.sendCommand({ type: 'task.ready', taskId: 'task-project-conflict-2' });
@@ -835,6 +837,7 @@ void test('command module coverage: task pull handles conflict fallback and vali
       type: 'task.update',
       taskId: 'task-project-conflict-2',
       projectId: null,
+      repositoryId: 'repository-conflict-a',
     });
     const projectScopedList = (await client.sendCommand({
       type: 'task.list',

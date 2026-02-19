@@ -257,13 +257,13 @@ void test('visible lines and task field conversion preserve multiline payloads',
   const fields = taskFieldsFromComposerText('title\nbody line 1\nbody line 2');
   assert.deepEqual(fields, {
     title: 'title',
-    description: 'body line 1\nbody line 2',
+    body: 'title\nbody line 1\nbody line 2',
   });
 
   const fieldsTrimmed = taskFieldsFromComposerText('  title padded  \nbody');
   assert.equal(fieldsTrimmed.title, 'title padded');
-  assert.equal(fieldsTrimmed.description, 'body');
+  assert.equal(fieldsTrimmed.body, '  title padded  \nbody');
 
   assert.equal(taskComposerTextFromTaskFields('title', ''), 'title');
-  assert.equal(taskComposerTextFromTaskFields('title', 'body'), 'title\nbody');
+  assert.equal(taskComposerTextFromTaskFields('title', 'body'), 'body');
 });

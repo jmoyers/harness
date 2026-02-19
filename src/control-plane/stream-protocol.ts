@@ -183,8 +183,8 @@ interface TaskCreateCommand {
   workspaceId?: string;
   repositoryId?: string;
   projectId?: string;
-  title: string;
-  description?: string;
+  title?: string | null;
+  body: string;
 }
 
 interface TaskGetCommand {
@@ -207,8 +207,8 @@ interface TaskListCommand {
 interface TaskUpdateCommand {
   type: 'task.update';
   taskId: string;
-  title?: string;
-  description?: string;
+  title?: string | null;
+  body?: string;
   repositoryId?: string | null;
   projectId?: string | null;
 }

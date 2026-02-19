@@ -23,7 +23,7 @@ type UiModalThemeInput = NonNullable<Parameters<typeof buildUiModalOverlay>[0]['
 interface TaskEditorPromptOverlayState {
   mode: 'create' | 'edit';
   title: string;
-  description: string;
+  body: string;
   repositoryIds: readonly string[];
   repositoryIndex: number;
   fieldIndex: 0 | 1 | 2;
@@ -199,7 +199,7 @@ export function buildTaskEditorModalOverlay(
   const taskBody = [
     `${prompt.fieldIndex === 0 ? '>' : ' '} title: ${prompt.title}${prompt.fieldIndex === 0 ? '_' : ''}`,
     `${prompt.fieldIndex === 1 ? '>' : ' '} repository: ${selectedRepositoryName}`,
-    `${prompt.fieldIndex === 2 ? '>' : ' '} description: ${prompt.description}${
+    `${prompt.fieldIndex === 2 ? '>' : ' '} body: ${prompt.body}${
       prompt.fieldIndex === 2 ? '_' : ''
     }`,
     '',

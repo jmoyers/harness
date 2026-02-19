@@ -7,7 +7,7 @@ interface TaskRecordShape {
   readonly repositoryId: string | null;
   readonly status: string;
   readonly title: string;
-  readonly description: string;
+  readonly body: string;
 }
 
 type RuntimeTaskPaneActionsOptions<TTaskRecord extends TaskRecordShape> = ConstructorParameters<

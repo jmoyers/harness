@@ -200,7 +200,7 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
         workspaceId: 'workspace-local',
         repositoryId: 'repository-1',
         title: 'Implement task queue',
-        description: 'Build CRUD and claim/reorder semantics',
+        body: 'Build CRUD and claim/reorder semantics',
       },
     },
     {
@@ -231,8 +231,8 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
         type: 'task.update',
         taskId: 'task-1',
         title: 'Implement queue API',
-        description: 'Allow reassignment',
-        repositoryId: null,
+        body: 'Allow reassignment',
+        repositoryId: 'repository-1',
       },
     },
     {

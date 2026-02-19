@@ -385,6 +385,7 @@ export function normalizeTaskRow(value: unknown): ControlPlaneTaskRecord {
   const row = asRecord(value);
   const repositoryId = asStringOrNull(row.repository_id, 'repository_id');
   const projectId = asStringOrNull(row.project_id, 'project_id');
+  const bodyValue = row.body ?? row.description;
   return {
     taskId: asString(row.task_id, 'task_id'),
     tenantId: asString(row.tenant_id, 'tenant_id'),
@@ -394,7 +395,7 @@ export function normalizeTaskRow(value: unknown): ControlPlaneTaskRecord {
     scopeKind: normalizeTaskScopeKind(row.scope_kind, repositoryId, projectId),
     projectId,
     title: asString(row.title, 'title'),
-    description: asString(row.description, 'description'),
+    body: asString(bodyValue, 'body'),
     status: normalizeTaskStatus(row.status),
     orderIndex: asNumberOrNull(row.order_index, 'order_index') as number,
     claimedByControllerId: asStringOrNull(row.claimed_by_controller_id, 'claimed_by_controller_id'),

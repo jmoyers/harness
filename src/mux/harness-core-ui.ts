@@ -47,7 +47,7 @@ export interface TaskPaneTaskRecord {
   readonly taskId: string;
   readonly repositoryId: string | null;
   readonly title: string;
-  readonly description: string;
+  readonly body: string;
   readonly status: TaskStatus;
   readonly orderIndex: number;
   readonly completedAt: string | null;

@@ -16,7 +16,7 @@ interface TaskRecordShape {
   readonly taskId: string;
   readonly repositoryId: string | null;
   readonly title: string;
-  readonly description: string;
+  readonly body: string;
 }
 
 interface RuntimeTaskPaneShortcutsOptions<TTaskRecord extends TaskRecordShape> {
@@ -36,7 +36,7 @@ interface RuntimeTaskPaneShortcutsOptions<TTaskRecord extends TaskRecordShape> {
   readonly createTask: (payload: {
     repositoryId: string;
     title: string;
-    description: string;
+    body: string;
   }) => Promise<TTaskRecord>;
   readonly applyTaskRecord: (task: TTaskRecord) => void;
   readonly syncTaskPaneSelection: () => void;
@@ -110,16 +110,16 @@ export class RuntimeTaskPaneShortcuts<TTaskRecord extends TaskRecordShape> {
       return;
     }
     const fields = this.taskFieldsFromComposerText(this.options.workspace.taskDraftComposer.text);
-    if (fields.title.length === 0) {
-      this.options.workspace.taskPaneNotice = 'first line is required';
+    if (fields.body.trim().length === 0) {
+      this.options.workspace.taskPaneNotice = 'task body is required';
       this.options.markDirty();
       return;
     }
     this.options.queueControlPlaneOp(async () => {
       const task = await this.options.createTask({
         repositoryId,
-        title: fields.title,
-        description: fields.description,
+        title: fields.title ?? '',
+        body: fields.body,
       });
       this.options.applyTaskRecord(task);
       this.options.workspace.taskDraftComposer = this.createTaskComposerBuffer('');

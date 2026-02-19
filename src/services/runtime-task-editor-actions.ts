@@ -6,24 +6,27 @@ interface TaskRecordShape {
 
 interface RuntimeTaskEditorActionService<TTaskRecord extends TaskRecordShape> {
   createTask(input: {
-    repositoryId: string;
-    title: string;
-    description: string;
+    repositoryId?: string;
+    projectId?: string;
+    title?: string | null;
+    body: string;
   }): Promise<TTaskRecord>;
   updateTask(input: {
     taskId: string;
-    repositoryId: string;
-    title: string;
-    description: string;
+    repositoryId?: string | null;
+    projectId?: string | null;
+    title?: string | null;
+    body?: string;
   }): Promise<TTaskRecord>;
 }
 
 export interface RuntimeTaskEditorSubmitPayload {
   readonly mode: 'create' | 'edit';
   readonly taskId: string | null;
-  readonly repositoryId: string;
-  readonly title: string;
-  readonly description: string;
+  readonly repositoryId: string | null;
+  readonly projectId?: string | null;
+  readonly title: string | null;
+  readonly body: string;
   readonly commandLabel: string;
 }
 
@@ -48,9 +51,12 @@ export class RuntimeTaskEditorActions<TTaskRecord extends TaskRecordShape> {
         if (payload.mode === 'create') {
           this.options.applyTaskRecord(
             await this.options.controlPlaneService.createTask({
-              repositoryId: payload.repositoryId,
+              ...(payload.repositoryId === null ? {} : { repositoryId: payload.repositoryId }),
+              ...(payload.projectId === undefined || payload.projectId === null
+                ? {}
+                : { projectId: payload.projectId }),
               title: payload.title,
-              description: payload.description,
+              body: payload.body,
             }),
           );
         } else {
@@ -60,9 +66,12 @@ export class RuntimeTaskEditorActions<TTaskRecord extends TaskRecordShape> {
           this.options.applyTaskRecord(
             await this.options.controlPlaneService.updateTask({
               taskId: payload.taskId,
-              repositoryId: payload.repositoryId,
+              ...(payload.repositoryId === null ? {} : { repositoryId: payload.repositoryId }),
+              ...(payload.projectId === undefined || payload.projectId === null
+                ? {}
+                : { projectId: payload.projectId }),
               title: payload.title,
-              description: payload.description,
+              body: payload.body,
             }),
           );
         }

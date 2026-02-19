@@ -12,9 +12,10 @@ interface TaskEditorPromptState extends TaskEditorPromptInputState {
 interface TaskEditorSubmitPayload {
   mode: 'create' | 'edit';
   taskId: string | null;
-  repositoryId: string;
-  title: string;
-  description: string;
+  repositoryId: string | null;
+  projectId?: string | null;
+  title: string | null;
+  body: string;
   commandLabel: string;
 }
 
@@ -77,13 +78,13 @@ export function handleTaskEditorPromptInput(
 
   const reduced = reduceTaskEditorPromptInput(prompt, input);
   const nextTitle = reduced.title;
-  const nextDescription = reduced.description;
+  const nextBody = reduced.body;
   const nextFieldIndex = reduced.fieldIndex;
   const nextRepositoryIndex = reduced.repositoryIndex;
   const submit = reduced.submit;
   const changed =
     nextTitle !== prompt.title ||
-    nextDescription !== prompt.description ||
+    nextBody !== prompt.body ||
     nextFieldIndex !== prompt.fieldIndex ||
     nextRepositoryIndex !== prompt.repositoryIndex;
 
@@ -91,7 +92,7 @@ export function handleTaskEditorPromptInput(
     ? {
         ...prompt,
         title: nextTitle,
-        description: nextDescription,
+        body: nextBody,
         fieldIndex: nextFieldIndex,
         repositoryIndex: nextRepositoryIndex,
         error: null,
@@ -113,13 +114,12 @@ export function handleTaskEditorPromptInput(
   }
 
   const repositoryId = prompt.repositoryIds[nextRepositoryIndex] ?? null;
-  const title = nextTitle.trim();
-  if (title.length === 0) {
+  if (nextBody.trim().length === 0) {
     return {
       handled: true,
       nextPrompt: {
         ...changedPrompt,
-        error: 'title required',
+        error: 'task body required',
       },
       markDirty: true,
     };
@@ -148,8 +148,9 @@ export function handleTaskEditorPromptInput(
       mode: prompt.mode,
       taskId: prompt.taskId,
       repositoryId,
-      title,
-      description: nextDescription,
+      projectId: null,
+      title: nextTitle.trim().length === 0 ? null : nextTitle.trim(),
+      body: nextBody,
       commandLabel: prompt.mode === 'create' ? 'tasks-create' : 'tasks-edit',
     },
   };
