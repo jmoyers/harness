@@ -255,13 +255,14 @@ Pass-through stream invariants:
 - Command menu action execution still uses existing control-plane-backed runtime actions; no privileged side path is introduced.
 - Core shipped actions include:
   - start thread by agent type (`codex`, `claude`, `cursor`, `terminal`, `critique`)
-  - run Critique AI review for unstaged changes (`critique review`) from command menu
-  - run Critique AI review for staged changes (`critique review --staged`) from command menu
-  - run Critique AI review against base branch (`critique review <base> HEAD`) from command menu
+  - run Critique AI review for unstaged changes (`critique review`) from command menu (`Critique AI Review: Unstaged Changes (git)`)
+  - run Critique AI review for staged changes (`critique review --staged`) from command menu (`Critique AI Review: Staged Changes (git)`)
+  - run Critique AI review against base branch (`critique review <base> HEAD`) from command menu (`Critique AI Review: Current Branch vs Base (git)`)
   - close active thread
   - go to project
-  - open GitHub for the active-project repository
-  - open/create GitHub PR for the tracked active-project non-default branch (open when present, create when absent)
+  - open GitHub for the active-project repository (`Open GitHub for This Repo (git)`)
+  - show a filtered GitHub URL for your open pull requests in the active-project repository (`Show My Open Pull Requests (git)`)
+  - open/create GitHub PR for the tracked active-project non-default branch (open when present, create when absent; `Open PR (git)` / `Create PR (git)`)
   - open a theme picker and set a built-in OpenCode preset or the special `default` theme
   - start/stop profiler
   - start/stop status logging

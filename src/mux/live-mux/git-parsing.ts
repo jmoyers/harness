@@ -82,6 +82,22 @@ export function repositoryNameFromGitHubRemoteUrl(remoteUrl: string): string {
   return name;
 }
 
+function normalizeDefaultBranchForActions(value: string | null): string | null {
+  const trimmed = value?.trim() ?? '';
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+export function resolveGitHubDefaultBranchForActions(input: {
+  repositoryDefaultBranch: string | null;
+  snapshotDefaultBranch: string | null;
+}): string | null {
+  const repositoryDefaultBranch = normalizeDefaultBranchForActions(input.repositoryDefaultBranch);
+  if (repositoryDefaultBranch !== null) {
+    return repositoryDefaultBranch;
+  }
+  return normalizeDefaultBranchForActions(input.snapshotDefaultBranch);
+}
+
 export function shouldShowGitHubPrActions(input: {
   trackedBranch: string | null;
   defaultBranch: string | null;

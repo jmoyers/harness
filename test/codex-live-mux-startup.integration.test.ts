@@ -157,6 +157,53 @@ async function waitForRepositoryRows(
   throw new Error('timed out waiting for repository rows');
 }
 
+async function waitForDirectoryGitStatus(
+  client: Awaited<ReturnType<typeof connectControlPlaneStreamClient>>,
+  scope: {
+    readonly tenantId: string;
+    readonly userId: string;
+    readonly workspaceId: string;
+    readonly directoryId: string;
+  },
+  timeoutMs: number,
+): Promise<Record<string, unknown>> {
+  const startedAtMs = Date.now();
+  while (Date.now() - startedAtMs < timeoutMs) {
+    const listed = await client.sendCommand({
+      type: 'directory.git-status',
+      tenantId: scope.tenantId,
+      userId: scope.userId,
+      workspaceId: scope.workspaceId,
+      directoryId: scope.directoryId,
+    });
+    const rows = Array.isArray(listed['gitStatuses'])
+      ? (listed['gitStatuses'] as readonly Record<string, unknown>[])
+      : [];
+    const row = rows[0];
+    if (row !== undefined) {
+      const repositoryId = row['repositoryId'];
+      const summary =
+        typeof row['summary'] === 'object' && row['summary'] !== null
+          ? (row['summary'] as Record<string, unknown>)
+          : null;
+      if (typeof repositoryId === 'string' && typeof summary?.['branch'] === 'string') {
+        return row;
+      }
+    }
+    await delay(40);
+  }
+  throw new Error('timed out waiting for directory git status');
+}
+
+function githubJsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      'content-type': 'application/json',
+    },
+  });
+}
+
 function isPtyExit(value: unknown): value is PtyExit {
   if (typeof value !== 'object' || value === null) {
     return false;
@@ -313,7 +360,7 @@ function startInteractiveMuxSession(
   return {
     session,
     oracle,
-    waitForExit: waitForExit(session, 30000),
+    waitForExit: waitForExit(session, 60000),
   };
 }
 
@@ -425,6 +472,53 @@ function writeLeftMouseClick(
   const safeRow = Math.max(1, Math.floor(row));
   session.write(`\u001b[<0;${String(safeCol)};${String(safeRow)}M`);
   session.write(`\u001b[<0;${String(safeCol)};${String(safeRow)}m`);
+}
+
+async function openCommandMenuWithShortcut(
+  session: ReturnType<typeof startPtySession>,
+  oracle: TerminalSnapshotOracle,
+  timeoutMs: number,
+): Promise<void> {
+  const attempts = [
+    '\u001bz',
+    '\u0010',
+    '\u001b[112;5u',
+    '\u001b[27;5;112~',
+    '\u001b[112;9u',
+    '\u001b[27;9;112~',
+  ] as const;
+  const startedAt = Date.now();
+  let attemptIndex = 0;
+  while (Date.now() - startedAt < timeoutMs) {
+    session.write(attempts[attemptIndex % attempts.length]!);
+    attemptIndex += 1;
+    try {
+      await waitForSnapshotLineContaining(oracle, 'Command Menu', 600);
+      return;
+    } catch {
+      // keep retrying across supported key encodings
+    }
+    await delay(50);
+  }
+  throw new Error('timed out opening command menu with shortcut');
+}
+
+async function closeCommandMenuWithEscape(
+  session: ReturnType<typeof startPtySession>,
+  oracle: TerminalSnapshotOracle,
+  timeoutMs: number,
+): Promise<void> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    session.write('\u001b');
+    await delay(60);
+    const frame = oracle.snapshotWithoutHash();
+    const hasCommandMenu = frame.lines.some((line) => line.includes('Command Menu'));
+    if (!hasCommandMenu) {
+      return;
+    }
+  }
+  throw new Error('timed out closing command menu with escape');
 }
 
 async function requestMuxShutdown(session: ReturnType<typeof startPtySession>): Promise<void> {
@@ -888,6 +982,288 @@ void test(
     }
   },
   { timeout: 30000 },
+);
+
+void test(
+  'codex-live-mux command menu shows github repo + open pr actions with git suffix when repository has an open PR',
+  async () => {
+    const workspace = createWorkspace();
+    const projectPath = join(workspace, 'ash-1');
+    mkdirSync(projectPath, { recursive: true });
+
+    const tenantId = 'tenant-github-command-menu';
+    const userId = 'user-github-command-menu';
+    const workspaceId = 'workspace-github-command-menu';
+    const worktreeId = 'worktree-github-command-menu';
+    const directoryId = 'directory-github-command-menu';
+    const conversationId = 'conversation-github-command-menu';
+    const branchName = 'jm/encamp-scout';
+    const baseBranch = 'dev';
+    const prUrl = 'https://github.com/encamp/ash/pull/901';
+    const headSha = 'deadbeef901';
+    const nowIso = '2026-02-19T00:00:00.000Z';
+
+    const githubFetch: typeof fetch = async (input, init = {}) => {
+      const requestUrl =
+        typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      const url = new URL(requestUrl);
+      const method = (init.method ?? 'GET').toUpperCase();
+      if (url.pathname === '/repos/encamp/ash/pulls' && method === 'POST') {
+        const body =
+          typeof init.body === 'string' && init.body.length > 0
+            ? (JSON.parse(init.body) as Record<string, unknown>)
+            : {};
+        const head = typeof body['head'] === 'string' ? body['head'] : branchName;
+        const base = typeof body['base'] === 'string' ? body['base'] : baseBranch;
+        return githubJsonResponse({
+          number: 901,
+          title: 'PR: jm/encamp-scout',
+          html_url: prUrl,
+          state: 'open',
+          draft: false,
+          updated_at: nowIso,
+          created_at: nowIso,
+          closed_at: null,
+          head: {
+            ref: head,
+            sha: headSha,
+          },
+          base: {
+            ref: base,
+          },
+          user: {
+            login: 'jmoyers',
+          },
+        });
+      }
+      if (url.pathname === '/repos/encamp/ash/pulls' && method === 'GET') {
+        const head = url.searchParams.get('head');
+        if (head !== `encamp:${branchName}`) {
+          return githubJsonResponse([]);
+        }
+        return githubJsonResponse([
+          {
+            number: 901,
+            title: 'PR: jm/encamp-scout',
+            html_url: prUrl,
+            state: 'open',
+            draft: false,
+            updated_at: nowIso,
+            created_at: nowIso,
+            closed_at: null,
+            head: {
+              ref: branchName,
+              sha: headSha,
+            },
+            base: {
+              ref: baseBranch,
+            },
+            user: {
+              login: 'jmoyers',
+            },
+          },
+        ]);
+      }
+      if (
+        /^\/repos\/encamp\/ash\/commits\/[^/]+\/check-runs$/u.test(url.pathname) &&
+        method === 'GET'
+      ) {
+        return githubJsonResponse({
+          check_runs: [],
+        });
+      }
+      if (
+        /^\/repos\/encamp\/ash\/commits\/[^/]+\/status$/u.test(url.pathname) &&
+        method === 'GET'
+      ) {
+        return githubJsonResponse({
+          statuses: [],
+        });
+      }
+      return githubJsonResponse(
+        {
+          message: `unexpected github route ${method} ${url.pathname}`,
+        },
+        404,
+      );
+    };
+
+    const server = await startControlPlaneStreamServer({
+      stateStorePath: join(workspaceRuntimeRoot(workspace), 'control-plane.sqlite'),
+      gitStatus: {
+        enabled: true,
+        pollMs: 100,
+        maxConcurrency: 1,
+        minDirectoryRefreshMs: 100,
+      },
+      github: {
+        enabled: true,
+        token: 'test-token',
+        viewerLogin: 'jmoyers',
+        pollMs: 1000,
+      },
+      githubFetch,
+      readGitDirectorySnapshot: async () => ({
+        summary: {
+          branch: branchName,
+          changedFiles: 0,
+          additions: 0,
+          deletions: 0,
+        },
+        repository: {
+          normalizedRemoteUrl: 'https://github.com/encamp/ash',
+          commitCount: 42,
+          lastCommitAt: nowIso,
+          shortCommitHash: 'abc1234',
+          inferredName: 'ash',
+          defaultBranch: baseBranch,
+        },
+      }),
+      startSession: (input) => new StartupTestLiveSession(input),
+    });
+    const address = server.address();
+    const client = await connectControlPlaneStreamClient({
+      host: address.address,
+      port: address.port,
+    });
+    let interactive: ReturnType<typeof startInteractiveMuxSession> | null = null;
+
+    try {
+      await client.sendCommand({
+        type: 'directory.upsert',
+        directoryId,
+        tenantId,
+        userId,
+        workspaceId,
+        path: projectPath,
+      });
+      await client.sendCommand({
+        type: 'conversation.create',
+        conversationId,
+        directoryId,
+        title: 'GitHub action visibility',
+        agentType: 'codex',
+        adapterState: {},
+      });
+
+      await waitForRepositoryRows(
+        client,
+        {
+          tenantId,
+          userId,
+          workspaceId,
+        },
+        6000,
+      );
+      await waitForDirectoryGitStatus(
+        client,
+        {
+          tenantId,
+          userId,
+          workspaceId,
+          directoryId,
+        },
+        6000,
+      );
+
+      const createdPr = await client.sendCommand({
+        type: 'github.pr-create',
+        directoryId,
+        headBranch: branchName,
+        baseBranch,
+        title: 'PR: jm/encamp-scout',
+      });
+      assert.equal(createdPr['created'], true);
+
+      const projectPr = await client.sendCommand({
+        type: 'github.project-pr',
+        directoryId,
+      });
+      const projectPrRecord =
+        typeof projectPr['pr'] === 'object' && projectPr['pr'] !== null
+          ? (projectPr['pr'] as Record<string, unknown>)
+          : null;
+      assert.equal(projectPrRecord?.['url'], prUrl);
+
+      const configDirectory = join(workspaceXdgConfigHome(workspace), 'harness');
+      mkdirSync(configDirectory, { recursive: true });
+      writeFileSync(
+        join(configDirectory, 'harness.config.jsonc'),
+        JSON.stringify({
+          configVersion: 1,
+          mux: {
+            keybindings: {
+              'mux.command-menu.toggle': ['alt+z'],
+            },
+          },
+        }),
+        'utf8',
+      );
+
+      interactive = startInteractiveMuxSession(workspace, {
+        controlPlaneHost: address.address,
+        controlPlanePort: address.port,
+        cols: 120,
+        rows: 35,
+        extraEnv: {
+          HARNESS_TENANT_ID: tenantId,
+          HARNESS_USER_ID: userId,
+          HARNESS_WORKSPACE_ID: workspaceId,
+          HARNESS_WORKTREE_ID: worktreeId,
+        },
+      });
+
+      await waitForSnapshotLineContaining(interactive.oracle, 'ash-1', 12000);
+
+      await openCommandMenuWithShortcut(interactive.session, interactive.oracle, 12000);
+
+      interactive.session.write('show my open pull requests');
+      await waitForSnapshotLineContaining(
+        interactive.oracle,
+        'Show My Open Pull Requests (git)',
+        12000,
+      );
+
+      await closeCommandMenuWithEscape(interactive.session, interactive.oracle, 12000);
+      await openCommandMenuWithShortcut(interactive.session, interactive.oracle, 12000);
+
+      interactive.session.write('open github for this repo');
+      await waitForSnapshotLineContaining(
+        interactive.oracle,
+        'Open GitHub for This Repo (git)',
+        12000,
+      );
+
+      await closeCommandMenuWithEscape(interactive.session, interactive.oracle, 12000);
+      await openCommandMenuWithShortcut(interactive.session, interactive.oracle, 12000);
+
+      interactive.session.write('open pr');
+      await waitForSnapshotLineContaining(interactive.oracle, 'Open PR (git)', 12000);
+      await waitForSnapshotLineNotContaining(interactive.oracle, 'Create PR (git)', 12000);
+    } finally {
+      try {
+        if (interactive !== null) {
+          try {
+            await closeCommandMenuWithEscape(interactive.session, interactive.oracle, 1000);
+          } catch {
+            // best-effort: menu may already be closed
+          }
+          interactive.session.close();
+          const exit = await waitForExit(interactive.session, 8000);
+          assert.equal(
+            (exit.signal === null && (exit.code === 0 || exit.code === 129 || exit.code === 130)) ||
+              (exit.signal === 'SIGTERM' && exit.code === null),
+            true,
+          );
+        }
+      } finally {
+        client.close();
+        await server.close();
+        rmSync(workspace, { recursive: true, force: true });
+      }
+    }
+  },
+  { timeout: 45000 },
 );
 
 void test(

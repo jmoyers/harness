@@ -6,6 +6,7 @@ import {
   parseGitBranchFromStatusHeader,
   parseGitShortstatCounts,
   parseLastCommitLine,
+  resolveGitHubDefaultBranchForActions,
   repositoryNameFromGitHubRemoteUrl,
   resolveGitHubTrackedBranchForActions,
   shouldShowGitHubPrActions,
@@ -162,6 +163,54 @@ void test('resolveGitHubTrackedBranchForActions falls back to current branch whe
       currentBranch: 'HEAD',
     }),
     null,
+  );
+});
+
+void test('resolveGitHubDefaultBranchForActions prefers canonical repository default branch over per-directory snapshot branch', () => {
+  assert.equal(
+    resolveGitHubDefaultBranchForActions({
+      repositoryDefaultBranch: 'dev',
+      snapshotDefaultBranch: 'jm/encamp-scout',
+    }),
+    'dev',
+  );
+  assert.equal(
+    resolveGitHubDefaultBranchForActions({
+      repositoryDefaultBranch: null,
+      snapshotDefaultBranch: 'main',
+    }),
+    'main',
+  );
+  assert.equal(
+    resolveGitHubDefaultBranchForActions({
+      repositoryDefaultBranch: '  ',
+      snapshotDefaultBranch: ' ',
+    }),
+    null,
+  );
+});
+
+void test('Open PR gating remains visible when canonical default branch differs from per-directory snapshot branch', () => {
+  const defaultBranch = resolveGitHubDefaultBranchForActions({
+    repositoryDefaultBranch: 'dev',
+    snapshotDefaultBranch: 'jm/encamp-scout',
+  });
+  assert.equal(
+    shouldShowGitHubPrActions({
+      trackedBranch: 'jm/encamp-scout',
+      defaultBranch,
+    }),
+    true,
+  );
+  assert.equal(
+    shouldShowGitHubPrActions({
+      trackedBranch: 'jm/encamp-scout',
+      defaultBranch: resolveGitHubDefaultBranchForActions({
+        repositoryDefaultBranch: null,
+        snapshotDefaultBranch: 'jm/encamp-scout',
+      }),
+    }),
+    false,
   );
 });
 

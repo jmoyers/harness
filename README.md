@@ -11,7 +11,7 @@ It is built for people who want to move faster than a single chat window: implem
 - Long-running work survives reconnects through a detached gateway.
 - Gateway control is resilient: lifecycle operations are lock-serialized per session, and missing stale records can be recovered automatically.
 - Fast left-rail navigation with automatic, readable thread titles.
-- Built-in GitHub PR actions (`Open PR` / `Create PR`) from inside Harness.
+- Built-in GitHub actions (`Open GitHub`, `Show My Open Pull Requests`, `Open PR`, `Create PR`) from inside Harness.
 
 ## Demo
 
@@ -60,7 +60,7 @@ For restart/load diagnostics, use a named session with a non-default gateway por
 - `ctrl+g` opens the project’s critique thread (or creates one if needed).
 - `ctrl` and `cmd` shortcut chords are mirrored in both directions when your terminal/OS does not reserve the combination.
 - Theme selection is built in (`Set a Theme`) with OpenCode-compatible presets and live preview.
-- PR actions use either `GITHUB_TOKEN` or an authenticated `gh` CLI session.
+- `Create PR` uses either `GITHUB_TOKEN` or an authenticated `gh` CLI session.
 
 ## Configuration
 

@@ -92,6 +92,7 @@ import {
 } from '../src/mux/live-mux/layout.ts';
 import {
   normalizeGitHubRemoteUrl,
+  resolveGitHubDefaultBranchForActions,
   repositoryNameFromGitHubRemoteUrl,
   resolveGitHubTrackedBranchForActions,
   shouldShowGitHubPrActions,
@@ -244,6 +245,7 @@ interface RuntimeCommandMenuContext {
   readonly leftNavSelectionKind: WorkspaceModel['leftNavSelection']['kind'];
   readonly profileRunning: boolean;
   readonly statusTimelineRunning: boolean;
+  readonly githubRepositoryId: string | null;
   readonly githubRepositoryUrl: string | null;
   readonly githubDefaultBranch: string | null;
   readonly githubTrackedBranch: string | null;
@@ -337,6 +339,15 @@ function parseGitHubPrUrl(result: Record<string, unknown>): string | null {
   }
   const url = pr['url'];
   return typeof url === 'string' ? url : null;
+}
+
+function parseGitHubUrl(result: Record<string, unknown>): string | null {
+  const url = result['url'];
+  if (typeof url !== 'string') {
+    return null;
+  }
+  const trimmed = url.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function commandMenuProjectPathTail(path: string): string {
@@ -1458,6 +1469,33 @@ async function main(): Promise<number> {
       activeDirectoryId === null
         ? null
         : (directoryRepositorySnapshotByDirectoryId.get(activeDirectoryId) ?? null);
+    let githubRepositoryId =
+      activeDirectoryId === null
+        ? null
+        : (repositoryAssociationByDirectoryId.get(activeDirectoryId) ?? null);
+    if (githubRepositoryId !== null) {
+      const associatedRepository = repositories.get(githubRepositoryId);
+      if (associatedRepository === undefined || associatedRepository.archivedAt !== null) {
+        githubRepositoryId = null;
+      }
+    }
+    const snapshotRemoteUrl = activeDirectoryRepositorySnapshot?.normalizedRemoteUrl ?? null;
+    if (githubRepositoryId === null && snapshotRemoteUrl !== null) {
+      const snapshotRemote = normalizeGitHubRemoteUrl(snapshotRemoteUrl);
+      if (snapshotRemote !== null) {
+        for (const repository of repositories.values()) {
+          if (repository.archivedAt !== null) {
+            continue;
+          }
+          if (normalizeGitHubRemoteUrl(repository.remoteUrl) === snapshotRemote) {
+            githubRepositoryId = repository.repositoryId;
+            break;
+          }
+        }
+      }
+    }
+    const githubRepositoryRecord =
+      githubRepositoryId === null ? null : (repositories.get(githubRepositoryId) ?? null);
     const githubProjectPrState =
       activeDirectoryId !== null &&
       commandMenuGitHubProjectPrState !== null &&
@@ -1491,8 +1529,12 @@ async function main(): Promise<number> {
       statusTimelineRunning: existsSync(
         resolveStatusTimelineStatePath(options.invocationDirectory, muxSessionName),
       ),
+      githubRepositoryId,
       githubRepositoryUrl: activeDirectoryRepositorySnapshot?.normalizedRemoteUrl ?? null,
-      githubDefaultBranch: activeDirectoryRepositorySnapshot?.defaultBranch ?? null,
+      githubDefaultBranch: resolveGitHubDefaultBranchForActions({
+        repositoryDefaultBranch: githubRepositoryRecord?.defaultBranch ?? null,
+        snapshotDefaultBranch: activeDirectoryRepositorySnapshot?.defaultBranch ?? null,
+      }),
       githubTrackedBranch: trackedBranchForActions,
       githubOpenPrUrl: githubProjectPrState?.openPrUrl ?? null,
       githubProjectPrLoading: githubProjectPrState?.loading ?? false,
@@ -2739,7 +2781,7 @@ async function main(): Promise<number> {
     return [
       {
         id: 'critique.review.unstaged',
-        title: 'Critique AI Review: Unstaged Changes',
+        title: 'Critique AI Review: Unstaged Changes (git)',
         aliases: ['critique unstaged review', 'review unstaged diff', 'ai review unstaged'],
         keywords: ['critique', 'review', 'unstaged', 'diff', 'ai'],
         detail: 'runs critique review',
@@ -2749,7 +2791,7 @@ async function main(): Promise<number> {
       },
       {
         id: 'critique.review.staged',
-        title: 'Critique AI Review: Staged Changes',
+        title: 'Critique AI Review: Staged Changes (git)',
         aliases: ['critique staged review', 'review staged diff', 'ai review staged'],
         keywords: ['critique', 'review', 'staged', 'diff', 'ai'],
         detail: 'runs critique review --staged',
@@ -2759,7 +2801,7 @@ async function main(): Promise<number> {
       },
       {
         id: 'critique.review.base-branch',
-        title: 'Critique AI Review: Current Branch vs Base',
+        title: 'Critique AI Review: Current Branch vs Base (git)',
         aliases: ['critique base review', 'review against base branch', 'ai review base'],
         keywords: ['critique', 'review', 'base', 'branch', 'diff', 'ai'],
         detail: 'runs critique review <base> HEAD',
@@ -2951,10 +2993,10 @@ async function main(): Promise<number> {
     if (repositoryUrl === null) {
       return [];
     }
-    return [
+    const actions: RegisteredCommandMenuAction<RuntimeCommandMenuContext>[] = [
       {
         id: 'github.repo.open',
-        title: 'Open GitHub for This Repo',
+        title: 'Open GitHub for This Repo (git)',
         aliases: ['open github for this repo', 'open github repo', 'open repository on github'],
         keywords: ['github', 'repository', 'repo', 'open'],
         detail: repositoryUrl,
@@ -2968,6 +3010,41 @@ async function main(): Promise<number> {
         },
       },
     ];
+    if (context.githubRepositoryId !== null) {
+      const repositoryId = context.githubRepositoryId;
+      actions.push({
+        id: 'github.repo.my-prs.open',
+        title: 'Show My Open Pull Requests (git)',
+        aliases: ['show my open pull requests', 'my open pull requests', 'show my prs', 'my prs'],
+        keywords: ['github', 'pr', 'pull-request', 'open', 'my'],
+        detail: repositoryUrl,
+        run: async () => {
+          queueControlPlaneOp(async () => {
+            const result = await streamClient.sendCommand({
+              type: 'github.repo-my-prs-url',
+              repositoryId,
+            });
+            const parsedResult = asRecord(result);
+            if (parsedResult === null) {
+              setCommandNotice('github my open pull requests url unavailable');
+              return;
+            }
+            const myPrsUrl = parseGitHubUrl(parsedResult);
+            if (myPrsUrl === null) {
+              setCommandNotice('github my open pull requests url unavailable');
+              return;
+            }
+            const opened = openUrlInBrowser(myPrsUrl);
+            setCommandNotice(
+              opened
+                ? 'opened my open pull requests in browser'
+                : `open pull requests: ${myPrsUrl}`,
+            );
+          }, 'command-menu-open-my-open-prs');
+        },
+      });
+    }
+    return actions;
   });
 
   commandMenuRegistry.registerProvider('github.project-pr', (context) => {
@@ -2986,7 +3063,7 @@ async function main(): Promise<number> {
       return [
         {
           id: 'github.pr.open',
-          title: 'Open PR',
+          title: 'Open PR (git)',
           aliases: ['open pull request', 'open pr'],
           keywords: ['github', 'pr', 'open', 'pull-request'],
           detail: context.githubTrackedBranch ?? 'current project',
@@ -3040,7 +3117,7 @@ async function main(): Promise<number> {
       return [
         {
           id: 'github.pr.create',
-          title: 'Create PR',
+          title: 'Create PR (git)',
           aliases: ['create pull request', 'new pr'],
           keywords: ['github', 'pr', 'create', 'pull-request'],
           detail: context.githubTrackedBranch,
