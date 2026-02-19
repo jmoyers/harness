@@ -65,6 +65,7 @@ void test('input token router delegates staged mouse routing and preserves passt
   let wheelDelta = 0;
   let snapshotReadCount = 0;
   let selectionFrameLabel = '';
+  let resolvedSelectionText = '';
 
   const router = new InputTokenRouter({
     getMainPaneMode: () => 'conversation',
@@ -136,8 +137,14 @@ void test('input token router delegates staged mouse routing and preserves passt
         clearSelectionLength += textLength;
         return false;
       },
-      handleMouseSelection: ({ event, frame }) => {
+      handleMouseSelection: ({ event, frame, resolveSelectionText }) => {
         selectionFrameLabel = frame.lines[0] ?? '';
+        resolvedSelectionText =
+          resolveSelectionText?.({
+            anchor: { rowAbs: 0, col: 1 },
+            focus: { rowAbs: 5, col: 3 },
+            text: '',
+          }) ?? '';
         if (event.code === 17) {
           consumed.selectionTrue = true;
           return true;
@@ -157,6 +164,7 @@ void test('input token router delegates staged mouse routing and preserves passt
         snapshotReadCount += 1;
         return frameAfter;
       },
+      selectionText: () => 'offscreen-copy',
     },
   };
 
@@ -187,6 +195,7 @@ void test('input token router delegates staged mouse routing and preserves passt
   assert.equal(wheelDelta, 3);
   assert.equal(snapshotReadCount, 1);
   assert.equal(selectionFrameLabel, 'after');
+  assert.equal(resolvedSelectionText, 'offscreen-copy');
   assert.equal(consumed.divider, true);
   assert.equal(consumed.release, true);
   assert.equal(consumed.separator, true);

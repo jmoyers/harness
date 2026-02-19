@@ -33,6 +33,7 @@ interface MouseSelectionInput {
   readonly layout: SelectionLayout;
   readonly frame: TerminalSnapshotFrameCore;
   readonly isMainPaneTarget: boolean;
+  readonly resolveSelectionText?: (selection: PaneSelection) => string;
   readonly event: {
     readonly col: number;
     readonly row: number;
@@ -81,7 +82,10 @@ export class ConversationSelectionInput {
         isSelectionDrag(input.event.code, input.event.final) && !hasAltModifier(input.event.code),
       isMouseRelease: isMouseRelease(input.event.final),
       isWheelMouseCode: isWheelMouseCode(input.event.code),
-      selectionTextForPane: (nextSelection) => this.selectionText(input.frame, nextSelection),
+      selectionTextForPane: (nextSelection) =>
+        input.resolveSelectionText === undefined
+          ? this.selectionText(input.frame, nextSelection)
+          : input.resolveSelectionText(nextSelection),
     });
     this.options.setSelection(reduced.selection);
     this.options.setSelectionDrag(reduced.selectionDrag);

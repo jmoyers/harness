@@ -70,6 +70,11 @@ export interface TerminalBufferTail {
   lines: string[];
 }
 
+interface TerminalSelectionPoint {
+  rowAbs: number;
+  col: number;
+}
+
 export interface TerminalQueryState {
   rows: number;
   cols: number;
@@ -251,6 +256,13 @@ function createLine(cols: number, style: TerminalCellStyle, revision: number): I
     snapshotCacheRevision: -1,
     snapshotCacheWrapped: false,
   };
+}
+
+function compareBufferPoints(left: TerminalSelectionPoint, right: TerminalSelectionPoint): number {
+  if (left.rowAbs !== right.rowAbs) {
+    return left.rowAbs - right.rowAbs;
+  }
+  return left.col - right.col;
 }
 
 class ScreenBuffer {
@@ -641,6 +653,53 @@ class ScreenBuffer {
       startRow,
       lines: visible.map((line) => this.materializeSnapshotLine(line).text),
     };
+  }
+
+  selectionText(start: TerminalSelectionPoint, end: TerminalSelectionPoint): string {
+    const combined = [...this.scrollback, ...this.lines];
+    const totalRows = combined.length;
+    if (totalRows === 0) {
+      return '';
+    }
+    const maxRowAbs = totalRows - 1;
+    const maxCol = Math.max(0, this.cols - 1);
+    const boundedStart: TerminalSelectionPoint = {
+      rowAbs: Math.max(0, Math.min(maxRowAbs, start.rowAbs)),
+      col: Math.max(0, Math.min(maxCol, start.col)),
+    };
+    const boundedEnd: TerminalSelectionPoint = {
+      rowAbs: Math.max(0, Math.min(maxRowAbs, end.rowAbs)),
+      col: Math.max(0, Math.min(maxCol, end.col)),
+    };
+    const normalized =
+      compareBufferPoints(boundedStart, boundedEnd) <= 0
+        ? { start: boundedStart, end: boundedEnd }
+        : { start: boundedEnd, end: boundedStart };
+
+    const rows: string[] = [];
+    for (let rowAbs = normalized.start.rowAbs; rowAbs <= normalized.end.rowAbs; rowAbs += 1) {
+      const line = combined[rowAbs];
+      if (line === undefined) {
+        rows.push('');
+        continue;
+      }
+      const rowStartCol = rowAbs === normalized.start.rowAbs ? normalized.start.col : 0;
+      const rowEndCol = rowAbs === normalized.end.rowAbs ? normalized.end.col : maxCol;
+      if (rowEndCol < rowStartCol) {
+        rows.push('');
+        continue;
+      }
+      let text = '';
+      for (let col = rowStartCol; col <= rowEndCol; col += 1) {
+        const cell = line.cells[col];
+        if (cell === undefined || cell.continued) {
+          continue;
+        }
+        text += cell.glyph;
+      }
+      rows.push(text);
+    }
+    return rows.join('\n');
   }
 
   private advanceLine(cursor: ScreenCursor, wrapped: boolean, fillStyle: TerminalCellStyle): void {
@@ -1064,6 +1123,10 @@ export class TerminalSnapshotOracle {
         ? Math.max(1, Math.floor(tailLines))
         : null;
     return this.currentScreen().bufferTail(normalizedTail);
+  }
+
+  selectionText(start: TerminalSelectionPoint, end: TerminalSelectionPoint): string {
+    return this.currentScreen().selectionText(start, end);
   }
 
   private currentScreen(): ScreenBuffer {

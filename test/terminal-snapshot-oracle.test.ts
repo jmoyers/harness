@@ -103,6 +103,26 @@ void test('snapshot oracle returns buffer tail from combined scrollback and view
   });
 });
 
+void test('snapshot oracle selectionText reads across absolute scrollback rows', () => {
+  const oracle = new TerminalSnapshotOracle(6, 2);
+  oracle.ingest('line-1\r\nline-2\r\nline-3\r\nline-4');
+
+  assert.equal(
+    oracle.selectionText(
+      { rowAbs: 0, col: 2 },
+      { rowAbs: 3, col: 3 },
+    ),
+    'ne-1\nline-2\nline-3\nline',
+  );
+  assert.equal(
+    oracle.selectionText(
+      { rowAbs: 3, col: 3 },
+      { rowAbs: 0, col: 2 },
+    ),
+    'ne-1\nline-2\nline-3\nline',
+  );
+});
+
 void test('snapshot oracle reuses unchanged rendered rows and only invalidates dirty rows', () => {
   const oracle = new TerminalSnapshotOracle(6, 2);
   oracle.ingest('ab');

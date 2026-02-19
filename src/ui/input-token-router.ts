@@ -7,6 +7,7 @@ import {
   hasAltModifier as hasAltModifierFrame,
   isLeftButtonPress as isLeftButtonPressFrame,
   isMotionMouseCode as isMotionMouseCodeFrame,
+  type PaneSelection,
 } from '../mux/live-mux/selection.ts';
 import type { TerminalSnapshotFrameCore } from '../terminal/snapshot-oracle.ts';
 
@@ -26,6 +27,7 @@ interface ConversationInputLike {
   readonly oracle: {
     scrollViewport: (delta: number) => void;
     snapshotWithoutHash: () => TerminalSnapshotFrameCore;
+    selectionText: (anchor: PaneSelection['anchor'], focus: PaneSelection['focus']) => string;
   };
 }
 
@@ -93,6 +95,7 @@ interface ConversationSelectionInputLike {
     layout: DualPaneLayout;
     frame: TerminalSnapshotFrameCore;
     isMainPaneTarget: boolean;
+    resolveSelectionText?: (selection: PaneSelection) => string;
     event: MouseSelectionEvent;
   }): boolean;
 }
@@ -142,6 +145,12 @@ export class InputTokenRouter {
 
   routeTokens(input: RouteTokensInput): RouteTokensResult {
     let snapshotForInput = input.snapshotForInput;
+    const conversation = input.conversation;
+    const resolveSelectionText =
+      conversation === null
+        ? null
+        : (selection: PaneSelection): string =>
+            conversation.oracle.selectionText(selection.anchor, selection.focus);
     const routedTokens: MuxInputToken[] = [];
     for (const token of input.tokens) {
       if (token.kind !== 'mouse') {
@@ -256,14 +265,22 @@ export class InputTokenRouter {
         routedTokens.push(token);
         continue;
       }
-      if (
-        this.options.conversationSelectionInput.handleMouseSelection({
-          layout: input.layout,
-          frame: snapshotForInput,
-          isMainPaneTarget,
-          event: token.event,
-        })
-      ) {
+      const mouseSelectionInput =
+        resolveSelectionText === null
+          ? {
+              layout: input.layout,
+              frame: snapshotForInput,
+              isMainPaneTarget,
+              event: token.event,
+            }
+          : {
+              layout: input.layout,
+              frame: snapshotForInput,
+              isMainPaneTarget,
+              resolveSelectionText,
+              event: token.event,
+            };
+      if (this.options.conversationSelectionInput.handleMouseSelection(mouseSelectionInput)) {
         continue;
       }
 
