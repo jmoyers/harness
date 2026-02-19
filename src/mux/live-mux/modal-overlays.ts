@@ -89,8 +89,8 @@ export function buildCommandMenuModalOverlay(
   }
   const modalSize = resolveGoldenModalSize(layoutCols, viewportRows, {
     preferredHeight: 18,
-    minWidth: 34,
-    maxWidth: 72,
+    minWidth: 48,
+    maxWidth: 96,
   });
   const matches = resolveCommandMenuMatches(actions, menu.query, COMMAND_MENU_MAX_RESULTS);
   const selectedIndex =
@@ -118,7 +118,7 @@ export function buildCommandMenuModalOverlay(
     height: modalSize.height,
     anchor: 'center',
     marginRows: 1,
-    title: menu.scope === 'thread-start' ? 'New Thread' : 'Command Menu',
+    title: 'Command Menu',
     bodyLines,
     footer: 'enter run  esc',
     theme,

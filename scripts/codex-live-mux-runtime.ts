@@ -303,6 +303,24 @@ function parseGitHubPrUrl(result: Record<string, unknown>): string | null {
   return typeof url === 'string' ? url : null;
 }
 
+function commandMenuProjectPathTail(path: string): string {
+  const normalized = path.trim().replaceAll('\\', '/').replace(/\/+$/u, '');
+  if (normalized.length === 0) {
+    return '(project)';
+  }
+  if (normalized === '/') {
+    return '/';
+  }
+  const segments = normalized.split('/').filter((segment) => segment.length > 0);
+  if (segments.length === 0) {
+    return normalized;
+  }
+  if (segments.length <= 2) {
+    return segments.join('/');
+  }
+  return `…/${segments.slice(-2).join('/')}`;
+}
+
 function openUrlInBrowser(url: string): boolean {
   const target = url.trim();
   if (target.length === 0) {
@@ -2524,8 +2542,13 @@ async function main(): Promise<number> {
     return [...directoryRecords.values()].map(
       (directory): RegisteredCommandMenuAction<RuntimeCommandMenuContext> => ({
         id: `project.open.${directory.directoryId}`,
-        title: `Go to project ${directory.path}`,
-        aliases: ['go to project', 'project', directory.path],
+        title: `Project ${commandMenuProjectPathTail(directory.path)}`,
+        aliases: [
+          'go to project',
+          'project',
+          directory.path,
+          commandMenuProjectPathTail(directory.path),
+        ],
         keywords: ['project', 'open', 'go'],
         run: () => {
           enterProjectPane(directory.directoryId);

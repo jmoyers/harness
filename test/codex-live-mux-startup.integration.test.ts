@@ -780,7 +780,7 @@ void test(
         12000,
       );
       writeLeftMouseClick(interactive.session, threadButtonCell.col, threadButtonCell.row);
-      await waitForSnapshotLineContaining(interactive.oracle, 'New Thread', 12000);
+      await waitForSnapshotLineContaining(interactive.oracle, 'Command Menu', 12000);
       await waitForSnapshotLineContaining(interactive.oracle, 'search: _', 12000);
     } finally {
       try {
