@@ -437,10 +437,38 @@ function parseBinding(input: string): ParsedBinding | null {
 
 function bindingsForAction(raw: readonly string[]): readonly ParsedBinding[] {
   const parsed: ParsedBinding[] = [];
+
+  const pushIfUnique = (candidate: ParsedBinding): void => {
+    if (parsed.some((existing) => strokesEqual(existing.stroke, candidate.stroke))) {
+      return;
+    }
+    parsed.push(candidate);
+  };
+
+  const ctrlMetaAliasStroke = (stroke: KeyStroke): KeyStroke | null => {
+    if (stroke.ctrl === stroke.meta) {
+      return null;
+    }
+    return {
+      key: stroke.key,
+      ctrl: !stroke.ctrl,
+      alt: stroke.alt,
+      shift: stroke.shift,
+      meta: !stroke.meta,
+    };
+  };
+
   for (const value of raw) {
     const next = parseBinding(value);
     if (next !== null) {
-      parsed.push(next);
+      pushIfUnique(next);
+      const aliasStroke = ctrlMetaAliasStroke(next.stroke);
+      if (aliasStroke !== null) {
+        pushIfUnique({
+          stroke: aliasStroke,
+          originalText: next.originalText,
+        });
+      }
     }
   }
   return parsed;

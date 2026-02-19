@@ -58,6 +58,7 @@ For restart/load diagnostics, use a named session with a non-default gateway por
 - Thread-scoped command palette (`[+ thread]`) can launch/install supported agent CLIs per project.
 - Critique review actions are available from the global palette and run in a terminal thread.
 - `ctrl+g` opens the project’s critique thread (or creates one if needed).
+- `ctrl` and `cmd` shortcut chords are mirrored in both directions when your terminal/OS does not reserve the combination.
 - Theme selection is built in (`Set a Theme`) with OpenCode-compatible presets and live preview.
 - PR actions use either `GITHUB_TOKEN` or an authenticated `gh` CLI session.
 

@@ -33,6 +33,22 @@ void test('task screen keybindings default and override resolution are stable', 
   assert.equal(firstTaskScreenShortcutText(overridden, 'mux.home.repo.dropdown.toggle'), 'ctrl+r');
 });
 
+void test('task screen keybindings alias ctrl and cmd/meta in both directions', () => {
+  const bindings = resolveTaskScreenKeybindings({
+    'mux.home.repo.dropdown.toggle': ['ctrl+g', 'cmd+g'],
+    'mux.home.editor.line.start': ['cmd+a'],
+  });
+
+  assert.equal(
+    detectTaskScreenKeybindingAction(Buffer.from('\u001b[103;9u', 'utf8'), bindings),
+    'mux.home.repo.dropdown.toggle',
+  );
+  assert.equal(
+    detectTaskScreenKeybindingAction(Buffer.from([0x01]), bindings),
+    'mux.home.editor.line.start',
+  );
+});
+
 void test('task screen keybinding detection supports single-byte controls and printable keys', () => {
   const bindings = resolveTaskScreenKeybindings({
     'mux.home.task.submit': ['enter'],

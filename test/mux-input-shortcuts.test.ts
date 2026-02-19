@@ -125,6 +125,19 @@ void test('detectMuxGlobalShortcut parses kitty and modifyOtherKeys control comb
   );
 });
 
+void test('shortcut bindings alias ctrl and cmd/meta in both directions', () => {
+  const bindings = resolveMuxShortcutBindings({
+    'mux.conversation.new': ['ctrl+t'],
+    'mux.app.quit': ['cmd+q'],
+  });
+
+  assert.equal(
+    detectMuxGlobalShortcut(Buffer.from('\u001b[116;9u', 'utf8'), bindings),
+    'mux.conversation.new',
+  );
+  assert.equal(detectMuxGlobalShortcut(Buffer.from([0x11]), bindings), 'mux.app.quit');
+});
+
 void test('resolveMuxShortcutBindings applies config overrides and display helpers', () => {
   const bindings = resolveMuxShortcutBindings({
     'mux.conversation.next': ['alt+j', 'ctrl+n'],
