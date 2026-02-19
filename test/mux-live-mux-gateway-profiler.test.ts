@@ -131,6 +131,57 @@ void test('gateway profiler treats malformed migrated profile-state files as ina
   }
 });
 
+void test('gateway profiler detects active state written by harness profile start and toggles stop', async () => {
+  const workspace = mkdtempSync(join(tmpdir(), 'harness-gateway-profiler-cli-state-'));
+  const previousXdg = process.env.XDG_CONFIG_HOME;
+  process.env.XDG_CONFIG_HOME = join(workspace, '.xdg');
+
+  try {
+    const profileStatePath = resolveProfileStatePath(workspace, 'perf-a');
+    mkdirSync(dirname(profileStatePath), { recursive: true });
+    writeFileSync(
+      profileStatePath,
+      JSON.stringify({
+        version: 2,
+        mode: 'live-inspector',
+        pid: 123,
+        host: '127.0.0.1',
+        port: 7777,
+        stateDbPath: '/tmp/state.db',
+        profileDir: '/tmp/profiles',
+        gatewayProfilePath: '/tmp/profiles/gateway.cpuprofile',
+        inspectWebSocketUrl: 'ws://127.0.0.1:9229/uuid',
+        startedAt: '2026-02-19T00:00:00.000Z',
+      }),
+      'utf8',
+    );
+
+    const calls: Array<{ action: 'start' | 'stop' }> = [];
+    const result = await toggleGatewayProfiler({
+      invocationDirectory: workspace,
+      sessionName: 'perf-a',
+      runHarnessProfileCommand: async (input) => {
+        calls.push({ action: input.action });
+        return {
+          stdout: 'profile: gateway=/tmp/profiles/gateway.cpuprofile\n',
+          stderr: '',
+        };
+      },
+    });
+
+    assert.equal(hasActiveProfileState(profileStatePath), true);
+    assert.equal(result.action, 'stop');
+    assert.equal(result.message, 'profile: gateway=/tmp/profiles/gateway.cpuprofile');
+    assert.deepEqual(calls, [{ action: 'stop' }]);
+  } finally {
+    if (previousXdg === undefined) {
+      delete process.env.XDG_CONFIG_HOME;
+    } else {
+      process.env.XDG_CONFIG_HOME = previousXdg;
+    }
+  }
+});
+
 void test('gateway profiler surfaces harness command failures', async () => {
   await assert.rejects(
     toggleGatewayProfiler({
@@ -225,8 +276,8 @@ void test('gateway profiler active-state parser rejects invalid payload fields a
   assert.equal(hasActiveProfileState(profileStatePath), false);
 
   const validPayload = {
-    version: 1,
-    mode: 'live-inspect',
+    version: 2,
+    mode: 'live-inspector',
     pid: 123,
     host: '127.0.0.1',
     port: 7777,
@@ -238,7 +289,8 @@ void test('gateway profiler active-state parser rejects invalid payload fields a
   };
   const invalidPayloads: unknown[] = [
     null,
-    { ...validPayload, version: 2 },
+    { ...validPayload, version: 0 },
+    { ...validPayload, version: 999 },
     { ...validPayload, mode: 'legacy' },
     { ...validPayload, pid: 0 },
     { ...validPayload, host: '   ' },
@@ -255,5 +307,12 @@ void test('gateway profiler active-state parser rejects invalid payload fields a
   }
 
   writeFileSync(profileStatePath, JSON.stringify(validPayload), 'utf8');
+  assert.equal(hasActiveProfileState(profileStatePath), true);
+
+  writeFileSync(
+    profileStatePath,
+    JSON.stringify({ ...validPayload, version: 1, mode: 'live-inspect' }),
+    'utf8',
+  );
   assert.equal(hasActiveProfileState(profileStatePath), true);
 });

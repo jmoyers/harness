@@ -36,8 +36,8 @@ interface ToggleGatewayProfilerResult {
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_HARNESS_SCRIPT_PATH = resolve(SCRIPT_DIR, '../../../scripts/harness.ts');
-const PROFILE_STATE_VERSION = 1;
-const PROFILE_STATE_MODE = 'live-inspect';
+const SUPPORTED_PROFILE_STATE_VERSIONS = new Set([1, 2]);
+const SUPPORTED_PROFILE_STATE_MODES = new Set(['live-inspect', 'live-inspector']);
 
 function firstNonEmptyLine(text: string): string | null {
   const lines = text
@@ -82,10 +82,10 @@ function hasValidActiveProfilePayload(payload: unknown): boolean {
     return false;
   }
   const candidate = payload as Record<string, unknown>;
-  if (candidate['version'] !== PROFILE_STATE_VERSION) {
+  if (!SUPPORTED_PROFILE_STATE_VERSIONS.has(candidate['version'] as number)) {
     return false;
   }
-  if (candidate['mode'] !== PROFILE_STATE_MODE) {
+  if (!SUPPORTED_PROFILE_STATE_MODES.has(candidate['mode'] as string)) {
     return false;
   }
   if (!isIntegerInRange(candidate['pid'], 1, Number.MAX_SAFE_INTEGER)) {
