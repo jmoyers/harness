@@ -51,6 +51,8 @@ This project has two core documents:
 - One config abstraction (`config-core`) and one canonical config file (`harness.config.jsonc`) govern runtime behavior.
 - Config path resolution is user-global: prefer `$XDG_CONFIG_HOME/harness/harness.config.jsonc`, otherwise `~/.harness/harness.config.jsonc`.
 - Runtime artifact path resolution is user-global and workspace-scoped: prefer `$XDG_CONFIG_HOME/harness/workspaces/<workspace-slug>/...`, otherwise `~/.harness/workspaces/<workspace-slug>/...`.
+- Gateway lifecycle control is per-session and lock-serialized (`gateway.lock`) under the workspace runtime path.
+- Gateway record loss (`gateway.json`) must be recoverable via deterministic daemon adoption; ambiguous matches must fail closed.
 - First run must migrate legacy local workspace artifacts from `<workspace>/.harness` into the user-global workspace-scoped runtime path without overwriting an existing global `harness.config.jsonc`.
 - First-run config bootstrapping must copy the checked-in template (`src/config/harness.config.template.jsonc`).
 - `harness.config.jsonc` must include a top-level `configVersion`; config changes require explicit migration handling for older versions.

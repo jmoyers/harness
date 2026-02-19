@@ -239,6 +239,9 @@ Pass-through stream invariants:
 - `ctrl+c` requests mux shutdown immediately and is not forwarded to active threads.
 - In canonical remote/gateway mode, mux exits without closing live sessions so work continues after client disconnect.
 - In embedded/local mode, mux shutdown also closes live PTYs.
+- Gateway CLI lifecycle commands (`start`/`stop`/`status`/`restart`/`run`) are serialized through a per-session lock file (`gateway.lock`) to prevent concurrent start/stop races.
+- Gateway identity is persisted in `gateway.json` (`pid`, `host`, `port`, `authToken`, `stateDbPath`, `startedAt`, `workspaceRoot`, optional `gatewayRunId`).
+- If `gateway.json` is missing but the endpoint is reachable, the CLI may adopt the running daemon by matching process-table host/port/auth/db-path identity; ambiguous matches fail closed.
 - `ctrl+p` and `cmd+p` open the command menu; command search is live-filtered and executes context-aware actions.
 - Left-rail `[+ thread]` opens a thread-scoped command-menu variant (same matcher/autocomplete path) instead of a dedicated chooser modal.
 - Command-menu `Set a Theme` opens a second autocomplete theme picker; moving selection previews theme changes live, and dismiss restores the pre-picker theme unless confirmed. Confirming with `enter` commits and persists the selected theme.
@@ -729,6 +732,9 @@ Design constraints:
 - Runtime artifact location is user-global and workspace-scoped:
   - `$XDG_CONFIG_HOME/harness/workspaces/<workspace-slug>/...` when `XDG_CONFIG_HOME` is set
   - `~/.harness/workspaces/<workspace-slug>/...` otherwise
+- Gateway runtime artifacts are session-scoped within each workspace runtime root:
+  - default session: `<workspace-runtime>/gateway.json`, `<workspace-runtime>/gateway.log`, `<workspace-runtime>/gateway.lock`, `<workspace-runtime>/control-plane.sqlite`
+  - named sessions: `<workspace-runtime>/sessions/<session-name>/gateway.json|gateway.log|gateway.lock|control-plane.sqlite`
 - Config payloads are explicitly versioned with top-level `configVersion`.
 - JSON-with-comments format (JSONC) is required to allow inline documentation and annotation.
 - Single configuration abstraction only (`config-core`) used by every subsystem and process.
