@@ -2582,7 +2582,6 @@ async function main(): Promise<number> {
         title: 'Start Codex thread',
         aliases: ['codex', 'start codex'],
         keywords: ['start', 'thread', 'codex', 'new'],
-        detail: 'current project',
         run: () => {
           startThreadFromCommandMenu(directoryId, 'codex');
         },
@@ -2592,7 +2591,6 @@ async function main(): Promise<number> {
         title: 'Start Claude thread',
         aliases: ['claude', 'start claude'],
         keywords: ['start', 'thread', 'claude', 'new'],
-        detail: 'current project',
         run: () => {
           startThreadFromCommandMenu(directoryId, 'claude');
         },
@@ -2602,7 +2600,6 @@ async function main(): Promise<number> {
         title: 'Start Cursor thread',
         aliases: ['cursor', 'cur', 'start cursor'],
         keywords: ['start', 'thread', 'cursor', 'new'],
-        detail: 'current project',
         run: () => {
           startThreadFromCommandMenu(directoryId, 'cursor');
         },
@@ -2612,7 +2609,6 @@ async function main(): Promise<number> {
         title: 'Start Terminal thread',
         aliases: ['terminal', 'shell', 'start terminal'],
         keywords: ['start', 'thread', 'terminal', 'shell', 'new'],
-        detail: 'current project',
         run: () => {
           startThreadFromCommandMenu(directoryId, 'terminal');
         },
@@ -2622,7 +2618,6 @@ async function main(): Promise<number> {
         title: 'Start Critique thread (diff)',
         aliases: ['critique', 'start critique', 'critique diff'],
         keywords: ['start', 'thread', 'critique', 'diff', 'new'],
-        detail: 'current project',
         run: () => {
           startThreadFromCommandMenu(directoryId, 'critique');
         },
