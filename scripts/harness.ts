@@ -1398,10 +1398,9 @@ function resolveGatewaySettings(
   const port = normalizeGatewayPort(
     overrides.port ?? record?.port ?? env.HARNESS_CONTROL_PLANE_PORT,
   );
-  const stateDbPathRaw = normalizeGatewayStateDbPath(
-    overrides.stateDbPath ?? record?.stateDbPath ?? env.HARNESS_CONTROL_PLANE_DB_PATH,
-    defaultStateDbPath,
-  );
+  const configuredStateDbPath =
+    overrides.stateDbPath ?? env.HARNESS_CONTROL_PLANE_DB_PATH ?? defaultStateDbPath;
+  const stateDbPathRaw = normalizeGatewayStateDbPath(configuredStateDbPath, defaultStateDbPath);
   const stateDbPath = resolveHarnessRuntimePath(invocationDirectory, stateDbPathRaw, env);
 
   const envToken =

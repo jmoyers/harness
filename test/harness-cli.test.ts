@@ -429,6 +429,51 @@ void test('harness auto-migrates legacy local .harness record path to global run
   }
 });
 
+void test('harness gateway start ignores stale record state db path and uses runtime default', async () => {
+  const workspace = createWorkspace();
+  const port = await reservePort();
+  const runtimeRoot = workspaceRuntimeRoot(workspace);
+  const recordPath = join(runtimeRoot, 'gateway.json');
+  const staleStateDbPath = join(workspace, '.harness', 'control-plane.sqlite');
+  mkdirSync(runtimeRoot, { recursive: true });
+  writeFileSync(
+    recordPath,
+    JSON.stringify(
+      {
+        version: 1,
+        pid: 2147483647,
+        host: '127.0.0.1',
+        port,
+        authToken: null,
+        stateDbPath: staleStateDbPath,
+        startedAt: new Date().toISOString(),
+        workspaceRoot: workspace,
+      },
+      null,
+      2,
+    ),
+    'utf8',
+  );
+  const env = {
+    HARNESS_CONTROL_PLANE_PORT: String(port),
+  };
+  try {
+    const startResult = await runHarness(
+      workspace,
+      ['gateway', 'start', '--port', String(port)],
+      env,
+    );
+    assert.equal(startResult.code, 0);
+    const recordRaw = readFileSync(recordPath, 'utf8');
+    const record = parseGatewayRecordText(recordRaw);
+    assert.notEqual(record, null);
+    assert.equal(record?.stateDbPath, join(runtimeRoot, 'control-plane.sqlite'));
+  } finally {
+    void runHarness(workspace, ['gateway', 'stop', '--force'], env).catch(() => undefined);
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 void test('harness rejects invalid session names', async () => {
   const workspace = createWorkspace();
   try {

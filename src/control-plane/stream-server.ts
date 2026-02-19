@@ -1077,6 +1077,7 @@ export class ControlPlaneStreamServer {
   private githubTokenResolutionError: string | null = null;
   private gitStatusPollInFlight = false;
   private githubPollInFlight = false;
+  private githubPollPromise: Promise<void> | null = null;
   private readonly gitStatusRefreshInFlightDirectoryIds = new Set<string>();
   private readonly gitStatusByDirectoryId = new Map<string, DirectoryGitStatusCacheEntry>();
   private readonly gitStatusDirectoriesById = new Map<string, ControlPlaneDirectoryRecord>();
@@ -1088,6 +1089,7 @@ export class ControlPlaneStreamServer {
   private streamCursor = 0;
   private listening = false;
   private stateStoreClosed = false;
+  private closing = false;
 
   constructor(options: StartControlPlaneStreamServerOptions = {}) {
     this.host = options.host ?? '127.0.0.1';
@@ -1211,9 +1213,11 @@ export class ControlPlaneStreamServer {
   }
 
   async close(): Promise<void> {
+    this.closing = true;
     this.stopHistoryPolling();
     this.stopGitStatusPolling();
     this.stopGitHubPolling();
+    await this.waitForGitHubPollingToSettle();
 
     for (const sessionId of [...this.sessions.keys()]) {
       this.destroySession(sessionId, true);
@@ -1396,9 +1400,9 @@ export class ControlPlaneStreamServer {
     if (!this.github.enabled || this.githubPollTimer !== null) {
       return;
     }
-    void this.pollGitHub();
+    this.triggerGitHubPoll();
     this.githubPollTimer = setInterval(() => {
-      void this.pollGitHub();
+      this.triggerGitHubPoll();
     }, this.github.pollMs);
     this.githubPollTimer.unref();
   }
@@ -1409,6 +1413,49 @@ export class ControlPlaneStreamServer {
     }
     clearInterval(this.githubPollTimer);
     this.githubPollTimer = null;
+  }
+
+  private triggerGitHubPoll(): void {
+    void this.pollGitHub().catch((error: unknown) => {
+      if (this.shouldIgnoreGitHubPollError(error)) {
+        return;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      recordPerfEvent('control-plane.github.poll.failed', {
+        error: message,
+      });
+    });
+  }
+
+  private isStateStoreClosedError(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    const normalized = message.trim().toLowerCase();
+    return normalized.includes('database has closed') || normalized.includes('database is closed');
+  }
+
+  private shouldSkipStateStoreWork(): boolean {
+    return this.closing || this.stateStoreClosed;
+  }
+
+  private shouldIgnoreGitHubPollError(error: unknown): boolean {
+    return this.shouldSkipStateStoreWork() || this.isStateStoreClosedError(error);
+  }
+
+  private async waitForGitHubPollingToSettle(): Promise<void> {
+    const pollPromise = this.githubPollPromise;
+    if (pollPromise === null) {
+      return;
+    }
+    try {
+      await pollPromise;
+    } catch (error: unknown) {
+      if (!this.shouldIgnoreGitHubPollError(error)) {
+        const message = error instanceof Error ? error.message : String(error);
+        recordPerfEvent('control-plane.github.poll.failed-on-close', {
+          error: message,
+        });
+      }
+    }
   }
 
   private reloadGitStatusDirectoriesFromStore(): void {
@@ -2112,11 +2159,11 @@ export class ControlPlaneStreamServer {
   }
 
   private async pollGitHub(): Promise<void> {
-    if (!this.github.enabled || this.githubPollInFlight) {
+    if (!this.github.enabled || this.githubPollInFlight || this.shouldSkipStateStoreWork()) {
       return;
     }
     this.githubPollInFlight = true;
-    try {
+    const pollPromise = (async () => {
       const directories = this.stateStore.listDirectories({
         includeArchived: false,
         limit: 1000,
@@ -2132,6 +2179,9 @@ export class ControlPlaneStreamServer {
         }
       >();
       for (const directory of directories) {
+        if (this.shouldSkipStateStoreWork()) {
+          return;
+        }
         const gitStatus = this.gitStatusByDirectoryId.get(directory.directoryId);
         const repositoryId = gitStatus?.repositoryId ?? null;
         if (repositoryId === null) {
@@ -2166,21 +2216,31 @@ export class ControlPlaneStreamServer {
           branchName,
         });
       }
-      if (targetsByKey.size === 0) {
+      if (targetsByKey.size === 0 || this.shouldSkipStateStoreWork()) {
         return;
       }
       const token = this.github.token ?? (await this.resolveGitHubTokenIfNeeded());
-      if (token === null) {
+      if (token === null || this.shouldSkipStateStoreWork()) {
         return;
       }
       await runWithConcurrencyLimit(
         [...targetsByKey.values()],
         this.github.maxConcurrency,
         async (target) => {
+          if (this.shouldSkipStateStoreWork()) {
+            return;
+          }
           await this.syncGitHubBranch(target);
         },
       );
+    })();
+    this.githubPollPromise = pollPromise;
+    try {
+      await pollPromise;
     } finally {
+      if (this.githubPollPromise === pollPromise) {
+        this.githubPollPromise = null;
+      }
       this.githubPollInFlight = false;
     }
   }
@@ -2192,6 +2252,9 @@ export class ControlPlaneStreamServer {
     repo: string;
     branchName: string;
   }): Promise<void> {
+    if (this.shouldSkipStateStoreWork()) {
+      return;
+    }
     const now = new Date().toISOString();
     const syncStateId = `github-sync:${input.repository.repositoryId}:${input.directory.directoryId}:${input.branchName}`;
     try {
@@ -2200,6 +2263,9 @@ export class ControlPlaneStreamServer {
         repo: input.repo,
         headBranch: input.branchName,
       });
+      if (this.shouldSkipStateStoreWork()) {
+        return;
+      }
       if (remotePr === null) {
         const staleOpen = this.stateStore.listGitHubPullRequests({
           repositoryId: input.repository.repositoryId,
@@ -2286,6 +2352,9 @@ export class ControlPlaneStreamServer {
         repo: input.repo,
         headSha: storedPr.headSha,
       });
+      if (this.shouldSkipStateStoreWork()) {
+        return;
+      }
       const rollup = summarizeGitHubCiRollup(jobs);
       const updatedPr =
         this.stateStore.updateGitHubPullRequestCiRollup(
@@ -2345,20 +2414,29 @@ export class ControlPlaneStreamServer {
         lastErrorAt: null,
       });
     } catch (error: unknown) {
+      if (this.shouldIgnoreGitHubPollError(error)) {
+        return;
+      }
       const message = error instanceof Error ? error.message : String(error);
-      this.stateStore.upsertGitHubSyncState({
-        stateId: syncStateId,
-        tenantId: input.directory.tenantId,
-        userId: input.directory.userId,
-        workspaceId: input.directory.workspaceId,
-        repositoryId: input.repository.repositoryId,
-        directoryId: input.directory.directoryId,
-        branchName: input.branchName,
-        lastSyncAt: now,
-        lastSuccessAt: null,
-        lastError: message,
-        lastErrorAt: now,
-      });
+      try {
+        this.stateStore.upsertGitHubSyncState({
+          stateId: syncStateId,
+          tenantId: input.directory.tenantId,
+          userId: input.directory.userId,
+          workspaceId: input.directory.workspaceId,
+          repositoryId: input.repository.repositoryId,
+          directoryId: input.directory.directoryId,
+          branchName: input.branchName,
+          lastSyncAt: now,
+          lastSuccessAt: null,
+          lastError: message,
+          lastErrorAt: now,
+        });
+      } catch (syncStateError: unknown) {
+        if (!this.shouldIgnoreGitHubPollError(syncStateError)) {
+          throw syncStateError;
+        }
+      }
     }
   }
 
