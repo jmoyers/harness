@@ -412,6 +412,50 @@ void test('archiveConversation retargets active selection to next conversation i
   assert.deepEqual(activated, ['session-b']);
 });
 
+void test('archiveConversation stays in current project when archiving last thread even if other projects have threads', async () => {
+  const calls: string[] = [];
+  await archiveConversation({
+    sessionId: 'session-a',
+    conversations: new Map([
+      [
+        'session-a',
+        {
+          directoryId: 'dir-a',
+          live: false,
+        },
+      ],
+    ]),
+    closePtySession: async () => {},
+    removeSession: async () => {},
+    isSessionNotFoundError: () => false,
+    archiveConversationRecord: async () => {},
+    isConversationNotFoundError: () => false,
+    unsubscribeConversationEvents: async () => {},
+    removeConversationState: () => {},
+    activeConversationId: 'session-a',
+    setActiveConversationId: (sessionId) => {
+      calls.push(`setActiveConversationId:${String(sessionId)}`);
+    },
+    orderedConversationIds: () => ['session-b', 'session-c'],
+    conversationDirectoryId: (sessionId) => (sessionId === 'session-b' ? 'dir-b' : 'dir-c'),
+    resolveActiveDirectoryId: () => 'dir-a',
+    enterProjectPane: (directoryId) => {
+      calls.push(`enterProjectPane:${directoryId}`);
+    },
+    activateConversation: async (sessionId) => {
+      calls.push(`activateConversation:${sessionId}`);
+    },
+    markDirty: () => {
+      calls.push('markDirty');
+    },
+  });
+  assert.deepEqual(calls, [
+    'setActiveConversationId:null',
+    'enterProjectPane:dir-a',
+    'markDirty',
+  ]);
+});
+
 void test('archiveConversation falls back to project pane or dirty mark when no replacement conversation exists', async () => {
   const calls: string[] = [];
   await archiveConversation({

@@ -162,15 +162,13 @@ export async function archiveConversation(options: ArchiveConversationOptions): 
   if (options.activeConversationId === options.sessionId) {
     const archivedDirectoryId = target.directoryId;
     const ordered = options.orderedConversationIds();
-    const nextConversationId =
+    const sameDirectoryConversationId =
       ordered.find(
         (candidateId) => options.conversationDirectoryId(candidateId) === archivedDirectoryId,
-      ) ??
-      ordered[0] ??
-      null;
+      ) ?? null;
     options.setActiveConversationId(null);
-    if (nextConversationId !== null) {
-      await options.activateConversation(nextConversationId);
+    if (sameDirectoryConversationId !== null) {
+      await options.activateConversation(sameDirectoryConversationId);
       return;
     }
     const fallbackDirectoryId = archivedDirectoryId ?? options.resolveActiveDirectoryId();
