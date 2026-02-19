@@ -373,7 +373,7 @@ function buildContentRows(
     pushRow(
       rows,
       'dir-header',
-      '├─ 🗂 tasks',
+      '├─ 🗂️ tasks',
       tasksSelectionEnabled,
       null,
       null,

@@ -838,7 +838,7 @@ void test('workspace rail model renders home as a selectable directory-style blo
   assert.equal(rows[homeHeaderIndex]?.active, true);
   assert.equal(rows[homeHeaderIndex]?.railAction, 'home.open');
   assert.equal(rows[homeHeaderIndex + 1]?.kind, 'dir-header');
-  assert.equal(rows[homeHeaderIndex + 1]?.text.includes('🗂 tasks'), true);
+  assert.equal(rows[homeHeaderIndex + 1]?.text.includes('🗂️ tasks'), true);
   assert.equal(rows[homeHeaderIndex + 1]?.text.startsWith('├─ '), true);
   assert.equal(rows[homeHeaderIndex + 1]?.text.includes('│  └─'), false);
   assert.equal(rows[homeHeaderIndex + 1]?.railAction, 'tasks.open');
