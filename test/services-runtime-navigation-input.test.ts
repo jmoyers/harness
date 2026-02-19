@@ -21,6 +21,7 @@ interface CapturedRepositoryFoldOptions {
 
 interface CapturedGlobalShortcutOptions {
   cycleLeftNavSelection(direction: 'next' | 'previous'): void;
+  getActiveConversationAgentType(): string | null;
   toggleCommandMenu(): void;
   openOrCreateCritiqueConversationInDirectory(directoryId: string): Promise<void>;
   toggleGatewayProfile(): Promise<void>;
@@ -104,6 +105,7 @@ function createNavigationOptions(
         'session-1',
         {
           directoryId: 'dir-1',
+          agentType: 'terminal',
         },
       ],
     ]),
@@ -239,6 +241,7 @@ void test('runtime navigation input composes left-nav, fold, and global shortcut
   repositoryFoldOptions.setRepositoryToggleChordPrefixAtMs(99);
   assert.equal(workspace.repositoryToggleChordPrefixAtMs, 99);
   assert.equal(repositoryFoldOptions.nowMs(), 1234);
+  assert.equal(globalShortcutOptions.getActiveConversationAgentType(), 'terminal');
 
   globalShortcutOptions.cycleLeftNavSelection('previous');
   globalShortcutOptions.toggleCommandMenu();

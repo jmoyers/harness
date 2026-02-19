@@ -36,7 +36,13 @@ interface RuntimeNavigationInputOptions {
   readonly enterHomePane: () => void;
   readonly enterProjectPane: (directoryId: string) => void;
   readonly markDirty: () => void;
-  readonly conversations: ReadonlyMap<string, { directoryId: string | null }>;
+  readonly conversations: ReadonlyMap<
+    string,
+    {
+      directoryId: string | null;
+      agentType?: string;
+    }
+  >;
   readonly repositoryGroupIdForDirectory: (directoryId: string) => string;
   readonly collapseRepositoryGroup: (repositoryGroupId: string) => void;
   readonly expandRepositoryGroup: (repositoryGroupId: string) => void;
@@ -153,6 +159,13 @@ export class RuntimeNavigationInput {
       },
       getMainPaneMode: options.getMainPaneMode,
       getActiveConversationId: options.getActiveConversationId,
+      getActiveConversationAgentType: () => {
+        const activeConversationId = options.getActiveConversationId();
+        if (activeConversationId === null) {
+          return null;
+        }
+        return options.conversations.get(activeConversationId)?.agentType ?? null;
+      },
       conversationsHas: options.conversationsHas,
       queueControlPlaneOp: options.queueControlPlaneOp,
       archiveConversation: async (sessionId) => {

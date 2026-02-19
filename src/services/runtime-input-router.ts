@@ -18,6 +18,7 @@ type RuntimeShortcutBindings = RuntimeRailInputOptions['shortcutBindings'];
 type RuntimeConversationRecord = {
   title: string;
   directoryId: string | null;
+  agentType?: string;
 };
 
 interface RuntimeInputRouterOptions {

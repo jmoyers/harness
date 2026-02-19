@@ -8,6 +8,47 @@ type ResolvedMuxShortcutBindings = ReturnType<typeof resolveMuxShortcutBindings>
 type ShortcutCycleDirection = 'next' | 'previous';
 type MainPaneMode = 'conversation' | 'project' | 'home';
 
+function parseNumericPrefix(value: string): number | null {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function isCtrlOnlyShortcutInput(input: Buffer): boolean {
+  if (input.length === 1) {
+    const byte = input[0]!;
+    return (
+      (byte >= 0x01 && byte <= 0x1a) ||
+      byte === 0x1c ||
+      byte === 0x1d ||
+      byte === 0x1e ||
+      byte === 0x1f
+    );
+  }
+
+  const text = input.toString('utf8');
+  if (text.startsWith('\u001b[') && text.endsWith('u')) {
+    const kittyMatch = text.slice(2, -1).match(/^(\d+)(?::\d+)?(?:;(\d+)(?::\d+)?)?$/u);
+    if (kittyMatch !== null) {
+      const modifierCode = parseNumericPrefix(kittyMatch[2] ?? '1');
+      return modifierCode === 5;
+    }
+  }
+
+  if (text.startsWith('\u001b[27;') && text.endsWith('~')) {
+    const modifyOtherKeysMatch = text.slice(2, -1).match(/^27;(\d+);(\d+)$/u);
+    if (modifyOtherKeysMatch !== null) {
+      const modifierCode = parseNumericPrefix(modifyOtherKeysMatch[1]!);
+      return modifierCode === 5;
+    }
+  }
+
+  return false;
+}
+
+function isTerminalAgentType(agentType: string | null): boolean {
+  return agentType !== null && agentType.trim().toLowerCase() === 'terminal';
+}
+
 interface GlobalShortcutInputOptions {
   readonly shortcutBindings: ResolvedMuxShortcutBindings;
   readonly requestStop: () => void;
@@ -20,6 +61,7 @@ interface GlobalShortcutInputOptions {
   readonly toggleGatewayRenderTrace: (conversationId: string | null) => Promise<void>;
   readonly getMainPaneMode: () => MainPaneMode;
   readonly getActiveConversationId: () => string | null;
+  readonly getActiveConversationAgentType?: () => string | null;
   readonly conversationsHas: (sessionId: string) => boolean;
   readonly queueControlPlaneOp: (task: () => Promise<void>, label: string) => void;
   readonly archiveConversation: (sessionId: string) => Promise<void>;
@@ -53,6 +95,18 @@ export class GlobalShortcutInput {
 
   handleInput(input: Buffer): boolean {
     const shortcut = this.detectMuxGlobalShortcut(input, this.options.shortcutBindings);
+    if (
+      shortcut !== null &&
+      this.options.getMainPaneMode() === 'conversation' &&
+      isTerminalAgentType(
+        this.options.getActiveConversationAgentType === undefined
+          ? null
+          : this.options.getActiveConversationAgentType(),
+      ) &&
+      isCtrlOnlyShortcutInput(input)
+    ) {
+      return false;
+    }
     return this.handleGlobalShortcut({
       shortcut,
       requestStop: this.options.requestStop,
