@@ -131,26 +131,9 @@ interface ConversationDeleteCommand {
 
 type StreamTaskStatus = 'draft' | 'ready' | 'in-progress' | 'completed';
 type StreamTaskScopeKind = 'global' | 'repository' | 'project';
-type StreamTaskLinearPriority = 0 | 1 | 2 | 3 | 4;
 type StreamProjectTaskFocusMode = 'balanced' | 'own-only';
 type StreamProjectThreadSpawnMode = 'new-thread' | 'reuse-thread';
 type StreamAutomationPolicyScope = 'global' | 'repository' | 'project';
-
-interface StreamTaskLinearInput {
-  issueId?: string | null;
-  identifier?: string | null;
-  url?: string | null;
-  teamId?: string | null;
-  projectId?: string | null;
-  projectMilestoneId?: string | null;
-  cycleId?: string | null;
-  stateId?: string | null;
-  assigneeId?: string | null;
-  priority?: StreamTaskLinearPriority | null;
-  estimate?: number | null;
-  dueDate?: string | null;
-  labelIds?: readonly string[] | null;
-}
 
 interface RepositoryUpsertCommand {
   type: 'repository.upsert';
@@ -202,7 +185,6 @@ interface TaskCreateCommand {
   projectId?: string;
   title: string;
   description?: string;
-  linear?: StreamTaskLinearInput;
 }
 
 interface TaskGetCommand {
@@ -229,7 +211,6 @@ interface TaskUpdateCommand {
   description?: string;
   repositoryId?: string | null;
   projectId?: string | null;
-  linear?: StreamTaskLinearInput | null;
 }
 
 interface TaskDeleteCommand {

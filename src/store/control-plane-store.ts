@@ -3,7 +3,6 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import {
-  applyTaskLinearInput,
   normalizeGitHubPrJobRow,
   normalizeGitHubPullRequestRow,
   normalizeGitHubSyncStateRow,
@@ -13,7 +12,6 @@ import {
   normalizeProjectSettingsRow,
   asString,
   asStringOrNull,
-  defaultTaskLinearRecord,
   normalizeNonEmptyLabel,
   normalizeRepositoryRow,
   normalizeStoredConversationRow,
@@ -23,7 +21,6 @@ import {
   normalizeTaskRow,
   normalizeTelemetryRow,
   normalizeTelemetrySource,
-  serializeTaskLinear,
   sqliteStatementChanges,
   uniqueValues,
 } from './control-plane-store-normalize.ts';
@@ -40,13 +37,11 @@ import type {
   ControlPlaneProjectTaskFocusMode,
   ControlPlaneProjectThreadSpawnMode,
   ControlPlaneRepositoryRecord,
-  ControlPlaneTaskLinearRecord,
   ControlPlaneTaskRecord,
   ControlPlaneTaskScopeKind,
   ControlPlaneTaskStatus,
   ControlPlaneTelemetryRecord,
   ControlPlaneTelemetrySummary,
-  TaskLinearInput,
 } from './control-plane-store-types.ts';
 import type { PtyExit } from '../pty/pty_host.ts';
 import type { CodexTelemetrySource } from '../control-plane/codex-telemetry.ts';
@@ -107,7 +102,6 @@ export type {
   ControlPlaneProjectTaskFocusMode,
   ControlPlaneProjectThreadSpawnMode,
   ControlPlaneRepositoryRecord,
-  ControlPlaneTaskLinearRecord,
   ControlPlaneTaskRecord,
   ControlPlaneTaskScopeKind,
   ControlPlaneTelemetryRecord,
@@ -206,7 +200,6 @@ interface CreateTaskInput {
   projectId?: string;
   title: string;
   description?: string;
-  linear?: TaskLinearInput;
 }
 
 interface UpdateTaskInput {
@@ -214,7 +207,6 @@ interface UpdateTaskInput {
   description?: string;
   repositoryId?: string | null;
   projectId?: string | null;
-  linear?: TaskLinearInput | null;
 }
 
 interface ListTaskQuery {
@@ -1268,7 +1260,6 @@ export class SqliteControlPlaneStore {
   createTask(input: CreateTaskInput): ControlPlaneTaskRecord {
     const title = normalizeNonEmptyLabel(input.title, 'title');
     const description = input.description ?? '';
-    const linear = applyTaskLinearInput(defaultTaskLinearRecord(), input.linear ?? {});
     this.db.exec('BEGIN IMMEDIATE TRANSACTION');
     try {
       const existing = this.getTask(input.taskId);
@@ -1301,7 +1292,6 @@ export class SqliteControlPlaneStore {
             project_id,
             title,
             description,
-            linear_json,
             status,
             order_index,
             claimed_by_controller_id,
@@ -1312,7 +1302,7 @@ export class SqliteControlPlaneStore {
             completed_at,
             created_at,
             updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?)
         `,
         )
         .run(
@@ -1325,7 +1315,6 @@ export class SqliteControlPlaneStore {
           projectId,
           title,
           description,
-          serializeTaskLinear(linear),
           orderIndex,
           createdAt,
           createdAt,
@@ -1356,7 +1345,6 @@ export class SqliteControlPlaneStore {
           project_id,
           title,
           description,
-          linear_json,
           status,
           order_index,
           claimed_by_controller_id,
@@ -1424,7 +1412,6 @@ export class SqliteControlPlaneStore {
           project_id,
           title,
           description,
-          linear_json,
           status,
           order_index,
           claimed_by_controller_id,
@@ -1457,12 +1444,6 @@ export class SqliteControlPlaneStore {
     const repositoryId =
       update.repositoryId === undefined ? existing.repositoryId : update.repositoryId;
     const projectId = update.projectId === undefined ? existing.projectId : update.projectId;
-    const linear =
-      update.linear === undefined
-        ? existing.linear
-        : update.linear === null
-          ? defaultTaskLinearRecord()
-          : applyTaskLinearInput(existing.linear, update.linear);
     if (repositoryId !== null) {
       const repository = this.getActiveRepository(repositoryId);
       this.assertScopeMatch(existing, repository, 'task');
@@ -1483,7 +1464,6 @@ export class SqliteControlPlaneStore {
           project_id = ?,
           title = ?,
           description = ?,
-          linear_json = ?,
           updated_at = ?
         WHERE task_id = ?
       `,
@@ -1494,7 +1474,6 @@ export class SqliteControlPlaneStore {
         projectId,
         title,
         description,
-        serializeTaskLinear(linear),
         updatedAt,
         taskId,
       );
@@ -2757,7 +2736,6 @@ export class SqliteControlPlaneStore {
         project_id TEXT REFERENCES directories(directory_id),
         title TEXT NOT NULL,
         description TEXT NOT NULL DEFAULT '',
-        linear_json TEXT NOT NULL DEFAULT '{}',
         status TEXT NOT NULL,
         order_index INTEGER NOT NULL,
         claimed_by_controller_id TEXT,
@@ -2774,7 +2752,6 @@ export class SqliteControlPlaneStore {
       CREATE INDEX IF NOT EXISTS idx_tasks_scope
       ON tasks (tenant_id, user_id, workspace_id, order_index, created_at, task_id);
     `);
-    this.ensureColumnExists('tasks', 'linear_json', `linear_json TEXT NOT NULL DEFAULT '{}'`);
     this.ensureColumnExists('tasks', 'scope_kind', `scope_kind TEXT NOT NULL DEFAULT 'global'`);
     this.ensureColumnExists(
       'tasks',

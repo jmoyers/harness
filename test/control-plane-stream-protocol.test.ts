@@ -201,14 +201,6 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
         repositoryId: 'repository-1',
         title: 'Implement task queue',
         description: 'Build CRUD and claim/reorder semantics',
-        linear: {
-          issueId: 'linear-1',
-          identifier: 'ENG-12',
-          priority: 2,
-          estimate: 3,
-          dueDate: '2026-03-08',
-          labelIds: ['backend'],
-        },
       },
     },
     {
@@ -241,9 +233,6 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
         title: 'Implement queue API',
         description: 'Allow reassignment',
         repositoryId: null,
-        linear: {
-          priority: 1,
-        },
       },
     },
     {
@@ -776,9 +765,7 @@ void test('parseClientEnvelope rejects malformed envelopes', () => {
       command: {
         type: 'task.update',
         taskId: 'task-1',
-        linear: {
-          priority: 9,
-        },
+        projectId: 7,
       },
     },
     {

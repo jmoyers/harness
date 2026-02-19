@@ -100,17 +100,28 @@ void test('property: parseStreamCommand rejects invalid task.list status and sco
   );
 });
 
-void test('property: parseStreamCommand task.create linear priority bounds enforced', () => {
+void test('property: parseStreamCommand task.create normalization stays canonical', () => {
   fc.assert(
-    fc.property(fc.integer({ min: 0, max: 4 }), (priority) => {
+    fc.property(
+      fc.record({
+        taskId: fc.option(alphaNum, { nil: undefined }),
+        tenantId: fc.option(alphaNum, { nil: undefined }),
+        userId: fc.option(alphaNum, { nil: undefined }),
+        workspaceId: fc.option(alphaNum, { nil: undefined }),
+        repositoryId: fc.option(alphaNum, { nil: undefined }),
+        projectId: fc.option(alphaNum, { nil: undefined }),
+        description: fc.option(alphaNum, { nil: undefined }),
+      }),
+      (optionalFields) => {
       const parsed = parseStreamCommand({
         type: 'task.create',
         title: 'x',
-        linear: { priority },
+        ...optionalFields,
       });
       assert.notEqual(parsed, null);
-      if (parsed !== null && parsed.type === 'task.create') {
-        assert.equal(parsed.linear?.priority, priority);
+      if (parsed !== null) {
+        assert.equal(parsed.type, 'task.create');
+        assert.deepEqual(parseStreamCommand(parsed), parsed);
       }
     }),
     { numRuns: 60 },
@@ -118,18 +129,15 @@ void test('property: parseStreamCommand task.create linear priority bounds enfor
 
   fc.assert(
     fc.property(
-      fc.oneof(fc.integer({ min: -1_000, max: -1 }), fc.integer({ min: 5, max: 1_000 })),
-      (priority) => {
-        assert.equal(
-          parseStreamCommand({
-            type: 'task.create',
-            title: 'x',
-            linear: { priority },
-          }),
-          null,
-        );
-      },
-    ),
+      fc.anything().filter((value) => value !== undefined && typeof value !== 'string'),
+      (badTenantId) => {
+      const parsed = parseStreamCommand({
+        type: 'task.create',
+        title: 'x',
+        tenantId: badTenantId,
+      });
+      assert.equal(parsed, null);
+    }),
     { numRuns: 60 },
   );
 });

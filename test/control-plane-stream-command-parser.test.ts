@@ -134,21 +134,6 @@ void test('parseStreamCommand parses repository and task commands', () => {
       repositoryId: 'repository-1',
       title: 'Implement task API',
       description: 'Expose task CRUD via stream commands',
-      linear: {
-        issueId: 'linear-1',
-        identifier: 'ENG-7',
-        url: 'https://linear.app/acme/issue/ENG-7',
-        teamId: 'team-eng',
-        projectId: 'project-1',
-        projectMilestoneId: 'milestone-1',
-        cycleId: 'cycle-1',
-        stateId: 'state-1',
-        assigneeId: 'user-1',
-        priority: 2,
-        estimate: 3,
-        dueDate: '2026-03-01',
-        labelIds: ['api', 'backend'],
-      },
     }),
     {
       type: 'task.create',
@@ -159,21 +144,6 @@ void test('parseStreamCommand parses repository and task commands', () => {
       repositoryId: 'repository-1',
       title: 'Implement task API',
       description: 'Expose task CRUD via stream commands',
-      linear: {
-        issueId: 'linear-1',
-        identifier: 'ENG-7',
-        url: 'https://linear.app/acme/issue/ENG-7',
-        teamId: 'team-eng',
-        projectId: 'project-1',
-        projectMilestoneId: 'milestone-1',
-        cycleId: 'cycle-1',
-        stateId: 'state-1',
-        assigneeId: 'user-1',
-        priority: 2,
-        estimate: 3,
-        dueDate: '2026-03-01',
-        labelIds: ['api', 'backend'],
-      },
     },
   );
   assert.deepEqual(
@@ -186,30 +156,10 @@ void test('parseStreamCommand parses repository and task commands', () => {
       taskId: 'task-1',
     },
   );
-  assert.deepEqual(
-    parseStreamCommand({
-      type: 'task.create',
-      title: 'Nullable linear fields',
-      linear: {
-        url: null,
-        projectMilestoneId: null,
-        priority: null,
-        estimate: null,
-        labelIds: null,
-      },
-    }),
-    {
-      type: 'task.create',
-      title: 'Nullable linear fields',
-      linear: {
-        url: null,
-        projectMilestoneId: null,
-        priority: null,
-        estimate: null,
-        labelIds: null,
-      },
-    },
-  );
+  assert.deepEqual(parseStreamCommand({ type: 'task.create', title: 'Simple task' }), {
+    type: 'task.create',
+    title: 'Simple task',
+  });
   assert.deepEqual(
     parseStreamCommand({
       type: 'task.list',
@@ -251,10 +201,6 @@ void test('parseStreamCommand parses repository and task commands', () => {
       title: 'Implement task API v2',
       description: 'allow null repository',
       repositoryId: null,
-      linear: {
-        priority: 1,
-        labelIds: ['migration'],
-      },
     }),
     {
       type: 'task.update',
@@ -262,10 +208,6 @@ void test('parseStreamCommand parses repository and task commands', () => {
       title: 'Implement task API v2',
       description: 'allow null repository',
       repositoryId: null,
-      linear: {
-        priority: 1,
-        labelIds: ['migration'],
-      },
     },
   );
   assert.deepEqual(
@@ -360,20 +302,11 @@ void test('parseStreamCommand parses repository and task commands', () => {
       frozen: true,
     },
   );
-  assert.deepEqual(
-    parseStreamCommand({
-      type: 'task.update',
-      taskId: 'task-2',
-      title: 'No repository update',
-      linear: null,
-    }),
-    {
-      type: 'task.update',
-      taskId: 'task-2',
-      title: 'No repository update',
-      linear: null,
-    },
-  );
+  assert.deepEqual(parseStreamCommand({ type: 'task.update', taskId: 'task-2', title: 'No changes' }), {
+    type: 'task.update',
+    taskId: 'task-2',
+    title: 'No changes',
+  });
   assert.deepEqual(
     parseStreamCommand({
       type: 'task.update',
@@ -880,46 +813,6 @@ void test('parseStreamCommand rejects unknown or malformed command shapes', () =
   );
   assert.equal(
     parseStreamCommand({
-      type: 'task.create',
-      title: 'bad linear',
-      linear: {
-        priority: 8,
-      },
-    }),
-    null,
-  );
-  assert.equal(
-    parseStreamCommand({
-      type: 'task.create',
-      title: 'bad linear number shape',
-      linear: {
-        priority: 1.5,
-      },
-    }),
-    null,
-  );
-  assert.equal(
-    parseStreamCommand({
-      type: 'task.create',
-      title: 'bad linear string field shape',
-      linear: {
-        teamId: 7,
-      },
-    }),
-    null,
-  );
-  assert.equal(
-    parseStreamCommand({
-      type: 'task.create',
-      title: 'bad linear labels',
-      linear: {
-        labelIds: ['ok', 7],
-      },
-    }),
-    null,
-  );
-  assert.equal(
-    parseStreamCommand({
       type: 'task.get',
     }),
     null,
@@ -985,24 +878,6 @@ void test('parseStreamCommand rejects unknown or malformed command shapes', () =
       type: 'task.update',
       taskId: 'task-1',
       projectId: 5,
-    }),
-    null,
-  );
-  assert.equal(
-    parseStreamCommand({
-      type: 'task.update',
-      taskId: 'task-1',
-      linear: [],
-    }),
-    null,
-  );
-  assert.equal(
-    parseStreamCommand({
-      type: 'task.update',
-      taskId: 'task-1',
-      linear: {
-        issueId: 7,
-      },
     }),
     null,
   );

@@ -59,7 +59,6 @@ export interface ControlPlaneTelemetrySummary {
 
 export type ControlPlaneTaskStatus = 'draft' | 'ready' | 'in-progress' | 'completed';
 export type ControlPlaneTaskScopeKind = 'global' | 'repository' | 'project';
-export type ControlPlaneTaskLinearPriority = 0 | 1 | 2 | 3 | 4;
 export type ControlPlaneProjectTaskFocusMode = 'balanced' | 'own-only';
 export type ControlPlaneProjectThreadSpawnMode = 'new-thread' | 'reuse-thread';
 export type ControlPlaneAutomationPolicyScope = 'global' | 'repository' | 'project';
@@ -71,38 +70,6 @@ export type ControlPlaneGitHubCiRollup =
   | 'cancelled'
   | 'neutral'
   | 'none';
-
-export interface ControlPlaneTaskLinearRecord {
-  readonly issueId: string | null;
-  readonly identifier: string | null;
-  readonly url: string | null;
-  readonly teamId: string | null;
-  readonly projectId: string | null;
-  readonly projectMilestoneId: string | null;
-  readonly cycleId: string | null;
-  readonly stateId: string | null;
-  readonly assigneeId: string | null;
-  readonly priority: ControlPlaneTaskLinearPriority | null;
-  readonly estimate: number | null;
-  readonly dueDate: string | null;
-  readonly labelIds: readonly string[];
-}
-
-export interface TaskLinearInput {
-  issueId?: string | null;
-  identifier?: string | null;
-  url?: string | null;
-  teamId?: string | null;
-  projectId?: string | null;
-  projectMilestoneId?: string | null;
-  cycleId?: string | null;
-  stateId?: string | null;
-  assigneeId?: string | null;
-  priority?: number | null;
-  estimate?: number | null;
-  dueDate?: string | null;
-  labelIds?: readonly string[] | null;
-}
 
 export interface ControlPlaneRepositoryRecord {
   readonly repositoryId: string;
@@ -135,7 +102,6 @@ export interface ControlPlaneTaskRecord {
   readonly baseBranch: string | null;
   readonly claimedAt: string | null;
   readonly completedAt: string | null;
-  readonly linear: ControlPlaneTaskLinearRecord;
   readonly createdAt: string;
   readonly updatedAt: string;
 }

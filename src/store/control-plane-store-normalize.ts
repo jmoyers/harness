@@ -17,16 +17,11 @@ import type {
   ControlPlaneProjectTaskFocusMode,
   ControlPlaneProjectThreadSpawnMode,
   ControlPlaneRepositoryRecord,
-  ControlPlaneTaskLinearPriority,
-  ControlPlaneTaskLinearRecord,
   ControlPlaneTaskRecord,
   ControlPlaneTaskScopeKind,
   ControlPlaneTaskStatus,
   ControlPlaneTelemetryRecord,
-  TaskLinearInput,
 } from './control-plane-store-types.ts';
-
-const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 export function asRecord(value: unknown): Record<string, unknown> {
   if (typeof value !== 'object' || value === null) {
@@ -287,231 +282,6 @@ function normalizeRepositoryMetadata(value: unknown): Record<string, unknown> {
   }
 }
 
-export function defaultTaskLinearRecord(): ControlPlaneTaskLinearRecord {
-  return {
-    issueId: null,
-    identifier: null,
-    url: null,
-    teamId: null,
-    projectId: null,
-    projectMilestoneId: null,
-    cycleId: null,
-    stateId: null,
-    assigneeId: null,
-    priority: null,
-    estimate: null,
-    dueDate: null,
-    labelIds: [],
-  };
-}
-
-function normalizeOptionalTaskLinearString(value: string | null, field: string): string | null {
-  if (value === null) {
-    return null;
-  }
-  return normalizeNonEmptyLabel(value, field);
-}
-
-function normalizeTaskLinearPriority(
-  value: number | null,
-  field: string,
-): ControlPlaneTaskLinearPriority | null {
-  if (value === null) {
-    return null;
-  }
-  if (!Number.isInteger(value) || value < 0 || value > 4) {
-    throw new Error(`expected integer [0..4] for ${field}`);
-  }
-  return value as ControlPlaneTaskLinearPriority;
-}
-
-function normalizeTaskLinearEstimate(value: number | null, field: string): number | null {
-  if (value === null) {
-    return null;
-  }
-  if (!Number.isInteger(value) || value < 0) {
-    throw new Error(`expected non-negative integer for ${field}`);
-  }
-  return value;
-}
-
-function normalizeTaskLinearDueDate(value: string | null, field: string): string | null {
-  if (value === null) {
-    return null;
-  }
-  const normalized = value.trim();
-  if (!DATE_ONLY_PATTERN.test(normalized)) {
-    throw new Error(`expected YYYY-MM-DD for ${field}`);
-  }
-  return normalized;
-}
-
-function normalizeTaskLinearLabelIds(
-  value: readonly string[] | null,
-  field: string,
-): readonly string[] {
-  if (value === null) {
-    return [];
-  }
-  return uniqueValues(
-    value.map((entry, idx) => normalizeNonEmptyLabel(entry, `${field}[${String(idx)}]`)),
-  );
-}
-
-function parseTaskLinearInputRecord(
-  record: Record<string, unknown>,
-  field: string,
-): TaskLinearInput {
-  const parsed: TaskLinearInput = {};
-  if ('issueId' in record) {
-    parsed.issueId = asStringOrNull(record.issueId, `${field}.issueId`);
-  }
-  if ('identifier' in record) {
-    parsed.identifier = asStringOrNull(record.identifier, `${field}.identifier`);
-  }
-  if ('url' in record) {
-    parsed.url = asStringOrNull(record.url, `${field}.url`);
-  }
-  if ('teamId' in record) {
-    parsed.teamId = asStringOrNull(record.teamId, `${field}.teamId`);
-  }
-  if ('projectId' in record) {
-    parsed.projectId = asStringOrNull(record.projectId, `${field}.projectId`);
-  }
-  if ('projectMilestoneId' in record) {
-    parsed.projectMilestoneId = asStringOrNull(
-      record.projectMilestoneId,
-      `${field}.projectMilestoneId`,
-    );
-  }
-  if ('cycleId' in record) {
-    parsed.cycleId = asStringOrNull(record.cycleId, `${field}.cycleId`);
-  }
-  if ('stateId' in record) {
-    parsed.stateId = asStringOrNull(record.stateId, `${field}.stateId`);
-  }
-  if ('assigneeId' in record) {
-    parsed.assigneeId = asStringOrNull(record.assigneeId, `${field}.assigneeId`);
-  }
-  if ('priority' in record) {
-    parsed.priority = asNumberOrNull(record.priority, `${field}.priority`);
-  }
-  if ('estimate' in record) {
-    parsed.estimate = asNumberOrNull(record.estimate, `${field}.estimate`);
-  }
-  if ('dueDate' in record) {
-    parsed.dueDate = asStringOrNull(record.dueDate, `${field}.dueDate`);
-  }
-  if ('labelIds' in record) {
-    const raw = record.labelIds;
-    if (raw === null) {
-      parsed.labelIds = null;
-    } else if (Array.isArray(raw) && raw.every((entry) => typeof entry === 'string')) {
-      parsed.labelIds = raw;
-    } else {
-      throw new Error(`expected string array or null for ${field}.labelIds`);
-    }
-  }
-  return parsed;
-}
-
-export function applyTaskLinearInput(
-  base: ControlPlaneTaskLinearRecord,
-  input: TaskLinearInput,
-): ControlPlaneTaskLinearRecord {
-  return {
-    issueId:
-      input.issueId === undefined
-        ? base.issueId
-        : normalizeOptionalTaskLinearString(input.issueId, 'linear.issueId'),
-    identifier:
-      input.identifier === undefined
-        ? base.identifier
-        : normalizeOptionalTaskLinearString(input.identifier, 'linear.identifier'),
-    url:
-      input.url === undefined
-        ? base.url
-        : normalizeOptionalTaskLinearString(input.url, 'linear.url'),
-    teamId:
-      input.teamId === undefined
-        ? base.teamId
-        : normalizeOptionalTaskLinearString(input.teamId, 'linear.teamId'),
-    projectId:
-      input.projectId === undefined
-        ? base.projectId
-        : normalizeOptionalTaskLinearString(input.projectId, 'linear.projectId'),
-    projectMilestoneId:
-      input.projectMilestoneId === undefined
-        ? base.projectMilestoneId
-        : normalizeOptionalTaskLinearString(input.projectMilestoneId, 'linear.projectMilestoneId'),
-    cycleId:
-      input.cycleId === undefined
-        ? base.cycleId
-        : normalizeOptionalTaskLinearString(input.cycleId, 'linear.cycleId'),
-    stateId:
-      input.stateId === undefined
-        ? base.stateId
-        : normalizeOptionalTaskLinearString(input.stateId, 'linear.stateId'),
-    assigneeId:
-      input.assigneeId === undefined
-        ? base.assigneeId
-        : normalizeOptionalTaskLinearString(input.assigneeId, 'linear.assigneeId'),
-    priority:
-      input.priority === undefined
-        ? base.priority
-        : normalizeTaskLinearPriority(input.priority, 'linear.priority'),
-    estimate:
-      input.estimate === undefined
-        ? base.estimate
-        : normalizeTaskLinearEstimate(input.estimate, 'linear.estimate'),
-    dueDate:
-      input.dueDate === undefined
-        ? base.dueDate
-        : normalizeTaskLinearDueDate(input.dueDate, 'linear.dueDate'),
-    labelIds:
-      input.labelIds === undefined
-        ? base.labelIds
-        : normalizeTaskLinearLabelIds(input.labelIds, 'linear.labelIds'),
-  };
-}
-
-export function serializeTaskLinear(linear: ControlPlaneTaskLinearRecord): string {
-  return JSON.stringify({
-    issueId: linear.issueId,
-    identifier: linear.identifier,
-    url: linear.url,
-    teamId: linear.teamId,
-    projectId: linear.projectId,
-    projectMilestoneId: linear.projectMilestoneId,
-    cycleId: linear.cycleId,
-    stateId: linear.stateId,
-    assigneeId: linear.assigneeId,
-    priority: linear.priority,
-    estimate: linear.estimate,
-    dueDate: linear.dueDate,
-    labelIds: [...linear.labelIds],
-  });
-}
-
-function normalizeTaskLinear(value: unknown): ControlPlaneTaskLinearRecord {
-  if (typeof value !== 'string') {
-    throw new Error('expected string for linear_json');
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(value) as unknown;
-  } catch {
-    return defaultTaskLinearRecord();
-  }
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    return defaultTaskLinearRecord();
-  }
-  return applyTaskLinearInput(
-    defaultTaskLinearRecord(),
-    parseTaskLinearInputRecord(parsed as Record<string, unknown>, 'linear_json'),
-  );
-}
-
 function normalizeTaskStatus(value: unknown): ControlPlaneTaskStatus {
   const status = asString(value, 'status');
   if (
@@ -633,7 +403,6 @@ export function normalizeTaskRow(value: unknown): ControlPlaneTaskRecord {
     baseBranch: asStringOrNull(row.base_branch, 'base_branch'),
     claimedAt: asStringOrNull(row.claimed_at, 'claimed_at'),
     completedAt: asStringOrNull(row.completed_at, 'completed_at'),
-    linear: normalizeTaskLinear(row.linear_json),
     createdAt: asString(row.created_at, 'created_at'),
     updatedAt: asString(row.updated_at, 'updated_at'),
   };

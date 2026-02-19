@@ -208,6 +208,7 @@ Required read/stream categories:
 
 ## Task Orchestration Model
 
+- Tasks are first-party and provider-agnostic; core task records do not embed third-party issue schemas.
 - Task scope is explicit and normalized: `global`, `repository`, or `project`.
 - Pull eligibility is status-gated: only `ready` tasks are pull candidates (`draft` is never auto-pulled).
 - Project-level pull order:

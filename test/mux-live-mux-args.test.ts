@@ -35,6 +35,12 @@ void test('parseMuxArgs resolves defaults and positional codex args', () => {
 });
 
 void test('parseMuxArgs reads control-plane flags and maps --record to .harness/recordings', () => {
+  const env: NodeJS.ProcessEnv = {
+    ...baseEnv,
+    HARNESS_EVENTS_DB_PATH: 'custom-events.sqlite',
+    HARNESS_CONVERSATION_ID: 'conversation-fixed',
+    HARNESS_TURN_ID: 'turn-fixed',
+  };
   const parsed = parseMuxArgs(
     [
       '--harness-server-host',
@@ -46,12 +52,7 @@ void test('parseMuxArgs reads control-plane flags and maps --record to .harness/
       '--record',
     ],
     {
-      env: {
-        ...baseEnv,
-        HARNESS_EVENTS_DB_PATH: 'custom-events.sqlite',
-        HARNESS_CONVERSATION_ID: 'conversation-fixed',
-        HARNESS_TURN_ID: 'turn-fixed',
-      },
+      env,
       cwd: '/tmp/cwd',
       randomId: () => 'record-id',
       nowIso: () => '2026-02-18T12:34:56.789Z',
@@ -61,10 +62,7 @@ void test('parseMuxArgs reads control-plane flags and maps --record to .harness/
   assert.equal(parsed.controlPlaneHost, '127.0.0.1');
   assert.equal(parsed.controlPlanePort, 7777);
   assert.equal(parsed.controlPlaneAuthToken, 'secret');
-  assert.equal(
-    parsed.storePath,
-    resolveHarnessRuntimePath('/tmp/work', 'custom-events.sqlite', baseEnv),
-  );
+  assert.equal(parsed.storePath, resolveHarnessRuntimePath('/tmp/work', 'custom-events.sqlite', env));
   assert.equal(parsed.initialConversationId, 'conversation-fixed');
   assert.equal(parsed.scope.turnId, 'turn-fixed');
   assert.equal(
@@ -72,7 +70,7 @@ void test('parseMuxArgs reads control-plane flags and maps --record to .harness/
     resolveHarnessRuntimePath(
       '/tmp/work',
       '.harness/recordings/2026-02-18T12-34-56-789Z-record-id.gif',
-      baseEnv,
+      env,
     ),
   );
   assert.equal(
@@ -80,7 +78,7 @@ void test('parseMuxArgs reads control-plane flags and maps --record to .harness/
     resolveHarnessRuntimePath(
       '/tmp/work',
       '.harness/recordings/2026-02-18T12-34-56-789Z-record-id.jsonl',
-      baseEnv,
+      env,
     ),
   );
   assert.equal(parsed.recordingFps, 30);
@@ -110,9 +108,8 @@ void test('parseMuxArgs uses default nowIso clock when --record is enabled witho
     env: baseEnv,
     randomId: () => 'id-8',
   });
-  const recordingRoot = resolveHarnessRuntimePath('/tmp/work', '.harness/recordings', baseEnv);
-  assert.match(parsed.recordingPath ?? '', new RegExp(`^${recordingRoot}/.+-id-8\\.jsonl$`));
-  assert.match(parsed.recordingGifOutputPath ?? '', new RegExp(`^${recordingRoot}/.+-id-8\\.gif$`));
+  assert.match(parsed.recordingPath ?? '', /\/recordings\/.+-id-8\.jsonl$/);
+  assert.match(parsed.recordingGifOutputPath ?? '', /\/recordings\/.+-id-8\.gif$/);
 });
 
 void test('parseMuxArgs rejects deprecated recording flags', () => {

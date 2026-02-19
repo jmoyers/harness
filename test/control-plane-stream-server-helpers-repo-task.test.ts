@@ -975,7 +975,7 @@ void test('stream server exposes repository and task commands', async () => {
     const repositoryRows = listedRepositories['repositories'] as Array<Record<string, unknown>>;
     assert.equal(repositoryRows.length, 1);
 
-    const createdTask = await client.sendCommand({
+    await client.sendCommand({
       type: 'task.create',
       taskId: 'task-1',
       tenantId: 'tenant-task-1',
@@ -984,22 +984,7 @@ void test('stream server exposes repository and task commands', async () => {
       repositoryId: 'repository-1',
       title: 'Implement repository API',
       description: 'Add stream commands for repositories',
-      linear: {
-        issueId: 'linear-1',
-        identifier: 'ENG-10',
-        teamId: 'team-eng',
-        priority: 2,
-        estimate: 3,
-        dueDate: '2026-03-05',
-        labelIds: ['backend'],
-      },
     });
-    assert.equal(
-      ((createdTask['task'] as Record<string, unknown>)['linear'] as Record<string, unknown>)[
-        'identifier'
-      ],
-      'ENG-10',
-    );
     await client.sendCommand({
       type: 'task.create',
       taskId: 'task-2',
@@ -1051,35 +1036,16 @@ void test('stream server exposes repository and task commands', async () => {
       taskId: 'task-2',
       repositoryId: 'repository-1',
       title: 'Implement task API v2',
-      linear: {
-        identifier: 'ENG-11',
-        priority: 1,
-      },
     });
     assert.equal((updatedTask['task'] as Record<string, unknown>)['repositoryId'], 'repository-1');
-    assert.equal(
-      ((updatedTask['task'] as Record<string, unknown>)['linear'] as Record<string, unknown>)[
-        'identifier'
-      ],
-      'ENG-11',
-    );
-    const updatedTaskWithoutLinear = await client.sendCommand({
+    const updatedTaskWithoutRepositoryMetadata = await client.sendCommand({
       type: 'task.update',
       taskId: 'task-2',
-      description: 'Add stream commands for tasks and linear references',
+      description: 'Add stream commands for tasks',
     });
     assert.equal(
-      (updatedTaskWithoutLinear['task'] as Record<string, unknown>)['description'],
-      'Add stream commands for tasks and linear references',
-    );
-    assert.equal(
-      (
-        (updatedTaskWithoutLinear['task'] as Record<string, unknown>)['linear'] as Record<
-          string,
-          unknown
-        >
-      )['identifier'],
-      'ENG-11',
+      (updatedTaskWithoutRepositoryMetadata['task'] as Record<string, unknown>)['description'],
+      'Add stream commands for tasks',
     );
 
     const reordered = await client.sendCommand({

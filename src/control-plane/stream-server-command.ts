@@ -208,7 +208,6 @@ interface ExecuteCommandContext {
       projectId?: string;
       title: string;
       description?: string;
-      linear?: Record<string, unknown>;
     }): ControlPlaneTaskRecord;
     getTask(taskId: string): ControlPlaneTaskRecord | null;
     listTasks(query: {
@@ -228,7 +227,6 @@ interface ExecuteCommandContext {
         description?: string;
         repositoryId?: string | null;
         projectId?: string | null;
-        linear?: Record<string, unknown> | null;
       },
     ): ControlPlaneTaskRecord | null;
     deleteTask(taskId: string): void;
@@ -1599,21 +1597,6 @@ export async function executeStreamServerCommand(
       projectId?: string;
       title: string;
       description?: string;
-      linear?: {
-        issueId?: string | null;
-        identifier?: string | null;
-        url?: string | null;
-        teamId?: string | null;
-        projectId?: string | null;
-        projectMilestoneId?: string | null;
-        cycleId?: string | null;
-        stateId?: string | null;
-        assigneeId?: string | null;
-        priority?: number | null;
-        estimate?: number | null;
-        dueDate?: string | null;
-        labelIds?: readonly string[] | null;
-      };
     } = {
       taskId: command.taskId ?? `task-${randomUUID()}`,
       tenantId: command.tenantId ?? DEFAULT_TENANT_ID,
@@ -1629,9 +1612,6 @@ export async function executeStreamServerCommand(
     }
     if (command.description !== undefined) {
       input.description = command.description;
-    }
-    if (command.linear !== undefined) {
-      input.linear = command.linear;
     }
     const task = ctx.stateStore.createTask(input);
     ctx.publishObservedEvent(
@@ -1709,21 +1689,6 @@ export async function executeStreamServerCommand(
       description?: string;
       repositoryId?: string | null;
       projectId?: string | null;
-      linear?: {
-        issueId?: string | null;
-        identifier?: string | null;
-        url?: string | null;
-        teamId?: string | null;
-        projectId?: string | null;
-        projectMilestoneId?: string | null;
-        cycleId?: string | null;
-        stateId?: string | null;
-        assigneeId?: string | null;
-        priority?: number | null;
-        estimate?: number | null;
-        dueDate?: string | null;
-        labelIds?: readonly string[] | null;
-      } | null;
     } = {};
     if (command.title !== undefined) {
       update.title = command.title;
@@ -1736,9 +1701,6 @@ export async function executeStreamServerCommand(
     }
     if (command.projectId !== undefined) {
       update.projectId = command.projectId;
-    }
-    if (command.linear !== undefined) {
-      update.linear = command.linear;
     }
     const updated = ctx.stateStore.updateTask(command.taskId, update);
     if (updated === null) {

@@ -46,6 +46,7 @@ This project has two core documents:
 - Stream transport is primary; request/response wrappers are optional layers over the stream protocol.
 - Latency-critical hot paths must remain first-party and dependency-restricted.
 - Git is the authoritative source for diffs; adapter diffs are hints only.
+- Core task records are provider-agnostic; external tracker schemas/mappings live in integration layers, not the task schema.
 - Persistence is one shared tenanted SQLite store with an append-only `events` table.
 - State and event writes must be transactional in SQLite.
 - SQLite schema migrations must be explicit, transactional, and versioned (`PRAGMA user_version`); unknown newer schema versions must fail closed.

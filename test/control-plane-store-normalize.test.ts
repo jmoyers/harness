@@ -17,7 +17,6 @@ function baseTaskRow(): Record<string, unknown> {
     scope_kind: 'global',
     title: 'Task',
     description: '',
-    linear_json: '{}',
     status: 'ready',
     order_index: 0,
     claimed_by_controller_id: null,

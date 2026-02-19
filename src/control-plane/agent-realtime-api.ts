@@ -226,39 +226,6 @@ export interface AgentRepositoryUpdateInput {
 }
 
 export type AgentTaskStatus = 'draft' | 'ready' | 'in-progress' | 'completed';
-export type AgentTaskLinearPriority = 0 | 1 | 2 | 3 | 4;
-
-export interface AgentTaskLinearRecord {
-  issueId: string | null;
-  identifier: string | null;
-  url: string | null;
-  teamId: string | null;
-  projectId: string | null;
-  projectMilestoneId: string | null;
-  cycleId: string | null;
-  stateId: string | null;
-  assigneeId: string | null;
-  priority: AgentTaskLinearPriority | null;
-  estimate: number | null;
-  dueDate: string | null;
-  labelIds: readonly string[];
-}
-
-export interface AgentTaskLinearInput {
-  issueId?: string | null;
-  identifier?: string | null;
-  url?: string | null;
-  teamId?: string | null;
-  projectId?: string | null;
-  projectMilestoneId?: string | null;
-  cycleId?: string | null;
-  stateId?: string | null;
-  assigneeId?: string | null;
-  priority?: AgentTaskLinearPriority | null;
-  estimate?: number | null;
-  dueDate?: string | null;
-  labelIds?: readonly string[] | null;
-}
 
 export interface AgentTask {
   taskId: string;
@@ -278,7 +245,6 @@ export interface AgentTask {
   baseBranch: string | null;
   claimedAt: string | null;
   completedAt: string | null;
-  linear: AgentTaskLinearRecord;
   createdAt: string;
   updatedAt: string;
 }
@@ -289,7 +255,6 @@ export interface AgentTaskCreateInput extends AgentScopeQuery {
   projectId?: string;
   title: string;
   description?: string;
-  linear?: AgentTaskLinearInput;
 }
 
 export interface AgentTaskListQuery extends AgentScopeQuery {
@@ -305,7 +270,6 @@ export interface AgentTaskUpdateInput {
   description?: string;
   repositoryId?: string | null;
   projectId?: string | null;
-  linear?: AgentTaskLinearInput | null;
 }
 
 export interface AgentTaskClaimInput {
@@ -411,100 +375,6 @@ function readNullableNumber(value: unknown): number | null | undefined {
     return value;
   }
   return undefined;
-}
-
-function readStringArray(value: unknown): readonly string[] | undefined {
-  if (!Array.isArray(value)) {
-    return undefined;
-  }
-  if (!value.every((entry) => typeof entry === 'string')) {
-    return undefined;
-  }
-  return [...value];
-}
-
-function defaultTaskLinearRecord(): AgentTaskLinearRecord {
-  return {
-    issueId: null,
-    identifier: null,
-    url: null,
-    teamId: null,
-    projectId: null,
-    projectMilestoneId: null,
-    cycleId: null,
-    stateId: null,
-    assigneeId: null,
-    priority: null,
-    estimate: null,
-    dueDate: null,
-    labelIds: [],
-  };
-}
-
-function parseTaskLinearRecord(value: unknown): AgentTaskLinearRecord | null {
-  if (value === undefined) {
-    return defaultTaskLinearRecord();
-  }
-  const record = asRecord(value);
-  if (record === null) {
-    return null;
-  }
-
-  const issueId = readNullableString(record['issueId']);
-  const identifier = readNullableString(record['identifier']);
-  const url = readNullableString(record['url']);
-  const teamId = readNullableString(record['teamId']);
-  const projectId = readNullableString(record['projectId']);
-  const projectMilestoneId = readNullableString(record['projectMilestoneId']);
-  const cycleId = readNullableString(record['cycleId']);
-  const stateId = readNullableString(record['stateId']);
-  const assigneeId = readNullableString(record['assigneeId']);
-  const priority = readNullableNumber(record['priority']);
-  const estimate = readNullableNumber(record['estimate']);
-  const dueDate = readNullableString(record['dueDate']);
-  const labelIdsRaw = record['labelIds'];
-  const labelIds = labelIdsRaw === undefined ? [] : readStringArray(labelIdsRaw);
-  if (
-    issueId === undefined ||
-    identifier === undefined ||
-    url === undefined ||
-    teamId === undefined ||
-    projectId === undefined ||
-    projectMilestoneId === undefined ||
-    cycleId === undefined ||
-    stateId === undefined ||
-    assigneeId === undefined ||
-    priority === undefined ||
-    estimate === undefined ||
-    dueDate === undefined ||
-    labelIds === undefined
-  ) {
-    return null;
-  }
-  if (priority !== null && !Number.isInteger(priority)) {
-    return null;
-  }
-  if (priority !== null && (priority < 0 || priority > 4)) {
-    return null;
-  }
-  if (estimate !== null && (!Number.isInteger(estimate) || estimate < 0)) {
-    return null;
-  }
-  return {
-    issueId,
-    identifier,
-    url,
-    teamId,
-    projectId,
-    projectMilestoneId,
-    cycleId,
-    stateId,
-    assigneeId,
-    priority: priority as AgentTaskLinearPriority | null,
-    estimate,
-    dueDate,
-    labelIds,
-  };
 }
 
 function parseTaskStatus(value: unknown): AgentTaskStatus | null {
@@ -958,7 +828,6 @@ function parseTaskRecord(value: unknown): AgentTask | null {
   const baseBranch = readNullableString(record['baseBranch']);
   const claimedAt = readNullableString(record['claimedAt']);
   const completedAt = readNullableString(record['completedAt']);
-  const linear = parseTaskLinearRecord(record['linear']);
   const createdAt = readString(record['createdAt']);
   const updatedAt = readString(record['updatedAt']);
   if (
@@ -979,7 +848,6 @@ function parseTaskRecord(value: unknown): AgentTask | null {
     baseBranch === undefined ||
     claimedAt === undefined ||
     completedAt === undefined ||
-    linear === null ||
     createdAt === null ||
     updatedAt === null
   ) {
@@ -1003,7 +871,6 @@ function parseTaskRecord(value: unknown): AgentTask | null {
     baseBranch,
     claimedAt,
     completedAt,
-    linear,
     createdAt,
     updatedAt,
   };
@@ -1885,7 +1752,6 @@ export class HarnessAgentRealtimeClient {
       ...optionalField('projectId', input.projectId),
       title: input.title,
       ...optionalField('description', input.description),
-      ...optionalField('linear', input.linear),
     });
     return requireParsed(
       result['task'],

@@ -373,21 +373,6 @@ void test('agent realtime client exposes typed CRUD wrappers for projects thread
     baseBranch: null,
     claimedAt: null,
     completedAt: null,
-    linear: {
-      issueId: 'linear-1',
-      identifier: 'ENG-9',
-      url: 'https://linear.app/acme/issue/ENG-9',
-      teamId: 'team-eng',
-      projectId: 'project-1',
-      projectMilestoneId: null,
-      cycleId: null,
-      stateId: 'state-backlog',
-      assigneeId: 'user-1',
-      priority: 2,
-      estimate: 3,
-      dueDate: '2026-03-05',
-      labelIds: ['bug', 'api'],
-    },
     createdAt: timestamp,
     updatedAt: timestamp,
   };
@@ -917,8 +902,6 @@ void test('agent realtime client exposes typed CRUD wrappers for projects thread
     description: 'details',
   });
   assert.equal(createdTask.taskId, 'task-1');
-  assert.equal(createdTask.linear.identifier, 'ENG-9');
-  assert.deepEqual(createdTask.linear.labelIds, ['bug', 'api']);
   await assert.rejects(
     realtime.client.createTask({
       title: 'bad',
@@ -936,7 +919,6 @@ void test('agent realtime client exposes typed CRUD wrappers for projects thread
     title: 'updated',
   });
   assert.equal(updatedTask.status, 'in-progress');
-  assert.equal(updatedTask.linear.priority, 2);
   const deletedTask = await realtime.client.tasks.delete('task-1');
   assert.equal(deletedTask.deleted, true);
   await assert.rejects(realtime.client.tasks.delete('task-1'), /malformed response/);
@@ -1083,131 +1065,10 @@ void test('agent realtime client accepts draft task status and completed thread 
   assert.equal(threads[0]?.runtimeStatus, 'completed');
   const tasks = await realtime.client.tasks.list();
   assert.equal(tasks[0]?.status, 'draft');
-  assert.equal(tasks[0]?.linear.priority, null);
 
   await realtime.client.close();
 });
 
-void test('agent realtime client rejects malformed linear task payloads', async () => {
-  const mockClient = new MockRealtimeControlPlaneClient();
-  const realtime = createRealtimeClientForTest(mockClient);
-  const timestamp = '2026-02-01T00:00:00.000Z';
-
-  mockClient.queueResult('task.get', {
-    task: {
-      taskId: 'task-invalid-linear',
-      tenantId: 'tenant-local',
-      userId: 'user-local',
-      workspaceId: 'workspace-local',
-      repositoryId: null,
-      scopeKind: 'global',
-      projectId: null,
-      title: 'invalid linear payload',
-      description: '',
-      status: 'ready',
-      orderIndex: 1,
-      claimedByControllerId: null,
-      claimedByDirectoryId: null,
-      branchName: null,
-      baseBranch: null,
-      claimedAt: null,
-      completedAt: null,
-      linear: {
-        priority: 9,
-      },
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    },
-  });
-
-  await assert.rejects(
-    realtime.client.tasks.get('task-invalid-linear'),
-    /task\.get returned malformed task/,
-  );
-  await realtime.client.close();
-});
-
-void test('agent realtime client linear parser covers malformed shape branches', async () => {
-  const mockClient = new MockRealtimeControlPlaneClient();
-  const realtime = createRealtimeClientForTest(mockClient);
-  const timestamp = '2026-02-01T00:00:00.000Z';
-
-  const baseTask = {
-    taskId: 'task-linear-branches',
-    tenantId: 'tenant-local',
-    userId: 'user-local',
-    workspaceId: 'workspace-local',
-    repositoryId: null,
-    scopeKind: 'global',
-    projectId: null,
-    title: 'linear parser branches',
-    description: '',
-    status: 'ready',
-    orderIndex: 1,
-    claimedByControllerId: null,
-    claimedByDirectoryId: null,
-    branchName: null,
-    baseBranch: null,
-    claimedAt: null,
-    completedAt: null,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
-  const linearShapeBase = {
-    issueId: null,
-    identifier: null,
-    url: null,
-    teamId: null,
-    projectId: null,
-    projectMilestoneId: null,
-    cycleId: null,
-    stateId: null,
-    assigneeId: null,
-    priority: null,
-    estimate: null,
-    dueDate: null,
-    labelIds: [],
-  };
-
-  mockClient.queueResult('task.get', { task: { ...baseTask, linear: [] } });
-  mockClient.queueResult('task.get', { task: { ...baseTask, linear: { labelIds: {} } } });
-  mockClient.queueResult('task.get', { task: { ...baseTask, linear: { labelIds: ['ok', 7] } } });
-  mockClient.queueResult('task.get', {
-    task: { ...baseTask, linear: { ...linearShapeBase, priority: 1.5 } },
-  });
-  mockClient.queueResult('task.get', {
-    task: { ...baseTask, linear: { ...linearShapeBase, priority: 5 } },
-  });
-  mockClient.queueResult('task.get', {
-    task: { ...baseTask, linear: { ...linearShapeBase, estimate: -1 } },
-  });
-
-  await assert.rejects(
-    realtime.client.tasks.get('task-linear-branches'),
-    /task\.get returned malformed task/,
-  );
-  await assert.rejects(
-    realtime.client.tasks.get('task-linear-branches'),
-    /task\.get returned malformed task/,
-  );
-  await assert.rejects(
-    realtime.client.tasks.get('task-linear-branches'),
-    /task\.get returned malformed task/,
-  );
-  await assert.rejects(
-    realtime.client.tasks.get('task-linear-branches'),
-    /task\.get returned malformed task/,
-  );
-  await assert.rejects(
-    realtime.client.tasks.get('task-linear-branches'),
-    /task\.get returned malformed task/,
-  );
-  await assert.rejects(
-    realtime.client.tasks.get('task-linear-branches'),
-    /task\.get returned malformed task/,
-  );
-  await realtime.client.close();
-});
 
 void test('agent realtime connect forwards optional filters and ignores unrelated subscription events', async () => {
   const sockets = new Set<Socket>();
@@ -1568,21 +1429,6 @@ void test('agent realtime sessions aliases and draft task helper issue expected 
       baseBranch: null,
       claimedAt: null,
       completedAt: null,
-      linear: {
-        issueId: null,
-        identifier: null,
-        url: null,
-        teamId: null,
-        projectId: null,
-        projectMilestoneId: null,
-        cycleId: null,
-        stateId: null,
-        assigneeId: null,
-        priority: null,
-        estimate: null,
-        dueDate: null,
-        labelIds: [],
-      },
       createdAt: timestamp,
       updatedAt: timestamp,
     },

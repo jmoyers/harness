@@ -56,7 +56,7 @@ void test('control-plane store migrates legacy task schema and stamps schema ver
       .prepare('PRAGMA table_info(tasks);')
       .all()
       .map((row) => String((row as Record<string, unknown>)['name']));
-    assert.equal(taskColumns.includes('linear_json'), true);
+    assert.equal(taskColumns.includes('linear_json'), false);
     assert.equal(taskColumns.includes('scope_kind'), true);
     assert.equal(taskColumns.includes('project_id'), true);
   } finally {
