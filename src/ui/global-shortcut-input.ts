@@ -50,7 +50,12 @@ function isTerminalAgentType(agentType: string | null): boolean {
 }
 
 function shouldBypassCtrlOnlyShortcutInTerminalConversation(shortcut: string | null): boolean {
-  if (shortcut === 'mux.conversation.archive' || shortcut === 'mux.conversation.delete') {
+  if (
+    shortcut === 'mux.conversation.archive' ||
+    shortcut === 'mux.conversation.delete' ||
+    shortcut === 'mux.conversation.next' ||
+    shortcut === 'mux.conversation.previous'
+  ) {
     return false;
   }
   return true;

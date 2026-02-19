@@ -793,7 +793,7 @@ Design constraints:
   - normalized action-oriented conversation status labels (`starting`, `needs action`, `working`, `idle`, `exited`)
   - keybindings loaded from `harness.config.jsonc` using action IDs and parseable key strings (including Home task-composer actions under `mux.home.*`)
   - keybinding matcher treats `ctrl` and `cmd`/`meta` as distinct modifiers; cross-platform parity requires explicit bindings for both chords
-  - terminal-thread input precedence: when the active conversation agent type is `terminal`, `ctrl`-only chords are treated as shell/readline input and bypass global shortcut dispatch
+  - terminal-thread input precedence: when the active conversation agent type is `terminal`, most `ctrl`-only chords are treated as shell/readline input and bypass global shortcut dispatch, while reserved mux actions (including `ctrl+j/k` thread navigation) stay global
 - Global shortcuts:
   - switch workspace/worktree/conversation
   - attach terminal

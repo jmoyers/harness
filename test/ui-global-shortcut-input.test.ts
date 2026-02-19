@@ -301,6 +301,52 @@ void test('global shortcut input still handles archive/delete ctrl-only shortcut
   assert.deepEqual(calls, ['handled:mux.conversation.archive', 'handled:mux.conversation.delete']);
 });
 
+void test('global shortcut input still handles thread navigation ctrl-only shortcuts for terminal conversations', () => {
+  const calls: string[] = [];
+  const shortcuts: Array<'mux.conversation.next' | 'mux.conversation.previous'> = [
+    'mux.conversation.next',
+    'mux.conversation.previous',
+  ];
+  const input = new GlobalShortcutInput(
+    {
+      shortcutBindings: resolveMuxShortcutBindings(),
+      requestStop: () => {},
+      resolveDirectoryForAction: () => null,
+      openNewThreadPrompt: () => {},
+      toggleCommandMenu: () => {},
+      openOrCreateCritiqueConversationInDirectory: async () => {},
+      toggleGatewayProfile: async () => {},
+      toggleGatewayStatusTimeline: async () => {},
+      toggleGatewayRenderTrace: async () => {},
+      getMainPaneMode: () => 'conversation',
+      getActiveConversationId: () => 'session-terminal',
+      getActiveConversationAgentType: () => 'terminal',
+      conversationsHas: () => true,
+      queueControlPlaneOp: () => {},
+      archiveConversation: async () => {},
+      refreshAllConversationTitles: async () => {},
+      interruptConversation: async () => {},
+      takeoverConversation: async () => {},
+      openAddDirectoryPrompt: () => {},
+      getActiveDirectoryId: () => null,
+      directoryExists: () => false,
+      closeDirectory: async () => {},
+      cycleLeftNavSelection: () => {},
+    },
+    {
+      detectMuxGlobalShortcut: () => shortcuts.shift() ?? 'mux.conversation.previous',
+      handleGlobalShortcut: (options) => {
+        calls.push(`handled:${options.shortcut}`);
+        return true;
+      },
+    },
+  );
+
+  assert.equal(input.handleInput(Buffer.from([0x0a])), true);
+  assert.equal(input.handleInput(Buffer.from([0x0b])), true);
+  assert.deepEqual(calls, ['handled:mux.conversation.next', 'handled:mux.conversation.previous']);
+});
+
 void test('global shortcut input still handles non-ctrl shortcuts for terminal conversations', () => {
   const calls: string[] = [];
   const input = new GlobalShortcutInput(

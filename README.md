@@ -60,7 +60,7 @@ For restart/load diagnostics, use a named session with a non-default gateway por
 - Critique review actions are available from the global palette and run in a terminal thread.
 - `ctrl+g` opens the project’s critique thread (or creates one if needed).
 - `ctrl` and `cmd` shortcut chords are distinct; configure both explicitly when you want cross-platform parity.
-- In terminal threads, `ctrl`-only readline chords (for example `ctrl+r`, `ctrl+w`, `ctrl+u`, `ctrl+k`, `ctrl+a`, `ctrl+e`, `ctrl+p`, `ctrl+n`) pass through to the shell instead of being consumed as global shortcuts.
+- In terminal threads, most `ctrl`-only readline chords (for example `ctrl+r`, `ctrl+w`, `ctrl+u`, `ctrl+a`, `ctrl+e`, `ctrl+p`, `ctrl+n`) pass through to the shell; `ctrl+j/k` remain reserved for thread navigation.
 - Theme selection is built in (`Set a Theme`) with OpenCode-compatible presets and live preview.
 - API keys can be set directly from `ctrl+p` / `cmd+p` (`Set Anthropic API Key`, `Set OpenAI API Key`), with overwrite warning and paste-friendly entry.
 - `Show What's New` opens release highlights (first lines only); if notes are empty it falls back to a simple version-available notice with links.
