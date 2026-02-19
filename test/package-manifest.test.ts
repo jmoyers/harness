@@ -18,7 +18,10 @@ function isPathPublished(files: readonly string[], targetPath: string): boolean 
   const normalizedTarget = normalizeManifestPath(targetPath);
   for (const entry of files) {
     const normalizedEntry = normalizeManifestPath(entry).replace(/\/+$/u, '');
-    if (normalizedTarget === normalizedEntry || normalizedTarget.startsWith(`${normalizedEntry}/`)) {
+    if (
+      normalizedTarget === normalizedEntry ||
+      normalizedTarget.startsWith(`${normalizedEntry}/`)
+    ) {
       return true;
     }
   }
@@ -58,8 +61,14 @@ test('package publish manifest covers local relative imports for published scrip
   const files = parsed.files ?? [];
   const scriptEntries = files
     .map((entry) => normalizeManifestPath(entry))
-    .filter((entry) => entry.startsWith('scripts/') && (entry.endsWith('.ts') || entry.endsWith('.js')));
-  assert.equal(scriptEntries.length > 0, true, 'package.json files has no published script entries');
+    .filter(
+      (entry) => entry.startsWith('scripts/') && (entry.endsWith('.ts') || entry.endsWith('.js')),
+    );
+  assert.equal(
+    scriptEntries.length > 0,
+    true,
+    'package.json files has no published script entries',
+  );
 
   const visited = new Set<string>();
   const queue = [...scriptEntries];
