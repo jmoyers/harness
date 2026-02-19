@@ -332,7 +332,7 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
       defaultArgs: ['--watch'],
     },
     install: {
-      command: 'bunx critique@latest',
+      command: 'bun add --global critique@latest',
     },
   },
   hooks: {
@@ -1117,12 +1117,12 @@ function normalizeAgentInstallConfig(
     const autoInstallRaw = record['autoInstall'];
     if (typeof autoInstallRaw === 'boolean') {
       return {
-        command: autoInstallRaw ? `bunx ${packageName}` : null,
+        command: autoInstallRaw ? `bun add --global ${packageName}` : null,
       };
     }
     if (typeof packageRaw === 'string') {
       return {
-        command: `bunx ${packageName}`,
+        command: `bun add --global ${packageName}`,
       };
     }
   }

@@ -37,7 +37,7 @@ void test('fresh-install style PATH returns unavailable tools with configured in
           codex: { command: 'brew install codex-cli' },
           claude: { command: 'brew install claude-code' },
           cursor: { command: 'brew install cursor-agent' },
-          critique: { command: 'bunx critique@latest' },
+          critique: { command: 'bun add --global critique@latest' },
         },
       });
       try {
@@ -60,7 +60,7 @@ void test('fresh-install style PATH returns unavailable tools with configured in
         );
         assert.equal(
           tools.find((tool) => tool.agentType === 'critique')?.installCommand,
-          'bunx critique@latest',
+          'bun add --global critique@latest',
         );
       } finally {
         await server.close();

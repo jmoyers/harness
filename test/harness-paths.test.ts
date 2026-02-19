@@ -38,3 +38,11 @@ void test('harness paths fall back when home env is blank and sanitize empty wor
   const rootWorkspaceRuntime = resolveHarnessWorkspaceDirectory('/', env);
   assert.equal(basename(rootWorkspaceRuntime).startsWith('workspace-'), true);
 });
+
+void test('harness paths sanitize whitespace-only workspace basename', () => {
+  const resolvedPath = resolveHarnessWorkspaceDirectory('/tmp/   ', {
+    XDG_CONFIG_HOME: '/tmp/harness-paths-xdg',
+  });
+  const slug = resolvedPath.split(/[/\\]/u).at(-1) ?? '';
+  assert.match(slug, /^workspace-[0-9a-f]{12}$/u);
+});

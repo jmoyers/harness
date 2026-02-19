@@ -428,7 +428,7 @@ const DEFAULT_AGENT_INSTALL_COMMANDS: Readonly<Record<AgentToolType, string | nu
   codex: null,
   claude: null,
   cursor: null,
-  critique: 'bunx critique@latest',
+  critique: 'bun add --global critique@latest',
 };
 const DEFAULT_CURSOR_HOOK_RELAY_SCRIPT_PATH = fileURLToPath(
   new URL('../../scripts/cursor-hook-relay.ts', import.meta.url),

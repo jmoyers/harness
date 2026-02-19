@@ -142,7 +142,7 @@ Example (install commands + critique defaults + hotkey override + OpenCode theme
       "defaultArgs": ["--watch"]
     },
     "install": {
-      "command": "bunx critique@latest"
+      "command": "bun add --global critique@latest"
     }
   },
   "mux": {

@@ -87,8 +87,7 @@
       "defaultArgs": ["--watch"],
     },
     "install": {
-      "autoInstall": true,
-      "package": "critique@latest",
+      "command": "bun add --global critique@latest",
     },
   },
   "hooks": {

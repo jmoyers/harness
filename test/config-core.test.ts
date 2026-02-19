@@ -917,7 +917,7 @@ void test('parseHarnessConfigText preserves legacy critique install autoInstall/
       }
     }
   `);
-  assert.equal(parsed.critique.install.command, 'bunx critique@next');
+  assert.equal(parsed.critique.install.command, 'bun add --global critique@next');
 });
 
 void test('parseHarnessConfigText falls back for invalid critique settings', () => {

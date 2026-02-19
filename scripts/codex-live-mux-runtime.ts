@@ -1363,10 +1363,16 @@ async function main(): Promise<number> {
   let commandMenuGitHubProjectPrState: CommandMenuGitHubProjectPrState | null = null;
   let commandMenuScopedDirectoryId: string | null = null;
   let themePickerSession: ThemePickerSessionState | null = null;
-  const commandMenuContext = (): RuntimeCommandMenuContext => {
+  const isThreadScopedCommandActionId = (actionId: string): boolean =>
+    actionId.startsWith('thread.start.') || actionId.startsWith('thread.install.');
+  const commandMenuContext = (
+    input: {
+      readonly preferThreadScope?: boolean;
+    } = {},
+  ): RuntimeCommandMenuContext => {
     const activeConversation = conversationManager.getActiveConversation();
     const scopedDirectoryId =
-      workspace.commandMenu?.scope === 'thread-start' &&
+      (input.preferThreadScope === true || workspace.commandMenu?.scope === 'thread-start') &&
       commandMenuScopedDirectoryId !== null &&
       directoryManager.hasDirectory(commandMenuScopedDirectoryId)
         ? commandMenuScopedDirectoryId
@@ -1446,7 +1452,9 @@ async function main(): Promise<number> {
     }));
   };
   const executeCommandMenuAction = (actionId: string): void => {
-    const context = commandMenuContext();
+    const context = commandMenuContext({
+      preferThreadScope: isThreadScopedCommandActionId(actionId),
+    });
     const action =
       resolveVisibleCommandMenuActions(context).find((candidate) => candidate.id === actionId) ??
       null;

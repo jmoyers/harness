@@ -338,6 +338,34 @@ async function waitForSnapshotLineContaining(
   throw new Error(`timed out waiting for snapshot text: ${text}`);
 }
 
+async function waitForProjectThreadButtonCell(
+  oracle: TerminalSnapshotOracle,
+  projectName: string,
+  timeoutMs: number,
+): Promise<{ row: number; col: number }> {
+  const buttonLabel = '[+ thread]';
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const frame = oracle.snapshotWithoutHash();
+    for (let rowIndex = 0; rowIndex < frame.lines.length; rowIndex += 1) {
+      const line = frame.lines[rowIndex]!;
+      if (!line.includes(projectName)) {
+        continue;
+      }
+      const buttonIndex = line.indexOf(buttonLabel);
+      if (buttonIndex < 0) {
+        continue;
+      }
+      return {
+        row: rowIndex + 1,
+        col: buttonIndex + 1,
+      };
+    }
+    await delay(40);
+  }
+  throw new Error(`timed out waiting for project thread button: ${projectName}`);
+}
+
 async function waitForSnapshotLineNotContaining(
   oracle: TerminalSnapshotOracle,
   text: string,
@@ -353,6 +381,39 @@ async function waitForSnapshotLineNotContaining(
     await delay(40);
   }
   throw new Error(`timed out waiting for snapshot to remove text: ${text}`);
+}
+
+async function waitForDirectoryConversationCountAtLeast(
+  client: Awaited<ReturnType<typeof connectControlPlaneStreamClient>>,
+  scope: {
+    readonly tenantId: string;
+    readonly userId: string;
+    readonly workspaceId: string;
+    readonly directoryId: string;
+  },
+  minimumCount: number,
+  timeoutMs: number,
+): Promise<readonly Record<string, unknown>[]> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const result = await client.sendCommand({
+      type: 'conversation.list',
+      directoryId: scope.directoryId,
+      tenantId: scope.tenantId,
+      userId: scope.userId,
+      workspaceId: scope.workspaceId,
+    });
+    const rows = Array.isArray(result['conversations'])
+      ? (result['conversations'] as readonly Record<string, unknown>[])
+      : [];
+    if (rows.length >= minimumCount) {
+      return rows;
+    }
+    await delay(40);
+  }
+  throw new Error(
+    `timed out waiting for conversations in directory ${scope.directoryId} (count >= ${String(minimumCount)})`,
+  );
 }
 
 function writeLeftMouseClick(
@@ -822,6 +883,118 @@ void test(
         assert.equal(exit.signal, null);
         assert.equal(exit.code === 0 || exit.code === 130, true);
       } finally {
+        rmSync(workspace, { recursive: true, force: true });
+      }
+    }
+  },
+  { timeout: 30000 },
+);
+
+void test(
+  'codex-live-mux starts a thread in the clicked project from left-rail [+ thread]',
+  async () => {
+    const workspace = createWorkspace();
+    const projectAlphaPath = join(workspace, 'alpha');
+    const projectBetaPath = join(workspace, 'beta');
+    mkdirSync(projectAlphaPath, { recursive: true });
+    mkdirSync(projectBetaPath, { recursive: true });
+
+    const tenantId = 'tenant-thread-scope';
+    const userId = 'user-thread-scope';
+    const workspaceId = 'workspace-thread-scope';
+    const worktreeId = 'worktree-thread-scope';
+    const server = await startControlPlaneStreamServer({
+      stateStorePath: join(workspaceRuntimeRoot(workspace), 'control-plane.sqlite'),
+      startSession: (input) => new StartupTestLiveSession(input),
+    });
+    const address = server.address();
+    const client = await connectControlPlaneStreamClient({
+      host: address.address,
+      port: address.port,
+    });
+
+    const interactive = startInteractiveMuxSession(workspace, {
+      controlPlaneHost: address.address,
+      controlPlanePort: address.port,
+      cols: 100,
+      rows: 30,
+      extraEnv: {
+        HARNESS_TENANT_ID: tenantId,
+        HARNESS_USER_ID: userId,
+        HARNESS_WORKSPACE_ID: workspaceId,
+        HARNESS_WORKTREE_ID: worktreeId,
+      },
+    });
+
+    try {
+      await client.sendCommand({
+        type: 'directory.upsert',
+        directoryId: 'directory-alpha',
+        tenantId,
+        userId,
+        workspaceId,
+        path: projectAlphaPath,
+      });
+      await client.sendCommand({
+        type: 'directory.upsert',
+        directoryId: 'directory-beta',
+        tenantId,
+        userId,
+        workspaceId,
+        path: projectBetaPath,
+      });
+
+      const alphaProjectCell = await waitForSnapshotLineContaining(
+        interactive.oracle,
+        'alpha',
+        12000,
+      );
+      writeLeftMouseClick(interactive.session, alphaProjectCell.col, alphaProjectCell.row);
+      await delay(150);
+
+      const betaThreadButtonCell = await waitForProjectThreadButtonCell(
+        interactive.oracle,
+        'beta',
+        12000,
+      );
+      writeLeftMouseClick(interactive.session, betaThreadButtonCell.col, betaThreadButtonCell.row);
+      await waitForSnapshotLineContaining(interactive.oracle, 'Start Codex thread', 12000);
+
+      interactive.session.write('\r');
+
+      const betaConversations = await waitForDirectoryConversationCountAtLeast(
+        client,
+        {
+          tenantId,
+          userId,
+          workspaceId,
+          directoryId: 'directory-beta',
+        },
+        1,
+        12000,
+      );
+      assert.equal(betaConversations.length >= 1, true);
+
+      const alphaConversations = await client.sendCommand({
+        type: 'conversation.list',
+        directoryId: 'directory-alpha',
+        tenantId,
+        userId,
+        workspaceId,
+      });
+      const alphaRows = Array.isArray(alphaConversations['conversations'])
+        ? alphaConversations['conversations']
+        : [];
+      assert.equal(alphaRows.length, 0);
+    } finally {
+      try {
+        await requestMuxShutdown(interactive.session);
+        const exit = await interactive.waitForExit;
+        assert.equal(exit.signal, null);
+        assert.equal(exit.code === 0 || exit.code === 130, true);
+      } finally {
+        client.close();
+        await server.close();
         rmSync(workspace, { recursive: true, force: true });
       }
     }

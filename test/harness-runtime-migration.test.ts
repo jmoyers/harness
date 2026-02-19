@@ -102,6 +102,7 @@ void test('migration skips workspace entry copy when config directory resolves t
 
   assert.equal(result.skipped, true);
   assert.equal(result.migratedEntries, 0);
+  assert.equal(result.migrated, false);
   assert.equal(result.markerPath, join(legacyRoot, '.legacy-layout-migration-v1'));
   assert.equal(existsSync(result.markerPath), false);
 });
@@ -122,7 +123,7 @@ void test('migration skips when marker already exists', () => {
   const env = envWithXdg(workspace);
   const legacyRoot = join(workspace, '.harness');
   mkdirSync(legacyRoot, { recursive: true });
-  writeFileSync(join(legacyRoot, 'gateway.json'), '{"pid":123}\n', 'utf8');
+  writeFileSync(join(legacyRoot, 'gateway.json'), '{"pid":321}\n', 'utf8');
 
   const runtimeRoot = resolveHarnessWorkspaceDirectory(workspace, env);
   mkdirSync(runtimeRoot, { recursive: true });
@@ -138,6 +139,9 @@ void test('migration skips when marker already exists', () => {
 });
 
 void test('migration ignores dangling legacy entries and still writes marker', () => {
+  if (process.platform === 'win32') {
+    return;
+  }
   const workspace = createWorkspace();
   const env = envWithXdg(workspace);
   const legacyRoot = join(workspace, '.harness');
