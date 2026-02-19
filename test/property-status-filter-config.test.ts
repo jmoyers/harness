@@ -241,14 +241,3 @@ void test('property: parseHarnessConfigText normalization is idempotent for JSON
     { numRuns: 120 },
   );
 });
-
-void test('property: parseHarnessConfigText never throws on arbitrary input strings', () => {
-  fc.assert(
-    fc.property(fc.string({ maxLength: 256 }), (text) => {
-      const result = parseHarnessConfigText(text);
-      assert.equal(typeof result, 'object');
-      assert.notEqual(result, null);
-    }),
-    { numRuns: 300, seed: 1337 },
-  );
-});

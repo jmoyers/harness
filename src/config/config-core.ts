@@ -1192,12 +1192,7 @@ function normalizeLifecycleHooksConfig(input: unknown): HarnessLifecycleHooksCon
 
 export function parseHarnessConfigText(text: string): HarnessConfig {
   const stripped = stripTrailingCommas(stripJsoncComments(text));
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(stripped);
-  } catch {
-    return DEFAULT_HARNESS_CONFIG;
-  }
+  const parsed = JSON.parse(stripped) as unknown;
   const root = asRecord(parsed);
   if (root === null) {
     return DEFAULT_HARNESS_CONFIG;
