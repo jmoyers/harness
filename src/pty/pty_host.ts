@@ -162,10 +162,7 @@ class PtySession extends EventEmitter {
     }
     const searchWindowLength = Math.max(
       1,
-      Math.min(
-        this.outputWindow.length,
-        chunk.length + Math.max(1, maxMatchPayloadLength) - 1,
-      ),
+      Math.min(this.outputWindow.length, chunk.length + Math.max(1, maxMatchPayloadLength) - 1),
     );
     const searchWindow = this.outputWindow.subarray(this.outputWindow.length - searchWindowLength);
 
