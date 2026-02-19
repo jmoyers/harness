@@ -32,6 +32,9 @@ Use it when you want to move faster than a single chat window: keep multiple thr
 > Note: Harness requires Bun. It does not work with Node.js alone.
 
 ```bash
+# One-line bootstrap (installs missing Bun/Rust deps, then installs Harness globally)
+curl -fsSL https://raw.githubusercontent.com/jmoyers/harness/main/install.sh | bash
+
 # Run directly with bunx (no install needed)
 bunx @jmoyers/harness@latest
 
