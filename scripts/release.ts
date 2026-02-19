@@ -1,9 +1,12 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+
+type ReleaseBumpLevel = 'major' | 'minor' | 'patch';
 
 interface ReleaseOptions {
   version: string | null;
+  bump: ReleaseBumpLevel | null;
   skipVerify: boolean;
   branch: string;
   remote: string;
@@ -13,6 +16,7 @@ interface ReleaseOptions {
 interface ReleaseRuntime {
   cwd(): string;
   readTextFile(path: string): string;
+  writeTextFile(path: string, text: string): void;
   capture(command: string, args: readonly string[]): string;
   run(command: string, args: readonly string[]): void;
   stdout(text: string): void;
@@ -23,6 +27,7 @@ const SEMVER_PATTERN =
 
 const DEFAULT_OPTIONS: ReleaseOptions = {
   version: null,
+  bump: null,
   skipVerify: false,
   branch: 'main',
   remote: 'origin',
@@ -31,7 +36,7 @@ const DEFAULT_OPTIONS: ReleaseOptions = {
 
 function usage(): string {
   return [
-    'Usage: bun run release [--version <semver>] [--skip-verify] [--branch <name>] [--remote <name>] [--allow-dirty]',
+    'Usage: bun run release [--version <semver>] [--bump <major|minor|patch>] [--skip-verify] [--branch <name>] [--remote <name>] [--allow-dirty]',
     '',
     'Creates and pushes a SemVer tag that triggers GitHub release automation.',
     'Default tag source is package.json version (prefixed with "v").',
@@ -50,8 +55,39 @@ function normalizeSemverTag(versionInput: string): string {
   return `v${normalized}`;
 }
 
+function bumpSemverVersion(versionInput: string, bump: ReleaseBumpLevel): string {
+  const tag = normalizeSemverTag(versionInput);
+  const normalized = tag.slice(1);
+  const match =
+    /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u.exec(
+      normalized,
+    );
+  if (match === null) {
+    throw new Error(`invalid semver version: ${versionInput}`);
+  }
+  const major = Number.parseInt(match[1]!, 10);
+  const minor = Number.parseInt(match[2]!, 10);
+  const patch = Number.parseInt(match[3]!, 10);
+  if (bump === 'major') {
+    return `${String(major + 1)}.0.0`;
+  }
+  if (bump === 'minor') {
+    return `${String(major)}.${String(minor + 1)}.0`;
+  }
+  return `${String(major)}.${String(minor)}.${String(patch + 1)}`;
+}
+
 function parseArgs(argv: readonly string[]): ReleaseOptions | null {
   const options: ReleaseOptions = { ...DEFAULT_OPTIONS };
+  const assignBump = (value: string): void => {
+    if (value !== 'major' && value !== 'minor' && value !== 'patch') {
+      throw new Error(`invalid bump level: ${value}`);
+    }
+    if (options.bump !== null && options.bump !== value) {
+      throw new Error('only one bump level can be specified');
+    }
+    options.bump = value;
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--help' || arg === '-h') {
@@ -63,6 +99,27 @@ function parseArgs(argv: readonly string[]): ReleaseOptions | null {
     }
     if (arg === '--allow-dirty') {
       options.allowDirty = true;
+      continue;
+    }
+    if (arg === '--bump') {
+      const value = argv[index + 1];
+      if (value === undefined) {
+        throw new Error('missing value for --bump');
+      }
+      assignBump(value);
+      index += 1;
+      continue;
+    }
+    if (arg === '--major') {
+      assignBump('major');
+      continue;
+    }
+    if (arg === '--minor') {
+      assignBump('minor');
+      continue;
+    }
+    if (arg === '--patch') {
+      assignBump('patch');
       continue;
     }
     if (arg === '--version') {
@@ -94,13 +151,13 @@ function parseArgs(argv: readonly string[]): ReleaseOptions | null {
     }
     throw new Error(`unknown argument: ${arg}`);
   }
+  if (options.version !== null && options.bump !== null) {
+    throw new Error('cannot combine --version with --bump');
+  }
   return options;
 }
 
-function resolveReleaseTag(options: ReleaseOptions, runtime: ReleaseRuntime): string {
-  if (options.version !== null) {
-    return normalizeSemverTag(options.version);
-  }
+function readPackageVersion(runtime: ReleaseRuntime): string {
   const packagePath = resolve(runtime.cwd(), 'package.json');
   let parsed: unknown;
   try {
@@ -116,7 +173,17 @@ function resolveReleaseTag(options: ReleaseOptions, runtime: ReleaseRuntime): st
   if (typeof version !== 'string') {
     throw new Error('package.json version must be a string');
   }
-  return normalizeSemverTag(version);
+  return version;
+}
+
+function resolveReleaseTag(options: ReleaseOptions, runtime: ReleaseRuntime): string {
+  if (options.bump !== null) {
+    return normalizeSemverTag(bumpSemverVersion(readPackageVersion(runtime), options.bump));
+  }
+  if (options.version !== null) {
+    return normalizeSemverTag(options.version);
+  }
+  return normalizeSemverTag(readPackageVersion(runtime));
 }
 
 function quoteArg(value: string): string {
@@ -150,10 +217,24 @@ function ensureTagDoesNotExist(tag: string, remote: string, runtime: ReleaseRunt
   }
 }
 
-function executeRelease(options: ReleaseOptions, runtime: ReleaseRuntime): string {
-  const tag = resolveReleaseTag(options, runtime);
-  runtime.stdout(`release tag: ${tag}\n`);
+function updatePackageVersion(tag: string, runtime: ReleaseRuntime): void {
+  const packagePath = resolve(runtime.cwd(), 'package.json');
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(runtime.readTextFile(packagePath));
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`failed to parse package.json: ${message}`);
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new Error('package.json root must be an object');
+  }
+  const record = parsed as Record<string, unknown>;
+  record.version = tag.slice(1);
+  runtime.writeTextFile(packagePath, `${JSON.stringify(record, null, 2)}\n`);
+}
 
+function executeRelease(options: ReleaseOptions, runtime: ReleaseRuntime): string {
   if (!options.allowDirty) {
     requireCleanWorkingTree(runtime);
   }
@@ -168,7 +249,17 @@ function executeRelease(options: ReleaseOptions, runtime: ReleaseRuntime): strin
   }
   runStep('git', ['checkout', options.branch]);
   runStep('git', ['pull', '--ff-only', options.remote, options.branch]);
+  const tag = resolveReleaseTag(options, runtime);
+  runtime.stdout(`release tag: ${tag}\n`);
   ensureTagDoesNotExist(tag, options.remote, runtime);
+  if (options.bump !== null) {
+    const previousVersion = readPackageVersion(runtime);
+    runtime.stdout(`bump package version: ${previousVersion} -> ${tag.slice(1)}\n`);
+    updatePackageVersion(tag, runtime);
+    runStep('git', ['add', 'package.json']);
+    runStep('git', ['commit', '-m', `chore: release ${tag}`]);
+    runStep('git', ['push', options.remote, options.branch]);
+  }
   runStep('git', ['tag', '-a', tag, '-m', tag]);
   runStep('git', ['push', options.remote, tag]);
   runtime.stdout(`pushed ${tag}; GitHub release workflow should start shortly.\n`);
@@ -178,6 +269,9 @@ function executeRelease(options: ReleaseOptions, runtime: ReleaseRuntime): strin
 const defaultRuntime: ReleaseRuntime = {
   cwd: () => process.cwd(),
   readTextFile: (path) => readFileSync(path, 'utf8'),
+  writeTextFile: (path, text) => {
+    writeFileSync(path, text, 'utf8');
+  },
   capture: (command, args) => execFileSync(command, args, { encoding: 'utf8' }),
   run: (command, args) => {
     execFileSync(command, args, { stdio: 'inherit' });
@@ -221,10 +315,12 @@ if (import.meta.main) {
 export const __releaseInternals = {
   DEFAULT_OPTIONS,
   normalizeSemverTag,
+  bumpSemverVersion,
   parseArgs,
   resolveReleaseTag,
   requireCleanWorkingTree,
   ensureTagDoesNotExist,
+  updatePackageVersion,
   executeRelease,
   usage,
 };

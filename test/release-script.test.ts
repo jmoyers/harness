@@ -4,10 +4,11 @@ import { __releaseInternals } from '../scripts/release.ts';
 
 interface MockRuntime {
   readonly cwdValue: string;
-  readonly fileText: string;
+  fileText: string;
   readonly captures: Map<string, string>;
   readonly captureCalls: string[];
   readonly runCalls: string[];
+  readonly writeCalls: string[];
   readonly stdoutLines: string[];
 }
 
@@ -20,11 +21,16 @@ function createRuntime(
     captures: overrides.captures ?? new Map<string, string>(),
     captureCalls: [],
     runCalls: [],
+    writeCalls: [],
     stdoutLines: [],
   };
   const runtime = {
     cwd: () => runtimeState.cwdValue,
     readTextFile: (_path: string) => runtimeState.fileText,
+    writeTextFile: (path: string, text: string) => {
+      runtimeState.writeCalls.push([path, text].join('\u0000'));
+      runtimeState.fileText = text;
+    },
     capture: (command: string, args: readonly string[]) => {
       const key = [command, ...args].join('\u0000');
       runtimeState.captureCalls.push(key);
@@ -43,6 +49,59 @@ function createRuntime(
 void test('release script arg parsing handles defaults and flags', () => {
   assert.deepEqual(__releaseInternals.parseArgs([]), {
     version: null,
+    bump: null,
+    skipVerify: false,
+    branch: 'main',
+    remote: 'origin',
+    allowDirty: false,
+  });
+  assert.deepEqual(__releaseInternals.parseArgs(['--bump', 'patch']), {
+    version: null,
+    bump: 'patch',
+    skipVerify: false,
+    branch: 'main',
+    remote: 'origin',
+    allowDirty: false,
+  });
+  assert.deepEqual(
+    __releaseInternals.parseArgs([
+      '--bump',
+      'minor',
+      '--skip-verify',
+      '--branch',
+      'release',
+      '--remote',
+      'upstream',
+      '--allow-dirty',
+    ]),
+    {
+      version: null,
+      bump: 'minor',
+      skipVerify: true,
+      branch: 'release',
+      remote: 'upstream',
+      allowDirty: true,
+    },
+  );
+  assert.deepEqual(__releaseInternals.parseArgs(['--major']), {
+    version: null,
+    bump: 'major',
+    skipVerify: false,
+    branch: 'main',
+    remote: 'origin',
+    allowDirty: false,
+  });
+  assert.deepEqual(__releaseInternals.parseArgs(['--minor']), {
+    version: null,
+    bump: 'minor',
+    skipVerify: false,
+    branch: 'main',
+    remote: 'origin',
+    allowDirty: false,
+  });
+  assert.deepEqual(__releaseInternals.parseArgs(['--patch']), {
+    version: null,
+    bump: 'patch',
     skipVerify: false,
     branch: 'main',
     remote: 'origin',
@@ -61,6 +120,7 @@ void test('release script arg parsing handles defaults and flags', () => {
     ]),
     {
       version: '1.2.3',
+      bump: null,
       skipVerify: true,
       branch: 'release',
       remote: 'upstream',
@@ -69,6 +129,16 @@ void test('release script arg parsing handles defaults and flags', () => {
   );
   assert.equal(__releaseInternals.parseArgs(['--help']), null);
   assert.throws(() => __releaseInternals.parseArgs(['--version']), /missing value for --version/u);
+  assert.throws(() => __releaseInternals.parseArgs(['--bump']), /missing value for --bump/u);
+  assert.throws(() => __releaseInternals.parseArgs(['--bump', 'oops']), /invalid bump level/u);
+  assert.throws(
+    () => __releaseInternals.parseArgs(['--major', '--minor']),
+    /only one bump level can be specified/u,
+  );
+  assert.throws(
+    () => __releaseInternals.parseArgs(['--version', '1.2.3', '--bump', 'patch']),
+    /cannot combine --version with --bump/u,
+  );
   assert.throws(() => __releaseInternals.parseArgs(['--wat']), /unknown argument/u);
 });
 
@@ -83,6 +153,18 @@ void test('release script normalizes semver tags and rejects invalid versions', 
   );
 });
 
+void test('release script bumps semver versions by level', () => {
+  assert.equal(__releaseInternals.bumpSemverVersion('1.2.3', 'major'), '2.0.0');
+  assert.equal(__releaseInternals.bumpSemverVersion('1.2.3', 'minor'), '1.3.0');
+  assert.equal(__releaseInternals.bumpSemverVersion('1.2.3', 'patch'), '1.2.4');
+  assert.equal(__releaseInternals.bumpSemverVersion('v1.2.3', 'patch'), '1.2.4');
+  assert.equal(__releaseInternals.bumpSemverVersion('1.2.3-beta.1', 'patch'), '1.2.4');
+  assert.throws(
+    () => __releaseInternals.bumpSemverVersion('feature-branch', 'patch'),
+    /invalid semver version/u,
+  );
+});
+
 void test('release script resolves tag from package version or explicit override', () => {
   const { runtime } = createRuntime({
     fileText: JSON.stringify({ version: '2.3.4' }),
@@ -91,6 +173,7 @@ void test('release script resolves tag from package version or explicit override
     __releaseInternals.resolveReleaseTag(
       {
         version: null,
+        bump: null,
         skipVerify: false,
         branch: 'main',
         remote: 'origin',
@@ -104,6 +187,7 @@ void test('release script resolves tag from package version or explicit override
     __releaseInternals.resolveReleaseTag(
       {
         version: 'v3.4.5',
+        bump: null,
         skipVerify: false,
         branch: 'main',
         remote: 'origin',
@@ -112,6 +196,20 @@ void test('release script resolves tag from package version or explicit override
       runtime,
     ),
     'v3.4.5',
+  );
+  assert.equal(
+    __releaseInternals.resolveReleaseTag(
+      {
+        version: null,
+        bump: 'minor',
+        skipVerify: false,
+        branch: 'main',
+        remote: 'origin',
+        allowDirty: false,
+      },
+      runtime,
+    ),
+    'v2.4.0',
   );
 });
 
@@ -165,6 +263,7 @@ void test('release script executes verify checkout pull tag push sequence', () =
   const tag = __releaseInternals.executeRelease(
     {
       version: null,
+      bump: null,
       skipVerify: false,
       branch: 'main',
       remote: 'origin',
@@ -199,6 +298,7 @@ void test('release script skip-verify omits quality gate execution', () => {
   __releaseInternals.executeRelease(
     {
       version: null,
+      bump: null,
       skipVerify: true,
       branch: 'main',
       remote: 'origin',
@@ -210,6 +310,46 @@ void test('release script skip-verify omits quality gate execution', () => {
   assert.deepEqual(runtimeState.runCalls, [
     ['git', 'checkout', 'main'].join('\u0000'),
     ['git', 'pull', '--ff-only', 'origin', 'main'].join('\u0000'),
+    ['git', 'tag', '-a', 'v0.2.0', '-m', 'v0.2.0'].join('\u0000'),
+    ['git', 'push', 'origin', 'v0.2.0'].join('\u0000'),
+  ]);
+});
+
+void test('release script bump flow updates package version and pushes branch before tag', () => {
+  const statusKey = ['git', 'status', '--porcelain'].join('\u0000');
+  const localTagKey = ['git', 'tag', '--list', 'v0.2.0'].join('\u0000');
+  const remoteTagKey = ['git', 'ls-remote', '--tags', 'origin', 'refs/tags/v0.2.0'].join('\u0000');
+  const { runtime, runtimeState } = createRuntime({
+    fileText: JSON.stringify({ version: '0.1.0' }),
+    captures: new Map<string, string>([
+      [statusKey, ''],
+      [localTagKey, ''],
+      [remoteTagKey, ''],
+    ]),
+  });
+
+  const tag = __releaseInternals.executeRelease(
+    {
+      version: null,
+      bump: 'minor',
+      skipVerify: true,
+      branch: 'main',
+      remote: 'origin',
+      allowDirty: false,
+    },
+    runtime,
+  );
+
+  assert.equal(tag, 'v0.2.0');
+  assert.equal(runtimeState.writeCalls.length, 1);
+  const updated = JSON.parse(runtimeState.fileText) as Record<string, unknown>;
+  assert.equal(updated.version, '0.2.0');
+  assert.deepEqual(runtimeState.runCalls, [
+    ['git', 'checkout', 'main'].join('\u0000'),
+    ['git', 'pull', '--ff-only', 'origin', 'main'].join('\u0000'),
+    ['git', 'add', 'package.json'].join('\u0000'),
+    ['git', 'commit', '-m', 'chore: release v0.2.0'].join('\u0000'),
+    ['git', 'push', 'origin', 'main'].join('\u0000'),
     ['git', 'tag', '-a', 'v0.2.0', '-m', 'v0.2.0'].join('\u0000'),
     ['git', 'push', 'origin', 'v0.2.0'].join('\u0000'),
   ]);
