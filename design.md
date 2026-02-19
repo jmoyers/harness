@@ -763,7 +763,8 @@ Design constraints:
   - invalid custom files or unknown presets must fall back deterministically to a safe preset while keeping mux startup healthy
 - Config lifecycle:
   - on first run, bootstrap config by copying the checked-in template (`src/config/harness.config.template.jsonc`)
-  - when upgrading from legacy local workspace state (`<workspace>/.harness`), copy runtime artifacts into the user-global workspace-scoped runtime path on first run without overwriting an existing global config file
+  - when upgrading from legacy local workspace state (`<workspace>/.harness`), copy runtime artifacts into the user-global workspace-scoped runtime path on first run; migrate legacy local `harness.config.jsonc` when the global config is uninitialized (missing, empty, or bootstrapped default), and never overwrite user-customized global config
+  - after migration safety checks pass (global config/secrets/runtime targets present), remove the legacy local `<workspace>/.harness` root to prevent stale local runtime/config drift
   - parse -> validate -> publish immutable runtime snapshot
   - unversioned legacy files migrate forward to the current `configVersion`
   - unknown future `configVersion` values must fail closed and preserve startup health via last-known-good fallback

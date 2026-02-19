@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { test } from 'bun:test';
 import {
   loadHarnessSecrets,
@@ -9,6 +9,12 @@ import {
   resolveHarnessSecretsPath,
   upsertHarnessSecret,
 } from '../src/config/secrets-core.ts';
+
+function workspaceEnv(workspace: string): NodeJS.ProcessEnv {
+  return {
+    XDG_CONFIG_HOME: join(workspace, '.xdg'),
+  };
+}
 
 void test('parseHarnessSecretsText reads comments, export prefixes, quotes, escapes, and empty values', () => {
   const parsed = parseHarnessSecretsText(`
@@ -66,7 +72,7 @@ void test('parseHarnessSecretsText rejects unterminated and trailing quoted payl
   );
 });
 
-void test('resolveHarnessSecretsPath defaults to .harness/secrets.env and supports explicit override', () => {
+void test('resolveHarnessSecretsPath defaults to user-global config secrets path and supports explicit override', () => {
   const cwd = '/tmp/harness';
   const env: NodeJS.ProcessEnv = {
     XDG_CONFIG_HOME: '/tmp/xdg-home',
@@ -81,34 +87,31 @@ void test('resolveHarnessSecretsPath defaults to .harness/secrets.env and suppor
 
 void test('loadHarnessSecrets returns unloaded result when file is missing', () => {
   const workspace = mkdtempSync(join(tmpdir(), 'harness-secrets-missing-'));
-  const env: NodeJS.ProcessEnv = {
-    XDG_CONFIG_HOME: workspace,
-  };
+  const env = workspaceEnv(workspace);
   const loaded = loadHarnessSecrets({
     cwd: workspace,
     env,
   });
   assert.equal(loaded.loaded, false);
-  assert.equal(loaded.filePath, resolve(workspace, 'harness/secrets.env'));
+  assert.equal(loaded.filePath, resolveHarnessSecretsPath(workspace, undefined, env));
   assert.deepEqual(loaded.loadedKeys, []);
   assert.deepEqual(loaded.skippedKeys, []);
-  assert.equal(env.XDG_CONFIG_HOME, workspace);
-  assert.equal(Object.keys(env).length, 1);
+  assert.deepEqual(env, workspaceEnv(workspace));
 });
 
 void test('loadHarnessSecrets populates env and preserves existing values by default', () => {
   const workspace = mkdtempSync(join(tmpdir(), 'harness-secrets-load-'));
-  const secretsDir = join(workspace, 'harness');
-  mkdirSync(secretsDir, { recursive: true });
+  const env: NodeJS.ProcessEnv = {
+    ...workspaceEnv(workspace),
+    ANTHROPIC_API_KEY: 'from-env',
+  };
+  const secretsPath = resolveHarnessSecretsPath(workspace, undefined, env);
+  mkdirSync(dirname(secretsPath), { recursive: true });
   writeFileSync(
-    join(secretsDir, 'secrets.env'),
+    secretsPath,
     ['ANTHROPIC_API_KEY=from-file', 'EXTRA_TOKEN=extra'].join('\n'),
     'utf8',
   );
-  const env: NodeJS.ProcessEnv = {
-    XDG_CONFIG_HOME: workspace,
-    ANTHROPIC_API_KEY: 'from-env',
-  };
   const loaded = loadHarnessSecrets({
     cwd: workspace,
     env,

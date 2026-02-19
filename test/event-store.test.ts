@@ -54,13 +54,10 @@ void test('event store fails closed on newer schema version', () => {
   db.exec('PRAGMA user_version = 99;');
   db.close();
 
-  assert.throws(
-    () => {
-      const store = new SqliteEventStore(dbPath);
-      store.close();
-    },
-    /schema version .* newer than supported version/i,
-  );
+  assert.throws(() => {
+    const store = new SqliteEventStore(dbPath);
+    store.close();
+  }, /schema version .* newer than supported version/i);
 
   rmSync(dirPath, { recursive: true, force: true });
 });

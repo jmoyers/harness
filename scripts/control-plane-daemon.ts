@@ -70,7 +70,10 @@ function parseArgs(argv: string[], invocationDirectory: string): DaemonOptions {
   const defaultHost = process.env.HARNESS_CONTROL_PLANE_HOST ?? '127.0.0.1';
   const defaultPortRaw = process.env.HARNESS_CONTROL_PLANE_PORT ?? '7777';
   const defaultAuthToken = process.env.HARNESS_CONTROL_PLANE_AUTH_TOKEN ?? null;
-  const defaultStateDbPath = resolveHarnessRuntimePath(invocationDirectory, '.harness/control-plane.sqlite');
+  const defaultStateDbPath = resolveHarnessRuntimePath(
+    invocationDirectory,
+    '.harness/control-plane.sqlite',
+  );
 
   let host = defaultHost;
   let portRaw = defaultPortRaw;

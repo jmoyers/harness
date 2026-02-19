@@ -2,8 +2,6 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { dirname, resolve } from 'node:path';
 import { resolveHarnessConfigDirectory } from './config-core.ts';
 
-export const HARNESS_SECRETS_FILE_PATH = '.harness/secrets.env';
-
 interface HarnessSecretEntry {
   readonly key: string;
   readonly value: string;

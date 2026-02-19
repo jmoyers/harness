@@ -19,6 +19,7 @@ import {
   loadHarnessConfig,
   parseHarnessConfigText,
   resolveHarnessConfigDirectory,
+  resolveHarnessConfigDirectoryFromRoots,
   resolveHarnessConfigPath,
   updateHarnessConfig,
   updateHarnessMuxUiConfig,
@@ -300,6 +301,13 @@ void test('resolveHarnessConfigPath resolves XDG and HOME user config directorie
   assert.equal(
     resolveHarnessConfigPath('/tmp/cwd', blankEnv),
     resolve(homedir(), '.harness/harness.config.jsonc'),
+  );
+});
+
+void test('resolveHarnessConfigDirectoryFromRoots throws when both XDG and HOME roots are unavailable', () => {
+  assert.throws(
+    () => resolveHarnessConfigDirectoryFromRoots('/tmp/cwd', null, null),
+    /unable to resolve harness config directory/i,
   );
 });
 

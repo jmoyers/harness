@@ -35,7 +35,10 @@ void test('harness paths fall back when home env is blank and sanitize empty wor
   const runtimeRoot = resolveHarnessWorkspaceDirectory(workspace, env);
 
   assert.equal(resolveHarnessRuntimePath(workspace, '~', env), resolve(runtimeRoot, '~'));
-  assert.equal(resolveHarnessRuntimePath(workspace, 'relative/debug.log', env), resolve(runtimeRoot, 'relative/debug.log'));
+  assert.equal(
+    resolveHarnessRuntimePath(workspace, 'relative/debug.log', env),
+    resolve(runtimeRoot, 'relative/debug.log'),
+  );
 
   const rootWorkspaceRuntime = resolveHarnessWorkspaceDirectory('/', env);
   assert.equal(basename(rootWorkspaceRuntime).startsWith('workspace-'), true);

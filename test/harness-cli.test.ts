@@ -422,8 +422,44 @@ void test('harness auto-migrates legacy local .harness record path to global run
   try {
     const result = await runHarness(workspace, ['gateway', 'status']);
     assert.equal(existsSync(runtimeRecordPath), true);
+    assert.equal(existsSync(legacyRoot), false);
     assert.equal(result.stdout.includes(`[migration] local .harness migrated`), true);
     assert.equal(result.stdout.includes(`record: ${runtimeRecordPath}`), true);
+  } finally {
+    void runHarness(workspace, ['gateway', 'stop', '--force']).catch(() => undefined);
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('harness migrates legacy local config when global config is only bootstrapped default', async () => {
+  const workspace = createWorkspace();
+  try {
+    const initial = await runHarness(workspace, ['gateway', 'status']);
+    assert.equal(initial.code, 0);
+
+    const configPath = resolveHarnessConfigPath(workspace, {
+      XDG_CONFIG_HOME: workspaceXdgConfigHome(workspace),
+    });
+    const initialConfigText = readFileSync(configPath, 'utf8');
+    assert.equal(initialConfigText.trim().length > 0, true);
+
+    const legacyRoot = join(workspace, '.harness');
+    mkdirSync(legacyRoot, { recursive: true });
+    const legacyConfigPath = join(legacyRoot, 'harness.config.jsonc');
+    const legacyConfigText = '{"configVersion":1,"github":{"enabled":false}}\n';
+    writeFileSync(legacyConfigPath, legacyConfigText, 'utf8');
+
+    const migrated = await runHarness(workspace, ['gateway', 'status']);
+    const backupPath = join(
+      workspaceConfigRoot(workspace),
+      'harness.config.jsonc.pre-migration.bak',
+    );
+
+    assert.equal(migrated.code, 0);
+    assert.equal(migrated.stdout.includes('[migration] local .harness migrated'), true);
+    assert.equal(existsSync(legacyRoot), false);
+    assert.equal(readFileSync(configPath, 'utf8'), legacyConfigText);
+    assert.equal(readFileSync(backupPath, 'utf8'), initialConfigText);
   } finally {
     void runHarness(workspace, ['gateway', 'stop', '--force']).catch(() => undefined);
     rmSync(workspace, { recursive: true, force: true });

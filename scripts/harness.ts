@@ -2928,7 +2928,7 @@ async function main(): Promise<number> {
   const migration = migrateLegacyHarnessLayout(invocationDirectory, process.env);
   if (migration.migrated) {
     process.stdout.write(
-      `[migration] local .harness migrated to global runtime layout (${String(migration.migratedEntries)} entries, configCopied=${String(migration.configCopied)}, secretsCopied=${String(migration.secretsCopied)})\n`,
+      `[migration] local .harness migrated to global runtime layout (${String(migration.migratedEntries)} entries, configCopied=${String(migration.configCopied)}, secretsCopied=${String(migration.secretsCopied)}, legacyRootRemoved=${String(migration.legacyRootRemoved)})\n`,
     );
   }
   loadHarnessSecrets({ cwd: invocationDirectory });

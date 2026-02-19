@@ -72,13 +72,10 @@ void test('control-plane store fails closed when sqlite schema version is newer 
   bootstrap.exec('PRAGMA user_version = 99;');
   bootstrap.close();
 
-  assert.throws(
-    () => {
-      const store = new SqliteControlPlaneStore(storePath);
-      store.close();
-    },
-    /schema version .* newer than supported version/i,
-  );
+  assert.throws(() => {
+    const store = new SqliteControlPlaneStore(storePath);
+    store.close();
+  }, /schema version .* newer than supported version/i);
 
   rmSync(storePath, { force: true });
   rmSync(dirname(storePath), { recursive: true, force: true });

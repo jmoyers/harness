@@ -1436,10 +1436,18 @@ export function resolveHarnessConfigDirectory(
   env: NodeJS.ProcessEnv = process.env,
 ): string {
   const xdgConfigHome = readNonEmptyEnvPath(env.XDG_CONFIG_HOME);
+  const homeDirectory = readNonEmptyEnvPath(env.HOME) ?? readNonEmptyEnvPath(homedir());
+  return resolveHarnessConfigDirectoryFromRoots(cwd, xdgConfigHome, homeDirectory);
+}
+
+export function resolveHarnessConfigDirectoryFromRoots(
+  cwd: string,
+  xdgConfigHome: string | null,
+  homeDirectory: string | null,
+): string {
   if (xdgConfigHome !== null) {
     return resolve(xdgConfigHome, HARNESS_CONFIG_XDG_DIRECTORY_NAME);
   }
-  const homeDirectory = readNonEmptyEnvPath(env.HOME) ?? readNonEmptyEnvPath(homedir());
   if (homeDirectory !== null) {
     return resolve(homeDirectory, HARNESS_CONFIG_HOME_DIRECTORY_NAME);
   }

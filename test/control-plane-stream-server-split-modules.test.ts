@@ -257,7 +257,10 @@ void test('split module coverage: background git polling in-flight and error bra
     () => refreshGitStatusForDirectory(closedDbGitCtx, directory),
     /database has closed/i,
   );
-  assert.equal(closedDbGitCtx.gitStatusRefreshInFlightDirectoryIds.has(directory.directoryId), false);
+  assert.equal(
+    closedDbGitCtx.gitStatusRefreshInFlightDirectoryIds.has(directory.directoryId),
+    false,
+  );
 });
 
 void test('split module coverage: observed filter repository checks include directory-git-updated events', () => {

@@ -67,6 +67,8 @@ For restart/load diagnostics, use a named session with a non-default gateway por
 
 Runtime behavior is controlled by `harness.config.jsonc`.
 
+When upgrading from a workspace-local `.harness`, Harness automatically migrates legacy config into the global config location if that global config is still uninitialized (missing, empty, or default template), then removes stale local `.harness` folders once migration targets are confirmed.
+
 Common customizations:
 
 - Set install commands for `codex`, `claude`, `cursor`, and `critique`.
