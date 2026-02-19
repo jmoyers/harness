@@ -112,8 +112,7 @@ export function buildCommandMenuModalOverlay(
     }
   }
   bodyLines.push('', isThemePicker ? 'type to filter themes' : 'type to filter');
-  const title =
-    menu.scope === 'thread-start' ? 'New Thread' : isThemePicker ? 'Choose Theme' : 'Command Menu';
+  const title = isThemePicker ? 'Choose Theme' : 'Command Menu';
   return buildUiModalOverlay({
     viewportCols: layoutCols,
     viewportRows,

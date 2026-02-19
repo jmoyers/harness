@@ -1,6 +1,6 @@
-import { BUILTIN_MUX_THEME_PRESETS_PART_ONE } from './mux-theme-presets-part-1.ts';
-import { BUILTIN_MUX_THEME_PRESETS_PART_TWO } from './mux-theme-presets-part-2.ts';
-import { BUILTIN_MUX_THEME_PRESETS_COMPAT } from './mux-theme-presets-compat.ts';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 type MuxThemePresetColor =
   | string
@@ -15,8 +15,15 @@ interface MuxThemePresetDocument {
   readonly theme: Readonly<Record<string, MuxThemePresetColor>>;
 }
 
-export const BUILTIN_MUX_THEME_PRESETS: Readonly<Record<string, MuxThemePresetDocument>> = {
-  ...BUILTIN_MUX_THEME_PRESETS_PART_ONE,
-  ...BUILTIN_MUX_THEME_PRESETS_PART_TWO,
-  ...BUILTIN_MUX_THEME_PRESETS_COMPAT,
-};
+const BUILTIN_MUX_THEME_PRESETS_PATH = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  'mux-theme-presets.json',
+);
+
+const parsedBuiltinPresetPayload = JSON.parse(
+  readFileSync(BUILTIN_MUX_THEME_PRESETS_PATH, 'utf8'),
+) as unknown;
+
+export const BUILTIN_MUX_THEME_PRESETS = parsedBuiltinPresetPayload as Readonly<
+  Record<string, MuxThemePresetDocument>
+>;

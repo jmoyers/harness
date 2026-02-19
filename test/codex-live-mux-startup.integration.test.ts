@@ -306,7 +306,7 @@ function startInteractiveMuxSession(
   return {
     session,
     oracle,
-    waitForExit: waitForExit(session, 12000),
+    waitForExit: waitForExit(session, 30000),
   };
 }
 

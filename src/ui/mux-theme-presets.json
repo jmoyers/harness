@@ -1,0 +1,2499 @@
+{
+  "aura": {
+    "$schema": "https://opencode.ai/theme.json",
+    "defs": {
+      "darkBg": "#0f0f0f",
+      "darkBgPanel": "#15141b",
+      "darkBorder": "#2d2d2d",
+      "darkFgMuted": "#6d6d6d",
+      "darkFg": "#edecee",
+      "purple": "#a277ff",
+      "pink": "#f694ff",
+      "blue": "#82e2ff",
+      "red": "#ff6767",
+      "orange": "#ffca85",
+      "cyan": "#61ffca",
+      "green": "#9dff65"
+    },
+    "theme": {
+      "primary": "purple",
+      "success": "cyan",
+      "error": "red",
+      "warning": "orange",
+      "info": "purple",
+      "text": "darkFg",
+      "textMuted": "darkFgMuted",
+      "background": "darkBg",
+      "backgroundPanel": "darkBgPanel",
+      "backgroundElement": "darkBgPanel",
+      "syntaxFunction": "purple"
+    }
+  },
+  "ayu": {
+    "$schema": "https://opencode.ai/theme.json",
+    "defs": {
+      "darkBg": "#0B0E14",
+      "darkBgAlt": "#0D1017",
+      "darkLine": "#11151C",
+      "darkPanel": "#0F131A",
+      "darkFg": "#BFBDB6",
+      "darkFgMuted": "#565B66",
+      "darkGutter": "#6C7380",
+      "darkTag": "#39BAE6",
+      "darkFunc": "#FFB454",
+      "darkEntity": "#59C2FF",
+      "darkString": "#AAD94C",
+      "darkRegexp": "#95E6CB",
+      "darkMarkup": "#F07178",
+      "darkKeyword": "#FF8F40",
+      "darkSpecial": "#E6B673",
+      "darkComment": "#ACB6BF",
+      "darkConstant": "#D2A6FF",
+      "darkOperator": "#F29668",
+      "darkAdded": "#7FD962",
+      "darkRemoved": "#F26D78",
+      "darkAccent": "#E6B450",
+      "darkError": "#D95757",
+      "darkIndentActive": "#6C7380"
+    },
+    "theme": {
+      "primary": "darkEntity",
+      "success": "darkAdded",
+      "error": "darkError",
+      "warning": "darkSpecial",
+      "info": "darkTag",
+      "text": "darkFg",
+      "textMuted": "darkFgMuted",
+      "background": "darkBg",
+      "backgroundPanel": "darkPanel",
+      "backgroundElement": "darkBgAlt",
+      "syntaxFunction": "darkFunc"
+    }
+  },
+  "carbonfox": {
+    "$schema": "https://opencode.ai/theme.json",
+    "defs": {
+      "bg0": "#0d0d0d",
+      "bg1": "#161616",
+      "bg1a": "#1a1a1a",
+      "bg2": "#1e1e1e",
+      "bg3": "#262626",
+      "bg4": "#303030",
+      "fg0": "#ffffff",
+      "fg1": "#f2f4f8",
+      "fg2": "#a9afbc",
+      "fg3": "#7d848f",
+      "lbg0": "#ffffff",
+      "lbg1": "#f4f4f4",
+      "lbg2": "#e8e8e8",
+      "lbg3": "#dcdcdc",
+      "lfg0": "#000000",
+      "lfg1": "#161616",
+      "lfg2": "#525252",
+      "lfg3": "#6f6f6f",
+      "red": "#ee5396",
+      "green": "#25be6a",
+      "yellow": "#08bdba",
+      "blue": "#78a9ff",
+      "magenta": "#be95ff",
+      "cyan": "#33b1ff",
+      "white": "#dfdfe0",
+      "orange": "#3ddbd9",
+      "pink": "#ff7eb6",
+      "blueBright": "#8cb6ff",
+      "cyanBright": "#52c7ff",
+      "greenBright": "#46c880",
+      "redLight": "#9f1853",
+      "greenLight": "#198038",
+      "yellowLight": "#007d79",
+      "blueLight": "#0043ce",
+      "magentaLight": "#6929c4",
+      "cyanLight": "#0072c3",
+      "warning": "#f1c21b",
+      "diffGreen": "#50fa7b",
+      "diffRed": "#ff6b6b",
+      "diffGreenBg": "#0f2418",
+      "diffRedBg": "#2a1216"
+    },
+    "theme": {
+      "primary": {
+        "dark": "cyan",
+        "light": "blueLight"
+      },
+      "success": {
+        "dark": "green",
+        "light": "greenLight"
+      },
+      "error": {
+        "dark": "red",
+        "light": "redLight"
+      },
+      "warning": {
+        "dark": "warning",
+        "light": "yellowLight"
+      },
+      "info": {
+        "dark": "blue",
+        "light": "blueLight"
+      },
+      "text": {
+        "dark": "fg1",
+        "light": "lfg1"
+      },
+      "textMuted": {
+        "dark": "fg3",
+        "light": "lfg3"
+      },
+      "background": {
+        "dark": "bg1",
+        "light": "lbg0"
+      },
+      "backgroundPanel": {
+        "dark": "bg1a",
+        "light": "lbg1"
+      },
+      "backgroundElement": {
+        "dark": "bg2",
+        "light": "lbg1"
+      },
+      "syntaxFunction": {
+        "dark": "blueBright",
+        "light": "blueLight"
+      }
+    }
+  },
+  "catppuccin-frappe": {
+    "$schema": "https://opencode.ai/theme.json",
+    "defs": {
+      "frappeRosewater": "#f2d5cf",
+      "frappeFlamingo": "#eebebe",
+      "frappePink": "#f4b8e4",
+      "frappeMauve": "#ca9ee6",
+      "frappeRed": "#e78284",
+      "frappeMaroon": "#ea999c",
+      "frappePeach": "#ef9f76",
+      "frappeYellow": "#e5c890",
+      "frappeGreen": "#a6d189",
+      "frappeTeal": "#81c8be",
+      "frappeSky": "#99d1db",
+      "frappeSapphire": "#85c1dc",
+      "frappeBlue": "#8da4e2",
+      "frappeLavender": "#babbf1",
+      "frappeText": "#c6d0f5",
+      "frappeSubtext1": "#b5bfe2",
+      "frappeSubtext0": "#a5adce",
+      "frappeOverlay2": "#949cb8",
+      "frappeOverlay1": "#838ba7",
+      "frappeOverlay0": "#737994",
+      "frappeSurface2": "#626880",
+      "frappeSurface1": "#51576d",
+      "frappeSurface0": "#414559",
+      "frappeBase": "#303446",
+      "frappeMantle": "#292c3c",
+      "frappeCrust": "#232634"
+    },
+    "theme": {
+      "primary": {
+        "dark": "frappeBlue",
+        "light": "frappeBlue"
+      },
+      "success": {
+        "dark": "frappeGreen",
+        "light": "frappeGreen"
+      },
+      "error": {
+        "dark": "frappeRed",
+        "light": "frappeRed"
+      },
+      "warning": {
+        "dark": "frappeYellow",
+        "light": "frappeYellow"
+      },
+      "info": {
+        "dark": "frappeTeal",
+        "light": "frappeTeal"
+      },
+      "text": {
+        "dark": "frappeText",
+        "light": "frappeText"
+      },
+      "textMuted": {
+        "dark": "frappeSubtext1",
+        "light": "frappeSubtext1"
+      },
+      "background": {
+        "dark": "frappeBase",
+        "light": "frappeBase"
+      },
+      "backgroundPanel": {
+        "dark": "frappeMantle",
+        "light": "frappeMantle"
+      },
+      "backgroundElement": {
+        "dark": "frappeCrust",
+        "light": "frappeCrust"
+      },
+      "syntaxFunction": {
+        "dark": "frappeBlue",
+        "light": "frappeBlue"
+      }
+    }
+  },
+  "catppuccin-macchiato": {
+    "$schema": "https://opencode.ai/theme.json",
+    "defs": {
+      "macRosewater": "#f4dbd6",
+      "macFlamingo": "#f0c6c6",
+      "macPink": "#f5bde6",
+      "macMauve": "#c6a0f6",
+      "macRed": "#ed8796",
+      "macMaroon": "#ee99a0",
+      "macPeach": "#f5a97f",
+      "macYellow": "#eed49f",
+      "macGreen": "#a6da95",
+      "macTeal": "#8bd5ca",
+      "macSky": "#91d7e3",
+      "macSapphire": "#7dc4e4",
+      "macBlue": "#8aadf4",
+      "macLavender": "#b7bdf8",
+      "macText": "#cad3f5",
+      "macSubtext1": "#b8c0e0",
+      "macSubtext0": "#a5adcb",
+      "macOverlay2": "#939ab7",
+      "macOverlay1": "#8087a2",
+      "macOverlay0": "#6e738d",
+      "macSurface2": "#5b6078",
+      "macSurface1": "#494d64",
+      "macSurface0": "#363a4f",
+      "macBase": "#24273a",
+      "macMantle": "#1e2030",
+      "macCrust": "#181926"
+    },
+    "theme": {
+      "primary": {
+        "dark": "macBlue",
+        "light": "macBlue"
+      },
+      "success": {
+        "dark": "macGreen",
+        "light": "macGreen"
+      },
+      "error": {
+        "dark": "macRed",
+        "light": "macRed"
+      },
+      "warning": {
+        "dark": "macYellow",
+        "light": "macYellow"
+      },
+      "info": {
+        "dark": "macTeal",
+        "light": "macTeal"
+      },
+      "text": {
+        "dark": "macText",
+        "light": "macText"
+      },
+      "textMuted": {
+        "dark": "macSubtext1",
+        "light": "macSubtext1"
+      },
+      "background": {
+        "dark": "macBase",
+        "light": "macBase"
+      },
+      "backgroundPanel": {
+        "dark": "macMantle",
+        "light": "macMantle"
+      },
+      "backgroundElement": {
+        "dark": "macCrust",
+        "light": "macCrust"
+      },
+      "syntaxFunction": {
+        "dark": "macBlue",
+        "light": "macBlue"
+      }
+    }
+  },
+  "catppuccin": {
+    "$schema": "https://opencode.ai/theme.json",
+    "defs": {
+      "lightRosewater": "#dc8a78",
+      "lightFlamingo": "#dd7878",
+      "lightPink": "#ea76cb",
+      "lightMauve": "#8839ef",
+      "lightRed": "#d20f39",
+      "lightMaroon": "#e64553",
+      "lightPeach": "#fe640b",
+      "lightYellow": "#df8e1d",
+      "lightGreen": "#40a02b",
+      "lightTeal": "#179299",
+      "lightSky": "#04a5e5",
+      "lightSapphire": "#209fb5",
+      "lightBlue": "#1e66f5",
+      "lightLavender": "#7287fd",
+      "lightText": "#4c4f69",
+      "lightSubtext1": "#5c5f77",
+      "lightSubtext0": "#6c6f85",
+      "lightOverlay2": "#7c7f93",
+      "lightOverlay1": "#8c8fa1",
+      "lightOverlay0": "#9ca0b0",
+      "lightSurface2": "#acb0be",
+      "lightSurface1": "#bcc0cc",
+      "lightSurface0": "#ccd0da",
+      "lightBase": "#eff1f5",
+      "lightMantle": "#e6e9ef",
+      "lightCrust": "#dce0e8",
+      "darkRosewater": "#f5e0dc",
+      "darkFlamingo": "#f2cdcd",
+      "darkPink": "#f5c2e7",
+      "darkMauve": "#cba6f7",
+      "darkRed": "#f38ba8",
+      "darkMaroon": "#eba0ac",
+      "darkPeach": "#fab387",
+      "darkYellow": "#f9e2af",
+      "darkGreen": "#a6e3a1",
+      "darkTeal": "#94e2d5",
+      "darkSky": "#89dceb",
+      "darkSapphire": "#74c7ec",
+      "darkBlue": "#89b4fa",
+      "darkLavender": "#b4befe",
+      "darkText": "#cdd6f4",
+      "darkSubtext1": "#bac2de",
+      "darkSubtext0": "#a6adc8",
+      "darkOverlay2": "#9399b2",
+      "darkOverlay1": "#7f849c",
+      "darkOverlay0": "#6c7086",
+      "darkSurface2": "#585b70",
+      "darkSurface1": "#45475a",
+      "darkSurface0": "#313244",
+      "darkBase": "#1e1e2e",
+      "darkMantle": "#181825",
+      "darkCrust": "#11111b"
+    },
+    "theme": {
+      "primary": {
+        "dark": "darkBlue",
+        "light": "lightBlue"
+      },
+      "success": {
+        "dark": "darkGreen",
+        "light": "lightGreen"
+      },
+      "error": {
+        "dark": "darkRed",
+        "light": "lightRed"
+      },
+      "warning": {
+        "dark": "darkYellow",
+        "light": "lightYellow"
+      },
+      "info": {
+        "dark": "darkTeal",
+        "light": "lightTeal"
+      },
+      "text": {
+        "dark": "darkText",
+        "light": "lightText"
+      },
+      "textMuted": {
+        "dark": "darkSubtext1",
+        "light": "lightSubtext1"
+      },
+      "background": {
+        "dark": "darkBase",
+        "light": "lightBase"
+      },
+      "backgroundPanel": {
+        "dark": "darkMantle",
+        "light": "lightMantle"
+      },
+      "backgroundElement": {
+        "dark": "darkCrust",
+        "light": "lightCrust"
+      },
+      "syntaxFunction": {
+        "dark": "darkBlue",
+        "light": "lightBlue"
+      }
+    }
+  },
+  "cobalt2": {
+    "$schema": "https://opencode.ai/theme.json",
+    "defs": {
+      "background": "#193549",
+      "backgroundAlt": "#122738",
+      "backgroundPanel": "#1f4662",
+      "foreground": "#ffffff",
+      "foregroundMuted": "#adb7c9",
+      "yellow": "#ffc600",
+      "yellowBright": "#ffe14c",
+      "orange": "#ff9d00",
+      "orangeBright": "#ffb454",
+      "mint": "#2affdf",
+      "mintBright": "#7efff5",
+      "blue": "#0088ff",
+      "blueBright": "#5cb7ff",
+      "pink": "#ff628c",
+      "pinkBright": "#ff86a5",
+      "green": "#9eff80",
+      "greenBright": "#b9ff9f",
+      "purple": "#9a5feb",
+      "purpleBright": "#b88cfd",
+      "red": "#ff0088",
+      "redBright": "#ff5fb3"
+    },
+    "theme": {
+      "primary": {
+        "dark": "blue",
+        "light": "#0066cc"
+      },
+      "success": {
+        "dark": "green",
+        "light": "#4caf50"
+      },
+      "error": {
+        "dark": "red",
+        "light": "#e91e63"
+      },
+      "warning": {
+        "dark": "yellow",
+        "light": "#ff9800"
+      },
+      "info": {
+        "dark": "orange",
+        "light": "#ff5722"
+      },
+      "text": {
+        "dark": "foreground",
+        "light": "#193549"
+      },
+      "textMuted": {
+        "dark": "foregroundMuted",
+        "light": "#5c6b7d"
+      },
+      "background": {
+        "dark": "#193549",
+        "light": "#ffffff"
+      },
+      "backgroundPanel": {
+        "dark": "#122738",
+        "light": "#f5f7fa"
+      },
+      "backgroundElement": {
+        "dark": "#1f4662",
+        "light": "#e8ecf1"
+      },
+      "syntaxFunction": {
+        "dark": "yellow",
+        "light": "#ff9800"
+      }
+    }
+  },
+  "cursor": {
+    "$schema": "https://opencode.ai/theme.json",
+    "defs": {
+      "darkBg": "#181818",
+      "darkPanel": "#141414",
+      "darkElement": "#262626",
+      "darkFg": "#e4e4e4",
+      "darkMuted": "#e4e4e45e",
+      "darkBorder": "#e4e4e413",
+      "darkBorderActive": "#e4e4e426",
+      "darkCyan": "#88c0d0",
+      "darkBlue": "#81a1c1",
+      "darkGreen": "#3fa266",
+      "darkGreenBright": "#70b489",
+      "darkRed": "#e34671",
+      "darkRedBright": "#fc6b83",
+      "darkYellow": "#f1b467",
+      "darkOrange": "#d2943e",
+      "darkPink": "#E394DC",
+      "darkPurple": "#AAA0FA",
+      "darkTeal": "#82D2CE",
+      "darkSyntaxYellow": "#F8C762",
+      "darkSyntaxOrange": "#EFB080",
+      "darkSyntaxGreen": "#A8CC7C",
+      "darkSyntaxBlue": "#87C3FF",
+      "lightBg": "#fcfcfc",
+      "lightPanel": "#f3f3f3",
+      "lightElement": "#ededed",
+      "lightFg": "#141414",
+      "lightMuted": "#141414ad",
+      "lightBorder": "#14141413",
+      "lightBorderActive": "#14141426",
+      "lightTeal": "#6f9ba6",
+      "lightBlue": "#3c7cab",
+      "lightBlueDark": "#206595",
+      "lightGreen": "#1f8a65",
+      "lightGreenBright": "#55a583",
+      "lightRed": "#cf2d56",
+      "lightRedBright": "#e75e78",
+      "lightOrange": "#db704b",
+      "lightYellow": "#c08532",
+      "lightPurple": "#9e94d5",
+      "lightPurpleDark": "#6049b3",
+      "lightPink": "#b8448b",
+      "lightMagenta": "#b3003f"
+    },
+    "theme": {
+      "primary": {
+        "dark": "darkCyan",
+        "light": "lightTeal"
+      },
+      "success": {
+        "dark": "darkGreen",
+        "light": "lightGreen"
+      },
+      "error": {
+        "dark": "darkRed",
+        "light": "lightRed"
+      },
+      "warning": {
+        "dark": "darkYellow",
+        "light": "lightOrange"
+      },
+      "info": {
+        "dark": "darkBlue",
+        "light": "lightBlue"
+      },
+      "text": {
+        "dark": "darkFg",
+        "light": "lightFg"
+      },
+      "textMuted": {
+        "dark": "darkMuted",
+        "light": "lightMuted"
+      },
+      "background": {
+        "dark": "darkBg",
+        "light": "lightBg"
+      },
+      "backgroundPanel": {
+        "dark": "darkPanel",
+        "light": "lightPanel"
+      },
+      "backgroundElement": {
+        "dark": "darkElement",
+        "light": "lightElement"
+      },
+      "syntaxFunction": {
+        "dark": "darkSyntaxOrange",
+        "light": "lightOrange"
+      }
+    }
+  },
+  "dracula": {
+    "$schema": "https://opencode.ai/theme.json",
+    "defs": {
+      "background": "#282a36",
+      "currentLine": "#44475a",
+      "selection": "#44475a",
+      "foreground": "#f8f8f2",
+      "comment": "#6272a4",
+      "cyan": "#8be9fd",
+      "green": "#50fa7b",
+      "orange": "#ffb86c",
+      "pink": "#ff79c6",
+      "purple": "#bd93f9",
+      "red": "#ff5555",
+      "yellow": "#f1fa8c"
+    },
+    "theme": {
+      "primary": {
+        "dark": "purple",
+        "light": "purple"
+      },
+      "success": {
+        "dark": "green",
+        "light": "green"
+      },
+      "error": {
+        "dark": "red",
+        "light": "red"
+      },
+      "warning": {
+        "dark": "yellow",
+        "light": "yellow"
+      },
+      "info": {
+        "dark": "orange",
+        "light": "orange"
+      },
+      "text": {
+        "dark": "foreground",
+        "light": "#282a36"
+      },
+      "textMuted": {
+        "dark": "comment",
+        "light": "#6272a4"
+      },
+      "background": {
+        "dark": "#282a36",
+        "light": "#f8f8f2"
+      },
+      "backgroundPanel": {
+        "dark": "#21222c",
+        "light": "#e8e8e2"
+      },
+      "backgroundElement": {
+        "dark": "currentLine",
+        "light": "#d8d8d2"
+      },
+      "syntaxFunction": {
+        "dark": "green",
+        "light": "green"
+      }
+    }
+  },
+  "everforest": {
+    "$schema": "https://opencode.ai/theme.json",
+    "defs": {
+      "darkStep1": "#2d353b",
+      "darkStep2": "#333c43",
+      "darkStep3": "#343f44",
+      "darkStep4": "#3d484d",
+      "darkStep5": "#475258",
+      "darkStep6": "#7a8478",
+      "darkStep7": "#859289",
+      "darkStep8": "#9da9a0",
+      "darkStep9": "#a7c080",
+      "darkStep10": "#83c092",
+      "darkStep11": "#7a8478",
+      "darkStep12": "#d3c6aa",
+      "darkRed": "#e67e80",
+      "darkOrange": "#e69875",
+      "darkGreen": "#a7c080",
+      "darkCyan": "#83c092",
+      "darkYellow": "#dbbc7f",
+      "lightStep1": "#fdf6e3",
+      "lightStep2": "#efebd4",
+      "lightStep3": "#f4f0d9",
+      "lightStep4": "#efebd4",
+      "lightStep5": "#e6e2cc",
+      "lightStep6": "#a6b0a0",
+      "lightStep7": "#939f91",
+      "lightStep8": "#829181",
+      "lightStep9": "#8da101",
+      "lightStep10": "#35a77c",
+      "lightStep11": "#a6b0a0",
+      "lightStep12": "#5c6a72",
+      "lightRed": "#f85552",
+      "lightOrange": "#f57d26",
+      "lightGreen": "#8da101",
+      "lightCyan": "#35a77c",
+      "lightYellow": "#dfa000"
+    },
+    "theme": {
+      "primary": {
+        "dark": "darkStep9",
+        "light": "lightStep9"
+      },
+      "success": {
+        "dark": "darkGreen",
+        "light": "lightGreen"
+      },
+      "error": {
+        "dark": "darkRed",
+        "light": "lightRed"
+      },
+      "warning": {
+        "dark": "darkOrange",
+        "light": "lightOrange"
+      },
+      "info": {
+        "dark": "darkCyan",
+        "light": "lightCyan"
+      },
+      "text": {
+        "dark": "darkStep12",
+        "light": "lightStep12"
+      },
+      "textMuted": {
+        "dark": "darkStep11",
+        "light": "lightStep11"
+      },
+      "background": {
+        "dark": "darkStep1",
+        "light": "lightStep1"
+      },
+      "backgroundPanel": {
+        "dark": "darkStep2",
+        "light": "lightStep2"
+      },
+      "backgroundElement": {
+        "dark": "darkStep3",
+        "light": "lightStep3"
+      },
+      "syntaxFunction": {
+        "dark": "darkStep9",
+        "light": "lightStep9"
+      }
+    }
+  },
+  "flexoki": {
+    "$schema": "https://opencode.ai/theme.json",
+    "defs": {
+      "black": "#100F0F",
+      "base950": "#1C1B1A",
+      "base900": "#282726",
+      "base850": "#343331",
+      "base800": "#403E3C",
+      "base700": "#575653",
+      "base600": "#6F6E69",
+      "base500": "#878580",
+      "base300": "#B7B5AC",
+      "base200": "#CECDC3",
+      "base150": "#DAD8CE",
+      "base100": "#E6E4D9",
+      "base50": "#F2F0E5",
+      "paper": "#FFFCF0",
+      "red400": "#D14D41",
+      "red600": "#AF3029",
+      "orange400": "#DA702C",
+      "orange600": "#BC5215",
+      "yellow400": "#D0A215",
+      "yellow600": "#AD8301",
+      "green400": "#879A39",
+      "green600": "#66800B",
+      "cyan400": "#3AA99F",
+      "cyan600": "#24837B",
+      "blue400": "#4385BE",
+      "blue600": "#205EA6",
+      "purple400": "#8B7EC8",
+      "purple600": "#5E409D",
+      "magenta400": "#CE5D97",
+      "magenta600": "#A02F6F"
+    },
+    "theme": {
+      "primary": {
+        "dark": "orange400",
+        "light": "blue600"
+      },
+      "success": {
+        "dark": "green400",
+        "light": "green600"
+      },
+      "error": {
+        "dark": "red400",
+        "light": "red600"
+      },
+      "warning": {
+        "dark": "orange400",
+        "light": "orange600"
+      },
+      "info": {
+        "dark": "cyan400",
+        "light": "cyan600"
+      },
+      "text": {
+        "dark": "base200",
+        "light": "black"
+      },
+      "textMuted": {
+        "dark": "base600",
+        "light": "base600"
+      },
+      "background": {
+        "dark": "black",
+        "light": "paper"
+      },
+      "backgroundPanel": {
+        "dark": "base950",
+        "light": "base50"
+      },
+      "backgroundElement": {
+        "dark": "base900",
+        "light": "base100"
+      },
+      "syntaxFunction": {
+        "dark": "orange400",
+        "light": "orange600"
+      }
+    }
+  },
+  "github": {
+    "$schema": "https://opencode.ai/theme.json",
+    "defs": {
+      "darkBg": "#0d1117",
+      "darkBgAlt": "#010409",
+      "darkBgPanel": "#161b22",
+      "darkFg": "#c9d1d9",
+      "darkFgMuted": "#8b949e",
+      "darkBlue": "#58a6ff",
+      "darkGreen": "#3fb950",
+      "darkRed": "#f85149",
+      "darkOrange": "#d29922",
+      "darkPurple": "#bc8cff",
+      "darkPink": "#ff7b72",
+      "darkYellow": "#e3b341",
+      "darkCyan": "#39c5cf",
+      "lightBg": "#ffffff",
+      "lightBgAlt": "#f6f8fa",
+      "lightBgPanel": "#f0f3f6",
+      "lightFg": "#24292f",
+      "lightFgMuted": "#57606a",
+      "lightBlue": "#0969da",
+      "lightGreen": "#1a7f37",
+      "lightRed": "#cf222e",
+      "lightOrange": "#bc4c00",
+      "lightPurple": "#8250df",
+      "lightPink": "#bf3989",
+      "lightYellow": "#9a6700",
+      "lightCyan": "#1b7c83"
+    },
+    "theme": {
+      "primary": {
+        "dark": "darkBlue",
+        "light": "lightBlue"
+      },
+      "success": {
+        "dark": "darkGreen",
+        "light": "lightGreen"
+      },
+      "error": {
+        "dark": "darkRed",
+        "light": "lightRed"
+      },
+      "warning": {
+        "dark": "darkYellow",
+        "light": "lightYellow"
+      },
+      "info": {
+        "dark": "darkOrange",
+        "light": "lightOrange"
+      },
+      "text": {
+        "dark": "darkFg",
+        "light": "lightFg"
+      },
+      "textMuted": {
+        "dark": "darkFgMuted",
+        "light": "lightFgMuted"
+      },
+      "background": {
+        "dark": "darkBg",
+        "light": "lightBg"
+      },
+      "backgroundPanel": {
+        "dark": "darkBgAlt",
+        "light": "lightBgAlt"
+      },
+      "backgroundElement": {
+        "dark": "darkBgPanel",
+        "light": "lightBgPanel"
+      },
+      "syntaxFunction": {
+        "dark": "darkPurple",
+        "light": "lightPurple"
+      }
+    }
+  },
+  "gruvbox": {
+    "$schema": "https://opencode.ai/theme.json",
+    "defs": {
+      "darkBg0": "#282828",
+      "darkBg1": "#3c3836",
+      "darkBg2": "#504945",
+      "darkBg3": "#665c54",
+      "darkFg0": "#fbf1c7",
+      "darkFg1": "#ebdbb2",
+      "darkGray": "#928374",
+      "darkRed": "#cc241d",
+      "darkGreen": "#98971a",
+      "darkYellow": "#d79921",
+      "darkBlue": "#458588",
+      "darkPurple": "#b16286",
+      "darkAqua": "#689d6a",
+      "darkOrange": "#d65d0e",
+      "darkRedBright": "#fb4934",
+      "darkGreenBright": "#b8bb26",
+      "darkYellowBright": "#fabd2f",
+      "darkBlueBright": "#83a598",
+      "darkPurpleBright": "#d3869b",
+      "darkAquaBright": "#8ec07c",
+      "darkOrangeBright": "#fe8019",
+      "lightBg0": "#fbf1c7",
+      "lightBg1": "#ebdbb2",
+      "lightBg2": "#d5c4a1",
+      "lightBg3": "#bdae93",
+      "lightFg0": "#282828",
+      "lightFg1": "#3c3836",
+      "lightGray": "#7c6f64",
+      "lightRed": "#9d0006",
+      "lightGreen": "#79740e",
+      "lightYellow": "#b57614",
+      "lightBlue": "#076678",
+      "lightPurple": "#8f3f71",
+      "lightAqua": "#427b58",
+      "lightOrange": "#af3a03"
+    },
+    "theme": {
+      "primary": {
+        "dark": "darkBlueBright",
+        "light": "lightBlue"
+      },
+      "success": {
+        "dark": "darkGreenBright",
+        "light": "lightGreen"
+      },
+      "error": {
+        "dark": "darkRedBright",
+        "light": "lightRed"
+      },
+      "warning": {
+        "dark": "darkOrangeBright",
+        "light": "lightOrange"
+      },
+      "info": {
+        "dark": "darkYellowBright",
+        "light": "lightYellow"
+      },
+      "text": {
+        "dark": "darkFg1",
+        "light": "lightFg1"
+      },
+      "textMuted": {
+        "dark": "darkGray",
+        "light": "lightGray"
+      },
+      "background": {
+        "dark": "darkBg0",
+        "light": "lightBg0"
+      },
+      "backgroundPanel": {
+        "dark": "darkBg1",
+        "light": "lightBg1"
+      },
+      "backgroundElement": {
+        "dark": "darkBg2",
+        "light": "lightBg2"
+      },
+      "syntaxFunction": {
+        "dark": "darkGreenBright",
+        "light": "lightGreen"
+      }
+    }
+  },
+  "kanagawa": {
+    "$schema": "https://opencode.ai/theme.json",
+    "defs": {
+      "sumiInk0": "#1F1F28",
+      "sumiInk1": "#2A2A37",
+      "sumiInk2": "#363646",
+      "sumiInk3": "#54546D",
+      "fujiWhite": "#DCD7BA",
+      "oldWhite": "#C8C093",
+      "fujiGray": "#727169",
+      "oniViolet": "#957FB8",
+      "crystalBlue": "#7E9CD8",
+      "carpYellow": "#C38D9D",
+      "sakuraPink": "#D27E99",
+      "waveAqua": "#76946A",
+      "roninYellow": "#D7A657",
+      "dragonRed": "#E82424",
+      "lotusGreen": "#98BB6C",
+      "waveBlue": "#2D4F67",
+      "lightBg": "#F2E9DE",
+      "lightPaper": "#EAE4D7",
+      "lightText": "#54433A",
+      "lightGray": "#9E9389"
+    },
+    "theme": {
+      "primary": {
+        "dark": "crystalBlue",
+        "light": "waveBlue"
+      },
+      "success": {
+        "dark": "lotusGreen",
+        "light": "lotusGreen"
+      },
+      "error": {
+        "dark": "dragonRed",
+        "light": "dragonRed"
+      },
+      "warning": {
+        "dark": "roninYellow",
+        "light": "roninYellow"
+      },
+      "info": {
+        "dark": "waveAqua",
+        "light": "waveAqua"
+      },
+      "text": {
+        "dark": "fujiWhite",
+        "light": "lightText"
+      },
+      "textMuted": {
+        "dark": "fujiGray",
+        "light": "lightGray"
+      },
+      "background": {
+        "dark": "sumiInk0",
+        "light": "lightBg"
+      },
+      "backgroundPanel": {
+        "dark": "sumiInk1",
+        "light": "lightPaper"
+      },
+      "backgroundElement": {
+        "dark": "sumiInk2",
+        "light": "#E3DCD2"
+      },
+      "syntaxFunction": {
+        "dark": "crystalBlue",
+        "light": "waveBlue"
+      }
+    }
+  },
+  "lucent-orng": {
+    "$schema": "https://opencode.ai/theme.json",
+    "defs": {
+      "darkStep6": "#3c3c3c",
+      "darkStep11": "#808080",
+      "darkStep12": "#eeeeee",
+      "darkSecondary": "#EE7948",
+      "darkAccent": "#FFF7F1",
+      "darkRed": "#e06c75",
+      "darkOrange": "#EC5B2B",
+      "darkBlue": "#6ba1e6",
+      "darkCyan": "#56b6c2",
+      "darkYellow": "#e5c07b",
+      "darkPanelBg": "#2a1a1599",
+      "lightStep6": "#d4d4d4",
+      "lightStep11": "#8a8a8a",
+      "lightStep12": "#1a1a1a",
+      "lightSecondary": "#EE7948",
+      "lightAccent": "#c94d24",
+      "lightRed": "#d1383d",
+      "lightOrange": "#EC5B2B",
+      "lightBlue": "#0062d1",
+      "lightCyan": "#318795",
+      "lightYellow": "#b0851f",
+      "lightPanelBg": "#fff5f099"
+    },
+    "theme": {
+      "primary": {
+        "dark": "darkOrange",
+        "light": "lightOrange"
+      },
+      "success": {
+        "dark": "darkBlue",
+        "light": "lightBlue"
+      },
+      "error": {
+        "dark": "darkRed",
+        "light": "lightRed"
+      },
+      "warning": {
+        "dark": "darkOrange",
+        "light": "lightOrange"
+      },
+      "info": {
+        "dark": "darkCyan",
+        "light": "lightCyan"
+      },
+      "text": {
+        "dark": "darkStep12",
+        "light": "lightStep12"
+      },
+      "textMuted": {
+        "dark": "darkStep11",
+        "light": "lightStep11"
+      },
+      "background": {
+        "dark": "transparent",
+        "light": "transparent"
+      },
+      "backgroundPanel": {
+        "dark": "transparent",
+        "light": "transparent"
+      },
+      "backgroundElement": {
+        "dark": "transparent",
+        "light": "transparent"
+      },
+      "syntaxFunction": {
+        "dark": "darkSecondary",
+        "light": "lightAccent"
+      }
+    }
+  },
+  "material": {
+    "$schema": "https://opencode.ai/theme.json",
+    "defs": {
+      "darkBg": "#263238",
+      "darkBgAlt": "#1e272c",
+      "darkBgPanel": "#37474f",
+      "darkFg": "#eeffff",
+      "darkFgMuted": "#546e7a",
+      "darkRed": "#f07178",
+      "darkPink": "#f78c6c",
+      "darkOrange": "#ffcb6b",
+      "darkYellow": "#ffcb6b",
+      "darkGreen": "#c3e88d",
+      "darkCyan": "#89ddff",
+      "darkBlue": "#82aaff",
+      "darkPurple": "#c792ea",
+      "darkViolet": "#bb80b3",
+      "lightBg": "#fafafa",
+      "lightBgAlt": "#f5f5f5",
+      "lightBgPanel": "#e7e7e8",
+      "lightFg": "#263238",
+      "lightFgMuted": "#90a4ae",
+      "lightRed": "#e53935",
+      "lightPink": "#ec407a",
+      "lightOrange": "#f4511e",
+      "lightYellow": "#ffb300",
+      "lightGreen": "#91b859",
+      "lightCyan": "#39adb5",
+      "lightBlue": "#6182b8",
+      "lightPurple": "#7c4dff",
+      "lightViolet": "#945eb8"
+    },
+    "theme": {
+      "primary": {
+        "dark": "darkBlue",
+        "light": "lightBlue"
+      },
+      "success": {
+        "dark": "darkGreen",
+        "light": "lightGreen"
+      },
+      "error": {
+        "dark": "darkRed",
+        "light": "lightRed"
+      },
+      "warning": {
+        "dark": "darkYellow",
+        "light": "lightYellow"
+      },
+      "info": {
+        "dark": "darkOrange",
+        "light": "lightOrange"
+      },
+      "text": {
+        "dark": "darkFg",
+        "light": "lightFg"
+      },
+      "textMuted": {
+        "dark": "darkFgMuted",
+        "light": "lightFgMuted"
+      },
+      "background": {
+        "dark": "darkBg",
+        "light": "lightBg"
+      },
+      "backgroundPanel": {
+        "dark": "darkBgAlt",
+        "light": "lightBgAlt"
+      },
+      "backgroundElement": {
+        "dark": "darkBgPanel",
+        "light": "lightBgPanel"
+      },
+      "syntaxFunction": {
+        "dark": "darkBlue",
+        "light": "lightBlue"
+      }
+    }
+  },
+  "matrix": {
+    "$schema": "https://opencode.ai/theme.json",
+    "defs": {
+      "matrixInk0": "#0a0e0a",
+      "matrixInk1": "#0e130d",
+      "matrixInk2": "#141c12",
+      "matrixInk3": "#1e2a1b",
+      "rainGreen": "#2eff6a",
+      "rainGreenDim": "#1cc24b",
+      "rainGreenHi": "#62ff94",
+      "rainCyan": "#00efff",
+      "rainTeal": "#24f6d9",
+      "rainPurple": "#c770ff",
+      "rainOrange": "#ffa83d",
+      "alertRed": "#ff4b4b",
+      "alertYellow": "#e6ff57",
+      "alertBlue": "#30b3ff",
+      "rainGray": "#8ca391",
+      "lightBg": "#eef3ea",
+      "lightPaper": "#e4ebe1",
+      "lightInk1": "#dae1d7",
+      "lightText": "#203022",
+      "lightGray": "#748476"
+    },
+    "theme": {
+      "primary": {
+        "dark": "rainGreen",
+        "light": "rainGreenDim"
+      },
+      "success": {
+        "dark": "rainGreenHi",
+        "light": "rainGreenDim"
+      },
+      "error": {
+        "dark": "alertRed",
+        "light": "alertRed"
+      },
+      "warning": {
+        "dark": "alertYellow",
+        "light": "alertYellow"
+      },
+      "info": {
+        "dark": "alertBlue",
+        "light": "alertBlue"
+      },
+      "text": {
+        "dark": "rainGreenHi",
+        "light": "lightText"
+      },
+      "textMuted": {
+        "dark": "rainGray",
+        "light": "lightGray"
+      },
+      "background": {
+        "dark": "matrixInk0",
+        "light": "lightBg"
+      },
+      "backgroundPanel": {
+        "dark": "matrixInk1",
+        "light": "lightPaper"
+      },
+      "backgroundElement": {
+        "dark": "matrixInk2",
+        "light": "lightInk1"
+      },
+      "syntaxFunction": {
+        "dark": "alertBlue",
+        "light": "alertBlue"
+      }
+    }
+  },
+  "mercury": {
+    "$schema": "https://opencode.ai/theme.json",
+    "defs": {
+      "purple-800": "#3442a6",
+      "purple-700": "#465bd1",
+      "purple-600": "#5266eb",
+      "purple-400": "#8da4f5",
+      "purple-300": "#a7b6f8",
+      "red-700": "#b0175f",
+      "red-600": "#d03275",
+      "red-400": "#fc92b4",
+      "green-700": "#036e43",
+      "green-600": "#188554",
+      "green-400": "#77c599",
+      "orange-700": "#a44200",
+      "orange-600": "#c45000",
+      "orange-400": "#fc9b6f",
+      "blue-600": "#007f95",
+      "blue-400": "#77becf",
+      "neutral-1000": "#10101a",
+      "neutral-950": "#171721",
+      "neutral-900": "#1e1e2a",
+      "neutral-800": "#272735",
+      "neutral-700": "#363644",
+      "neutral-600": "#535461",
+      "neutral-500": "#70707d",
+      "neutral-400": "#9d9da8",
+      "neutral-300": "#c3c3cc",
+      "neutral-200": "#dddde5",
+      "neutral-100": "#f4f5f9",
+      "neutral-050": "#fbfcfd",
+      "neutral-000": "#ffffff",
+      "neutral-150": "#ededf3",
+      "border-light": "#7073931a",
+      "border-light-subtle": "#7073930f",
+      "border-dark": "#b4b7c81f",
+      "border-dark-subtle": "#b4b7c814",
+      "diff-added-light": "#1885541a",
+      "diff-removed-light": "#d032751a",
+      "diff-added-dark": "#77c59933",
+      "diff-removed-dark": "#fc92b433"
+    },
+    "theme": {
+      "primary": {
+        "light": "purple-600",
+        "dark": "purple-400"
+      },
+      "success": {
+        "light": "green-700",
+        "dark": "green-400"
+      },
+      "error": {
+        "light": "red-700",
+        "dark": "red-400"
+      },
+      "warning": {
+        "light": "orange-700",
+        "dark": "orange-400"
+      },
+      "info": {
+        "light": "blue-600",
+        "dark": "blue-400"
+      },
+      "text": {
+        "light": "neutral-700",
+        "dark": "neutral-200"
+      },
+      "textMuted": {
+        "light": "neutral-500",
+        "dark": "neutral-400"
+      },
+      "background": {
+        "light": "neutral-000",
+        "dark": "neutral-950"
+      },
+      "backgroundPanel": {
+        "light": "neutral-050",
+        "dark": "neutral-1000"
+      },
+      "backgroundElement": {
+        "light": "neutral-100",
+        "dark": "neutral-800"
+      },
+      "syntaxFunction": {
+        "light": "purple-600",
+        "dark": "purple-400"
+      }
+    }
+  },
+  "monokai": {
+    "$schema": "https://opencode.ai/theme.json",
+    "defs": {
+      "background": "#272822",
+      "backgroundAlt": "#1e1f1c",
+      "backgroundPanel": "#3e3d32",
+      "foreground": "#f8f8f2",
+      "comment": "#75715e",
+      "red": "#f92672",
+      "orange": "#fd971f",
+      "lightOrange": "#e69f66",
+      "yellow": "#e6db74",
+      "green": "#a6e22e",
+      "cyan": "#66d9ef",
+      "blue": "#66d9ef",
+      "purple": "#ae81ff",
+      "pink": "#f92672"
+    },
+    "theme": {
+      "primary": {
+        "dark": "cyan",
+        "light": "blue"
+      },
+      "success": {
+        "dark": "green",
+        "light": "green"
+      },
+      "error": {
+        "dark": "red",
+        "light": "red"
+      },
+      "warning": {
+        "dark": "yellow",
+        "light": "orange"
+      },
+      "info": {
+        "dark": "orange",
+        "light": "orange"
+      },
+      "text": {
+        "dark": "foreground",
+        "light": "#272822"
+      },
+      "textMuted": {
+        "dark": "comment",
+        "light": "#75715e"
+      },
+      "background": {
+        "dark": "#272822",
+        "light": "#fafafa"
+      },
+      "backgroundPanel": {
+        "dark": "#1e1f1c",
+        "light": "#f0f0f0"
+      },
+      "backgroundElement": {
+        "dark": "#3e3d32",
+        "light": "#e0e0e0"
+      },
+      "syntaxFunction": {
+        "dark": "green",
+        "light": "green"
+      }
+    }
+  },
+  "nightowl": {
+    "$schema": "https://opencode.ai/theme.json",
+    "defs": {
+      "nightOwlBg": "#011627",
+      "nightOwlFg": "#d6deeb",
+      "nightOwlBlue": "#82AAFF",
+      "nightOwlCyan": "#7fdbca",
+      "nightOwlGreen": "#c5e478",
+      "nightOwlYellow": "#ecc48d",
+      "nightOwlOrange": "#F78C6C",
+      "nightOwlRed": "#EF5350",
+      "nightOwlPink": "#ff5874",
+      "nightOwlPurple": "#c792ea",
+      "nightOwlMuted": "#5f7e97",
+      "nightOwlGray": "#637777",
+      "nightOwlLightGray": "#89a4bb",
+      "nightOwlPanel": "#0b253a"
+    },
+    "theme": {
+      "primary": {
+        "dark": "nightOwlBlue",
+        "light": "nightOwlBlue"
+      },
+      "success": {
+        "dark": "nightOwlGreen",
+        "light": "nightOwlGreen"
+      },
+      "error": {
+        "dark": "nightOwlRed",
+        "light": "nightOwlRed"
+      },
+      "warning": {
+        "dark": "nightOwlYellow",
+        "light": "nightOwlYellow"
+      },
+      "info": {
+        "dark": "nightOwlBlue",
+        "light": "nightOwlBlue"
+      },
+      "text": {
+        "dark": "nightOwlFg",
+        "light": "nightOwlFg"
+      },
+      "textMuted": {
+        "dark": "nightOwlMuted",
+        "light": "nightOwlMuted"
+      },
+      "background": {
+        "dark": "nightOwlBg",
+        "light": "nightOwlBg"
+      },
+      "backgroundPanel": {
+        "dark": "nightOwlPanel",
+        "light": "nightOwlPanel"
+      },
+      "backgroundElement": {
+        "dark": "nightOwlPanel",
+        "light": "nightOwlPanel"
+      },
+      "syntaxFunction": {
+        "dark": "nightOwlBlue",
+        "light": "nightOwlBlue"
+      }
+    }
+  },
+  "nord": {
+    "$schema": "https://opencode.ai/theme.json",
+    "defs": {
+      "nord0": "#2E3440",
+      "nord1": "#3B4252",
+      "nord2": "#434C5E",
+      "nord3": "#4C566A",
+      "nord4": "#D8DEE9",
+      "nord5": "#E5E9F0",
+      "nord6": "#ECEFF4",
+      "nord7": "#8FBCBB",
+      "nord8": "#88C0D0",
+      "nord9": "#81A1C1",
+      "nord10": "#5E81AC",
+      "nord11": "#BF616A",
+      "nord12": "#D08770",
+      "nord13": "#EBCB8B",
+      "nord14": "#A3BE8C",
+      "nord15": "#B48EAD"
+    },
+    "theme": {
+      "primary": {
+        "dark": "nord8",
+        "light": "nord10"
+      },
+      "success": {
+        "dark": "nord14",
+        "light": "nord14"
+      },
+      "error": {
+        "dark": "nord11",
+        "light": "nord11"
+      },
+      "warning": {
+        "dark": "nord12",
+        "light": "nord12"
+      },
+      "info": {
+        "dark": "nord8",
+        "light": "nord10"
+      },
+      "text": {
+        "dark": "nord6",
+        "light": "nord0"
+      },
+      "textMuted": {
+        "dark": "#8B95A7",
+        "light": "nord1"
+      },
+      "background": {
+        "dark": "nord0",
+        "light": "nord6"
+      },
+      "backgroundPanel": {
+        "dark": "nord1",
+        "light": "nord5"
+      },
+      "backgroundElement": {
+        "dark": "nord2",
+        "light": "nord4"
+      },
+      "syntaxFunction": {
+        "dark": "nord8",
+        "light": "nord8"
+      }
+    }
+  },
+  "one-dark": {
+    "$schema": "https://opencode.ai/theme.json",
+    "defs": {
+      "darkBg": "#282c34",
+      "darkBgAlt": "#21252b",
+      "darkBgPanel": "#353b45",
+      "darkFg": "#abb2bf",
+      "darkFgMuted": "#5c6370",
+      "darkPurple": "#c678dd",
+      "darkBlue": "#61afef",
+      "darkRed": "#e06c75",
+      "darkGreen": "#98c379",
+      "darkYellow": "#e5c07b",
+      "darkOrange": "#d19a66",
+      "darkCyan": "#56b6c2",
+      "lightBg": "#fafafa",
+      "lightBgAlt": "#f0f0f1",
+      "lightBgPanel": "#eaeaeb",
+      "lightFg": "#383a42",
+      "lightFgMuted": "#a0a1a7",
+      "lightPurple": "#a626a4",
+      "lightBlue": "#4078f2",
+      "lightRed": "#e45649",
+      "lightGreen": "#50a14f",
+      "lightYellow": "#c18401",
+      "lightOrange": "#986801",
+      "lightCyan": "#0184bc"
+    },
+    "theme": {
+      "primary": {
+        "dark": "darkBlue",
+        "light": "lightBlue"
+      },
+      "success": {
+        "dark": "darkGreen",
+        "light": "lightGreen"
+      },
+      "error": {
+        "dark": "darkRed",
+        "light": "lightRed"
+      },
+      "warning": {
+        "dark": "darkYellow",
+        "light": "lightYellow"
+      },
+      "info": {
+        "dark": "darkOrange",
+        "light": "lightOrange"
+      },
+      "text": {
+        "dark": "darkFg",
+        "light": "lightFg"
+      },
+      "textMuted": {
+        "dark": "darkFgMuted",
+        "light": "lightFgMuted"
+      },
+      "background": {
+        "dark": "darkBg",
+        "light": "lightBg"
+      },
+      "backgroundPanel": {
+        "dark": "darkBgAlt",
+        "light": "lightBgAlt"
+      },
+      "backgroundElement": {
+        "dark": "darkBgPanel",
+        "light": "lightBgPanel"
+      },
+      "syntaxFunction": {
+        "dark": "darkBlue",
+        "light": "lightBlue"
+      }
+    }
+  },
+  "opencode": {
+    "$schema": "https://opencode.ai/theme.json",
+    "defs": {
+      "darkStep1": "#0a0a0a",
+      "darkStep2": "#141414",
+      "darkStep3": "#1e1e1e",
+      "darkStep4": "#282828",
+      "darkStep5": "#323232",
+      "darkStep6": "#3c3c3c",
+      "darkStep7": "#484848",
+      "darkStep8": "#606060",
+      "darkStep9": "#fab283",
+      "darkStep10": "#ffc09f",
+      "darkStep11": "#808080",
+      "darkStep12": "#eeeeee",
+      "darkSecondary": "#5c9cf5",
+      "darkAccent": "#9d7cd8",
+      "darkRed": "#e06c75",
+      "darkOrange": "#f5a742",
+      "darkGreen": "#7fd88f",
+      "darkCyan": "#56b6c2",
+      "darkYellow": "#e5c07b",
+      "lightStep1": "#ffffff",
+      "lightStep2": "#fafafa",
+      "lightStep3": "#f5f5f5",
+      "lightStep4": "#ebebeb",
+      "lightStep5": "#e1e1e1",
+      "lightStep6": "#d4d4d4",
+      "lightStep7": "#b8b8b8",
+      "lightStep8": "#a0a0a0",
+      "lightStep9": "#3b7dd8",
+      "lightStep10": "#2968c3",
+      "lightStep11": "#8a8a8a",
+      "lightStep12": "#1a1a1a",
+      "lightSecondary": "#7b5bb6",
+      "lightAccent": "#d68c27",
+      "lightRed": "#d1383d",
+      "lightOrange": "#d68c27",
+      "lightGreen": "#3d9a57",
+      "lightCyan": "#318795",
+      "lightYellow": "#b0851f"
+    },
+    "theme": {
+      "primary": {
+        "dark": "darkStep9",
+        "light": "lightStep9"
+      },
+      "success": {
+        "dark": "darkGreen",
+        "light": "lightGreen"
+      },
+      "error": {
+        "dark": "darkRed",
+        "light": "lightRed"
+      },
+      "warning": {
+        "dark": "darkOrange",
+        "light": "lightOrange"
+      },
+      "info": {
+        "dark": "darkCyan",
+        "light": "lightCyan"
+      },
+      "text": {
+        "dark": "darkStep12",
+        "light": "lightStep12"
+      },
+      "textMuted": {
+        "dark": "darkStep11",
+        "light": "lightStep11"
+      },
+      "background": {
+        "dark": "darkStep1",
+        "light": "lightStep1"
+      },
+      "backgroundPanel": {
+        "dark": "darkStep2",
+        "light": "lightStep2"
+      },
+      "backgroundElement": {
+        "dark": "darkStep3",
+        "light": "lightStep3"
+      },
+      "syntaxFunction": {
+        "dark": "darkStep9",
+        "light": "lightStep9"
+      }
+    }
+  },
+  "orng": {
+    "$schema": "https://opencode.ai/theme.json",
+    "defs": {
+      "darkStep1": "#0a0a0a",
+      "darkStep2": "#141414",
+      "darkStep3": "#1e1e1e",
+      "darkStep4": "#282828",
+      "darkStep5": "#323232",
+      "darkStep6": "#3c3c3c",
+      "darkStep7": "#484848",
+      "darkStep8": "#606060",
+      "darkStep9": "#EC5B2B",
+      "darkStep10": "#EE7948",
+      "darkStep11": "#808080",
+      "darkStep12": "#eeeeee",
+      "darkSecondary": "#EE7948",
+      "darkAccent": "#FFF7F1",
+      "darkRed": "#e06c75",
+      "darkOrange": "#EC5B2B",
+      "darkBlue": "#6ba1e6",
+      "darkCyan": "#56b6c2",
+      "darkYellow": "#e5c07b",
+      "lightStep1": "#ffffff",
+      "lightStep2": "#FFF7F1",
+      "lightStep3": "#f5f0eb",
+      "lightStep4": "#ebebeb",
+      "lightStep5": "#e1e1e1",
+      "lightStep6": "#d4d4d4",
+      "lightStep7": "#b8b8b8",
+      "lightStep8": "#a0a0a0",
+      "lightStep9": "#EC5B2B",
+      "lightStep10": "#c94d24",
+      "lightStep11": "#8a8a8a",
+      "lightStep12": "#1a1a1a",
+      "lightSecondary": "#EE7948",
+      "lightAccent": "#c94d24",
+      "lightRed": "#d1383d",
+      "lightOrange": "#EC5B2B",
+      "lightBlue": "#0062d1",
+      "lightCyan": "#318795",
+      "lightYellow": "#b0851f"
+    },
+    "theme": {
+      "primary": {
+        "dark": "darkStep9",
+        "light": "lightStep9"
+      },
+      "success": {
+        "dark": "darkBlue",
+        "light": "lightBlue"
+      },
+      "error": {
+        "dark": "darkRed",
+        "light": "lightRed"
+      },
+      "warning": {
+        "dark": "darkOrange",
+        "light": "lightOrange"
+      },
+      "info": {
+        "dark": "darkCyan",
+        "light": "lightCyan"
+      },
+      "text": {
+        "dark": "darkStep12",
+        "light": "lightStep12"
+      },
+      "textMuted": {
+        "dark": "darkStep11",
+        "light": "lightStep11"
+      },
+      "background": {
+        "dark": "darkStep1",
+        "light": "lightStep1"
+      },
+      "backgroundPanel": {
+        "dark": "darkStep2",
+        "light": "lightStep2"
+      },
+      "backgroundElement": {
+        "dark": "darkStep3",
+        "light": "lightStep3"
+      },
+      "syntaxFunction": {
+        "dark": "#EE7948",
+        "light": "#c94d24"
+      }
+    }
+  },
+  "osaka-jade": {
+    "$schema": "https://opencode.ai/theme.json",
+    "defs": {
+      "darkBg0": "#111c18",
+      "darkBg1": "#1a2520",
+      "darkBg2": "#23372B",
+      "darkBg3": "#3d4a44",
+      "darkFg0": "#C1C497",
+      "darkFg1": "#9aa88a",
+      "darkGray": "#53685B",
+      "darkRed": "#FF5345",
+      "darkGreen": "#549e6a",
+      "darkYellow": "#459451",
+      "darkBlue": "#509475",
+      "darkMagenta": "#D2689C",
+      "darkCyan": "#2DD5B7",
+      "darkWhite": "#F6F5DD",
+      "darkRedBright": "#db9f9c",
+      "darkGreenBright": "#63b07a",
+      "darkYellowBright": "#E5C736",
+      "darkBlueBright": "#ACD4CF",
+      "darkMagentaBright": "#75bbb3",
+      "darkCyanBright": "#8CD3CB",
+      "lightBg0": "#F6F5DD",
+      "lightBg1": "#E8E7CC",
+      "lightBg2": "#D5D4B8",
+      "lightBg3": "#A8A78C",
+      "lightFg0": "#111c18",
+      "lightFg1": "#1a2520",
+      "lightGray": "#53685B",
+      "lightRed": "#c7392d",
+      "lightGreen": "#3d7a52",
+      "lightYellow": "#b5a020",
+      "lightBlue": "#3d7560",
+      "lightMagenta": "#a8527a",
+      "lightCyan": "#1faa90"
+    },
+    "theme": {
+      "primary": {
+        "dark": "darkCyan",
+        "light": "lightCyan"
+      },
+      "success": {
+        "dark": "darkGreen",
+        "light": "lightGreen"
+      },
+      "error": {
+        "dark": "darkRed",
+        "light": "lightRed"
+      },
+      "warning": {
+        "dark": "darkYellowBright",
+        "light": "lightYellow"
+      },
+      "info": {
+        "dark": "darkCyan",
+        "light": "lightCyan"
+      },
+      "text": {
+        "dark": "darkFg0",
+        "light": "lightFg0"
+      },
+      "textMuted": {
+        "dark": "darkGray",
+        "light": "lightGray"
+      },
+      "background": {
+        "dark": "darkBg0",
+        "light": "lightBg0"
+      },
+      "backgroundPanel": {
+        "dark": "darkBg1",
+        "light": "lightBg1"
+      },
+      "backgroundElement": {
+        "dark": "darkBg2",
+        "light": "lightBg2"
+      },
+      "syntaxFunction": {
+        "dark": "darkBlue",
+        "light": "lightBlue"
+      }
+    }
+  },
+  "palenight": {
+    "$schema": "https://opencode.ai/theme.json",
+    "defs": {
+      "background": "#292d3e",
+      "backgroundAlt": "#1e2132",
+      "backgroundPanel": "#32364a",
+      "foreground": "#a6accd",
+      "foregroundBright": "#bfc7d5",
+      "comment": "#676e95",
+      "red": "#f07178",
+      "orange": "#f78c6c",
+      "yellow": "#ffcb6b",
+      "green": "#c3e88d",
+      "cyan": "#89ddff",
+      "blue": "#82aaff",
+      "purple": "#c792ea",
+      "magenta": "#ff5370",
+      "pink": "#f07178"
+    },
+    "theme": {
+      "primary": {
+        "dark": "blue",
+        "light": "#4976eb"
+      },
+      "success": {
+        "dark": "green",
+        "light": "#91b859"
+      },
+      "error": {
+        "dark": "red",
+        "light": "#e53935"
+      },
+      "warning": {
+        "dark": "yellow",
+        "light": "#ffb300"
+      },
+      "info": {
+        "dark": "orange",
+        "light": "#f4511e"
+      },
+      "text": {
+        "dark": "foreground",
+        "light": "#292d3e"
+      },
+      "textMuted": {
+        "dark": "comment",
+        "light": "#8796b0"
+      },
+      "background": {
+        "dark": "#292d3e",
+        "light": "#fafafa"
+      },
+      "backgroundPanel": {
+        "dark": "#1e2132",
+        "light": "#f5f5f5"
+      },
+      "backgroundElement": {
+        "dark": "#32364a",
+        "light": "#e7e7e8"
+      },
+      "syntaxFunction": {
+        "dark": "blue",
+        "light": "#4976eb"
+      }
+    }
+  },
+  "rosepine": {
+    "$schema": "https://opencode.ai/theme.json",
+    "defs": {
+      "base": "#191724",
+      "surface": "#1f1d2e",
+      "overlay": "#26233a",
+      "muted": "#6e6a86",
+      "subtle": "#908caa",
+      "text": "#e0def4",
+      "love": "#eb6f92",
+      "gold": "#f6c177",
+      "rose": "#ebbcba",
+      "pine": "#31748f",
+      "foam": "#9ccfd8",
+      "iris": "#c4a7e7",
+      "highlightLow": "#21202e",
+      "highlightMed": "#403d52",
+      "highlightHigh": "#524f67",
+      "moonBase": "#232136",
+      "moonSurface": "#2a273f",
+      "moonOverlay": "#393552",
+      "moonMuted": "#6e6a86",
+      "moonSubtle": "#908caa",
+      "moonText": "#e0def4",
+      "dawnBase": "#faf4ed",
+      "dawnSurface": "#fffaf3",
+      "dawnOverlay": "#f2e9e1",
+      "dawnMuted": "#9893a5",
+      "dawnSubtle": "#797593",
+      "dawnText": "#575279"
+    },
+    "theme": {
+      "primary": {
+        "dark": "foam",
+        "light": "pine"
+      },
+      "success": {
+        "dark": "pine",
+        "light": "#286983"
+      },
+      "error": {
+        "dark": "love",
+        "light": "#b4637a"
+      },
+      "warning": {
+        "dark": "gold",
+        "light": "#ea9d34"
+      },
+      "info": {
+        "dark": "foam",
+        "light": "#56949f"
+      },
+      "text": {
+        "dark": "#e0def4",
+        "light": "#575279"
+      },
+      "textMuted": {
+        "dark": "muted",
+        "light": "dawnMuted"
+      },
+      "background": {
+        "dark": "base",
+        "light": "dawnBase"
+      },
+      "backgroundPanel": {
+        "dark": "surface",
+        "light": "dawnSurface"
+      },
+      "backgroundElement": {
+        "dark": "overlay",
+        "light": "dawnOverlay"
+      },
+      "syntaxFunction": {
+        "dark": "rose",
+        "light": "#d7827e"
+      }
+    }
+  },
+  "solarized": {
+    "$schema": "https://opencode.ai/theme.json",
+    "defs": {
+      "base03": "#002b36",
+      "base02": "#073642",
+      "base01": "#586e75",
+      "base00": "#657b83",
+      "base0": "#839496",
+      "base1": "#93a1a1",
+      "base2": "#eee8d5",
+      "base3": "#fdf6e3",
+      "yellow": "#b58900",
+      "orange": "#cb4b16",
+      "red": "#dc322f",
+      "magenta": "#d33682",
+      "violet": "#6c71c4",
+      "blue": "#268bd2",
+      "cyan": "#2aa198",
+      "green": "#859900"
+    },
+    "theme": {
+      "primary": {
+        "dark": "blue",
+        "light": "blue"
+      },
+      "success": {
+        "dark": "green",
+        "light": "green"
+      },
+      "error": {
+        "dark": "red",
+        "light": "red"
+      },
+      "warning": {
+        "dark": "yellow",
+        "light": "yellow"
+      },
+      "info": {
+        "dark": "orange",
+        "light": "orange"
+      },
+      "text": {
+        "dark": "base0",
+        "light": "base00"
+      },
+      "textMuted": {
+        "dark": "base01",
+        "light": "base1"
+      },
+      "background": {
+        "dark": "base03",
+        "light": "base3"
+      },
+      "backgroundPanel": {
+        "dark": "base02",
+        "light": "base2"
+      },
+      "backgroundElement": {
+        "dark": "#073642",
+        "light": "#eee8d5"
+      },
+      "syntaxFunction": {
+        "dark": "blue",
+        "light": "blue"
+      }
+    }
+  },
+  "synthwave84": {
+    "$schema": "https://opencode.ai/theme.json",
+    "defs": {
+      "background": "#262335",
+      "backgroundAlt": "#1e1a29",
+      "backgroundPanel": "#2a2139",
+      "foreground": "#ffffff",
+      "foregroundMuted": "#848bbd",
+      "pink": "#ff7edb",
+      "pinkBright": "#ff92df",
+      "cyan": "#36f9f6",
+      "cyanBright": "#72f1f8",
+      "yellow": "#fede5d",
+      "yellowBright": "#fff95d",
+      "orange": "#ff8b39",
+      "orangeBright": "#ff9f43",
+      "purple": "#b084eb",
+      "purpleBright": "#c792ea",
+      "red": "#fe4450",
+      "redBright": "#ff5e5b",
+      "green": "#72f1b8",
+      "greenBright": "#97f1d8"
+    },
+    "theme": {
+      "primary": {
+        "dark": "cyan",
+        "light": "#00bcd4"
+      },
+      "success": {
+        "dark": "green",
+        "light": "#4caf50"
+      },
+      "error": {
+        "dark": "red",
+        "light": "#f44336"
+      },
+      "warning": {
+        "dark": "yellow",
+        "light": "#ff9800"
+      },
+      "info": {
+        "dark": "orange",
+        "light": "#ff5722"
+      },
+      "text": {
+        "dark": "foreground",
+        "light": "#262335"
+      },
+      "textMuted": {
+        "dark": "foregroundMuted",
+        "light": "#5c5c8a"
+      },
+      "background": {
+        "dark": "#262335",
+        "light": "#fafafa"
+      },
+      "backgroundPanel": {
+        "dark": "#1e1a29",
+        "light": "#f5f5f5"
+      },
+      "backgroundElement": {
+        "dark": "#2a2139",
+        "light": "#eeeeee"
+      },
+      "syntaxFunction": {
+        "dark": "orange",
+        "light": "#ff5722"
+      }
+    }
+  },
+  "tokyonight": {
+    "$schema": "https://opencode.ai/theme.json",
+    "defs": {
+      "darkStep1": "#1a1b26",
+      "darkStep2": "#1e2030",
+      "darkStep3": "#222436",
+      "darkStep4": "#292e42",
+      "darkStep5": "#3b4261",
+      "darkStep6": "#545c7e",
+      "darkStep7": "#737aa2",
+      "darkStep8": "#9099b2",
+      "darkStep9": "#82aaff",
+      "darkStep10": "#89b4fa",
+      "darkStep11": "#828bb8",
+      "darkStep12": "#c8d3f5",
+      "darkRed": "#ff757f",
+      "darkOrange": "#ff966c",
+      "darkYellow": "#ffc777",
+      "darkGreen": "#c3e88d",
+      "darkCyan": "#86e1fc",
+      "darkPurple": "#c099ff",
+      "lightStep1": "#e1e2e7",
+      "lightStep2": "#d5d6db",
+      "lightStep3": "#c8c9ce",
+      "lightStep4": "#b9bac1",
+      "lightStep5": "#a8aecb",
+      "lightStep6": "#9699a8",
+      "lightStep7": "#737a8c",
+      "lightStep8": "#5a607d",
+      "lightStep9": "#2e7de9",
+      "lightStep10": "#1a6ce7",
+      "lightStep11": "#8990a3",
+      "lightStep12": "#3760bf",
+      "lightRed": "#f52a65",
+      "lightOrange": "#b15c00",
+      "lightYellow": "#8c6c3e",
+      "lightGreen": "#587539",
+      "lightCyan": "#007197",
+      "lightPurple": "#9854f1"
+    },
+    "theme": {
+      "primary": {
+        "dark": "darkStep9",
+        "light": "lightStep9"
+      },
+      "success": {
+        "dark": "darkGreen",
+        "light": "lightGreen"
+      },
+      "error": {
+        "dark": "darkRed",
+        "light": "lightRed"
+      },
+      "warning": {
+        "dark": "darkOrange",
+        "light": "lightOrange"
+      },
+      "info": {
+        "dark": "darkStep9",
+        "light": "lightStep9"
+      },
+      "text": {
+        "dark": "darkStep12",
+        "light": "lightStep12"
+      },
+      "textMuted": {
+        "dark": "darkStep11",
+        "light": "lightStep11"
+      },
+      "background": {
+        "dark": "darkStep1",
+        "light": "lightStep1"
+      },
+      "backgroundPanel": {
+        "dark": "darkStep2",
+        "light": "lightStep2"
+      },
+      "backgroundElement": {
+        "dark": "darkStep3",
+        "light": "lightStep3"
+      },
+      "syntaxFunction": {
+        "dark": "darkStep9",
+        "light": "lightStep9"
+      }
+    }
+  },
+  "vercel": {
+    "$schema": "https://opencode.ai/theme.json",
+    "defs": {
+      "background100": "#0A0A0A",
+      "background200": "#000000",
+      "gray100": "#1A1A1A",
+      "gray200": "#1F1F1F",
+      "gray300": "#292929",
+      "gray400": "#2E2E2E",
+      "gray500": "#454545",
+      "gray600": "#878787",
+      "gray700": "#8F8F8F",
+      "gray900": "#A1A1A1",
+      "gray1000": "#EDEDED",
+      "blue600": "#0099FF",
+      "blue700": "#0070F3",
+      "blue900": "#52A8FF",
+      "blue1000": "#EBF8FF",
+      "red700": "#E5484D",
+      "red900": "#FF6166",
+      "red1000": "#FDECED",
+      "amber700": "#FFB224",
+      "amber900": "#F2A700",
+      "amber1000": "#FDF4DC",
+      "green700": "#46A758",
+      "green900": "#63C46D",
+      "green1000": "#E6F9E9",
+      "teal700": "#12A594",
+      "teal900": "#0AC7AC",
+      "purple700": "#8E4EC6",
+      "purple900": "#BF7AF0",
+      "pink700": "#E93D82",
+      "pink900": "#F75590",
+      "highlightPink": "#FF0080",
+      "highlightPurple": "#F81CE5",
+      "cyan": "#50E3C2",
+      "lightBackground": "#FFFFFF",
+      "lightGray100": "#FAFAFA",
+      "lightGray200": "#EAEAEA",
+      "lightGray600": "#666666",
+      "lightGray1000": "#171717"
+    },
+    "theme": {
+      "primary": {
+        "dark": "blue700",
+        "light": "blue700"
+      },
+      "success": {
+        "dark": "green700",
+        "light": "#388E3C"
+      },
+      "error": {
+        "dark": "red700",
+        "light": "#DC3545"
+      },
+      "warning": {
+        "dark": "amber700",
+        "light": "#FF9500"
+      },
+      "info": {
+        "dark": "blue900",
+        "light": "blue700"
+      },
+      "text": {
+        "dark": "gray1000",
+        "light": "lightGray1000"
+      },
+      "textMuted": {
+        "dark": "gray600",
+        "light": "lightGray600"
+      },
+      "background": {
+        "dark": "background200",
+        "light": "lightBackground"
+      },
+      "backgroundPanel": {
+        "dark": "gray100",
+        "light": "lightGray100"
+      },
+      "backgroundElement": {
+        "dark": "gray300",
+        "light": "lightGray200"
+      },
+      "syntaxFunction": {
+        "dark": "purple900",
+        "light": "purple700"
+      }
+    }
+  },
+  "vesper": {
+    "$schema": "https://opencode.ai/theme.json",
+    "defs": {
+      "vesperBg": "#101010",
+      "vesperFg": "#FFF",
+      "vesperComment": "#8b8b8b",
+      "vesperKeyword": "#A0A0A0",
+      "vesperFunction": "#FFC799",
+      "vesperString": "#99FFE4",
+      "vesperNumber": "#FFC799",
+      "vesperError": "#FF8080",
+      "vesperWarning": "#FFC799",
+      "vesperSuccess": "#99FFE4",
+      "vesperMuted": "#A0A0A0"
+    },
+    "theme": {
+      "primary": {
+        "dark": "#FFC799",
+        "light": "#FFC799"
+      },
+      "success": {
+        "dark": "vesperSuccess",
+        "light": "vesperSuccess"
+      },
+      "error": {
+        "dark": "vesperError",
+        "light": "vesperError"
+      },
+      "warning": {
+        "dark": "vesperWarning",
+        "light": "vesperWarning"
+      },
+      "info": {
+        "dark": "#FFC799",
+        "light": "#FFC799"
+      },
+      "text": {
+        "dark": "vesperFg",
+        "light": "vesperBg"
+      },
+      "textMuted": {
+        "dark": "vesperMuted",
+        "light": "vesperMuted"
+      },
+      "background": {
+        "dark": "vesperBg",
+        "light": "#FFF"
+      },
+      "backgroundPanel": {
+        "dark": "vesperBg",
+        "light": "#F0F0F0"
+      },
+      "backgroundElement": {
+        "dark": "vesperBg",
+        "light": "#E0E0E0"
+      },
+      "syntaxFunction": {
+        "dark": "vesperFunction",
+        "light": "vesperFunction"
+      }
+    }
+  },
+  "zenburn": {
+    "$schema": "https://opencode.ai/theme.json",
+    "defs": {
+      "bg": "#3f3f3f",
+      "bgAlt": "#4f4f4f",
+      "bgPanel": "#5f5f5f",
+      "fg": "#dcdccc",
+      "fgMuted": "#9f9f9f",
+      "red": "#cc9393",
+      "redBright": "#dca3a3",
+      "green": "#7f9f7f",
+      "greenBright": "#8fb28f",
+      "yellow": "#f0dfaf",
+      "yellowDim": "#e0cf9f",
+      "blue": "#8cd0d3",
+      "blueDim": "#7cb8bb",
+      "magenta": "#dc8cc3",
+      "cyan": "#93e0e3",
+      "orange": "#dfaf8f"
+    },
+    "theme": {
+      "primary": {
+        "dark": "blue",
+        "light": "#5f7f8f"
+      },
+      "success": {
+        "dark": "green",
+        "light": "#5f8f5f"
+      },
+      "error": {
+        "dark": "red",
+        "light": "#8f5f5f"
+      },
+      "warning": {
+        "dark": "yellow",
+        "light": "#8f8f5f"
+      },
+      "info": {
+        "dark": "orange",
+        "light": "#8f7f5f"
+      },
+      "text": {
+        "dark": "fg",
+        "light": "#3f3f3f"
+      },
+      "textMuted": {
+        "dark": "fgMuted",
+        "light": "#6f6f6f"
+      },
+      "background": {
+        "dark": "bg",
+        "light": "#ffffef"
+      },
+      "backgroundPanel": {
+        "dark": "bgAlt",
+        "light": "#f5f5e5"
+      },
+      "backgroundElement": {
+        "dark": "bgPanel",
+        "light": "#ebebdb"
+      },
+      "syntaxFunction": {
+        "dark": "blue",
+        "light": "#5f7f8f"
+      }
+    }
+  },
+  "github-light": {
+    "$schema": "https://opencode.ai/theme.json",
+    "theme": {
+      "primary": "#0550ae",
+      "success": "#1a7f37",
+      "error": "#cf222e",
+      "warning": "#9a6700",
+      "info": "#bc4c00",
+      "text": "#24292f",
+      "textMuted": "#57606a",
+      "conceal": "#8c959f",
+      "background": "#ffffff",
+      "backgroundPanel": "#f6f8fa",
+      "backgroundElement": "#d0d7de",
+      "syntaxFunction": "#8250df"
+    }
+  }
+}
