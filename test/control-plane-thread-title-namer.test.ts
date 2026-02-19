@@ -37,6 +37,24 @@ function textResponse(text: string): Response {
   ]);
 }
 
+function notFoundResponse(modelId: string): Response {
+  return new Response(
+    JSON.stringify({
+      type: 'error',
+      error: {
+        type: 'not_found_error',
+        message: `model: ${modelId}`,
+      },
+    }),
+    {
+      status: 404,
+      headers: {
+        'content-type': 'application/json',
+      },
+    },
+  );
+}
+
 function promptRecord(
   text: string | null,
   observedAt: string,
@@ -206,4 +224,47 @@ void test('anthropic thread title namer returns null for empty prompt history wi
   });
   assert.equal(title, null);
   assert.equal(called, false);
+});
+
+void test('anthropic thread title namer retries with fallback models when preferred model fails', async () => {
+  const requestedModels: string[] = [];
+  const namer = createAnthropicThreadTitleNamer({
+    apiKey: 'test-key',
+    modelId: 'claude-3-5-haiku-latest',
+    fetch: async (_input, init) => {
+      const body = init?.body;
+      const payload =
+        typeof body === 'string' ? JSON.parse(body) : JSON.parse(String(body ?? '{}'));
+      const modelId = String(payload['model'] ?? '');
+      requestedModels.push(modelId);
+      if (modelId === 'claude-3-5-haiku-latest') {
+        return notFoundResponse(modelId);
+      }
+      return textResponse('fresh prompt focus');
+    },
+  });
+
+  const title = await namer.suggest({
+    conversationId: 'conversation-retry-model',
+    agentType: 'codex',
+    currentTitle: 'seed title',
+    promptHistory: [
+      {
+        text: 'Investigate parser regressions',
+        observedAt: '2026-02-19T00:00:00.000Z',
+        hash: 'h1',
+      },
+      {
+        text: 'Add integration test coverage',
+        observedAt: '2026-02-19T00:00:01.000Z',
+        hash: 'h2',
+      },
+    ],
+  });
+
+  assert.equal(title, 'fresh prompt');
+  assert.deepEqual(requestedModels.slice(0, 2), [
+    'claude-3-5-haiku-latest',
+    'claude-haiku-4-5-20251001',
+  ]);
 });

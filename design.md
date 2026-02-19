@@ -738,6 +738,7 @@ Design constraints:
 - Gateway runtime artifacts are session-scoped within each workspace runtime root:
   - default session: `<workspace-runtime>/gateway.json`, `<workspace-runtime>/gateway.log`, `<workspace-runtime>/gateway.lock`, `<workspace-runtime>/control-plane.sqlite`
   - named sessions: `<workspace-runtime>/sessions/<session-name>/gateway.json|gateway.log|gateway.lock|control-plane.sqlite`
+  - global default-session pointer: `~/.harness/default-gateway.json` (or `$XDG_CONFIG_HOME/harness/default-gateway.json`) tracks the active default-session workspace/log/record paths; named sessions do not mutate this pointer
 - Config payloads are explicitly versioned with top-level `configVersion`.
 - JSON-with-comments format (JSONC) is required to allow inline documentation and annotation.
 - Single configuration abstraction only (`config-core`) used by every subsystem and process.

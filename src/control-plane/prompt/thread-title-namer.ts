@@ -35,7 +35,8 @@ const FALLBACK_STOP_WORDS = new Set([
   'up',
   'with',
 ]);
-const DEFAULT_HAIKU_MODEL_ID = 'claude-3-5-haiku-latest';
+const DEFAULT_HAIKU_MODEL_ID = 'claude-haiku-4-5-20251001';
+const FALLBACK_HAIKU_MODEL_IDS = ['claude-3-haiku-20240307'] as const;
 
 interface ThreadTitlePromptHistoryEntry {
   readonly text: string;
@@ -59,6 +60,26 @@ interface AnthropicThreadTitleNamerOptions {
   readonly modelId?: string;
   readonly baseUrl?: string;
   readonly fetch?: typeof fetch;
+}
+
+function resolveModelCandidateIds(modelId: string | undefined): readonly string[] {
+  const ordered = [
+    modelId,
+    DEFAULT_HAIKU_MODEL_ID,
+    ...FALLBACK_HAIKU_MODEL_IDS,
+  ];
+  const deduped: string[] = [];
+  for (const candidate of ordered) {
+    if (typeof candidate !== 'string') {
+      continue;
+    }
+    const trimmed = candidate.trim();
+    if (trimmed.length === 0 || deduped.includes(trimmed)) {
+      continue;
+    }
+    deduped.push(trimmed);
+  }
+  return deduped;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -255,7 +276,7 @@ export function createAnthropicThreadTitleNamer(
     ...(options.baseUrl === undefined ? {} : { baseUrl: options.baseUrl }),
     ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
   });
-  const model = anthropic(options.modelId ?? DEFAULT_HAIKU_MODEL_ID);
+  const modelCandidateIds = resolveModelCandidateIds(options.modelId);
   return {
     async suggest(input: ThreadTitleNamerInput): Promise<string | null> {
       if (input.promptHistory.length === 0) {
@@ -264,27 +285,36 @@ export function createAnthropicThreadTitleNamer(
       const promptLines = input.promptHistory.map(
         (entry, index) => `${String(index + 1)}. ${entry.text}`,
       );
-      const response = await generateText({
-        model,
-        system: [
-          'You name active coding-agent threads.',
-          'Use the full user prompt history to keep titles relevant and fresh.',
-          'Stay high-level and avoid low-level implementation details.',
-          'Return exactly 2 words in lowercase with no punctuation and no extra text.',
-        ].join(' '),
-        prompt: [
-          `Agent: ${input.agentType}`,
-          `Current title: ${input.currentTitle}`,
-          `Conversation id: ${input.conversationId}`,
-          'Prompt history (oldest to newest):',
-          ...promptLines,
-          'Return a new title now.',
-        ].join('\n'),
-        maxOutputTokens: 16,
-        temperature: 0,
-      });
-      const normalized = normalizeThreadTitleCandidate(response.text);
-      return normalized ?? fallbackThreadTitleFromPromptHistory(input.promptHistory);
+      for (const modelId of modelCandidateIds) {
+        const model = anthropic(modelId);
+        const response = await generateText({
+          model,
+          system: [
+            'You name active coding-agent threads.',
+            'Use the full user prompt history to keep titles relevant and fresh.',
+            'Stay high-level and avoid low-level implementation details.',
+            'Return exactly 2 words in lowercase with no punctuation and no extra text.',
+          ].join(' '),
+          prompt: [
+            `Agent: ${input.agentType}`,
+            `Current title: ${input.currentTitle}`,
+            `Conversation id: ${input.conversationId}`,
+            'Prompt history (oldest to newest):',
+            ...promptLines,
+            'Return a new title now.',
+          ].join('\n'),
+          maxOutputTokens: 16,
+          temperature: 0,
+        });
+        const normalized = normalizeThreadTitleCandidate(response.text);
+        if (normalized !== null) {
+          return normalized;
+        }
+        if (response.finishReason !== 'error') {
+          break;
+        }
+      }
+      return fallbackThreadTitleFromPromptHistory(input.promptHistory);
     },
   };
 }

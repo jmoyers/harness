@@ -20,6 +20,10 @@ import { parseStreamCommand } from '../src/control-plane/stream-command-parser.t
 import type { StreamCommand } from '../src/control-plane/stream-protocol.ts';
 import { runHarnessAnimate } from './harness-animate.ts';
 import {
+  clearDefaultGatewayPointerForRecordPath,
+  writeDefaultGatewayPointerFromGatewayRecord,
+} from '../src/cli/default-gateway-pointer.ts';
+import {
   GATEWAY_RECORD_VERSION,
   DEFAULT_GATEWAY_DB_PATH,
   isLoopbackHost,
@@ -960,6 +964,7 @@ function writeTextFileAtomically(filePath: string, text: string): void {
 
 function writeGatewayRecord(recordPath: string, record: GatewayRecord): void {
   writeTextFileAtomically(recordPath, serializeGatewayRecord(record));
+  writeDefaultGatewayPointerFromGatewayRecord(recordPath, record, process.env);
 }
 
 function removeGatewayRecord(recordPath: string): void {
@@ -971,6 +976,7 @@ function removeGatewayRecord(recordPath: string): void {
       throw error;
     }
   }
+  clearDefaultGatewayPointerForRecordPath(recordPath, process.cwd(), process.env);
 }
 
 function readProcessStartedAt(pid: number): string | null {
