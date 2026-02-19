@@ -1,6 +1,7 @@
 type MuxGlobalShortcutAction =
   | 'mux.app.quit'
   | 'mux.app.interrupt-all'
+  | 'mux.command-menu.toggle'
   | 'mux.gateway.profile.toggle'
   | 'mux.gateway.status-timeline.toggle'
   | 'mux.gateway.render-trace.toggle'
@@ -38,6 +39,7 @@ interface ResolvedMuxShortcutBindings {
 const ACTION_ORDER: readonly MuxGlobalShortcutAction[] = [
   'mux.app.quit',
   'mux.app.interrupt-all',
+  'mux.command-menu.toggle',
   'mux.gateway.profile.toggle',
   'mux.gateway.status-timeline.toggle',
   'mux.gateway.render-trace.toggle',
@@ -58,7 +60,8 @@ const DEFAULT_MUX_SHORTCUT_BINDINGS_RAW: Readonly<
 > = {
   'mux.app.quit': [],
   'mux.app.interrupt-all': ['ctrl+c'],
-  'mux.gateway.profile.toggle': ['ctrl+p'],
+  'mux.command-menu.toggle': ['ctrl+p', 'cmd+p'],
+  'mux.gateway.profile.toggle': ['ctrl+shift+p'],
   'mux.gateway.status-timeline.toggle': ['alt+r'],
   'mux.gateway.render-trace.toggle': ['ctrl+]'],
   'mux.conversation.new': ['ctrl+t'],
@@ -553,6 +556,9 @@ function withDefaultBindings(
     'mux.app.interrupt-all':
       overrides?.['mux.app.interrupt-all'] ??
       DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.app.interrupt-all'],
+    'mux.command-menu.toggle':
+      overrides?.['mux.command-menu.toggle'] ??
+      DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.command-menu.toggle'],
     'mux.gateway.profile.toggle':
       overrides?.['mux.gateway.profile.toggle'] ??
       DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.gateway.profile.toggle'],
@@ -603,6 +609,7 @@ export function resolveMuxShortcutBindings(
     parsedByAction: {
       'mux.app.quit': parseBindingsForAction(rawByAction['mux.app.quit']),
       'mux.app.interrupt-all': parseBindingsForAction(rawByAction['mux.app.interrupt-all']),
+      'mux.command-menu.toggle': parseBindingsForAction(rawByAction['mux.command-menu.toggle']),
       'mux.gateway.profile.toggle': parseBindingsForAction(
         rawByAction['mux.gateway.profile.toggle'],
       ),

@@ -68,10 +68,16 @@ void test('runtime input router composes modal rail and main-pane routing surfac
     runtimeTaskEditorActions: {
       submitTaskEditorPayload: () => {},
     },
-    detectShortcut: () => null,
+    detectShortcut: (input) => {
+      if (input.toString('utf8') === 'toggle-command-menu') {
+        return 'mux.command-menu.toggle';
+      }
+      return null;
+    },
     modalDismissShortcutBindings: resolveMuxShortcutBindings(),
     shortcutBindings: resolveMuxShortcutBindings(),
     dismissOnOutsideClick: () => false,
+    buildCommandMenuModalOverlay: () => null,
     buildConversationTitleModalOverlay: () => null,
     buildNewThreadModalOverlay: () => null,
     resolveNewThreadPromptAgentByRow: () => 'codex',
@@ -84,9 +90,12 @@ void test('runtime input router composes modal rail and main-pane routing surfac
     repositoriesHas: () => true,
     markDirty: () => {},
     scheduleConversationTitlePersist: () => {},
+    resolveCommandMenuActions: () => [],
+    executeCommandMenuAction: () => {},
     requestStop: () => {},
     resolveDirectoryForAction: () => 'dir-1',
     openNewThreadPrompt: () => {},
+    toggleCommandMenu: () => {},
     firstDirectoryForRepositoryGroup: () => 'dir-1',
     enterHomePane: () => {},
     enterProjectPane: () => {},
@@ -138,6 +147,15 @@ void test('runtime input router composes modal rail and main-pane routing surfac
     debounceTimer: null,
   };
   assert.equal(runtimeInputRouter.routeModalInput(Buffer.from('a')), true);
+  workspace.commandMenu = {
+    query: 'cur',
+    selectedIndex: 0,
+  };
+  assert.equal(
+    runtimeInputRouter.routeModalInput(Buffer.from('toggle-command-menu', 'utf8')),
+    true,
+  );
+  assert.equal(workspace.commandMenu, null);
   assert.equal(
     typeof runtimeInputRouter.handleRepositoryFoldInput(Buffer.from([0x0b])),
     'boolean',

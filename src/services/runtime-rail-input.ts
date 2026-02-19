@@ -31,6 +31,7 @@ interface RuntimeRailInputOptions {
   readonly requestStop: () => void;
   readonly resolveDirectoryForAction: () => string | null;
   readonly openNewThreadPrompt: (directoryId: string) => void;
+  readonly toggleCommandMenu: () => void;
   readonly firstDirectoryForRepositoryGroup: (repositoryGroupId: string) => string | null;
   readonly enterHomePane: () => void;
   readonly enterProjectPane: (directoryId: string) => void;
@@ -98,6 +99,7 @@ export class RuntimeRailInput {
       requestStop: options.requestStop,
       resolveDirectoryForAction: options.resolveDirectoryForAction,
       openNewThreadPrompt: options.openNewThreadPrompt,
+      toggleCommandMenu: options.toggleCommandMenu,
       openAddDirectoryPrompt: () => {
         this.openAddDirectoryPrompt();
         options.markDirty();

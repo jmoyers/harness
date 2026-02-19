@@ -1,4 +1,5 @@
 import {
+  buildCommandMenuModalOverlay as buildCommandMenuModalOverlayFrame,
   buildAddDirectoryModalOverlay as buildAddDirectoryModalOverlayFrame,
   buildConversationTitleModalOverlay as buildConversationTitleModalOverlayFrame,
   buildNewThreadModalOverlay as buildNewThreadModalOverlayFrame,
@@ -6,6 +7,7 @@ import {
   buildTaskEditorModalOverlay as buildTaskEditorModalOverlayFrame,
 } from '../../mux/live-mux/modal-overlays.ts';
 import { dismissModalOnOutsideClick as dismissModalOnOutsideClickFrame } from '../../mux/live-mux/modal-pointer.ts';
+import type { CommandMenuActionDescriptor, CommandMenuState } from '../../mux/live-mux/command-menu.ts';
 import type { createNewThreadPromptState } from '../../mux/new-thread-prompt.ts';
 import type {
   ConversationTitleEditState,
@@ -23,6 +25,8 @@ type DismissModalOnOutsideClickInput = Parameters<typeof dismissModalOnOutsideCl
 interface ModalManagerOptions {
   readonly theme: ModalTheme;
   readonly resolveRepositoryName: (repositoryId: string) => string | null;
+  readonly getCommandMenu: () => CommandMenuState | null;
+  readonly resolveCommandMenuActions: () => readonly CommandMenuActionDescriptor[];
   readonly getNewThreadPrompt: () => NewThreadPromptState | null;
   readonly getAddDirectoryPrompt: () => AddDirectoryPromptState | null;
   readonly getTaskEditorPrompt: () => TaskEditorPromptState | null;
@@ -31,6 +35,7 @@ interface ModalManagerOptions {
 }
 
 interface ModalManagerDependencies {
+  readonly buildCommandMenuModalOverlay?: typeof buildCommandMenuModalOverlayFrame;
   readonly buildNewThreadModalOverlay?: typeof buildNewThreadModalOverlayFrame;
   readonly buildAddDirectoryModalOverlay?: typeof buildAddDirectoryModalOverlayFrame;
   readonly buildTaskEditorModalOverlay?: typeof buildTaskEditorModalOverlayFrame;
@@ -55,6 +60,7 @@ interface ModalDismissResult {
 }
 
 export class ModalManager {
+  private readonly buildCommandMenuModalOverlay: typeof buildCommandMenuModalOverlayFrame;
   private readonly buildNewThreadModalOverlay: typeof buildNewThreadModalOverlayFrame;
   private readonly buildAddDirectoryModalOverlay: typeof buildAddDirectoryModalOverlayFrame;
   private readonly buildTaskEditorModalOverlay: typeof buildTaskEditorModalOverlayFrame;
@@ -67,6 +73,8 @@ export class ModalManager {
     private readonly options: ModalManagerOptions,
     dependencies: ModalManagerDependencies = {},
   ) {
+    this.buildCommandMenuModalOverlay =
+      dependencies.buildCommandMenuModalOverlay ?? buildCommandMenuModalOverlayFrame;
     this.buildNewThreadModalOverlay =
       dependencies.buildNewThreadModalOverlay ?? buildNewThreadModalOverlayFrame;
     this.buildAddDirectoryModalOverlay =
@@ -80,6 +88,16 @@ export class ModalManager {
     this.dismissModalOnOutsideClick =
       dependencies.dismissModalOnOutsideClick ?? dismissModalOnOutsideClickFrame;
     this.isOverlayHit = dependencies.isOverlayHit ?? isUiModalOverlayHit;
+  }
+
+  buildCommandMenuOverlay(layoutCols: number, viewportRows: number): ModalOverlay | null {
+    return this.buildCommandMenuModalOverlay(
+      layoutCols,
+      viewportRows,
+      this.options.getCommandMenu(),
+      this.options.resolveCommandMenuActions(),
+      this.options.theme,
+    );
   }
 
   buildNewThreadOverlay(layoutCols: number, viewportRows: number): ModalOverlay | null {
@@ -129,6 +147,10 @@ export class ModalManager {
   }
 
   buildCurrentOverlay(layoutCols: number, viewportRows: number): ModalOverlay | null {
+    const commandMenuOverlay = this.buildCommandMenuOverlay(layoutCols, viewportRows);
+    if (commandMenuOverlay !== null) {
+      return commandMenuOverlay;
+    }
     const newThreadOverlay = this.buildNewThreadOverlay(layoutCols, viewportRows);
     if (newThreadOverlay !== null) {
       return newThreadOverlay;

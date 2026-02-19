@@ -1,4 +1,7 @@
 import {
+  handleCommandMenuInput as handleCommandMenuInputFrame,
+} from '../mux/live-mux/modal-command-menu-handler.ts';
+import {
   handleConversationTitleEditInput as handleConversationTitleEditInputFrame,
   handleNewThreadPromptInput as handleNewThreadPromptInputFrame,
 } from '../mux/live-mux/modal-conversation-handlers.ts';
@@ -13,6 +16,10 @@ import type {
   TaskEditorPromptState,
 } from '../domain/workspace.ts';
 import type {
+  CommandMenuActionDescriptor,
+  CommandMenuState,
+} from '../mux/live-mux/command-menu.ts';
+import type {
   createNewThreadPromptState,
   normalizeThreadAgentType,
 } from '../mux/new-thread-prompt.ts';
@@ -24,6 +31,7 @@ type TaskEditorSubmitPayload = NonNullable<TaskEditorInputResult['submitPayload'
 
 interface InputRouterOptions {
   readonly isModalDismissShortcut: (input: Buffer) => boolean;
+  readonly isCommandMenuToggleShortcut: (input: Buffer) => boolean;
   readonly isArchiveConversationShortcut: (input: Buffer) => boolean;
   readonly dismissOnOutsideClick: (
     input: Buffer,
@@ -31,6 +39,7 @@ interface InputRouterOptions {
     onInsidePointerPress?: (col: number, row: number) => boolean,
   ) => boolean;
   readonly buildConversationTitleModalOverlay: () => { top: number } | null;
+  readonly buildCommandMenuModalOverlay: () => { top: number } | null;
   readonly buildNewThreadModalOverlay: () => { top: number } | null;
   readonly resolveNewThreadPromptAgentByRow: (
     overlayTop: number,
@@ -57,6 +66,10 @@ interface InputRouterOptions {
   readonly setTaskEditorPrompt: (next: TaskEditorPromptState | null) => void;
   readonly submitTaskEditorPayload: (payload: TaskEditorSubmitPayload) => void;
   readonly getConversationTitleEdit: () => ConversationTitleEditState | null;
+  readonly getCommandMenu: () => CommandMenuState | null;
+  readonly setCommandMenu: (menu: CommandMenuState | null) => void;
+  readonly resolveCommandMenuActions: () => readonly CommandMenuActionDescriptor[];
+  readonly executeCommandMenuAction: (actionId: string) => void;
   readonly getNewThreadPrompt: () => NewThreadPromptState | null;
   readonly setNewThreadPrompt: (prompt: NewThreadPromptState | null) => void;
   readonly getAddDirectoryPrompt: () => { value: string; error: string | null } | null;
@@ -71,6 +84,7 @@ interface InputRouterOptions {
 }
 
 interface InputRouterDependencies {
+  readonly handleCommandMenuInput?: typeof handleCommandMenuInputFrame;
   readonly handleTaskEditorPromptInput?: typeof handleTaskEditorPromptInputFrame;
   readonly handleConversationTitleEditInput?: typeof handleConversationTitleEditInputFrame;
   readonly handleNewThreadPromptInput?: typeof handleNewThreadPromptInputFrame;
@@ -79,6 +93,7 @@ interface InputRouterDependencies {
 }
 
 export class InputRouter {
+  private readonly handleCommandMenuInputFrame: typeof handleCommandMenuInputFrame;
   private readonly handleTaskEditorPromptInputFrame: typeof handleTaskEditorPromptInputFrame;
   private readonly handleConversationTitleEditInputFrame: typeof handleConversationTitleEditInputFrame;
   private readonly handleNewThreadPromptInputFrame: typeof handleNewThreadPromptInputFrame;
@@ -89,6 +104,8 @@ export class InputRouter {
     private readonly options: InputRouterOptions,
     dependencies: InputRouterDependencies = {},
   ) {
+    this.handleCommandMenuInputFrame =
+      dependencies.handleCommandMenuInput ?? handleCommandMenuInputFrame;
     this.handleTaskEditorPromptInputFrame =
       dependencies.handleTaskEditorPromptInput ?? handleTaskEditorPromptInputFrame;
     this.handleConversationTitleEditInputFrame =
@@ -99,6 +116,21 @@ export class InputRouter {
       dependencies.handleAddDirectoryPromptInput ?? handleAddDirectoryPromptInputFrame;
     this.handleRepositoryPromptInputFrame =
       dependencies.handleRepositoryPromptInput ?? handleRepositoryPromptInputFrame;
+  }
+
+  handleCommandMenuInput(input: Buffer): boolean {
+    return this.handleCommandMenuInputFrame({
+      input,
+      menu: this.options.getCommandMenu(),
+      isQuitShortcut: this.options.isModalDismissShortcut,
+      isToggleShortcut: this.options.isCommandMenuToggleShortcut,
+      dismissOnOutsideClick: this.options.dismissOnOutsideClick,
+      buildCommandMenuModalOverlay: this.options.buildCommandMenuModalOverlay,
+      resolveActions: this.options.resolveCommandMenuActions,
+      executeAction: this.options.executeCommandMenuAction,
+      setMenu: this.options.setCommandMenu,
+      markDirty: this.options.markDirty,
+    });
   }
 
   handleTaskEditorPromptInput(input: Buffer): boolean {
@@ -185,6 +217,9 @@ export class InputRouter {
   }
 
   routeModalInput(input: Buffer): boolean {
+    if (this.handleCommandMenuInput(input)) {
+      return true;
+    }
     if (this.handleTaskEditorPromptInput(input)) {
       return true;
     }

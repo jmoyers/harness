@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
+import { createCommandMenuState } from '../src/mux/live-mux/command-menu.ts';
 import { createNewThreadPromptState } from '../src/mux/new-thread-prompt.ts';
 import { ModalManager } from '../src/ui/modals/manager.ts';
 import type { buildNewThreadModalOverlay } from '../src/mux/live-mux/modal-overlays.ts';
@@ -14,12 +15,14 @@ const modalTheme = {} as Parameters<typeof buildNewThreadModalOverlay>[3];
 void test('modal manager builds overlay priority order and dismisses pointer events', () => {
   const state: {
     newThread: ReturnType<typeof createNewThreadPromptState> | null;
+    commandMenu: ReturnType<typeof createCommandMenuState> | null;
     addDirectory: { value: string; error: string | null } | null;
     taskEditor: TaskEditorPromptState | null;
     repository: RepositoryPromptState | null;
     titleEdit: ConversationTitleEditState | null;
   } = {
     newThread: createNewThreadPromptState('dir-a'),
+    commandMenu: null,
     addDirectory: { value: '.', error: null },
     taskEditor: {
       mode: 'create',
@@ -49,6 +52,8 @@ void test('modal manager builds overlay priority order and dismisses pointer eve
   const manager = new ModalManager({
     theme: modalTheme,
     resolveRepositoryName: () => 'Harness',
+    getCommandMenu: () => state.commandMenu,
+    resolveCommandMenuActions: () => [],
     getNewThreadPrompt: () => state.newThread,
     getAddDirectoryPrompt: () => state.addDirectory,
     getTaskEditorPrompt: () => state.taskEditor,
@@ -59,6 +64,12 @@ void test('modal manager builds overlay priority order and dismisses pointer eve
   const newThreadOverlay = manager.buildNewThreadOverlay(80, 24);
   assert.notEqual(newThreadOverlay, null);
   assert.deepEqual(manager.buildCurrentOverlay(80, 24), newThreadOverlay);
+
+  state.commandMenu = createCommandMenuState();
+  const commandMenuOverlay = manager.buildCommandMenuOverlay(80, 24);
+  assert.notEqual(commandMenuOverlay, null);
+  assert.deepEqual(manager.buildCurrentOverlay(80, 24), commandMenuOverlay);
+  state.commandMenu = null;
 
   state.newThread = null;
   const addDirectoryOverlay = manager.buildAddDirectoryOverlay(80, 24);
@@ -145,6 +156,8 @@ void test('modal manager uses injected dependencies when provided', () => {
     {
       theme: modalTheme,
       resolveRepositoryName: () => 'Repo',
+      getCommandMenu: () => createCommandMenuState(),
+      resolveCommandMenuActions: () => [],
       getNewThreadPrompt: () => createNewThreadPromptState('dir-a'),
       getAddDirectoryPrompt: () => ({ value: '.', error: null }),
       getTaskEditorPrompt: () => ({
@@ -175,6 +188,10 @@ void test('modal manager uses injected dependencies when provided', () => {
     {
       buildNewThreadModalOverlay: () => {
         calls.push('new-thread');
+        return overlay;
+      },
+      buildCommandMenuModalOverlay: () => {
+        calls.push('command-menu');
         return overlay;
       },
       buildAddDirectoryModalOverlay: () => {
@@ -208,6 +225,7 @@ void test('modal manager uses injected dependencies when provided', () => {
     },
   );
 
+  assert.equal(manager.buildCommandMenuOverlay(80, 24), overlay);
   assert.equal(manager.buildNewThreadOverlay(80, 24), overlay);
   assert.equal(manager.buildAddDirectoryOverlay(80, 24), overlay);
   assert.equal(manager.buildTaskEditorOverlay(80, 24), overlay);

@@ -12,6 +12,7 @@ function baseOptions(overrides: Partial<Parameters<typeof handleGlobalShortcut>[
   const calls = {
     requestStop: 0,
     newThread: 0,
+    commandMenuToggle: 0,
     critique: 0,
     profileToggle: 0,
     statusTimelineToggle: 0,
@@ -32,6 +33,9 @@ function baseOptions(overrides: Partial<Parameters<typeof handleGlobalShortcut>[
     resolveDirectoryForAction: () => 'directory-1',
     openNewThreadPrompt: (_directoryId) => {
       calls.newThread += 1;
+    },
+    toggleCommandMenu: () => {
+      calls.commandMenuToggle += 1;
     },
     openOrCreateCritiqueConversationInDirectory: async (_directoryId) => {
       calls.critique += 1;
@@ -108,6 +112,14 @@ void test('global shortcut handler covers direct and queued actions', async () =
     });
     assert.equal(handleGlobalShortcut(options), true);
     assert.equal(calls.newThread, 1);
+  }
+
+  {
+    const { options, calls } = baseOptions({
+      shortcut: 'mux.command-menu.toggle',
+    });
+    assert.equal(handleGlobalShortcut(options), true);
+    assert.equal(calls.commandMenuToggle, 1);
   }
 
   {

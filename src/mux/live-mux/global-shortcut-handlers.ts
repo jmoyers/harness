@@ -5,6 +5,7 @@ interface HandleGlobalShortcutOptions {
   requestStop: () => void;
   resolveDirectoryForAction: () => string | null;
   openNewThreadPrompt: (directoryId: string) => void;
+  toggleCommandMenu: () => void;
   openOrCreateCritiqueConversationInDirectory: (directoryId: string) => Promise<void>;
   toggleGatewayProfile: () => Promise<void>;
   toggleGatewayStatusTimeline: () => Promise<void>;
@@ -27,6 +28,7 @@ export function handleGlobalShortcut(options: HandleGlobalShortcutOptions): bool
     requestStop,
     resolveDirectoryForAction,
     openNewThreadPrompt,
+    toggleCommandMenu,
     openOrCreateCritiqueConversationInDirectory,
     toggleGatewayProfile,
     toggleGatewayStatusTimeline,
@@ -54,6 +56,10 @@ export function handleGlobalShortcut(options: HandleGlobalShortcutOptions): bool
     if (targetDirectoryId !== null) {
       openNewThreadPrompt(targetDirectoryId);
     }
+    return true;
+  }
+  if (shortcut === 'mux.command-menu.toggle') {
+    toggleCommandMenu();
     return true;
   }
   if (shortcut === 'mux.conversation.critique.open-or-create') {

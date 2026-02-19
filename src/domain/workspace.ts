@@ -1,4 +1,5 @@
 import type { ProjectPaneSnapshot } from '../mux/harness-core-ui.ts';
+import type { CommandMenuState } from '../mux/live-mux/command-menu.ts';
 import type { LeftNavSelection } from '../mux/live-mux/left-nav.ts';
 import type { PaneSelection, PaneSelectionDrag } from '../mux/live-mux/selection.ts';
 import type { createNewThreadPromptState } from '../mux/new-thread-prompt.ts';
@@ -79,6 +80,7 @@ export class WorkspaceModel {
   selectionDrag: PaneSelectionDrag | null = null;
   selectionPinnedFollowOutput: boolean | null = null;
   repositoryPrompt: RepositoryPromptState | null = null;
+  commandMenu: CommandMenuState | null = null;
   newThreadPrompt: ReturnType<typeof createNewThreadPromptState> | null = null;
   addDirectoryPrompt: { value: string; error: string | null } | null = null;
   taskEditorPrompt: TaskEditorPromptState | null = null;

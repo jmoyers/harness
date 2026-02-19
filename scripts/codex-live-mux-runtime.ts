@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { startCodexLiveSession } from '../src/codex/live-session.ts';
@@ -26,6 +26,12 @@ import {
   normalizeThreadAgentType,
   resolveNewThreadPromptAgentByRow,
 } from '../src/mux/new-thread-prompt.ts';
+import {
+  CommandMenuRegistry,
+  createCommandMenuState,
+  type CommandMenuActionDescriptor,
+  type RegisteredCommandMenuAction,
+} from '../src/mux/live-mux/command-menu.ts';
 import {
   buildProjectPaneSnapshot,
   projectPaneActionAtRow,
@@ -129,7 +135,10 @@ import {
 import { resolveDirectoryForAction as resolveDirectoryForActionFn } from '../src/mux/live-mux/directory-resolution.ts';
 import { requestStop as requestStopFn } from '../src/mux/live-mux/runtime-shutdown.ts';
 import { openNewThreadPrompt as openNewThreadPromptFn } from '../src/mux/live-mux/actions-conversation.ts';
-import { toggleGatewayProfiler as toggleGatewayProfilerFn } from '../src/mux/live-mux/gateway-profiler.ts';
+import {
+  resolveProfileStatePath,
+  toggleGatewayProfiler as toggleGatewayProfilerFn,
+} from '../src/mux/live-mux/gateway-profiler.ts';
 import { toggleGatewayStatusTimeline as toggleGatewayStatusTimelineFn } from '../src/mux/live-mux/gateway-status-timeline.ts';
 import { toggleGatewayRenderTrace as toggleGatewayRenderTraceFn } from '../src/mux/live-mux/gateway-render-trace.ts';
 import { resolveStatusTimelineStatePath } from '../src/mux/live-mux/status-timeline-state.ts';
@@ -199,6 +208,15 @@ type ControlPlaneDirectoryGitStatusRecord = Awaited<
 >[number];
 
 type ProcessUsageSample = Awaited<ReturnType<typeof readProcessUsageSample>>;
+
+interface RuntimeCommandMenuContext {
+  readonly activeDirectoryId: string | null;
+  readonly activeConversationId: string | null;
+  readonly selectedText: string;
+  readonly leftNavSelectionKind: WorkspaceModel['leftNavSelection']['kind'];
+  readonly profileRunning: boolean;
+  readonly statusTimelineRunning: boolean;
+}
 
 const DEFAULT_RESIZE_MIN_INTERVAL_MS = 33;
 const DEFAULT_PTY_RESIZE_SETTLE_MS = 75;
@@ -1189,9 +1207,71 @@ async function main(): Promise<number> {
   const debugFooterNotice = new DebugFooterNotice({
     ttlMs: DEBUG_FOOTER_NOTICE_TTL_MS,
   });
+  const commandMenuRegistry = new CommandMenuRegistry<RuntimeCommandMenuContext>();
+  const commandMenuContext = (): RuntimeCommandMenuContext => {
+    const activeConversation = conversationManager.getActiveConversation();
+    const selectedText =
+      workspace.selection === null
+        ? ''
+        : workspace.selection.text.length > 0
+          ? workspace.selection.text
+          : activeConversation === null
+            ? ''
+            : selectionText(activeConversation.oracle.snapshotWithoutHash(), workspace.selection);
+    return {
+      activeDirectoryId: resolveDirectoryForAction(),
+      activeConversationId: conversationManager.activeConversationId,
+      selectedText,
+      leftNavSelectionKind: workspace.leftNavSelection.kind,
+      profileRunning: existsSync(
+        resolveProfileStatePath(options.invocationDirectory, muxSessionName),
+      ),
+      statusTimelineRunning: existsSync(
+        resolveStatusTimelineStatePath(options.invocationDirectory, muxSessionName),
+      ),
+    };
+  };
+  const resolveCommandMenuActions = (): readonly CommandMenuActionDescriptor[] => {
+    return commandMenuRegistry.resolveActions(commandMenuContext()).map((action) => ({
+      id: action.id,
+      title: action.title,
+      ...(action.aliases === undefined
+        ? {}
+        : {
+            aliases: action.aliases,
+          }),
+      ...(action.keywords === undefined
+        ? {}
+        : {
+            keywords: action.keywords,
+          }),
+      ...(action.detail === undefined
+        ? {}
+        : {
+            detail: action.detail,
+          }),
+    }));
+  };
+  const executeCommandMenuAction = (actionId: string): void => {
+    const context = commandMenuContext();
+    const action =
+      commandMenuRegistry.resolveActions(context).find((candidate) => candidate.id === actionId) ??
+      null;
+    if (action === null) {
+      return;
+    }
+    void Promise.resolve(action.run(context)).catch((error: unknown) => {
+      const message = formatErrorMessage(error);
+      workspace.taskPaneNotice = `command menu failed: ${message}`;
+      debugFooterNotice.set(`command menu failed: ${message}`);
+      markDirty();
+    });
+  };
   const modalManager = new ModalManager({
     theme: resolvedMuxTheme.theme.modalTheme,
     resolveRepositoryName: (repositoryId) => repositories.get(repositoryId)?.name ?? null,
+    getCommandMenu: () => workspace.commandMenu,
+    resolveCommandMenuActions,
     getNewThreadPrompt: () => workspace.newThreadPrompt,
     getAddDirectoryPrompt: () => workspace.addDirectoryPrompt,
     getTaskEditorPrompt: () => workspace.taskEditorPrompt,
@@ -1477,6 +1557,10 @@ async function main(): Promise<number> {
 
   const buildNewThreadModalOverlay = (viewportRows: number) => {
     return modalManager.buildNewThreadOverlay(layout.cols, viewportRows);
+  };
+
+  const buildCommandMenuModalOverlay = (viewportRows: number) => {
+    return modalManager.buildCommandMenuOverlay(layout.cols, viewportRows);
   };
 
   const buildConversationTitleModalOverlay = (viewportRows: number) => {
@@ -2067,6 +2151,140 @@ async function main(): Promise<number> {
       orderedActiveRepositoryRecords().map((repository) => repository.repositoryId),
   });
 
+  const toggleCommandMenu = (): void => {
+    if (workspace.commandMenu !== null) {
+      workspace.commandMenu = null;
+      markDirty();
+      return;
+    }
+    workspace.newThreadPrompt = null;
+    workspace.addDirectoryPrompt = null;
+    workspace.taskEditorPrompt = null;
+    workspace.repositoryPrompt = null;
+    if (workspace.conversationTitleEdit !== null) {
+      stopConversationTitleEdit(true);
+    }
+    workspace.commandMenu = createCommandMenuState();
+    markDirty();
+  };
+
+  const registerThreadStartAction = (
+    agentType: ReturnType<typeof normalizeThreadAgentType>,
+    title: string,
+    aliases: readonly string[],
+  ): void => {
+    commandMenuRegistry.registerAction({
+      id: `thread.start.${agentType}`,
+      title,
+      aliases,
+      keywords: ['start', 'thread', agentType, 'new'],
+      detail: 'current project',
+      when: (context) => context.activeDirectoryId !== null,
+      run: async (context) => {
+        const directoryId = context.activeDirectoryId;
+        if (directoryId === null) {
+          return;
+        }
+        queueControlPlaneOp(async () => {
+          await runtimeWorkspaceActions.createAndActivateConversationInDirectory(
+            directoryId,
+            agentType,
+          );
+        }, `command-menu-start-thread:${agentType}`);
+      },
+    });
+  };
+
+  registerThreadStartAction('codex', 'Start Codex thread', ['codex', 'start codex']);
+  registerThreadStartAction('claude', 'Start Claude thread', ['claude', 'start claude']);
+  registerThreadStartAction('cursor', 'Start Cursor thread', ['cursor', 'cur', 'start cursor']);
+  registerThreadStartAction('terminal', 'Start Terminal thread', ['terminal', 'shell', 'start terminal']);
+  registerThreadStartAction('critique', 'Start Critique thread', ['critique', 'start critique']);
+
+  commandMenuRegistry.registerAction({
+    id: 'thread.close.active',
+    title: 'Close active thread',
+    aliases: ['close thread', 'archive thread'],
+    keywords: ['close', 'thread', 'archive'],
+    when: (context) => context.activeConversationId !== null,
+    run: async (context) => {
+      const conversationId = context.activeConversationId;
+      if (conversationId === null) {
+        return;
+      }
+      queueControlPlaneOp(async () => {
+        await runtimeWorkspaceActions.archiveConversation(conversationId);
+      }, 'command-menu-close-thread');
+    },
+  });
+
+  commandMenuRegistry.registerProvider('project.open', () => {
+    return [...directoryRecords.values()].map(
+      (directory): RegisteredCommandMenuAction<RuntimeCommandMenuContext> => ({
+        id: `project.open.${directory.directoryId}`,
+        title: `Go to project ${directory.path}`,
+        aliases: ['go to project', 'project', directory.path],
+        keywords: ['project', 'open', 'go'],
+        run: () => {
+          enterProjectPane(directory.directoryId);
+          markDirty();
+        },
+      }),
+    );
+  });
+
+  commandMenuRegistry.registerProvider('profile.toggle', (context) => {
+    const title = context.profileRunning ? 'Stop profiler' : 'Start profiler';
+    const aliases = context.profileRunning
+      ? ['stop profile', 'stop profiler']
+      : ['start profile', 'start profiler'];
+    return [
+      {
+        id: context.profileRunning ? 'profile.stop' : 'profile.start',
+        title,
+        aliases,
+        keywords: ['profile', 'profiler'],
+        run: async () => {
+          queueControlPlaneOp(async () => {
+            await runtimeWorkspaceActions.toggleGatewayProfiler();
+          }, 'command-menu-toggle-profile');
+        },
+      },
+    ];
+  });
+
+  commandMenuRegistry.registerProvider('status-timeline.toggle', (context) => {
+    const title = context.statusTimelineRunning
+      ? 'Stop status logging'
+      : 'Start status logging';
+    const aliases = context.statusTimelineRunning
+      ? ['stop status logging', 'stop status']
+      : ['start status logging', 'start status'];
+    return [
+      {
+        id: context.statusTimelineRunning ? 'status.stop' : 'status.start',
+        title,
+        aliases,
+        keywords: ['status', 'timeline', 'logging'],
+        run: async () => {
+          queueControlPlaneOp(async () => {
+            await runtimeWorkspaceActions.toggleGatewayStatusTimeline();
+          }, 'command-menu-toggle-status-timeline');
+        },
+      },
+    ];
+  });
+
+  commandMenuRegistry.registerAction({
+    id: 'app.quit',
+    title: 'Quit',
+    aliases: ['quit app', 'exit'],
+    keywords: ['quit', 'shutdown', 'exit'],
+    run: () => {
+      requestStop();
+    },
+  });
+
   const pinViewportForSelection = (): void => {
     if (workspace.selectionPinnedFollowOutput !== null) {
       return;
@@ -2406,6 +2624,7 @@ async function main(): Promise<number> {
     shortcutBindings,
     dismissOnOutsideClick: (rawInput, dismiss, onInsidePointerPress) =>
       dismissModalOnOutsideClick(rawInput, dismiss, onInsidePointerPress),
+    buildCommandMenuModalOverlay: () => buildCommandMenuModalOverlay(layout.rows),
     buildConversationTitleModalOverlay: () => buildConversationTitleModalOverlay(layout.rows),
     buildNewThreadModalOverlay: () => buildNewThreadModalOverlay(layout.rows),
     resolveNewThreadPromptAgentByRow,
@@ -2415,9 +2634,12 @@ async function main(): Promise<number> {
     repositoriesHas: (repositoryId) => repositories.has(repositoryId),
     markDirty,
     scheduleConversationTitlePersist,
+    resolveCommandMenuActions,
+    executeCommandMenuAction,
     requestStop,
     resolveDirectoryForAction,
     openNewThreadPrompt,
+    toggleCommandMenu,
     firstDirectoryForRepositoryGroup,
     enterHomePane,
     enterProjectPane,

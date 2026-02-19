@@ -28,6 +28,7 @@ interface RuntimeNavigationInputOptions {
   readonly requestStop: () => void;
   readonly resolveDirectoryForAction: () => string | null;
   readonly openNewThreadPrompt: (directoryId: string) => void;
+  readonly toggleCommandMenu: () => void;
   readonly openAddDirectoryPrompt: () => void;
   readonly queueControlPlaneOp: (task: () => Promise<void>, label: string) => void;
   readonly firstDirectoryForRepositoryGroup: (repositoryGroupId: string) => string | null;
@@ -134,6 +135,7 @@ export class RuntimeNavigationInput {
       requestStop: options.requestStop,
       resolveDirectoryForAction: options.resolveDirectoryForAction,
       openNewThreadPrompt: options.openNewThreadPrompt,
+      toggleCommandMenu: options.toggleCommandMenu,
       openOrCreateCritiqueConversationInDirectory: async (directoryId) => {
         await options.workspaceActions.openOrCreateCritiqueConversationInDirectory(directoryId);
       },

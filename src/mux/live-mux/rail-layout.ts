@@ -99,7 +99,8 @@ function shortcutHintText(bindings: ResolvedMuxShortcutBindings): string {
   const previous = firstShortcutText(bindings, 'mux.conversation.previous') || 'ctrl+k';
   const interruptConversation = firstShortcutText(bindings, 'mux.conversation.interrupt');
   const quit = firstShortcutText(bindings, 'mux.app.interrupt-all') || 'ctrl+c';
-  const profile = firstShortcutText(bindings, 'mux.gateway.profile.toggle') || 'ctrl+p';
+  const commandMenu = firstShortcutText(bindings, 'mux.command-menu.toggle') || 'ctrl+p';
+  const profile = firstShortcutText(bindings, 'mux.gateway.profile.toggle') || 'ctrl+shift+p';
   const statusTimeline =
     firstShortcutText(bindings, 'mux.gateway.status-timeline.toggle') || 'alt+r';
   const renderTrace =
@@ -107,7 +108,7 @@ function shortcutHintText(bindings: ResolvedMuxShortcutBindings): string {
   const switchHint = next === previous ? next : `${next}/${previous}`;
   const interruptHint =
     interruptConversation.length === 0 ? '' : `  ${interruptConversation} interrupt`;
-  return `${newConversation} new  ${critiqueConversation} critique  ${deleteConversation} archive  ${takeoverConversation} takeover  ${addProject}/${closeProject} projects  ${switchHint} switch nav  ${profile} profile  ${statusTimeline} status  ${renderTrace} render${interruptHint}  ←/→ collapse/expand  ${quit} quit`;
+  return `${commandMenu} menu  ${newConversation} new  ${critiqueConversation} critique  ${deleteConversation} archive  ${takeoverConversation} takeover  ${addProject}/${closeProject} projects  ${switchHint} switch nav  ${profile} profile  ${statusTimeline} status  ${renderTrace} render${interruptHint}  ←/→ collapse/expand  ${quit} quit`;
 }
 
 function conversationSummary(

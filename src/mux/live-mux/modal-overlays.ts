@@ -7,6 +7,12 @@ import {
   NEW_THREAD_MODAL_TERMINAL_BUTTON,
   resolveGoldenModalSize,
 } from '../harness-core-ui.ts';
+import {
+  COMMAND_MENU_MAX_RESULTS,
+  resolveCommandMenuMatches,
+  type CommandMenuActionDescriptor,
+  type CommandMenuState,
+} from './command-menu.ts';
 import type { createNewThreadPromptState } from '../new-thread-prompt.ts';
 import { newThreadPromptBodyLines } from '../new-thread-prompt.ts';
 import { buildUiModalOverlay } from '../../ui/kit.ts';
@@ -67,6 +73,52 @@ export function buildNewThreadModalOverlay(
       critiqueButtonLabel: NEW_THREAD_MODAL_CRITIQUE_BUTTON,
     }),
     footer: 'enter create  esc',
+    theme,
+  });
+}
+
+export function buildCommandMenuModalOverlay(
+  layoutCols: number,
+  viewportRows: number,
+  menu: CommandMenuState | null,
+  actions: readonly CommandMenuActionDescriptor[],
+  theme: UiModalThemeInput,
+): ReturnType<typeof buildUiModalOverlay> | null {
+  if (menu === null) {
+    return null;
+  }
+  const modalSize = resolveGoldenModalSize(layoutCols, viewportRows, {
+    preferredHeight: 18,
+    minWidth: 34,
+    maxWidth: 72,
+  });
+  const matches = resolveCommandMenuMatches(actions, menu.query, COMMAND_MENU_MAX_RESULTS);
+  const selectedIndex =
+    matches.length === 0 ? 0 : Math.max(0, Math.min(matches.length - 1, menu.selectedIndex));
+  const bodyLines: string[] = [`search: ${menu.query}_`, ''];
+  if (matches.length === 0) {
+    bodyLines.push('no actions match');
+  } else {
+    for (let index = 0; index < matches.length; index += 1) {
+      const match = matches[index]!;
+      const prefix = index === selectedIndex ? '>' : ' ';
+      const detail = match.action.detail?.trim() ?? '';
+      bodyLines.push(
+        detail.length > 0 ? `${prefix} ${match.action.title} - ${detail}` : `${prefix} ${match.action.title}`,
+      );
+    }
+  }
+  bodyLines.push('', 'type to filter');
+  return buildUiModalOverlay({
+    viewportCols: layoutCols,
+    viewportRows,
+    width: modalSize.width,
+    height: modalSize.height,
+    anchor: 'center',
+    marginRows: 1,
+    title: 'Command Menu',
+    bodyLines,
+    footer: 'enter run  esc',
     theme,
   });
 }

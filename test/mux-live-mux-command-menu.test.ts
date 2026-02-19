@@ -1,0 +1,201 @@
+import assert from 'node:assert/strict';
+import { test } from 'bun:test';
+import {
+  clampCommandMenuState,
+  CommandMenuRegistry,
+  createCommandMenuState,
+  reduceCommandMenuInput,
+  resolveCommandMenuMatches,
+  type RegisteredCommandMenuAction,
+} from '../src/mux/live-mux/command-menu.ts';
+
+void test('command menu state helpers initialize and clamp selection', () => {
+  assert.deepEqual(createCommandMenuState(), {
+    query: '',
+    selectedIndex: 0,
+  });
+  assert.deepEqual(clampCommandMenuState({ query: 'abc', selectedIndex: 4 }, 0), {
+    query: 'abc',
+    selectedIndex: 0,
+  });
+  assert.deepEqual(clampCommandMenuState({ query: 'abc', selectedIndex: 4 }, 2), {
+    query: 'abc',
+    selectedIndex: 1,
+  });
+});
+
+void test('command menu matcher filters and ranks title alias and keyword matches', () => {
+  const actions = [
+    {
+      id: 'cursor.start',
+      title: 'Start Cursor thread',
+      aliases: ['cur', 'cursor'],
+      keywords: ['thread', 'start'],
+    },
+    {
+      id: 'codex.start',
+      title: 'Start Codex thread',
+      aliases: ['codex'],
+      keywords: ['thread', 'start'],
+    },
+    {
+      id: 'project.open',
+      title: 'Go to project /tmp/harness',
+      aliases: ['project'],
+      keywords: ['go', 'project'],
+    },
+  ] as const;
+
+  const cursorMatches = resolveCommandMenuMatches(actions, 'cur');
+  assert.equal(cursorMatches.length > 0, true);
+  assert.equal(cursorMatches[0]?.action.id, 'cursor.start');
+
+  const projectMatches = resolveCommandMenuMatches(actions, 'go project');
+  assert.equal(projectMatches.length, 1);
+  assert.equal(projectMatches[0]?.action.id, 'project.open');
+
+  assert.deepEqual(resolveCommandMenuMatches(actions, 'no-match'), []);
+});
+
+void test('command menu input reducer covers typing navigation and submit branches', () => {
+  const start = createCommandMenuState();
+  const typed = reduceCommandMenuInput(start, Buffer.from('cur', 'utf8'), 3);
+  assert.deepEqual(typed, {
+    nextState: {
+      query: 'cur',
+      selectedIndex: 0,
+    },
+    submit: false,
+  });
+
+  const backspaced = reduceCommandMenuInput(
+    {
+      query: 'cur',
+      selectedIndex: 1,
+    },
+    Buffer.from([0x7f]),
+    3,
+  );
+  assert.deepEqual(backspaced, {
+    nextState: {
+      query: 'cu',
+      selectedIndex: 0,
+    },
+    submit: false,
+  });
+
+  const downArrow = reduceCommandMenuInput(
+    {
+      query: 'cu',
+      selectedIndex: 0,
+    },
+    Buffer.from('\u001b[B', 'utf8'),
+    3,
+  );
+  assert.equal(downArrow.nextState.selectedIndex, 1);
+
+  const upArrow = reduceCommandMenuInput(
+    {
+      query: 'cu',
+      selectedIndex: 0,
+    },
+    Buffer.from('\u001b[A', 'utf8'),
+    3,
+  );
+  assert.equal(upArrow.nextState.selectedIndex, 2);
+
+  const ctrlN = reduceCommandMenuInput(
+    {
+      query: 'cu',
+      selectedIndex: 1,
+    },
+    Buffer.from([0x0e]),
+    3,
+  );
+  assert.equal(ctrlN.nextState.selectedIndex, 2);
+
+  const ctrlP = reduceCommandMenuInput(
+    {
+      query: 'cu',
+      selectedIndex: 1,
+    },
+    Buffer.from([0x10]),
+    3,
+  );
+  assert.equal(ctrlP.nextState.selectedIndex, 0);
+
+  const submitted = reduceCommandMenuInput(
+    {
+      query: 'cu',
+      selectedIndex: 0,
+    },
+    Buffer.from('\n', 'utf8'),
+    3,
+  );
+  assert.equal(submitted.submit, true);
+});
+
+void test('command menu registry resolves static and provider actions with when filters', () => {
+  interface Context {
+    readonly enabled: boolean;
+  }
+  const registry = new CommandMenuRegistry<Context>();
+  const staticAction: RegisteredCommandMenuAction<Context> = {
+    id: 'always',
+    title: 'Always',
+    run: () => {},
+  };
+  const unregisterAlways = registry.registerAction(staticAction);
+  const unregisterConditional = registry.registerAction({
+    id: 'conditional',
+    title: 'Conditional',
+    when: (context) => context.enabled,
+    run: () => {},
+  });
+  const unregisterProvider = registry.registerProvider('provider', (context) => [
+    {
+      id: 'provider.action',
+      title: context.enabled ? 'Provider enabled' : 'Provider disabled',
+      run: () => {},
+    },
+    {
+      id: 'always',
+      title: 'Duplicate static id should be ignored',
+      run: () => {},
+    },
+  ]);
+
+  const disabled = registry.resolveActions({
+    enabled: false,
+  });
+  assert.deepEqual(
+    disabled.map((action) => action.id),
+    ['always', 'provider.action'],
+  );
+
+  const enabled = registry.resolveActions({
+    enabled: true,
+  });
+  assert.deepEqual(
+    enabled.map((action) => action.id),
+    ['always', 'conditional', 'provider.action'],
+  );
+
+  unregisterConditional();
+  unregisterProvider();
+  assert.deepEqual(
+    registry
+      .resolveActions({
+        enabled: true,
+      })
+      .map((action) => action.id),
+    ['always'],
+  );
+  unregisterAlways();
+  assert.deepEqual(
+    registry.resolveActions({
+      enabled: true,
+    }),
+    [],
+  );
+});

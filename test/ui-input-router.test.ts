@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
+import { createCommandMenuState } from '../src/mux/live-mux/command-menu.ts';
+import type { CommandMenuState } from '../src/mux/live-mux/command-menu.ts';
 import { InputRouter } from '../src/ui/input.ts';
 import type { handleTaskEditorPromptInput as handleTaskEditorPromptInputFrame } from '../src/mux/live-mux/modal-task-editor-handler.ts';
 
@@ -23,6 +25,7 @@ interface RouterHarness {
 
 function createHarness(dependencies: ConstructorParameters<typeof InputRouter>[1]): RouterHarness {
   let markDirtyCount = 0;
+  let commandMenu: CommandMenuState | null = createCommandMenuState();
   let taskPrompt: RouterHarness['getTaskPrompt'] extends () => infer TValue ? TValue : never = {
     mode: 'create',
     taskId: null,
@@ -37,8 +40,10 @@ function createHarness(dependencies: ConstructorParameters<typeof InputRouter>[1
   const router = new InputRouter(
     {
       isModalDismissShortcut: () => false,
+      isCommandMenuToggleShortcut: () => false,
       isArchiveConversationShortcut: () => false,
       dismissOnOutsideClick: () => false,
+      buildCommandMenuModalOverlay: () => ({ top: 2 }),
       buildConversationTitleModalOverlay: () => ({ top: 2 }),
       buildNewThreadModalOverlay: () => ({ top: 2 }),
       resolveNewThreadPromptAgentByRow: () => 'codex',
@@ -63,6 +68,14 @@ function createHarness(dependencies: ConstructorParameters<typeof InputRouter>[1
         calls.push(`submit:${payload.commandLabel}`);
       },
       getConversationTitleEdit: () => null,
+      getCommandMenu: () => commandMenu,
+      setCommandMenu: (next) => {
+        commandMenu = next;
+      },
+      resolveCommandMenuActions: () => [],
+      executeCommandMenuAction: (actionId) => {
+        calls.push(`command:${actionId}`);
+      },
       getNewThreadPrompt: () => null,
       setNewThreadPrompt: () => {},
       getAddDirectoryPrompt: () => null,
@@ -105,6 +118,7 @@ void test('input router task-editor branch updates prompt, dirty state, and subm
     },
   };
   const harness = createHarness({
+    handleCommandMenuInput: () => false,
     handleTaskEditorPromptInput: () => taskResult,
     handleRepositoryPromptInput: () => false,
     handleNewThreadPromptInput: () => false,
@@ -121,6 +135,7 @@ void test('input router task-editor branch updates prompt, dirty state, and subm
 
 void test('input router task-editor branch returns false when frame handler is not handled', () => {
   const harness = createHarness({
+    handleCommandMenuInput: () => false,
     handleTaskEditorPromptInput: () => ({
       handled: false,
       markDirty: false,
@@ -138,20 +153,25 @@ void test('input router task-editor branch returns false when frame handler is n
 });
 
 void test('input router routeModalInput short-circuits in priority order', () => {
-  type Winner = 'task' | 'repo' | 'new' | 'title' | 'add' | 'none';
+  type Winner = 'command' | 'task' | 'repo' | 'new' | 'title' | 'add' | 'none';
   const expectedCalls: Record<Winner, readonly string[]> = {
-    task: ['task'],
-    repo: ['task', 'repo'],
-    new: ['task', 'repo', 'new'],
-    title: ['task', 'repo', 'new', 'title'],
-    add: ['task', 'repo', 'new', 'title', 'add'],
-    none: ['task', 'repo', 'new', 'title', 'add'],
+    command: ['command'],
+    task: ['command', 'task'],
+    repo: ['command', 'task', 'repo'],
+    new: ['command', 'task', 'repo', 'new'],
+    title: ['command', 'task', 'repo', 'new', 'title'],
+    add: ['command', 'task', 'repo', 'new', 'title', 'add'],
+    none: ['command', 'task', 'repo', 'new', 'title', 'add'],
   };
-  const winners: readonly Winner[] = ['task', 'repo', 'new', 'title', 'add', 'none'];
+  const winners: readonly Winner[] = ['command', 'task', 'repo', 'new', 'title', 'add', 'none'];
 
   for (const winner of winners) {
     const calls: string[] = [];
     const harness = createHarness({
+      handleCommandMenuInput: () => {
+        calls.push('command');
+        return winner === 'command';
+      },
       handleTaskEditorPromptInput: () => {
         calls.push('task');
         return {
@@ -186,8 +206,10 @@ void test('input router routeModalInput short-circuits in priority order', () =>
 void test('input router default frame dependencies are usable when prompt state is empty', () => {
   const router = new InputRouter({
     isModalDismissShortcut: () => false,
+    isCommandMenuToggleShortcut: () => false,
     isArchiveConversationShortcut: () => false,
     dismissOnOutsideClick: () => false,
+    buildCommandMenuModalOverlay: () => null,
     buildConversationTitleModalOverlay: () => null,
     buildNewThreadModalOverlay: () => null,
     resolveNewThreadPromptAgentByRow: () => null,
@@ -206,6 +228,10 @@ void test('input router default frame dependencies are usable when prompt state 
     setTaskEditorPrompt: () => {},
     submitTaskEditorPayload: () => {},
     getConversationTitleEdit: () => null,
+    getCommandMenu: () => null,
+    setCommandMenu: () => {},
+    resolveCommandMenuActions: () => [],
+    executeCommandMenuAction: () => {},
     getNewThreadPrompt: () => null,
     setNewThreadPrompt: () => {},
     getAddDirectoryPrompt: () => null,

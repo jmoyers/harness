@@ -21,6 +21,7 @@ interface CapturedRepositoryFoldOptions {
 
 interface CapturedGlobalShortcutOptions {
   cycleLeftNavSelection(direction: 'next' | 'previous'): void;
+  toggleCommandMenu(): void;
   openOrCreateCritiqueConversationInDirectory(directoryId: string): Promise<void>;
   toggleGatewayProfile(): Promise<void>;
   toggleGatewayStatusTimeline(): Promise<void>;
@@ -76,6 +77,9 @@ function createNavigationOptions(
     resolveDirectoryForAction: () => 'dir-1',
     openNewThreadPrompt: (directoryId) => {
       calls.push(`openNewThreadPrompt:${directoryId}`);
+    },
+    toggleCommandMenu: () => {
+      calls.push('toggleCommandMenu');
     },
     openAddDirectoryPrompt: () => {
       calls.push('openAddDirectoryPrompt');
@@ -233,6 +237,7 @@ void test('runtime navigation input composes left-nav, fold, and global shortcut
   assert.equal(repositoryFoldOptions.nowMs(), 1234);
 
   globalShortcutOptions.cycleLeftNavSelection('previous');
+  globalShortcutOptions.toggleCommandMenu();
   assert.equal(leftNavCycleCalls, 2);
 });
 
@@ -300,7 +305,7 @@ void test('runtime navigation input preserves workspace action method context', 
 
   const runtimeNavigationInput = new RuntimeNavigationInput(
     {
-      ...createNavigationOptions(workspace, []),
+      ...createNavigationOptions(workspace, calls),
       workspaceActions: workspaceActions as ConstructorParameters<
         typeof RuntimeNavigationInput
       >[0]['workspaceActions'],
@@ -340,6 +345,7 @@ void test('runtime navigation input preserves workspace action method context', 
 
   await leftNavOptions.activateConversation('session-ctx');
   await globalShortcutOptions.openOrCreateCritiqueConversationInDirectory('dir-ctx');
+  globalShortcutOptions.toggleCommandMenu();
   await globalShortcutOptions.toggleGatewayProfile();
   await globalShortcutOptions.toggleGatewayStatusTimeline();
   await globalShortcutOptions.toggleGatewayRenderTrace('session-ctx');
@@ -351,6 +357,7 @@ void test('runtime navigation input preserves workspace action method context', 
   assert.deepEqual(calls, [
     'activateConversation:session-ctx',
     'openOrCreateCritiqueConversationInDirectory:dir-ctx',
+    'toggleCommandMenu',
     'toggleGatewayProfiler',
     'toggleGatewayStatusTimeline',
     'toggleGatewayRenderTrace:session-ctx',

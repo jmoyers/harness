@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
+import { createCommandMenuState } from '../src/mux/live-mux/command-menu.ts';
 import { createNewThreadPromptState } from '../src/mux/new-thread-prompt.ts';
 import {
   reduceLinePromptInput,
@@ -15,6 +16,7 @@ import {
   handleNewThreadPromptInput,
 } from '../src/mux/live-mux/modal-conversation-handlers.ts';
 import {
+  buildCommandMenuModalOverlay,
   buildAddDirectoryModalOverlay,
   buildConversationTitleModalOverlay,
   buildNewThreadModalOverlay,
@@ -1011,6 +1013,22 @@ void test('conversation modal handlers cover archive click/prompt and new-thread
 
 void test('modal overlay builders return null for missing state and build overlays for active prompts', () => {
   const theme = {} as Parameters<typeof buildNewThreadModalOverlay>[3];
+  assert.equal(buildCommandMenuModalOverlay(80, 24, null, [], theme), null);
+  const commandMenuOverlay = buildCommandMenuModalOverlay(
+    80,
+    24,
+    createCommandMenuState(),
+    [
+      {
+        id: 'start.cursor',
+        title: 'Start Cursor thread',
+        aliases: ['cur'],
+      },
+    ],
+    theme,
+  );
+  assert.notEqual(commandMenuOverlay, null);
+
   assert.equal(buildNewThreadModalOverlay(80, 24, null, theme), null);
   const newThreadOverlay = buildNewThreadModalOverlay(
     80,

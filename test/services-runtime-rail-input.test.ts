@@ -6,6 +6,7 @@ import { RuntimeRailInput } from '../src/services/runtime-rail-input.ts';
 
 interface CapturedNavigationOptions {
   openAddDirectoryPrompt(): void;
+  toggleCommandMenu(): void;
   workspaceActions: {
     activateConversation(sessionId: string): Promise<void>;
     openOrCreateCritiqueConversationInDirectory(directoryId: string): Promise<void>;
@@ -126,6 +127,9 @@ function createOptions(
     openNewThreadPrompt: (directoryId) => {
       calls.push(`openNewThreadPrompt:${directoryId}`);
     },
+    toggleCommandMenu: () => {
+      calls.push('toggleCommandMenu');
+    },
     firstDirectoryForRepositoryGroup: () => 'dir-1',
     enterHomePane: () => {
       calls.push('enterHomePane');
@@ -218,6 +222,7 @@ void test('runtime rail input composes navigation and pointer input with workspa
       createRuntimeNavigationInput: (navigationOptions: unknown) => {
         const navigation = navigationOptions as CapturedNavigationOptions;
         navigation.openAddDirectoryPrompt();
+        navigation.toggleCommandMenu();
         return {
           cycleLeftNavSelection: (direction) => {
             calls.push(`cycleLeftNavSelection:${direction}`);

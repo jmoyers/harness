@@ -218,6 +218,21 @@ Pass-through stream invariants:
 - `ctrl+c` handling is single-stage: one press requests mux shutdown.
 - In canonical remote/gateway mode, mux exits without closing live sessions so work continues after client disconnect.
 - In embedded/local mode, mux shutdown also closes live PTYs.
+- `ctrl+p` and `cmd+p` open the command menu; command search is live-filtered and executes context-aware actions.
+- Gateway profiling moved to `ctrl+shift+p` so command menu invocation and profiling controls do not collide.
+
+### Command Menu Model
+
+- Command menu actions are registered through one registry abstraction; actions can be static or provider-driven.
+- Every action executes with runtime selection context (`activeConversationId`, target directory, selected text, navigation mode, runtime toggle state).
+- Command menu action execution still uses existing control-plane-backed runtime actions; no privileged side path is introduced.
+- Core shipped actions include:
+  - start thread by agent type (`codex`, `claude`, `cursor`, `terminal`, `critique`)
+  - close active thread
+  - go to project
+  - start/stop profiler
+  - start/stop status logging
+  - quit
 - Thread "delete" in the mux is soft-delete (archive); hard delete remains an explicit control-plane command.
 - Project lifecycle in the mux is first-class: `directory.upsert`, `directory.list`, and `directory.archive` drive add/close behavior through the same control-plane stream API as automation clients.
 - Mux applies workspace lifecycle observed events (`directory-upserted`, `directory-archived`, `conversation-created`, `conversation-updated`, `conversation-archived`, `conversation-deleted`) directly into in-memory state so cross-client project/thread changes appear without restart.

@@ -1,4 +1,5 @@
 import type { WorkspaceModel } from '../domain/workspace.ts';
+import type { CommandMenuActionDescriptor } from '../mux/live-mux/command-menu.ts';
 import { InputRouter } from '../ui/input.ts';
 
 type InputRouterOptions = ConstructorParameters<typeof InputRouter>[0];
@@ -20,8 +21,10 @@ interface RuntimeModalInputOptions {
   readonly workspaceActions: RuntimeModalInputWorkspaceActions;
   readonly taskEditorActions: RuntimeModalInputTaskEditorActions;
   readonly isModalDismissShortcut: (input: Buffer) => boolean;
+  readonly isCommandMenuToggleShortcut: (input: Buffer) => boolean;
   readonly isArchiveConversationShortcut: (input: Buffer) => boolean;
   readonly dismissOnOutsideClick: InputRouterOptions['dismissOnOutsideClick'];
+  readonly buildCommandMenuModalOverlay: InputRouterOptions['buildCommandMenuModalOverlay'];
   readonly buildConversationTitleModalOverlay: InputRouterOptions['buildConversationTitleModalOverlay'];
   readonly buildNewThreadModalOverlay: InputRouterOptions['buildNewThreadModalOverlay'];
   readonly resolveNewThreadPromptAgentByRow: InputRouterOptions['resolveNewThreadPromptAgentByRow'];
@@ -30,6 +33,8 @@ interface RuntimeModalInputOptions {
   readonly normalizeGitHubRemoteUrl: (remoteUrl: string) => string | null;
   readonly repositoriesHas: (repositoryId: string) => boolean;
   readonly scheduleConversationTitlePersist: () => void;
+  readonly resolveCommandMenuActions: () => readonly CommandMenuActionDescriptor[];
+  readonly executeCommandMenuAction: (actionId: string) => void;
   readonly markDirty: () => void;
 }
 
@@ -48,8 +53,10 @@ export class RuntimeModalInput {
       dependencies.createInputRouter ?? ((routerOptions: InputRouterOptions) => new InputRouter(routerOptions));
     this.inputRouter = createInputRouter({
       isModalDismissShortcut: options.isModalDismissShortcut,
+      isCommandMenuToggleShortcut: options.isCommandMenuToggleShortcut,
       isArchiveConversationShortcut: options.isArchiveConversationShortcut,
       dismissOnOutsideClick: options.dismissOnOutsideClick,
+      buildCommandMenuModalOverlay: options.buildCommandMenuModalOverlay,
       buildConversationTitleModalOverlay: options.buildConversationTitleModalOverlay,
       buildNewThreadModalOverlay: options.buildNewThreadModalOverlay,
       resolveNewThreadPromptAgentByRow: options.resolveNewThreadPromptAgentByRow,
@@ -75,6 +82,12 @@ export class RuntimeModalInput {
       markDirty: options.markDirty,
       conversations: options.conversations,
       scheduleConversationTitlePersist: options.scheduleConversationTitlePersist,
+      getCommandMenu: () => options.workspace.commandMenu,
+      setCommandMenu: (menu) => {
+        options.workspace.commandMenu = menu;
+      },
+      resolveCommandMenuActions: options.resolveCommandMenuActions,
+      executeCommandMenuAction: options.executeCommandMenuAction,
       getTaskEditorPrompt: () => options.workspace.taskEditorPrompt,
       setTaskEditorPrompt: (next) => {
         options.workspace.taskEditorPrompt = next;

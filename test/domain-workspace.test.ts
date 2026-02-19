@@ -46,6 +46,7 @@ void test('workspace model initializes defaults and preserves constructor state'
   assert.equal(workspace.selectionDrag, null);
   assert.equal(workspace.selectionPinnedFollowOutput, null);
   assert.equal(workspace.repositoryPrompt, null);
+  assert.equal(workspace.commandMenu, null);
   assert.equal(workspace.newThreadPrompt, null);
   assert.equal(workspace.addDirectoryPrompt, null);
   assert.equal(workspace.taskEditorPrompt, null);

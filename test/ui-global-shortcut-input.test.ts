@@ -17,6 +17,9 @@ void test('global shortcut input delegates detection and handler wiring', () => 
       openNewThreadPrompt: (directoryId) => {
         calls.push(`new-thread:${directoryId}`);
       },
+      toggleCommandMenu: () => {
+        calls.push('toggle-command-menu');
+      },
       openOrCreateCritiqueConversationInDirectory: async (directoryId) => {
         calls.push(`critique:${directoryId}`);
       },
@@ -99,6 +102,7 @@ void test('global shortcut input default dependencies return false when no short
     requestStop: () => {},
     resolveDirectoryForAction: () => null,
     openNewThreadPrompt: () => {},
+    toggleCommandMenu: () => {},
     openOrCreateCritiqueConversationInDirectory: async () => {},
     toggleGatewayProfile: async () => {},
     toggleGatewayStatusTimeline: async () => {},

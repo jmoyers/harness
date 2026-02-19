@@ -18,6 +18,7 @@ Run many agent threads in parallel across `codex`, `claude`, `cursor`, `terminal
 - Get gateway-canonical thread status icons/text for structured agent threads, plus fixed one-cell title glyphs for `terminal`/`critique` threads (single server projection, no client-side status interpretation).
 - Capture interleaved status debugging timelines (incoming status sources + outgoing status line/notice outputs) with a toggle and CLI commands.
 - Capture focused render diagnostics (unsupported control sequences + ANSI integrity failures) with a dedicated toggle and CLI commands.
+- Open a command palette with `ctrl+p`/`cmd+p`, live-filter registered actions, and execute context-aware thread/project/runtime controls.
 
 ## Demo
 
@@ -55,6 +56,8 @@ Harness includes first-class `critique` threads:
 - Runs with `--watch` by default.
 - Auto-install path enabled by default via `bunx critique@latest` when `critique` is not installed.
 - `mux.conversation.critique.open-or-create` is bound to `ctrl+g` by default.
+- Command palette is bound to `ctrl+p` and `cmd+p` by default.
+- Gateway profiler toggle is bound to `ctrl+shift+p` by default.
 
 `ctrl+g` behavior is project-aware:
 

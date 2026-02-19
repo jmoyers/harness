@@ -185,7 +185,8 @@ void test('live-mux rail layout shortcut hint collapses next/previous into singl
   const visible = rows.ansiRows.map(stripAnsi).join('\n');
   assert.equal(visible.includes('ctrl+n switch nav'), true);
   assert.equal(visible.includes('ctrl+n/ctrl+n switch nav'), false);
-  assert.equal(visible.includes('ctrl+p profile'), true);
+  assert.equal(visible.includes('ctrl+p menu'), true);
+  assert.equal(visible.includes('ctrl+shift+p profile'), true);
   assert.equal(visible.includes('alt+r status'), true);
   assert.equal(visible.includes('ctrl+] render'), true);
 });

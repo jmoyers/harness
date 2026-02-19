@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import { WorkspaceModel } from '../src/domain/workspace.ts';
+import { createCommandMenuState } from '../src/mux/live-mux/command-menu.ts';
 import { createNewThreadPromptState } from '../src/mux/new-thread-prompt.ts';
 import { RuntimeModalInput } from '../src/services/runtime-modal-input.ts';
 import type { InputRouter } from '../src/ui/input.ts';
@@ -58,8 +59,10 @@ void test('runtime modal input wires input router state accessors and delegates 
         },
       },
       isModalDismissShortcut: () => false,
+      isCommandMenuToggleShortcut: () => false,
       isArchiveConversationShortcut: () => false,
       dismissOnOutsideClick: () => false,
+      buildCommandMenuModalOverlay: () => ({ top: 0 }),
       buildConversationTitleModalOverlay: () => ({ top: 1 }),
       buildNewThreadModalOverlay: () => ({ top: 2 }),
       resolveNewThreadPromptAgentByRow: () => 'codex',
@@ -73,6 +76,10 @@ void test('runtime modal input wires input router state accessors and delegates 
       repositoriesHas: () => true,
       scheduleConversationTitlePersist: () => {
         calls.push('scheduleConversationTitlePersist');
+      },
+      resolveCommandMenuActions: () => [],
+      executeCommandMenuAction: (actionId) => {
+        calls.push(`executeCommandMenuAction:${actionId}`);
       },
       markDirty: () => {
         calls.push('markDirty');
@@ -96,6 +103,8 @@ void test('runtime modal input wires input router state accessors and delegates 
   const options = capturedOptions!;
 
   workspace.taskEditorPrompt = null;
+  options.setCommandMenu(createCommandMenuState());
+  assert.equal(options.getCommandMenu()?.query, '');
   options.setTaskEditorPrompt({
     mode: 'create',
     taskId: null,
@@ -124,6 +133,8 @@ void test('runtime modal input wires input router state accessors and delegates 
     error: null,
   });
   assert.equal(options.getRepositoryPrompt()?.mode, 'add');
+  options.executeCommandMenuAction('command-id');
+  assert.deepEqual(options.resolveCommandMenuActions(), []);
   workspace.conversationTitleEdit = {
     conversationId: 'session-1',
     value: 'Thread',
@@ -152,6 +163,7 @@ void test('runtime modal input wires input router state accessors and delegates 
 
   assert.deepEqual(calls, [
     'routeModalInput',
+    'executeCommandMenuAction:command-id',
     'submitTaskEditorPayload:tasks-create',
     'archiveConversation:session-1',
     'createAndActivateConversationInDirectory:directory-1:codex',
@@ -178,8 +190,10 @@ void test('runtime modal input default router dependency path is usable', () => 
       submitTaskEditorPayload: () => {},
     },
     isModalDismissShortcut: () => false,
+    isCommandMenuToggleShortcut: () => false,
     isArchiveConversationShortcut: () => false,
     dismissOnOutsideClick: () => false,
+    buildCommandMenuModalOverlay: () => null,
     buildConversationTitleModalOverlay: () => null,
     buildNewThreadModalOverlay: () => null,
     resolveNewThreadPromptAgentByRow: () => null,
@@ -188,6 +202,8 @@ void test('runtime modal input default router dependency path is usable', () => 
     normalizeGitHubRemoteUrl: () => null,
     repositoriesHas: () => false,
     scheduleConversationTitlePersist: () => {},
+    resolveCommandMenuActions: () => [],
+    executeCommandMenuAction: () => {},
     markDirty: () => {},
   });
 

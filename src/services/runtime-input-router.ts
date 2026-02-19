@@ -1,6 +1,7 @@
 import { RuntimeMainPaneInput } from './runtime-main-pane-input.ts';
 import { RuntimeModalInput } from './runtime-modal-input.ts';
 import { RuntimeRailInput } from './runtime-rail-input.ts';
+import type { CommandMenuActionDescriptor } from '../mux/live-mux/command-menu.ts';
 
 type RuntimeModalInputOptions = ConstructorParameters<typeof RuntimeModalInput>[0];
 type RuntimeRailInputOptions = ConstructorParameters<typeof RuntimeRailInput>[0];
@@ -28,6 +29,7 @@ interface RuntimeInputRouterOptions {
   readonly modalDismissShortcutBindings: RuntimeShortcutBindings;
   readonly shortcutBindings: RuntimeShortcutBindings;
   readonly dismissOnOutsideClick: RuntimeModalInputOptions['dismissOnOutsideClick'];
+  readonly buildCommandMenuModalOverlay: RuntimeModalInputOptions['buildCommandMenuModalOverlay'];
   readonly buildConversationTitleModalOverlay: RuntimeModalInputOptions['buildConversationTitleModalOverlay'];
   readonly buildNewThreadModalOverlay: RuntimeModalInputOptions['buildNewThreadModalOverlay'];
   readonly resolveNewThreadPromptAgentByRow: RuntimeModalInputOptions['resolveNewThreadPromptAgentByRow'];
@@ -37,8 +39,11 @@ interface RuntimeInputRouterOptions {
   readonly repositoriesHas: (repositoryId: string) => boolean;
   readonly markDirty: () => void;
   readonly scheduleConversationTitlePersist: () => void;
+  readonly resolveCommandMenuActions: () => readonly CommandMenuActionDescriptor[];
+  readonly executeCommandMenuAction: (actionId: string) => void;
   readonly requestStop: RuntimeRailInputOptions['requestStop'];
   readonly resolveDirectoryForAction: RuntimeRailInputOptions['resolveDirectoryForAction'];
+  readonly toggleCommandMenu: RuntimeRailInputOptions['toggleCommandMenu'];
   readonly openNewThreadPrompt: RuntimeRailInputOptions['openNewThreadPrompt'];
   readonly firstDirectoryForRepositoryGroup: RuntimeRailInputOptions['firstDirectoryForRepositoryGroup'];
   readonly enterHomePane: RuntimeRailInputOptions['enterHomePane'];
@@ -88,11 +93,14 @@ export class RuntimeInputRouter {
       taskEditorActions: options.runtimeTaskEditorActions,
       isModalDismissShortcut: (input) =>
         options.detectShortcut(input, options.modalDismissShortcutBindings) === 'mux.app.quit',
+      isCommandMenuToggleShortcut: (input) =>
+        options.detectShortcut(input, options.shortcutBindings) === 'mux.command-menu.toggle',
       isArchiveConversationShortcut: (input) => {
         const action = options.detectShortcut(input, options.shortcutBindings);
         return action === 'mux.conversation.archive' || action === 'mux.conversation.delete';
       },
       dismissOnOutsideClick: options.dismissOnOutsideClick,
+      buildCommandMenuModalOverlay: options.buildCommandMenuModalOverlay,
       buildConversationTitleModalOverlay: options.buildConversationTitleModalOverlay,
       buildNewThreadModalOverlay: options.buildNewThreadModalOverlay,
       resolveNewThreadPromptAgentByRow: options.resolveNewThreadPromptAgentByRow,
@@ -102,6 +110,8 @@ export class RuntimeInputRouter {
       repositoriesHas: options.repositoriesHas,
       markDirty: options.markDirty,
       scheduleConversationTitlePersist: options.scheduleConversationTitlePersist,
+      resolveCommandMenuActions: options.resolveCommandMenuActions,
+      executeCommandMenuAction: options.executeCommandMenuAction,
     });
     this.railInput = new RuntimeRailInput({
       workspace: options.workspace,
@@ -111,6 +121,7 @@ export class RuntimeInputRouter {
       requestStop: options.requestStop,
       resolveDirectoryForAction: options.resolveDirectoryForAction,
       openNewThreadPrompt: options.openNewThreadPrompt,
+      toggleCommandMenu: options.toggleCommandMenu,
       firstDirectoryForRepositoryGroup: options.firstDirectoryForRepositoryGroup,
       enterHomePane: options.enterHomePane,
       enterProjectPane: options.enterProjectPane,
