@@ -271,6 +271,32 @@ void test('parseOtlpLogEvents marks turn metric event names as completed status 
   assert.equal(events[0]?.statusHint, 'completed');
 });
 
+void test('parseOtlpLogEvents treats codex interrupt-like event names as completed', () => {
+  const events = parseOtlpLogEvents(
+    {
+      resourceLogs: [
+        {
+          scopeLogs: [
+            {
+              logRecords: [
+                {
+                  attributes: [
+                    { key: 'event.name', value: { stringValue: 'codex.session_interrupt' } },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    '2026-02-15T00:00:00.000Z',
+  );
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.statusHint, 'completed');
+});
+
 void test('parseOtlpLogEvents maps codex event families to concise summaries', () => {
   const events = parseOtlpLogEvents(
     {
