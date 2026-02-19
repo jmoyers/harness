@@ -426,6 +426,19 @@ void test('snapshot oracle branch coverage on edge cases', () => {
   );
 });
 
+void test('snapshot oracle consumes ESC intermediate charset designation sequences', () => {
+  const oracle = new TerminalSnapshotOracle(16, 2);
+  oracle.ingest('A');
+  oracle.ingest('\u001b(B');
+  oracle.ingest('\u001b)0');
+  oracle.ingest('\u001b*m');
+  oracle.ingest('\u001b+n');
+  oracle.ingest('Z');
+
+  const frame = oracle.snapshot();
+  assert.equal(frame.lines[0], 'AZ');
+});
+
 void test('snapshot oracle supports scroll regions, origin mode, and insert/delete line controls', () => {
   const oracle = new TerminalSnapshotOracle(16, 8, 4);
 
@@ -689,33 +702,100 @@ void test('snapshot oracle tracks bracketed paste mode through DEC private mode 
   assert.equal(frame.modes.bracketedPaste, false);
 });
 
-void test('snapshot oracle tracks DEC mouse reporting mode toggles through reset', () => {
+void test('snapshot oracle applies OSC palette updates to indexed SGR colors', () => {
+  const oracle = new TerminalSnapshotOracle(8, 2);
+
+  oracle.ingest('\u001b]4;0;rgb:11/22/33\u0007');
+  oracle.ingest('\u001b[40mA');
+  let frame = oracle.snapshot();
+  assert.deepEqual(frame.richLines[0]!.cells[0]!.style.bg, { kind: 'rgb', r: 17, g: 34, b: 51 });
+
+  oracle.ingest('\u001b]4;0;#445566\u001b\\');
+  oracle.ingest('\u001b[1;2H\u001b[40mB');
+  frame = oracle.snapshot();
+  assert.deepEqual(frame.richLines[0]!.cells[1]!.style.bg, { kind: 'rgb', r: 68, g: 85, b: 102 });
+
+  oracle.ingest('\u001b]104;0\u0007');
+  oracle.ingest('\u001b[1;3H\u001b[40mC');
+  frame = oracle.snapshot();
+  assert.deepEqual(frame.richLines[0]!.cells[2]!.style.bg, { kind: 'indexed', index: 0 });
+
+  oracle.ingest('\u001b]4;0;#778899\u0007');
+  oracle.ingest('\u001bc');
+  oracle.ingest('\u001b[40mD');
+  frame = oracle.snapshot();
+  assert.deepEqual(frame.richLines[0]!.cells[0]!.style.bg, { kind: 'indexed', index: 0 });
+});
+
+void test('snapshot oracle tracks DEC mouse/focus/encoding mode toggles through reset', () => {
   const oracle = new TerminalSnapshotOracle(8, 2);
   assert.equal(oracle.isMouseTrackingEnabled(), false);
+  assert.equal(oracle.isFocusTrackingEnabled(), false);
+  assert.equal(oracle.isSgrMouseEncodingEnabled(), false);
 
   oracle.ingest('\u001b[?1000h');
   assert.equal(oracle.isMouseTrackingEnabled(), true);
+  let frame = oracle.snapshot();
+  assert.equal(frame.modes.decMouseX10, true);
 
   oracle.ingest('\u001b[?1000l');
   assert.equal(oracle.isMouseTrackingEnabled(), false);
+  frame = oracle.snapshot();
+  assert.equal(frame.modes.decMouseX10, false);
 
   oracle.ingest('\u001b[?1002h');
   assert.equal(oracle.isMouseTrackingEnabled(), true);
+  frame = oracle.snapshot();
+  assert.equal(frame.modes.decMouseButtonEvent, true);
 
   oracle.ingest('\u001b[?1003h');
   assert.equal(oracle.isMouseTrackingEnabled(), true);
+  frame = oracle.snapshot();
+  assert.equal(frame.modes.decMouseAnyEvent, true);
+
+  oracle.ingest('\u001b[?1004h');
+  assert.equal(oracle.isFocusTrackingEnabled(), true);
+  frame = oracle.snapshot();
+  assert.equal(frame.modes.decFocusTracking, true);
+
+  oracle.ingest('\u001b[?1006h');
+  assert.equal(oracle.isSgrMouseEncodingEnabled(), true);
+  frame = oracle.snapshot();
+  assert.equal(frame.modes.decMouseSgrEncoding, true);
 
   oracle.ingest('\u001b[?1002l');
   assert.equal(oracle.isMouseTrackingEnabled(), true);
+  frame = oracle.snapshot();
+  assert.equal(frame.modes.decMouseButtonEvent, false);
 
   oracle.ingest('\u001b[?1003l');
   assert.equal(oracle.isMouseTrackingEnabled(), false);
+  frame = oracle.snapshot();
+  assert.equal(frame.modes.decMouseAnyEvent, false);
+
+  oracle.ingest('\u001b[?1004l');
+  assert.equal(oracle.isFocusTrackingEnabled(), false);
+  frame = oracle.snapshot();
+  assert.equal(frame.modes.decFocusTracking, false);
+
+  oracle.ingest('\u001b[?1006l');
+  assert.equal(oracle.isSgrMouseEncodingEnabled(), false);
+  frame = oracle.snapshot();
+  assert.equal(frame.modes.decMouseSgrEncoding, false);
 
   oracle.ingest('\u001b[?1000h');
   assert.equal(oracle.isMouseTrackingEnabled(), true);
 
   oracle.ingest('\u001bc');
   assert.equal(oracle.isMouseTrackingEnabled(), false);
+  assert.equal(oracle.isFocusTrackingEnabled(), false);
+  assert.equal(oracle.isSgrMouseEncodingEnabled(), false);
+  frame = oracle.snapshot();
+  assert.equal(frame.modes.decMouseX10, false);
+  assert.equal(frame.modes.decMouseButtonEvent, false);
+  assert.equal(frame.modes.decMouseAnyEvent, false);
+  assert.equal(frame.modes.decFocusTracking, false);
+  assert.equal(frame.modes.decMouseSgrEncoding, false);
 });
 
 void test('snapshot oracle clears pending-wrap state when resized off right margin', () => {

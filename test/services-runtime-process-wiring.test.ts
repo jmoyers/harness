@@ -55,6 +55,15 @@ class FakeProcessTarget {
   private uncaughtListener: ((error: Error) => void) | null = null;
   private unhandledListener: ((reason: unknown) => void) | null = null;
 
+  on(event: 'SIGINT' | 'SIGTERM', listener: () => void): FakeProcessTarget {
+    if (event === 'SIGINT') {
+      this.sigintListener = listener;
+    } else {
+      this.sigtermListener = listener;
+    }
+    return this;
+  }
+
   once(event: 'SIGINT' | 'SIGTERM', listener: () => void): FakeProcessTarget;
   once(event: 'uncaughtException', listener: (error: Error) => void): FakeProcessTarget;
   once(event: 'unhandledRejection', listener: (reason: unknown) => void): FakeProcessTarget;
@@ -62,14 +71,22 @@ class FakeProcessTarget {
     event: 'SIGINT' | 'SIGTERM' | 'uncaughtException' | 'unhandledRejection',
     listener: (() => void) | ((error: Error) => void) | ((reason: unknown) => void),
   ): FakeProcessTarget {
-    if (event === 'SIGINT') {
-      this.sigintListener = listener as () => void;
-    } else if (event === 'SIGTERM') {
-      this.sigtermListener = listener as () => void;
-    } else if (event === 'uncaughtException') {
+    if (event === 'uncaughtException') {
       this.uncaughtListener = listener as (error: Error) => void;
-    } else {
+    } else if (event === 'unhandledRejection') {
       this.unhandledListener = listener as (reason: unknown) => void;
+    } else if (event === 'SIGINT') {
+      const onceListener = listener as () => void;
+      this.sigintListener = () => {
+        this.sigintListener = null;
+        onceListener();
+      };
+    } else {
+      const onceListener = listener as () => void;
+      this.sigtermListener = () => {
+        this.sigtermListener = null;
+        onceListener();
+      };
     }
     return this;
   }
@@ -94,15 +111,11 @@ class FakeProcessTarget {
   }
 
   emitSigint(): void {
-    const listener = this.sigintListener;
-    this.sigintListener = null;
-    listener?.();
+    this.sigintListener?.();
   }
 
   emitSigterm(): void {
-    const listener = this.sigtermListener;
-    this.sigtermListener = null;
-    listener?.();
+    this.sigtermListener?.();
   }
 
   emitUncaught(error: Error): void {
@@ -147,11 +160,12 @@ void test('runtime process wiring attaches and detaches listeners', () => {
   inputStream.emitData(Buffer.from('x'));
   outputStream.emitResize();
   target.emitSigint();
+  target.emitSigint();
   target.emitSigterm();
 
   assert.equal(inputCalls, 1);
   assert.equal(resizeCalls, 1);
-  assert.equal(stopCalls, 2);
+  assert.equal(stopCalls, 3);
   assert.deepEqual(fatalCalls, []);
 
   wiring.detach();
@@ -162,7 +176,7 @@ void test('runtime process wiring attaches and detaches listeners', () => {
 
   assert.equal(inputCalls, 1);
   assert.equal(resizeCalls, 1);
-  assert.equal(stopCalls, 2);
+  assert.equal(stopCalls, 3);
 });
 
 void test('runtime process wiring reports runtime-fatal origins for protected handlers', () => {

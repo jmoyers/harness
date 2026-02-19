@@ -203,11 +203,10 @@ export const TERMINAL_COMPAT_MATRIX: readonly TerminalCompatEntry[] = [
       'CSI ? 1004 h/l',
       'CSI ? 1006 h/l',
     ],
-    status: 'unsupported',
+    status: 'implemented',
     priority: 'p0-codex-vim',
-    ownerTests: [],
-    notes:
-      'Required climb item for complex TUI parity; currently not modeled as terminal mode state.',
+    ownerTests: ['test/terminal-snapshot-oracle.test.ts'],
+    notes: 'Tracks DEC mouse/focus reporting and SGR encoding mode state through reset.',
   },
   {
     id: 'cursor-visibility-style-control',

@@ -11,6 +11,11 @@ function createFrame(label: string): TerminalSnapshotFrameCore {
     activeScreen: 'primary',
     modes: {
       bracketedPaste: false,
+      decMouseX10: false,
+      decMouseButtonEvent: false,
+      decMouseAnyEvent: false,
+      decFocusTracking: false,
+      decMouseSgrEncoding: false,
     },
     cursor: {
       row: 1,

@@ -72,9 +72,9 @@ void test('terminal compatibility matrix summary is explicit and stable', () => 
   }
 
   assert.deepEqual(mutableCounts, {
-    implemented: 16,
+    implemented: 17,
     passthrough: 2,
-    unsupported: 7,
+    unsupported: 6,
   });
 
   const levelCounts = new Map<string, number>();
@@ -98,14 +98,14 @@ void test('terminal compatibility matrix summary is explicit and stable', () => 
   const blockingP0 = TERMINAL_COMPAT_MATRIX.filter(
     (entry) => entry.priority === 'p0-codex-vim' && entry.status !== 'implemented',
   ).map((entry) => entry.id);
-  assert.deepEqual(blockingP0, ['dec-mouse-focus-tracking', 'differential-terminal-checkpoints']);
+  assert.deepEqual(blockingP0, ['differential-terminal-checkpoints']);
 });
 
 void test('terminal compatibility matrix locks key feature states', () => {
   const byId = new Map(TERMINAL_COMPAT_MATRIX.map((entry) => [entry.id, entry]));
 
   assert.equal(byId.get('dec-alt-screen-save-restore')?.status, 'implemented');
-  assert.equal(byId.get('dec-mouse-focus-tracking')?.status, 'unsupported');
+  assert.equal(byId.get('dec-mouse-focus-tracking')?.status, 'implemented');
   assert.equal(byId.get('csi-device-status-replies')?.status, 'implemented');
   assert.equal(byId.get('modifyotherkeys-negotiation')?.status, 'implemented');
   assert.equal(byId.get('differential-terminal-checkpoints')?.status, 'unsupported');

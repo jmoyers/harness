@@ -361,8 +361,11 @@ function writeLeftMouseClick(
 
 async function requestMuxShutdown(session: ReturnType<typeof startPtySession>): Promise<void> {
   session.write('\u0003');
-  await delay(50);
-  session.write('\u0003');
+  const pid = session.processId();
+  if (pid === null) {
+    return;
+  }
+  await waitForPidExit(pid, 500);
 }
 
 function runGit(cwd: string, args: readonly string[]): void {

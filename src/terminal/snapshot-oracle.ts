@@ -1,7 +1,15 @@
 import { createHash } from 'node:crypto';
 import { StringDecoder } from 'node:string_decoder';
 
-type ParserMode = 'normal' | 'esc' | 'csi' | 'osc' | 'osc-esc' | 'dcs' | 'dcs-esc';
+type ParserMode =
+  | 'normal'
+  | 'esc'
+  | 'esc-intermediate'
+  | 'csi'
+  | 'osc'
+  | 'osc-esc'
+  | 'dcs'
+  | 'dcs-esc';
 type ActiveScreen = 'primary' | 'alternate';
 type TerminalCursorShape = 'block' | 'underline' | 'bar';
 
@@ -38,13 +46,20 @@ interface TerminalSnapshotLine {
   cells: TerminalCell[];
 }
 
+interface TerminalModeState {
+  bracketedPaste: boolean;
+  decMouseX10: boolean;
+  decMouseButtonEvent: boolean;
+  decMouseAnyEvent: boolean;
+  decFocusTracking: boolean;
+  decMouseSgrEncoding: boolean;
+}
+
 export interface TerminalSnapshotFrameCore {
   rows: number;
   cols: number;
   activeScreen: ActiveScreen;
-  modes: {
-    bracketedPaste: boolean;
-  };
+  modes: TerminalModeState;
   cursor: {
     row: number;
     col: number;
@@ -578,7 +593,7 @@ class ScreenBuffer {
     cursorVisible: boolean,
     cursorStyle: TerminalCursorStyle,
     activeScreen: ActiveScreen,
-    bracketedPasteMode: boolean,
+    modes: TerminalModeState,
     includeHash: true,
   ): TerminalSnapshotFrame;
   snapshot(
@@ -586,7 +601,7 @@ class ScreenBuffer {
     cursorVisible: boolean,
     cursorStyle: TerminalCursorStyle,
     activeScreen: ActiveScreen,
-    bracketedPasteMode: boolean,
+    modes: TerminalModeState,
     includeHash: false,
   ): TerminalSnapshotFrameCore;
   snapshot(
@@ -594,7 +609,7 @@ class ScreenBuffer {
     cursorVisible: boolean,
     cursorStyle: TerminalCursorStyle,
     activeScreen: ActiveScreen,
-    bracketedPasteMode: boolean,
+    modes: TerminalModeState,
     includeHash: boolean,
   ): TerminalSnapshotFrame | TerminalSnapshotFrameCore {
     const combined = [...this.scrollback, ...this.lines];
@@ -614,7 +629,12 @@ class ScreenBuffer {
       cols: this.cols,
       activeScreen,
       modes: {
-        bracketedPaste: bracketedPasteMode,
+        bracketedPaste: modes.bracketedPaste,
+        decMouseX10: modes.decMouseX10,
+        decMouseButtonEvent: modes.decMouseButtonEvent,
+        decMouseAnyEvent: modes.decMouseAnyEvent,
+        decFocusTracking: modes.decFocusTracking,
+        decMouseSgrEncoding: modes.decMouseSgrEncoding,
       },
       cursor: {
         row: cursor.row,
@@ -819,6 +839,58 @@ function clampColor(value: number): number {
   return Math.max(0, Math.min(255, Math.trunc(value)));
 }
 
+function parseOscHexComponent(value: string): number | null {
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || trimmed.length > 4) {
+    return null;
+  }
+  if (!/^[0-9A-Fa-f]+$/u.test(trimmed)) {
+    return null;
+  }
+  const parsed = Number.parseInt(trimmed, 16);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  const maxValue = (1 << (trimmed.length * 4)) - 1;
+  if (maxValue <= 0) {
+    return null;
+  }
+  return Math.round((parsed / maxValue) * 255);
+}
+
+function parseOscRgbColor(value: string): { r: number; g: number; b: number } | null {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+
+  if (trimmed.startsWith('rgb:')) {
+    const channels = trimmed.slice(4).split('/');
+    if (channels.length !== 3) {
+      return null;
+    }
+    const red = parseOscHexComponent(channels[0] ?? '');
+    const green = parseOscHexComponent(channels[1] ?? '');
+    const blue = parseOscHexComponent(channels[2] ?? '');
+    if (red === null || green === null || blue === null) {
+      return null;
+    }
+    return { r: red, g: green, b: blue };
+  }
+
+  if (trimmed.startsWith('#') && trimmed.length === 7) {
+    const red = parseOscHexComponent(trimmed.slice(1, 3));
+    const green = parseOscHexComponent(trimmed.slice(3, 5));
+    const blue = parseOscHexComponent(trimmed.slice(5, 7));
+    if (red === null || green === null || blue === null) {
+      return null;
+    }
+    return { r: red, g: green, b: blue };
+  }
+
+  return null;
+}
+
 function isWideCodePoint(codePoint: number): boolean {
   const ranges: ReadonlyArray<readonly [number, number]> = [
     [0x1100, 0x115f],
@@ -891,7 +963,30 @@ export function wrapTextForColumns(text: string, cols: number): string[] {
   return lines;
 }
 
-function applySgrParams(style: TerminalCellStyle, params: number[]): TerminalCellStyle {
+function resolveIndexedColor(
+  index: number,
+  indexedPaletteOverrides: ReadonlyMap<number, { r: number; g: number; b: number }>,
+): TerminalColor {
+  const override = indexedPaletteOverrides.get(index);
+  if (override === undefined) {
+    return {
+      kind: 'indexed',
+      index,
+    };
+  }
+  return {
+    kind: 'rgb',
+    r: override.r,
+    g: override.g,
+    b: override.b,
+  };
+}
+
+function applySgrParams(
+  style: TerminalCellStyle,
+  params: number[],
+  indexedPaletteOverrides: ReadonlyMap<number, { r: number; g: number; b: number }>,
+): TerminalCellStyle {
   let nextStyle = cloneStyle(style);
   const queue = params.length === 0 ? [0] : [...params];
 
@@ -940,11 +1035,11 @@ function applySgrParams(style: TerminalCellStyle, params: number[]): TerminalCel
       continue;
     }
     if (param >= 30 && param <= 37) {
-      nextStyle.fg = { kind: 'indexed', index: param - 30 };
+      nextStyle.fg = resolveIndexedColor(param - 30, indexedPaletteOverrides);
       continue;
     }
     if (param >= 90 && param <= 97) {
-      nextStyle.fg = { kind: 'indexed', index: 8 + (param - 90) };
+      nextStyle.fg = resolveIndexedColor(8 + (param - 90), indexedPaletteOverrides);
       continue;
     }
     if (param === 39) {
@@ -952,11 +1047,11 @@ function applySgrParams(style: TerminalCellStyle, params: number[]): TerminalCel
       continue;
     }
     if (param >= 40 && param <= 47) {
-      nextStyle.bg = { kind: 'indexed', index: param - 40 };
+      nextStyle.bg = resolveIndexedColor(param - 40, indexedPaletteOverrides);
       continue;
     }
     if (param >= 100 && param <= 107) {
-      nextStyle.bg = { kind: 'indexed', index: 8 + (param - 100) };
+      nextStyle.bg = resolveIndexedColor(8 + (param - 100), indexedPaletteOverrides);
       continue;
     }
     if (param === 49) {
@@ -973,10 +1068,7 @@ function applySgrParams(style: TerminalCellStyle, params: number[]): TerminalCel
     if (mode === 5) {
       const value = queue[idx + 2];
       if (typeof value === 'number' && Number.isFinite(value)) {
-        const parsedColor: TerminalColor = {
-          kind: 'indexed',
-          index: clampColor(value),
-        };
+        const parsedColor = resolveIndexedColor(clampColor(value), indexedPaletteOverrides);
         if (isBackground) {
           nextStyle.bg = parsedColor;
         } else {
@@ -1036,6 +1128,9 @@ export class TerminalSnapshotOracle {
   private decMouseX10Mode = false;
   private decMouseButtonEventMode = false;
   private decMouseAnyEventMode = false;
+  private decFocusTrackingMode = false;
+  private decMouseSgrEncodingMode = false;
+  private readonly indexedPaletteOverrides = new Map<number, { r: number; g: number; b: number }>();
   private style: TerminalCellStyle = defaultCellStyle();
   private originMode = false;
   private pendingWrap = false;
@@ -1104,7 +1199,7 @@ export class TerminalSnapshotOracle {
       this.cursorVisible,
       this.cursorStyle,
       this.activeScreen,
-      this.bracketedPasteMode,
+      this.snapshotModes(),
       true,
     );
   }
@@ -1115,13 +1210,21 @@ export class TerminalSnapshotOracle {
       this.cursorVisible,
       this.cursorStyle,
       this.activeScreen,
-      this.bracketedPasteMode,
+      this.snapshotModes(),
       false,
     );
   }
 
   isMouseTrackingEnabled(): boolean {
     return this.decMouseX10Mode || this.decMouseButtonEventMode || this.decMouseAnyEventMode;
+  }
+
+  isFocusTrackingEnabled(): boolean {
+    return this.decFocusTrackingMode;
+  }
+
+  isSgrMouseEncodingEnabled(): boolean {
+    return this.decMouseSgrEncodingMode;
   }
 
   bufferTail(tailLines?: number): TerminalBufferTail {
@@ -1140,6 +1243,17 @@ export class TerminalSnapshotOracle {
     return this.activeScreen === 'primary' ? this.primary : this.alternate;
   }
 
+  private snapshotModes(): TerminalModeState {
+    return {
+      bracketedPaste: this.bracketedPasteMode,
+      decMouseX10: this.decMouseX10Mode,
+      decMouseButtonEvent: this.decMouseButtonEventMode,
+      decMouseAnyEvent: this.decMouseAnyEventMode,
+      decFocusTracking: this.decFocusTrackingMode,
+      decMouseSgrEncoding: this.decMouseSgrEncodingMode,
+    };
+  }
+
   private processChar(char: string): void {
     if (this.mode === 'normal') {
       this.processNormal(char);
@@ -1147,6 +1261,10 @@ export class TerminalSnapshotOracle {
     }
     if (this.mode === 'esc') {
       this.processEsc(char);
+      return;
+    }
+    if (this.mode === 'esc-intermediate') {
+      this.processEscIntermediate(char);
       return;
     }
     if (this.mode === 'csi') {
@@ -1218,6 +1336,7 @@ export class TerminalSnapshotOracle {
   }
 
   private processEsc(char: string): void {
+    const code = char.charCodeAt(0);
     if (char === '[') {
       this.mode = 'csi';
       this.csiBuffer = '';
@@ -1272,6 +1391,22 @@ export class TerminalSnapshotOracle {
     if (char === 'c') {
       this.hardReset();
       this.mode = 'normal';
+      return;
+    }
+    if (code >= 0x20 && code <= 0x2f) {
+      this.mode = 'esc-intermediate';
+      return;
+    }
+    this.mode = 'normal';
+  }
+
+  private processEscIntermediate(char: string): void {
+    const code = char.charCodeAt(0);
+    if (char === '\u001b') {
+      this.mode = 'esc';
+      return;
+    }
+    if (code >= 0x20 && code <= 0x2f) {
       return;
     }
     this.mode = 'normal';
@@ -1377,7 +1512,7 @@ export class TerminalSnapshotOracle {
 
     if (finalByte === 'm') {
       const cleaned = params.filter((value) => Number.isFinite(value));
-      this.style = applySgrParams(this.style, cleaned);
+      this.style = applySgrParams(this.style, cleaned, this.indexedPaletteOverrides);
       return;
     }
 
@@ -1498,6 +1633,7 @@ export class TerminalSnapshotOracle {
   private emitOscQuery(useBellTerminator: boolean): void {
     const payload = this.oscBuffer;
     this.oscBuffer = '';
+    this.applyOscEffects(payload);
     this.queryHooks?.onOscQuery?.(payload, useBellTerminator);
   }
 
@@ -1505,6 +1641,43 @@ export class TerminalSnapshotOracle {
     const payload = this.dcsBuffer;
     this.dcsBuffer = '';
     this.queryHooks?.onDcsQuery?.(payload);
+  }
+
+  private applyOscEffects(payload: string): void {
+    const separatorIndex = payload.indexOf(';');
+    const command = separatorIndex >= 0 ? payload.slice(0, separatorIndex).trim() : payload.trim();
+    const value = separatorIndex >= 0 ? payload.slice(separatorIndex + 1) : '';
+    if (command === '4') {
+      const parts = value.split(';');
+      for (let index = 0; index + 1 < parts.length; index += 2) {
+        const paletteIndexRaw = parts[index]?.trim() ?? '';
+        const paletteValueRaw = parts[index + 1] ?? '';
+        const paletteIndex = Number.parseInt(paletteIndexRaw, 10);
+        if (!Number.isFinite(paletteIndex)) {
+          continue;
+        }
+        const parsedColor = parseOscRgbColor(paletteValueRaw);
+        if (parsedColor === null) {
+          continue;
+        }
+        this.indexedPaletteOverrides.set(paletteIndex, parsedColor);
+      }
+      return;
+    }
+    if (command === '104') {
+      const trimmed = value.trim();
+      if (trimmed.length === 0) {
+        this.indexedPaletteOverrides.clear();
+        return;
+      }
+      for (const token of trimmed.split(';')) {
+        const paletteIndex = Number.parseInt(token.trim(), 10);
+        if (!Number.isFinite(paletteIndex)) {
+          continue;
+        }
+        this.indexedPaletteOverrides.delete(paletteIndex);
+      }
+    }
   }
 
   private applyPrivateMode(params: number[], enabled: boolean): void {
@@ -1531,6 +1704,14 @@ export class TerminalSnapshotOracle {
       }
       if (value === 1003) {
         this.decMouseAnyEventMode = enabled;
+        continue;
+      }
+      if (value === 1004) {
+        this.decFocusTrackingMode = enabled;
+        continue;
+      }
+      if (value === 1006) {
+        this.decMouseSgrEncodingMode = enabled;
         continue;
       }
 
@@ -1641,6 +1822,9 @@ export class TerminalSnapshotOracle {
     this.decMouseX10Mode = false;
     this.decMouseButtonEventMode = false;
     this.decMouseAnyEventMode = false;
+    this.decFocusTrackingMode = false;
+    this.decMouseSgrEncodingMode = false;
+    this.indexedPaletteOverrides.clear();
     this.style = style;
     this.originMode = false;
     this.pendingWrap = false;
@@ -1787,6 +1971,21 @@ export function diffTerminalFrames(
 
   if (expected.modes.bracketedPaste !== actual.modes.bracketedPaste) {
     reasons.push('bracketed-paste-mode-mismatch');
+  }
+  if (expected.modes.decMouseX10 !== actual.modes.decMouseX10) {
+    reasons.push('dec-mouse-x10-mode-mismatch');
+  }
+  if (expected.modes.decMouseButtonEvent !== actual.modes.decMouseButtonEvent) {
+    reasons.push('dec-mouse-button-event-mode-mismatch');
+  }
+  if (expected.modes.decMouseAnyEvent !== actual.modes.decMouseAnyEvent) {
+    reasons.push('dec-mouse-any-event-mode-mismatch');
+  }
+  if (expected.modes.decFocusTracking !== actual.modes.decFocusTracking) {
+    reasons.push('dec-focus-tracking-mode-mismatch');
+  }
+  if (expected.modes.decMouseSgrEncoding !== actual.modes.decMouseSgrEncoding) {
+    reasons.push('dec-mouse-sgr-encoding-mode-mismatch');
   }
 
   if (expected.cursor.row !== actual.cursor.row || expected.cursor.col !== actual.cursor.col) {

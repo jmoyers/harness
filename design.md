@@ -603,13 +603,11 @@ Recorded climb checklist (checkpoint: February 19, 2026):
 
 Current P0 Codex/Vim blockers from the matrix:
 
-1. `dec-mouse-focus-tracking` (`?1000/?1002/?1003/?1004/?1006`) is unsupported.
-2. `differential-terminal-checkpoints` (direct terminal vs harness checkpoints) is unsupported.
+1. `differential-terminal-checkpoints` (direct terminal vs harness checkpoints) is unsupported.
 
 Immediate climb order:
 
-1. Implement DEC mouse/focus mode state tracking and parity scenes for TUI mouse workflows.
-2. Add automated direct-terminal differential checkpoints for Codex/Vim corpora as a blocking gate.
+1. Add automated direct-terminal differential checkpoints for Codex/Vim corpora as a blocking gate.
 
 ## Git and Editor Integration
 
