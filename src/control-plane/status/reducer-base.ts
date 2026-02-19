@@ -29,7 +29,10 @@ function parseIsoMs(value: string | null): number {
 function eventIsNewer(observedAt: string, previousObservedAt: string | null): boolean {
   const observedAtMs = parseIsoMs(observedAt);
   const previousAtMs = parseIsoMs(previousObservedAt);
-  if (!Number.isFinite(previousAtMs) || !Number.isFinite(observedAtMs)) {
+  if (!Number.isFinite(observedAtMs)) {
+    return false;
+  }
+  if (!Number.isFinite(previousAtMs)) {
     return true;
   }
   return observedAtMs >= previousAtMs;

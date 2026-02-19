@@ -313,10 +313,10 @@ export function buildAgentStartArgs(
     const argsWithLaunchMode = [...baseArgs];
     if (
       cursorLaunchMode === 'yolo' &&
-      !argsWithLaunchMode.includes('--yolo') &&
-      !argsWithLaunchMode.includes('--force')
+      !argsWithLaunchMode.includes('--force') &&
+      !argsWithLaunchMode.includes('-f')
     ) {
-      argsWithLaunchMode.push('--yolo');
+      argsWithLaunchMode.push('--force');
     }
     if (
       cursorLaunchMode === 'yolo' &&

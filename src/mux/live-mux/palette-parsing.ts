@@ -96,8 +96,11 @@ export function extractOscColorReplies(buffer: string): {
       }
       const paletteIndexRaw = value.slice(0, paletteSeparator).trim();
       const paletteValueRaw = value.slice(paletteSeparator + 1);
+      if (!/^\d+$/u.test(paletteIndexRaw)) {
+        continue;
+      }
       const parsedIndex = Number.parseInt(paletteIndexRaw, 10);
-      if (!Number.isInteger(parsedIndex) || parsedIndex < 0 || parsedIndex > 255) {
+      if (parsedIndex < 0 || parsedIndex > 255) {
         continue;
       }
       const hex = parseOscRgbHex(paletteValueRaw);

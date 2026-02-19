@@ -156,7 +156,11 @@ export function parsePositiveInt(value: string | undefined, fallback: number): n
   if (value === undefined) {
     return fallback;
   }
-  const parsed = Number.parseInt(value, 10);
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || !/^\d+$/u.test(trimmed)) {
+    return fallback;
+  }
+  const parsed = Number.parseInt(trimmed, 10);
   if (!Number.isFinite(parsed) || parsed < 0) {
     return fallback;
   }

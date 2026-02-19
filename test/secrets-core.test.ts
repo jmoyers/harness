@@ -62,7 +62,7 @@ void test('parseHarnessSecretsText rejects unterminated and trailing quoted payl
   );
   assert.throws(
     () => parseHarnessSecretsText('ANTHROPIC_API_KEY="value\\" # comment'),
-    /invalid escape sequence/u,
+    /unterminated double-quoted value/u,
   );
 });
 

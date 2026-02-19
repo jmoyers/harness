@@ -139,6 +139,7 @@ void test('parseCommitCount validates output', () => {
   assert.equal(parseCommitCount('  '), null);
   assert.equal(parseCommitCount('-1'), null);
   assert.equal(parseCommitCount('nope'), null);
+  assert.equal(parseCommitCount('9'.repeat(400)), null);
 });
 
 void test('parseLastCommitLine decodes hash + timestamp pair', () => {

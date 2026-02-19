@@ -131,6 +131,15 @@ void test('parseMuxArgs validates host/port requirements and invalid port values
       },
     });
   }, /invalid --harness-server-port value/);
+
+  assert.throws(() => {
+    void parseMuxArgs([], {
+      env: {
+        ...baseEnv,
+        HARNESS_CONTROL_PLANE_PORT: '70000',
+      },
+    });
+  }, /invalid --harness-server-port value/);
 });
 
 void test('parseMuxArgs enforces required values for each flag', () => {

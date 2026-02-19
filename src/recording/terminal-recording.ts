@@ -77,7 +77,9 @@ function normalizeHex6(value: string, fallback: string): string {
   return fallback;
 }
 
-function parseOptionalAnsiPaletteIndexedHex(value: unknown): Record<string, string> | undefined {
+export function parseOptionalAnsiPaletteIndexedHex(
+  value: unknown,
+): Record<string, string> | undefined {
   if (value === undefined) {
     return undefined;
   }
@@ -87,8 +89,11 @@ function parseOptionalAnsiPaletteIndexedHex(value: unknown): Record<string, stri
 
   const normalized: Record<string, string> = {};
   for (const [key, entryValue] of Object.entries(value)) {
+    if (!/^\d+$/u.test(key)) {
+      continue;
+    }
     const parsedKey = Number.parseInt(key, 10);
-    if (!Number.isInteger(parsedKey) || parsedKey < 0 || parsedKey > 255) {
+    if (parsedKey < 0 || parsedKey > 255) {
       continue;
     }
     if (typeof entryValue !== 'string') {
@@ -303,8 +308,11 @@ export function createTerminalRecordingWriter(
     }
     const normalized: Record<string, string> = {};
     for (const [key, entryValue] of Object.entries(sourcePalette)) {
+      if (!/^\d+$/u.test(key)) {
+        continue;
+      }
       const parsedKey = Number.parseInt(key, 10);
-      if (!Number.isInteger(parsedKey) || parsedKey < 0 || parsedKey > 255) {
+      if (parsedKey < 0 || parsedKey > 255) {
         continue;
       }
       normalized[String(parsedKey)] = normalizeHex6(entryValue, '');

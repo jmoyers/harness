@@ -34,10 +34,7 @@ function decodeDoubleQuotedValue(raw: string, lineNumber: number): string {
       out += char;
       continue;
     }
-    const escaped = raw[index + 1];
-    if (escaped === undefined) {
-      throw new Error(`invalid escape sequence on line ${String(lineNumber)}`);
-    }
+    const escaped = raw[index + 1]!;
     if (escaped === 'n') {
       out += '\n';
       index += 1;
@@ -69,7 +66,23 @@ function parseLineValue(rawValue: string, lineNumber: number): string {
     return '';
   }
   if (rawValue.startsWith('"')) {
-    const closingIndex = rawValue.indexOf('"', 1);
+    let closingIndex = -1;
+    let escaped = false;
+    for (let index = 1; index < rawValue.length; index += 1) {
+      const char = rawValue[index]!;
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (char === '"') {
+        closingIndex = index;
+        break;
+      }
+    }
     if (closingIndex < 0) {
       throw new Error(`unterminated double-quoted value on line ${String(lineNumber)}`);
     }

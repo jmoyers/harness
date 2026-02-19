@@ -105,11 +105,11 @@ function normalizeIso(ts: unknown, fallback: string): string {
   return fallback;
 }
 
-function normalizeNanoTimestamp(nanoValue: unknown, fallback: string): string {
+export function normalizeNanoTimestamp(nanoValue: unknown, fallback: string): string {
   let numericNano: number | null = null;
   if (typeof nanoValue === 'number' && Number.isFinite(nanoValue)) {
     numericNano = nanoValue;
-  } else if (typeof nanoValue === 'string') {
+  } else if (typeof nanoValue === 'string' && /^\d+$/u.test(nanoValue)) {
     const parsed = Number.parseInt(nanoValue, 10);
     if (Number.isFinite(parsed)) {
       numericNano = parsed;

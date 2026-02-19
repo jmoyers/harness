@@ -100,7 +100,7 @@ export function shouldShowGitHubPrActions(input: {
 
 export function parseCommitCount(output: string): number | null {
   const trimmed = output.trim();
-  if (trimmed.length === 0) {
+  if (trimmed.length === 0 || !/^\d+$/u.test(trimmed)) {
     return null;
   }
   const parsed = Number.parseInt(trimmed, 10);

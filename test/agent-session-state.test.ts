@@ -600,7 +600,7 @@ void test('buildAgentStartArgs applies cursor yolo launch mode with conditional 
         cursorLaunchMode: 'yolo',
       },
     ),
-    ['--resume', 'cursor-session-1', '--yolo'],
+    ['--resume', 'cursor-session-1', '--force'],
   );
 
   assert.deepEqual(
@@ -616,7 +616,7 @@ void test('buildAgentStartArgs applies cursor yolo launch mode with conditional 
         cursorLaunchMode: 'yolo',
       },
     ),
-    ['--resume', 'explicit', '--yolo'],
+    ['--resume', 'explicit', '--force'],
   );
 
   assert.deepEqual(
@@ -632,7 +632,7 @@ void test('buildAgentStartArgs applies cursor yolo launch mode with conditional 
         cursorLaunchMode: 'yolo',
       },
     ),
-    ['--resume', 'cursor-session-1', '--print', '--yolo', '--trust'],
+    ['--resume', 'cursor-session-1', '--print', '--force', '--trust'],
   );
 
   assert.deepEqual(
@@ -644,7 +644,7 @@ void test('buildAgentStartArgs applies cursor yolo launch mode with conditional 
         cursorLaunchMode: 'yolo',
       },
     ),
-    ['--mode', 'headless', '--yolo', '--trust'],
+    ['--mode', 'headless', '--force', '--trust'],
   );
 
   assert.deepEqual(
@@ -656,7 +656,7 @@ void test('buildAgentStartArgs applies cursor yolo launch mode with conditional 
         cursorLaunchMode: 'yolo',
       },
     ),
-    ['--mode', 'ask', '--yolo'],
+    ['--mode', 'ask', '--force'],
   );
 
   assert.deepEqual(
@@ -668,7 +668,7 @@ void test('buildAgentStartArgs applies cursor yolo launch mode with conditional 
         cursorLaunchMode: 'yolo',
       },
     ),
-    ['--mode=headless', '--yolo', '--trust'],
+    ['--mode=headless', '--force', '--trust'],
   );
 
   assert.deepEqual(
@@ -680,7 +680,7 @@ void test('buildAgentStartArgs applies cursor yolo launch mode with conditional 
         cursorLaunchMode: 'yolo',
       },
     ),
-    ['--mode=ask', '--yolo'],
+    ['--mode=ask', '--force'],
   );
 
   assert.deepEqual(
@@ -692,7 +692,7 @@ void test('buildAgentStartArgs applies cursor yolo launch mode with conditional 
         cursorLaunchMode: 'yolo',
       },
     ),
-    ['--trust', '--yolo'],
+    ['--trust', '--force'],
   );
 
   assert.deepEqual(
@@ -728,7 +728,7 @@ void test('buildAgentSessionStartArgs applies cursor launch defaults and directo
         cursorLaunchModeByDirectoryPath: directoryModes,
       },
     ),
-    ['--resume', 'cursor-session-2', '--yolo'],
+    ['--resume', 'cursor-session-2', '--force'],
   );
 
   assert.deepEqual(

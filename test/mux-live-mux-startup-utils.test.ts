@@ -215,6 +215,7 @@ void test('parsePositiveInt and parseBooleanEnv normalize input values', () => {
   assert.equal(parsePositiveInt('17', 5), 17);
   assert.equal(parsePositiveInt('-1', 5), 5);
   assert.equal(parsePositiveInt('abc', 5), 5);
+  assert.equal(parsePositiveInt('9'.repeat(400), 5), 5);
 
   assert.equal(parseBooleanEnv(undefined, true), true);
   assert.equal(parseBooleanEnv(' yes ', false), true);

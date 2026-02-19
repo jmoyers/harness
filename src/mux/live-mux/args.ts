@@ -94,7 +94,11 @@ export function parseMuxArgs(argv: string[], options: ParseMuxArgsOptions = {}):
 
   let controlPlanePort: number | null = null;
   if (controlPlanePortRaw !== null) {
-    const parsed = Number.parseInt(controlPlanePortRaw, 10);
+    const trimmedPort = controlPlanePortRaw.trim();
+    if (!/^\d+$/u.test(trimmedPort)) {
+      throw new Error(`invalid --harness-server-port value: ${controlPlanePortRaw}`);
+    }
+    const parsed = Number.parseInt(trimmedPort, 10);
     if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 65535) {
       throw new Error(`invalid --harness-server-port value: ${controlPlanePortRaw}`);
     }

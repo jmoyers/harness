@@ -93,7 +93,7 @@ export function normalizeGatewayPort(
     return fallback;
   }
   const trimmed = input.trim();
-  if (trimmed.length === 0) {
+  if (trimmed.length === 0 || !/^\d+$/u.test(trimmed)) {
     return fallback;
   }
   const parsed = Number.parseInt(trimmed, 10);
