@@ -119,6 +119,11 @@ interface ConversationUpdateCommand {
   title: string;
 }
 
+interface ConversationTitleRefreshCommand {
+  type: 'conversation.title.refresh';
+  conversationId: string;
+}
+
 interface ConversationDeleteCommand {
   type: 'conversation.delete';
   conversationId: string;
@@ -494,6 +499,7 @@ export type StreamCommand =
   | ConversationListCommand
   | ConversationArchiveCommand
   | ConversationUpdateCommand
+  | ConversationTitleRefreshCommand
   | ConversationDeleteCommand
   | RepositoryUpsertCommand
   | RepositoryGetCommand

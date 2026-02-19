@@ -409,6 +409,7 @@ High-signal classification rules:
 - Attention signal: explicit `needs-input`/approval-required values from structured payload fields only (severity/error-like and summary-text fallbacks are intentionally disabled).
 - Notify signal transport: provider hook records are surfaced as `session-event notify` on the same stream (for example Codex payload type `agent-turn-complete` and Claude hook payloads).
 - Prompt signal transport: provider prompt-start hooks and Codex telemetry/history prompt events are normalized into `session-prompt-event` with source (`hook-notify`/`otlp-log`/`history`) and per-session dedupe keys to preserve mid-conversation prompt ordering without duplicate bursts.
+- Prompt-aware thread naming: gateway stores sanitized per-thread prompt history in adapter state and can invoke Anthropic Haiku to refresh a concise two-word lowercase title (title text only; agent label rendering remains client-side), emitting canonical `conversation-updated` observed events so all clients render the same title updates. A mux shortcut (`mux.conversation.titles.refresh-all`, default `ctrl+r`) refreshes all eligible agent-thread titles with progress notices.
 - Status-neutral noise: tool/api/websocket chatter, trace churn, and task-complete fallback text do not mutate the status line.
 
 Invariant:

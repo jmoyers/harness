@@ -419,6 +419,11 @@ interface ExecuteCommandContext {
     }>;
   };
   readonly streamCursor: number;
+  refreshConversationTitle(conversationId: string): Promise<{
+    conversation: ControlPlaneConversationRecord;
+    status: 'updated' | 'unchanged' | 'skipped';
+    reason: string | null;
+  }>;
   refreshGitStatusForDirectory(
     directory: ControlPlaneDirectoryRecord,
     options?: {
@@ -1400,6 +1405,15 @@ export async function executeStreamServerCommand(
     );
     return {
       conversation: record,
+    };
+  }
+
+  if (command.type === 'conversation.title.refresh') {
+    const refreshed = await ctx.refreshConversationTitle(command.conversationId);
+    return {
+      conversation: ctx.conversationRecord(refreshed.conversation),
+      status: refreshed.status,
+      reason: refreshed.reason,
     };
   }
 

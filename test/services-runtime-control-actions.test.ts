@@ -277,3 +277,89 @@ void test('runtime control actions toggle gateway render trace writes scoped not
   ]);
   assert.equal(dirtyCalls, 1);
 });
+
+void test('runtime control actions refreshAllConversationTitles reports unavailable when callbacks are missing', async () => {
+  const notices: string[] = [];
+  let dirtyCalls = 0;
+  const actions = new RuntimeControlActions<TestConversationState>({
+    conversationById: () => undefined,
+    interruptSession: async () => ({ interrupted: false }),
+    nowIso: () => '2026-02-18T00:00:00.000Z',
+    markDirty: () => {
+      dirtyCalls += 1;
+    },
+    toggleGatewayProfiler: async () => ({ message: 'ignored' }),
+    toggleGatewayStatusTimeline: async () => ({ message: 'ignored' }),
+    toggleGatewayRenderTrace: async () => ({ message: 'ignored' }),
+    invocationDirectory: '/tmp/work',
+    sessionName: null,
+    setTaskPaneNotice: (message) => {
+      notices.push(`task:${message}`);
+    },
+    setDebugFooterNotice: (message) => {
+      notices.push(`debug:${message}`);
+    },
+  });
+
+  await actions.refreshAllConversationTitles();
+
+  assert.deepEqual(notices, [
+    'task:[thread-title] refresh unavailable',
+    'debug:[thread-title] refresh unavailable',
+  ]);
+  assert.equal(dirtyCalls, 1);
+});
+
+void test('runtime control actions refreshAllConversationTitles tracks progress and filters non-agent threads', async () => {
+  const notices: string[] = [];
+  let dirtyCalls = 0;
+  const refreshedSessionIds: string[] = [];
+  const actions = new RuntimeControlActions<TestConversationState>({
+    conversationById: () => undefined,
+    interruptSession: async () => ({ interrupted: false }),
+    nowIso: () => '2026-02-18T00:00:00.000Z',
+    markDirty: () => {
+      dirtyCalls += 1;
+    },
+    toggleGatewayProfiler: async () => ({ message: 'ignored' }),
+    toggleGatewayStatusTimeline: async () => ({ message: 'ignored' }),
+    toggleGatewayRenderTrace: async () => ({ message: 'ignored' }),
+    invocationDirectory: '/tmp/work',
+    sessionName: 'mux-main',
+    setTaskPaneNotice: (message) => {
+      notices.push(`task:${message}`);
+    },
+    setDebugFooterNotice: (message) => {
+      notices.push(`debug:${message}`);
+    },
+    listConversationIdsForTitleRefresh: () => ['agent-a', 'terminal-a', 'agent-b'],
+    conversationAgentTypeForTitleRefresh: (sessionId) => {
+      if (sessionId === 'terminal-a') {
+        return 'terminal';
+      }
+      return 'codex';
+    },
+    refreshConversationTitle: async (sessionId) => {
+      refreshedSessionIds.push(sessionId);
+      return {
+        status: sessionId === 'agent-a' ? 'updated' : 'unchanged',
+        reason: null,
+      };
+    },
+  });
+
+  await actions.refreshAllConversationTitles();
+
+  assert.deepEqual(refreshedSessionIds, ['agent-a', 'agent-b']);
+  assert.deepEqual(notices, [
+    'task:[thread-title:mux-main] refreshing names 0/2',
+    'debug:[thread-title:mux-main] refreshing names 0/2',
+    'task:[thread-title:mux-main] refreshing names 1/2',
+    'debug:[thread-title:mux-main] refreshing names 1/2',
+    'task:[thread-title:mux-main] refreshing names 2/2',
+    'debug:[thread-title:mux-main] refreshing names 2/2',
+    'task:[thread-title:mux-main] refreshed 1 updated 1 unchanged 0 skipped',
+    'debug:[thread-title:mux-main] refreshed 1 updated 1 unchanged 0 skipped',
+  ]);
+  assert.equal(dirtyCalls, 4);
+});

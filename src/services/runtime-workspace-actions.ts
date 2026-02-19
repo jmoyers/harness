@@ -30,6 +30,7 @@ interface RuntimeWorkspaceControlActions {
   toggleGatewayProfiler(): Promise<void>;
   toggleGatewayStatusTimeline(): Promise<void>;
   toggleGatewayRenderTrace(conversationId: string | null): Promise<void>;
+  refreshAllConversationTitles(): Promise<void>;
 }
 
 interface RuntimeWorkspaceTaskPaneActions {
@@ -133,6 +134,10 @@ export class RuntimeWorkspaceActions {
 
   async toggleGatewayRenderTrace(conversationId: string | null): Promise<void> {
     await this.options.controlActions.toggleGatewayRenderTrace(conversationId);
+  }
+
+  async refreshAllConversationTitles(): Promise<void> {
+    await this.options.controlActions.refreshAllConversationTitles();
   }
 
   runTaskPaneAction(action: TaskPaneAction): void {

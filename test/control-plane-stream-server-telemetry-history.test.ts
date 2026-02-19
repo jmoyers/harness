@@ -19,6 +19,84 @@ import {
   postJson,
   postRaw,
 } from './control-plane-stream-server-test-helpers.ts';
+import { createAnthropicResponse } from './support/harness-ai.ts';
+
+function createThreadTitleResponse(text: string): Response {
+  return createAnthropicResponse([
+    {
+      type: 'message_start',
+      message: {
+        id: 'msg-thread-title',
+        model: 'claude-3-5-haiku-latest',
+        usage: { input_tokens: 9, output_tokens: 0 },
+      },
+    },
+    { type: 'content_block_start', index: 0, content_block: { type: 'text' } },
+    {
+      type: 'content_block_delta',
+      index: 0,
+      delta: { type: 'text_delta', text },
+    },
+    { type: 'content_block_stop', index: 0 },
+    {
+      type: 'message_delta',
+      delta: { stop_reason: 'end_turn' },
+      usage: { input_tokens: 9, output_tokens: 3 },
+    },
+    { type: 'message_stop' },
+  ]);
+}
+
+function extractPromptTextFromAnthropicRequest(body: Record<string, unknown>): string {
+  const messages = body['messages'];
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return '';
+  }
+  const firstMessage = messages[0];
+  if (typeof firstMessage !== 'object' || firstMessage === null || Array.isArray(firstMessage)) {
+    return '';
+  }
+  const content = (firstMessage as Record<string, unknown>)['content'];
+  if (!Array.isArray(content) || content.length === 0) {
+    return '';
+  }
+  const firstPart = content[0];
+  if (typeof firstPart !== 'object' || firstPart === null || Array.isArray(firstPart)) {
+    return '';
+  }
+  const text = (firstPart as Record<string, unknown>)['text'];
+  return typeof text === 'string' ? text : '';
+}
+
+async function waitForConversationTitle(
+  client: Awaited<ReturnType<typeof connectControlPlaneStreamClient>>,
+  directoryId: string,
+  conversationId: string,
+  expectedTitle: string,
+): Promise<void> {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const listed = await client.sendCommand({
+      type: 'conversation.list',
+      directoryId,
+      includeArchived: true,
+    });
+    const rows = Array.isArray(listed['conversations']) ? listed['conversations'] : [];
+    for (const row of rows) {
+      if (typeof row !== 'object' || row === null || Array.isArray(row)) {
+        continue;
+      }
+      const record = row as Record<string, unknown>;
+      if (record['conversationId'] !== conversationId) {
+        continue;
+      }
+      if (record['title'] === expectedTitle) {
+        return;
+      }
+    }
+    await delay(10);
+  }
+  throw new Error(`timed out waiting for conversation title: ${expectedTitle}`);
+}
 
 void test('stream server injects codex telemetry args, ingests otlp payloads, and updates runtime state', async () => {
   const created: FakeLiveSession[] = [];
@@ -1431,6 +1509,163 @@ void test('stream server maps claude hook notify events into status/key events a
       ),
       true,
     );
+  } finally {
+    client.close();
+    await server.close();
+  }
+});
+
+void test('stream server records prompt history and renames conversation titles from haiku output', async () => {
+  const created: FakeLiveSession[] = [];
+  const titleRequestBodies: Record<string, unknown>[] = [];
+  const generatedTitles = ['prompt capture', 'prompt history'];
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => {
+      const session = new FakeLiveSession(input);
+      created.push(session);
+      return session;
+    },
+    threadTitle: {
+      enabled: true,
+      apiKey: 'test-anthropic-key',
+      fetch: async (_input, init) => {
+        const body =
+          typeof init?.body === 'string'
+            ? init.body
+            : init?.body === undefined
+              ? '{}'
+              : String(init.body);
+        titleRequestBodies.push(JSON.parse(body) as Record<string, unknown>);
+        const nextTitle =
+          generatedTitles[Math.min(titleRequestBodies.length - 1, generatedTitles.length - 1)] ??
+          'current thread';
+        return createThreadTitleResponse(nextTitle);
+      },
+    },
+    codexTelemetry: {
+      enabled: false,
+      host: '127.0.0.1',
+      port: 0,
+      logUserPrompt: true,
+      captureLogs: true,
+      captureMetrics: true,
+      captureTraces: true,
+      captureVerboseEvents: true,
+    },
+    codexHistory: {
+      enabled: false,
+      filePath: '~/.codex/history.jsonl',
+      pollMs: 50,
+    },
+  });
+  const address = server.address();
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port,
+  });
+  const observed = collectEnvelopes(client);
+
+  try {
+    await client.sendCommand({
+      type: 'directory.upsert',
+      directoryId: 'directory-thread-title',
+      tenantId: 'tenant-thread-title',
+      userId: 'user-thread-title',
+      workspaceId: 'workspace-thread-title',
+      path: '/tmp/thread-title',
+    });
+    await client.sendCommand({
+      type: 'conversation.create',
+      conversationId: 'conversation-thread-title',
+      directoryId: 'directory-thread-title',
+      title: 'seed',
+      agentType: 'claude',
+    });
+    await client.sendCommand({
+      type: 'stream.subscribe',
+      conversationId: 'conversation-thread-title',
+      includeOutput: false,
+    });
+    await client.sendCommand({
+      type: 'pty.start',
+      sessionId: 'conversation-thread-title',
+      args: ['--foo', 'bar'],
+      initialCols: 80,
+      initialRows: 24,
+    });
+    await delay(10);
+    assert.equal(created.length, 1);
+
+    created[0]!.emitEvent({
+      type: 'notify',
+      record: {
+        ts: '2026-02-16T00:00:00.000Z',
+        payload: {
+          hook_event_name: 'UserPromptSubmit',
+          prompt: 'Improve prompt extraction parity for thread naming',
+          session_id: 'claude-title-session',
+        },
+      },
+    });
+    await waitForConversationTitle(
+      client,
+      'directory-thread-title',
+      'conversation-thread-title',
+      'prompt capture',
+    );
+
+    const secondPrompt = [
+      'Follow up with screenshot context ![img](https://example.com/screen.png)',
+      `data:image/png;base64,${'A'.repeat(220)}`,
+      'Refine integration test behavior',
+    ].join('\n');
+    created[0]!.emitEvent({
+      type: 'notify',
+      record: {
+        ts: '2026-02-16T00:00:01.000Z',
+        payload: {
+          hook_event_name: 'UserPromptSubmit',
+          prompt: secondPrompt,
+          session_id: 'claude-title-session',
+        },
+      },
+    });
+    await waitForConversationTitle(
+      client,
+      'directory-thread-title',
+      'conversation-thread-title',
+      'prompt history',
+    );
+
+    assert.equal(titleRequestBodies.length >= 2, true);
+    const firstPromptText = extractPromptTextFromAnthropicRequest(titleRequestBodies[0]!);
+    assert.equal(
+      firstPromptText.includes('1. Improve prompt extraction parity for thread naming'),
+      true,
+    );
+
+    const secondPromptText = extractPromptTextFromAnthropicRequest(titleRequestBodies[1]!);
+    assert.equal(
+      secondPromptText.includes('1. Improve prompt extraction parity for thread naming'),
+      true,
+    );
+    assert.equal(secondPromptText.includes('2. Follow up with screenshot context'), true);
+    assert.equal(secondPromptText.includes('Refine integration test behavior'), true);
+    assert.equal(secondPromptText.includes('data:image'), false);
+    assert.equal(secondPromptText.includes('![img]'), false);
+
+    const observedTitles: string[] = [];
+    for (const envelope of observed) {
+      if (envelope.kind !== 'stream.event' || envelope.event.type !== 'conversation-updated') {
+        continue;
+      }
+      const title = (envelope.event.conversation as Record<string, unknown>)['title'];
+      if (typeof title === 'string') {
+        observedTitles.push(title);
+      }
+    }
+    assert.equal(observedTitles.includes('prompt capture'), true);
+    assert.equal(observedTitles.includes('prompt history'), true);
   } finally {
     client.close();
     await server.close();

@@ -9,6 +9,7 @@ Use it when you want to move faster than a single chat window: keep multiple thr
 - Run many agent threads in parallel across `codex`, `claude`, `cursor`, `terminal`, and `critique`.
 - Keep native CLI ergonomics in one keyboard-first workspace.
 - Keep long-running threads alive in the detached gateway so reconnects do not kill work.
+- Keep thread names fresh automatically from prompt history (`agent - 3-word title`) for faster scanning in the rail.
 - Open a command palette with `ctrl+p`/`cmd+p`, live-filter registered actions, and execute context-aware thread/project/runtime controls.
 - Open a thread-scoped command palette from left-rail `[+ thread]` (same matcher/autocomplete as `ctrl+p`) to start/install agent CLIs per project.
 - Start in the Home pane by default, then jump to projects/threads from the left rail.
@@ -144,6 +145,8 @@ Key orchestration calls are available in the same client:
 
 Runtime behavior is config-first via `harness.config.jsonc`.
 GitHub project/PR integration is enabled by default and configured under `github.*`.
+Set `ANTHROPIC_API_KEY` to enable automatic prompt-history-based thread title refreshes (Haiku by default).
+Default mux keybind `ctrl+r` refreshes all agent-thread titles with progress notices.
 
 Example (install commands + critique defaults + hotkey override + OpenCode theme selection):
 

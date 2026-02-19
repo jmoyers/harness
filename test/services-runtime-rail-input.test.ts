@@ -14,6 +14,7 @@ interface CapturedNavigationOptions {
     toggleGatewayStatusTimeline(): Promise<void>;
     toggleGatewayRenderTrace(conversationId: string | null): Promise<void>;
     archiveConversation(sessionId: string): Promise<void>;
+    refreshAllConversationTitles(): Promise<void>;
     interruptConversation(sessionId: string): Promise<void>;
     takeoverConversation(sessionId: string): Promise<void>;
     closeDirectory(directoryId: string): Promise<void>;
@@ -100,6 +101,9 @@ function createOptions(
       },
       archiveConversation: async (sessionId) => {
         calls.push(`archiveConversation:${sessionId}`);
+      },
+      refreshAllConversationTitles: async () => {
+        calls.push('refreshAllConversationTitles');
       },
       interruptConversation: async (sessionId) => {
         calls.push(`interruptConversation:${sessionId}`);
@@ -368,6 +372,10 @@ void test('runtime rail input preserves runtime workspace action method context'
       this.sink.push(`archiveConversation:${sessionId}`);
     }
 
+    async refreshAllConversationTitles(): Promise<void> {
+      this.sink.push('refreshAllConversationTitles');
+    }
+
     async interruptConversation(sessionId: string): Promise<void> {
       this.sink.push(`interruptConversation:${sessionId}`);
     }
@@ -434,6 +442,7 @@ void test('runtime rail input preserves runtime workspace action method context'
   await navigationOptions.workspaceActions.toggleGatewayStatusTimeline();
   await navigationOptions.workspaceActions.toggleGatewayRenderTrace('session-ctx');
   await navigationOptions.workspaceActions.archiveConversation('session-ctx');
+  await navigationOptions.workspaceActions.refreshAllConversationTitles();
   await navigationOptions.workspaceActions.interruptConversation('session-ctx');
   await navigationOptions.workspaceActions.takeoverConversation('session-ctx');
   await navigationOptions.workspaceActions.closeDirectory('dir-ctx');
@@ -445,6 +454,7 @@ void test('runtime rail input preserves runtime workspace action method context'
     'toggleGatewayStatusTimeline',
     'toggleGatewayRenderTrace:session-ctx',
     'archiveConversation:session-ctx',
+    'refreshAllConversationTitles',
     'interruptConversation:session-ctx',
     'takeoverConversation:session-ctx',
     'closeDirectory:dir-ctx',

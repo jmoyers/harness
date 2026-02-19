@@ -22,6 +22,7 @@
     "scripts/harness-core.ts",
     "scripts/harness-inspector.ts",
     "scripts/harness.ts",
+    "packages/harness-ai/src",
     "scripts/terminal-recording-gif-lib.ts",
     "scripts/require-bun.js",
     "native/ptyd/Cargo.lock",

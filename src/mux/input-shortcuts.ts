@@ -9,6 +9,7 @@ type MuxGlobalShortcutAction =
   | 'mux.conversation.critique.open-or-create'
   | 'mux.conversation.next'
   | 'mux.conversation.previous'
+  | 'mux.conversation.titles.refresh-all'
   | 'mux.conversation.interrupt'
   | 'mux.conversation.archive'
   | 'mux.conversation.takeover'
@@ -47,6 +48,7 @@ const ACTION_ORDER: readonly MuxGlobalShortcutAction[] = [
   'mux.conversation.critique.open-or-create',
   'mux.conversation.next',
   'mux.conversation.previous',
+  'mux.conversation.titles.refresh-all',
   'mux.conversation.interrupt',
   'mux.conversation.archive',
   'mux.conversation.takeover',
@@ -68,6 +70,7 @@ const DEFAULT_MUX_SHORTCUT_BINDINGS_RAW: Readonly<
   'mux.conversation.critique.open-or-create': ['ctrl+g'],
   'mux.conversation.next': ['ctrl+j'],
   'mux.conversation.previous': ['ctrl+k'],
+  'mux.conversation.titles.refresh-all': ['ctrl+r'],
   'mux.conversation.interrupt': [],
   'mux.conversation.archive': [],
   'mux.conversation.takeover': ['ctrl+l'],
@@ -580,6 +583,9 @@ function withDefaultBindings(
     'mux.conversation.previous':
       overrides?.['mux.conversation.previous'] ??
       DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.previous'],
+    'mux.conversation.titles.refresh-all':
+      overrides?.['mux.conversation.titles.refresh-all'] ??
+      DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.titles.refresh-all'],
     'mux.conversation.interrupt':
       overrides?.['mux.conversation.interrupt'] ??
       DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.interrupt'],
@@ -625,6 +631,9 @@ export function resolveMuxShortcutBindings(
       ),
       'mux.conversation.next': parseBindingsForAction(rawByAction['mux.conversation.next']),
       'mux.conversation.previous': parseBindingsForAction(rawByAction['mux.conversation.previous']),
+      'mux.conversation.titles.refresh-all': parseBindingsForAction(
+        rawByAction['mux.conversation.titles.refresh-all'],
+      ),
       'mux.conversation.interrupt': parseBindingsForAction(
         rawByAction['mux.conversation.interrupt'],
       ),

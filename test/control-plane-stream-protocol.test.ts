@@ -115,6 +115,14 @@ void test('parseClientEnvelope accepts valid command and stream envelopes', () =
     },
     {
       kind: 'command',
+      commandId: 'c0e1a',
+      command: {
+        type: 'conversation.title.refresh',
+        conversationId: 'conversation-1',
+      },
+    },
+    {
+      kind: 'command',
       commandId: 'c0ea',
       command: {
         type: 'conversation.delete',

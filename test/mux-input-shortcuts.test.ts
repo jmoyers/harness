@@ -19,7 +19,10 @@ void test('detectMuxGlobalShortcut maps default raw control-byte bindings', () =
   assert.equal(detectMuxGlobalShortcut(Buffer.from([0x0c]), bindings), 'mux.conversation.takeover');
   assert.equal(detectMuxGlobalShortcut(Buffer.from([0x03]), bindings), 'mux.app.interrupt-all');
   assert.equal(detectMuxGlobalShortcut(Buffer.from([0x10]), bindings), 'mux.command-menu.toggle');
-  assert.equal(detectMuxGlobalShortcut(Buffer.from([0x12]), bindings), null);
+  assert.equal(
+    detectMuxGlobalShortcut(Buffer.from([0x12]), bindings),
+    'mux.conversation.titles.refresh-all',
+  );
   assert.equal(
     detectMuxGlobalShortcut(Buffer.from('\u001br', 'utf8'), bindings),
     'mux.gateway.status-timeline.toggle',
@@ -59,6 +62,10 @@ void test('detectMuxGlobalShortcut parses kitty and modifyOtherKeys control comb
     'mux.conversation.takeover',
   );
   assert.equal(
+    detectMuxGlobalShortcut(Buffer.from('\u001b[114;5u', 'utf8'), bindings),
+    'mux.conversation.titles.refresh-all',
+  );
+  assert.equal(
     detectMuxGlobalShortcut(Buffer.from('\u001b[112;5u', 'utf8'), bindings),
     'mux.command-menu.toggle',
   );
@@ -94,6 +101,10 @@ void test('detectMuxGlobalShortcut parses kitty and modifyOtherKeys control comb
   assert.equal(
     detectMuxGlobalShortcut(Buffer.from('\u001b[27;5;108~', 'utf8'), bindings),
     'mux.conversation.takeover',
+  );
+  assert.equal(
+    detectMuxGlobalShortcut(Buffer.from('\u001b[27;5;114~', 'utf8'), bindings),
+    'mux.conversation.titles.refresh-all',
   );
   assert.equal(
     detectMuxGlobalShortcut(Buffer.from('\u001b[27;5;112~', 'utf8'), bindings),

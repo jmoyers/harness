@@ -210,6 +210,105 @@ void test('command module coverage: repository/task query branches and claim con
   }
 });
 
+void test('command module coverage: conversation.title.refresh updates agent threads and skips non-agent paths', async () => {
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input),
+    threadTitleNamer: {
+      suggest: async () => 'prompt refresh',
+    },
+  });
+  const address = server.address();
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port,
+  });
+
+  try {
+    await client.sendCommand({
+      type: 'directory.upsert',
+      directoryId: 'directory-thread-refresh',
+      tenantId: 'tenant-thread-refresh',
+      userId: 'user-thread-refresh',
+      workspaceId: 'workspace-thread-refresh',
+      path: '/tmp/thread-refresh',
+    });
+    await client.sendCommand({
+      type: 'conversation.create',
+      conversationId: 'conversation-thread-agent',
+      directoryId: 'directory-thread-refresh',
+      title: 'seed',
+      agentType: 'codex',
+      adapterState: {
+        harnessThreadTitle: {
+          prompts: [
+            {
+              text: 'stabilize title refresh behavior',
+              observedAt: '2026-02-19T00:00:00.000Z',
+              hash: 'hash-a',
+            },
+          ],
+        },
+      },
+    });
+    await client.sendCommand({
+      type: 'conversation.create',
+      conversationId: 'conversation-thread-terminal',
+      directoryId: 'directory-thread-refresh',
+      title: 'terminal seed',
+      agentType: 'terminal',
+      adapterState: {
+        harnessThreadTitle: {
+          prompts: [
+            {
+              text: 'terminal prompts should be skipped',
+              observedAt: '2026-02-19T00:00:00.000Z',
+              hash: 'hash-b',
+            },
+          ],
+        },
+      },
+    });
+    await client.sendCommand({
+      type: 'conversation.create',
+      conversationId: 'conversation-thread-empty',
+      directoryId: 'directory-thread-refresh',
+      title: 'empty seed',
+      agentType: 'claude',
+      adapterState: {},
+    });
+
+    const first = (await client.sendCommand({
+      type: 'conversation.title.refresh',
+      conversationId: 'conversation-thread-agent',
+    })) as Record<string, unknown>;
+    assert.equal(first['status'], 'updated');
+    assert.equal((first['conversation'] as Record<string, unknown>)['title'], 'prompt refresh');
+
+    const second = (await client.sendCommand({
+      type: 'conversation.title.refresh',
+      conversationId: 'conversation-thread-agent',
+    })) as Record<string, unknown>;
+    assert.equal(second['status'], 'unchanged');
+
+    const nonAgent = (await client.sendCommand({
+      type: 'conversation.title.refresh',
+      conversationId: 'conversation-thread-terminal',
+    })) as Record<string, unknown>;
+    assert.equal(nonAgent['status'], 'skipped');
+    assert.equal(nonAgent['reason'], 'non-agent-thread');
+
+    const emptyHistory = (await client.sendCommand({
+      type: 'conversation.title.refresh',
+      conversationId: 'conversation-thread-empty',
+    })) as Record<string, unknown>;
+    assert.equal(emptyHistory['status'], 'skipped');
+    assert.equal(emptyHistory['reason'], 'prompt-history-empty');
+  } finally {
+    client.close();
+    await server.close();
+  }
+});
+
 void test('command module coverage: task pull enforces project priority, focus mode, fan-out, and freeze blocks', async () => {
   const server = await startControlPlaneStreamServer({
     startSession: (input) => new FakeLiveSession(input),

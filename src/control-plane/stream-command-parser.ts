@@ -421,6 +421,17 @@ function parseConversationUpdate(record: CommandRecord): StreamCommand | null {
   };
 }
 
+function parseConversationTitleRefresh(record: CommandRecord): StreamCommand | null {
+  const conversationId = readString(record['conversationId']);
+  if (conversationId === null) {
+    return null;
+  }
+  return {
+    type: 'conversation.title.refresh',
+    conversationId,
+  };
+}
+
 function parseConversationDelete(record: CommandRecord): StreamCommand | null {
   const conversationId = readString(record['conversationId']);
   if (conversationId === null) {
@@ -1628,6 +1639,7 @@ export const DEFAULT_STREAM_COMMAND_PARSERS: StreamCommandParserRegistry = {
   'conversation.list': parseConversationList,
   'conversation.archive': parseConversationArchive,
   'conversation.update': parseConversationUpdate,
+  'conversation.title.refresh': parseConversationTitleRefresh,
   'conversation.delete': parseConversationDelete,
   'repository.upsert': parseRepositoryUpsert,
   'repository.get': parseRepositoryGet,

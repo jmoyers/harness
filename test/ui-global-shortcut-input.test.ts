@@ -45,6 +45,9 @@ void test('global shortcut input delegates detection and handler wiring', () => 
       archiveConversation: async (sessionId) => {
         calls.push(`archive:${sessionId}`);
       },
+      refreshAllConversationTitles: async () => {
+        calls.push('refresh-all-titles');
+      },
       interruptConversation: async (sessionId) => {
         calls.push(`interrupt:${sessionId}`);
       },
@@ -112,6 +115,7 @@ void test('global shortcut input default dependencies return false when no short
     conversationsHas: () => false,
     queueControlPlaneOp: () => {},
     archiveConversation: async () => {},
+    refreshAllConversationTitles: async () => {},
     interruptConversation: async () => {},
     takeoverConversation: async () => {},
     openAddDirectoryPrompt: () => {},
@@ -144,6 +148,7 @@ void test('global shortcut input routes each interrupt-all shortcut through the 
       conversationsHas: () => true,
       queueControlPlaneOp: () => {},
       archiveConversation: async () => {},
+      refreshAllConversationTitles: async () => {},
       interruptConversation: async () => {},
       takeoverConversation: async () => {},
       openAddDirectoryPrompt: () => {},
@@ -189,6 +194,7 @@ void test('global shortcut input preserves interrupt-all handler return value', 
       conversationsHas: () => true,
       queueControlPlaneOp: () => {},
       archiveConversation: async () => {},
+      refreshAllConversationTitles: async () => {},
       interruptConversation: async () => {},
       takeoverConversation: async () => {},
       openAddDirectoryPrompt: () => {},

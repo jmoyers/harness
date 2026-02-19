@@ -27,6 +27,7 @@ interface CapturedGlobalShortcutOptions {
   toggleGatewayStatusTimeline(): Promise<void>;
   toggleGatewayRenderTrace(conversationId: string | null): Promise<void>;
   archiveConversation(sessionId: string): Promise<void>;
+  refreshAllConversationTitles(): Promise<void>;
   interruptConversation(sessionId: string): Promise<void>;
   takeoverConversation(sessionId: string): Promise<void>;
   closeDirectory(directoryId: string): Promise<void>;
@@ -143,6 +144,9 @@ function createNavigationOptions(
       },
       archiveConversation: async (sessionId) => {
         calls.push(`archiveConversation:${sessionId}`);
+      },
+      refreshAllConversationTitles: async () => {
+        calls.push('refreshAllConversationTitles');
       },
       interruptConversation: async (sessionId) => {
         calls.push(`interruptConversation:${sessionId}`);
@@ -288,6 +292,10 @@ void test('runtime navigation input preserves workspace action method context', 
       this.sink.push(`archiveConversation:${sessionId}`);
     }
 
+    async refreshAllConversationTitles(): Promise<void> {
+      this.sink.push('refreshAllConversationTitles');
+    }
+
     async interruptConversation(sessionId: string): Promise<void> {
       this.sink.push(`interruptConversation:${sessionId}`);
     }
@@ -353,6 +361,7 @@ void test('runtime navigation input preserves workspace action method context', 
   await globalShortcutOptions.toggleGatewayStatusTimeline();
   await globalShortcutOptions.toggleGatewayRenderTrace('session-ctx');
   await globalShortcutOptions.archiveConversation('session-ctx');
+  await globalShortcutOptions.refreshAllConversationTitles();
   await globalShortcutOptions.interruptConversation('session-ctx');
   await globalShortcutOptions.takeoverConversation('session-ctx');
   await globalShortcutOptions.closeDirectory('dir-ctx');
@@ -365,6 +374,7 @@ void test('runtime navigation input preserves workspace action method context', 
     'toggleGatewayStatusTimeline',
     'toggleGatewayRenderTrace:session-ctx',
     'archiveConversation:session-ctx',
+    'refreshAllConversationTitles',
     'interruptConversation:session-ctx',
     'takeoverConversation:session-ctx',
     'closeDirectory:dir-ctx',

@@ -230,6 +230,7 @@ void test('control-plane service sends directory/conversation commands and parse
     { conversations: [conversationRecord('conversation-list', 'dir-list')] },
     {},
     { conversation: conversationRecord('conversation-title', 'dir-list') },
+    { status: 'updated', reason: null },
     {},
     {},
   );
@@ -259,6 +260,10 @@ void test('control-plane service sends directory/conversation commands and parse
     )?.title,
     'Thread',
   );
+  assert.deepEqual(await service.refreshConversationTitle('conversation-title'), {
+    status: 'updated',
+    reason: null,
+  });
   await service.archiveConversation('conversation-title');
   await service.archiveDirectory('dir-list');
 
@@ -267,8 +272,9 @@ void test('control-plane service sends directory/conversation commands and parse
   assert.equal(client.commands[2]?.type, 'conversation.list');
   assert.equal(client.commands[3]?.type, 'conversation.create');
   assert.equal(client.commands[4]?.type, 'conversation.update');
-  assert.equal(client.commands[5]?.type, 'conversation.archive');
-  assert.equal(client.commands[6]?.type, 'directory.archive');
+  assert.equal(client.commands[5]?.type, 'conversation.title.refresh');
+  assert.equal(client.commands[6]?.type, 'conversation.archive');
+  assert.equal(client.commands[7]?.type, 'directory.archive');
 });
 
 void test('control-plane service wraps pty/session lifecycle commands', async () => {
@@ -455,6 +461,18 @@ void test('control-plane service directory/conversation parse helpers handle mal
       title: 'Renamed',
     }),
     null,
+  );
+
+  client.results.push({ status: 'broken', reason: null });
+  await assert.rejects(
+    () => service.refreshConversationTitle('conversation-1'),
+    /control-plane conversation\.title\.refresh returned malformed status/,
+  );
+
+  client.results.push({ status: 'skipped', reason: 42 });
+  await assert.rejects(
+    () => service.refreshConversationTitle('conversation-1'),
+    /control-plane conversation\.title\.refresh returned malformed reason/,
   );
 });
 

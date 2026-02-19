@@ -627,6 +627,12 @@ void test('parseStreamCommand rejects unknown or malformed command shapes', () =
   );
   assert.equal(
     parseStreamCommand({
+      type: 'conversation.title.refresh',
+    }),
+    null,
+  );
+  assert.equal(
+    parseStreamCommand({
       type: 'session.release',
       sessionId: 'session-1',
       reason: 1,

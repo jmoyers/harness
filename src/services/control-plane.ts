@@ -245,6 +245,28 @@ export class ControlPlaneService {
     return parseConversationRecord(result['conversation']);
   }
 
+  async refreshConversationTitle(conversationId: string): Promise<{
+    status: 'updated' | 'unchanged' | 'skipped';
+    reason: string | null;
+  }> {
+    const result = await this.client.sendCommand({
+      type: 'conversation.title.refresh',
+      conversationId,
+    });
+    const status = result['status'];
+    if (status !== 'updated' && status !== 'unchanged' && status !== 'skipped') {
+      throw new Error('control-plane conversation.title.refresh returned malformed status');
+    }
+    const reason = result['reason'];
+    if (reason !== null && reason !== undefined && typeof reason !== 'string') {
+      throw new Error('control-plane conversation.title.refresh returned malformed reason');
+    }
+    return {
+      status,
+      reason: reason ?? null,
+    };
+  }
+
   async archiveConversation(conversationId: string): Promise<void> {
     await this.client.sendCommand({
       type: 'conversation.archive',

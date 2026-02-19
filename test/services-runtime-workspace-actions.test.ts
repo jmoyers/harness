@@ -63,6 +63,9 @@ void test('runtime workspace actions delegates conversation directory repository
       toggleGatewayRenderTrace: async (conversationId) => {
         calls.push(`toggleGatewayRenderTrace:${conversationId ?? 'null'}`);
       },
+      refreshAllConversationTitles: async () => {
+        calls.push('refreshAllConversationTitles');
+      },
     },
     taskPaneActions: {
       runTaskPaneAction: (action: TaskPaneAction) => {
@@ -101,6 +104,7 @@ void test('runtime workspace actions delegates conversation directory repository
   await actions.toggleGatewayProfiler();
   await actions.toggleGatewayStatusTimeline();
   await actions.toggleGatewayRenderTrace('session-3');
+  await actions.refreshAllConversationTitles();
   actions.runTaskPaneAction('task.edit');
   actions.openTaskEditPrompt('task-4');
   actions.reorderTaskByDrop('task-4', 'task-5');
@@ -124,6 +128,7 @@ void test('runtime workspace actions delegates conversation directory repository
     'toggleGatewayProfiler',
     'toggleGatewayStatusTimeline',
     'toggleGatewayRenderTrace:session-3',
+    'refreshAllConversationTitles',
     'runTaskPaneAction:task.edit',
     'openTaskEditPrompt:task-4',
     'reorderTaskByDrop:task-4:task-5',

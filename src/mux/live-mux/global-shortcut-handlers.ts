@@ -14,6 +14,7 @@ interface HandleGlobalShortcutOptions {
   conversationsHas: (sessionId: string) => boolean;
   queueControlPlaneOp: (task: () => Promise<void>, label: string) => void;
   archiveConversation: (sessionId: string) => Promise<void>;
+  refreshAllConversationTitles: () => Promise<void>;
   interruptConversation: (sessionId: string) => Promise<void>;
   takeoverConversation: (sessionId: string) => Promise<void>;
   openAddDirectoryPrompt: () => void;
@@ -37,6 +38,7 @@ export function handleGlobalShortcut(options: HandleGlobalShortcutOptions): bool
     conversationsHas,
     queueControlPlaneOp,
     archiveConversation,
+    refreshAllConversationTitles,
     interruptConversation,
     takeoverConversation,
     openAddDirectoryPrompt,
@@ -102,6 +104,12 @@ export function handleGlobalShortcut(options: HandleGlobalShortcutOptions): bool
           : 'shortcut-delete-conversation',
       );
     }
+    return true;
+  }
+  if (shortcut === 'mux.conversation.titles.refresh-all') {
+    queueControlPlaneOp(async () => {
+      await refreshAllConversationTitles();
+    }, 'shortcut-refresh-conversation-titles');
     return true;
   }
   if (shortcut === 'mux.conversation.interrupt') {

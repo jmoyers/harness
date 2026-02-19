@@ -2517,6 +2517,12 @@ async function main(): Promise<number> {
         },
       });
     },
+    listConversationIdsForTitleRefresh: () => conversationManager.orderedIds(),
+    conversationAgentTypeForTitleRefresh: (sessionId) =>
+      conversationManager.get(sessionId)?.agentType ?? null,
+    refreshConversationTitle: async (sessionId) => {
+      return await controlPlaneService.refreshConversationTitle(sessionId);
+    },
   });
   const runtimeWorkspaceActions = new RuntimeWorkspaceActions({
     conversationActions: conversationLifecycle,

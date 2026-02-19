@@ -17,6 +17,7 @@ interface RuntimeNavigationWorkspaceActions {
   toggleGatewayStatusTimeline(): Promise<void>;
   toggleGatewayRenderTrace(conversationId: string | null): Promise<void>;
   archiveConversation(sessionId: string): Promise<void>;
+  refreshAllConversationTitles(): Promise<void>;
   interruptConversation(sessionId: string): Promise<void>;
   takeoverConversation(sessionId: string): Promise<void>;
   closeDirectory(directoryId: string): Promise<void>;
@@ -156,6 +157,9 @@ export class RuntimeNavigationInput {
       queueControlPlaneOp: options.queueControlPlaneOp,
       archiveConversation: async (sessionId) => {
         await options.workspaceActions.archiveConversation(sessionId);
+      },
+      refreshAllConversationTitles: async () => {
+        await options.workspaceActions.refreshAllConversationTitles();
       },
       interruptConversation: async (sessionId) => {
         await options.workspaceActions.interruptConversation(sessionId);

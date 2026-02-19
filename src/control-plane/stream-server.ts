@@ -86,6 +86,14 @@ import { closeOwnedStateStore as closeOwnedStreamServerStateStore } from './stre
 import { SessionStatusEngine } from './status/session-status-engine.ts';
 import { SessionPromptEngine } from './prompt/session-prompt-engine.ts';
 import {
+  appendThreadTitlePromptHistory,
+  createAnthropicThreadTitleNamer,
+  fallbackThreadTitleFromPromptHistory,
+  normalizeThreadTitleCandidate,
+  readThreadTitlePromptHistory,
+  type ThreadTitleNamer,
+} from './prompt/thread-title-namer.ts';
+import {
   eventIncludesRepositoryId as filterEventIncludesRepositoryId,
   eventIncludesTaskId as filterEventIncludesTaskId,
   matchesObservedFilter as matchesStreamObservedFilter,
@@ -222,6 +230,14 @@ interface GitHubIntegrationConfig {
   readonly viewerLogin: string | null;
 }
 
+interface ThreadTitleConfig {
+  readonly enabled: boolean;
+  readonly apiKey: string | null;
+  readonly modelId: string | null;
+  readonly baseUrl: string | null;
+  readonly fetch: typeof fetch | null;
+}
+
 interface GitHubRemotePullRequest {
   readonly number: number;
   readonly title: string;
@@ -285,6 +301,8 @@ interface StartControlPlaneStreamServerOptions {
   githubFetch?: typeof fetch;
   readGitDirectorySnapshot?: GitDirectorySnapshotReader;
   lifecycleHooks?: HarnessLifecycleHooksConfig;
+  threadTitle?: Partial<ThreadTitleConfig>;
+  threadTitleNamer?: ThreadTitleNamer;
 }
 
 interface ConnectionState {
@@ -385,6 +403,17 @@ interface StreamJournalEntry {
   event: StreamObservedEvent;
 }
 
+interface ThreadTitleRefreshState {
+  inFlight: boolean;
+  pending: boolean;
+}
+
+interface ThreadTitleRefreshResult {
+  readonly status: 'updated' | 'unchanged' | 'skipped';
+  readonly conversation: ControlPlaneConversationRecord | null;
+  readonly reason: string | null;
+}
+
 interface DirectoryGitStatusCacheEntry {
   readonly summary: GitDirectorySnapshot['summary'];
   readonly repositorySnapshot: GitDirectorySnapshot['repository'];
@@ -437,11 +466,16 @@ const DEFAULT_AGENT_INSTALL_COMMANDS: Readonly<Record<AgentToolType, string | nu
 const DEFAULT_CURSOR_HOOK_RELAY_SCRIPT_PATH = fileURLToPath(
   new URL('../../scripts/cursor-hook-relay.ts', import.meta.url),
 );
+const THREAD_TITLE_AGENT_TYPES = new Set(['codex', 'claude', 'cursor']);
 const LIFECYCLE_TELEMETRY_EVENT_NAMES = new Set([
   'codex.user_prompt',
   'codex.turn.e2e_duration_ms',
   'codex.conversation_starts',
 ]);
+
+function isThreadTitleAgentType(agentType: string): boolean {
+  return THREAD_TITLE_AGENT_TYPES.has(agentType.trim().toLowerCase());
+}
 
 function shellEscape(value: string): string {
   if (value.length === 0) {
@@ -735,6 +769,31 @@ function normalizeGitHubIntegrationConfig(
     maxConcurrency,
     branchStrategy,
     viewerLogin,
+  };
+}
+
+function normalizeThreadTitleConfig(input: Partial<ThreadTitleConfig> | undefined): ThreadTitleConfig {
+  const envApiKeyRaw = process.env.ANTHROPIC_API_KEY;
+  const envApiKey =
+    typeof envApiKeyRaw === 'string' && envApiKeyRaw.trim().length > 0 ? envApiKeyRaw.trim() : null;
+  const apiKeyRaw = input?.apiKey ?? envApiKey;
+  const apiKey =
+    typeof apiKeyRaw === 'string' && apiKeyRaw.trim().length > 0 ? apiKeyRaw.trim() : null;
+  const envModelRaw = process.env.HARNESS_THREAD_TITLE_MODEL;
+  const modelFromEnv =
+    typeof envModelRaw === 'string' && envModelRaw.trim().length > 0 ? envModelRaw.trim() : null;
+  const modelIdRaw = input?.modelId ?? modelFromEnv;
+  const modelId =
+    typeof modelIdRaw === 'string' && modelIdRaw.trim().length > 0 ? modelIdRaw.trim() : null;
+  const baseUrlRaw = input?.baseUrl;
+  const baseUrl =
+    typeof baseUrlRaw === 'string' && baseUrlRaw.trim().length > 0 ? baseUrlRaw.trim() : null;
+  return {
+    enabled: input?.enabled ?? apiKey !== null,
+    apiKey,
+    modelId,
+    baseUrl,
+    fetch: input?.fetch ?? null,
   };
 }
 
@@ -1059,7 +1118,10 @@ export class ControlPlaneStreamServer {
   private readonly readGitDirectorySnapshot: GitDirectorySnapshotReader;
   private readonly statusEngine = new SessionStatusEngine();
   private readonly promptEngine = new SessionPromptEngine();
+  private readonly threadTitleNamer: ThreadTitleNamer | null;
   private readonly promptEventDedupeByKey = new Map<string, number>();
+  private readonly threadTitleRevisionBySessionId = new Map<string, number>();
+  private readonly threadTitleRefreshBySessionId = new Map<string, ThreadTitleRefreshState>();
   private readonly server: Server;
   private readonly telemetryServer: HttpServer | null;
   private telemetryAddress: AddressInfo | null = null;
@@ -1135,6 +1197,19 @@ export class ControlPlaneStreamServer {
         await readGitDirectorySnapshot(cwd, undefined, {
           includeCommitCount: false,
         }));
+    const threadTitleConfig = normalizeThreadTitleConfig(options.threadTitle);
+    if (options.threadTitleNamer !== undefined) {
+      this.threadTitleNamer = options.threadTitleNamer;
+    } else if (threadTitleConfig.enabled && threadTitleConfig.apiKey !== null) {
+      this.threadTitleNamer = createAnthropicThreadTitleNamer({
+        apiKey: threadTitleConfig.apiKey,
+        ...(threadTitleConfig.modelId === null ? {} : { modelId: threadTitleConfig.modelId }),
+        ...(threadTitleConfig.baseUrl === null ? {} : { baseUrl: threadTitleConfig.baseUrl }),
+        ...(threadTitleConfig.fetch === null ? {} : { fetch: threadTitleConfig.fetch }),
+      });
+    } else {
+      this.threadTitleNamer = null;
+    }
     this.lifecycleHooks = new LifecycleHooksRuntime(
       options.lifecycleHooks ?? {
         enabled: false,
@@ -2726,6 +2801,27 @@ export class ControlPlaneStreamServer {
     );
   }
 
+  private async refreshConversationTitle(conversationId: string): Promise<{
+    conversation: ControlPlaneConversationRecord;
+    status: 'updated' | 'unchanged' | 'skipped';
+    reason: string | null;
+  }> {
+    const existing = this.stateStore.getConversation(conversationId);
+    if (existing === null) {
+      throw new Error(`conversation not found: ${conversationId}`);
+    }
+    const refreshed = await this.refreshThreadTitle(conversationId);
+    const conversation = this.stateStore.getConversation(conversationId);
+    if (conversation === null) {
+      throw new Error(`conversation not found: ${conversationId}`);
+    }
+    return {
+      conversation,
+      status: refreshed.status,
+      reason: refreshed.reason,
+    };
+  }
+
   private handleInput(connectionId: string, sessionId: string, dataBase64: string): void {
     handleRuntimeInput(
       this as unknown as Parameters<typeof handleRuntimeInput>[0],
@@ -2827,6 +2923,7 @@ export class ControlPlaneStreamServer {
     if (!this.shouldPublishPromptEvent(sessionId, prompt)) {
       return;
     }
+    this.recordThreadPrompt(sessionId, prompt);
     this.publishObservedEvent(scope, {
       type: 'session-prompt-event',
       sessionId,
@@ -2850,6 +2947,190 @@ export class ControlPlaneStreamServer {
     prompt: StreamSessionPromptRecord,
   ): void {
     this.publishSessionPromptObservedEventForScope(state.id, this.sessionScope(state), prompt);
+  }
+
+  private recordThreadPrompt(sessionId: string, prompt: StreamSessionPromptRecord): void {
+    const conversation = this.stateStore.getConversation(sessionId);
+    if (conversation === null) {
+      this.threadTitleRevisionBySessionId.delete(sessionId);
+      this.threadTitleRefreshBySessionId.delete(sessionId);
+      return;
+    }
+    if (!isThreadTitleAgentType(conversation.agentType)) {
+      return;
+    }
+    const appended = appendThreadTitlePromptHistory(conversation.adapterState, prompt);
+    if (!appended.added) {
+      return;
+    }
+    this.stateStore.updateConversationAdapterState(sessionId, appended.nextAdapterState);
+    const liveState = this.sessions.get(sessionId);
+    if (liveState !== undefined) {
+      liveState.adapterState = appended.nextAdapterState;
+    }
+    const nextRevision = (this.threadTitleRevisionBySessionId.get(sessionId) ?? 0) + 1;
+    this.threadTitleRevisionBySessionId.set(sessionId, nextRevision);
+    if (this.threadTitleNamer !== null) {
+      this.scheduleThreadTitleRefresh(sessionId);
+    }
+  }
+
+  private scheduleThreadTitleRefresh(sessionId: string): void {
+    const state = this.threadTitleRefreshBySessionId.get(sessionId) ?? {
+      inFlight: false,
+      pending: false,
+    };
+    this.threadTitleRefreshBySessionId.set(sessionId, state);
+    if (state.inFlight) {
+      state.pending = true;
+      return;
+    }
+    state.inFlight = true;
+    state.pending = false;
+    void this.runThreadTitleRefreshLoop(sessionId, state);
+  }
+
+  private async runThreadTitleRefreshLoop(
+    sessionId: string,
+    refreshState: ThreadTitleRefreshState,
+  ): Promise<void> {
+    let shouldReschedule = false;
+    try {
+      while (true) {
+        refreshState.pending = false;
+        const revision = this.threadTitleRevisionBySessionId.get(sessionId) ?? 0;
+        if (revision <= 0) {
+          return;
+        }
+        await this.refreshThreadTitleForRevision(sessionId, revision);
+        const latestRevision = this.threadTitleRevisionBySessionId.get(sessionId) ?? 0;
+        if (!refreshState.pending && latestRevision === revision) {
+          return;
+        }
+      }
+    } finally {
+      refreshState.inFlight = false;
+      shouldReschedule = refreshState.pending;
+      if (!shouldReschedule) {
+        this.threadTitleRefreshBySessionId.delete(sessionId);
+      }
+    }
+    if (shouldReschedule) {
+      this.scheduleThreadTitleRefresh(sessionId);
+    }
+  }
+
+  private async refreshThreadTitle(
+    sessionId: string,
+    expectedRevision?: number,
+  ): Promise<ThreadTitleRefreshResult> {
+    if (this.threadTitleNamer === null) {
+      return {
+        status: 'skipped',
+        conversation: this.stateStore.getConversation(sessionId),
+        reason: 'thread-title-namer-disabled',
+      };
+    }
+    const conversation = this.stateStore.getConversation(sessionId);
+    if (conversation === null) {
+      if (expectedRevision !== undefined) {
+        this.threadTitleRevisionBySessionId.delete(sessionId);
+      }
+      return {
+        status: 'skipped',
+        conversation: null,
+        reason: 'conversation-not-found',
+      };
+    }
+    if (!isThreadTitleAgentType(conversation.agentType)) {
+      return {
+        status: 'skipped',
+        conversation,
+        reason: 'non-agent-thread',
+      };
+    }
+    const promptHistory = readThreadTitlePromptHistory(conversation.adapterState);
+    if (promptHistory.length === 0) {
+      return {
+        status: 'skipped',
+        conversation,
+        reason: 'prompt-history-empty',
+      };
+    }
+
+    let suggestedTitle: string | null = null;
+    try {
+      suggestedTitle = await this.threadTitleNamer.suggest({
+        conversationId: conversation.conversationId,
+        agentType: conversation.agentType,
+        currentTitle: conversation.title,
+        promptHistory,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      recordPerfEvent('control-plane.thread-title.error', {
+        sessionId,
+        error: message,
+      });
+    }
+
+    if (expectedRevision !== undefined) {
+      const latestRevision = this.threadTitleRevisionBySessionId.get(sessionId) ?? 0;
+      if (latestRevision !== expectedRevision) {
+        return {
+          status: 'skipped',
+          conversation,
+          reason: 'stale-revision',
+        };
+      }
+    }
+
+    const nextTitle =
+      (suggestedTitle === null ? null : normalizeThreadTitleCandidate(suggestedTitle)) ??
+      fallbackThreadTitleFromPromptHistory(promptHistory);
+    if (conversation.title === nextTitle) {
+      return {
+        status: 'unchanged',
+        conversation,
+        reason: null,
+      };
+    }
+    const updated = this.stateStore.updateConversationTitle(sessionId, nextTitle);
+    if (updated === null) {
+      return {
+        status: 'skipped',
+        conversation: null,
+        reason: 'conversation-not-found',
+      };
+    }
+    this.publishConversationUpdatedObservedEvent(updated);
+    return {
+      status: 'updated',
+      conversation: updated,
+      reason: null,
+    };
+  }
+
+  private async refreshThreadTitleForRevision(sessionId: string, revision: number): Promise<void> {
+    await this.refreshThreadTitle(sessionId, revision);
+  }
+
+  private publishConversationUpdatedObservedEvent(
+    conversation: ControlPlaneConversationRecord,
+  ): void {
+    this.publishObservedEvent(
+      {
+        tenantId: conversation.tenantId,
+        userId: conversation.userId,
+        workspaceId: conversation.workspaceId,
+        directoryId: conversation.directoryId,
+        conversationId: conversation.conversationId,
+      },
+      {
+        type: 'conversation-updated',
+        conversation: this.conversationRecord(conversation),
+      },
+    );
   }
 
   private setSessionStatus(
@@ -3254,6 +3535,8 @@ export class ControlPlaneStreamServer {
 
     this.sessions.delete(sessionId);
     this.launchCommandBySessionId.delete(sessionId);
+    this.threadTitleRevisionBySessionId.delete(sessionId);
+    this.threadTitleRefreshBySessionId.delete(sessionId);
     for (const [token, mappedSessionId] of this.telemetryTokenToSessionId.entries()) {
       if (mappedSessionId === sessionId) {
         this.telemetryTokenToSessionId.delete(token);
