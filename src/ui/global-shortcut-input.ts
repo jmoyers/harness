@@ -49,6 +49,13 @@ function isTerminalAgentType(agentType: string | null): boolean {
   return agentType !== null && agentType.trim().toLowerCase() === 'terminal';
 }
 
+function shouldBypassCtrlOnlyShortcutInTerminalConversation(shortcut: string | null): boolean {
+  if (shortcut === 'mux.conversation.archive' || shortcut === 'mux.conversation.delete') {
+    return false;
+  }
+  return true;
+}
+
 interface GlobalShortcutInputOptions {
   readonly shortcutBindings: ResolvedMuxShortcutBindings;
   readonly requestStop: () => void;
@@ -97,6 +104,7 @@ export class GlobalShortcutInput {
     const shortcut = this.detectMuxGlobalShortcut(input, this.options.shortcutBindings);
     if (
       shortcut !== null &&
+      shouldBypassCtrlOnlyShortcutInTerminalConversation(shortcut) &&
       this.options.getMainPaneMode() === 'conversation' &&
       isTerminalAgentType(
         this.options.getActiveConversationAgentType === undefined

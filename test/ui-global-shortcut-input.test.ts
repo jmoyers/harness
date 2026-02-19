@@ -255,6 +255,52 @@ void test('global shortcut input bypasses ctrl-only shortcuts for terminal conve
   assert.deepEqual(calls, []);
 });
 
+void test('global shortcut input still handles archive/delete ctrl-only shortcuts for terminal conversations', () => {
+  const calls: string[] = [];
+  const shortcuts: Array<'mux.conversation.archive' | 'mux.conversation.delete'> = [
+    'mux.conversation.archive',
+    'mux.conversation.delete',
+  ];
+  const input = new GlobalShortcutInput(
+    {
+      shortcutBindings: resolveMuxShortcutBindings(),
+      requestStop: () => {},
+      resolveDirectoryForAction: () => null,
+      openNewThreadPrompt: () => {},
+      toggleCommandMenu: () => {},
+      openOrCreateCritiqueConversationInDirectory: async () => {},
+      toggleGatewayProfile: async () => {},
+      toggleGatewayStatusTimeline: async () => {},
+      toggleGatewayRenderTrace: async () => {},
+      getMainPaneMode: () => 'conversation',
+      getActiveConversationId: () => 'session-terminal',
+      getActiveConversationAgentType: () => 'terminal',
+      conversationsHas: () => true,
+      queueControlPlaneOp: () => {},
+      archiveConversation: async () => {},
+      refreshAllConversationTitles: async () => {},
+      interruptConversation: async () => {},
+      takeoverConversation: async () => {},
+      openAddDirectoryPrompt: () => {},
+      getActiveDirectoryId: () => null,
+      directoryExists: () => false,
+      closeDirectory: async () => {},
+      cycleLeftNavSelection: () => {},
+    },
+    {
+      detectMuxGlobalShortcut: () => shortcuts.shift() ?? 'mux.conversation.delete',
+      handleGlobalShortcut: (options) => {
+        calls.push(`handled:${options.shortcut}`);
+        return true;
+      },
+    },
+  );
+
+  assert.equal(input.handleInput(Buffer.from([0x18])), true);
+  assert.equal(input.handleInput(Buffer.from([0x18])), true);
+  assert.deepEqual(calls, ['handled:mux.conversation.archive', 'handled:mux.conversation.delete']);
+});
+
 void test('global shortcut input still handles non-ctrl shortcuts for terminal conversations', () => {
   const calls: string[] = [];
   const input = new GlobalShortcutInput(
