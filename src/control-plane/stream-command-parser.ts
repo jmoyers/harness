@@ -1087,6 +1087,164 @@ function parseAutomationPolicySet(record: CommandRecord): StreamCommand | null {
   return command;
 }
 
+function parseGitHubProjectPr(record: CommandRecord): StreamCommand | null {
+  const directoryId = readString(record['directoryId']);
+  if (directoryId === null) {
+    return null;
+  }
+  return {
+    type: 'github.project-pr',
+    directoryId,
+  };
+}
+
+function parseGitHubPrList(record: CommandRecord): StreamCommand | null {
+  const tenantId = readOptionalString(record, 'tenantId');
+  const userId = readOptionalString(record, 'userId');
+  const workspaceId = readOptionalString(record, 'workspaceId');
+  const repositoryId = readOptionalString(record, 'repositoryId');
+  const directoryId = readOptionalString(record, 'directoryId');
+  const headBranch = readOptionalString(record, 'headBranch');
+  const state = readOptionalString(record, 'state');
+  const limit = readOptionalInteger(record, 'limit', 1);
+  if (
+    tenantId === undefined ||
+    userId === undefined ||
+    workspaceId === undefined ||
+    repositoryId === undefined ||
+    directoryId === undefined ||
+    headBranch === undefined ||
+    state === undefined ||
+    limit === undefined
+  ) {
+    return null;
+  }
+  if (state !== null && state !== 'open' && state !== 'closed') {
+    return null;
+  }
+  const command: StreamCommand = {
+    type: 'github.pr-list',
+  };
+  if (tenantId !== null) {
+    command.tenantId = tenantId;
+  }
+  if (userId !== null) {
+    command.userId = userId;
+  }
+  if (workspaceId !== null) {
+    command.workspaceId = workspaceId;
+  }
+  if (repositoryId !== null) {
+    command.repositoryId = repositoryId;
+  }
+  if (directoryId !== null) {
+    command.directoryId = directoryId;
+  }
+  if (headBranch !== null) {
+    command.headBranch = headBranch;
+  }
+  if (state !== null) {
+    command.state = state;
+  }
+  if (limit !== null) {
+    command.limit = limit;
+  }
+  return command;
+}
+
+function parseGitHubPrCreate(record: CommandRecord): StreamCommand | null {
+  const directoryId = readString(record['directoryId']);
+  if (directoryId === null) {
+    return null;
+  }
+  const title = readOptionalString(record, 'title');
+  const body = readOptionalString(record, 'body');
+  const baseBranch = readOptionalString(record, 'baseBranch');
+  const headBranch = readOptionalString(record, 'headBranch');
+  const draft = readOptionalBoolean(record, 'draft');
+  if (
+    title === undefined ||
+    body === undefined ||
+    baseBranch === undefined ||
+    headBranch === undefined ||
+    draft === undefined
+  ) {
+    return null;
+  }
+  const command: StreamCommand = {
+    type: 'github.pr-create',
+    directoryId,
+  };
+  if (title !== null) {
+    command.title = title;
+  }
+  if (body !== null) {
+    command.body = body;
+  }
+  if (baseBranch !== null) {
+    command.baseBranch = baseBranch;
+  }
+  if (headBranch !== null) {
+    command.headBranch = headBranch;
+  }
+  if (draft !== null) {
+    command.draft = draft;
+  }
+  return command;
+}
+
+function parseGitHubPrJobsList(record: CommandRecord): StreamCommand | null {
+  const tenantId = readOptionalString(record, 'tenantId');
+  const userId = readOptionalString(record, 'userId');
+  const workspaceId = readOptionalString(record, 'workspaceId');
+  const repositoryId = readOptionalString(record, 'repositoryId');
+  const prRecordId = readOptionalString(record, 'prRecordId');
+  const limit = readOptionalInteger(record, 'limit', 1);
+  if (
+    tenantId === undefined ||
+    userId === undefined ||
+    workspaceId === undefined ||
+    repositoryId === undefined ||
+    prRecordId === undefined ||
+    limit === undefined
+  ) {
+    return null;
+  }
+  const command: StreamCommand = {
+    type: 'github.pr-jobs-list',
+  };
+  if (tenantId !== null) {
+    command.tenantId = tenantId;
+  }
+  if (userId !== null) {
+    command.userId = userId;
+  }
+  if (workspaceId !== null) {
+    command.workspaceId = workspaceId;
+  }
+  if (repositoryId !== null) {
+    command.repositoryId = repositoryId;
+  }
+  if (prRecordId !== null) {
+    command.prRecordId = prRecordId;
+  }
+  if (limit !== null) {
+    command.limit = limit;
+  }
+  return command;
+}
+
+function parseGitHubRepoMyPrsUrl(record: CommandRecord): StreamCommand | null {
+  const repositoryId = readString(record['repositoryId']);
+  if (repositoryId === null) {
+    return null;
+  }
+  return {
+    type: 'github.repo-my-prs-url',
+    repositoryId,
+  };
+}
+
 function parseStreamSubscribe(record: CommandRecord): StreamCommand | null {
   const tenantId = readOptionalString(record, 'tenantId');
   const userId = readOptionalString(record, 'userId');
@@ -1471,6 +1629,11 @@ export const DEFAULT_STREAM_COMMAND_PARSERS: StreamCommandParserRegistry = {
   'project.status': parseProjectStatus,
   'automation.policy-get': parseAutomationPolicyGet,
   'automation.policy-set': parseAutomationPolicySet,
+  'github.project-pr': parseGitHubProjectPr,
+  'github.pr-list': parseGitHubPrList,
+  'github.pr-create': parseGitHubPrCreate,
+  'github.pr-jobs-list': parseGitHubPrJobsList,
+  'github.repo-my-prs-url': parseGitHubRepoMyPrsUrl,
   'stream.subscribe': parseStreamSubscribe,
   'stream.unsubscribe': parseStreamUnsubscribe,
   'session.list': parseSessionList,

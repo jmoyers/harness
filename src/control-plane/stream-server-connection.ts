@@ -41,7 +41,10 @@ interface StreamServerConnectionContext {
   handleInput(connectionId: string, sessionId: string, dataBase64: string): void;
   handleResize(connectionId: string, sessionId: string, cols: number, rows: number): void;
   handleSignal(connectionId: string, sessionId: string, signal: StreamSignal): void;
-  executeCommand(connection: ConnectionState, command: StreamCommand): Record<string, unknown>;
+  executeCommand(
+    connection: ConnectionState,
+    command: StreamCommand,
+  ): Record<string, unknown> | Promise<Record<string, unknown>>;
   sendToConnection(connectionId: string, envelope: Record<string, unknown>): void;
 }
 
@@ -204,27 +207,28 @@ export function handleCommand(
     role: 'server',
     type: command.type,
   });
-  try {
-    const result = ctx.executeCommand(connection, command);
-    commandSpan.end({
-      type: command.type,
-      status: 'completed',
+  Promise.resolve(ctx.executeCommand(connection, command))
+    .then((result) => {
+      commandSpan.end({
+        type: command.type,
+        status: 'completed',
+      });
+      ctx.sendToConnection(connection.id, {
+        kind: 'command.completed',
+        commandId,
+        result,
+      });
+    })
+    .catch((error: unknown) => {
+      commandSpan.end({
+        type: command.type,
+        status: 'failed',
+        message: String(error),
+      });
+      ctx.sendToConnection(connection.id, {
+        kind: 'command.failed',
+        commandId,
+        error: String(error),
+      });
     });
-    ctx.sendToConnection(connection.id, {
-      kind: 'command.completed',
-      commandId,
-      result,
-    });
-  } catch (error) {
-    commandSpan.end({
-      type: command.type,
-      status: 'failed',
-      message: String(error),
-    });
-    ctx.sendToConnection(connection.id, {
-      kind: 'command.failed',
-      commandId,
-      error: String(error),
-    });
-  }
 }

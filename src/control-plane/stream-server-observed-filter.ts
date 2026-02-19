@@ -48,6 +48,12 @@ export function eventIncludesRepositoryId(
     }
     return false;
   }
+  if (event.type === 'github-pr-upserted') {
+    return event.pr['repositoryId'] === repositoryId;
+  }
+  if (event.type === 'github-pr-closed' || event.type === 'github-pr-jobs-updated') {
+    return event.repositoryId === repositoryId;
+  }
   return false;
 }
 

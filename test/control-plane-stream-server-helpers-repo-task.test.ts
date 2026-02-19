@@ -144,6 +144,175 @@ void test('stream server helper internals cover concurrency and git snapshot equ
     ),
     false,
   );
+
+  const originalGithubToken = process.env['GITHUB_TOKEN'];
+  process.env['GITHUB_TOKEN'] = 'env-token';
+  try {
+    assert.deepEqual(
+      streamServerTestInternals.parseGitHubOwnerRepoFromRemote(
+        'https://github.com/acme/harness.git',
+      ),
+      {
+        owner: 'acme',
+        repo: 'harness',
+      },
+    );
+    assert.deepEqual(
+      streamServerTestInternals.parseGitHubOwnerRepoFromRemote('git@github.com:acme/harness.git'),
+      {
+        owner: 'acme',
+        repo: 'harness',
+      },
+    );
+    assert.equal(streamServerTestInternals.parseGitHubOwnerRepoFromRemote('https://gitlab.com/x/y'), null);
+    assert.equal(streamServerTestInternals.parseGitHubOwnerRepoFromRemote('   '), null);
+
+    assert.equal(
+      streamServerTestInternals.resolveTrackedBranchName({
+        strategy: 'pinned-only',
+        pinnedBranch: 'release/1.0',
+        currentBranch: 'feature/x',
+      }),
+      'release/1.0',
+    );
+    assert.equal(
+      streamServerTestInternals.resolveTrackedBranchName({
+        strategy: 'current-only',
+        pinnedBranch: 'release/1.0',
+        currentBranch: 'feature/x',
+      }),
+      'feature/x',
+    );
+    assert.equal(
+      streamServerTestInternals.resolveTrackedBranchName({
+        strategy: 'pinned-then-current',
+        pinnedBranch: null,
+        currentBranch: 'feature/x',
+      }),
+      'feature/x',
+    );
+
+    assert.equal(streamServerTestInternals.summarizeGitHubCiRollup([]), 'none');
+    assert.equal(
+      streamServerTestInternals.summarizeGitHubCiRollup([
+        {
+          provider: 'check-run',
+          externalId: '1',
+          name: 'ci',
+          status: 'completed',
+          conclusion: 'failure',
+          url: null,
+          startedAt: null,
+          completedAt: null,
+        },
+      ]),
+      'failure',
+    );
+    assert.equal(
+      streamServerTestInternals.summarizeGitHubCiRollup([
+        {
+          provider: 'check-run',
+          externalId: '2',
+          name: 'ci',
+          status: 'in_progress',
+          conclusion: null,
+          url: null,
+          startedAt: null,
+          completedAt: null,
+        },
+      ]),
+      'pending',
+    );
+    assert.equal(
+      streamServerTestInternals.summarizeGitHubCiRollup([
+        {
+          provider: 'check-run',
+          externalId: '3',
+          name: 'ci',
+          status: 'completed',
+          conclusion: 'cancelled',
+          url: null,
+          startedAt: null,
+          completedAt: null,
+        },
+      ]),
+      'cancelled',
+    );
+    assert.equal(
+      streamServerTestInternals.summarizeGitHubCiRollup([
+        {
+          provider: 'check-run',
+          externalId: '4',
+          name: 'ci',
+          status: 'completed',
+          conclusion: 'success',
+          url: null,
+          startedAt: null,
+          completedAt: null,
+        },
+      ]),
+      'success',
+    );
+    assert.equal(
+      streamServerTestInternals.summarizeGitHubCiRollup([
+        {
+          provider: 'status-context',
+          externalId: '5',
+          name: 'ci',
+          status: 'completed',
+          conclusion: 'neutral',
+          url: null,
+          startedAt: null,
+          completedAt: null,
+        },
+      ]),
+      'neutral',
+    );
+
+    const normalizedGitHubDefaults = streamServerTestInternals.normalizeGitHubIntegrationConfig({});
+    assert.equal(normalizedGitHubDefaults.enabled, false);
+    assert.equal(normalizedGitHubDefaults.token, 'env-token');
+    assert.equal(normalizedGitHubDefaults.branchStrategy, 'pinned-then-current');
+    assert.equal(normalizedGitHubDefaults.apiBaseUrl, 'https://api.github.com');
+    const normalizedGitHubCustom = streamServerTestInternals.normalizeGitHubIntegrationConfig({
+      enabled: true,
+      tokenEnvVar: 'CUSTOM_GITHUB_TOKEN',
+      token: 'direct-token',
+      branchStrategy: 'current-only',
+      viewerLogin: 'jmoyers',
+      pollMs: 10,
+      maxConcurrency: 0,
+      apiBaseUrl: 'https://api.github.enterprise.local/',
+    });
+    assert.equal(normalizedGitHubCustom.enabled, true);
+    assert.equal(normalizedGitHubCustom.token, 'direct-token');
+    assert.equal(normalizedGitHubCustom.tokenEnvVar, 'CUSTOM_GITHUB_TOKEN');
+    assert.equal(normalizedGitHubCustom.branchStrategy, 'current-only');
+    assert.equal(normalizedGitHubCustom.viewerLogin, 'jmoyers');
+    assert.equal(normalizedGitHubCustom.pollMs, 1000);
+    assert.equal(normalizedGitHubCustom.maxConcurrency, 1);
+    assert.equal(normalizedGitHubCustom.apiBaseUrl, 'https://api.github.enterprise.local');
+    const normalizedGitHubFallback = streamServerTestInternals.normalizeGitHubIntegrationConfig({
+      tokenEnvVar: ' ',
+      branchStrategy: 'unsupported' as 'pinned-then-current',
+      viewerLogin: '  ',
+      pollMs: Number.NaN,
+      maxConcurrency: Number.NaN,
+      apiBaseUrl: '',
+    });
+    assert.equal(normalizedGitHubFallback.tokenEnvVar, 'GITHUB_TOKEN');
+    assert.equal(normalizedGitHubFallback.branchStrategy, 'pinned-then-current');
+    assert.equal(normalizedGitHubFallback.viewerLogin, null);
+    assert.equal(normalizedGitHubFallback.pollMs, 15_000);
+    assert.equal(normalizedGitHubFallback.maxConcurrency, 1);
+    assert.equal(normalizedGitHubFallback.apiBaseUrl, 'https://api.github.com');
+  } finally {
+    if (originalGithubToken === undefined) {
+      delete process.env['GITHUB_TOKEN'];
+    } else {
+      process.env['GITHUB_TOKEN'] = originalGithubToken;
+    }
+  }
 });
 
 void test('stream server telemetry/history private guard branches are stable', async () => {

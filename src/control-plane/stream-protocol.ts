@@ -307,6 +307,48 @@ interface AutomationPolicySetCommand {
   frozen?: boolean;
 }
 
+interface GitHubProjectPrCommand {
+  type: 'github.project-pr';
+  directoryId: string;
+}
+
+interface GitHubPrListCommand {
+  type: 'github.pr-list';
+  tenantId?: string;
+  userId?: string;
+  workspaceId?: string;
+  repositoryId?: string;
+  directoryId?: string;
+  headBranch?: string;
+  state?: 'open' | 'closed';
+  limit?: number;
+}
+
+interface GitHubPrCreateCommand {
+  type: 'github.pr-create';
+  directoryId: string;
+  title?: string;
+  body?: string;
+  baseBranch?: string;
+  headBranch?: string;
+  draft?: boolean;
+}
+
+interface GitHubPrJobsListCommand {
+  type: 'github.pr-jobs-list';
+  tenantId?: string;
+  userId?: string;
+  workspaceId?: string;
+  repositoryId?: string;
+  prRecordId?: string;
+  limit?: number;
+}
+
+interface GitHubRepoMyPrsUrlCommand {
+  type: 'github.repo-my-prs-url';
+  repositoryId: string;
+}
+
 interface StreamSubscribeCommand {
   type: 'stream.subscribe';
   tenantId?: string;
@@ -458,6 +500,11 @@ export type StreamCommand =
   | ProjectStatusCommand
   | AutomationPolicyGetCommand
   | AutomationPolicySetCommand
+  | GitHubProjectPrCommand
+  | GitHubPrListCommand
+  | GitHubPrCreateCommand
+  | GitHubPrJobsListCommand
+  | GitHubRepoMyPrsUrlCommand
   | StreamSubscribeCommand
   | StreamUnsubscribeCommand
   | SessionListCommand
@@ -606,6 +653,24 @@ export type StreamObservedEvent =
   | {
       type: 'task-reordered';
       tasks: Record<string, unknown>[];
+      ts: string;
+    }
+  | {
+      type: 'github-pr-upserted';
+      pr: Record<string, unknown>;
+    }
+  | {
+      type: 'github-pr-closed';
+      prRecordId: string;
+      repositoryId: string;
+      ts: string;
+    }
+  | {
+      type: 'github-pr-jobs-updated';
+      prRecordId: string;
+      repositoryId: string;
+      ciRollup: 'pending' | 'success' | 'failure' | 'cancelled' | 'neutral' | 'none';
+      jobs: Record<string, unknown>[];
       ts: string;
     }
   | {
@@ -1372,6 +1437,70 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
     return {
       type,
       tasks,
+      ts,
+    };
+  }
+
+  if (type === 'github-pr-upserted') {
+    const pr = asRecord(record['pr']);
+    if (pr === null) {
+      return null;
+    }
+    return {
+      type,
+      pr,
+    };
+  }
+
+  if (type === 'github-pr-closed') {
+    const prRecordId = readString(record['prRecordId']);
+    const repositoryId = readString(record['repositoryId']);
+    const ts = readString(record['ts']);
+    if (prRecordId === null || repositoryId === null || ts === null) {
+      return null;
+    }
+    return {
+      type,
+      prRecordId,
+      repositoryId,
+      ts,
+    };
+  }
+
+  if (type === 'github-pr-jobs-updated') {
+    const prRecordId = readString(record['prRecordId']);
+    const repositoryId = readString(record['repositoryId']);
+    const ciRollup = readString(record['ciRollup']);
+    const jobsRaw = record['jobs'];
+    const ts = readString(record['ts']);
+    if (
+      prRecordId === null ||
+      repositoryId === null ||
+      (ciRollup !== 'pending' &&
+        ciRollup !== 'success' &&
+        ciRollup !== 'failure' &&
+        ciRollup !== 'cancelled' &&
+        ciRollup !== 'neutral' &&
+        ciRollup !== 'none') ||
+      !Array.isArray(jobsRaw) ||
+      ts === null
+    ) {
+      return null;
+    }
+    const jobs: Record<string, unknown>[] = [];
+    for (const entry of jobsRaw) {
+      const job = asRecord(entry);
+      if (job === null) {
+        return null;
+      }
+      jobs.push(job);
+    }
+    return {
+      type,
+      prRecordId,
+      repositoryId,
+      ciRollup,
+      jobs,
       ts,
     };
   }

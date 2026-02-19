@@ -506,6 +506,93 @@ void test('parseStreamCommand parses repository and task commands', () => {
   );
 });
 
+void test('parseStreamCommand parses github command shapes', () => {
+  assert.deepEqual(
+    parseStreamCommand({
+      type: 'github.project-pr',
+      directoryId: 'directory-1',
+    }),
+    {
+      type: 'github.project-pr',
+      directoryId: 'directory-1',
+    },
+  );
+  assert.deepEqual(
+    parseStreamCommand({
+      type: 'github.pr-list',
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      repositoryId: 'repository-1',
+      directoryId: 'directory-1',
+      headBranch: 'feature/github',
+      state: 'open',
+      limit: 50,
+    }),
+    {
+      type: 'github.pr-list',
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      repositoryId: 'repository-1',
+      directoryId: 'directory-1',
+      headBranch: 'feature/github',
+      state: 'open',
+      limit: 50,
+    },
+  );
+  assert.deepEqual(
+    parseStreamCommand({
+      type: 'github.pr-create',
+      directoryId: 'directory-1',
+      title: 'Open github integration PR',
+      body: 'Implements control-plane PR sync.',
+      baseBranch: 'main',
+      headBranch: 'feature/github',
+      draft: true,
+    }),
+    {
+      type: 'github.pr-create',
+      directoryId: 'directory-1',
+      title: 'Open github integration PR',
+      body: 'Implements control-plane PR sync.',
+      baseBranch: 'main',
+      headBranch: 'feature/github',
+      draft: true,
+    },
+  );
+  assert.deepEqual(
+    parseStreamCommand({
+      type: 'github.pr-jobs-list',
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      repositoryId: 'repository-1',
+      prRecordId: 'pr-1',
+      limit: 25,
+    }),
+    {
+      type: 'github.pr-jobs-list',
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      repositoryId: 'repository-1',
+      prRecordId: 'pr-1',
+      limit: 25,
+    },
+  );
+  assert.deepEqual(
+    parseStreamCommand({
+      type: 'github.repo-my-prs-url',
+      repositoryId: 'repository-1',
+    }),
+    {
+      type: 'github.repo-my-prs-url',
+      repositoryId: 'repository-1',
+    },
+  );
+});
+
 void test('parseStreamCommand rejects unknown or malformed command shapes', () => {
   assert.equal(parseStreamCommand(null), null);
   assert.equal(
@@ -704,6 +791,62 @@ void test('parseStreamCommand rejects unknown or malformed command shapes', () =
   assert.equal(
     parseStreamCommand({
       type: 'repository.archive',
+    }),
+    null,
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'github.project-pr',
+    }),
+    null,
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'github.pr-list',
+      state: 'invalid',
+    }),
+    null,
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'github.pr-list',
+      limit: 0,
+    }),
+    null,
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'github.pr-create',
+      directoryId: 7,
+    }),
+    null,
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'github.pr-create',
+      directoryId: 'directory-1',
+      draft: 'yes',
+    }),
+    null,
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'github.pr-jobs-list',
+      prRecordId: 7,
+    }),
+    null,
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'github.pr-jobs-list',
+      limit: 0,
+    }),
+    null,
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'github.repo-my-prs-url',
+      repositoryId: 7,
     }),
     null,
   );

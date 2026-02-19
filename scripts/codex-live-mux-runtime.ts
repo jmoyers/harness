@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { spawn } from 'node:child_process';
 import { startCodexLiveSession } from '../src/codex/live-session.ts';
 import {
   openCodexControlPlaneClient,
@@ -219,6 +220,16 @@ interface RuntimeCommandMenuContext {
   readonly leftNavSelectionKind: WorkspaceModel['leftNavSelection']['kind'];
   readonly profileRunning: boolean;
   readonly statusTimelineRunning: boolean;
+  readonly githubTrackedBranch: string | null;
+  readonly githubOpenPrUrl: string | null;
+  readonly githubProjectPrLoading: boolean;
+}
+
+interface CommandMenuGitHubProjectPrState {
+  readonly directoryId: string;
+  readonly branchName: string | null;
+  readonly openPrUrl: string | null;
+  readonly loading: boolean;
 }
 
 const DEFAULT_RESIZE_MIN_INTERVAL_MS = 33;
@@ -254,6 +265,73 @@ const GIT_REPOSITORY_NONE: GitRepositorySnapshot = {
   inferredName: null,
   defaultBranch: null,
 };
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== 'object' || value === null) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function parseGitHubProjectPrState(
+  directoryId: string,
+  result: Record<string, unknown>,
+): CommandMenuGitHubProjectPrState {
+  const branchNameRaw = result['branchName'];
+  const branchName = typeof branchNameRaw === 'string' ? branchNameRaw : null;
+  const pr = asRecord(result['pr']);
+  const prUrlRaw = pr?.['url'];
+  const openPrUrl = typeof prUrlRaw === 'string' ? prUrlRaw : null;
+  return {
+    directoryId,
+    branchName,
+    openPrUrl,
+    loading: false,
+  };
+}
+
+function parseGitHubPrUrl(result: Record<string, unknown>): string | null {
+  const pr = asRecord(result['pr']);
+  if (pr === null) {
+    return null;
+  }
+  const url = pr['url'];
+  return typeof url === 'string' ? url : null;
+}
+
+function openUrlInBrowser(url: string): boolean {
+  const target = url.trim();
+  if (target.length === 0) {
+    return false;
+  }
+  try {
+    if (process.platform === 'darwin') {
+      const child = spawn('open', [target], {
+        detached: true,
+        stdio: 'ignore',
+      });
+      child.unref();
+      return true;
+    }
+    if (process.platform === 'win32') {
+      const child = spawn('cmd', ['/c', 'start', '', target], {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+      });
+      child.unref();
+      return true;
+    }
+    const child = spawn('xdg-open', [target], {
+      detached: true,
+      stdio: 'ignore',
+    });
+    child.unref();
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 async function main(): Promise<number> {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
@@ -1211,8 +1289,16 @@ async function main(): Promise<number> {
     ttlMs: DEBUG_FOOTER_NOTICE_TTL_MS,
   });
   const commandMenuRegistry = new CommandMenuRegistry<RuntimeCommandMenuContext>();
+  let commandMenuGitHubProjectPrState: CommandMenuGitHubProjectPrState | null = null;
   const commandMenuContext = (): RuntimeCommandMenuContext => {
     const activeConversation = conversationManager.getActiveConversation();
+    const activeDirectoryId = resolveDirectoryForAction();
+    const githubProjectPrState =
+      activeDirectoryId !== null &&
+      commandMenuGitHubProjectPrState !== null &&
+      commandMenuGitHubProjectPrState.directoryId === activeDirectoryId
+        ? commandMenuGitHubProjectPrState
+        : null;
     const selectedText =
       workspace.selection === null
         ? ''
@@ -1222,7 +1308,7 @@ async function main(): Promise<number> {
             ? ''
             : selectionText(activeConversation.oracle.snapshotWithoutHash(), workspace.selection);
     return {
-      activeDirectoryId: resolveDirectoryForAction(),
+      activeDirectoryId,
       activeConversationId: conversationManager.activeConversationId,
       selectedText,
       leftNavSelectionKind: workspace.leftNavSelection.kind,
@@ -1232,6 +1318,9 @@ async function main(): Promise<number> {
       statusTimelineRunning: existsSync(
         resolveStatusTimelineStatePath(options.invocationDirectory, muxSessionName),
       ),
+      githubTrackedBranch: githubProjectPrState?.branchName ?? null,
+      githubOpenPrUrl: githubProjectPrState?.openPrUrl ?? null,
+      githubProjectPrLoading: githubProjectPrState?.loading ?? false,
     };
   };
   const resolveCommandMenuActions = (): readonly CommandMenuActionDescriptor[] => {
@@ -1362,6 +1451,48 @@ async function main(): Promise<number> {
     label = 'background-op',
   ): void => {
     controlPlaneOps.enqueueBackground(task, label);
+  };
+  const setCommandNotice = (message: string): void => {
+    workspace.taskPaneNotice = message;
+    debugFooterNotice.set(message);
+    markDirty();
+  };
+  const githubAuthHintNotice =
+    'GitHub PR actions become available after auth (`gh auth login` or `GITHUB_TOKEN`).';
+  const isGitHubAuthUnavailableError = (error: unknown): boolean => {
+    const message = formatErrorMessage(error).toLowerCase();
+    return (
+      message.includes('github token not configured') ||
+      message.includes('github integration is disabled')
+    );
+  };
+  const refreshCommandMenuGitHubProjectPrState = (directoryId: string): void => {
+    commandMenuGitHubProjectPrState = {
+      directoryId,
+      branchName: null,
+      openPrUrl: null,
+      loading: true,
+    };
+    markDirty();
+    queueControlPlaneOp(async () => {
+      try {
+        const result = await streamClient.sendCommand({
+          type: 'github.project-pr',
+          directoryId,
+        });
+        commandMenuGitHubProjectPrState = parseGitHubProjectPrState(directoryId, result);
+      } catch {
+        commandMenuGitHubProjectPrState = {
+          directoryId,
+          branchName: null,
+          openPrUrl: null,
+          loading: false,
+        };
+      }
+      if (workspace.commandMenu !== null) {
+        markDirty();
+      }
+    }, 'command-menu-github-project-pr');
   };
   const processUsageRefreshService = new ProcessUsageRefreshService<
     ConversationState,
@@ -2157,6 +2288,7 @@ async function main(): Promise<number> {
   const toggleCommandMenu = (): void => {
     if (workspace.commandMenu !== null) {
       workspace.commandMenu = null;
+      commandMenuGitHubProjectPrState = null;
       markDirty();
       return;
     }
@@ -2168,6 +2300,12 @@ async function main(): Promise<number> {
       stopConversationTitleEdit(true);
     }
     workspace.commandMenu = createCommandMenuState();
+    const directoryId = resolveDirectoryForAction();
+    if (directoryId === null) {
+      commandMenuGitHubProjectPrState = null;
+    } else {
+      refreshCommandMenuGitHubProjectPrState(directoryId);
+    }
     markDirty();
   };
 
@@ -2238,6 +2376,99 @@ async function main(): Promise<number> {
         },
       }),
     );
+  });
+
+  commandMenuRegistry.registerProvider('github.project-pr', (context) => {
+    const directoryId = context.activeDirectoryId;
+    if (directoryId === null || context.githubProjectPrLoading) {
+      return [];
+    }
+    if (context.githubOpenPrUrl !== null) {
+      return [
+        {
+          id: 'github.pr.open',
+          title: 'Open PR',
+          aliases: ['open pull request', 'open pr'],
+          keywords: ['github', 'pr', 'open', 'pull-request'],
+          detail: context.githubTrackedBranch ?? 'current project',
+          run: async () => {
+            queueControlPlaneOp(async () => {
+              let result: unknown;
+              try {
+                result = await streamClient.sendCommand({
+                  type: 'github.project-pr',
+                  directoryId,
+                });
+              } catch (error: unknown) {
+                if (isGitHubAuthUnavailableError(error)) {
+                  setCommandNotice(githubAuthHintNotice);
+                  return;
+                }
+                throw error;
+              }
+              const parsedResult = asRecord(result);
+              if (parsedResult === null) {
+                setCommandNotice('github project PR state unavailable');
+                return;
+              }
+              const state = parseGitHubProjectPrState(directoryId, parsedResult);
+              commandMenuGitHubProjectPrState = state;
+              if (state.openPrUrl === null) {
+                setCommandNotice('no open pull request for tracked branch');
+                return;
+              }
+              const opened = openUrlInBrowser(state.openPrUrl);
+              setCommandNotice(
+                opened ? 'opened pull request in browser' : `open pull request: ${state.openPrUrl}`,
+              );
+            }, 'command-menu-open-pr');
+          },
+        },
+      ];
+    }
+    if (context.githubTrackedBranch !== null) {
+      return [
+        {
+          id: 'github.pr.create',
+          title: 'Create PR',
+          aliases: ['create pull request', 'new pr'],
+          keywords: ['github', 'pr', 'create', 'pull-request'],
+          detail: context.githubTrackedBranch,
+          run: async () => {
+            queueControlPlaneOp(async () => {
+              let result: unknown;
+              try {
+                result = await streamClient.sendCommand({
+                  type: 'github.pr-create',
+                  directoryId,
+                });
+              } catch (error: unknown) {
+                if (isGitHubAuthUnavailableError(error)) {
+                  setCommandNotice(githubAuthHintNotice);
+                  return;
+                }
+                throw error;
+              }
+              const parsedResult = asRecord(result);
+              if (parsedResult === null) {
+                setCommandNotice('github PR creation result unavailable');
+                return;
+              }
+              const prUrl = parseGitHubPrUrl(parsedResult);
+              if (prUrl === null) {
+                throw new Error('github.pr-create returned malformed pr url');
+              }
+              refreshCommandMenuGitHubProjectPrState(directoryId);
+              const opened = openUrlInBrowser(prUrl);
+              setCommandNotice(
+                opened ? 'opened pull request in browser' : `open pull request: ${prUrl}`,
+              );
+            }, 'command-menu-create-pr');
+          },
+        },
+      ];
+    }
+    return [];
   });
 
   commandMenuRegistry.registerProvider('profile.toggle', (context) => {

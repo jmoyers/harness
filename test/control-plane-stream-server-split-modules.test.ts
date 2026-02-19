@@ -267,6 +267,45 @@ void test('split module coverage: observed filter repository checks include dire
     'repository-1',
   );
   assert.equal(includes, true);
+
+  assert.equal(
+    eventIncludesRepositoryId(
+      {
+        type: 'github-pr-upserted',
+        pr: {
+          repositoryId: 'repository-1',
+        },
+      },
+      'repository-1',
+    ),
+    true,
+  );
+  assert.equal(
+    eventIncludesRepositoryId(
+      {
+        type: 'github-pr-closed',
+        prRecordId: 'pr-1',
+        repositoryId: 'repository-2',
+        ts: FIXED_TS,
+      },
+      'repository-1',
+    ),
+    false,
+  );
+  assert.equal(
+    eventIncludesRepositoryId(
+      {
+        type: 'github-pr-jobs-updated',
+        prRecordId: 'pr-1',
+        repositoryId: 'repository-3',
+        ciRollup: 'pending',
+        jobs: [],
+        ts: FIXED_TS,
+      },
+      'repository-3',
+    ),
+    true,
+  );
 });
 
 void test('split module coverage: session runtime notify mapping covers fallback branches', () => {

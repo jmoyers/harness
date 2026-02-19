@@ -5,6 +5,7 @@ import {
   type Server as HttpServer,
   type ServerResponse,
 } from 'node:http';
+import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -200,8 +201,55 @@ interface GitStatusMonitorConfig {
   readonly minDirectoryRefreshMs: number;
 }
 
+interface GitHubIntegrationConfig {
+  readonly enabled: boolean;
+  readonly apiBaseUrl: string;
+  readonly tokenEnvVar: string;
+  readonly token: string | null;
+  readonly pollMs: number;
+  readonly maxConcurrency: number;
+  readonly branchStrategy: 'pinned-then-current' | 'current-only' | 'pinned-only';
+  readonly viewerLogin: string | null;
+}
+
+interface GitHubRemotePullRequest {
+  readonly number: number;
+  readonly title: string;
+  readonly url: string;
+  readonly authorLogin: string | null;
+  readonly headBranch: string;
+  readonly headSha: string;
+  readonly baseBranch: string;
+  readonly state: 'open' | 'closed';
+  readonly isDraft: boolean;
+  readonly updatedAt: string;
+  readonly createdAt: string;
+  readonly closedAt: string | null;
+}
+
+interface GitHubRemotePrJob {
+  readonly provider: 'check-run' | 'status-context';
+  readonly externalId: string;
+  readonly name: string;
+  readonly status: string;
+  readonly conclusion: string | null;
+  readonly url: string | null;
+  readonly startedAt: string | null;
+  readonly completedAt: string | null;
+}
+
 type GitDirectorySnapshot = Awaited<ReturnType<typeof readGitDirectorySnapshot>>;
 type GitDirectorySnapshotReader = (cwd: string) => Promise<GitDirectorySnapshot>;
+type GitHubTokenResolver = () => Promise<string | null>;
+type GitHubExecFile = (
+  file: string,
+  args: readonly string[],
+  options: {
+    readonly timeout: number;
+    readonly windowsHide: boolean;
+  },
+  callback: (error: Error | null, stdout: string, stderr: string) => void,
+) => void;
 
 interface StartControlPlaneStreamServerOptions {
   host?: string;
@@ -220,6 +268,10 @@ interface StartControlPlaneStreamServerOptions {
   cursorLaunch?: CursorLaunchConfig;
   cursorHooks?: Partial<CursorHooksConfig>;
   gitStatus?: GitStatusMonitorConfig;
+  github?: Partial<GitHubIntegrationConfig>;
+  githubTokenResolver?: GitHubTokenResolver;
+  githubExecFile?: GitHubExecFile;
+  githubFetch?: typeof fetch;
   readGitDirectorySnapshot?: GitDirectorySnapshotReader;
   lifecycleHooks?: HarnessLifecycleHooksConfig;
 }
@@ -348,6 +400,7 @@ const DEFAULT_MAX_CONNECTION_BUFFERED_BYTES = 4 * 1024 * 1024;
 const DEFAULT_SESSION_EXIT_TOMBSTONE_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_MAX_STREAM_JOURNAL_ENTRIES = 10000;
 const DEFAULT_GIT_STATUS_POLL_MS = 1200;
+const DEFAULT_GITHUB_POLL_MS = 15_000;
 const HISTORY_POLL_JITTER_RATIO = 0.35;
 const SESSION_DIAGNOSTICS_BUCKET_MS = 10_000;
 const SESSION_DIAGNOSTICS_BUCKET_COUNT = 6;
@@ -577,6 +630,137 @@ function normalizeGitStatusMonitorConfig(
   };
 }
 
+function normalizeGitHubIntegrationConfig(
+  input: Partial<GitHubIntegrationConfig> | undefined,
+): GitHubIntegrationConfig {
+  const tokenEnvVarRaw = input?.tokenEnvVar;
+  const tokenEnvVar =
+    typeof tokenEnvVarRaw === 'string' && tokenEnvVarRaw.trim().length > 0
+      ? tokenEnvVarRaw.trim()
+      : 'GITHUB_TOKEN';
+  const envToken = process.env[tokenEnvVar];
+  const tokenRaw =
+    input?.token ??
+    (typeof envToken === 'string' && envToken.trim().length > 0 ? envToken.trim() : null);
+  const branchStrategyRaw = input?.branchStrategy;
+  const branchStrategy =
+    branchStrategyRaw === 'current-only' ||
+    branchStrategyRaw === 'pinned-only' ||
+    branchStrategyRaw === 'pinned-then-current'
+      ? branchStrategyRaw
+      : 'pinned-then-current';
+  const viewerLoginRaw = input?.viewerLogin;
+  const viewerLogin =
+    typeof viewerLoginRaw === 'string' && viewerLoginRaw.trim().length > 0
+      ? viewerLoginRaw.trim()
+      : null;
+  const pollMsRaw = input?.pollMs;
+  const pollMs =
+    typeof pollMsRaw === 'number' && Number.isFinite(pollMsRaw)
+      ? Math.max(1000, Math.floor(pollMsRaw))
+      : DEFAULT_GITHUB_POLL_MS;
+  const maxConcurrencyRaw = input?.maxConcurrency;
+  const maxConcurrency =
+    typeof maxConcurrencyRaw === 'number' && Number.isFinite(maxConcurrencyRaw)
+      ? Math.max(1, Math.floor(maxConcurrencyRaw))
+      : 1;
+  const apiBaseUrlRaw = input?.apiBaseUrl;
+  const apiBaseUrl =
+    typeof apiBaseUrlRaw === 'string' && apiBaseUrlRaw.trim().length > 0
+      ? apiBaseUrlRaw.trim().replace(/\/+$/u, '')
+      : 'https://api.github.com';
+  return {
+    enabled: input?.enabled ?? false,
+    apiBaseUrl,
+    tokenEnvVar,
+    token: tokenRaw,
+    pollMs,
+    maxConcurrency,
+    branchStrategy,
+    viewerLogin,
+  };
+}
+
+function parseGitHubOwnerRepoFromRemote(
+  remoteUrl: string,
+): { owner: string; repo: string } | null {
+  const trimmed = remoteUrl.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+  const httpsMatch = /^https:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/iu.exec(trimmed);
+  if (httpsMatch !== null) {
+    return {
+      owner: httpsMatch[1] as string,
+      repo: httpsMatch[2] as string,
+    };
+  }
+  const sshMatch = /^git@github\.com:([^/]+)\/([^/]+?)(?:\.git)?$/iu.exec(trimmed);
+  if (sshMatch !== null) {
+    return {
+      owner: sshMatch[1] as string,
+      repo: sshMatch[2] as string,
+    };
+  }
+  return null;
+}
+
+function resolveTrackedBranchName(input: {
+  strategy: GitHubIntegrationConfig['branchStrategy'];
+  pinnedBranch: string | null;
+  currentBranch: string | null;
+}): string | null {
+  if (input.strategy === 'pinned-only') {
+    return input.pinnedBranch;
+  }
+  if (input.strategy === 'current-only') {
+    return input.currentBranch;
+  }
+  return input.pinnedBranch ?? input.currentBranch;
+}
+
+function summarizeGitHubCiRollup(jobs: readonly GitHubRemotePrJob[]): 'pending' | 'success' | 'failure' | 'cancelled' | 'neutral' | 'none' {
+  if (jobs.length === 0) {
+    return 'none';
+  }
+  let hasPending = false;
+  let hasFailure = false;
+  let hasCancelled = false;
+  let hasSuccess = false;
+  for (const job of jobs) {
+    const status = job.status.toLowerCase();
+    const conclusion = job.conclusion?.toLowerCase() ?? null;
+    if (status !== 'completed') {
+      hasPending = true;
+      continue;
+    }
+    if (conclusion === 'failure' || conclusion === 'timed_out' || conclusion === 'action_required') {
+      hasFailure = true;
+      continue;
+    }
+    if (conclusion === 'cancelled') {
+      hasCancelled = true;
+      continue;
+    }
+    if (conclusion === 'success') {
+      hasSuccess = true;
+    }
+  }
+  if (hasFailure) {
+    return 'failure';
+  }
+  if (hasPending) {
+    return 'pending';
+  }
+  if (hasCancelled) {
+    return 'cancelled';
+  }
+  if (hasSuccess) {
+    return 'success';
+  }
+  return 'neutral';
+}
+
 async function runWithConcurrencyLimit<T>(
   values: readonly T[],
   concurrency: number,
@@ -657,6 +841,10 @@ const streamServerInternals = {
   runWithConcurrencyLimit,
   gitSummaryEqual,
   gitRepositorySnapshotEqual,
+  normalizeGitHubIntegrationConfig,
+  parseGitHubOwnerRepoFromRemote,
+  resolveTrackedBranchName,
+  summarizeGitHubCiRollup,
 };
 export const streamServerTestInternals = streamServerInternals;
 
@@ -729,6 +917,26 @@ export class ControlPlaneStreamServer {
   private readonly cursorLaunch: CursorLaunchConfig;
   private readonly cursorHooks: CursorHooksConfig;
   private readonly gitStatusMonitor: GitStatusMonitorConfig;
+  private readonly github: GitHubIntegrationConfig;
+  private readonly githubTokenResolver: GitHubTokenResolver;
+  private readonly githubExecFile: GitHubExecFile;
+  private readonly githubFetch: typeof fetch;
+  private readonly githubApi: {
+    openPullRequestForBranch(input: {
+      owner: string;
+      repo: string;
+      headBranch: string;
+    }): Promise<GitHubRemotePullRequest | null>;
+    createPullRequest(input: {
+      owner: string;
+      repo: string;
+      title: string;
+      body: string;
+      head: string;
+      base: string;
+      draft: boolean;
+    }): Promise<GitHubRemotePullRequest>;
+  };
   private readonly readGitDirectorySnapshot: GitDirectorySnapshotReader;
   private readonly statusEngine = new SessionStatusEngine();
   private readonly server: Server;
@@ -743,7 +951,11 @@ export class ControlPlaneStreamServer {
   private historyOffset = 0;
   private historyRemainder = '';
   private gitStatusPollTimer: NodeJS.Timeout | null = null;
+  private githubPollTimer: NodeJS.Timeout | null = null;
+  private githubTokenResolveInFlight: Promise<string | null> | null = null;
+  private githubTokenResolutionError: string | null = null;
   private gitStatusPollInFlight = false;
+  private githubPollInFlight = false;
   private readonly gitStatusRefreshInFlightDirectoryIds = new Set<string>();
   private readonly gitStatusByDirectoryId = new Map<string, DirectoryGitStatusCacheEntry>();
   private readonly gitStatusDirectoriesById = new Map<string, ControlPlaneDirectoryRecord>();
@@ -784,6 +996,14 @@ export class ControlPlaneStreamServer {
     this.cursorLaunch = normalizeCursorLaunchConfig(options.cursorLaunch);
     this.cursorHooks = normalizeCursorHooksConfig(options.cursorHooks);
     this.gitStatusMonitor = normalizeGitStatusMonitorConfig(options.gitStatus);
+    this.github = normalizeGitHubIntegrationConfig(options.github);
+    this.githubExecFile = options.githubExecFile ?? execFile;
+    this.githubTokenResolver = options.githubTokenResolver ?? (async () => await this.readGhAuthToken());
+    this.githubFetch = options.githubFetch ?? fetch;
+    this.githubApi = {
+      openPullRequestForBranch: async (input) => await this.openGitHubPullRequestForBranch(input),
+      createPullRequest: async (input) => await this.createGitHubPullRequest(input),
+    };
     this.readGitDirectorySnapshot =
       options.readGitDirectorySnapshot ??
       (async (cwd: string) =>
@@ -845,6 +1065,7 @@ export class ControlPlaneStreamServer {
     this.autoStartPersistedConversationsOnStartup();
     this.startHistoryPollingIfEnabled();
     this.startGitStatusPollingIfEnabled();
+    this.startGitHubPollingIfEnabled();
   }
 
   address(): AddressInfo {
@@ -869,6 +1090,7 @@ export class ControlPlaneStreamServer {
   async close(): Promise<void> {
     this.stopHistoryPolling();
     this.stopGitStatusPolling();
+    this.stopGitHubPolling();
 
     for (const sessionId of [...this.sessions.keys()]) {
       this.destroySession(sessionId, true);
@@ -986,6 +1208,84 @@ export class ControlPlaneStreamServer {
     }
     clearInterval(this.gitStatusPollTimer);
     this.gitStatusPollTimer = null;
+  }
+
+  private async readGhAuthToken(): Promise<string | null> {
+    return await new Promise((resolveToken) => {
+      this.githubExecFile(
+        'gh',
+        ['auth', 'token'],
+        {
+          timeout: 2000,
+          windowsHide: true,
+        },
+        (error, stdout) => {
+          if (error !== null) {
+            resolveToken(null);
+            return;
+          }
+          const token = stdout.trim();
+          resolveToken(token.length > 0 ? token : null);
+        },
+      );
+    });
+  }
+
+  private async resolveGitHubTokenIfNeeded(): Promise<string | null> {
+    if (this.github.token !== null) {
+      return this.github.token;
+    }
+    if (this.githubTokenResolveInFlight !== null) {
+      return await this.githubTokenResolveInFlight;
+    }
+    this.githubTokenResolveInFlight = (async () => {
+      try {
+        const resolved = await this.githubTokenResolver();
+        if (resolved === null) {
+          this.githubTokenResolutionError = 'missing token and gh auth token unavailable';
+          recordPerfEvent('control-plane.github.token.unavailable', {
+            tokenEnvVar: this.github.tokenEnvVar,
+            fallback: 'gh auth token',
+          });
+          return null;
+        }
+        this.githubTokenResolutionError = null;
+        (this.github as { token: string | null }).token = resolved;
+        recordPerfEvent('control-plane.github.token.resolved', {
+          source: 'gh auth token',
+        });
+        return resolved;
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.githubTokenResolutionError = message;
+        recordPerfEvent('control-plane.github.token.resolve-failed', {
+          error: message,
+        });
+        return null;
+      } finally {
+        this.githubTokenResolveInFlight = null;
+      }
+    })();
+    return await this.githubTokenResolveInFlight;
+  }
+
+  private startGitHubPollingIfEnabled(): void {
+    if (!this.github.enabled || this.githubPollTimer !== null) {
+      return;
+    }
+    void this.pollGitHub();
+    this.githubPollTimer = setInterval(() => {
+      void this.pollGitHub();
+    }, this.github.pollMs);
+    this.githubPollTimer.unref();
+  }
+
+  private stopGitHubPolling(): void {
+    if (this.githubPollTimer === null) {
+      return;
+    }
+    clearInterval(this.githubPollTimer);
+    this.githubPollTimer = null;
   }
 
   private reloadGitStatusDirectoriesFromStore(): void {
@@ -1639,6 +1939,493 @@ export class ControlPlaneStreamServer {
     );
   }
 
+  private async pollGitHub(): Promise<void> {
+    if (!this.github.enabled || this.githubPollInFlight) {
+      return;
+    }
+    this.githubPollInFlight = true;
+    try {
+      const directories = this.stateStore.listDirectories({
+        includeArchived: false,
+        limit: 1000,
+      });
+      const targetsByKey = new Map<
+        string,
+        {
+          directory: ControlPlaneDirectoryRecord;
+          repository: ControlPlaneRepositoryRecord;
+          owner: string;
+          repo: string;
+          branchName: string;
+        }
+      >();
+      for (const directory of directories) {
+        const gitStatus = this.gitStatusByDirectoryId.get(directory.directoryId);
+        const repositoryId = gitStatus?.repositoryId ?? null;
+        if (repositoryId === null) {
+          continue;
+        }
+        const repository = this.stateStore.getRepository(repositoryId);
+        if (repository === null || repository.archivedAt !== null) {
+          continue;
+        }
+        const ownerRepo = parseGitHubOwnerRepoFromRemote(repository.remoteUrl);
+        if (ownerRepo === null) {
+          continue;
+        }
+        const settings = this.stateStore.getProjectSettings(directory.directoryId);
+        const branchName = resolveTrackedBranchName({
+          strategy: this.github.branchStrategy,
+          pinnedBranch: settings.pinnedBranch,
+          currentBranch: gitStatus?.summary.branch ?? null,
+        });
+        if (branchName === null) {
+          continue;
+        }
+        const key = `${repository.repositoryId}:${branchName}`;
+        if (targetsByKey.has(key)) {
+          continue;
+        }
+        targetsByKey.set(key, {
+          directory,
+          repository,
+          owner: ownerRepo.owner,
+          repo: ownerRepo.repo,
+          branchName,
+        });
+      }
+      if (targetsByKey.size === 0) {
+        return;
+      }
+      const token = this.github.token ?? (await this.resolveGitHubTokenIfNeeded());
+      if (token === null) {
+        return;
+      }
+      await runWithConcurrencyLimit(
+        [...targetsByKey.values()],
+        this.github.maxConcurrency,
+        async (target) => {
+          await this.syncGitHubBranch(target);
+        },
+      );
+    } finally {
+      this.githubPollInFlight = false;
+    }
+  }
+
+  private async syncGitHubBranch(input: {
+    directory: ControlPlaneDirectoryRecord;
+    repository: ControlPlaneRepositoryRecord;
+    owner: string;
+    repo: string;
+    branchName: string;
+  }): Promise<void> {
+    const now = new Date().toISOString();
+    const syncStateId = `github-sync:${input.repository.repositoryId}:${input.directory.directoryId}:${input.branchName}`;
+    try {
+      const remotePr = await this.openGitHubPullRequestForBranch({
+        owner: input.owner,
+        repo: input.repo,
+        headBranch: input.branchName,
+      });
+      if (remotePr === null) {
+        const staleOpen = this.stateStore.listGitHubPullRequests({
+          repositoryId: input.repository.repositoryId,
+          headBranch: input.branchName,
+          state: 'open',
+        });
+        for (const existing of staleOpen) {
+          const closed = this.stateStore.upsertGitHubPullRequest({
+            prRecordId: existing.prRecordId,
+            tenantId: existing.tenantId,
+            userId: existing.userId,
+            workspaceId: existing.workspaceId,
+            repositoryId: existing.repositoryId,
+            directoryId: existing.directoryId,
+            owner: existing.owner,
+            repo: existing.repo,
+            number: existing.number,
+            title: existing.title,
+            url: existing.url,
+            authorLogin: existing.authorLogin,
+            headBranch: existing.headBranch,
+            headSha: existing.headSha,
+            baseBranch: existing.baseBranch,
+            state: 'closed',
+            isDraft: existing.isDraft,
+            ciRollup: existing.ciRollup,
+            closedAt: now,
+            observedAt: now,
+          });
+          this.publishObservedEvent(
+            {
+              tenantId: closed.tenantId,
+              userId: closed.userId,
+              workspaceId: closed.workspaceId,
+              directoryId: input.directory.directoryId,
+              conversationId: null,
+            },
+            {
+              type: 'github-pr-closed',
+              prRecordId: closed.prRecordId,
+              repositoryId: closed.repositoryId,
+              ts: now,
+            },
+          );
+        }
+        this.stateStore.upsertGitHubSyncState({
+          stateId: syncStateId,
+          tenantId: input.directory.tenantId,
+          userId: input.directory.userId,
+          workspaceId: input.directory.workspaceId,
+          repositoryId: input.repository.repositoryId,
+          directoryId: input.directory.directoryId,
+          branchName: input.branchName,
+          lastSyncAt: now,
+          lastSuccessAt: now,
+          lastError: null,
+          lastErrorAt: null,
+        });
+        return;
+      }
+
+      const storedPr = this.stateStore.upsertGitHubPullRequest({
+        prRecordId: `github-pr-${randomUUID()}`,
+        tenantId: input.directory.tenantId,
+        userId: input.directory.userId,
+        workspaceId: input.directory.workspaceId,
+        repositoryId: input.repository.repositoryId,
+        directoryId: input.directory.directoryId,
+        owner: input.owner,
+        repo: input.repo,
+        number: remotePr.number,
+        title: remotePr.title,
+        url: remotePr.url,
+        authorLogin: remotePr.authorLogin,
+        headBranch: remotePr.headBranch,
+        headSha: remotePr.headSha,
+        baseBranch: remotePr.baseBranch,
+        state: remotePr.state,
+        isDraft: remotePr.isDraft,
+        observedAt: remotePr.updatedAt || now,
+      });
+      const jobs = await this.listGitHubPrJobsForCommit({
+        owner: input.owner,
+        repo: input.repo,
+        headSha: storedPr.headSha,
+      });
+      const rollup = summarizeGitHubCiRollup(jobs);
+      const updatedPr =
+        this.stateStore.updateGitHubPullRequestCiRollup(
+          storedPr.prRecordId,
+          rollup,
+          remotePr.updatedAt || now,
+        ) ?? storedPr;
+      const storedJobs = this.stateStore.replaceGitHubPrJobs({
+        tenantId: updatedPr.tenantId,
+        userId: updatedPr.userId,
+        workspaceId: updatedPr.workspaceId,
+        repositoryId: updatedPr.repositoryId,
+        prRecordId: updatedPr.prRecordId,
+        observedAt: remotePr.updatedAt || now,
+        jobs: jobs.map((job) => ({
+          jobRecordId: `github-job-${randomUUID()}`,
+          provider: job.provider,
+          externalId: job.externalId,
+          name: job.name,
+          status: job.status,
+          conclusion: job.conclusion,
+          url: job.url,
+          startedAt: job.startedAt,
+          completedAt: job.completedAt,
+        })),
+      });
+      const observedScope = {
+        tenantId: updatedPr.tenantId,
+        userId: updatedPr.userId,
+        workspaceId: updatedPr.workspaceId,
+        directoryId: updatedPr.directoryId,
+        conversationId: null,
+      };
+      this.publishObservedEvent(observedScope, {
+        type: 'github-pr-upserted',
+        pr: updatedPr as unknown as Record<string, unknown>,
+      });
+      this.publishObservedEvent(observedScope, {
+        type: 'github-pr-jobs-updated',
+        prRecordId: updatedPr.prRecordId,
+        repositoryId: updatedPr.repositoryId,
+        ciRollup: rollup,
+        jobs: storedJobs as unknown as Record<string, unknown>[],
+        ts: now,
+      });
+      this.stateStore.upsertGitHubSyncState({
+        stateId: syncStateId,
+        tenantId: input.directory.tenantId,
+        userId: input.directory.userId,
+        workspaceId: input.directory.workspaceId,
+        repositoryId: input.repository.repositoryId,
+        directoryId: input.directory.directoryId,
+        branchName: input.branchName,
+        lastSyncAt: now,
+        lastSuccessAt: now,
+        lastError: null,
+        lastErrorAt: null,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.stateStore.upsertGitHubSyncState({
+        stateId: syncStateId,
+        tenantId: input.directory.tenantId,
+        userId: input.directory.userId,
+        workspaceId: input.directory.workspaceId,
+        repositoryId: input.repository.repositoryId,
+        directoryId: input.directory.directoryId,
+        branchName: input.branchName,
+        lastSyncAt: now,
+        lastSuccessAt: null,
+        lastError: message,
+        lastErrorAt: now,
+      });
+    }
+  }
+
+  private async githubJsonRequest(
+    path: string,
+    init: Omit<RequestInit, 'headers'> & {
+      headers?: Record<string, string>;
+    } = {},
+  ): Promise<unknown> {
+    const token = this.github.token ?? (await this.resolveGitHubTokenIfNeeded());
+    if (token === null) {
+      const hint =
+        this.githubTokenResolutionError === null
+          ? 'set GITHUB_TOKEN or run gh auth login'
+          : `${this.githubTokenResolutionError}; set GITHUB_TOKEN or run gh auth login`;
+      throw new Error(`github token not configured: ${hint}`);
+    }
+    const response = await this.githubFetch(`${this.github.apiBaseUrl}${path}`, {
+      ...init,
+      headers: {
+        Accept: 'application/vnd.github+json',
+        Authorization: `Bearer ${token}`,
+        'User-Agent': 'harness-control-plane',
+        ...init.headers,
+      },
+    });
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(
+        `github api request failed (${response.status}): ${message || response.statusText}`,
+      );
+    }
+    return await response.json();
+  }
+
+  private parseGitHubPullRequest(value: unknown): GitHubRemotePullRequest | null {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+      return null;
+    }
+    const record = value as Record<string, unknown>;
+    const number = record['number'];
+    const title = record['title'];
+    const htmlUrl = record['html_url'];
+    const state = record['state'];
+    const draft = record['draft'];
+    const head = record['head'];
+    const base = record['base'];
+    const user = record['user'];
+    const updatedAt = record['updated_at'];
+    const createdAt = record['created_at'];
+    const closedAt = record['closed_at'];
+    if (
+      typeof number !== 'number' ||
+      typeof title !== 'string' ||
+      typeof htmlUrl !== 'string' ||
+      (state !== 'open' && state !== 'closed') ||
+      typeof draft !== 'boolean' ||
+      typeof updatedAt !== 'string' ||
+      typeof createdAt !== 'string' ||
+      (closedAt !== null && typeof closedAt !== 'string') ||
+      typeof head !== 'object' ||
+      head === null ||
+      Array.isArray(head) ||
+      typeof base !== 'object' ||
+      base === null ||
+      Array.isArray(base)
+    ) {
+      return null;
+    }
+    const headRecord = head as Record<string, unknown>;
+    const baseRecord = base as Record<string, unknown>;
+    const headRef = headRecord['ref'];
+    const headSha = headRecord['sha'];
+    const baseRef = baseRecord['ref'];
+    if (
+      typeof headRef !== 'string' ||
+      typeof headSha !== 'string' ||
+      typeof baseRef !== 'string'
+    ) {
+      return null;
+    }
+    let authorLogin: string | null = null;
+    if (typeof user === 'object' && user !== null && !Array.isArray(user)) {
+      const login = (user as Record<string, unknown>)['login'];
+      if (typeof login === 'string') {
+        authorLogin = login;
+      }
+    }
+    return {
+      number,
+      title,
+      url: htmlUrl,
+      authorLogin,
+      headBranch: headRef,
+      headSha,
+      baseBranch: baseRef,
+      state,
+      isDraft: draft,
+      updatedAt,
+      createdAt,
+      closedAt: closedAt as string | null,
+    };
+  }
+
+  private async openGitHubPullRequestForBranch(input: {
+    owner: string;
+    repo: string;
+    headBranch: string;
+  }): Promise<GitHubRemotePullRequest | null> {
+    const head = encodeURIComponent(`${input.owner}:${input.headBranch}`);
+    const path = `/repos/${encodeURIComponent(input.owner)}/${encodeURIComponent(input.repo)}/pulls?state=open&head=${head}&per_page=1`;
+    const payload = await this.githubJsonRequest(path);
+    if (!Array.isArray(payload) || payload.length === 0) {
+      return null;
+    }
+    return this.parseGitHubPullRequest(payload[0]);
+  }
+
+  private async createGitHubPullRequest(input: {
+    owner: string;
+    repo: string;
+    title: string;
+    body: string;
+    head: string;
+    base: string;
+    draft: boolean;
+  }): Promise<GitHubRemotePullRequest> {
+    const path = `/repos/${encodeURIComponent(input.owner)}/${encodeURIComponent(input.repo)}/pulls`;
+    const payload = await this.githubJsonRequest(path, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        title: input.title,
+        body: input.body,
+        head: input.head,
+        base: input.base,
+        draft: input.draft,
+      }),
+    });
+    const parsed = this.parseGitHubPullRequest(payload);
+    if (parsed === null) {
+      throw new Error('github create pr returned malformed response');
+    }
+    return parsed;
+  }
+
+  private async listGitHubPrJobsForCommit(input: {
+    owner: string;
+    repo: string;
+    headSha: string;
+  }): Promise<readonly GitHubRemotePrJob[]> {
+    const owner = encodeURIComponent(input.owner);
+    const repo = encodeURIComponent(input.repo);
+    const sha = encodeURIComponent(input.headSha);
+    const checkRunsPayload = await this.githubJsonRequest(
+      `/repos/${owner}/${repo}/commits/${sha}/check-runs?per_page=100`,
+    );
+    const checkRuns: GitHubRemotePrJob[] = [];
+    if (
+      typeof checkRunsPayload === 'object' &&
+      checkRunsPayload !== null &&
+      !Array.isArray(checkRunsPayload)
+    ) {
+      const runsRaw = (checkRunsPayload as Record<string, unknown>)['check_runs'];
+      if (Array.isArray(runsRaw)) {
+        for (const runRaw of runsRaw) {
+          if (typeof runRaw !== 'object' || runRaw === null || Array.isArray(runRaw)) {
+            continue;
+          }
+          const run = runRaw as Record<string, unknown>;
+          const id = run['id'];
+          const name = run['name'];
+          const status = run['status'];
+          const conclusion = run['conclusion'];
+          const htmlUrl = run['html_url'];
+          const startedAt = run['started_at'];
+          const completedAt = run['completed_at'];
+          if (
+            typeof id !== 'number' ||
+            typeof name !== 'string' ||
+            typeof status !== 'string' ||
+            (conclusion !== null && typeof conclusion !== 'string')
+          ) {
+            continue;
+          }
+          checkRuns.push({
+            provider: 'check-run',
+            externalId: String(id),
+            name,
+            status,
+            conclusion: conclusion as string | null,
+            url: typeof htmlUrl === 'string' ? htmlUrl : null,
+            startedAt: typeof startedAt === 'string' ? startedAt : null,
+            completedAt: typeof completedAt === 'string' ? completedAt : null,
+          });
+        }
+      }
+    }
+    const statusPayload = await this.githubJsonRequest(`/repos/${owner}/${repo}/commits/${sha}/status`);
+    const statusJobs: GitHubRemotePrJob[] = [];
+    if (
+      typeof statusPayload === 'object' &&
+      statusPayload !== null &&
+      !Array.isArray(statusPayload)
+    ) {
+      const contextsRaw = (statusPayload as Record<string, unknown>)['statuses'];
+      if (Array.isArray(contextsRaw)) {
+        for (const statusRaw of contextsRaw) {
+          if (typeof statusRaw !== 'object' || statusRaw === null || Array.isArray(statusRaw)) {
+            continue;
+          }
+          const context = statusRaw as Record<string, unknown>;
+          const id = context['id'];
+          const name = context['context'];
+          const state = context['state'];
+          const targetUrl = context['target_url'];
+          const createdAt = context['created_at'];
+          const updatedAt = context['updated_at'];
+          if (typeof id !== 'number' || typeof name !== 'string' || typeof state !== 'string') {
+            continue;
+          }
+          statusJobs.push({
+            provider: 'status-context',
+            externalId: String(id),
+            name,
+            status: state === 'pending' ? 'in_progress' : 'completed',
+            conclusion: state === 'pending' ? null : state,
+            url: typeof targetUrl === 'string' ? targetUrl : null,
+            startedAt: typeof createdAt === 'string' ? createdAt : null,
+            completedAt: typeof updatedAt === 'string' ? updatedAt : null,
+          });
+        }
+      }
+    }
+    return [...checkRuns, ...statusJobs];
+  }
+
   private handleConnection(socket: Socket): void {
     handleServerConnection(this as unknown as Parameters<typeof handleServerConnection>[0], socket);
   }
@@ -1683,7 +2470,7 @@ export class ControlPlaneStreamServer {
   private executeCommand(
     connection: ConnectionState,
     command: StreamCommand,
-  ): Record<string, unknown> {
+  ): Promise<Record<string, unknown>> {
     return executeStreamServerCommand(
       this as unknown as Parameters<typeof executeStreamServerCommand>[0],
       connection,

@@ -48,6 +48,9 @@ interface AgentEventTypeMap {
   'task.updated': Extract<StreamObservedEvent, { type: 'task-updated' }>;
   'task.deleted': Extract<StreamObservedEvent, { type: 'task-deleted' }>;
   'task.reordered': Extract<StreamObservedEvent, { type: 'task-reordered' }>;
+  'github.pr-upserted': Extract<StreamObservedEvent, { type: 'github-pr-upserted' }>;
+  'github.pr-closed': Extract<StreamObservedEvent, { type: 'github-pr-closed' }>;
+  'github.pr-jobs-updated': Extract<StreamObservedEvent, { type: 'github-pr-jobs-updated' }>;
   'session.status': Extract<StreamObservedEvent, { type: 'session-status' }>;
   'session.event': Extract<StreamObservedEvent, { type: 'session-event' }>;
   'session.telemetry': Extract<StreamObservedEvent, { type: 'session-key-event' }>;
@@ -1133,6 +1136,15 @@ function mapObservedEventType(observed: StreamObservedEvent): AgentRealtimeEvent
   }
   if (observed.type === 'task-reordered') {
     return 'task.reordered';
+  }
+  if (observed.type === 'github-pr-upserted') {
+    return 'github.pr-upserted';
+  }
+  if (observed.type === 'github-pr-closed') {
+    return 'github.pr-closed';
+  }
+  if (observed.type === 'github-pr-jobs-updated') {
+    return 'github.pr-jobs-updated';
   }
   if (observed.type === 'session-status') {
     return 'session.status';

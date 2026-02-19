@@ -8,6 +8,11 @@ import type {
   ControlPlaneAutomationPolicyScope,
   ControlPlaneConversationRecord,
   ControlPlaneDirectoryRecord,
+  ControlPlaneGitHubCiRollup,
+  ControlPlaneGitHubPrJobRecord,
+  ControlPlaneGitHubPrState,
+  ControlPlaneGitHubPullRequestRecord,
+  ControlPlaneGitHubSyncStateRecord,
   ControlPlaneProjectSettingsRecord,
   ControlPlaneProjectTaskFocusMode,
   ControlPlaneProjectThreadSpawnMode,
@@ -567,6 +572,29 @@ function normalizeAutomationPolicyScope(value: unknown): ControlPlaneAutomationP
   throw new Error('expected automation policy scope enum value');
 }
 
+function normalizeGitHubPrState(value: unknown): ControlPlaneGitHubPrState {
+  const state = asString(value, 'state');
+  if (state === 'open' || state === 'closed') {
+    return state;
+  }
+  throw new Error('expected github pr state enum value');
+}
+
+function normalizeGitHubCiRollup(value: unknown): ControlPlaneGitHubCiRollup {
+  const rollup = asString(value, 'ci_rollup');
+  if (
+    rollup === 'pending' ||
+    rollup === 'success' ||
+    rollup === 'failure' ||
+    rollup === 'cancelled' ||
+    rollup === 'neutral' ||
+    rollup === 'none'
+  ) {
+    return rollup;
+  }
+  throw new Error('expected github ci rollup enum value');
+}
+
 export function normalizeRepositoryRow(value: unknown): ControlPlaneRepositoryRecord {
   const row = asRecord(value);
   return {
@@ -641,6 +669,85 @@ export function normalizeAutomationPolicyRow(value: unknown): ControlPlaneAutoma
     frozen: asBooleanFromInt(row.frozen, 'frozen'),
     createdAt: asString(row.created_at, 'created_at'),
     updatedAt: asString(row.updated_at, 'updated_at'),
+  };
+}
+
+export function normalizeGitHubPullRequestRow(
+  value: unknown,
+): ControlPlaneGitHubPullRequestRecord {
+  const row = asRecord(value);
+  return {
+    prRecordId: asString(row.pr_record_id, 'pr_record_id'),
+    tenantId: asString(row.tenant_id, 'tenant_id'),
+    userId: asString(row.user_id, 'user_id'),
+    workspaceId: asString(row.workspace_id, 'workspace_id'),
+    repositoryId: asString(row.repository_id, 'repository_id'),
+    directoryId: asStringOrNull(row.directory_id, 'directory_id'),
+    owner: asString(row.owner, 'owner'),
+    repo: asString(row.repo, 'repo'),
+    number: asNumberOrNull(row.number, 'number') as number,
+    title: asString(row.title, 'title'),
+    url: asString(row.url, 'url'),
+    authorLogin: asStringOrNull(row.author_login, 'author_login'),
+    headBranch: asString(row.head_branch, 'head_branch'),
+    headSha: asString(row.head_sha, 'head_sha'),
+    baseBranch: asString(row.base_branch, 'base_branch'),
+    state: normalizeGitHubPrState(row.state),
+    isDraft: asBooleanFromInt(row.is_draft, 'is_draft'),
+    ciRollup: normalizeGitHubCiRollup(row.ci_rollup),
+    createdAt: asString(row.created_at, 'created_at'),
+    updatedAt: asString(row.updated_at, 'updated_at'),
+    closedAt: asStringOrNull(row.closed_at, 'closed_at'),
+    observedAt: asString(row.observed_at, 'observed_at'),
+  };
+}
+
+function normalizeGitHubPrJobProvider(
+  value: unknown,
+): ControlPlaneGitHubPrJobRecord['provider'] {
+  const provider = asString(value, 'provider');
+  if (provider === 'check-run' || provider === 'status-context') {
+    return provider;
+  }
+  throw new Error('expected github pr job provider enum value');
+}
+
+export function normalizeGitHubPrJobRow(value: unknown): ControlPlaneGitHubPrJobRecord {
+  const row = asRecord(value);
+  return {
+    jobRecordId: asString(row.job_record_id, 'job_record_id'),
+    tenantId: asString(row.tenant_id, 'tenant_id'),
+    userId: asString(row.user_id, 'user_id'),
+    workspaceId: asString(row.workspace_id, 'workspace_id'),
+    repositoryId: asString(row.repository_id, 'repository_id'),
+    prRecordId: asString(row.pr_record_id, 'pr_record_id'),
+    provider: normalizeGitHubPrJobProvider(row.provider),
+    externalId: asString(row.external_id, 'external_id'),
+    name: asString(row.name, 'name'),
+    status: asString(row.status, 'status'),
+    conclusion: asStringOrNull(row.conclusion, 'conclusion'),
+    url: asStringOrNull(row.url, 'url'),
+    startedAt: asStringOrNull(row.started_at, 'started_at'),
+    completedAt: asStringOrNull(row.completed_at, 'completed_at'),
+    observedAt: asString(row.observed_at, 'observed_at'),
+    updatedAt: asString(row.updated_at, 'updated_at'),
+  };
+}
+
+export function normalizeGitHubSyncStateRow(value: unknown): ControlPlaneGitHubSyncStateRecord {
+  const row = asRecord(value);
+  return {
+    stateId: asString(row.state_id, 'state_id'),
+    tenantId: asString(row.tenant_id, 'tenant_id'),
+    userId: asString(row.user_id, 'user_id'),
+    workspaceId: asString(row.workspace_id, 'workspace_id'),
+    repositoryId: asString(row.repository_id, 'repository_id'),
+    directoryId: asStringOrNull(row.directory_id, 'directory_id'),
+    branchName: asString(row.branch_name, 'branch_name'),
+    lastSyncAt: asString(row.last_sync_at, 'last_sync_at'),
+    lastSuccessAt: asStringOrNull(row.last_success_at, 'last_success_at'),
+    lastError: asStringOrNull(row.last_error, 'last_error'),
+    lastErrorAt: asStringOrNull(row.last_error_at, 'last_error_at'),
   };
 }
 

@@ -744,6 +744,27 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
       ts: timestamp,
     },
     {
+      type: 'github-pr-upserted',
+      pr: {
+        prRecordId: 'github-pr-1',
+        repositoryId: 'repository-1',
+      },
+    },
+    {
+      type: 'github-pr-closed',
+      prRecordId: 'github-pr-1',
+      repositoryId: 'repository-1',
+      ts: timestamp,
+    },
+    {
+      type: 'github-pr-jobs-updated',
+      prRecordId: 'github-pr-1',
+      repositoryId: 'repository-1',
+      ciRollup: 'pending',
+      jobs: [],
+      ts: timestamp,
+    },
+    {
       type: 'session-status',
       sessionId: 'conversation-1',
       status: 'running',
@@ -831,6 +852,9 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
     'task.updated',
     'task.deleted',
     'task.reordered',
+    'github.pr-upserted',
+    'github.pr-closed',
+    'github.pr-jobs-updated',
     'session.status',
     'session.event',
     'session.telemetry',

@@ -63,6 +63,14 @@ export type ControlPlaneTaskLinearPriority = 0 | 1 | 2 | 3 | 4;
 export type ControlPlaneProjectTaskFocusMode = 'balanced' | 'own-only';
 export type ControlPlaneProjectThreadSpawnMode = 'new-thread' | 'reuse-thread';
 export type ControlPlaneAutomationPolicyScope = 'global' | 'repository' | 'project';
+export type ControlPlaneGitHubPrState = 'open' | 'closed';
+export type ControlPlaneGitHubCiRollup =
+  | 'pending'
+  | 'success'
+  | 'failure'
+  | 'cancelled'
+  | 'neutral'
+  | 'none';
 
 export interface ControlPlaneTaskLinearRecord {
   readonly issueId: string | null;
@@ -155,4 +163,62 @@ export interface ControlPlaneAutomationPolicyRecord {
   readonly frozen: boolean;
   readonly createdAt: string;
   readonly updatedAt: string;
+}
+
+export interface ControlPlaneGitHubPullRequestRecord {
+  readonly prRecordId: string;
+  readonly tenantId: string;
+  readonly userId: string;
+  readonly workspaceId: string;
+  readonly repositoryId: string;
+  readonly directoryId: string | null;
+  readonly owner: string;
+  readonly repo: string;
+  readonly number: number;
+  readonly title: string;
+  readonly url: string;
+  readonly authorLogin: string | null;
+  readonly headBranch: string;
+  readonly headSha: string;
+  readonly baseBranch: string;
+  readonly state: ControlPlaneGitHubPrState;
+  readonly isDraft: boolean;
+  readonly ciRollup: ControlPlaneGitHubCiRollup;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly closedAt: string | null;
+  readonly observedAt: string;
+}
+
+export interface ControlPlaneGitHubPrJobRecord {
+  readonly jobRecordId: string;
+  readonly tenantId: string;
+  readonly userId: string;
+  readonly workspaceId: string;
+  readonly repositoryId: string;
+  readonly prRecordId: string;
+  readonly provider: 'check-run' | 'status-context';
+  readonly externalId: string;
+  readonly name: string;
+  readonly status: string;
+  readonly conclusion: string | null;
+  readonly url: string | null;
+  readonly startedAt: string | null;
+  readonly completedAt: string | null;
+  readonly observedAt: string;
+  readonly updatedAt: string;
+}
+
+export interface ControlPlaneGitHubSyncStateRecord {
+  readonly stateId: string;
+  readonly tenantId: string;
+  readonly userId: string;
+  readonly workspaceId: string;
+  readonly repositoryId: string;
+  readonly directoryId: string | null;
+  readonly branchName: string;
+  readonly lastSyncAt: string;
+  readonly lastSuccessAt: string | null;
+  readonly lastError: string | null;
+  readonly lastErrorAt: string | null;
 }

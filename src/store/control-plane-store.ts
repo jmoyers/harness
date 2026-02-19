@@ -4,6 +4,9 @@ import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import {
   applyTaskLinearInput,
+  normalizeGitHubPrJobRow,
+  normalizeGitHubPullRequestRow,
+  normalizeGitHubSyncStateRow,
   normalizeAutomationPolicyRow,
   asNumberOrNull,
   asRecord,
@@ -29,6 +32,10 @@ import type {
   ControlPlaneAutomationPolicyScope,
   ControlPlaneConversationRecord,
   ControlPlaneDirectoryRecord,
+  ControlPlaneGitHubCiRollup,
+  ControlPlaneGitHubPrJobRecord,
+  ControlPlaneGitHubPullRequestRecord,
+  ControlPlaneGitHubSyncStateRecord,
   ControlPlaneProjectSettingsRecord,
   ControlPlaneProjectTaskFocusMode,
   ControlPlaneProjectThreadSpawnMode,
@@ -92,6 +99,10 @@ export type {
   ControlPlaneAutomationPolicyScope,
   ControlPlaneConversationRecord,
   ControlPlaneDirectoryRecord,
+  ControlPlaneGitHubCiRollup,
+  ControlPlaneGitHubPrJobRecord,
+  ControlPlaneGitHubPullRequestRecord,
+  ControlPlaneGitHubSyncStateRecord,
   ControlPlaneProjectSettingsRecord,
   ControlPlaneProjectTaskFocusMode,
   ControlPlaneProjectThreadSpawnMode,
@@ -255,6 +266,93 @@ interface UpsertAutomationPolicyInput {
   scopeId?: string | null;
   automationEnabled?: boolean;
   frozen?: boolean;
+}
+
+interface UpsertGitHubPullRequestInput {
+  prRecordId: string;
+  tenantId: string;
+  userId: string;
+  workspaceId: string;
+  repositoryId: string;
+  directoryId?: string | null;
+  owner: string;
+  repo: string;
+  number: number;
+  title: string;
+  url: string;
+  authorLogin?: string | null;
+  headBranch: string;
+  headSha: string;
+  baseBranch: string;
+  state: 'open' | 'closed';
+  isDraft: boolean;
+  ciRollup?: ControlPlaneGitHubCiRollup;
+  closedAt?: string | null;
+  observedAt: string;
+}
+
+interface ListGitHubPullRequestQuery {
+  tenantId?: string;
+  userId?: string;
+  workspaceId?: string;
+  repositoryId?: string;
+  directoryId?: string;
+  headBranch?: string;
+  state?: 'open' | 'closed';
+  limit?: number;
+}
+
+interface ReplaceGitHubPrJobsInput {
+  tenantId: string;
+  userId: string;
+  workspaceId: string;
+  repositoryId: string;
+  prRecordId: string;
+  observedAt: string;
+  jobs: readonly {
+    jobRecordId: string;
+    provider: 'check-run' | 'status-context';
+    externalId: string;
+    name: string;
+    status: string;
+    conclusion?: string | null;
+    url?: string | null;
+    startedAt?: string | null;
+    completedAt?: string | null;
+  }[];
+}
+
+interface ListGitHubPrJobsQuery {
+  tenantId?: string;
+  userId?: string;
+  workspaceId?: string;
+  repositoryId?: string;
+  prRecordId?: string;
+  limit?: number;
+}
+
+interface UpsertGitHubSyncStateInput {
+  stateId: string;
+  tenantId: string;
+  userId: string;
+  workspaceId: string;
+  repositoryId: string;
+  directoryId?: string | null;
+  branchName: string;
+  lastSyncAt: string;
+  lastSuccessAt?: string | null;
+  lastError?: string | null;
+  lastErrorAt?: string | null;
+}
+
+interface ListGitHubSyncStateQuery {
+  tenantId?: string;
+  userId?: string;
+  workspaceId?: string;
+  repositoryId?: string;
+  directoryId?: string;
+  branchName?: string;
+  limit?: number;
 }
 
 export class SqliteControlPlaneStore {
@@ -1853,6 +1951,546 @@ export class SqliteControlPlaneStore {
     }
   }
 
+  upsertGitHubPullRequest(
+    input: UpsertGitHubPullRequestInput,
+  ): ControlPlaneGitHubPullRequestRecord {
+    this.db.exec('BEGIN IMMEDIATE TRANSACTION');
+    try {
+      const repository = this.getActiveRepository(input.repositoryId);
+      this.assertScopeMatch(input, repository, 'github pr');
+      if (input.directoryId !== undefined && input.directoryId !== null) {
+        const directory = this.getActiveDirectory(input.directoryId);
+        this.assertScopeMatch(input, directory, 'github pr');
+      }
+      const existing = this.db
+        .prepare(
+          `
+          SELECT pr_record_id
+          FROM github_pull_requests
+          WHERE repository_id = ? AND number = ?
+        `,
+        )
+        .get(input.repositoryId, input.number) as { pr_record_id: string } | undefined;
+      const now = new Date().toISOString();
+      const closedAt =
+        input.state === 'closed'
+          ? input.closedAt === undefined
+            ? now
+            : input.closedAt
+          : null;
+      const ciRollup = input.ciRollup ?? 'none';
+      if (existing === undefined) {
+        this.db
+          .prepare(
+            `
+            INSERT INTO github_pull_requests (
+              pr_record_id,
+              tenant_id,
+              user_id,
+              workspace_id,
+              repository_id,
+              directory_id,
+              owner,
+              repo,
+              number,
+              title,
+              url,
+              author_login,
+              head_branch,
+              head_sha,
+              base_branch,
+              state,
+              is_draft,
+              ci_rollup,
+              created_at,
+              updated_at,
+              closed_at,
+              observed_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `,
+          )
+          .run(
+            input.prRecordId,
+            input.tenantId,
+            input.userId,
+            input.workspaceId,
+            input.repositoryId,
+            input.directoryId ?? null,
+            input.owner,
+            input.repo,
+            input.number,
+            input.title,
+            input.url,
+            input.authorLogin ?? null,
+            input.headBranch,
+            input.headSha,
+            input.baseBranch,
+            input.state,
+            input.isDraft ? 1 : 0,
+            ciRollup,
+            now,
+            now,
+            closedAt,
+            input.observedAt,
+          );
+      } else {
+        this.db
+          .prepare(
+            `
+            UPDATE github_pull_requests
+            SET
+              directory_id = ?,
+              title = ?,
+              url = ?,
+              author_login = ?,
+              head_branch = ?,
+              head_sha = ?,
+              base_branch = ?,
+              state = ?,
+              is_draft = ?,
+              ci_rollup = ?,
+              updated_at = ?,
+              closed_at = ?,
+              observed_at = ?
+            WHERE pr_record_id = ?
+          `,
+          )
+          .run(
+            input.directoryId ?? null,
+            input.title,
+            input.url,
+            input.authorLogin ?? null,
+            input.headBranch,
+            input.headSha,
+            input.baseBranch,
+            input.state,
+            input.isDraft ? 1 : 0,
+            ciRollup,
+            now,
+            closedAt,
+            input.observedAt,
+            existing.pr_record_id,
+          );
+      }
+      const recordId = existing?.pr_record_id ?? input.prRecordId;
+      const updated = this.getGitHubPullRequest(recordId);
+      if (updated === null) {
+        throw new Error(`github pr missing after upsert: ${recordId}`);
+      }
+      this.db.exec('COMMIT');
+      return updated;
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  getGitHubPullRequest(prRecordId: string): ControlPlaneGitHubPullRequestRecord | null {
+    const row = this.db
+      .prepare(
+        `
+        SELECT
+          pr_record_id,
+          tenant_id,
+          user_id,
+          workspace_id,
+          repository_id,
+          directory_id,
+          owner,
+          repo,
+          number,
+          title,
+          url,
+          author_login,
+          head_branch,
+          head_sha,
+          base_branch,
+          state,
+          is_draft,
+          ci_rollup,
+          created_at,
+          updated_at,
+          closed_at,
+          observed_at
+        FROM github_pull_requests
+        WHERE pr_record_id = ?
+      `,
+      )
+      .get(prRecordId);
+    if (row === undefined) {
+      return null;
+    }
+    return normalizeGitHubPullRequestRow(row);
+  }
+
+  listGitHubPullRequests(
+    query: ListGitHubPullRequestQuery = {},
+  ): ControlPlaneGitHubPullRequestRecord[] {
+    const clauses: string[] = [];
+    const args: unknown[] = [];
+    if (query.tenantId !== undefined) {
+      clauses.push('tenant_id = ?');
+      args.push(query.tenantId);
+    }
+    if (query.userId !== undefined) {
+      clauses.push('user_id = ?');
+      args.push(query.userId);
+    }
+    if (query.workspaceId !== undefined) {
+      clauses.push('workspace_id = ?');
+      args.push(query.workspaceId);
+    }
+    if (query.repositoryId !== undefined) {
+      clauses.push('repository_id = ?');
+      args.push(query.repositoryId);
+    }
+    if (query.directoryId !== undefined) {
+      clauses.push('directory_id = ?');
+      args.push(query.directoryId);
+    }
+    if (query.headBranch !== undefined) {
+      clauses.push('head_branch = ?');
+      args.push(query.headBranch);
+    }
+    if (query.state !== undefined) {
+      clauses.push('state = ?');
+      args.push(query.state);
+    }
+    const whereClause = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+    const limitClause = query.limit === undefined ? '' : 'LIMIT ?';
+    if (query.limit !== undefined) {
+      args.push(query.limit);
+    }
+    const rows = this.db
+      .prepare(
+        `
+        SELECT
+          pr_record_id,
+          tenant_id,
+          user_id,
+          workspace_id,
+          repository_id,
+          directory_id,
+          owner,
+          repo,
+          number,
+          title,
+          url,
+          author_login,
+          head_branch,
+          head_sha,
+          base_branch,
+          state,
+          is_draft,
+          ci_rollup,
+          created_at,
+          updated_at,
+          closed_at,
+          observed_at
+        FROM github_pull_requests
+        ${whereClause}
+        ORDER BY updated_at DESC, number DESC
+        ${limitClause}
+      `,
+      )
+      .all(...args);
+    return rows.map((row) => normalizeGitHubPullRequestRow(row));
+  }
+
+  updateGitHubPullRequestCiRollup(
+    prRecordId: string,
+    ciRollup: ControlPlaneGitHubCiRollup,
+    observedAt: string,
+  ): ControlPlaneGitHubPullRequestRecord | null {
+    const existing = this.getGitHubPullRequest(prRecordId);
+    if (existing === null) {
+      return null;
+    }
+    const now = new Date().toISOString();
+    this.db
+      .prepare(
+        `
+        UPDATE github_pull_requests
+        SET ci_rollup = ?, observed_at = ?, updated_at = ?
+        WHERE pr_record_id = ?
+      `,
+      )
+      .run(ciRollup, observedAt, now, prRecordId);
+    return this.getGitHubPullRequest(prRecordId);
+  }
+
+  replaceGitHubPrJobs(input: ReplaceGitHubPrJobsInput): ControlPlaneGitHubPrJobRecord[] {
+    this.db.exec('BEGIN IMMEDIATE TRANSACTION');
+    try {
+      const pr = this.getGitHubPullRequest(input.prRecordId);
+      if (pr === null) {
+        throw new Error(`github pr not found: ${input.prRecordId}`);
+      }
+      this.assertScopeMatch(input, pr, 'github pr jobs');
+      if (pr.repositoryId !== input.repositoryId) {
+        throw new Error('github pr jobs repository mismatch');
+      }
+      this.db
+        .prepare(
+          `
+          DELETE FROM github_pr_jobs
+          WHERE pr_record_id = ?
+        `,
+        )
+        .run(input.prRecordId);
+      const now = new Date().toISOString();
+      const insert = this.db.prepare(
+        `
+        INSERT INTO github_pr_jobs (
+          job_record_id,
+          tenant_id,
+          user_id,
+          workspace_id,
+          repository_id,
+          pr_record_id,
+          provider,
+          external_id,
+          name,
+          status,
+          conclusion,
+          url,
+          started_at,
+          completed_at,
+          observed_at,
+          updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      );
+      for (const job of input.jobs) {
+        insert.run(
+          job.jobRecordId,
+          input.tenantId,
+          input.userId,
+          input.workspaceId,
+          input.repositoryId,
+          input.prRecordId,
+          job.provider,
+          job.externalId,
+          job.name,
+          job.status,
+          job.conclusion ?? null,
+          job.url ?? null,
+          job.startedAt ?? null,
+          job.completedAt ?? null,
+          input.observedAt,
+          now,
+        );
+      }
+      const listed = this.listGitHubPrJobs({
+        prRecordId: input.prRecordId,
+      });
+      this.db.exec('COMMIT');
+      return listed;
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  listGitHubPrJobs(query: ListGitHubPrJobsQuery = {}): ControlPlaneGitHubPrJobRecord[] {
+    const clauses: string[] = [];
+    const args: unknown[] = [];
+    if (query.tenantId !== undefined) {
+      clauses.push('tenant_id = ?');
+      args.push(query.tenantId);
+    }
+    if (query.userId !== undefined) {
+      clauses.push('user_id = ?');
+      args.push(query.userId);
+    }
+    if (query.workspaceId !== undefined) {
+      clauses.push('workspace_id = ?');
+      args.push(query.workspaceId);
+    }
+    if (query.repositoryId !== undefined) {
+      clauses.push('repository_id = ?');
+      args.push(query.repositoryId);
+    }
+    if (query.prRecordId !== undefined) {
+      clauses.push('pr_record_id = ?');
+      args.push(query.prRecordId);
+    }
+    const whereClause = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+    const limitClause = query.limit === undefined ? '' : 'LIMIT ?';
+    if (query.limit !== undefined) {
+      args.push(query.limit);
+    }
+    const rows = this.db
+      .prepare(
+        `
+        SELECT
+          job_record_id,
+          tenant_id,
+          user_id,
+          workspace_id,
+          repository_id,
+          pr_record_id,
+          provider,
+          external_id,
+          name,
+          status,
+          conclusion,
+          url,
+          started_at,
+          completed_at,
+          observed_at,
+          updated_at
+        FROM github_pr_jobs
+        ${whereClause}
+        ORDER BY name ASC, external_id ASC
+        ${limitClause}
+      `,
+      )
+      .all(...args);
+    return rows.map((row) => normalizeGitHubPrJobRow(row));
+  }
+
+  upsertGitHubSyncState(input: UpsertGitHubSyncStateInput): ControlPlaneGitHubSyncStateRecord {
+    this.db.exec('BEGIN IMMEDIATE TRANSACTION');
+    try {
+      const repository = this.getActiveRepository(input.repositoryId);
+      this.assertScopeMatch(input, repository, 'github sync state');
+      if (input.directoryId !== undefined && input.directoryId !== null) {
+        const directory = this.getActiveDirectory(input.directoryId);
+        this.assertScopeMatch(input, directory, 'github sync state');
+      }
+      this.db
+        .prepare(
+          `
+          INSERT INTO github_sync_state (
+            state_id,
+            tenant_id,
+            user_id,
+            workspace_id,
+            repository_id,
+            directory_id,
+            branch_name,
+            last_sync_at,
+            last_success_at,
+            last_error,
+            last_error_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(state_id) DO UPDATE SET
+            last_sync_at = excluded.last_sync_at,
+            last_success_at = excluded.last_success_at,
+            last_error = excluded.last_error,
+            last_error_at = excluded.last_error_at
+        `,
+        )
+        .run(
+          input.stateId,
+          input.tenantId,
+          input.userId,
+          input.workspaceId,
+          input.repositoryId,
+          input.directoryId ?? null,
+          input.branchName,
+          input.lastSyncAt,
+          input.lastSuccessAt ?? null,
+          input.lastError ?? null,
+          input.lastErrorAt ?? null,
+        );
+      const updated = this.getGitHubSyncState(input.stateId);
+      if (updated === null) {
+        throw new Error(`github sync state missing after upsert: ${input.stateId}`);
+      }
+      this.db.exec('COMMIT');
+      return updated;
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  getGitHubSyncState(stateId: string): ControlPlaneGitHubSyncStateRecord | null {
+    const row = this.db
+      .prepare(
+        `
+        SELECT
+          state_id,
+          tenant_id,
+          user_id,
+          workspace_id,
+          repository_id,
+          directory_id,
+          branch_name,
+          last_sync_at,
+          last_success_at,
+          last_error,
+          last_error_at
+        FROM github_sync_state
+        WHERE state_id = ?
+      `,
+      )
+      .get(stateId);
+    if (row === undefined) {
+      return null;
+    }
+    return normalizeGitHubSyncStateRow(row);
+  }
+
+  listGitHubSyncState(query: ListGitHubSyncStateQuery = {}): ControlPlaneGitHubSyncStateRecord[] {
+    const clauses: string[] = [];
+    const args: unknown[] = [];
+    if (query.tenantId !== undefined) {
+      clauses.push('tenant_id = ?');
+      args.push(query.tenantId);
+    }
+    if (query.userId !== undefined) {
+      clauses.push('user_id = ?');
+      args.push(query.userId);
+    }
+    if (query.workspaceId !== undefined) {
+      clauses.push('workspace_id = ?');
+      args.push(query.workspaceId);
+    }
+    if (query.repositoryId !== undefined) {
+      clauses.push('repository_id = ?');
+      args.push(query.repositoryId);
+    }
+    if (query.directoryId !== undefined) {
+      clauses.push('directory_id = ?');
+      args.push(query.directoryId);
+    }
+    if (query.branchName !== undefined) {
+      clauses.push('branch_name = ?');
+      args.push(query.branchName);
+    }
+    const whereClause = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+    const limitClause = query.limit === undefined ? '' : 'LIMIT ?';
+    if (query.limit !== undefined) {
+      args.push(query.limit);
+    }
+    const rows = this.db
+      .prepare(
+        `
+        SELECT
+          state_id,
+          tenant_id,
+          user_id,
+          workspace_id,
+          repository_id,
+          directory_id,
+          branch_name,
+          last_sync_at,
+          last_success_at,
+          last_error,
+          last_error_at
+        FROM github_sync_state
+        ${whereClause}
+        ORDER BY last_sync_at DESC, state_id ASC
+        ${limitClause}
+      `,
+      )
+      .all(...args);
+    return rows.map((row) => normalizeGitHubSyncStateRow(row));
+  }
+
   private findRepositoryByScopeRemoteUrl(
     tenantId: string,
     userId: string,
@@ -2186,6 +2824,106 @@ export class SqliteControlPlaneStore {
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_automation_policies_scope
       ON automation_policies (tenant_id, user_id, workspace_id, scope_type, scope_id);
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS github_pull_requests (
+        pr_record_id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        repository_id TEXT NOT NULL REFERENCES repositories(repository_id),
+        directory_id TEXT REFERENCES directories(directory_id),
+        owner TEXT NOT NULL,
+        repo TEXT NOT NULL,
+        number INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        url TEXT NOT NULL,
+        author_login TEXT,
+        head_branch TEXT NOT NULL,
+        head_sha TEXT NOT NULL,
+        base_branch TEXT NOT NULL,
+        state TEXT NOT NULL,
+        is_draft INTEGER NOT NULL,
+        ci_rollup TEXT NOT NULL DEFAULT 'none',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        closed_at TEXT,
+        observed_at TEXT NOT NULL,
+        UNIQUE(repository_id, number)
+      );
+    `);
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_github_pull_requests_scope
+      ON github_pull_requests (
+        tenant_id,
+        user_id,
+        workspace_id,
+        repository_id,
+        state,
+        head_branch,
+        updated_at
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS github_pr_jobs (
+        job_record_id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        repository_id TEXT NOT NULL REFERENCES repositories(repository_id),
+        pr_record_id TEXT NOT NULL REFERENCES github_pull_requests(pr_record_id),
+        provider TEXT NOT NULL,
+        external_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        status TEXT NOT NULL,
+        conclusion TEXT,
+        url TEXT,
+        started_at TEXT,
+        completed_at TEXT,
+        observed_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(pr_record_id, provider, external_id)
+      );
+    `);
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_github_pr_jobs_scope
+      ON github_pr_jobs (
+        tenant_id,
+        user_id,
+        workspace_id,
+        repository_id,
+        pr_record_id,
+        updated_at
+      );
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS github_sync_state (
+        state_id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        repository_id TEXT NOT NULL REFERENCES repositories(repository_id),
+        directory_id TEXT REFERENCES directories(directory_id),
+        branch_name TEXT NOT NULL,
+        last_sync_at TEXT NOT NULL,
+        last_success_at TEXT,
+        last_error TEXT,
+        last_error_at TEXT
+      );
+    `);
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_github_sync_state_scope
+      ON github_sync_state (
+        tenant_id,
+        user_id,
+        workspace_id,
+        repository_id,
+        branch_name,
+        last_sync_at
+      );
     `);
   }
 

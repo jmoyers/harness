@@ -9,10 +9,17 @@ Run many agent threads in parallel across `codex`, `claude`, `cursor`, `terminal
 - Run many agent threads in parallel across `codex`, `claude`, `cursor`, `terminal`, and `critique`.
 - Keep native CLI ergonomics in one keyboard-first workspace.
 - Jump between threads in milliseconds, with 400+ FPS rendering under local workloads.
-- Use `critique` threads for fast diff/review loops with direct terminal access.
-- Keep long-running threads alive in a detached gateway so reconnects do not kill work.
-- Plan and pull scoped tasks (`project`, `repository`, `global`) from one place.
-- Automate through a typed realtime API when you want orchestration.
+- Use `critique` threads for very fast diff/review loops, with native terminal access when you need to drop to commands.
+- Keep long-running threads alive in the detached gateway so reconnects do not kill work.
+- Add automation last through the typed realtime API (`projects`, `threads`, `repositories`, `tasks`, subscriptions).
+- Plan work as scoped tasks (`project`, `repository`, `global`) and pull only `ready` tasks.
+- Gate automation globally/per-repository/per-project (enable/disable + freeze), with optional project branch pinning and project-local task focus mode.
+- See project/thread lifecycle updates from other connected clients in real time (no client restart rehydration loop).
+- Get gateway-canonical thread status icons/text for structured agent threads, plus fixed one-cell title glyphs for `terminal`/`critique` threads (single server projection, no client-side status interpretation).
+- Capture interleaved status debugging timelines (incoming status sources + outgoing status line/notice outputs) with a toggle and CLI commands.
+- Capture focused render diagnostics (unsupported control sequences + ANSI integrity failures) with a dedicated toggle and CLI commands.
+- Open a command palette with `ctrl+p`/`cmd+p`, live-filter registered actions, and execute context-aware thread/project/runtime controls.
+- Open or create a GitHub pull request for the currently tracked project branch directly from the command palette.
 
 ## Demo
 
@@ -56,6 +63,42 @@ Harness includes first-class `critique` threads:
 - If a critique thread exists for the current project, it selects it.
 - If not, it creates and opens one in the main pane.
 
+`session.interrupt` is also surfaced as a mux keybinding action (`mux.conversation.interrupt`) so teams can bind a dedicated in-client thread interrupt shortcut without overloading quit semantics.
+
+## GitHub PR Integration
+
+When GitHub auth is available (`GITHUB_TOKEN` or an authenticated `gh` CLI), Harness can:
+
+- Detect the tracked branch for the active project and show `Open PR` (if an open PR exists) or `Create PR` in the command palette.
+- Continuously sync open PR CI/check status into the control-plane store for realtime clients.
+- If auth is unavailable, PR actions fail quietly and show a lightweight hint instead of surfacing hard errors.
+
+## API for Automation
+
+Harness exposes a typed realtime client for orchestrators, policy agents, and dashboards:
+
+```ts
+import { connectHarnessAgentRealtimeClient } from './src/control-plane/agent-realtime-api.ts';
+
+const client = await connectHarnessAgentRealtimeClient({
+  host: '127.0.0.1',
+  port: 7777,
+  subscription: { includeOutput: false },
+});
+
+client.on('session.status', ({ observed }) => {
+  console.log(observed.sessionId, observed.status);
+});
+
+await client.close();
+```
+
+Key orchestration calls are available in the same client:
+
+- `client.tasks.pull(...)`
+- `client.projects.status(projectId)`
+- `client.projects.settings.get(projectId)` / `client.projects.settings.update(projectId, update)`
+- `client.automation.getPolicy(...)` / `client.automation.setPolicy(...)`
 ## Configuration
 
 Runtime behavior is config-first via `harness.config.jsonc`.

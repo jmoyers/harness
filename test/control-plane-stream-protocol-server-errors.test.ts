@@ -1031,3 +1031,141 @@ void test('protocol parsers cover remaining guard branches', () => {
     assert.equal(parseServerEnvelope(value), null);
   }
 });
+
+void test('parseServerEnvelope parses github observed stream events', () => {
+  const upserted = parseServerEnvelope({
+    kind: 'stream.event',
+    subscriptionId: 'subscription-github',
+    cursor: 11,
+    event: {
+      type: 'github-pr-upserted',
+      pr: {
+        prRecordId: 'pr-1',
+        repositoryId: 'repository-1',
+      },
+    },
+  });
+  assert.deepEqual(upserted, {
+    kind: 'stream.event',
+    subscriptionId: 'subscription-github',
+    cursor: 11,
+    event: {
+      type: 'github-pr-upserted',
+      pr: {
+        prRecordId: 'pr-1',
+        repositoryId: 'repository-1',
+      },
+    },
+  });
+
+  const closed = parseServerEnvelope({
+    kind: 'stream.event',
+    subscriptionId: 'subscription-github',
+    cursor: 12,
+    event: {
+      type: 'github-pr-closed',
+      prRecordId: 'pr-1',
+      repositoryId: 'repository-1',
+      ts: new Date(0).toISOString(),
+    },
+  });
+  assert.deepEqual(closed, {
+    kind: 'stream.event',
+    subscriptionId: 'subscription-github',
+    cursor: 12,
+    event: {
+      type: 'github-pr-closed',
+      prRecordId: 'pr-1',
+      repositoryId: 'repository-1',
+      ts: new Date(0).toISOString(),
+    },
+  });
+
+  const jobs = parseServerEnvelope({
+    kind: 'stream.event',
+    subscriptionId: 'subscription-github',
+    cursor: 13,
+    event: {
+      type: 'github-pr-jobs-updated',
+      prRecordId: 'pr-1',
+      repositoryId: 'repository-1',
+      ciRollup: 'pending',
+      jobs: [
+        {
+          jobRecordId: 'job-1',
+        },
+      ],
+      ts: new Date(0).toISOString(),
+    },
+  });
+  assert.deepEqual(jobs, {
+    kind: 'stream.event',
+    subscriptionId: 'subscription-github',
+    cursor: 13,
+    event: {
+      type: 'github-pr-jobs-updated',
+      prRecordId: 'pr-1',
+      repositoryId: 'repository-1',
+      ciRollup: 'pending',
+      jobs: [
+        {
+          jobRecordId: 'job-1',
+        },
+      ],
+      ts: new Date(0).toISOString(),
+    },
+  });
+});
+
+void test('parseServerEnvelope rejects malformed github observed stream events', () => {
+  const invalidEvents: unknown[] = [
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-github',
+      cursor: 21,
+      event: {
+        type: 'github-pr-upserted',
+        pr: null,
+      },
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-github',
+      cursor: 22,
+      event: {
+        type: 'github-pr-closed',
+        prRecordId: 'pr-1',
+        repositoryId: 'repository-1',
+      },
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-github',
+      cursor: 23,
+      event: {
+        type: 'github-pr-jobs-updated',
+        prRecordId: 'pr-1',
+        repositoryId: 'repository-1',
+        ciRollup: 'invalid',
+        jobs: [],
+        ts: new Date(0).toISOString(),
+      },
+    },
+    {
+      kind: 'stream.event',
+      subscriptionId: 'subscription-github',
+      cursor: 24,
+      event: {
+        type: 'github-pr-jobs-updated',
+        prRecordId: 'pr-1',
+        repositoryId: 'repository-1',
+        ciRollup: 'success',
+        jobs: [null],
+        ts: new Date(0).toISOString(),
+      },
+    },
+  ];
+  for (const value of invalidEvents) {
+    assert.equal(parseServerEnvelope(value), null);
+  }
+});

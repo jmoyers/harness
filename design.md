@@ -251,6 +251,7 @@ Pass-through stream invariants:
   - start thread by agent type (`codex`, `claude`, `cursor`, `terminal`, `critique`)
   - close active thread
   - go to project
+  - open/create GitHub PR for the tracked active-project branch (open when present, create when absent)
   - start/stop profiler
   - start/stop status logging
   - quit
@@ -266,6 +267,9 @@ Pass-through stream invariants:
 - The left rail treats Home as a first-class selectable entry (directory-style block with its own emoji); `ctrl+j/k` cycles visible left-nav selection in visual order: Home -> repository group -> project header -> project threads -> next visible item.
 - Repository/task planning is exposed through a dedicated Home entry in the left rail; Home unifies repository and task CRUD in one scrollable right-pane view while control-plane repository/task commands and subscriptions remain the source of truth.
 - Active project directories are scraped for GitHub remotes at startup/refresh; remotes are normalized and deduped, auto-upserted into canonical repository records, and reused for rail grouping.
+- Gateway-side GitHub sync persists PR records + per-PR CI job records and emits realtime observed events (`github-pr-upserted`, `github-pr-closed`, `github-pr-jobs-updated`) so UI/API clients stay live without polling their own GitHub state.
+- GitHub auth resolution is lazy and non-fatal: gateway prefers configured token env, falls back to `gh auth token`, and keeps startup healthy when auth is unavailable.
+- Command-menu GitHub PR actions surface a soft hint when auth is missing instead of throwing hard UI errors.
 - Left rail projects are grouped by canonical repository; projects with no detected canonical remote are grouped under `untracked`.
 - Repository groups are collapsible (`left/right` collapse/expand selected group, `ctrl+k ctrl+0` collapse all, `ctrl+k ctrl+j` expand all), and collapsed groups hide child projects/threads from keyboard traversal.
 - Project rows in the left rail are selectable; selecting a project switches the right pane into a project view and scopes project actions to that explicit selection.

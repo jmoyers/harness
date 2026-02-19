@@ -10,6 +10,10 @@ import type {
   ControlPlaneAutomationPolicyScope,
   ControlPlaneConversationRecord,
   ControlPlaneDirectoryRecord,
+  ControlPlaneGitHubCiRollup,
+  ControlPlaneGitHubPrJobRecord,
+  ControlPlaneGitHubPullRequestRecord,
+  ControlPlaneGitHubSyncStateRecord,
   ControlPlaneProjectSettingsRecord,
   ControlPlaneRepositoryRecord,
   ControlPlaneTaskRecord,
@@ -267,6 +271,93 @@ interface ExecuteCommandContext {
       automationEnabled?: boolean;
       frozen?: boolean;
     }): ControlPlaneAutomationPolicyRecord;
+    upsertGitHubPullRequest(input: {
+      prRecordId: string;
+      tenantId: string;
+      userId: string;
+      workspaceId: string;
+      repositoryId: string;
+      directoryId?: string | null;
+      owner: string;
+      repo: string;
+      number: number;
+      title: string;
+      url: string;
+      authorLogin?: string | null;
+      headBranch: string;
+      headSha: string;
+      baseBranch: string;
+      state: 'open' | 'closed';
+      isDraft: boolean;
+      ciRollup?: ControlPlaneGitHubCiRollup;
+      closedAt?: string | null;
+      observedAt: string;
+    }): ControlPlaneGitHubPullRequestRecord;
+    getGitHubPullRequest(prRecordId: string): ControlPlaneGitHubPullRequestRecord | null;
+    listGitHubPullRequests(query?: {
+      tenantId?: string;
+      userId?: string;
+      workspaceId?: string;
+      repositoryId?: string;
+      directoryId?: string;
+      headBranch?: string;
+      state?: 'open' | 'closed';
+      limit?: number;
+    }): ControlPlaneGitHubPullRequestRecord[];
+    updateGitHubPullRequestCiRollup(
+      prRecordId: string,
+      ciRollup: ControlPlaneGitHubCiRollup,
+      observedAt: string,
+    ): ControlPlaneGitHubPullRequestRecord | null;
+    replaceGitHubPrJobs(input: {
+      tenantId: string;
+      userId: string;
+      workspaceId: string;
+      repositoryId: string;
+      prRecordId: string;
+      observedAt: string;
+      jobs: readonly {
+        jobRecordId: string;
+        provider: 'check-run' | 'status-context';
+        externalId: string;
+        name: string;
+        status: string;
+        conclusion?: string | null;
+        url?: string | null;
+        startedAt?: string | null;
+        completedAt?: string | null;
+      }[];
+    }): ControlPlaneGitHubPrJobRecord[];
+    listGitHubPrJobs(query?: {
+      tenantId?: string;
+      userId?: string;
+      workspaceId?: string;
+      repositoryId?: string;
+      prRecordId?: string;
+      limit?: number;
+    }): ControlPlaneGitHubPrJobRecord[];
+    upsertGitHubSyncState(input: {
+      stateId: string;
+      tenantId: string;
+      userId: string;
+      workspaceId: string;
+      repositoryId: string;
+      directoryId?: string | null;
+      branchName: string;
+      lastSyncAt: string;
+      lastSuccessAt?: string | null;
+      lastError?: string | null;
+      lastErrorAt?: string | null;
+    }): ControlPlaneGitHubSyncStateRecord;
+    listGitHubSyncState(query?: {
+      tenantId?: string;
+      userId?: string;
+      workspaceId?: string;
+      repositoryId?: string;
+      directoryId?: string;
+      branchName?: string;
+      limit?: number;
+    }): ControlPlaneGitHubSyncStateRecord[];
   };
   readonly gitStatusDirectoriesById: Map<string, ControlPlaneDirectoryRecord>;
   readonly gitStatusMonitor: {
@@ -284,6 +375,53 @@ interface ExecuteCommandContext {
   readonly connections: Map<string, ConnectionState>;
   readonly streamJournal: StreamJournalEntry[];
   readonly sessions: Map<string, SessionState>;
+  readonly github: {
+    enabled: boolean;
+    branchStrategy: 'pinned-then-current' | 'current-only' | 'pinned-only';
+    viewerLogin: string | null;
+  };
+  readonly githubApi: {
+    openPullRequestForBranch(input: {
+      owner: string;
+      repo: string;
+      headBranch: string;
+    }): Promise<{
+      number: number;
+      title: string;
+      url: string;
+      authorLogin: string | null;
+      headBranch: string;
+      headSha: string;
+      baseBranch: string;
+      state: 'open' | 'closed';
+      isDraft: boolean;
+      updatedAt: string;
+      createdAt: string;
+      closedAt: string | null;
+    } | null>;
+    createPullRequest(input: {
+      owner: string;
+      repo: string;
+      title: string;
+      body: string;
+      head: string;
+      base: string;
+      draft: boolean;
+    }): Promise<{
+      number: number;
+      title: string;
+      url: string;
+      authorLogin: string | null;
+      headBranch: string;
+      headSha: string;
+      baseBranch: string;
+      state: 'open' | 'closed';
+      isDraft: boolean;
+      updatedAt: string;
+      createdAt: string;
+      closedAt: string | null;
+    }>;
+  };
   readonly streamCursor: number;
   refreshGitStatusForDirectory(
     directory: ControlPlaneDirectoryRecord,
@@ -397,11 +535,120 @@ function bufferTailFromSnapshotRecord(
   return bufferTailFromVisibleLines(lines, totalRows, tailLines);
 }
 
-export function executeStreamServerCommand(
+function parseGitHubOwnerRepo(
+  remoteUrl: string,
+): { owner: string; repo: string } | null {
+  const trimmed = remoteUrl.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+  const httpsMatch = /^https:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/iu.exec(trimmed);
+  if (httpsMatch !== null) {
+    return {
+      owner: httpsMatch[1] as string,
+      repo: httpsMatch[2] as string,
+    };
+  }
+  const sshMatch = /^git@github\.com:([^/]+)\/([^/]+?)(?:\.git)?$/iu.exec(trimmed);
+  if (sshMatch !== null) {
+    return {
+      owner: sshMatch[1] as string,
+      repo: sshMatch[2] as string,
+    };
+  }
+  return null;
+}
+
+function resolveTrackedBranch(input: {
+  strategy: 'pinned-then-current' | 'current-only' | 'pinned-only';
+  pinnedBranch: string | null;
+  currentBranch: string | null;
+}): {
+  branchName: string | null;
+  source: 'pinned' | 'current' | null;
+} {
+  if (input.strategy === 'pinned-only') {
+    return {
+      branchName: input.pinnedBranch,
+      source: input.pinnedBranch === null ? null : 'pinned',
+    };
+  }
+  if (input.strategy === 'current-only') {
+    return {
+      branchName: input.currentBranch,
+      source: input.currentBranch === null ? null : 'current',
+    };
+  }
+  if (input.pinnedBranch !== null) {
+    return {
+      branchName: input.pinnedBranch,
+      source: 'pinned',
+    };
+  }
+  return {
+    branchName: input.currentBranch,
+    source: input.currentBranch === null ? null : 'current',
+  };
+}
+
+function ciRollupFromJobs(
+  jobs: readonly {
+    status: string;
+    conclusion: string | null;
+  }[],
+): ControlPlaneGitHubCiRollup {
+  if (jobs.length === 0) {
+    return 'none';
+  }
+  let hasPending = false;
+  let hasFailure = false;
+  let hasCancelled = false;
+  for (const job of jobs) {
+    const status = job.status.toLowerCase();
+    const conclusion = job.conclusion?.toLowerCase() ?? null;
+    if (status !== 'completed') {
+      hasPending = true;
+      continue;
+    }
+    if (conclusion === 'failure' || conclusion === 'timed_out' || conclusion === 'action_required') {
+      hasFailure = true;
+      continue;
+    }
+    if (conclusion === 'cancelled') {
+      hasCancelled = true;
+    }
+  }
+  if (hasFailure) {
+    return 'failure';
+  }
+  if (hasPending) {
+    return 'pending';
+  }
+  if (hasCancelled) {
+    return 'cancelled';
+  }
+  if (
+    jobs.some((job) => {
+      const conclusion = job.conclusion?.toLowerCase() ?? null;
+      return conclusion === 'success';
+    })
+  ) {
+    return 'success';
+  }
+  return 'neutral';
+}
+
+export const streamServerCommandTestInternals = {
+  parseGitHubOwnerRepo,
+  resolveTrackedBranch,
+  ciRollupFromJobs,
+};
+
+export async function executeStreamServerCommand(
   ctx: ExecuteCommandContext,
   connection: ConnectionState,
   command: StreamCommand,
-): Record<string, unknown> {
+): Promise<Record<string, unknown>> {
   const liveThreadCountByDirectory = (directoryId: string): number =>
     [...ctx.sessions.values()].filter(
       (sessionState) => sessionState.directoryId === directoryId && sessionState.session !== null,
@@ -615,6 +862,48 @@ export function executeStreamServerCommand(
       automationEnabled: automation.automationEnabled,
       frozen: automation.frozen,
       automationSource: automation.source,
+    };
+  };
+
+  const resolveProjectGitHubContext = (
+    directoryId: string,
+  ): {
+    directory: ControlPlaneDirectoryRecord;
+    repository: ControlPlaneRepositoryRecord | null;
+    ownerRepo: { owner: string; repo: string } | null;
+    currentBranch: string | null;
+    trackedBranch: string | null;
+    trackedBranchSource: 'pinned' | 'current' | null;
+    settings: ControlPlaneProjectSettingsRecord;
+  } => {
+    const directory = ctx.stateStore.getDirectory(directoryId);
+    if (directory === null || directory.archivedAt !== null) {
+      throw new Error(`directory not found: ${directoryId}`);
+    }
+    const settings = ctx.stateStore.getProjectSettings(directoryId);
+    const gitStatus = ctx.gitStatusByDirectoryId.get(directoryId);
+    const repository =
+      gitStatus?.repositoryId === null || gitStatus?.repositoryId === undefined
+        ? null
+        : ctx.stateStore.getRepository(gitStatus.repositoryId);
+    const activeRepository =
+      repository === null || repository.archivedAt !== null ? null : repository;
+    const ownerRepo =
+      activeRepository === null ? null : parseGitHubOwnerRepo(activeRepository.remoteUrl);
+    const currentBranch = gitStatus?.summary.branch ?? null;
+    const tracked = resolveTrackedBranch({
+      strategy: ctx.github.branchStrategy,
+      pinnedBranch: settings.pinnedBranch,
+      currentBranch,
+    });
+    return {
+      directory,
+      repository: activeRepository,
+      ownerRepo,
+      currentBranch,
+      trackedBranch: tracked.branchName,
+      trackedBranchSource: tracked.source,
+      settings,
     };
   };
 
@@ -839,6 +1128,168 @@ export function executeStreamServerCommand(
     });
     return {
       policy,
+    };
+  }
+
+  if (command.type === 'github.project-pr') {
+    const resolved = resolveProjectGitHubContext(command.directoryId);
+    const pr =
+      resolved.repository === null || resolved.trackedBranch === null
+        ? null
+        : (ctx.stateStore.listGitHubPullRequests({
+            repositoryId: resolved.repository.repositoryId,
+            headBranch: resolved.trackedBranch,
+            state: 'open',
+            limit: 1,
+          })[0] ?? null);
+    return {
+      directoryId: resolved.directory.directoryId,
+      repositoryId: resolved.repository?.repositoryId ?? null,
+      branchName: resolved.trackedBranch,
+      branchSource: resolved.trackedBranchSource,
+      repository:
+        resolved.repository === null ? null : ctx.repositoryRecord(resolved.repository),
+      pr,
+    };
+  }
+
+  if (command.type === 'github.pr-list') {
+    const prs = ctx.stateStore.listGitHubPullRequests({
+      ...(command.tenantId === undefined ? {} : { tenantId: command.tenantId }),
+      ...(command.userId === undefined ? {} : { userId: command.userId }),
+      ...(command.workspaceId === undefined ? {} : { workspaceId: command.workspaceId }),
+      ...(command.repositoryId === undefined ? {} : { repositoryId: command.repositoryId }),
+      ...(command.directoryId === undefined ? {} : { directoryId: command.directoryId }),
+      ...(command.headBranch === undefined ? {} : { headBranch: command.headBranch }),
+      ...(command.state === undefined ? {} : { state: command.state }),
+      ...(command.limit === undefined ? {} : { limit: command.limit }),
+    });
+    return {
+      prs,
+    };
+  }
+
+  if (command.type === 'github.pr-create') {
+    if (!ctx.github.enabled) {
+      throw new Error('github integration is disabled');
+    }
+    const resolved = resolveProjectGitHubContext(command.directoryId);
+    if (resolved.repository === null || resolved.ownerRepo === null) {
+      throw new Error('project has no tracked github repository');
+    }
+    const headBranch = command.headBranch ?? resolved.trackedBranch;
+    if (headBranch === null) {
+      throw new Error('project has no tracked branch for github pr');
+    }
+    const existing = ctx.stateStore.listGitHubPullRequests({
+      repositoryId: resolved.repository.repositoryId,
+      headBranch,
+      state: 'open',
+      limit: 1,
+    })[0];
+    if (existing !== undefined) {
+      return {
+        created: false,
+        existing: true,
+        pr: existing,
+      };
+    }
+    const createdAt = new Date().toISOString();
+    const title = command.title ?? `PR: ${headBranch}`;
+    const body = command.body ?? '';
+    const baseBranch = command.baseBranch ?? resolved.repository.defaultBranch;
+    let remotePr: Awaited<ReturnType<ExecuteCommandContext['githubApi']['createPullRequest']>>;
+    try {
+      remotePr = await ctx.githubApi.createPullRequest({
+        owner: resolved.ownerRepo.owner,
+        repo: resolved.ownerRepo.repo,
+        title,
+        body,
+        head: headBranch,
+        base: baseBranch,
+        draft: command.draft ?? false,
+      });
+    } catch {
+      const fallback = await ctx.githubApi.openPullRequestForBranch({
+        owner: resolved.ownerRepo.owner,
+        repo: resolved.ownerRepo.repo,
+        headBranch,
+      });
+      if (fallback === null) {
+        throw new Error('github pr creation failed');
+      }
+      remotePr = fallback;
+    }
+    const stored = ctx.stateStore.upsertGitHubPullRequest({
+      prRecordId: `github-pr-${randomUUID()}`,
+      tenantId: resolved.directory.tenantId,
+      userId: resolved.directory.userId,
+      workspaceId: resolved.directory.workspaceId,
+      repositoryId: resolved.repository.repositoryId,
+      directoryId: resolved.directory.directoryId,
+      owner: resolved.ownerRepo.owner,
+      repo: resolved.ownerRepo.repo,
+      number: remotePr.number,
+      title: remotePr.title,
+      url: remotePr.url,
+      authorLogin: remotePr.authorLogin,
+      headBranch: remotePr.headBranch,
+      headSha: remotePr.headSha,
+      baseBranch: remotePr.baseBranch,
+      state: remotePr.state,
+      isDraft: remotePr.isDraft,
+      ciRollup: 'pending',
+      closedAt: remotePr.closedAt,
+      observedAt: remotePr.updatedAt || createdAt,
+    });
+    ctx.publishObservedEvent(
+      {
+        tenantId: stored.tenantId,
+        userId: stored.userId,
+        workspaceId: stored.workspaceId,
+        directoryId: stored.directoryId,
+        conversationId: null,
+      },
+      {
+        type: 'github-pr-upserted',
+        pr: asRecord(stored) ?? {},
+      },
+    );
+    return {
+      created: true,
+      existing: false,
+      pr: stored,
+    };
+  }
+
+  if (command.type === 'github.pr-jobs-list') {
+    const jobs = ctx.stateStore.listGitHubPrJobs({
+      ...(command.tenantId === undefined ? {} : { tenantId: command.tenantId }),
+      ...(command.userId === undefined ? {} : { userId: command.userId }),
+      ...(command.workspaceId === undefined ? {} : { workspaceId: command.workspaceId }),
+      ...(command.repositoryId === undefined ? {} : { repositoryId: command.repositoryId }),
+      ...(command.prRecordId === undefined ? {} : { prRecordId: command.prRecordId }),
+      ...(command.limit === undefined ? {} : { limit: command.limit }),
+    });
+    return {
+      jobs,
+      ciRollup: ciRollupFromJobs(jobs),
+    };
+  }
+
+  if (command.type === 'github.repo-my-prs-url') {
+    const repository = ctx.stateStore.getRepository(command.repositoryId);
+    if (repository === null || repository.archivedAt !== null) {
+      throw new Error(`repository not found: ${command.repositoryId}`);
+    }
+    const ownerRepo = parseGitHubOwnerRepo(repository.remoteUrl);
+    if (ownerRepo === null) {
+      throw new Error('repository is not a github remote');
+    }
+    const authorQuery = ctx.github.viewerLogin === null ? '@me' : ctx.github.viewerLogin;
+    const query = encodeURIComponent(`is:pr is:open author:${authorQuery}`);
+    return {
+      url: `https://github.com/${ownerRepo.owner}/${ownerRepo.repo}/pulls?q=${query}`,
     };
   }
 
