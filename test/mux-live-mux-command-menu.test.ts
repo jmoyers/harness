@@ -104,17 +104,13 @@ void test('command menu empty query groups agent types first and prefers codex b
 
   const page = resolveCommandMenuPage(actions, createCommandMenuState());
   assert.deepEqual(
-    page.displayEntries.map((entry) =>
-      entry.kind === 'delimiter' ? `group:${entry.label}` : entry.action.id,
-    ),
+    page.displayEntries.map((entry) => entry.action.id),
     [
-      'group:agent types',
       'thread.start.codex',
       'thread.start.claude',
       'thread.start.cursor',
       'thread.start.terminal',
       'thread.start.critique',
-      'group:actions',
       'project.open.repo-a',
     ],
   );
@@ -139,9 +135,9 @@ void test('command menu typed query uses normal score+alpha sorting with no type
       query: 'start',
     }),
   );
-  assert.equal(
-    page.displayEntries.some((entry) => entry.kind === 'delimiter'),
-    false,
+  assert.deepEqual(
+    page.displayEntries.map((entry) => entry.action.id),
+    ['thread.start.claude', 'thread.start.codex', 'thread.start.cursor'],
   );
 });
 

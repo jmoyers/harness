@@ -293,12 +293,12 @@ void test('command menu handler mouse click executes clicked action row', () => 
   let dirtyCount = 0;
 
   const handled = handleCommandMenuInput({
-    input: Buffer.from('\u001b[<0;8;7M', 'utf8'),
+    input: Buffer.from('\u001b[<0;8;6M', 'utf8'),
     menu,
     isQuitShortcut: () => false,
     isToggleShortcut: () => false,
     dismissOnOutsideClick: (_input, _dismiss, onInsidePointerPress) =>
-      onInsidePointerPress?.(8, 7) === true,
+      onInsidePointerPress?.(8, 6) === true,
     buildCommandMenuModalOverlay: () => ({ top: 1 }),
     resolveActions: () => actions,
     executeAction: (actionId: string) => {
@@ -373,7 +373,7 @@ void test('command menu handler mouse click guards overlay, empty matches, and o
     handleCommandMenuInput({
       menu: createCommandMenuState(),
       dismissOnOutsideClick: (_input, _dismiss, onInsidePointerPress) => {
-        assert.equal(onInsidePointerPress?.(8, 6), false);
+        assert.equal(onInsidePointerPress?.(8, 5), false);
         return true;
       },
       buildCommandMenuModalOverlay: () => ({ top: 1 }),
@@ -387,7 +387,7 @@ void test('command menu handler mouse click guards overlay, empty matches, and o
     handleCommandMenuInput({
       menu: createCommandMenuState(),
       dismissOnOutsideClick: (_input, _dismiss, onInsidePointerPress) => {
-        assert.equal(onInsidePointerPress?.(8, 6), false);
+        assert.equal(onInsidePointerPress?.(8, 5), false);
         return true;
       },
       buildCommandMenuModalOverlay: () => null,
@@ -403,7 +403,7 @@ void test('command menu handler mouse click guards overlay, empty matches, and o
         query: 'missing',
       }),
       dismissOnOutsideClick: (_input, _dismiss, onInsidePointerPress) => {
-        assert.equal(onInsidePointerPress?.(8, 6), false);
+        assert.equal(onInsidePointerPress?.(8, 5), false);
         return true;
       },
       buildCommandMenuModalOverlay: () => ({ top: 1 }),

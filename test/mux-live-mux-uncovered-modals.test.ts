@@ -1240,7 +1240,7 @@ void test('modal overlay builders return null for missing state and build overla
   assert.notEqual(commandMenuOverlay, null);
   assert.equal(
     (commandMenuOverlay?.rows ?? []).some((row) => row.includes('-- agent types --')),
-    true,
+    false,
   );
   const themeCommandMenuOverlay = buildCommandMenuModalOverlay(
     80,

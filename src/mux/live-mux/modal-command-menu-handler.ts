@@ -48,7 +48,7 @@ function resolveCommandMenuActionIdByRow(
     return null;
   }
   const entry = page.displayEntries[displayEntryIndex];
-  if (entry === undefined || entry.kind !== 'action') {
+  if (entry === undefined) {
     return null;
   }
   return entry.action.id;

@@ -1,7 +1,5 @@
 const COMMAND_MENU_MAX_RESULTS = 8;
 const THREAD_ACTION_ID_PATTERN = /^thread\.(?:start|install)\.([a-z0-9-]+)$/u;
-const AGENT_TYPE_GROUP_LABEL = 'agent types';
-const ACTIONS_GROUP_LABEL = 'actions';
 
 type CommandMenuScope = 'all' | 'thread-start' | 'theme-select';
 type CommandMenuInitialGroup = 'agent-types' | 'actions';
@@ -49,17 +47,11 @@ interface CommandMenuMatch<TAction extends CommandMenuActionDescriptor> {
   readonly score: number;
 }
 
-type CommandMenuDisplayEntry<TAction extends CommandMenuActionDescriptor> =
-  | {
-      readonly kind: 'delimiter';
-      readonly label: string;
-    }
-  | {
-      readonly kind: 'action';
-      readonly absoluteIndex: number;
-      readonly action: TAction;
-      readonly score: number;
-    };
+interface CommandMenuDisplayEntry<TAction extends CommandMenuActionDescriptor> {
+  readonly absoluteIndex: number;
+  readonly action: TAction;
+  readonly score: number;
+}
 
 interface CommandMenuPage<TAction extends CommandMenuActionDescriptor> {
   readonly matches: readonly CommandMenuMatch<TAction>[];
@@ -140,53 +132,15 @@ function usesInitialTypeSort(query: string): boolean {
   return normalizedTokens(query).length === 0;
 }
 
-function groupLabelForInitialGroup(group: CommandMenuInitialGroup): string {
-  return group === 'agent-types' ? AGENT_TYPE_GROUP_LABEL : ACTIONS_GROUP_LABEL;
-}
-
-function shouldRenderTypeDelimiters<TAction extends CommandMenuActionDescriptor>(
-  query: string,
-  visibleMatches: readonly CommandMenuMatch<TAction>[],
-): boolean {
-  if (!usesInitialTypeSort(query)) {
-    return false;
-  }
-  return visibleMatches.some((match) => initialGroupForAction(match.action) === 'agent-types');
-}
-
 function buildCommandMenuDisplayEntries<TAction extends CommandMenuActionDescriptor>(
   visibleMatches: readonly CommandMenuMatch<TAction>[],
   pageStart: number,
-  query: string,
 ): readonly CommandMenuDisplayEntry<TAction>[] {
-  if (!shouldRenderTypeDelimiters(query, visibleMatches)) {
-    return visibleMatches.map((match, index) => ({
-      kind: 'action',
-      absoluteIndex: pageStart + index,
-      action: match.action,
-      score: match.score,
-    }));
-  }
-  const entries: CommandMenuDisplayEntry<TAction>[] = [];
-  let previousGroup: CommandMenuInitialGroup | null = null;
-  for (let index = 0; index < visibleMatches.length; index += 1) {
-    const match = visibleMatches[index]!;
-    const group = initialGroupForAction(match.action);
-    if (group !== previousGroup) {
-      previousGroup = group;
-      entries.push({
-        kind: 'delimiter',
-        label: groupLabelForInitialGroup(group),
-      });
-    }
-    entries.push({
-      kind: 'action',
-      absoluteIndex: pageStart + index,
-      action: match.action,
-      score: match.score,
-    });
-  }
-  return entries;
+  return visibleMatches.map((match, index) => ({
+    absoluteIndex: pageStart + index,
+    action: match.action,
+    score: match.score,
+  }));
 }
 
 function actionScore(action: CommandMenuActionDescriptor, query: string): number | null {
@@ -337,7 +291,7 @@ export function resolveCommandMenuPage<TAction extends CommandMenuActionDescript
       ? 0
       : Math.floor(selectedIndex / COMMAND_MENU_MAX_RESULTS) * COMMAND_MENU_MAX_RESULTS;
   const visibleMatches = matches.slice(pageStart, pageStart + COMMAND_MENU_MAX_RESULTS);
-  const displayEntries = buildCommandMenuDisplayEntries(visibleMatches, pageStart, menu.query);
+  const displayEntries = buildCommandMenuDisplayEntries(visibleMatches, pageStart);
   return {
     matches,
     selectedIndex,

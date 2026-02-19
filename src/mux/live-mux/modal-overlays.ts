@@ -125,10 +125,6 @@ export function buildCommandMenuModalOverlay(
     bodyLines.push('no actions match');
   } else {
     for (const entry of page.displayEntries) {
-      if (entry.kind === 'delimiter') {
-        bodyLines.push(`  -- ${entry.label} --`);
-        continue;
-      }
       const prefix = entry.absoluteIndex === page.selectedIndex ? '>' : ' ';
       const detail = entry.action.detail?.trim() ?? '';
       bodyLines.push(
