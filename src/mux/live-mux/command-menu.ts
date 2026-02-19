@@ -1,6 +1,6 @@
 export const COMMAND_MENU_MAX_RESULTS = 8;
 
-type CommandMenuScope = 'all' | 'thread-start' | 'theme-select';
+export type CommandMenuScope = 'all' | 'thread-start' | 'theme-select';
 
 export interface CommandMenuState {
   readonly scope: CommandMenuScope;
@@ -14,6 +14,17 @@ export interface CommandMenuActionDescriptor {
   readonly aliases?: readonly string[];
   readonly keywords?: readonly string[];
   readonly detail?: string;
+}
+
+export function filterThemePresetActionsForScope<TAction extends CommandMenuActionDescriptor>(
+  actions: readonly TAction[],
+  scope: CommandMenuScope,
+  themeActionIdPrefix: string,
+): readonly TAction[] {
+  if (scope === 'theme-select') {
+    return actions.filter((action) => action.id.startsWith(themeActionIdPrefix));
+  }
+  return actions.filter((action) => !action.id.startsWith(themeActionIdPrefix));
 }
 
 export interface RegisteredCommandMenuAction<TContext> extends CommandMenuActionDescriptor {

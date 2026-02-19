@@ -4,6 +4,7 @@ import {
   clampCommandMenuState,
   CommandMenuRegistry,
   createCommandMenuState,
+  filterThemePresetActionsForScope,
   reduceCommandMenuInput,
   resolveCommandMenuMatches,
   type RegisteredCommandMenuAction,
@@ -213,5 +214,25 @@ void test('command menu registry resolves static and provider actions with when 
       enabled: true,
     }),
     [],
+  );
+});
+
+void test('command menu theme scope hides preset actions in main scope and only shows them in theme picker scope', () => {
+  const actions = [
+    { id: 'theme.choose', title: 'Set a Theme' },
+    { id: 'theme.set.github', title: 'github' },
+    { id: 'project.open.repo-a', title: 'Project repo-a' },
+  ] as const;
+
+  const mainScope = filterThemePresetActionsForScope(actions, 'all', 'theme.set.');
+  assert.deepEqual(
+    mainScope.map((action) => action.id),
+    ['theme.choose', 'project.open.repo-a'],
+  );
+
+  const themePickerScope = filterThemePresetActionsForScope(actions, 'theme-select', 'theme.set.');
+  assert.deepEqual(
+    themePickerScope.map((action) => action.id),
+    ['theme.set.github'],
   );
 });

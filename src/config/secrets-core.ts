@@ -27,7 +27,7 @@ function isValidSecretKey(value: string): boolean {
   return /^[A-Za-z_][A-Za-z0-9_]*$/u.test(value);
 }
 
-function decodeDoubleQuotedValue(raw: string, lineNumber: number): string {
+function decodeDoubleQuotedValue(raw: string, _lineNumber: number): string {
   let out = '';
   for (let index = 0; index < raw.length; index += 1) {
     const char = raw[index]!;

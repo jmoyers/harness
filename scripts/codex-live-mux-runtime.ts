@@ -37,6 +37,7 @@ import {
   COMMAND_MENU_MAX_RESULTS,
   CommandMenuRegistry,
   createCommandMenuState,
+  filterThemePresetActionsForScope,
   resolveCommandMenuMatches,
   type CommandMenuActionDescriptor,
   type RegisteredCommandMenuAction,
@@ -1417,10 +1418,11 @@ async function main(): Promise<number> {
           action.id.startsWith('thread.start.') || action.id.startsWith('thread.install.'),
       );
     }
-    if (workspace.commandMenu?.scope === THEME_PICKER_SCOPE) {
-      return actions.filter((action) => action.id.startsWith(THEME_ACTION_ID_PREFIX));
-    }
-    return actions;
+    return filterThemePresetActionsForScope(
+      actions,
+      workspace.commandMenu?.scope ?? 'all',
+      THEME_ACTION_ID_PREFIX,
+    );
   };
   const resolveCommandMenuActions = (): readonly CommandMenuActionDescriptor[] => {
     return resolveVisibleCommandMenuActions(commandMenuContext()).map((action) => ({
@@ -2698,7 +2700,7 @@ async function main(): Promise<number> {
 
   commandMenuRegistry.registerAction({
     id: 'theme.choose',
-    title: 'Choose Theme',
+    title: 'Set a Theme',
     aliases: ['theme', 'change theme', 'set theme'],
     keywords: ['theme', 'appearance', 'colors'],
     run: () => {

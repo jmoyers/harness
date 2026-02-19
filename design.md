@@ -241,7 +241,7 @@ Pass-through stream invariants:
 - In embedded/local mode, mux shutdown also closes live PTYs.
 - `ctrl+p` and `cmd+p` open the command menu; command search is live-filtered and executes context-aware actions.
 - Left-rail `[+ thread]` opens a thread-scoped command-menu variant (same matcher/autocomplete path) instead of a dedicated chooser modal.
-- Command-menu `Choose Theme` opens a second autocomplete theme picker; moving selection previews theme changes live, and dismiss restores the pre-picker theme unless confirmed.
+- Command-menu `Set a Theme` opens a second autocomplete theme picker; moving selection previews theme changes live, and dismiss restores the pre-picker theme unless confirmed.
 - Gateway profiling moved to `ctrl+shift+p` so command menu invocation and profiling controls do not collide.
 
 ### Command Menu Model
