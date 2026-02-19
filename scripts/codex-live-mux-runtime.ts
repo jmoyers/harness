@@ -143,6 +143,7 @@ import { type GitRepositorySnapshot, type GitSummary } from '../src/mux/live-mux
 import { resolveDirectoryForAction as resolveDirectoryForActionFn } from '../src/mux/live-mux/directory-resolution.ts';
 import { requestStop as requestStopFn } from '../src/mux/live-mux/runtime-shutdown.ts';
 import {
+  hasActiveProfileState,
   resolveProfileStatePath,
   toggleGatewayProfiler as toggleGatewayProfilerFn,
 } from '../src/mux/live-mux/gateway-profiler.ts';
@@ -1401,7 +1402,7 @@ async function main(): Promise<number> {
       activeConversationId: conversationManager.activeConversationId,
       selectedText,
       leftNavSelectionKind: workspace.leftNavSelection.kind,
-      profileRunning: existsSync(
+      profileRunning: hasActiveProfileState(
         resolveProfileStatePath(options.invocationDirectory, muxSessionName),
       ),
       statusTimelineRunning: existsSync(

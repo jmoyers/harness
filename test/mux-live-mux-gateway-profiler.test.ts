@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { test } from 'bun:test';
 import {
+  hasActiveProfileState,
   resolveHarnessProfileCommandArgs,
   resolveProfileStatePath,
   toggleGatewayProfiler,
@@ -92,6 +93,42 @@ void test('gateway profiler toggles stop when active profile-state file exists',
     'profile: gateway=/tmp/harness/.harness/profiles/gateway.cpuprofile',
   );
   assert.deepEqual(calls, [{ action: 'stop' }]);
+});
+
+void test('gateway profiler treats malformed migrated profile-state files as inactive and starts', async () => {
+  const workspace = mkdtempSync(join(tmpdir(), 'harness-gateway-profiler-stale-state-'));
+  const previousXdg = process.env.XDG_CONFIG_HOME;
+  process.env.XDG_CONFIG_HOME = join(workspace, '.xdg');
+
+  try {
+    const profileStatePath = resolveProfileStatePath(workspace, 'perf-a');
+    mkdirSync(dirname(profileStatePath), { recursive: true });
+    writeFileSync(profileStatePath, '{ "version": 1, "mode": "live-inspect" }', 'utf8');
+    assert.equal(hasActiveProfileState(profileStatePath), false);
+
+    const calls: Array<{ action: 'start' | 'stop' }> = [];
+    const result = await toggleGatewayProfiler({
+      invocationDirectory: workspace,
+      sessionName: 'perf-a',
+      runHarnessProfileCommand: async (input) => {
+        calls.push({ action: input.action });
+        return {
+          stdout: 'profile started pid=321\n',
+          stderr: '',
+        };
+      },
+    });
+
+    assert.equal(result.action, 'start');
+    assert.equal(result.message, 'profile started pid=321');
+    assert.deepEqual(calls, [{ action: 'start' }]);
+  } finally {
+    if (previousXdg === undefined) {
+      delete process.env.XDG_CONFIG_HOME;
+    } else {
+      process.env.XDG_CONFIG_HOME = previousXdg;
+    }
+  }
 });
 
 void test('gateway profiler surfaces harness command failures', async () => {

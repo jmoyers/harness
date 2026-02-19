@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveHarnessWorkspaceDirectory } from '../../config/harness-paths.ts';
@@ -36,6 +36,8 @@ interface ToggleGatewayProfilerResult {
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_HARNESS_SCRIPT_PATH = resolve(SCRIPT_DIR, '../../../scripts/harness.ts');
+const PROFILE_STATE_VERSION = 1;
+const PROFILE_STATE_MODE = 'live-inspect';
 
 function firstNonEmptyLine(text: string): string | null {
   const lines = text
@@ -65,6 +67,64 @@ export function resolveHarnessProfileCommandArgs(
     return ['profile', action];
   }
   return ['--session', sessionName, 'profile', action];
+}
+
+function isIntegerInRange(value: unknown, min: number, max: number): boolean {
+  return Number.isInteger(value) && (value as number) >= min && (value as number) <= max;
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function hasValidActiveProfilePayload(payload: unknown): boolean {
+  if (typeof payload !== 'object' || payload === null) {
+    return false;
+  }
+  const candidate = payload as Record<string, unknown>;
+  if (candidate['version'] !== PROFILE_STATE_VERSION) {
+    return false;
+  }
+  if (candidate['mode'] !== PROFILE_STATE_MODE) {
+    return false;
+  }
+  if (!isIntegerInRange(candidate['pid'], 1, Number.MAX_SAFE_INTEGER)) {
+    return false;
+  }
+  if (!isNonEmptyString(candidate['host'])) {
+    return false;
+  }
+  if (!isIntegerInRange(candidate['port'], 1, 65535)) {
+    return false;
+  }
+  if (!isNonEmptyString(candidate['stateDbPath'])) {
+    return false;
+  }
+  if (!isNonEmptyString(candidate['profileDir'])) {
+    return false;
+  }
+  if (!isNonEmptyString(candidate['gatewayProfilePath'])) {
+    return false;
+  }
+  if (!isNonEmptyString(candidate['inspectWebSocketUrl'])) {
+    return false;
+  }
+  if (!isNonEmptyString(candidate['startedAt'])) {
+    return false;
+  }
+  return true;
+}
+
+export function hasActiveProfileState(profileStatePath: string): boolean {
+  if (!existsSync(profileStatePath)) {
+    return false;
+  }
+  try {
+    const raw = JSON.parse(readFileSync(profileStatePath, 'utf8')) as unknown;
+    return hasValidActiveProfilePayload(raw);
+  } catch {
+    return false;
+  }
 }
 
 function summarizeProfileSuccess(action: GatewayProfilerAction, stdout: string): string {
@@ -137,7 +197,7 @@ export async function toggleGatewayProfiler(
     options.invocationDirectory,
     options.sessionName,
   );
-  const isProfileRunning = (options.profileStateExists ?? existsSync)(profileStatePath);
+  const isProfileRunning = (options.profileStateExists ?? hasActiveProfileState)(profileStatePath);
   const action: GatewayProfilerAction = isProfileRunning ? 'stop' : 'start';
   const harnessScriptPath = options.harnessScriptPath ?? DEFAULT_HARNESS_SCRIPT_PATH;
   const runCommand = options.runHarnessProfileCommand ?? runHarnessProfileCommand;
