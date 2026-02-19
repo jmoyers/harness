@@ -30,7 +30,32 @@ export class RuntimeConversationActivation {
   async activateConversation(sessionId: string): Promise<void> {
     if (this.options.getActiveConversationId() === sessionId) {
       if (!this.options.isConversationPaneMode()) {
+        const targetConversation = this.options.conversationById(sessionId);
         this.options.enterConversationPaneForActiveSession(sessionId);
+        this.options.noteGitActivity(targetConversation?.directoryId ?? null);
+        if (
+          targetConversation !== undefined &&
+          !targetConversation.live &&
+          targetConversation.status !== 'exited'
+        ) {
+          await this.options.startConversation(sessionId);
+        }
+        if (targetConversation?.status !== 'exited') {
+          try {
+            await this.options.attachConversation(sessionId);
+          } catch (error: unknown) {
+            if (
+              !this.options.isSessionNotFoundError(error) &&
+              !this.options.isSessionNotLiveError(error)
+            ) {
+              throw error;
+            }
+            this.options.markSessionUnavailable(sessionId);
+            await this.options.startConversation(sessionId);
+            await this.options.attachConversation(sessionId);
+          }
+        }
+        this.options.schedulePtyResizeImmediate();
         this.options.markDirty();
       }
       return;

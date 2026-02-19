@@ -714,8 +714,48 @@ void test('left-rail conversation click handles active, inactive, project fallba
     }),
     true,
   );
-  assert.equal(calls.includes('ensureConversationPaneActive:session-a'), true);
-  assert.equal(calls.includes('beginConversationTitleEdit:session-a'), true);
+  assert.equal(calls.includes('queueActivateConversationAndEdit:session-a'), true);
+  assert.equal(calls.includes('ensureConversationPaneActive:session-a'), false);
+  assert.equal(calls.includes('beginConversationTitleEdit:session-a'), false);
+  calls.length = 0;
+
+  assert.equal(
+    handleLeftRailConversationClick({
+      selectedConversationId: 'session-a',
+      selectedProjectId: null,
+      supportsConversationTitleEditClick: true,
+      previousClickState: null,
+      nowMs: 1000,
+      conversationTitleEditDoubleClickWindowMs: 200,
+      activeConversationId: 'session-a',
+      isConversationPaneActive: false,
+      setConversationClickState: () => {
+        calls.push('setConversationClickState');
+      },
+      ensureConversationPaneActive: () => {
+        calls.push('ensureConversationPaneActive');
+      },
+      beginConversationTitleEdit: () => {
+        calls.push('beginConversationTitleEdit');
+      },
+      queueActivateConversation: () => {
+        calls.push('queueActivateConversation');
+      },
+      queueActivateConversationAndEdit: () => {
+        calls.push('queueActivateConversationAndEdit');
+      },
+      directoriesHas: () => true,
+      enterProjectPane: () => {
+        calls.push('enterProjectPane');
+      },
+      markDirty: () => {
+        calls.push('markDirty');
+      },
+    }),
+    true,
+  );
+  assert.equal(calls.includes('queueActivateConversation'), true);
+  assert.equal(calls.includes('ensureConversationPaneActive'), false);
   calls.length = 0;
 
   assert.equal(

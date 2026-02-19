@@ -46,9 +46,12 @@ export function handleLeftRailConversationClick(
     options.selectedConversationId === options.activeConversationId
   ) {
     if (!options.isConversationPaneActive) {
-      options.ensureConversationPaneActive(options.selectedConversationId);
-    }
-    if (conversationClick.doubleClick) {
+      if (conversationClick.doubleClick) {
+        options.queueActivateConversationAndEdit(options.selectedConversationId);
+      } else {
+        options.queueActivateConversation(options.selectedConversationId);
+      }
+    } else if (conversationClick.doubleClick) {
       options.beginConversationTitleEdit(options.selectedConversationId);
     }
     options.markDirty();
