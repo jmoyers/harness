@@ -36,6 +36,14 @@ interface RepositoryPromptOverlayState {
   readonly error: string | null;
 }
 
+interface ApiKeyPromptOverlayState {
+  readonly keyName: string;
+  readonly displayName: string;
+  readonly value: string;
+  readonly error: string | null;
+  readonly hasExistingValue: boolean;
+}
+
 interface ConversationTitleOverlayState {
   value: string;
   lastSavedValue: string;
@@ -246,6 +254,43 @@ export function buildRepositoryModalOverlay(
     anchor: 'center',
     marginRows: 1,
     title: prompt.mode === 'add' ? 'Add Repository' : 'Edit Repository',
+    bodyLines,
+    footer: 'enter save  esc',
+    theme,
+  });
+}
+
+export function buildApiKeyModalOverlay(
+  layoutCols: number,
+  viewportRows: number,
+  prompt: ApiKeyPromptOverlayState | null,
+  theme: UiModalThemeInput,
+): ReturnType<typeof buildUiModalOverlay> | null {
+  if (prompt === null) {
+    return null;
+  }
+  const modalSize = resolveGoldenModalSize(layoutCols, viewportRows, {
+    preferredHeight: 16,
+    minWidth: 34,
+    maxWidth: 64,
+  });
+  const promptValue = prompt.value.length > 0 ? prompt.value : '(enter value)';
+  const bodyLines = [`${prompt.keyName}: ${promptValue}_`];
+  if (prompt.error !== null && prompt.error.length > 0) {
+    bodyLines.push(`error: ${prompt.error}`);
+  } else if (prompt.hasExistingValue) {
+    bodyLines.push('warning: existing value detected (submit will overwrite)');
+  } else {
+    bodyLines.push('value is saved to user-global secrets.env');
+  }
+  return buildUiModalOverlay({
+    viewportCols: layoutCols,
+    viewportRows,
+    width: modalSize.width,
+    height: modalSize.height,
+    anchor: 'center',
+    marginRows: 1,
+    title: `Set ${prompt.displayName}`,
     bodyLines,
     footer: 'enter save  esc',
     theme,

@@ -263,6 +263,7 @@ Pass-through stream invariants:
   - open GitHub for the active-project repository (`Open GitHub for This Repo (git)`)
   - show a filtered GitHub URL for your open pull requests in the active-project repository (`Show My Open Pull Requests (git)`)
   - open/create GitHub PR for the tracked active-project non-default branch (open when present, create when absent; `Open PR (git)` / `Create PR (git)`)
+  - set supported API keys (`Set Anthropic API Key`, `Set OpenAI API Key`) and persist to `secrets.env`
   - open a theme picker and set a built-in OpenCode preset or the special `default` theme
   - start/stop profiler
   - start/stop status logging
@@ -743,6 +744,7 @@ Design constraints:
 - No competing runtime config sources for core behavior (no shadow config files, no duplicate per-module configs).
 - Runtime behavior toggles are config-first; environment variables are reserved for bootstrap/transport wiring and test harness injection, not the primary control surface.
 - Bootstrap secrets may be loaded from user-global `secrets.env` alongside `harness.config.jsonc` (dotenv-style `KEY=VALUE`) into process env before startup; explicitly exported environment variables remain authoritative over file-provided values.
+- Supported API keys can also be set from mux command-menu actions, which open a line-input modal (overwrite warning when a value already exists), persist to user-global `secrets.env`, and update launch env for subsequently started threads in the current session.
 - GitHub sync policy is config-governed under `github.*`:
   - `enabled` defaults to `true`
   - `apiBaseUrl`, `tokenEnvVar`, `pollMs`, `maxConcurrency`, `branchStrategy`, and optional `viewerLogin` are normalized by `config-core`

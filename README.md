@@ -60,6 +60,7 @@ For restart/load diagnostics, use a named session with a non-default gateway por
 - `ctrl+g` opens the project’s critique thread (or creates one if needed).
 - `ctrl` and `cmd` shortcut chords are mirrored in both directions when your terminal/OS does not reserve the combination.
 - Theme selection is built in (`Set a Theme`) with OpenCode-compatible presets and live preview.
+- API keys can be set directly from `ctrl+p` / `cmd+p` (`Set Anthropic API Key`, `Set OpenAI API Key`), with overwrite warning and paste-friendly entry.
 - `Create PR` uses either `GITHUB_TOKEN` or an authenticated `gh` CLI session.
 
 ## Configuration

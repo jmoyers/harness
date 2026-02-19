@@ -41,6 +41,7 @@ interface RuntimeInputRouterOptions {
   readonly scheduleConversationTitlePersist: () => void;
   readonly resolveCommandMenuActions: () => readonly CommandMenuActionDescriptor[];
   readonly executeCommandMenuAction: (actionId: string) => void;
+  readonly persistApiKey?: RuntimeModalInputOptions['persistApiKey'];
   readonly requestStop: RuntimeRailInputOptions['requestStop'];
   readonly resolveDirectoryForAction: RuntimeRailInputOptions['resolveDirectoryForAction'];
   readonly toggleCommandMenu: RuntimeRailInputOptions['toggleCommandMenu'];
@@ -112,6 +113,11 @@ export class RuntimeInputRouter {
       scheduleConversationTitlePersist: options.scheduleConversationTitlePersist,
       resolveCommandMenuActions: options.resolveCommandMenuActions,
       executeCommandMenuAction: options.executeCommandMenuAction,
+      ...(options.persistApiKey === undefined
+        ? {}
+        : {
+            persistApiKey: options.persistApiKey,
+          }),
     });
     const runtimeRailOptions: RuntimeRailInputOptions = {
       workspace: options.workspace,

@@ -55,6 +55,7 @@ export class RuntimeRepositoryActions<TRepository extends RepositoryRecordShape>
   openRepositoryPromptForCreate(): void {
     this.options.workspace.newThreadPrompt = null;
     this.options.workspace.addDirectoryPrompt = null;
+    this.options.workspace.apiKeyPrompt = null;
     if (this.options.workspace.conversationTitleEdit !== null) {
       this.options.stopConversationTitleEdit();
     }
@@ -75,6 +76,7 @@ export class RuntimeRepositoryActions<TRepository extends RepositoryRecordShape>
     }
     this.options.workspace.newThreadPrompt = null;
     this.options.workspace.addDirectoryPrompt = null;
+    this.options.workspace.apiKeyPrompt = null;
     if (this.options.workspace.conversationTitleEdit !== null) {
       this.options.stopConversationTitleEdit();
     }

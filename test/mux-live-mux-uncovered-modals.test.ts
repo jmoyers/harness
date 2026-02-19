@@ -7,6 +7,7 @@ import {
   reduceTaskEditorPromptInput,
 } from '../src/mux/live-mux/modal-input-reducers.ts';
 import {
+  handleApiKeyPromptInput,
   handleAddDirectoryPromptInput,
   handleRepositoryPromptInput,
 } from '../src/mux/live-mux/modal-prompt-handlers.ts';
@@ -18,6 +19,7 @@ import {
 import {
   buildCommandMenuModalOverlay,
   buildAddDirectoryModalOverlay,
+  buildApiKeyModalOverlay,
   buildConversationTitleModalOverlay,
   buildNewThreadModalOverlay,
   buildRepositoryModalOverlay,
@@ -33,6 +35,13 @@ void test('modal input reducers normalize line and task-editor input branches', 
     value: 'abc',
     submit: true,
   });
+  assert.deepEqual(
+    reduceLinePromptInput('token=', Buffer.from('\u001b[200~abc123\u001b[201~', 'utf8')),
+    {
+      value: 'token=abc123',
+      submit: false,
+    },
+  );
 
   const basePrompt = {
     title: 'Title',
@@ -335,6 +344,71 @@ void test('add-directory and repository prompt handlers cover quit dismiss edit 
   }
   assert.equal(calls.includes('queue:prompt-edit-repository'), true);
   assert.equal(calls.includes('queue:prompt-add-repository'), true);
+
+  calls.length = 0;
+  const persistedKeys: string[] = [];
+  assert.equal(
+    handleApiKeyPromptInput({
+      input: Buffer.from('x', 'utf8'),
+      prompt: null,
+      isQuitShortcut: () => false,
+      dismissOnOutsideClick: () => false,
+      setPrompt: () => {},
+      markDirty: () => {},
+      persistApiKey: () => {},
+    }),
+    false,
+  );
+  assert.equal(
+    handleApiKeyPromptInput({
+      input: Buffer.from('\n', 'utf8'),
+      prompt: {
+        keyName: 'OPENAI_API_KEY',
+        displayName: 'OpenAI API Key',
+        value: '   ',
+        error: null,
+        hasExistingValue: false,
+      },
+      isQuitShortcut: () => false,
+      dismissOnOutsideClick: () => false,
+      setPrompt: (next) => {
+        calls.push(`setApiPrompt:${next?.value ?? 'null'}:${next?.error ?? 'null'}`);
+      },
+      markDirty: () => {
+        calls.push('markDirty');
+      },
+      persistApiKey: (keyName, value) => {
+        persistedKeys.push(`${keyName}:${value}`);
+      },
+    }),
+    true,
+  );
+  assert.equal(
+    handleApiKeyPromptInput({
+      input: Buffer.from('\u001b[200~new-key\u001b[201~\n', 'utf8'),
+      prompt: {
+        keyName: 'OPENAI_API_KEY',
+        displayName: 'OpenAI API Key',
+        value: '',
+        error: null,
+        hasExistingValue: true,
+      },
+      isQuitShortcut: () => false,
+      dismissOnOutsideClick: () => false,
+      setPrompt: (next) => {
+        calls.push(`setApiPrompt:${next?.value ?? 'null'}:${next?.error ?? 'null'}`);
+      },
+      markDirty: () => {
+        calls.push('markDirty');
+      },
+      persistApiKey: (keyName, value) => {
+        persistedKeys.push(`${keyName}:${value}`);
+      },
+    }),
+    true,
+  );
+  assert.equal(persistedKeys.includes('OPENAI_API_KEY:new-key'), true);
+  assert.equal(calls.includes('setApiPrompt:null:null'), true);
 });
 
 void test('task editor handler covers dismiss change and submit validation branches', () => {
@@ -1161,6 +1235,25 @@ void test('modal overlay builders return null for missing state and build overla
     theme,
   );
   assert.notEqual(repositoryEditNoErrorOverlay, null);
+
+  assert.equal(buildApiKeyModalOverlay(80, 24, null, theme), null);
+  const apiKeyWarningOverlay = buildApiKeyModalOverlay(
+    80,
+    24,
+    {
+      keyName: 'OPENAI_API_KEY',
+      displayName: 'OpenAI API Key',
+      value: '',
+      error: null,
+      hasExistingValue: true,
+    },
+    theme,
+  );
+  assert.notEqual(apiKeyWarningOverlay, null);
+  assert.equal(
+    apiKeyWarningOverlay?.rows.some((row) => row.includes('warning: existing value')),
+    true,
+  );
 
   assert.equal(buildConversationTitleModalOverlay(80, 24, null, theme), null);
   const titlePendingOverlay = buildConversationTitleModalOverlay(

@@ -270,6 +270,7 @@ export class RuntimeRailInput {
 
   private openAddDirectoryPrompt(): void {
     this.options.workspace.repositoryPrompt = null;
+    this.options.workspace.apiKeyPrompt = null;
     this.options.workspace.addDirectoryPrompt = {
       value: '',
       error: null,

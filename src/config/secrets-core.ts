@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { resolveHarnessConfigDirectory } from './config-core.ts';
 
 export const HARNESS_SECRETS_FILE_PATH = '.harness/secrets.env';
@@ -21,6 +21,20 @@ interface LoadedHarnessSecrets {
   readonly loaded: boolean;
   readonly loadedKeys: readonly string[];
   readonly skippedKeys: readonly string[];
+}
+
+interface UpsertHarnessSecretOptions {
+  readonly key: string;
+  readonly value: string;
+  readonly cwd?: string;
+  readonly filePath?: string;
+  readonly env?: NodeJS.ProcessEnv;
+}
+
+interface UpsertHarnessSecretResult {
+  readonly filePath: string;
+  readonly createdFile: boolean;
+  readonly replacedExisting: boolean;
 }
 
 function isValidSecretKey(value: string): boolean {
@@ -107,6 +121,38 @@ function parseLineValue(rawValue: string, lineNumber: number): string {
   return rawValue.replace(/\s+#.*$/u, '').trim();
 }
 
+function parseSecretLineKey(line: string): string | null {
+  const trimmed = line.trim();
+  if (trimmed.length === 0 || trimmed.startsWith('#')) {
+    return null;
+  }
+  const withoutExport = trimmed.startsWith('export ')
+    ? trimmed.slice('export '.length).trimStart()
+    : trimmed;
+  const equalIndex = withoutExport.indexOf('=');
+  if (equalIndex <= 0) {
+    return null;
+  }
+  const key = withoutExport.slice(0, equalIndex).trim();
+  return isValidSecretKey(key) ? key : null;
+}
+
+function encodeSecretValue(value: string): string {
+  if (value.length === 0) {
+    return '""';
+  }
+  if (/^[A-Za-z0-9._:@/+,-]+$/u.test(value)) {
+    return value;
+  }
+  const escaped = value
+    .replaceAll('\\', '\\\\')
+    .replaceAll('"', '\\"')
+    .replaceAll('\n', '\\n')
+    .replaceAll('\r', '\\r')
+    .replaceAll('\t', '\\t');
+  return `"${escaped}"`;
+}
+
 function parseHarnessSecretLine(line: string, lineNumber: number): HarnessSecretEntry | null {
   const trimmed = line.trim();
   if (trimmed.length === 0 || trimmed.startsWith('#')) {
@@ -184,5 +230,49 @@ export function loadHarnessSecrets(options: LoadHarnessSecretsOptions = {}): Loa
     loaded: true,
     loadedKeys,
     skippedKeys,
+  };
+}
+
+export function upsertHarnessSecret(
+  options: UpsertHarnessSecretOptions,
+): UpsertHarnessSecretResult {
+  const key = options.key.trim();
+  if (!isValidSecretKey(key)) {
+    throw new Error(`invalid secret key: ${options.key}`);
+  }
+  const cwd = options.cwd ?? process.cwd();
+  const env = options.env ?? process.env;
+  const filePath = resolveHarnessSecretsPath(cwd, options.filePath, env);
+  const hadFile = existsSync(filePath);
+  const existingText = hadFile ? readFileSync(filePath, 'utf8') : '';
+  const sourceLines = existingText.split(/\r?\n/u);
+  if (sourceLines[sourceLines.length - 1] === '') {
+    sourceLines.pop();
+  }
+  const nextLines: string[] = [];
+  const encoded = encodeSecretValue(options.value);
+  let replacedExisting = false;
+  for (const line of sourceLines) {
+    const lineKey = parseSecretLineKey(line);
+    if (lineKey !== key) {
+      nextLines.push(line);
+      continue;
+    }
+    if (!replacedExisting) {
+      nextLines.push(`${key}=${encoded}`);
+      replacedExisting = true;
+    }
+  }
+  if (!replacedExisting) {
+    nextLines.push(`${key}=${encoded}`);
+  }
+  mkdirSync(dirname(filePath), { recursive: true });
+  const tempPath = `${filePath}.tmp.${String(process.pid)}`;
+  writeFileSync(tempPath, `${nextLines.join('\n')}\n`, 'utf8');
+  renameSync(tempPath, filePath);
+  return {
+    filePath,
+    createdFile: !hadFile,
+    replacedExisting,
   };
 }

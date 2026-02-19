@@ -25,7 +25,7 @@ import {
 } from '../src/config/config-core.ts';
 import { resolveHarnessRuntimePath } from '../src/config/harness-paths.ts';
 import { migrateLegacyHarnessLayout } from '../src/config/harness-runtime-migration.ts';
-import { loadHarnessSecrets } from '../src/config/secrets-core.ts';
+import { loadHarnessSecrets, upsertHarnessSecret } from '../src/config/secrets-core.ts';
 import { detectMuxGlobalShortcut, resolveMuxShortcutBindings } from '../src/mux/input-shortcuts.ts';
 import { createMuxInputModeManager } from '../src/mux/terminal-input-modes.ts';
 import type { buildWorkspaceRailViewRows } from '../src/mux/workspace-rail-model.ts';
@@ -273,6 +273,13 @@ interface ThemePickerSessionState {
   previewActionId: string | null;
 }
 
+interface AllowedCommandMenuApiKey {
+  readonly actionIdSuffix: string;
+  readonly envVar: 'ANTHROPIC_API_KEY' | 'OPENAI_API_KEY';
+  readonly displayName: string;
+  readonly aliases: readonly string[];
+}
+
 const DEFAULT_RESIZE_MIN_INTERVAL_MS = 33;
 const DEFAULT_PTY_RESIZE_SETTLE_MS = 75;
 const DEFAULT_STARTUP_SETTLE_QUIET_MS = 300;
@@ -292,6 +299,21 @@ const REPOSITORY_COLLAPSE_ALL_CHORD_PREFIX = Buffer.from([0x0b]);
 const UNTRACKED_REPOSITORY_GROUP_ID = 'untracked';
 const THEME_PICKER_SCOPE = 'theme-select';
 const THEME_ACTION_ID_PREFIX = 'theme.set.';
+const API_KEY_ACTION_ID_PREFIX = 'api-key.set.';
+const COMMAND_MENU_ALLOWED_API_KEYS: readonly AllowedCommandMenuApiKey[] = [
+  {
+    actionIdSuffix: 'anthropic',
+    envVar: 'ANTHROPIC_API_KEY',
+    displayName: 'Anthropic API Key',
+    aliases: ['anthropic api key', 'claude api key'],
+  },
+  {
+    actionIdSuffix: 'openai',
+    envVar: 'OPENAI_API_KEY',
+    displayName: 'OpenAI API Key',
+    aliases: ['openai api key', 'codex api key'],
+  },
+];
 const GIT_SUMMARY_LOADING: GitSummary = {
   branch: '(loading)',
   changedFiles: 0,
@@ -804,7 +826,7 @@ async function main(): Promise<number> {
   workspace.taskPaneRepositoryEditClickState = null;
   workspace.homePaneDragState = null;
 
-  const sessionEnv = {
+  const sessionEnv: Record<string, string> = {
     ...sanitizeProcessEnv(),
     TERM: process.env.TERM ?? 'xterm-256color',
   };
@@ -1602,6 +1624,7 @@ async function main(): Promise<number> {
       resolveCommandMenuActions,
       getNewThreadPrompt: () => workspace.newThreadPrompt,
       getAddDirectoryPrompt: () => workspace.addDirectoryPrompt,
+      getApiKeyPrompt: () => workspace.apiKeyPrompt,
       getTaskEditorPrompt: () => workspace.taskEditorPrompt,
       getRepositoryPrompt: () => workspace.repositoryPrompt,
       getConversationTitleEdit: () => workspace.conversationTitleEdit,
@@ -2420,6 +2443,7 @@ async function main(): Promise<number> {
     }
     workspace.newThreadPrompt = null;
     workspace.addDirectoryPrompt = null;
+    workspace.apiKeyPrompt = null;
     workspace.taskEditorPrompt = null;
     workspace.repositoryPrompt = null;
     if (workspace.conversationTitleEdit !== null) {
@@ -2659,6 +2683,7 @@ async function main(): Promise<number> {
     }
     workspace.newThreadPrompt = null;
     workspace.addDirectoryPrompt = null;
+    workspace.apiKeyPrompt = null;
     workspace.taskEditorPrompt = null;
     workspace.repositoryPrompt = null;
     if (workspace.conversationTitleEdit !== null) {
@@ -2676,6 +2701,39 @@ async function main(): Promise<number> {
       refreshCommandMenuGitHubProjectPrState(directoryId);
     }
     markDirty();
+  };
+
+  const openApiKeyPrompt = (apiKey: AllowedCommandMenuApiKey): void => {
+    workspace.newThreadPrompt = null;
+    workspace.addDirectoryPrompt = null;
+    workspace.taskEditorPrompt = null;
+    workspace.repositoryPrompt = null;
+    if (workspace.conversationTitleEdit !== null) {
+      stopConversationTitleEdit(true);
+    }
+    workspace.conversationTitleEditClickState = null;
+    const existingRaw = sessionEnv[apiKey.envVar] ?? process.env[apiKey.envVar];
+    const hasExistingValue = typeof existingRaw === 'string' && existingRaw.trim().length > 0;
+    workspace.apiKeyPrompt = {
+      keyName: apiKey.envVar,
+      displayName: apiKey.displayName,
+      value: '',
+      error: null,
+      hasExistingValue,
+    };
+    markDirty();
+  };
+
+  const persistApiKey = (keyName: string, value: string): void => {
+    const result = upsertHarnessSecret({
+      cwd: options.invocationDirectory,
+      key: keyName,
+      value,
+    });
+    sessionEnv[keyName] = value;
+    process.env[keyName] = value;
+    const action = result.replacedExisting ? 'updated' : 'saved';
+    setCommandNotice(`${keyName} ${action}`);
   };
 
   const startThreadFromCommandMenu = (
@@ -2942,6 +3000,21 @@ async function main(): Promise<number> {
     run: () => {
       startThemePickerSession();
     },
+  });
+
+  commandMenuRegistry.registerProvider('api-key.set', () => {
+    return COMMAND_MENU_ALLOWED_API_KEYS.map(
+      (apiKey): RegisteredCommandMenuAction<RuntimeCommandMenuContext> => ({
+        id: `${API_KEY_ACTION_ID_PREFIX}${apiKey.actionIdSuffix}`,
+        title: `Set ${apiKey.displayName}`,
+        aliases: [...apiKey.aliases],
+        keywords: ['api', 'key', 'set', apiKey.envVar.toLowerCase()],
+        detail: apiKey.envVar,
+        run: () => {
+          openApiKeyPrompt(apiKey);
+        },
+      }),
+    );
   });
 
   commandMenuRegistry.registerProvider('theme.set', () => {
@@ -3571,6 +3644,7 @@ async function main(): Promise<number> {
     scheduleConversationTitlePersist,
     resolveCommandMenuActions,
     executeCommandMenuAction,
+    persistApiKey,
     requestStop,
     resolveDirectoryForAction,
     openNewThreadPrompt,

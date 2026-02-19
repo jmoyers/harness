@@ -1,6 +1,7 @@
 import {
   buildCommandMenuModalOverlay as buildCommandMenuModalOverlayFrame,
   buildAddDirectoryModalOverlay as buildAddDirectoryModalOverlayFrame,
+  buildApiKeyModalOverlay as buildApiKeyModalOverlayFrame,
   buildConversationTitleModalOverlay as buildConversationTitleModalOverlayFrame,
   buildNewThreadModalOverlay as buildNewThreadModalOverlayFrame,
   buildRepositoryModalOverlay as buildRepositoryModalOverlayFrame,
@@ -21,6 +22,13 @@ import { isUiModalOverlayHit } from '../kit.ts';
 
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
 type AddDirectoryPromptState = { value: string; error: string | null };
+type ApiKeyPromptState = {
+  keyName: string;
+  displayName: string;
+  value: string;
+  error: string | null;
+  hasExistingValue: boolean;
+};
 type ModalOverlay = Exclude<ReturnType<typeof buildNewThreadModalOverlayFrame>, null>;
 type ModalTheme = Parameters<typeof buildNewThreadModalOverlayFrame>[3];
 type DismissModalOnOutsideClickInput = Parameters<typeof dismissModalOnOutsideClickFrame>[0];
@@ -32,6 +40,7 @@ interface ModalManagerOptions {
   readonly resolveCommandMenuActions: () => readonly CommandMenuActionDescriptor[];
   readonly getNewThreadPrompt: () => NewThreadPromptState | null;
   readonly getAddDirectoryPrompt: () => AddDirectoryPromptState | null;
+  readonly getApiKeyPrompt?: () => ApiKeyPromptState | null;
   readonly getTaskEditorPrompt: () => TaskEditorPromptState | null;
   readonly getRepositoryPrompt: () => RepositoryPromptState | null;
   readonly getConversationTitleEdit: () => ConversationTitleEditState | null;
@@ -42,6 +51,7 @@ interface ModalManagerDependencies {
   readonly buildNewThreadModalOverlay?: typeof buildNewThreadModalOverlayFrame;
   readonly buildAddDirectoryModalOverlay?: typeof buildAddDirectoryModalOverlayFrame;
   readonly buildTaskEditorModalOverlay?: typeof buildTaskEditorModalOverlayFrame;
+  readonly buildApiKeyModalOverlay?: typeof buildApiKeyModalOverlayFrame;
   readonly buildRepositoryModalOverlay?: typeof buildRepositoryModalOverlayFrame;
   readonly buildConversationTitleModalOverlay?: typeof buildConversationTitleModalOverlayFrame;
   readonly dismissModalOnOutsideClick?: typeof dismissModalOnOutsideClickFrame;
@@ -67,6 +77,7 @@ export class ModalManager {
   private readonly buildNewThreadModalOverlay: typeof buildNewThreadModalOverlayFrame;
   private readonly buildAddDirectoryModalOverlay: typeof buildAddDirectoryModalOverlayFrame;
   private readonly buildTaskEditorModalOverlay: typeof buildTaskEditorModalOverlayFrame;
+  private readonly buildApiKeyModalOverlay: typeof buildApiKeyModalOverlayFrame;
   private readonly buildRepositoryModalOverlay: typeof buildRepositoryModalOverlayFrame;
   private readonly buildConversationTitleModalOverlay: typeof buildConversationTitleModalOverlayFrame;
   private readonly dismissModalOnOutsideClick: typeof dismissModalOnOutsideClickFrame;
@@ -84,6 +95,8 @@ export class ModalManager {
       dependencies.buildAddDirectoryModalOverlay ?? buildAddDirectoryModalOverlayFrame;
     this.buildTaskEditorModalOverlay =
       dependencies.buildTaskEditorModalOverlay ?? buildTaskEditorModalOverlayFrame;
+    this.buildApiKeyModalOverlay =
+      dependencies.buildApiKeyModalOverlay ?? buildApiKeyModalOverlayFrame;
     this.buildRepositoryModalOverlay =
       dependencies.buildRepositoryModalOverlay ?? buildRepositoryModalOverlayFrame;
     this.buildConversationTitleModalOverlay =
@@ -131,6 +144,15 @@ export class ModalManager {
     );
   }
 
+  buildApiKeyOverlay(layoutCols: number, viewportRows: number): ModalOverlay | null {
+    return this.buildApiKeyModalOverlay(
+      layoutCols,
+      viewportRows,
+      this.options.getApiKeyPrompt?.() ?? null,
+      this.options.theme,
+    );
+  }
+
   buildRepositoryOverlay(layoutCols: number, viewportRows: number): ModalOverlay | null {
     return this.buildRepositoryModalOverlay(
       layoutCols,
@@ -165,6 +187,10 @@ export class ModalManager {
     const taskEditorOverlay = this.buildTaskEditorOverlay(layoutCols, viewportRows);
     if (taskEditorOverlay !== null) {
       return taskEditorOverlay;
+    }
+    const apiKeyOverlay = this.buildApiKeyOverlay(layoutCols, viewportRows);
+    if (apiKeyOverlay !== null) {
+      return apiKeyOverlay;
     }
     const repositoryOverlay = this.buildRepositoryOverlay(layoutCols, viewportRows);
     if (repositoryOverlay !== null) {

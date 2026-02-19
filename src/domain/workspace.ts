@@ -25,6 +25,14 @@ export interface RepositoryPromptState {
   readonly error: string | null;
 }
 
+export interface ApiKeyPromptState {
+  readonly keyName: string;
+  readonly displayName: string;
+  readonly value: string;
+  readonly error: string | null;
+  readonly hasExistingValue: boolean;
+}
+
 export interface TaskEditorPromptState {
   mode: 'create' | 'edit';
   taskId: string | null;
@@ -80,6 +88,7 @@ export class WorkspaceModel {
   selectionDrag: PaneSelectionDrag | null = null;
   selectionPinnedFollowOutput: boolean | null = null;
   repositoryPrompt: RepositoryPromptState | null = null;
+  apiKeyPrompt: ApiKeyPromptState | null = null;
   commandMenu: CommandMenuState | null = null;
   newThreadPrompt: ReturnType<typeof createNewThreadPromptState> | null = null;
   addDirectoryPrompt: { value: string; error: string | null } | null = null;

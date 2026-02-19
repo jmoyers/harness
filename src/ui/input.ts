@@ -4,11 +4,13 @@ import {
   handleNewThreadPromptInput as handleNewThreadPromptInputFrame,
 } from '../mux/live-mux/modal-conversation-handlers.ts';
 import {
+  handleApiKeyPromptInput as handleApiKeyPromptInputFrame,
   handleAddDirectoryPromptInput as handleAddDirectoryPromptInputFrame,
   handleRepositoryPromptInput as handleRepositoryPromptInputFrame,
 } from '../mux/live-mux/modal-prompt-handlers.ts';
 import { handleTaskEditorPromptInput as handleTaskEditorPromptInputFrame } from '../mux/live-mux/modal-task-editor-handler.ts';
 import type {
+  ApiKeyPromptState,
   ConversationTitleEditState,
   RepositoryPromptState,
   TaskEditorPromptState,
@@ -63,6 +65,9 @@ interface InputRouterOptions {
   readonly getTaskEditorPrompt: () => TaskEditorPromptState | null;
   readonly setTaskEditorPrompt: (next: TaskEditorPromptState | null) => void;
   readonly submitTaskEditorPayload: (payload: TaskEditorSubmitPayload) => void;
+  readonly getApiKeyPrompt?: () => ApiKeyPromptState | null;
+  readonly setApiKeyPrompt?: (next: ApiKeyPromptState | null) => void;
+  readonly persistApiKey?: (keyName: string, value: string) => void;
   readonly getConversationTitleEdit: () => ConversationTitleEditState | null;
   readonly getCommandMenu: () => CommandMenuState | null;
   readonly setCommandMenu: (menu: CommandMenuState | null) => void;
@@ -84,6 +89,7 @@ interface InputRouterOptions {
 interface InputRouterDependencies {
   readonly handleCommandMenuInput?: typeof handleCommandMenuInputFrame;
   readonly handleTaskEditorPromptInput?: typeof handleTaskEditorPromptInputFrame;
+  readonly handleApiKeyPromptInput?: typeof handleApiKeyPromptInputFrame;
   readonly handleConversationTitleEditInput?: typeof handleConversationTitleEditInputFrame;
   readonly handleNewThreadPromptInput?: typeof handleNewThreadPromptInputFrame;
   readonly handleAddDirectoryPromptInput?: typeof handleAddDirectoryPromptInputFrame;
@@ -93,6 +99,7 @@ interface InputRouterDependencies {
 export class InputRouter {
   private readonly handleCommandMenuInputFrame: typeof handleCommandMenuInputFrame;
   private readonly handleTaskEditorPromptInputFrame: typeof handleTaskEditorPromptInputFrame;
+  private readonly handleApiKeyPromptInputFrame: typeof handleApiKeyPromptInputFrame;
   private readonly handleConversationTitleEditInputFrame: typeof handleConversationTitleEditInputFrame;
   private readonly handleNewThreadPromptInputFrame: typeof handleNewThreadPromptInputFrame;
   private readonly handleAddDirectoryPromptInputFrame: typeof handleAddDirectoryPromptInputFrame;
@@ -106,6 +113,8 @@ export class InputRouter {
       dependencies.handleCommandMenuInput ?? handleCommandMenuInputFrame;
     this.handleTaskEditorPromptInputFrame =
       dependencies.handleTaskEditorPromptInput ?? handleTaskEditorPromptInputFrame;
+    this.handleApiKeyPromptInputFrame =
+      dependencies.handleApiKeyPromptInput ?? handleApiKeyPromptInputFrame;
     this.handleConversationTitleEditInputFrame =
       dependencies.handleConversationTitleEditInput ?? handleConversationTitleEditInputFrame;
     this.handleNewThreadPromptInputFrame =
@@ -168,6 +177,25 @@ export class InputRouter {
     });
   }
 
+  handleApiKeyPromptInput(input: Buffer): boolean {
+    if (
+      this.options.getApiKeyPrompt === undefined ||
+      this.options.setApiKeyPrompt === undefined ||
+      this.options.persistApiKey === undefined
+    ) {
+      return false;
+    }
+    return this.handleApiKeyPromptInputFrame({
+      input,
+      prompt: this.options.getApiKeyPrompt(),
+      isQuitShortcut: this.options.isModalDismissShortcut,
+      dismissOnOutsideClick: this.options.dismissOnOutsideClick,
+      setPrompt: this.options.setApiKeyPrompt,
+      markDirty: this.options.markDirty,
+      persistApiKey: this.options.persistApiKey,
+    });
+  }
+
   handleNewThreadPromptInput(input: Buffer): boolean {
     return this.handleNewThreadPromptInputFrame({
       input,
@@ -222,6 +250,9 @@ export class InputRouter {
       return true;
     }
     if (this.handleRepositoryPromptInput(input)) {
+      return true;
+    }
+    if (this.handleApiKeyPromptInput(input)) {
       return true;
     }
     if (this.handleNewThreadPromptInput(input)) {

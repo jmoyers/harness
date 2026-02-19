@@ -37,6 +37,7 @@ interface RuntimeModalInputOptions {
   readonly scheduleConversationTitlePersist: () => void;
   readonly resolveCommandMenuActions: () => readonly CommandMenuActionDescriptor[];
   readonly executeCommandMenuAction: (actionId: string) => void;
+  readonly persistApiKey?: (keyName: string, value: string) => void;
   readonly markDirty: () => void;
 }
 
@@ -97,6 +98,23 @@ export class RuntimeModalInput {
       submitTaskEditorPayload: (payload) => {
         options.taskEditorActions.submitTaskEditorPayload(payload);
       },
+      ...(options.persistApiKey === undefined
+        ? {}
+        : {
+            getApiKeyPrompt: () => options.workspace.apiKeyPrompt,
+            setApiKeyPrompt: (
+              next: {
+                keyName: string;
+                displayName: string;
+                value: string;
+                error: string | null;
+                hasExistingValue: boolean;
+              } | null,
+            ) => {
+              options.workspace.apiKeyPrompt = next;
+            },
+            persistApiKey: options.persistApiKey,
+          }),
       getConversationTitleEdit: () => options.workspace.conversationTitleEdit,
       getNewThreadPrompt: () => options.workspace.newThreadPrompt,
       setNewThreadPrompt: (prompt) => {

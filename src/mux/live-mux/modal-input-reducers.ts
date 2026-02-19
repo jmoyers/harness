@@ -19,10 +19,43 @@ interface LinePromptReduction {
   submit: boolean;
 }
 
+const BRACKETED_PASTE_START = Buffer.from('\u001b[200~', 'utf8');
+const BRACKETED_PASTE_END = Buffer.from('\u001b[201~', 'utf8');
+
+function matchesSequence(input: Buffer, startIndex: number, sequence: Buffer): boolean {
+  if (startIndex < 0 || startIndex + sequence.length > input.length) {
+    return false;
+  }
+  for (let index = 0; index < sequence.length; index += 1) {
+    if (input[startIndex + index] !== sequence[index]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export function reduceLinePromptInput(value: string, input: Buffer): LinePromptReduction {
   let nextValue = value;
   let submit = false;
-  for (const byte of input) {
+  let inBracketedPaste = false;
+  for (let index = 0; index < input.length; index += 1) {
+    if (!inBracketedPaste && matchesSequence(input, index, BRACKETED_PASTE_START)) {
+      inBracketedPaste = true;
+      index += BRACKETED_PASTE_START.length - 1;
+      continue;
+    }
+    if (inBracketedPaste && matchesSequence(input, index, BRACKETED_PASTE_END)) {
+      inBracketedPaste = false;
+      index += BRACKETED_PASTE_END.length - 1;
+      continue;
+    }
+    const byte = input[index]!;
+    if (inBracketedPaste) {
+      if (byte >= 32 && byte <= 126) {
+        nextValue += String.fromCharCode(byte);
+      }
+      continue;
+    }
     if (byte === 0x0d || byte === 0x0a) {
       submit = true;
       break;

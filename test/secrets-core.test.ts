@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'bun:test';
 import {
-  HARNESS_SECRETS_FILE_PATH,
   loadHarnessSecrets,
   parseHarnessSecretsText,
   resolveHarnessSecretsPath,
+  upsertHarnessSecret,
 } from '../src/config/secrets-core.ts';
 
 void test('parseHarnessSecretsText reads comments, export prefixes, quotes, escapes, and empty values', () => {
@@ -81,21 +81,24 @@ void test('resolveHarnessSecretsPath defaults to .harness/secrets.env and suppor
 
 void test('loadHarnessSecrets returns unloaded result when file is missing', () => {
   const workspace = mkdtempSync(join(tmpdir(), 'harness-secrets-missing-'));
-  const env: NodeJS.ProcessEnv = {};
+  const env: NodeJS.ProcessEnv = {
+    XDG_CONFIG_HOME: workspace,
+  };
   const loaded = loadHarnessSecrets({
     cwd: workspace,
     env,
   });
   assert.equal(loaded.loaded, false);
-  assert.equal(loaded.filePath, resolve(workspace, HARNESS_SECRETS_FILE_PATH));
+  assert.equal(loaded.filePath, resolve(workspace, 'harness/secrets.env'));
   assert.deepEqual(loaded.loadedKeys, []);
   assert.deepEqual(loaded.skippedKeys, []);
-  assert.deepEqual(env, {});
+  assert.equal(env.XDG_CONFIG_HOME, workspace);
+  assert.equal(Object.keys(env).length, 1);
 });
 
 void test('loadHarnessSecrets populates env and preserves existing values by default', () => {
   const workspace = mkdtempSync(join(tmpdir(), 'harness-secrets-load-'));
-  const secretsDir = join(workspace, '.harness');
+  const secretsDir = join(workspace, 'harness');
   mkdirSync(secretsDir, { recursive: true });
   writeFileSync(
     join(secretsDir, 'secrets.env'),
@@ -103,6 +106,7 @@ void test('loadHarnessSecrets populates env and preserves existing values by def
     'utf8',
   );
   const env: NodeJS.ProcessEnv = {
+    XDG_CONFIG_HOME: workspace,
     ANTHROPIC_API_KEY: 'from-env',
   };
   const loaded = loadHarnessSecrets({
@@ -159,4 +163,59 @@ void test('loadHarnessSecrets can target process.env when env option is omitted'
       process.env[key] = previous;
     }
   }
+});
+
+void test('upsertHarnessSecret creates the secrets file when missing', () => {
+  const workspace = mkdtempSync(join(tmpdir(), 'harness-secrets-upsert-create-'));
+  const env: NodeJS.ProcessEnv = {
+    XDG_CONFIG_HOME: workspace,
+  };
+  const result = upsertHarnessSecret({
+    cwd: workspace,
+    env,
+    key: 'OPENAI_API_KEY',
+    value: 'openai-key',
+  });
+  const expectedPath = resolve(workspace, 'harness/secrets.env');
+  assert.equal(result.filePath, expectedPath);
+  assert.equal(result.createdFile, true);
+  assert.equal(result.replacedExisting, false);
+  assert.equal(readFileSync(expectedPath, 'utf8'), 'OPENAI_API_KEY=openai-key\n');
+});
+
+void test('upsertHarnessSecret replaces existing key entries and preserves unrelated lines', () => {
+  const workspace = mkdtempSync(join(tmpdir(), 'harness-secrets-upsert-replace-'));
+  const env: NodeJS.ProcessEnv = {
+    XDG_CONFIG_HOME: workspace,
+  };
+  const filePath = resolve(workspace, 'harness/secrets.env');
+  mkdirSync(resolve(workspace, 'harness'), { recursive: true });
+  writeFileSync(
+    filePath,
+    [
+      '# existing comments stay',
+      'ANTHROPIC_API_KEY=old-key',
+      'OPENAI_API_KEY=stale-key',
+      'OPENAI_API_KEY=duplicate-stale-key',
+      'EXTRA_TOKEN=keep-me',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+
+  const result = upsertHarnessSecret({
+    cwd: workspace,
+    env,
+    key: 'OPENAI_API_KEY',
+    value: 'fresh key value',
+  });
+
+  const nextText = readFileSync(filePath, 'utf8');
+  assert.equal(result.filePath, filePath);
+  assert.equal(result.createdFile, false);
+  assert.equal(result.replacedExisting, true);
+  assert.equal(nextText.includes('# existing comments stay'), true);
+  assert.equal(nextText.includes('EXTRA_TOKEN=keep-me'), true);
+  assert.equal((nextText.match(/^OPENAI_API_KEY=/gmu) ?? []).length, 1);
+  assert.equal(parseHarnessSecretsText(nextText).OPENAI_API_KEY, 'fresh key value');
 });
