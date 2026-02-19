@@ -7,7 +7,6 @@ import { handleGlobalShortcut as handleGlobalShortcutFrame } from '../mux/live-m
 type ResolvedMuxShortcutBindings = ReturnType<typeof resolveMuxShortcutBindings>;
 type ShortcutCycleDirection = 'next' | 'previous';
 type MainPaneMode = 'conversation' | 'project' | 'home';
-const DEFAULT_INTERRUPT_ALL_DOUBLE_TAP_WINDOW_MS = 350;
 
 interface GlobalShortcutInputOptions {
   readonly shortcutBindings: ResolvedMuxShortcutBindings;
@@ -31,9 +30,6 @@ interface GlobalShortcutInputOptions {
   readonly directoryExists: (directoryId: string) => boolean;
   readonly closeDirectory: (directoryId: string) => Promise<void>;
   readonly cycleLeftNavSelection: (direction: ShortcutCycleDirection) => void;
-  readonly forwardInterruptAllToActiveConversation?: (input: Buffer) => boolean;
-  readonly interruptAllDoubleTapWindowMs?: number;
-  readonly nowMs?: () => number;
 }
 
 interface GlobalShortcutInputDependencies {
@@ -44,9 +40,6 @@ interface GlobalShortcutInputDependencies {
 export class GlobalShortcutInput {
   private readonly detectMuxGlobalShortcut: typeof detectMuxGlobalShortcutFrame;
   private readonly handleGlobalShortcut: typeof handleGlobalShortcutFrame;
-  private readonly nowMs: () => number;
-  private readonly interruptAllDoubleTapWindowMs: number | null;
-  private lastInterruptAllAtMs: number | null = null;
 
   constructor(
     private readonly options: GlobalShortcutInputOptions,
@@ -55,23 +48,10 @@ export class GlobalShortcutInput {
     this.detectMuxGlobalShortcut =
       dependencies.detectMuxGlobalShortcut ?? detectMuxGlobalShortcutFrame;
     this.handleGlobalShortcut = dependencies.handleGlobalShortcut ?? handleGlobalShortcutFrame;
-    this.nowMs = this.options.nowMs ?? (() => Date.now());
-    const customInterruptAllBehaviorEnabled =
-      this.options.forwardInterruptAllToActiveConversation !== undefined ||
-      this.options.interruptAllDoubleTapWindowMs !== undefined;
-    this.interruptAllDoubleTapWindowMs = customInterruptAllBehaviorEnabled
-      ? (this.options.interruptAllDoubleTapWindowMs ?? DEFAULT_INTERRUPT_ALL_DOUBLE_TAP_WINDOW_MS)
-      : null;
   }
 
   handleInput(input: Buffer): boolean {
     const shortcut = this.detectMuxGlobalShortcut(input, this.options.shortcutBindings);
-    if (shortcut === 'mux.app.interrupt-all' && this.interruptAllDoubleTapWindowMs !== null) {
-      return this.handleInterruptAllShortcut(input);
-    }
-    if (shortcut !== 'mux.app.interrupt-all') {
-      this.lastInterruptAllAtMs = null;
-    }
     return this.handleGlobalShortcut({
       shortcut,
       requestStop: this.options.requestStop,
@@ -103,24 +83,5 @@ export class GlobalShortcutInput {
       closeDirectory: this.options.closeDirectory,
       cycleLeftNavSelection: this.options.cycleLeftNavSelection,
     });
-  }
-
-  private handleInterruptAllShortcut(input: Buffer): boolean {
-    const nowMs = this.nowMs();
-    const lastInterruptAllAtMs = this.lastInterruptAllAtMs;
-    const doubleTapWindowMs = this.interruptAllDoubleTapWindowMs;
-    if (
-      doubleTapWindowMs !== null &&
-      lastInterruptAllAtMs !== null &&
-      nowMs >= lastInterruptAllAtMs &&
-      nowMs - lastInterruptAllAtMs <= doubleTapWindowMs
-    ) {
-      this.lastInterruptAllAtMs = null;
-      this.options.requestStop();
-      return true;
-    }
-    this.lastInterruptAllAtMs = nowMs;
-    this.options.forwardInterruptAllToActiveConversation?.(input);
-    return true;
   }
 }

@@ -124,62 +124,7 @@ void test('global shortcut input default dependencies return false when no short
   assert.equal(input.handleInput(Buffer.from('z')), false);
 });
 
-void test('global shortcut input forwards first interrupt-all shortcut and exits on quick double tap', () => {
-  const calls: string[] = [];
-  const forwarded: string[] = [];
-  let nowMs = 1000;
-  const input = new GlobalShortcutInput(
-    {
-      shortcutBindings: resolveMuxShortcutBindings(),
-      requestStop: () => {
-        calls.push('request-stop');
-      },
-      resolveDirectoryForAction: () => null,
-      openNewThreadPrompt: () => {},
-      toggleCommandMenu: () => {},
-      openOrCreateCritiqueConversationInDirectory: async () => {},
-      toggleGatewayProfile: async () => {},
-      toggleGatewayStatusTimeline: async () => {},
-      toggleGatewayRenderTrace: async () => {},
-      getMainPaneMode: () => 'conversation',
-      getActiveConversationId: () => 'session-a',
-      conversationsHas: () => true,
-      queueControlPlaneOp: () => {},
-      archiveConversation: async () => {},
-      interruptConversation: async () => {},
-      takeoverConversation: async () => {},
-      openAddDirectoryPrompt: () => {},
-      getActiveDirectoryId: () => null,
-      directoryExists: () => false,
-      closeDirectory: async () => {},
-      cycleLeftNavSelection: () => {},
-      forwardInterruptAllToActiveConversation: (inputBuffer) => {
-        forwarded.push(inputBuffer.toString('hex'));
-        return true;
-      },
-      interruptAllDoubleTapWindowMs: 250,
-      nowMs: () => nowMs,
-    },
-    {
-      detectMuxGlobalShortcut: () => 'mux.app.interrupt-all',
-      handleGlobalShortcut: () => {
-        calls.push('legacy-handler');
-        return true;
-      },
-    },
-  );
-
-  assert.equal(input.handleInput(Buffer.from([0x03])), true);
-  nowMs = 1200;
-  assert.equal(input.handleInput(Buffer.from([0x03])), true);
-  nowMs = 1700;
-  assert.equal(input.handleInput(Buffer.from([0x03])), true);
-
-  assert.deepEqual(forwarded, ['03', '03']);
-  assert.deepEqual(calls, ['request-stop']);
-});
-
-void test('global shortcut input uses legacy interrupt-all handler when double-tap policy is not configured', () => {
+void test('global shortcut input routes each interrupt-all shortcut through the shared handler', () => {
   const calls: string[] = [];
   const input = new GlobalShortcutInput(
     {
@@ -210,7 +155,7 @@ void test('global shortcut input uses legacy interrupt-all handler when double-t
     {
       detectMuxGlobalShortcut: () => 'mux.app.interrupt-all',
       handleGlobalShortcut: (options) => {
-        calls.push(`legacy-handler:${options.shortcut}`);
+        calls.push(`handler:${options.shortcut}`);
         options.requestStop();
         return true;
       },
@@ -218,11 +163,16 @@ void test('global shortcut input uses legacy interrupt-all handler when double-t
   );
 
   assert.equal(input.handleInput(Buffer.from([0x03])), true);
-  assert.deepEqual(calls, ['legacy-handler:mux.app.interrupt-all', 'request-stop']);
+  assert.equal(input.handleInput(Buffer.from([0x03])), true);
+  assert.deepEqual(calls, [
+    'handler:mux.app.interrupt-all',
+    'request-stop',
+    'handler:mux.app.interrupt-all',
+    'request-stop',
+  ]);
 });
 
-void test('global shortcut input double-tap policy defaults to Date.now when nowMs is omitted', () => {
-  const forwarded: string[] = [];
+void test('global shortcut input preserves interrupt-all handler return value', () => {
   const input = new GlobalShortcutInput(
     {
       shortcutBindings: resolveMuxShortcutBindings(),
@@ -246,11 +196,6 @@ void test('global shortcut input double-tap policy defaults to Date.now when now
       directoryExists: () => false,
       closeDirectory: async () => {},
       cycleLeftNavSelection: () => {},
-      forwardInterruptAllToActiveConversation: (inputBuffer) => {
-        forwarded.push(inputBuffer.toString('hex'));
-        return true;
-      },
-      interruptAllDoubleTapWindowMs: 250,
     },
     {
       detectMuxGlobalShortcut: () => 'mux.app.interrupt-all',
@@ -258,6 +203,5 @@ void test('global shortcut input double-tap policy defaults to Date.now when now
     },
   );
 
-  assert.equal(input.handleInput(Buffer.from([0x03])), true);
-  assert.deepEqual(forwarded, ['03']);
+  assert.equal(input.handleInput(Buffer.from([0x03])), false);
 });

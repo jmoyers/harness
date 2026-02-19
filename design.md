@@ -236,7 +236,7 @@ Pass-through stream invariants:
 ## Mux Interaction Rules
 
 - Escape is forwarded to the active PTY session; mux does not reserve it as a quit key.
-- `ctrl+c` handling is two-stage: first press is forwarded to the selected thread when one is active; a second press within the double-tap window requests mux shutdown.
+- `ctrl+c` requests mux shutdown immediately and is not forwarded to active threads.
 - In canonical remote/gateway mode, mux exits without closing live sessions so work continues after client disconnect.
 - In embedded/local mode, mux shutdown also closes live PTYs.
 - `ctrl+p` and `cmd+p` open the command menu; command search is live-filtered and executes context-aware actions.

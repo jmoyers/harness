@@ -247,7 +247,6 @@ const DEFAULT_CONVERSATION_TITLE_EDIT_DEBOUNCE_MS = 250;
 const DEFAULT_TASK_EDITOR_AUTOSAVE_DEBOUNCE_MS = 250;
 const CONVERSATION_TITLE_EDIT_DOUBLE_CLICK_WINDOW_MS = 350;
 const HOME_PANE_EDIT_DOUBLE_CLICK_WINDOW_MS = 350;
-const INTERRUPT_ALL_DOUBLE_TAP_WINDOW_MS = 350;
 const HOME_PANE_BACKGROUND_INTERVAL_MS = 80;
 const UI_STATE_PERSIST_DEBOUNCE_MS = 200;
 const REPOSITORY_TOGGLE_CHORD_TIMEOUT_MS = 1250;
@@ -2932,25 +2931,6 @@ async function main(): Promise<number> {
     getMainPaneMode: () => workspace.mainPaneMode,
     getActiveConversationId: () => conversationManager.activeConversationId,
     getActiveDirectoryId: () => workspace.activeDirectoryId,
-    forwardInterruptAllToActiveConversation: (input) => {
-      const activeConversation = conversationManager.getActiveConversation();
-      if (activeConversation === null) {
-        return false;
-      }
-      if (
-        activeConversation.controller !== null &&
-        !conversationManager.isControlledByLocalHuman({
-          conversation: activeConversation,
-          controllerId: muxControllerId,
-        })
-      ) {
-        return false;
-      }
-      streamClient.sendInput(activeConversation.sessionId, input);
-      noteGitActivity(activeConversation.directoryId);
-      return true;
-    },
-    interruptAllDoubleTapWindowMs: INTERRUPT_ALL_DOUBLE_TAP_WINDOW_MS,
     chordTimeoutMs: REPOSITORY_TOGGLE_CHORD_TIMEOUT_MS,
     collapseAllChordPrefix: REPOSITORY_COLLAPSE_ALL_CHORD_PREFIX,
     releaseViewportPinForSelection,

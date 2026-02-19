@@ -61,8 +61,6 @@ interface RuntimeInputRouterOptions {
   readonly getMainPaneMode: RuntimeRailInputOptions['getMainPaneMode'];
   readonly getActiveConversationId: RuntimeRailInputOptions['getActiveConversationId'];
   readonly getActiveDirectoryId: RuntimeRailInputOptions['getActiveDirectoryId'];
-  readonly forwardInterruptAllToActiveConversation?: RuntimeRailInputOptions['forwardInterruptAllToActiveConversation'];
-  readonly interruptAllDoubleTapWindowMs?: RuntimeRailInputOptions['interruptAllDoubleTapWindowMs'];
   readonly chordTimeoutMs: RuntimeRailInputOptions['chordTimeoutMs'];
   readonly collapseAllChordPrefix: RuntimeRailInputOptions['collapseAllChordPrefix'];
   readonly releaseViewportPinForSelection: RuntimeRailInputOptions['releaseViewportPinForSelection'];
@@ -150,17 +148,6 @@ export class RuntimeInputRouter {
       beginConversationTitleEdit: options.beginConversationTitleEdit,
       resetConversationPaneFrameCache: options.resetConversationPaneFrameCache,
       conversationTitleEditDoubleClickWindowMs: options.conversationTitleEditDoubleClickWindowMs,
-      ...(options.forwardInterruptAllToActiveConversation === undefined
-        ? {}
-        : {
-            forwardInterruptAllToActiveConversation:
-              options.forwardInterruptAllToActiveConversation,
-          }),
-      ...(options.interruptAllDoubleTapWindowMs === undefined
-        ? {}
-        : {
-            interruptAllDoubleTapWindowMs: options.interruptAllDoubleTapWindowMs,
-          }),
     };
     this.railInput = new RuntimeRailInput(runtimeRailOptions);
     this.mainPaneInput = new RuntimeMainPaneInput({

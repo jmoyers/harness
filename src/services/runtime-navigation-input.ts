@@ -47,8 +47,6 @@ interface RuntimeNavigationInputOptions {
   readonly getMainPaneMode: () => MainPaneMode;
   readonly getActiveConversationId: () => string | null;
   readonly getActiveDirectoryId: () => string | null;
-  readonly forwardInterruptAllToActiveConversation?: (input: Buffer) => boolean;
-  readonly interruptAllDoubleTapWindowMs?: number;
   readonly workspaceActions: RuntimeNavigationWorkspaceActions;
   readonly chordTimeoutMs: number;
   readonly collapseAllChordPrefix: Buffer;
@@ -174,18 +172,6 @@ export class RuntimeNavigationInput {
       cycleLeftNavSelection: (direction) => {
         this.leftNavInput.cycleSelection(direction);
       },
-      nowMs,
-      ...(options.forwardInterruptAllToActiveConversation === undefined
-        ? {}
-        : {
-            forwardInterruptAllToActiveConversation:
-              options.forwardInterruptAllToActiveConversation,
-          }),
-      ...(options.interruptAllDoubleTapWindowMs === undefined
-        ? {}
-        : {
-            interruptAllDoubleTapWindowMs: options.interruptAllDoubleTapWindowMs,
-          }),
     };
     this.globalShortcutInput = createGlobalShortcutInput(globalShortcutOptions);
   }
