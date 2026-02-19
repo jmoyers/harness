@@ -1489,15 +1489,7 @@ export class SqliteControlPlaneStore {
         WHERE task_id = ?
       `,
       )
-      .run(
-        repositoryId,
-        scopeKind,
-        projectId,
-        title,
-        body,
-        updatedAt,
-        taskId,
-      );
+      .run(repositoryId, scopeKind, projectId, title, body, updatedAt, taskId);
     return this.getTask(taskId);
   }
 

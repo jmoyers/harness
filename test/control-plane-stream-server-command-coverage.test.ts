@@ -175,6 +175,24 @@ void test('command module coverage: repository/task query branches and claim con
     });
     const internals = server as unknown as {
       gitStatusByDirectoryId: Map<string, unknown>;
+      stateStore: {
+        listTasks: (query: {
+          tenantId?: string;
+          userId?: string;
+          workspaceId?: string;
+          scopeKind?: 'project' | 'repository' | 'global';
+          repositoryId?: string;
+          status?: string;
+          limit?: number;
+        }) => readonly Record<string, unknown>[];
+        claimTask: (input: {
+          taskId: string;
+          controllerId: string;
+          directoryId?: string;
+          branchName?: string;
+          baseBranch?: string;
+        }) => Record<string, unknown>;
+      };
     };
     internals.gitStatusByDirectoryId.set(directoryId, {
       summary: {
@@ -382,6 +400,24 @@ void test('command module coverage: task pull enforces project priority, focus m
 
     const internals = server as unknown as {
       gitStatusByDirectoryId: Map<string, unknown>;
+      stateStore: {
+        listTasks: (query: {
+          tenantId?: string;
+          userId?: string;
+          workspaceId?: string;
+          scopeKind?: 'project' | 'repository' | 'global';
+          repositoryId?: string;
+          status?: string;
+          limit?: number;
+        }) => readonly Record<string, unknown>[];
+        claimTask: (input: {
+          taskId: string;
+          controllerId: string;
+          directoryId?: string;
+          branchName?: string;
+          baseBranch?: string;
+        }) => Record<string, unknown>;
+      };
     };
     const cleanSnapshot = {
       summary: {
@@ -460,6 +496,65 @@ void test('command module coverage: task pull enforces project priority, focus m
     const fanoutTask = fanoutPull['task'] as Record<string, unknown>;
     assert.equal(fanoutTask['taskId'], 'task-repository-fanout');
     assert.equal(fanoutPull['directoryId'], 'directory-b');
+
+    const originalListTasks = internals.stateStore.listTasks.bind(internals.stateStore);
+    const originalClaimTask = internals.stateStore.claimTask.bind(internals.stateStore);
+    internals.stateStore.listTasks = ((query: {
+      tenantId?: string;
+      userId?: string;
+      workspaceId?: string;
+      scopeKind?: 'project' | 'repository' | 'global';
+      repositoryId?: string;
+      status?: string;
+      limit?: number;
+    }) => {
+      if (query.scopeKind === 'repository' && query.repositoryId === 'repository-pull') {
+        return [];
+      }
+      if (query.scopeKind === 'global') {
+        return originalListTasks({
+          ...query,
+          scopeKind: 'repository',
+          repositoryId: 'repository-pull',
+        });
+      }
+      return originalListTasks(query);
+    }) as typeof internals.stateStore.listTasks;
+    internals.stateStore.claimTask = ((input: {
+      taskId: string;
+      controllerId: string;
+      directoryId?: string;
+      branchName?: string;
+      baseBranch?: string;
+    }) => {
+      if (input.taskId === 'task-global-fallback') {
+        throw new Error('task already claimed: task-global-fallback');
+      }
+      return originalClaimTask(input);
+    }) as typeof internals.stateStore.claimTask;
+    const bridgedGlobalPull = (await client.sendCommand({
+      type: 'task.pull',
+      tenantId: 'tenant-pull',
+      userId: 'user-pull',
+      workspaceId: 'workspace-pull',
+      controllerId: 'agent-pull',
+      directoryId: 'directory-b',
+    })) as Record<string, unknown>;
+    assert.equal(bridgedGlobalPull['task'], null);
+    assert.equal(bridgedGlobalPull['directoryId'], 'directory-b');
+    internals.stateStore.claimTask = originalClaimTask;
+    const bridgedGlobalSuccessPull = (await client.sendCommand({
+      type: 'task.pull',
+      tenantId: 'tenant-pull',
+      userId: 'user-pull',
+      workspaceId: 'workspace-pull',
+      controllerId: 'agent-pull',
+      directoryId: 'directory-b',
+    })) as Record<string, unknown>;
+    internals.stateStore.listTasks = originalListTasks;
+    const bridgedGlobalSuccessTask = bridgedGlobalSuccessPull['task'] as Record<string, unknown>;
+    assert.equal(bridgedGlobalSuccessTask['taskId'], 'task-global-fallback');
+    assert.equal(bridgedGlobalSuccessPull['directoryId'], 'directory-b');
 
     await client.sendCommand({
       type: 'automation.policy-set',

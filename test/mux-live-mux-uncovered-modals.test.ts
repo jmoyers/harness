@@ -630,6 +630,14 @@ void test('task editor handler covers dismiss change and submit validation branc
   });
   assert.equal(noRepo.nextPrompt?.error, 'repository required');
 
+  const noBody = handleTaskEditorPromptInput({
+    input: Buffer.from('\n', 'utf8'),
+    prompt: { ...prompt, body: '   ' },
+    isQuitShortcut: () => false,
+    dismissOnOutsideClick: () => false,
+  });
+  assert.equal(noBody.nextPrompt?.error, 'task body required');
+
   const submit = handleTaskEditorPromptInput({
     input: Buffer.from('\n', 'utf8'),
     prompt,

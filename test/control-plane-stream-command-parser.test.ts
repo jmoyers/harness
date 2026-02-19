@@ -826,6 +826,13 @@ void test('parseStreamCommand rejects unknown or malformed command shapes', () =
   );
   assert.equal(
     parseStreamCommand({
+      type: 'task.create',
+      body: 'missing scope',
+    }),
+    null,
+  );
+  assert.equal(
+    parseStreamCommand({
       type: 'task.get',
     }),
     null,
@@ -891,6 +898,15 @@ void test('parseStreamCommand rejects unknown or malformed command shapes', () =
       type: 'task.update',
       taskId: 'task-1',
       projectId: 5,
+    }),
+    null,
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'task.update',
+      taskId: 'task-1',
+      repositoryId: null,
+      projectId: null,
     }),
     null,
   );
