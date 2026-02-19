@@ -341,7 +341,7 @@ function buildActiveTheme(name: string, input: OpenCodeThemeInput): ActiveMuxThe
       repositoryRowStyle: uiStyle(syntaxFunction, null, false),
       mutedStyle: uiStyle(conceal, null, false),
       shortcutStyle: uiStyle(textMuted, null, false),
-      actionStyle: uiStyle(background, primary, false),
+      actionStyle: uiStyle(primary, backgroundElement, false),
       statusColors: {
         working: hexToUiColor(success),
         exited: hexToUiColor(error),

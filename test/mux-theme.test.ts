@@ -120,6 +120,52 @@ void test('resolveConfiguredMuxTheme loads custom opencode theme from file and r
   assert.equal(resolved.theme.name, 'custom:themes/custom.json');
   assert.equal(resolved.theme.terminalForegroundHex, '112233');
   assert.equal(resolved.theme.terminalBackgroundHex, '0a0b0c');
+  assert.deepEqual(resolved.theme.workspaceRail.actionStyle.fg, {
+    kind: 'rgb',
+    r: 68,
+    g: 85,
+    b: 102,
+  });
+  assert.deepEqual(resolved.theme.workspaceRail.actionStyle.bg, {
+    kind: 'rgb',
+    r: 48,
+    g: 54,
+    b: 61,
+  });
+});
+
+void test('resolveConfiguredMuxTheme maps action button colors to primary fg over backgroundElement bg', () => {
+  const resolved = resolveConfiguredMuxTheme({
+    config: {
+      preset: 'github',
+      mode: 'dark',
+      customThemePath: 'themes/action-colors.json',
+    },
+    cwd: '/workspace/project',
+    readFile: () =>
+      JSON.stringify({
+        theme: {
+          text: '#c0ffee',
+          textMuted: '#778899',
+          conceal: '#556677',
+          primary: '#112233',
+          success: '#00aa00',
+          error: '#aa0000',
+          warning: '#aaaa00',
+          info: '#0099aa',
+          background: '#ffffff',
+          backgroundPanel: '#101010',
+          backgroundElement: '#445566',
+        },
+      }),
+  });
+  assert.equal(resolved.theme.name, 'custom:themes/action-colors.json');
+  assert.deepEqual(resolved.theme.workspaceRail.actionStyle.fg, {
+    kind: 'rgb',
+    r: 17,
+    g: 34,
+    b: 51,
+  });
   assert.deepEqual(resolved.theme.workspaceRail.actionStyle.bg, {
     kind: 'rgb',
     r: 68,

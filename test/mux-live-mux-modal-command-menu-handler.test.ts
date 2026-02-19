@@ -175,3 +175,49 @@ void test('command menu handler covers dismiss toggle submit and mutation flows'
   assert.equal(calls.includes('execute:start.cursor'), true);
   assert.equal(calls.includes('markDirty'), true);
 });
+
+void test('command menu handler down-arrow navigation moves beyond first result page', () => {
+  let menu: CommandMenuState | null = createCommandMenuState({
+    query: 'action',
+  });
+  const actions = Array.from({ length: 12 }, (_, index) => ({
+    id: `action.${String(index)}`,
+    title: `Action ${String(index).padStart(2, '0')}`,
+  }));
+  const executed: string[] = [];
+  const common = {
+    resolveActions: () => actions,
+    executeAction: (actionId: string) => {
+      executed.push(actionId);
+    },
+    setMenu: (next: ReturnType<typeof createCommandMenuState> | null) => {
+      menu = next;
+    },
+    markDirty: () => {},
+    buildCommandMenuModalOverlay: () => ({ top: 1 }),
+  };
+
+  for (let index = 0; index < 9; index += 1) {
+    const handled = handleCommandMenuInput({
+      input: Buffer.from('\u001b[B', 'utf8'),
+      menu,
+      isQuitShortcut: () => false,
+      isToggleShortcut: () => false,
+      dismissOnOutsideClick: () => false,
+      ...common,
+    });
+    assert.equal(handled, true);
+  }
+
+  assert.equal(menu?.selectedIndex, 9);
+  const handledSubmit = handleCommandMenuInput({
+    input: Buffer.from('\n', 'utf8'),
+    menu,
+    isQuitShortcut: () => false,
+    isToggleShortcut: () => false,
+    dismissOnOutsideClick: () => false,
+    ...common,
+  });
+  assert.equal(handledSubmit, true);
+  assert.deepEqual(executed, ['action.9']);
+});

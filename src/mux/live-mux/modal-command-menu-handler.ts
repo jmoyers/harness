@@ -1,6 +1,5 @@
 import {
   clampCommandMenuState,
-  COMMAND_MENU_MAX_RESULTS,
   reduceCommandMenuInput,
   resolveCommandMenuMatches,
   type CommandMenuActionDescriptor,
@@ -70,11 +69,7 @@ export function handleCommandMenuInput(options: HandleCommandMenuInputOptions): 
     return true;
   }
 
-  const currentMatches = resolveCommandMenuMatches(
-    resolveActions(),
-    menu.query,
-    COMMAND_MENU_MAX_RESULTS,
-  );
+  const currentMatches = resolveCommandMenuMatches(resolveActions(), menu.query, null);
   const reduction = reduceCommandMenuInput(menu, input, currentMatches.length);
   if (reduction.submit) {
     const clamped = clampCommandMenuState(menu, currentMatches.length);
@@ -87,11 +82,7 @@ export function handleCommandMenuInput(options: HandleCommandMenuInputOptions): 
     return true;
   }
 
-  const nextMatches = resolveCommandMenuMatches(
-    resolveActions(),
-    reduction.nextState.query,
-    COMMAND_MENU_MAX_RESULTS,
-  );
+  const nextMatches = resolveCommandMenuMatches(resolveActions(), reduction.nextState.query, null);
   const nextState = clampCommandMenuState(reduction.nextState, nextMatches.length);
   if (nextState.query !== menu.query || nextState.selectedIndex !== menu.selectedIndex) {
     setMenu(nextState);

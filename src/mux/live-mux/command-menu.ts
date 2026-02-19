@@ -181,7 +181,7 @@ export function createCommandMenuState(options?: {
 export function resolveCommandMenuMatches<TAction extends CommandMenuActionDescriptor>(
   actions: readonly TAction[],
   query: string,
-  limit = COMMAND_MENU_MAX_RESULTS,
+  limit: number | null = COMMAND_MENU_MAX_RESULTS,
 ): readonly CommandMenuMatch<TAction>[] {
   const scored = actions
     .flatMap((action) => {
@@ -194,6 +194,9 @@ export function resolveCommandMenuMatches<TAction extends CommandMenuActionDescr
       }
       return left.action.title.localeCompare(right.action.title);
     });
+  if (limit === null) {
+    return scored;
+  }
   return scored.slice(0, Math.max(0, limit));
 }
 

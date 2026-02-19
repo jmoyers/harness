@@ -66,6 +66,17 @@ void test('command menu matcher filters and ranks title alias and keyword matche
   assert.deepEqual(resolveCommandMenuMatches(actions, 'no-match'), []);
 });
 
+void test('command menu matcher supports unbounded result resolution for paged overlays', () => {
+  const actions = Array.from({ length: 12 }, (_, index) => ({
+    id: `action-${String(index)}`,
+    title: `Action ${String(index).padStart(2, '0')}`,
+  }));
+  const limited = resolveCommandMenuMatches(actions, 'action');
+  assert.equal(limited.length, 8);
+  const unbounded = resolveCommandMenuMatches(actions, 'action', null);
+  assert.equal(unbounded.length, 12);
+});
+
 void test('command menu input reducer covers typing navigation and submit branches', () => {
   const start = createCommandMenuState();
   const typed = reduceCommandMenuInput(start, Buffer.from('cur', 'utf8'), 3);

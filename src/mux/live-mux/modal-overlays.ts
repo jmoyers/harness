@@ -93,16 +93,29 @@ export function buildCommandMenuModalOverlay(
     minWidth: 48,
     maxWidth: 96,
   });
-  const matches = resolveCommandMenuMatches(actions, menu.query, COMMAND_MENU_MAX_RESULTS);
+  const matches = resolveCommandMenuMatches(actions, menu.query, null);
   const selectedIndex =
     matches.length === 0 ? 0 : Math.max(0, Math.min(matches.length - 1, menu.selectedIndex));
+  const pageStart =
+    matches.length === 0
+      ? 0
+      : Math.floor(selectedIndex / COMMAND_MENU_MAX_RESULTS) * COMMAND_MENU_MAX_RESULTS;
+  const visibleMatches = matches.slice(pageStart, pageStart + COMMAND_MENU_MAX_RESULTS);
   const bodyLines: string[] = [`${isThemePicker ? 'theme' : 'search'}: ${menu.query}_`, ''];
+  if (matches.length > COMMAND_MENU_MAX_RESULTS) {
+    const pageEnd = pageStart + visibleMatches.length;
+    bodyLines.push(
+      `results ${String(pageStart + 1)}-${String(pageEnd)} of ${String(matches.length)}`,
+      '',
+    );
+  }
   if (matches.length === 0) {
     bodyLines.push('no actions match');
   } else {
-    for (let index = 0; index < matches.length; index += 1) {
-      const match = matches[index]!;
-      const prefix = index === selectedIndex ? '>' : ' ';
+    for (let index = 0; index < visibleMatches.length; index += 1) {
+      const match = visibleMatches[index]!;
+      const absoluteIndex = pageStart + index;
+      const prefix = absoluteIndex === selectedIndex ? '>' : ' ';
       const detail = match.action.detail?.trim() ?? '';
       bodyLines.push(
         detail.length > 0
