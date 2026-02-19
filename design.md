@@ -245,6 +245,10 @@ Pass-through stream invariants:
 - If `gateway.json` is missing but the endpoint is reachable, the CLI may adopt the running daemon by matching process-table host/port/auth/db-path identity; ambiguous matches fail closed.
 - `ctrl+p` and `cmd+p` open the command menu; command search is live-filtered and executes context-aware actions.
 - Empty-query command-menu results are grouped by type with visible delimiters; agent thread types are surfaced first, with default selection on `codex`, and typed input returns to normal score+alpha ordering.
+- On startup, mux may asynchronously check GitHub releases and open a `What's New` modal when newer stable versions exist than the installed local version.
+- The `What's New` modal renders only the first `N` non-empty lines per release note entry, includes `cmd+click` release URLs for full notes, and supports `dismiss` (latest-tag scoped) plus `never show again` persistence.
+- When fetched releases have empty note bodies, the modal degrades to a simple `version available` message (latest tag) with links, instead of showing blank release sections.
+- The `What's New` modal includes a one-click update row that triggers the same update path as command-menu `Update Harness` (`harness update` in a terminal thread).
 - Left-rail `[+ thread]` opens a thread-scoped command-menu variant (same matcher/autocomplete path) instead of a dedicated chooser modal.
 - Command-menu `Set a Theme` opens a second autocomplete theme picker; moving selection previews theme changes live, and dismiss restores the pre-picker theme unless confirmed. Confirming with `enter` commits and persists the selected theme.
 - Mux startup is Home-first: initial render enters Home pane even when persisted conversations exist.
@@ -267,6 +271,8 @@ Pass-through stream invariants:
   - open/create GitHub PR for the tracked active-project non-default branch (open when present, create when absent; `Open PR (git)` / `Create PR (git)`)
   - set supported API keys (`Set Anthropic API Key`, `Set OpenAI API Key`) and persist to `secrets.env`
   - open a theme picker and set a built-in OpenCode preset or the special `default` theme
+  - show release notes modal (`Show What's New`)
+  - trigger self-update (`Update Harness`, aliases include `update` and `upgrade`) in a terminal thread via `harness update`
   - start/stop profiler
   - start/stop status logging
   - quit

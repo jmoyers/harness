@@ -218,6 +218,17 @@ import { HomePane } from '../src/ui/panes/home.ts';
 import { ProjectPane } from '../src/ui/panes/project.ts';
 import { LeftRailPane } from '../src/ui/panes/left-rail.ts';
 import { ModalManager } from '../src/ui/modals/manager.ts';
+import { buildReleaseNotesModalOverlay as buildReleaseNotesModalOverlayFrame } from '../src/mux/live-mux/modal-overlays.ts';
+import { handleReleaseNotesModalInput } from '../src/mux/live-mux/modal-release-notes-handler.ts';
+import {
+  fetchReleaseNotesPrompt,
+  readInstalledHarnessVersion,
+  readReleaseNotesState,
+  resolveReleaseNotesStatePath,
+  writeReleaseNotesState,
+  type ReleaseNotesPrompt,
+  type ReleaseNotesState,
+} from '../src/mux/live-mux/release-notes.ts';
 import {
   getActiveMuxTheme,
   muxThemePresetNames,
@@ -300,6 +311,8 @@ const UNTRACKED_REPOSITORY_GROUP_ID = 'untracked';
 const THEME_PICKER_SCOPE = 'theme-select';
 const THEME_ACTION_ID_PREFIX = 'theme.set.';
 const API_KEY_ACTION_ID_PREFIX = 'api-key.set.';
+const RELEASE_NOTES_PREVIEW_LINE_COUNT = 6;
+const RELEASE_NOTES_MAX_RELEASES = 3;
 const COMMAND_MENU_ALLOWED_API_KEYS: readonly AllowedCommandMenuApiKey[] = [
   {
     actionIdSuffix: 'anthropic',
@@ -564,6 +577,14 @@ async function main(): Promise<number> {
   };
   const resolvedMuxTheme = resolveAndApplyRuntimeTheme(runtimeThemeConfig, true);
   let currentModalTheme = resolvedMuxTheme.theme.modalTheme;
+  const installedHarnessVersion = readInstalledHarnessVersion();
+  const releaseNotesStatePath = resolveReleaseNotesStatePath(
+    options.invocationDirectory,
+    process.env,
+  );
+  let releaseNotesState = readReleaseNotesState(releaseNotesStatePath);
+  let cachedReleaseNotesPrompt: ReleaseNotesPrompt | null = null;
+  let releaseNotesPrompt: ReleaseNotesPrompt | null = null;
   const configuredMuxGit = loadedConfig.config.mux.git;
   const githubTokenEnvVar = loadedConfig.config.github.tokenEnvVar;
   const envGitHubTokenRaw = process.env[githubTokenEnvVar];
@@ -1723,6 +1744,37 @@ async function main(): Promise<number> {
     debugFooterNotice.set(message);
     markDirty();
   };
+  const persistReleaseNotesState = (nextState: ReleaseNotesState): void => {
+    try {
+      writeReleaseNotesState(releaseNotesStatePath, nextState);
+      releaseNotesState = nextState;
+    } catch (error: unknown) {
+      setCommandNotice(`release notes state persist failed: ${formatErrorMessage(error)}`);
+    }
+  };
+  const dismissReleaseNotesTag = (latestTag: string, neverShow: boolean): void => {
+    persistReleaseNotesState({
+      version: releaseNotesState.version,
+      neverShow,
+      dismissedLatestTag: latestTag,
+    });
+  };
+  const queueReleaseNotesFetch = (
+    onResolved: (prompt: ReleaseNotesPrompt | null) => void,
+    label: string,
+  ): void => {
+    queueBackgroundControlPlaneOp(async () => {
+      const prompt = await fetchReleaseNotesPrompt({
+        currentVersion: installedHarnessVersion,
+        previewLineCount: RELEASE_NOTES_PREVIEW_LINE_COUNT,
+        maxReleases: RELEASE_NOTES_MAX_RELEASES,
+      });
+      if (prompt !== null) {
+        cachedReleaseNotesPrompt = prompt;
+      }
+      onResolved(prompt);
+    }, label);
+  };
   const buildPresetThemeConfig = (preset: string): HarnessMuxThemeConfig => {
     return {
       preset,
@@ -2086,7 +2138,20 @@ async function main(): Promise<number> {
     return modalManager.buildConversationTitleOverlay(layout.cols, viewportRows);
   };
 
+  const buildReleaseNotesModalOverlay = (viewportRows: number) => {
+    return buildReleaseNotesModalOverlayFrame(
+      layout.cols,
+      viewportRows,
+      releaseNotesPrompt,
+      currentModalTheme,
+    );
+  };
+
   const buildCurrentModalOverlay = () => {
+    const releaseNotesOverlay = buildReleaseNotesModalOverlay(layout.rows);
+    if (releaseNotesOverlay !== null) {
+      return releaseNotesOverlay;
+    }
     return modalManager.buildCurrentOverlay(layout.cols, layout.rows);
   };
 
@@ -2745,6 +2810,44 @@ async function main(): Promise<number> {
     setCommandNotice(`${keyName} ${action}`);
   };
 
+  const openReleaseNotesPrompt = (prompt: ReleaseNotesPrompt): void => {
+    workspace.commandMenu = null;
+    workspace.newThreadPrompt = null;
+    workspace.addDirectoryPrompt = null;
+    workspace.apiKeyPrompt = null;
+    workspace.taskEditorPrompt = null;
+    workspace.repositoryPrompt = null;
+    if (workspace.conversationTitleEdit !== null) {
+      stopConversationTitleEdit(true);
+    }
+    commandMenuScopedDirectoryId = null;
+    commandMenuGitHubProjectPrState = null;
+    releaseNotesPrompt = prompt;
+    markDirty();
+  };
+
+  const resolveUpdateDirectoryId = (): string | null => {
+    const actionDirectoryId = resolveDirectoryForAction();
+    if (actionDirectoryId !== null) {
+      return actionDirectoryId;
+    }
+    return directoryManager.firstDirectoryId();
+  };
+
+  const openReleaseNotesFromMenu = (): void => {
+    if (cachedReleaseNotesPrompt !== null) {
+      openReleaseNotesPrompt(cachedReleaseNotesPrompt);
+      return;
+    }
+    queueReleaseNotesFetch((prompt) => {
+      if (prompt === null) {
+        setCommandNotice('no newer release notes since installed version');
+        return;
+      }
+      openReleaseNotesPrompt(prompt);
+    }, 'command-menu-release-notes');
+  };
+
   const startThreadFromCommandMenu = (
     directoryId: string,
     agentType: ReturnType<typeof normalizeThreadAgentType>,
@@ -2781,6 +2884,18 @@ async function main(): Promise<number> {
       throw new Error('failed to locate terminal session for command');
     }
     await controlPlaneService.respondToSession(terminalSessionId, `${commandText}\n`);
+  };
+
+  const runHarnessUpdateFromMenu = (): void => {
+    const directoryId = resolveUpdateDirectoryId();
+    if (directoryId === null) {
+      setCommandNotice('update unavailable: add a project first');
+      return;
+    }
+    queueControlPlaneOp(async () => {
+      await runCommandInNewTerminalThread(directoryId, 'harness update');
+      setCommandNotice('running harness update in a new terminal thread');
+    }, 'command-menu-harness-update');
   };
 
   const resolveCritiqueReviewAgentFromEnvironment = (): 'claude' | 'opencode' | null => {
@@ -3008,6 +3123,27 @@ async function main(): Promise<number> {
     keywords: ['theme', 'appearance', 'colors'],
     run: () => {
       startThemePickerSession();
+    },
+  });
+
+  commandMenuRegistry.registerAction({
+    id: 'release-notes.show',
+    title: "Show What's New",
+    aliases: ['release notes', 'whats new', 'what is new', 'changelog'],
+    keywords: ['release', 'notes', 'changes', 'changelog', 'new'],
+    run: () => {
+      openReleaseNotesFromMenu();
+    },
+  });
+
+  commandMenuRegistry.registerAction({
+    id: 'harness.update',
+    title: 'Update Harness',
+    aliases: ['update', 'upgrade', 'self update', 'self upgrade'],
+    keywords: ['update', 'upgrade', 'install', 'latest'],
+    detail: 'runs `harness update` in a terminal thread',
+    run: () => {
+      runHarnessUpdateFromMenu();
     },
   });
 
@@ -3630,6 +3766,47 @@ async function main(): Promise<number> {
   conversationManager.setActiveConversationId(null);
   await startupOrchestrator.activateInitialConversation(initialActiveId);
   startupOrchestrator.finalizeStartup(initialActiveId);
+  if (!releaseNotesState.neverShow) {
+    queueReleaseNotesFetch((prompt) => {
+      if (prompt === null) {
+        return;
+      }
+      if (releaseNotesState.dismissedLatestTag === prompt.latestTag) {
+        return;
+      }
+      openReleaseNotesPrompt(prompt);
+    }, 'startup-release-notes-check');
+  }
+
+  const routeReleaseNotesModalInput = (input: Buffer): boolean => {
+    return handleReleaseNotesModalInput({
+      input,
+      prompt: releaseNotesPrompt,
+      isQuitShortcut: (rawInput) =>
+        detectMuxGlobalShortcut(rawInput, modalDismissShortcutBindings) === 'mux.app.quit',
+      dismissOnOutsideClick: (rawInput, dismiss, onInsidePointerPress) =>
+        dismissModalOnOutsideClick(rawInput, dismiss, onInsidePointerPress),
+      buildReleaseNotesModalOverlay: () => buildReleaseNotesModalOverlay(layout.rows),
+      setPrompt: (next) => {
+        releaseNotesPrompt = next;
+      },
+      markDirty,
+      onDismiss: (latestTag) => {
+        dismissReleaseNotesTag(latestTag, false);
+      },
+      onNeverShowAgain: (latestTag) => {
+        dismissReleaseNotesTag(latestTag, true);
+      },
+      onOpenLatest: (prompt) => {
+        const releaseUrl = prompt.releases[0]?.url ?? prompt.releasesPageUrl;
+        const opened = openUrlInBrowser(releaseUrl);
+        setCommandNotice(opened ? 'opened release notes in browser' : `open release notes: ${releaseUrl}`);
+      },
+      onUpdate: () => {
+        runHarnessUpdateFromMenu();
+      },
+    });
+  };
 
   const runtimeInputRouter = new RuntimeInputRouter({
     workspace,
@@ -3701,7 +3878,12 @@ async function main(): Promise<number> {
   const runtimeInputPipeline = new RuntimeInputPipeline({
     preflight: {
       isShuttingDown: () => shuttingDown,
-      routeModalInput: (input) => runtimeInputRouter.routeModalInput(input),
+      routeModalInput: (input) => {
+        if (routeReleaseNotesModalInput(input)) {
+          return true;
+        }
+        return runtimeInputRouter.routeModalInput(input);
+      },
       handleEscapeInput: (input) => {
         if (workspace.selection !== null || workspace.selectionDrag !== null) {
           workspace.selection = null;

@@ -22,6 +22,8 @@ import {
   buildApiKeyModalOverlay,
   buildConversationTitleModalOverlay,
   buildNewThreadModalOverlay,
+  RELEASE_NOTES_UPDATE_ACTION_LABEL,
+  buildReleaseNotesModalOverlay,
   buildRepositoryModalOverlay,
   buildTaskEditorModalOverlay,
 } from '../src/mux/live-mux/modal-overlays.ts';
@@ -1398,17 +1400,14 @@ void test('modal overlay builders return null for missing state and build overla
     {
       keyName: 'OPENAI_API_KEY',
       displayName: 'OpenAI API Key',
-      value: '',
-      error: 'missing value',
+      value: 'broken',
+      error: 'invalid token',
       hasExistingValue: true,
     },
     theme,
   );
-  assert.equal(
-    apiKeyErrorOverlay?.rows.some((row) => row.includes('error: missing value')),
-    true,
-  );
-  const apiKeyEmptyOverlay = buildApiKeyModalOverlay(
+  assert.equal(apiKeyErrorOverlay?.rows.some((row) => row.includes('error: invalid token')), true);
+  const apiKeyDefaultOverlay = buildApiKeyModalOverlay(
     80,
     24,
     {
@@ -1421,7 +1420,7 @@ void test('modal overlay builders return null for missing state and build overla
     theme,
   );
   assert.equal(
-    apiKeyEmptyOverlay?.rows.some((row) => row.includes('user-global')),
+    apiKeyDefaultOverlay?.rows.some((row) => row.includes('value is saved to user-global')),
     true,
   );
 
@@ -1462,4 +1461,61 @@ void test('modal overlay builders return null for missing state and build overla
     theme,
   );
   assert.notEqual(titleSavingOverlay, null);
+
+  assert.equal(buildReleaseNotesModalOverlay(80, 24, null, theme), null);
+  const releaseNotesOverlay = buildReleaseNotesModalOverlay(
+    80,
+    24,
+    {
+      currentVersion: '1.0.0',
+      latestTag: 'v1.0.2',
+      releasesPageUrl: 'https://github.com/jmoyers/harness/releases',
+      releases: [
+        {
+          tag: 'v1.0.2',
+          name: 'Latest',
+          url: 'https://github.com/jmoyers/harness/releases/tag/v1.0.2',
+          previewLines: ['line 1', 'line 2'],
+          previewTruncated: true,
+        },
+      ],
+    },
+    theme,
+  );
+  assert.notEqual(releaseNotesOverlay, null);
+  assert.equal(releaseNotesOverlay?.rows.some((row) => row.includes("What's New")), true);
+  assert.equal(releaseNotesOverlay?.rows.some((row) => row.includes('cmd+click: https://')), true);
+  assert.equal(
+    releaseNotesOverlay?.rows.some((row) => row.includes(RELEASE_NOTES_UPDATE_ACTION_LABEL)),
+    true,
+  );
+  assert.equal(releaseNotesOverlay?.rows.some((row) => row.includes('enter dismiss')), true);
+
+  const releaseNotesEmptyOverlay = buildReleaseNotesModalOverlay(
+    80,
+    24,
+    {
+      currentVersion: '1.0.0',
+      latestTag: 'v1.0.3',
+      releasesPageUrl: 'https://github.com/jmoyers/harness/releases',
+      releases: [
+        {
+          tag: 'v1.0.3',
+          name: 'Latest',
+          url: 'https://github.com/jmoyers/harness/releases/tag/v1.0.3',
+          previewLines: [],
+          previewTruncated: false,
+        },
+      ],
+    },
+    theme,
+  );
+  assert.equal(
+    releaseNotesEmptyOverlay?.rows.some((row) => row.includes('version available: v1.0.3')),
+    true,
+  );
+  assert.equal(
+    releaseNotesEmptyOverlay?.rows.some((row) => row.includes('release notes not published yet')),
+    true,
+  );
 });

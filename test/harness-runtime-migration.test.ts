@@ -202,15 +202,13 @@ void test('migration skips workspace entry copy when config directory resolves t
   writeFileSync(join(legacyRoot, 'gateway.json'), '{"pid":123}\n', 'utf8');
 
   const result = migrateLegacyHarnessLayout(workspace, env);
+  const runtimeRoot = resolveHarnessWorkspaceDirectory(workspace, env);
 
   assert.equal(result.skipped, true);
   assert.equal(result.migratedEntries, 0);
   assert.equal(result.migrated, false);
   assert.equal(result.legacyRootRemoved, false);
-  assert.equal(
-    result.markerPath,
-    join(resolveHarnessWorkspaceDirectory(workspace, env), '.legacy-layout-migration-v1'),
-  );
+  assert.equal(result.markerPath, join(runtimeRoot, '.legacy-layout-migration-v1'));
   assert.equal(existsSync(result.markerPath), false);
   assert.equal(existsSync(legacyRoot), true);
 });

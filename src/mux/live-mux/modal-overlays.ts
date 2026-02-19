@@ -50,6 +50,25 @@ interface ConversationTitleOverlayState {
   persistInFlight: boolean;
 }
 
+interface ReleaseNotesOverlayState {
+  readonly currentVersion: string;
+  readonly latestTag: string;
+  readonly releasesPageUrl: string;
+  readonly releases: readonly {
+    tag: string;
+    name: string;
+    url: string;
+    previewLines: readonly string[];
+    previewTruncated: boolean;
+  }[];
+}
+
+const RELEASE_NOTES_UPDATE_ACTION_BODY_LINE_INDEX = 2;
+const RELEASE_NOTES_BODY_START_ROW_OFFSET = 2;
+export const RELEASE_NOTES_UPDATE_ACTION_ROW_OFFSET =
+  RELEASE_NOTES_BODY_START_ROW_OFFSET + RELEASE_NOTES_UPDATE_ACTION_BODY_LINE_INDEX;
+export const RELEASE_NOTES_UPDATE_ACTION_LABEL = '[ click to update now ]';
+
 export function buildNewThreadModalOverlay(
   layoutCols: number,
   viewportRows: number,
@@ -329,6 +348,62 @@ export function buildConversationTitleModalOverlay(
     title: 'Edit Thread Title',
     bodyLines: editBody,
     footer: 'type to save  enter done',
+    theme,
+  });
+}
+
+export function buildReleaseNotesModalOverlay(
+  layoutCols: number,
+  viewportRows: number,
+  prompt: ReleaseNotesOverlayState | null,
+  theme: UiModalThemeInput,
+): ReturnType<typeof buildUiModalOverlay> | null {
+  if (prompt === null) {
+    return null;
+  }
+  const modalSize = resolveGoldenModalSize(layoutCols, viewportRows, {
+    preferredHeight: 24,
+    minWidth: 48,
+    maxWidth: 110,
+  });
+  const bodyLines: string[] = [
+    `installed: v${prompt.currentVersion}`,
+    `latest: ${prompt.latestTag}`,
+    RELEASE_NOTES_UPDATE_ACTION_LABEL,
+    '',
+  ];
+  const hasPreviewContent = prompt.releases.some(
+    (release) => release.previewLines.length > 0 || release.previewTruncated,
+  );
+  if (!hasPreviewContent) {
+    bodyLines.push(`version available: ${prompt.latestTag}`);
+    bodyLines.push('release notes not published yet');
+    bodyLines.push(`cmd+click: ${prompt.releases[0]?.url ?? prompt.releasesPageUrl}`, '');
+  } else {
+    for (const release of prompt.releases) {
+      const heading =
+        release.name.trim().length > 0 ? `${release.tag} - ${release.name}` : release.tag;
+      bodyLines.push(heading);
+      for (const line of release.previewLines) {
+        bodyLines.push(`  ${line}`);
+      }
+      if (release.previewTruncated) {
+        bodyLines.push('  ...');
+      }
+      bodyLines.push(`  cmd+click: ${release.url}`, '');
+    }
+  }
+  bodyLines.push(`all releases: ${prompt.releasesPageUrl}`);
+  return buildUiModalOverlay({
+    viewportCols: layoutCols,
+    viewportRows,
+    width: modalSize.width,
+    height: modalSize.height,
+    anchor: 'center',
+    marginRows: 1,
+    title: "What's New",
+    bodyLines,
+    footer: 'click update  enter dismiss  u update  n never  o open latest',
     theme,
   });
 }

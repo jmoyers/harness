@@ -8,6 +8,7 @@ It is built for people who want to move faster than a single chat window: implem
 
 - Parallel threads across `codex`, `claude`, `cursor`, `terminal`, and `critique`.
 - One command palette (`ctrl+p` / `cmd+p`) to jump threads, run actions, and control workflow quickly.
+- Built-in update flow (`Update Harness`) and startup `What's New` modal with one-click update and quick links to full GitHub notes.
 - Long-running work survives reconnects through a detached gateway.
 - Gateway control is resilient: lifecycle operations are lock-serialized per session, and missing stale records can be recovered automatically.
 - Fast left-rail navigation across `Home`, `Tasks`, repositories, projects, and threads with automatic, readable thread titles.
@@ -62,6 +63,8 @@ For restart/load diagnostics, use a named session with a non-default gateway por
 - In terminal threads, `ctrl`-only readline chords (for example `ctrl+r`, `ctrl+w`, `ctrl+u`, `ctrl+k`, `ctrl+a`, `ctrl+e`, `ctrl+p`, `ctrl+n`) pass through to the shell instead of being consumed as global shortcuts.
 - Theme selection is built in (`Set a Theme`) with OpenCode-compatible presets and live preview.
 - API keys can be set directly from `ctrl+p` / `cmd+p` (`Set Anthropic API Key`, `Set OpenAI API Key`), with overwrite warning and paste-friendly entry.
+- `Show What's New` opens release highlights (first lines only); if notes are empty it falls back to a simple version-available notice with links.
+- `Update Harness` (aliases: `update`, `upgrade`) runs `harness update` in a terminal thread.
 - `Create PR` uses either `GITHUB_TOKEN` or an authenticated `gh` CLI session.
 
 ## Configuration
