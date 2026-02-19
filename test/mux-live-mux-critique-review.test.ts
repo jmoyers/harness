@@ -107,12 +107,15 @@ void test('resolveCritiqueReviewBaseBranch prefers origin head then canonical de
 });
 
 void test('resolveCritiqueReviewBaseBranch falls back to current branch then main', async () => {
-  const currentBranchFallback = await resolveCritiqueReviewBaseBranch('/repo', async (_cwd, args) => {
-    if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') {
-      return 'feature/xyz';
-    }
-    return '';
-  });
+  const currentBranchFallback = await resolveCritiqueReviewBaseBranch(
+    '/repo',
+    async (_cwd, args) => {
+      if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') {
+        return 'feature/xyz';
+      }
+      return '';
+    },
+  );
   assert.equal(currentBranchFallback, 'feature/xyz');
 
   const finalFallback = await resolveCritiqueReviewBaseBranch('/repo', async () => '');

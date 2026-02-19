@@ -91,7 +91,9 @@ export async function resolveCritiqueReviewBaseBranch(
     }
   }
 
-  const currentBranch = normalizeBranchName(await runCommand(cwd, ['rev-parse', '--abbrev-ref', 'HEAD']));
+  const currentBranch = normalizeBranchName(
+    await runCommand(cwd, ['rev-parse', '--abbrev-ref', 'HEAD']),
+  );
   if (currentBranch !== null) {
     return currentBranch;
   }

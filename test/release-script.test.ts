@@ -109,6 +109,26 @@ void test('release script arg parsing handles defaults and flags', () => {
   });
   assert.deepEqual(
     __releaseInternals.parseArgs([
+      '--release',
+      '1.2.4',
+      '--skip-verify',
+      '--branch',
+      'release',
+      '--remote',
+      'upstream',
+      '--allow-dirty',
+    ]),
+    {
+      version: '1.2.4',
+      bump: null,
+      skipVerify: true,
+      branch: 'release',
+      remote: 'upstream',
+      allowDirty: true,
+    },
+  );
+  assert.deepEqual(
+    __releaseInternals.parseArgs([
       '--version',
       '1.2.3',
       '--skip-verify',
@@ -129,6 +149,7 @@ void test('release script arg parsing handles defaults and flags', () => {
   );
   assert.equal(__releaseInternals.parseArgs(['--help']), null);
   assert.throws(() => __releaseInternals.parseArgs(['--version']), /missing value for --version/u);
+  assert.throws(() => __releaseInternals.parseArgs(['--release']), /missing value for --release/u);
   assert.throws(() => __releaseInternals.parseArgs(['--bump']), /missing value for --bump/u);
   assert.throws(() => __releaseInternals.parseArgs(['--bump', 'oops']), /invalid bump level/u);
   assert.throws(
@@ -137,6 +158,10 @@ void test('release script arg parsing handles defaults and flags', () => {
   );
   assert.throws(
     () => __releaseInternals.parseArgs(['--version', '1.2.3', '--bump', 'patch']),
+    /cannot combine --version with --bump/u,
+  );
+  assert.throws(
+    () => __releaseInternals.parseArgs(['--release', '1.2.4', '--bump', 'patch']),
     /cannot combine --version with --bump/u,
   );
   assert.throws(() => __releaseInternals.parseArgs(['--wat']), /unknown argument/u);
@@ -151,6 +176,16 @@ void test('release script normalizes semver tags and rejects invalid versions', 
     () => __releaseInternals.normalizeSemverTag('feature-branch'),
     /invalid semver version/u,
   );
+});
+
+void test('release script compares semver versions with prerelease precedence', () => {
+  assert.equal(__releaseInternals.compareSemverVersions('1.2.3', '1.2.3'), 0);
+  assert.equal(__releaseInternals.compareSemverVersions('1.2.4', '1.2.3'), 1);
+  assert.equal(__releaseInternals.compareSemverVersions('1.2.3', '1.2.4'), -1);
+  assert.equal(__releaseInternals.compareSemverVersions('1.2.3', '1.2.3-beta.1'), 1);
+  assert.equal(__releaseInternals.compareSemverVersions('1.2.3-beta.1', '1.2.3'), -1);
+  assert.equal(__releaseInternals.compareSemverVersions('1.2.3-beta.2', '1.2.3-beta.10'), -1);
+  assert.equal(__releaseInternals.compareSemverVersions('1.2.3-beta.10', '1.2.3-beta.2'), 1);
 });
 
 void test('release script bumps semver versions by level', () => {
@@ -382,4 +417,68 @@ void test('release script bump flow updates package version and pushes branch be
     ['git', 'tag', '-a', 'v0.2.0', '-m', 'v0.2.0'].join('\u0000'),
     ['git', 'push', 'origin', 'v0.2.0'].join('\u0000'),
   ]);
+});
+
+void test('release script explicit version flow updates package version and pushes branch before tag', () => {
+  const statusKey = ['git', 'status', '--porcelain'].join('\u0000');
+  const localTagKey = ['git', 'tag', '--list', 'v0.1.5'].join('\u0000');
+  const remoteTagKey = ['git', 'ls-remote', '--tags', 'origin', 'refs/tags/v0.1.5'].join('\u0000');
+  const { runtime, runtimeState } = createRuntime({
+    fileText: JSON.stringify({ version: '0.1.4' }),
+    captures: new Map<string, string>([
+      [statusKey, ''],
+      [localTagKey, ''],
+      [remoteTagKey, ''],
+    ]),
+  });
+
+  const tag = __releaseInternals.executeRelease(
+    {
+      version: '0.1.5',
+      bump: null,
+      skipVerify: true,
+      branch: 'main',
+      remote: 'origin',
+      allowDirty: false,
+    },
+    runtime,
+  );
+
+  assert.equal(tag, 'v0.1.5');
+  assert.equal(runtimeState.writeCalls.length, 1);
+  const updated = JSON.parse(runtimeState.fileText) as Record<string, unknown>;
+  assert.equal(updated.version, '0.1.5');
+  assert.deepEqual(runtimeState.runCalls, [
+    ['git', 'checkout', 'main'].join('\u0000'),
+    ['git', 'pull', '--ff-only', 'origin', 'main'].join('\u0000'),
+    ['git', 'add', 'package.json'].join('\u0000'),
+    ['git', 'commit', '-m', 'chore: release v0.1.5'].join('\u0000'),
+    ['git', 'push', 'origin', 'main'].join('\u0000'),
+    ['git', 'tag', '-a', 'v0.1.5', '-m', 'v0.1.5'].join('\u0000'),
+    ['git', 'push', 'origin', 'v0.1.5'].join('\u0000'),
+  ]);
+});
+
+void test('release script rejects explicit non-increasing versions', () => {
+  const statusKey = ['git', 'status', '--porcelain'].join('\u0000');
+  const { runtime } = createRuntime({
+    fileText: JSON.stringify({ version: '0.1.5' }),
+    captures: new Map<string, string>([[statusKey, '']]),
+  });
+
+  assert.throws(
+    () =>
+      __releaseInternals.executeRelease(
+        {
+          version: '0.1.5',
+          bump: null,
+          skipVerify: true,
+          branch: 'main',
+          remote: 'origin',
+          allowDirty: false,
+        },
+        runtime,
+      ),
+    /release version must be greater than package\.json version/u,
+  );
 });

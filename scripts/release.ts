@@ -24,6 +24,16 @@ interface ReleaseRuntime {
 
 const SEMVER_PATTERN =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
+const SEMVER_PARSE_PATTERN =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/u;
+const NUMERIC_IDENTIFIER_PATTERN = /^(0|[1-9]\d*)$/u;
+
+interface ParsedSemver {
+  major: number;
+  minor: number;
+  patch: number;
+  prerelease: string[];
+}
 
 const DEFAULT_OPTIONS: ReleaseOptions = {
   version: null,
@@ -36,7 +46,7 @@ const DEFAULT_OPTIONS: ReleaseOptions = {
 
 function usage(): string {
   return [
-    'Usage: bun run release [--version <semver>] [--bump <major|minor|patch>] [--skip-verify] [--branch <name>] [--remote <name>] [--allow-dirty]',
+    'Usage: bun run release [--version <semver> | --release <semver>] [--bump <major|minor|patch>] [--skip-verify] [--branch <name>] [--remote <name>] [--allow-dirty]',
     '',
     'Bumps package.json version, commits, and pushes a SemVer tag that triggers GitHub release automation.',
     'Default release bump is patch (prefixed tag format: "v<version>").',
@@ -122,10 +132,10 @@ function parseArgs(argv: readonly string[]): ReleaseOptions | null {
       assignBump('patch');
       continue;
     }
-    if (arg === '--version') {
+    if (arg === '--version' || arg === '--release') {
       const value = argv[index + 1];
       if (value === undefined) {
-        throw new Error('missing value for --version');
+        throw new Error(`missing value for ${arg}`);
       }
       options.version = value;
       index += 1;
@@ -155,6 +165,94 @@ function parseArgs(argv: readonly string[]): ReleaseOptions | null {
     throw new Error('cannot combine --version with --bump');
   }
   return options;
+}
+
+function parseSemverVersion(versionInput: string): ParsedSemver {
+  const normalized = normalizeSemverTag(versionInput).slice(1);
+  const match = SEMVER_PARSE_PATTERN.exec(normalized);
+  if (match === null) {
+    throw new Error(`invalid semver version: ${versionInput}`);
+  }
+  return {
+    major: Number.parseInt(match[1]!, 10),
+    minor: Number.parseInt(match[2]!, 10),
+    patch: Number.parseInt(match[3]!, 10),
+    prerelease: match[4] === undefined ? [] : match[4].split('.'),
+  };
+}
+
+function comparePrereleaseIdentifiers(left: string, right: string): number {
+  if (left === right) {
+    return 0;
+  }
+  const leftNumeric = NUMERIC_IDENTIFIER_PATTERN.test(left);
+  const rightNumeric = NUMERIC_IDENTIFIER_PATTERN.test(right);
+  if (leftNumeric && rightNumeric) {
+    const leftNumber = BigInt(left);
+    const rightNumber = BigInt(right);
+    if (leftNumber < rightNumber) {
+      return -1;
+    }
+    if (leftNumber > rightNumber) {
+      return 1;
+    }
+    return 0;
+  }
+  if (leftNumeric) {
+    return -1;
+  }
+  if (rightNumeric) {
+    return 1;
+  }
+  return left < right ? -1 : 1;
+}
+
+function compareSemverVersions(leftVersionInput: string, rightVersionInput: string): number {
+  const left = parseSemverVersion(leftVersionInput);
+  const right = parseSemverVersion(rightVersionInput);
+  if (left.major !== right.major) {
+    return left.major < right.major ? -1 : 1;
+  }
+  if (left.minor !== right.minor) {
+    return left.minor < right.minor ? -1 : 1;
+  }
+  if (left.patch !== right.patch) {
+    return left.patch < right.patch ? -1 : 1;
+  }
+  if (left.prerelease.length === 0 && right.prerelease.length === 0) {
+    return 0;
+  }
+  if (left.prerelease.length === 0) {
+    return 1;
+  }
+  if (right.prerelease.length === 0) {
+    return -1;
+  }
+  const maxIndex = Math.max(left.prerelease.length, right.prerelease.length);
+  for (let index = 0; index < maxIndex; index += 1) {
+    const leftIdentifier = left.prerelease[index];
+    const rightIdentifier = right.prerelease[index];
+    if (leftIdentifier === undefined) {
+      return -1;
+    }
+    if (rightIdentifier === undefined) {
+      return 1;
+    }
+    const comparison = comparePrereleaseIdentifiers(leftIdentifier, rightIdentifier);
+    if (comparison !== 0) {
+      return comparison;
+    }
+  }
+  return 0;
+}
+
+function ensureReleaseVersionIsIncreasing(currentVersion: string, targetVersion: string): void {
+  const comparison = compareSemverVersions(targetVersion, currentVersion);
+  if (comparison <= 0) {
+    throw new Error(
+      `release version must be greater than package.json version (${currentVersion}); received ${targetVersion}`,
+    );
+  }
 }
 
 function readPackageVersion(runtime: ReleaseRuntime): string {
@@ -251,15 +349,14 @@ function executeRelease(options: ReleaseOptions, runtime: ReleaseRuntime): strin
   const previousVersion = readPackageVersion(runtime);
   const tag = resolveReleaseTag(options, runtime);
   runtime.stdout(`release tag: ${tag}\n`);
-  ensureTagDoesNotExist(tag, options.remote, runtime);
   const targetVersion = tag.slice(1);
-  if (previousVersion !== targetVersion) {
-    runtime.stdout(`bump package version: ${previousVersion} -> ${targetVersion}\n`);
-    updatePackageVersion(tag, runtime);
-    runStep('git', ['add', 'package.json']);
-    runStep('git', ['commit', '-m', `chore: release ${tag}`]);
-    runStep('git', ['push', options.remote, options.branch]);
-  }
+  ensureReleaseVersionIsIncreasing(previousVersion, targetVersion);
+  ensureTagDoesNotExist(tag, options.remote, runtime);
+  runtime.stdout(`bump package version: ${previousVersion} -> ${targetVersion}\n`);
+  updatePackageVersion(tag, runtime);
+  runStep('git', ['add', 'package.json']);
+  runStep('git', ['commit', '-m', `chore: release ${tag}`]);
+  runStep('git', ['push', options.remote, options.branch]);
   runStep('git', ['tag', '-a', tag, '-m', tag]);
   runStep('git', ['push', options.remote, tag]);
   runtime.stdout(`pushed ${tag}; GitHub release workflow should start shortly.\n`);
@@ -316,6 +413,8 @@ export const __releaseInternals = {
   DEFAULT_OPTIONS,
   normalizeSemverTag,
   bumpSemverVersion,
+  compareSemverVersions,
+  ensureReleaseVersionIsIncreasing,
   parseArgs,
   resolveReleaseTag,
   requireCleanWorkingTree,
