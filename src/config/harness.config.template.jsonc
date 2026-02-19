@@ -18,6 +18,15 @@
       "maxConcurrency": 1,
     },
   },
+  "github": {
+    "enabled": true,
+    "apiBaseUrl": "https://api.github.com",
+    "tokenEnvVar": "GITHUB_TOKEN",
+    "pollMs": 15000,
+    "maxConcurrency": 1,
+    "branchStrategy": "pinned-then-current",
+    "viewerLogin": null,
+  },
   "debug": {
     "enabled": true,
     "overwriteArtifactsOnStart": true,

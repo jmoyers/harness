@@ -115,6 +115,7 @@ Key orchestration calls are available in the same client:
 ## Configuration
 
 Runtime behavior is config-first via `harness.config.jsonc`.
+GitHub project/PR integration is enabled by default and configured under `github.*`.
 
 Example (install commands + critique defaults + hotkey override + OpenCode theme selection):
 

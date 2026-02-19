@@ -724,6 +724,9 @@ Design constraints:
 - No competing runtime config sources for core behavior (no shadow config files, no duplicate per-module configs).
 - Runtime behavior toggles are config-first; environment variables are reserved for bootstrap/transport wiring and test harness injection, not the primary control surface.
 - Bootstrap secrets may be loaded from `.harness/secrets.env` (dotenv-style `KEY=VALUE`) into process env before startup; explicitly exported environment variables remain authoritative over file-provided values.
+- GitHub sync policy is config-governed under `github.*`:
+  - `enabled` defaults to `true`
+  - `apiBaseUrl`, `tokenEnvVar`, `pollMs`, `maxConcurrency`, `branchStrategy`, and optional `viewerLogin` are normalized by `config-core`
 - Launch policy is config-governed under each provider section:
   - `codex.launch`, `claude.launch`, and `cursor.launch`
   - each supports `defaultMode` (`yolo` or `standard`) as the fallback for all directories

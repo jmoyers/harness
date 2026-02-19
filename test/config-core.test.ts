@@ -31,6 +31,7 @@ const DEFAULT_UI = {
   theme: null,
 } as const;
 const DEFAULT_GIT = DEFAULT_HARNESS_CONFIG.mux.git;
+const DEFAULT_GITHUB = DEFAULT_HARNESS_CONFIG.github;
 const TEST_MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 
 function testEnvWithHome(homeDirectory: string): NodeJS.ProcessEnv {
@@ -558,6 +559,50 @@ void test('parseHarnessConfigText normalizes mux git refresh settings', () => {
   `);
   assert.deepEqual(invalid.mux.git, {
     ...DEFAULT_GIT,
+    maxConcurrency: 1,
+  });
+});
+
+void test('parseHarnessConfigText normalizes github integration settings', () => {
+  const parsed = parseHarnessConfigText(`
+    {
+      "github": {
+        "enabled": false,
+        "apiBaseUrl": " https://github.enterprise.example/api/v3/ ",
+        "tokenEnvVar": " GH_ENTERPRISE_TOKEN ",
+        "pollMs": 2500,
+        "maxConcurrency": 4,
+        "branchStrategy": "current-only",
+        "viewerLogin": " octocat "
+      }
+    }
+  `);
+  assert.deepEqual(parsed.github, {
+    enabled: false,
+    apiBaseUrl: 'https://github.enterprise.example/api/v3',
+    tokenEnvVar: 'GH_ENTERPRISE_TOKEN',
+    pollMs: 2500,
+    maxConcurrency: 4,
+    branchStrategy: 'current-only',
+    viewerLogin: 'octocat',
+  });
+
+  const invalid = parseHarnessConfigText(`
+    {
+      "github": {
+        "enabled": "yes",
+        "apiBaseUrl": "",
+        "tokenEnvVar": " ",
+        "pollMs": 25,
+        "maxConcurrency": 0,
+        "branchStrategy": "unsupported",
+        "viewerLogin": " "
+      }
+    }
+  `);
+  assert.deepEqual(invalid.github, {
+    ...DEFAULT_GITHUB,
+    pollMs: 1000,
     maxConcurrency: 1,
   });
 });

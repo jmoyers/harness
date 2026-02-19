@@ -565,6 +565,42 @@ void test('harness gateway start/status/call/stop manages daemon lifecycle', asy
   }
 });
 
+void test('harness gateway call github.pr-create reaches command validation before github disabled guard', async () => {
+  const workspace = createWorkspace();
+  const port = await reservePort();
+  const env = {
+    HARNESS_CONTROL_PLANE_PORT: String(port),
+  };
+  try {
+    const startResult = await runHarness(
+      workspace,
+      ['gateway', 'start', '--port', String(port)],
+      env,
+    );
+    assert.equal(startResult.code, 0);
+
+    const missingDirectoryCall = await runHarness(
+      workspace,
+      [
+        'gateway',
+        'call',
+        '--json',
+        '{"type":"github.pr-create","directoryId":"directory-missing"}',
+      ],
+      env,
+    );
+    assert.equal(missingDirectoryCall.code, 1);
+    assert.equal(
+      missingDirectoryCall.stderr.includes('directory not found: directory-missing'),
+      true,
+    );
+    assert.equal(missingDirectoryCall.stderr.includes('github integration is disabled'), false);
+  } finally {
+    void runHarness(workspace, ['gateway', 'stop', '--force'], env).catch(() => undefined);
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 void test('harness default client auto-starts detached gateway and leaves it running on client exit', async () => {
   const workspace = createWorkspace();
   const port = await reservePort();

@@ -71,6 +71,18 @@ interface HarnessMuxGitConfig {
   readonly maxConcurrency: number;
 }
 
+type HarnessGitHubBranchStrategy = 'pinned-then-current' | 'current-only' | 'pinned-only';
+
+interface HarnessGitHubConfig {
+  readonly enabled: boolean;
+  readonly apiBaseUrl: string;
+  readonly tokenEnvVar: string;
+  readonly pollMs: number;
+  readonly maxConcurrency: number;
+  readonly branchStrategy: HarnessGitHubBranchStrategy;
+  readonly viewerLogin: string | null;
+}
+
 interface HarnessPerfConfig {
   readonly enabled: boolean;
   readonly filePath: string;
@@ -206,6 +218,7 @@ interface HarnessHooksConfig {
 interface HarnessConfig {
   readonly configVersion: number;
   readonly mux: HarnessMuxConfig;
+  readonly github: HarnessGitHubConfig;
   readonly debug: HarnessDebugConfig;
   readonly codex: HarnessCodexConfig;
   readonly claude: HarnessClaudeConfig;
@@ -240,6 +253,15 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
       triggerDebounceMs: 180,
       maxConcurrency: 1,
     },
+  },
+  github: {
+    enabled: true,
+    apiBaseUrl: 'https://api.github.com',
+    tokenEnvVar: 'GITHUB_TOKEN',
+    pollMs: 15_000,
+    maxConcurrency: 1,
+    branchStrategy: 'pinned-then-current',
+    viewerLogin: null,
   },
   debug: {
     enabled: true,
@@ -604,6 +626,56 @@ function normalizeMuxGitConfig(input: unknown): HarnessMuxGitConfig {
         DEFAULT_HARNESS_CONFIG.mux.git.maxConcurrency,
       ),
     ),
+  };
+}
+
+function normalizeGitHubBranchStrategy(value: unknown): HarnessGitHubBranchStrategy {
+  if (value === 'current-only' || value === 'pinned-only' || value === 'pinned-then-current') {
+    return value;
+  }
+  return DEFAULT_HARNESS_CONFIG.github.branchStrategy;
+}
+
+function normalizeGitHubConfig(input: unknown): HarnessGitHubConfig {
+  const record = asRecord(input);
+  if (record === null) {
+    return DEFAULT_HARNESS_CONFIG.github;
+  }
+  const tokenEnvVarRaw = record['tokenEnvVar'];
+  const tokenEnvVar =
+    typeof tokenEnvVarRaw === 'string' && tokenEnvVarRaw.trim().length > 0
+      ? tokenEnvVarRaw.trim()
+      : DEFAULT_HARNESS_CONFIG.github.tokenEnvVar;
+  const apiBaseUrlRaw = record['apiBaseUrl'];
+  const apiBaseUrl =
+    typeof apiBaseUrlRaw === 'string' && apiBaseUrlRaw.trim().length > 0
+      ? apiBaseUrlRaw.trim().replace(/\/+$/u, '')
+      : DEFAULT_HARNESS_CONFIG.github.apiBaseUrl;
+  const viewerLoginRaw = record['viewerLogin'];
+  const viewerLogin =
+    typeof viewerLoginRaw === 'string' && viewerLoginRaw.trim().length > 0
+      ? viewerLoginRaw.trim()
+      : null;
+  return {
+    enabled:
+      typeof record['enabled'] === 'boolean'
+        ? record['enabled']
+        : DEFAULT_HARNESS_CONFIG.github.enabled,
+    apiBaseUrl,
+    tokenEnvVar,
+    pollMs: Math.max(
+      1000,
+      normalizeNonNegativeInt(record['pollMs'], DEFAULT_HARNESS_CONFIG.github.pollMs),
+    ),
+    maxConcurrency: Math.max(
+      1,
+      normalizeNonNegativeInt(
+        record['maxConcurrency'],
+        DEFAULT_HARNESS_CONFIG.github.maxConcurrency,
+      ),
+    ),
+    branchStrategy: normalizeGitHubBranchStrategy(record['branchStrategy']),
+    viewerLogin,
   };
 }
 
@@ -1298,6 +1370,7 @@ export function parseHarnessConfigText(text: string): HarnessConfig {
   const migratedRoot = migrateHarnessConfigRoot(root);
 
   const mux = asRecord(migratedRoot['mux']);
+  const github = normalizeGitHubConfig(migratedRoot['github']);
   const legacyPerf = normalizePerfConfig(migratedRoot['perf']);
   const debug = normalizeDebugConfig(migratedRoot['debug'], legacyPerf);
   const codex = normalizeCodexConfig(migratedRoot['codex']);
@@ -1313,6 +1386,7 @@ export function parseHarnessConfigText(text: string): HarnessConfig {
       ui: mux === null ? DEFAULT_HARNESS_CONFIG.mux.ui : normalizeMuxUiConfig(mux['ui']),
       git: mux === null ? DEFAULT_HARNESS_CONFIG.mux.git : normalizeMuxGitConfig(mux['git']),
     },
+    github,
     debug,
     codex,
     claude,
