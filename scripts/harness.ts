@@ -236,51 +236,6 @@ function tsRuntimeArgs(
   return [...runtimeArgs, scriptPath, ...args];
 }
 
-function parseInspectorEndpointFromRuntimeArg(arg: string): string | null {
-  if (!arg.startsWith('--inspect=')) {
-    return null;
-  }
-  const rawValue = arg.slice('--inspect='.length).trim();
-  if (rawValue.length === 0) {
-    return null;
-  }
-  const rawEndpoint = rawValue.startsWith('ws://') ? rawValue : `ws://${rawValue}`;
-  try {
-    const parsed = new URL(rawEndpoint);
-    if (parsed.protocol !== 'ws:') {
-      return null;
-    }
-    return parsed.toString();
-  } catch {
-    return null;
-  }
-}
-
-async function resolveProfileGatewayRuntimeArgs(
-  runtimeArgs: readonly string[],
-): Promise<{
-  runtimeArgs: readonly string[];
-  preferredInspectorEndpoint: string;
-}> {
-  for (const arg of runtimeArgs) {
-    const endpoint = parseInspectorEndpointFromRuntimeArg(arg);
-    if (endpoint !== null) {
-      return {
-        runtimeArgs,
-        preferredInspectorEndpoint: endpoint,
-      };
-    }
-  }
-  const inspectPort = await reservePort('127.0.0.1');
-  return {
-    runtimeArgs: [
-      ...runtimeArgs,
-      `--inspect=localhost:${String(inspectPort)}/harness-gateway-profile-run`,
-    ],
-    preferredInspectorEndpoint: `ws://localhost:${String(inspectPort)}/harness-gateway-profile-run`,
-  };
-}
-
 function readCliValue(argv: readonly string[], index: number, flag: string): string {
   const value = argv[index + 1];
   if (value === undefined) {
@@ -1889,7 +1844,6 @@ async function runProfileRun(
 
   const host = normalizeGatewayHost(process.env.HARNESS_CONTROL_PLANE_HOST);
   const reservedPort = await reservePort(host);
-  const gatewayRuntime = await resolveProfileGatewayRuntimeArgs(runtimeOptions.gatewayRuntimeArgs);
   const settings = resolveGatewaySettings(
     invocationDirectory,
     null,
@@ -1907,112 +1861,34 @@ async function runProfileRun(
     sessionPaths.logPath,
     settings,
     daemonScriptPath,
-    gatewayRuntime.runtimeArgs,
+    [
+      ...runtimeOptions.gatewayRuntimeArgs,
+      ...buildCpuProfileRuntimeArgs({
+        cpuProfileDir: profileDir,
+        cpuProfileName: PROFILE_GATEWAY_FILE_NAME,
+      }),
+    ],
   );
 
   let clientExitCode = 1;
   let clientError: Error | null = null;
-  let profileError: Error | null = null;
-  let inspectorClient: InspectorWebSocketClient | null = null;
   try {
-    const inspector = await connectGatewayInspector(
+    clientExitCode = await runMuxClient(
+      muxScriptPath,
       invocationDirectory,
-      sessionPaths.logPath,
-      DEFAULT_PROFILE_INSPECT_TIMEOUT_MS,
-      {
-        preferredEndpoints: [gatewayRuntime.preferredInspectorEndpoint],
-      },
+      gateway,
+      command.muxArgs,
+      sessionName,
+      [
+        ...runtimeOptions.clientRuntimeArgs,
+        ...buildCpuProfileRuntimeArgs({
+          cpuProfileDir: profileDir,
+          cpuProfileName: PROFILE_CLIENT_FILE_NAME,
+        }),
+      ],
     );
-    inspectorClient = inspector.client;
-    const startCommandRaw = await evaluateInspectorExpression(
-      inspectorClient,
-      buildInspectorProfileStartExpression(),
-      DEFAULT_PROFILE_INSPECT_TIMEOUT_MS,
-    );
-    if (typeof startCommandRaw !== 'string') {
-      throw new Error('failed to start gateway profiler (invalid inspector response)');
-    }
-    const startCommandResult = JSON.parse(startCommandRaw) as Record<string, unknown>;
-    if (startCommandResult['ok'] !== true) {
-      const reason = startCommandResult['reason'];
-      throw new Error(
-        `failed to start gateway profiler (${typeof reason === 'string' ? reason : 'unknown reason'})`,
-      );
-    }
-    const startDeadline = Date.now() + DEFAULT_PROFILE_INSPECT_TIMEOUT_MS;
-    let runningState: InspectorProfileState | null = null;
-    while (Date.now() < startDeadline) {
-      const state = await readInspectorProfileState(inspectorClient, DEFAULT_PROFILE_INSPECT_TIMEOUT_MS);
-      if (state !== null && state.status === 'running') {
-        runningState = state;
-        break;
-      }
-      if (state !== null && state.status === 'failed') {
-        throw new Error(`failed to start gateway profiler (${state.error ?? 'unknown error'})`);
-      }
-      await delay(DEFAULT_GATEWAY_STOP_POLL_MS);
-    }
-    if (runningState === null) {
-      throw new Error('failed to start gateway profiler (inspector runtime timeout)');
-    }
-
-    try {
-      clientExitCode = await runMuxClient(
-        muxScriptPath,
-        invocationDirectory,
-        gateway,
-        command.muxArgs,
-        sessionName,
-        [
-          ...runtimeOptions.clientRuntimeArgs,
-          ...buildCpuProfileRuntimeArgs({
-            cpuProfileDir: profileDir,
-            cpuProfileName: PROFILE_CLIENT_FILE_NAME,
-          }),
-        ],
-      );
-    } catch (error: unknown) {
-      clientError = error instanceof Error ? error : new Error(String(error));
-    }
-
-    const stopCommandRaw = await evaluateInspectorExpression(
-      inspectorClient,
-      buildInspectorProfileStopExpression(gatewayProfilePath, profileDir),
-      DEFAULT_PROFILE_INSPECT_TIMEOUT_MS,
-    );
-    if (typeof stopCommandRaw !== 'string') {
-      throw new Error('failed to stop gateway profiler (invalid inspector response)');
-    }
-    const stopCommandResult = JSON.parse(stopCommandRaw) as Record<string, unknown>;
-    if (stopCommandResult['ok'] !== true) {
-      const reason = stopCommandResult['reason'];
-      throw new Error(
-        `failed to stop gateway profiler (${typeof reason === 'string' ? reason : 'unknown reason'})`,
-      );
-    }
-    const stopDeadline = Date.now() + DEFAULT_PROFILE_INSPECT_TIMEOUT_MS;
-    let stopped = false;
-    while (Date.now() < stopDeadline) {
-      const state = await readInspectorProfileState(inspectorClient, DEFAULT_PROFILE_INSPECT_TIMEOUT_MS);
-      if (state !== null && state.status === 'failed') {
-        throw new Error(`failed to stop gateway profiler (${state.error ?? 'unknown error'})`);
-      }
-      if (state !== null && state.status === 'stopped' && state.written) {
-        stopped = true;
-        break;
-      }
-      await delay(DEFAULT_GATEWAY_STOP_POLL_MS);
-    }
-    if (!stopped) {
-      throw new Error('failed to stop gateway profiler (inspector runtime timeout)');
-    }
-    if (!(await waitForFileExists(gatewayProfilePath, DEFAULT_PROFILE_INSPECT_TIMEOUT_MS))) {
-      throw new Error(`missing gateway CPU profile: ${gatewayProfilePath}`);
-    }
   } catch (error: unknown) {
-    profileError = error instanceof Error ? error : new Error(String(error));
-  } finally {
-    inspectorClient?.close();
+    clientError = error instanceof Error ? error : new Error(String(error));
   }
 
   const stopped = await stopGateway(
@@ -2030,16 +1906,13 @@ async function runProfileRun(
   if (!stopped.stopped) {
     throw new Error(`failed to stop profile gateway: ${stopped.message}`);
   }
-  if (profileError !== null) {
-    throw profileError;
-  }
   if (clientError !== null) {
     throw clientError;
   }
-  if (!(await waitForFileExists(clientProfilePath, DEFAULT_PROFILE_INSPECT_TIMEOUT_MS))) {
+  if (!existsSync(clientProfilePath)) {
     throw new Error(`missing client CPU profile: ${clientProfilePath}`);
   }
-  if (!(await waitForFileExists(gatewayProfilePath, DEFAULT_PROFILE_INSPECT_TIMEOUT_MS))) {
+  if (!existsSync(gatewayProfilePath)) {
     throw new Error(`missing gateway CPU profile: ${gatewayProfilePath}`);
   }
 

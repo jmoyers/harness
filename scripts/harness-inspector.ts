@@ -394,19 +394,8 @@ function parseInspectorWebSocketUrlsFromGatewayLog(logPath: string): readonly st
 function resolveInspectorWebSocketCandidates(
   invocationDirectory: string,
   logPath: string,
-  preferredEndpoints: readonly string[] = [],
 ): readonly string[] {
-  const urls: string[] = [];
-  for (const endpoint of preferredEndpoints) {
-    if (!urls.includes(endpoint)) {
-      urls.push(endpoint);
-    }
-  }
-  for (const endpoint of parseInspectorWebSocketUrlsFromGatewayLog(logPath)) {
-    if (!urls.includes(endpoint)) {
-      urls.push(endpoint);
-    }
-  }
+  const urls = [...parseInspectorWebSocketUrlsFromGatewayLog(logPath)];
   const loadedConfig = loadHarnessConfig({ cwd: invocationDirectory });
   const debugConfig = loadedConfig.config.debug;
   if (debugConfig.enabled && debugConfig.inspect.enabled) {
@@ -422,15 +411,8 @@ export async function connectGatewayInspector(
   invocationDirectory: string,
   logPath: string,
   timeoutMs: number,
-  options: {
-    preferredEndpoints?: readonly string[];
-  } = {},
 ): Promise<{ client: InspectorWebSocketClient; endpoint: string }> {
-  const candidates = resolveInspectorWebSocketCandidates(
-    invocationDirectory,
-    logPath,
-    options.preferredEndpoints ?? [],
-  );
+  const candidates = resolveInspectorWebSocketCandidates(invocationDirectory, logPath);
   if (candidates.length === 0) {
     throw new Error(
       'gateway inspector endpoint unavailable; enable debug.inspect, restart gateway, then retry `harness profile start`',
