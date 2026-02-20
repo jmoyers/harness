@@ -1,5 +1,5 @@
 import { padOrTrimDisplay } from './dual-pane-core.ts';
-import { sortedRepositoryList, type TaskStatus } from './harness-core-ui.ts';
+import type { TaskStatus } from './harness-core-ui.ts';
 import { formatUiButton } from '../ui/kit.ts';
 import {
   taskComposerTextFromTaskFields,
@@ -80,47 +80,71 @@ export interface TaskFocusedPaneView {
   readonly selectedRepositoryId: string | null;
 }
 
-const READY_CHIP_LABEL = formatUiButton({
-  label: 'ready',
-  prefixIcon: 'r',
-});
-const DRAFT_CHIP_LABEL = formatUiButton({
-  label: 'queued',
-  prefixIcon: 'd',
-});
-const COMPLETE_CHIP_LABEL = formatUiButton({
-  label: 'complete',
-  prefixIcon: 'c',
-});
-
 function sortedRepositories(
   repositories: ReadonlyMap<string, TaskFocusedPaneRepositoryRecord>,
 ): readonly TaskFocusedPaneRepositoryRecord[] {
-  return sortedRepositoryList(repositories);
+  return [...repositories.values()].filter((repository) => repository.archivedAt === null);
 }
 
 function parseIsoMs(value: string): number {
   return Date.parse(value);
 }
 
-function sortTasksByOrderLocal(
+function taskStatusSortRank(status: TaskStatus): number {
+  if (status === 'in-progress') {
+    return 0;
+  }
+  if (status === 'ready') {
+    return 1;
+  }
+  if (status === 'draft') {
+    return 2;
+  }
+  return 3;
+}
+
+function taskStatusGroupLabel(status: TaskStatus): string {
+  if (status === 'in-progress') {
+    return 'in prog';
+  }
+  if (status === 'ready') {
+    return 'ready';
+  }
+  if (status === 'draft') {
+    return 'draft';
+  }
+  return 'complete';
+}
+
+function compareTasksByOrder(
+  left: TaskFocusedPaneTaskRecord,
+  right: TaskFocusedPaneTaskRecord,
+): number {
+  if (left.orderIndex !== right.orderIndex) {
+    return left.orderIndex - right.orderIndex;
+  }
+  const leftTs = parseIsoMs(left.createdAt);
+  const rightTs = parseIsoMs(right.createdAt);
+  const leftFinite = Number.isFinite(leftTs);
+  const rightFinite = Number.isFinite(rightTs);
+  if (leftFinite && rightFinite && leftTs !== rightTs) {
+    return leftTs - rightTs;
+  }
+  if (leftFinite !== rightFinite) {
+    return leftFinite ? -1 : 1;
+  }
+  return left.taskId.localeCompare(right.taskId);
+}
+
+function sortTasksForDisplay(
   tasks: readonly TaskFocusedPaneTaskRecord[],
 ): readonly TaskFocusedPaneTaskRecord[] {
   return [...tasks].sort((left, right) => {
-    if (left.orderIndex !== right.orderIndex) {
-      return left.orderIndex - right.orderIndex;
+    const statusCompare = taskStatusSortRank(left.status) - taskStatusSortRank(right.status);
+    if (statusCompare !== 0) {
+      return statusCompare;
     }
-    const leftTs = parseIsoMs(left.createdAt);
-    const rightTs = parseIsoMs(right.createdAt);
-    const leftFinite = Number.isFinite(leftTs);
-    const rightFinite = Number.isFinite(rightTs);
-    if (leftFinite && rightFinite && leftTs !== rightTs) {
-      return leftTs - rightTs;
-    }
-    if (leftFinite !== rightFinite) {
-      return leftFinite ? -1 : 1;
-    }
-    return left.taskId.localeCompare(right.taskId);
+    return compareTasksByOrder(left, right);
   });
 }
 
@@ -146,45 +170,6 @@ function truncate(text: string, max: number): string {
     return '…';
   }
   return `${text.slice(0, safeMax - 1)}…`;
-}
-
-function composeRowWithRightChips(
-  left: string,
-  width: number,
-  chips: readonly { label: string; action: TaskFocusedPaneAction }[],
-): { readonly text: string; readonly cells: readonly ActionCell[] } {
-  const joined = chips.map((chip) => chip.label).join(' ');
-  if (joined.length === 0 || joined.length >= width) {
-    return {
-      text: padOrTrimDisplay(left, width),
-      cells: [],
-    };
-  }
-  const startCol = Math.max(0, width - joined.length);
-  const leftMax = Math.max(0, startCol - 1);
-  const leftText = padOrTrimDisplay(truncate(left, leftMax), leftMax);
-  const gap = width - leftText.length - joined.length;
-  let cursor = leftText.length + Math.max(0, gap);
-  const cells: ActionCell[] = [];
-  const parts: string[] = [leftText, ' '.repeat(Math.max(0, gap))];
-  for (let idx = 0; idx < chips.length; idx += 1) {
-    const chip = chips[idx]!;
-    parts.push(chip.label);
-    cells.push({
-      startCol: cursor,
-      endCol: cursor + chip.label.length - 1,
-      action: chip.action,
-    });
-    cursor += chip.label.length;
-    if (idx < chips.length - 1) {
-      parts.push(' ');
-      cursor += 1;
-    }
-  }
-  return {
-    text: padOrTrimDisplay(parts.join(''), width),
-    cells,
-  };
 }
 
 function taskBufferFromRecord(
@@ -223,7 +208,7 @@ export function buildTaskFocusedPaneView(
     repositories[0]?.repositoryId ??
     null;
 
-  const scopedTasks = sortTasksByOrderLocal(
+  const scopedTasks = sortTasksForDisplay(
     [...options.tasks.values()].filter((task) => task.repositoryId === selectedRepositoryId),
   );
 
@@ -290,23 +275,25 @@ export function buildTaskFocusedPaneView(
   } else if (scopedTasks.length === 0) {
     push(' no tasks yet for this repository');
   } else {
+    const statusCounts = new Map<TaskStatus, number>();
+    for (const task of scopedTasks) {
+      statusCounts.set(task.status, (statusCounts.get(task.status) ?? 0) + 1);
+    }
     push(` tasks (${String(scopedTasks.length)})`);
+    let previousStatus: TaskStatus | null = null;
     for (let index = 0; index < scopedTasks.length; index += 1) {
       const task = scopedTasks[index]!;
+      if (task.status !== previousStatus) {
+        if (previousStatus !== null) {
+          push('');
+        }
+        push(
+          ` ${statusGlyph(task.status)} ${taskStatusGroupLabel(task.status)} · ${String(statusCounts.get(task.status) ?? 0)}`,
+        );
+        previousStatus = task.status;
+      }
       const focused =
         options.editorTarget.kind === 'task' && options.editorTarget.taskId === task.taskId;
-      const leftLabel = ` ${focused ? '▸' : ' '} ${statusGlyph(task.status)} ${truncate(taskPreviewText(task), Math.max(8, safeCols - 24))}`;
-      const chips =
-        task.status === 'completed'
-          ? []
-          : [
-              { label: READY_CHIP_LABEL, action: 'task.status.ready' as const },
-              { label: DRAFT_CHIP_LABEL, action: 'task.status.draft' as const },
-              { label: COMPLETE_CHIP_LABEL, action: 'task.status.complete' as const },
-            ];
-      const composed = composeRowWithRightChips(leftLabel, safeCols, chips);
-      push(composed.text, task.taskId, selectedRepositoryId, 'task.focus', composed.cells);
-
       if (focused) {
         const editBuffer = taskBufferFromRecord(task, options.taskBufferById);
         const linesWithCursor = taskComposerVisibleLines(
@@ -321,7 +308,11 @@ export function buildTaskFocusedPaneView(
           push(`    │${content}│`, task.taskId, selectedRepositoryId, 'task.focus');
         }
         push(`    └${'─'.repeat(editorInnerWidth)}┘`);
+        continue;
       }
+
+      const leftLabel = `   ${statusGlyph(task.status)} ${truncate(taskPreviewText(task), Math.max(8, safeCols - 6))}`;
+      push(leftLabel, task.taskId, selectedRepositoryId, 'task.focus');
     }
   }
 

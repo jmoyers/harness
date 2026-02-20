@@ -325,6 +325,15 @@ void test('runtime task pane shortcuts submitDraftTaskFromComposer ready mode se
 void test('runtime task pane shortcuts moveTaskEditorFocusUp focuses last task from draft target', () => {
   const harness = createHarness();
   harness.workspace.taskEditorTarget = { kind: 'draft' };
+  harness.workspace.latestTaskPaneView = {
+    rows: ['row-a', 'row-b'],
+    taskIds: ['task-2', 'task-1'],
+    repositoryIds: ['repo-1', 'repo-1'],
+    actions: [null, null],
+    actionCells: [null, null],
+    top: 0,
+    selectedRepositoryId: 'repo-1',
+  };
   harness.selectedRepositoryTasks.push(
     {
       taskId: 'task-1',
@@ -341,11 +350,20 @@ void test('runtime task pane shortcuts moveTaskEditorFocusUp focuses last task f
   );
 
   harness.service.moveTaskEditorFocusUp();
-  assert.deepEqual(harness.calls, ['focusTaskComposer:task-2']);
+  assert.deepEqual(harness.calls, ['focusTaskComposer:task-1']);
 });
 
 void test('runtime task pane shortcuts moveTaskEditorFocusUp handles top and middle task positions', () => {
   const harness = createHarness();
+  harness.workspace.latestTaskPaneView = {
+    rows: ['row-a', 'row-b', 'row-c'],
+    taskIds: ['task-2', 'task-2', 'task-1'],
+    repositoryIds: ['repo-1', 'repo-1', 'repo-1'],
+    actions: [null, null, null],
+    actionCells: [null, null, null],
+    top: 0,
+    selectedRepositoryId: 'repo-1',
+  };
   harness.selectedRepositoryTasks.push(
     {
       taskId: 'task-1',
@@ -360,20 +378,47 @@ void test('runtime task pane shortcuts moveTaskEditorFocusUp handles top and mid
       body: '',
     },
   );
-
-  harness.workspace.taskEditorTarget = {
-    kind: 'task',
-    taskId: 'task-1',
-  };
-  harness.service.moveTaskEditorFocusUp();
-  assert.deepEqual(harness.calls, []);
 
   harness.workspace.taskEditorTarget = {
     kind: 'task',
     taskId: 'task-2',
   };
   harness.service.moveTaskEditorFocusUp();
+  assert.deepEqual(harness.calls, []);
+
+  harness.workspace.taskEditorTarget = {
+    kind: 'task',
+    taskId: 'task-1',
+  };
+  harness.service.moveTaskEditorFocusUp();
+  assert.deepEqual(harness.calls, ['focusTaskComposer:task-2']);
+});
+
+void test('runtime task pane shortcuts moveTaskEditorFocusDown follows view order and falls back to draft', () => {
+  const harness = createHarness();
+  harness.workspace.latestTaskPaneView = {
+    rows: ['row-a', 'row-b', 'row-c'],
+    taskIds: ['task-2', 'task-1', null],
+    repositoryIds: ['repo-1', 'repo-1', null],
+    actions: [null, null, null],
+    actionCells: [null, null, null],
+    top: 0,
+    selectedRepositoryId: 'repo-1',
+  };
+  harness.workspace.taskEditorTarget = {
+    kind: 'task',
+    taskId: 'task-2',
+  };
+  harness.service.moveTaskEditorFocusDown();
   assert.deepEqual(harness.calls, ['focusTaskComposer:task-1']);
+
+  harness.calls.length = 0;
+  harness.workspace.taskEditorTarget = {
+    kind: 'task',
+    taskId: 'task-1',
+  };
+  harness.service.moveTaskEditorFocusDown();
+  assert.deepEqual(harness.calls, ['focusDraftComposer']);
 });
 
 void test('runtime task pane shortcuts handleInput delegates through injected shortcuts handler callbacks', async () => {
@@ -395,6 +440,7 @@ void test('runtime task pane shortcuts handleInput delegates through injected sh
         cursor: 8,
       });
       options.moveTaskEditorFocusUp();
+      options.moveTaskEditorFocusDown();
       options.focusDraftComposer();
       options.submitDraftTaskFromComposer('queue');
       options.runTaskPaneAction('task.ready');
@@ -422,6 +468,7 @@ void test('runtime task pane shortcuts handleInput delegates through injected sh
     'setTaskComposerForTask:task-missing',
     'scheduleTaskComposerPersist:task-missing',
     'markDirty',
+    'focusDraftComposer',
     'focusDraftComposer',
     'markDirty',
     'runTaskPaneAction:task.ready',

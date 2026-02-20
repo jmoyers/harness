@@ -42,6 +42,7 @@ interface HandleTaskPaneShortcutInputOptions {
   homeEditorBuffer: () => TaskComposerBuffer;
   updateHomeEditorBuffer: (next: TaskComposerBuffer) => void;
   moveTaskEditorFocusUp: () => void;
+  moveTaskEditorFocusDown: () => void;
   focusDraftComposer: () => void;
   submitDraftTaskFromComposer: (mode: TaskComposerSubmitMode) => void;
   runTaskPaneAction: (action: TaskPaneActionShortcut) => void;
@@ -61,6 +62,7 @@ export function handleTaskPaneShortcutInput(options: HandleTaskPaneShortcutInput
     homeEditorBuffer,
     updateHomeEditorBuffer,
     moveTaskEditorFocusUp,
+    moveTaskEditorFocusDown,
     focusDraftComposer,
     submitDraftTaskFromComposer,
     runTaskPaneAction,
@@ -138,7 +140,7 @@ export function handleTaskPaneShortcutInput(options: HandleTaskPaneShortcutInput
         if (taskEditorTarget.kind === 'task') {
           const vertical = taskComposerMoveVertical(homeEditorBuffer(), 1);
           if (vertical.hitBoundary) {
-            focusDraftComposer();
+            moveTaskEditorFocusDown();
           } else {
             updateHomeEditorBuffer(vertical.next);
           }

@@ -451,6 +451,8 @@ const DEFAULT_MAX_STREAM_JOURNAL_ENTRIES = 10000;
 const DEFAULT_GIT_STATUS_POLL_MS = 1200;
 const DEFAULT_GITHUB_POLL_MS = 15_000;
 const DEFAULT_LINEAR_API_BASE_URL = 'https://api.linear.app/graphql';
+const GITHUB_OAUTH_ACCESS_TOKEN_ENV_VAR = 'HARNESS_GITHUB_OAUTH_ACCESS_TOKEN';
+const LINEAR_OAUTH_ACCESS_TOKEN_ENV_VAR = 'HARNESS_LINEAR_OAUTH_ACCESS_TOKEN';
 const HISTORY_POLL_JITTER_RATIO = 0.35;
 const SESSION_DIAGNOSTICS_BUCKET_MS = 10_000;
 const SESSION_DIAGNOSTICS_BUCKET_COUNT = 6;
@@ -739,10 +741,15 @@ function normalizeGitHubIntegrationConfig(
     typeof tokenEnvVarRaw === 'string' && tokenEnvVarRaw.trim().length > 0
       ? tokenEnvVarRaw.trim()
       : 'GITHUB_TOKEN';
-  const envToken = process.env[tokenEnvVar];
+  const manualEnvToken = process.env[tokenEnvVar];
+  const oauthEnvToken = process.env[GITHUB_OAUTH_ACCESS_TOKEN_ENV_VAR];
+  const envTokenRaw =
+    typeof manualEnvToken === 'string' && manualEnvToken.trim().length > 0
+      ? manualEnvToken
+      : oauthEnvToken;
   const tokenRaw =
     input?.token ??
-    (typeof envToken === 'string' && envToken.trim().length > 0 ? envToken.trim() : null);
+    (typeof envTokenRaw === 'string' && envTokenRaw.trim().length > 0 ? envTokenRaw.trim() : null);
   const branchStrategyRaw = input?.branchStrategy;
   const branchStrategy =
     branchStrategyRaw === 'current-only' ||
@@ -790,10 +797,15 @@ function normalizeLinearIntegrationConfig(
     typeof tokenEnvVarRaw === 'string' && tokenEnvVarRaw.trim().length > 0
       ? tokenEnvVarRaw.trim()
       : 'LINEAR_API_KEY';
-  const envToken = process.env[tokenEnvVar];
+  const manualEnvToken = process.env[tokenEnvVar];
+  const oauthEnvToken = process.env[LINEAR_OAUTH_ACCESS_TOKEN_ENV_VAR];
+  const envTokenRaw =
+    typeof manualEnvToken === 'string' && manualEnvToken.trim().length > 0
+      ? manualEnvToken
+      : oauthEnvToken;
   const tokenRaw =
     input?.token ??
-    (typeof envToken === 'string' && envToken.trim().length > 0 ? envToken.trim() : null);
+    (typeof envTokenRaw === 'string' && envTokenRaw.trim().length > 0 ? envTokenRaw.trim() : null);
   const apiBaseUrlRaw = input?.apiBaseUrl;
   const apiBaseUrl =
     typeof apiBaseUrlRaw === 'string' && apiBaseUrlRaw.trim().length > 0
@@ -2647,8 +2659,8 @@ export class ControlPlaneStreamServer {
     if (token === null) {
       const hint =
         this.githubTokenResolutionError === null
-          ? 'set GITHUB_TOKEN or run gh auth login'
-          : `${this.githubTokenResolutionError}; set GITHUB_TOKEN or run gh auth login`;
+          ? `set ${this.github.tokenEnvVar} or ${GITHUB_OAUTH_ACCESS_TOKEN_ENV_VAR} or run gh auth login`
+          : `${this.githubTokenResolutionError}; set ${this.github.tokenEnvVar} or ${GITHUB_OAUTH_ACCESS_TOKEN_ENV_VAR} or run gh auth login`;
       throw new Error(`github token not configured: ${hint}`);
     }
     const response = await this.githubFetch(`${this.github.apiBaseUrl}${path}`, {
@@ -2679,7 +2691,9 @@ export class ControlPlaneStreamServer {
   } | null> {
     const token = this.linear.token;
     if (token === null || token.trim().length === 0) {
-      throw new Error(`linear api key not configured: set ${this.linear.tokenEnvVar}`);
+      throw new Error(
+        `linear token not configured: set ${this.linear.tokenEnvVar} or ${LINEAR_OAUTH_ACCESS_TOKEN_ENV_VAR}`,
+      );
     }
     const client = new LinearClient({
       apiKey: token,

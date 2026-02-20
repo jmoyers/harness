@@ -198,6 +198,76 @@ void test('stream server command github helper internals cover owner/branch/roll
   );
 });
 
+void test('stream server linear resolves env token precedence as manual then oauth', async () => {
+  const previousManual = process.env.LINEAR_API_KEY;
+  const previousOauth = process.env.HARNESS_LINEAR_OAUTH_ACCESS_TOKEN;
+  process.env.LINEAR_API_KEY = 'manual-linear-token';
+  process.env.HARNESS_LINEAR_OAUTH_ACCESS_TOKEN = 'oauth-linear-token';
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input),
+    linear: {
+      enabled: true,
+      token: null,
+      tokenEnvVar: 'LINEAR_API_KEY',
+    },
+  });
+  const internals = server as unknown as {
+    linear: {
+      token: string | null;
+    };
+  };
+  try {
+    assert.equal(internals.linear.token, 'manual-linear-token');
+  } finally {
+    await server.close();
+    if (previousManual === undefined) {
+      delete process.env.LINEAR_API_KEY;
+    } else {
+      process.env.LINEAR_API_KEY = previousManual;
+    }
+    if (previousOauth === undefined) {
+      delete process.env.HARNESS_LINEAR_OAUTH_ACCESS_TOKEN;
+    } else {
+      process.env.HARNESS_LINEAR_OAUTH_ACCESS_TOKEN = previousOauth;
+    }
+  }
+});
+
+void test('stream server linear uses oauth env token when manual env token is absent', async () => {
+  const previousManual = process.env.LINEAR_API_KEY;
+  const previousOauth = process.env.HARNESS_LINEAR_OAUTH_ACCESS_TOKEN;
+  delete process.env.LINEAR_API_KEY;
+  process.env.HARNESS_LINEAR_OAUTH_ACCESS_TOKEN = 'oauth-linear-token';
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input),
+    linear: {
+      enabled: true,
+      token: null,
+      tokenEnvVar: 'LINEAR_API_KEY',
+    },
+  });
+  const internals = server as unknown as {
+    linear: {
+      token: string | null;
+    };
+  };
+  try {
+    assert.equal(internals.linear.token, 'oauth-linear-token');
+  } finally {
+    await server.close();
+    if (previousManual === undefined) {
+      delete process.env.LINEAR_API_KEY;
+    } else {
+      process.env.LINEAR_API_KEY = previousManual;
+    }
+    if (previousOauth === undefined) {
+      delete process.env.HARNESS_LINEAR_OAUTH_ACCESS_TOKEN;
+    } else {
+      process.env.HARNESS_LINEAR_OAUTH_ACCESS_TOKEN = previousOauth;
+    }
+  }
+});
+
 void test('stream server executes linear issue import command and error branches', async () => {
   type LinearMockMode = 'success' | 'empty' | 'malformed';
   let linearMockMode: LinearMockMode = 'success';
@@ -453,7 +523,7 @@ void test('stream server executes linear issue import command and error branches
           workspaceId: scope.workspaceId,
         },
       ),
-      /linear api key not configured: set LINEAR_API_KEY/,
+      /linear token not configured: set LINEAR_API_KEY or HARNESS_LINEAR_OAUTH_ACCESS_TOKEN/,
     );
 
     internals.linear.token = 'linear-token';

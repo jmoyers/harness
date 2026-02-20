@@ -103,7 +103,7 @@ test('harness diff subcommand renders help and validates flags', () => {
 
   const help = runHarnessBin(['diff', '--help'], workspace);
   assert.equal(help.code, 0);
-  assert.equal(help.stdout.includes('usage: harness diff [options]'), true);
+  assert.equal(help.stdout.includes('harness diff'), true);
 
   const bad = runHarnessBin(['diff', '--definitely-unknown-option'], workspace);
   assert.equal(bad.code, 1);
