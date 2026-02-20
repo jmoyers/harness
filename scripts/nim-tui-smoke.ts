@@ -51,6 +51,7 @@ function printUsage(): void {
       '  --model <provider/model>',
       '  --ui-mode <debug|seamless>',
       '  --live-anthropic',
+      '  --mock',
       '  --session-id <id>',
       '  --event-store-path <path>',
       '  --session-store-path <path>',
@@ -58,6 +59,11 @@ function printUsage(): void {
       '  --no-telemetry',
       '  --secrets-file <path>',
       '  --base-url <url>',
+      '',
+      'notes:',
+      '  - Live Anthropic is the default path.',
+      '  - Use --mock for deterministic mock-echo provider output.',
+      '  - Live Anthropic requires ANTHROPIC_API_KEY (optionally loaded via --secrets-file).',
     ].join('\n') + '\n',
   );
 }
@@ -72,7 +78,7 @@ export function parseNimTuiArgs(
   let userId = 'nim-tui-user';
   let model: NimModelRef = 'anthropic/claude-3-haiku-20240307';
   let uiMode: NimUiMode = 'debug';
-  let liveAnthropic = false;
+  let liveAnthropic = true;
   let sessionId: string | undefined;
   let eventStorePath = resolveHarnessRuntimePath(cwd, '.harness/nim/events.sqlite', env);
   let sessionStorePath = resolveHarnessRuntimePath(cwd, '.harness/nim/sessions.sqlite', env);
@@ -113,6 +119,10 @@ export function parseNimTuiArgs(
     }
     if (arg === '--live-anthropic') {
       liveAnthropic = true;
+      continue;
+    }
+    if (arg === '--mock') {
+      liveAnthropic = false;
       continue;
     }
     if (arg === '--session-id') {
@@ -360,7 +370,7 @@ async function collectTurnTrace(input: {
       const projected = controller.consume(event);
       for (const item of projected) {
         if (item.type === 'assistant.text.delta') {
-          process.stdout.write(`nim> ${item.text}\n`);
+          process.stdout.write(`assistant> ${item.text}\n`);
         }
       }
       if (event.type === 'turn.completed' && event.run_id === input.runId) {
@@ -408,7 +418,9 @@ async function runNimTuiInteractive(args: ParsedArgs): Promise<void> {
   });
   if (args.liveAnthropic) {
     if (providerId !== 'anthropic') {
-      throw new Error(`--live-anthropic requires anthropic model ref, got ${args.model}`);
+      throw new Error(
+        `live provider mode requires anthropic model ref until additional drivers are implemented; got ${args.model}. Pass --mock to run without a live provider driver.`,
+      );
     }
     loadHarnessSecrets({
       cwd: process.cwd(),
@@ -417,7 +429,9 @@ async function runNimTuiInteractive(args: ParsedArgs): Promise<void> {
     });
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (typeof apiKey !== 'string' || apiKey.trim().length === 0) {
-      throw new Error('ANTHROPIC_API_KEY was not found after loading secrets');
+      throw new Error(
+        'ANTHROPIC_API_KEY was not found after loading secrets. Set the key or pass --mock.',
+      );
     }
     runtime.registerProviderDriver(
       createAnthropicNimProviderDriver({
@@ -426,6 +440,10 @@ async function runNimTuiInteractive(args: ParsedArgs): Promise<void> {
       }),
     );
   }
+  const providerMode =
+    args.liveAnthropic && providerId === 'anthropic'
+      ? 'live-anthropic'
+      : 'mock-echo (no provider driver registered)';
 
   let currentModel: NimModelRef = args.model;
   let uiMode: NimUiMode = args.uiMode;
@@ -446,7 +464,12 @@ async function runNimTuiInteractive(args: ParsedArgs): Promise<void> {
 
   let activeRunId: string | undefined;
   let lastEventId: string | undefined;
-  process.stdout.write(`nim tui ready session=${currentSession.sessionId} model=${currentModel}\n`);
+  process.stdout.write(
+    `nim tui ready session=${currentSession.sessionId} model=${currentModel} provider=${providerMode}\n`,
+  );
+  if (!args.liveAnthropic) {
+    process.stdout.write('nim tui note: running deterministic mock mode via --mock.\n');
+  }
   printHelp();
 
   const rl = createInterface({

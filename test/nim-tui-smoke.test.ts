@@ -13,13 +13,13 @@ test('nim tui arg parser resolves defaults and runtime paths', () => {
   assert.equal(parsed.userId, 'nim-tui-user');
   assert.equal(parsed.model, 'anthropic/claude-3-haiku-20240307');
   assert.equal(parsed.uiMode, 'debug');
-  assert.equal(parsed.liveAnthropic, false);
+  assert.equal(parsed.liveAnthropic, true);
   assert.equal(parsed.eventStorePath.includes('/workspaces/'), true);
   assert.equal(parsed.sessionStorePath.includes('/workspaces/'), true);
   assert.equal(parsed.telemetryPath?.includes('/workspaces/'), true);
 });
 
-test('nim tui arg parser supports overrides and disables telemetry', () => {
+test('nim tui arg parser supports mock override and disables telemetry', () => {
   const parsed = parseNimTuiArgs(
     [
       '--tenant-id',
@@ -30,7 +30,7 @@ test('nim tui arg parser supports overrides and disables telemetry', () => {
       'anthropic/claude-3-5-haiku-latest',
       '--ui-mode',
       'seamless',
-      '--live-anthropic',
+      '--mock',
       '--session-id',
       'session-x',
       '--event-store-path',
@@ -54,7 +54,7 @@ test('nim tui arg parser supports overrides and disables telemetry', () => {
   assert.equal(parsed.userId, 'user-x');
   assert.equal(parsed.model, 'anthropic/claude-3-5-haiku-latest');
   assert.equal(parsed.uiMode, 'seamless');
-  assert.equal(parsed.liveAnthropic, true);
+  assert.equal(parsed.liveAnthropic, false);
   assert.equal(parsed.sessionId, 'session-x');
   assert.equal(parsed.eventStorePath.endsWith('/tmp/workspace/ev.sqlite'), true);
   assert.equal(parsed.sessionStorePath.endsWith('/tmp/workspace/sess.sqlite'), true);
