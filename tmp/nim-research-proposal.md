@@ -27,6 +27,7 @@ This document is systems-first and maps public APIs to functional requirements w
 - First provider-driver scaffold exists for Anthropic on top of `packages/harness-ai` (`createAnthropicNimProviderDriver`).
 - Live Haiku smoke now includes fallback model `claude-3-haiku-20240307` for environments where `claude-3-5-haiku-*` IDs are unavailable.
 - Live Haiku smoke now asserts runtime observability state transitions through `nim-core` stream APIs (`thinking -> tool-calling -> responding -> idle`) plus raw tool/thinking lifecycle visibility.
+- Functional UC execution has started with explicit coverage for UC-01, UC-03, UC-09, and UC-12 in `test/nim-functional-use-cases.test.ts`.
 
 ## 2. Sources Reviewed
 
