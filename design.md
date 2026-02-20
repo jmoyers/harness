@@ -180,6 +180,7 @@ Branch-local execution work introduces a new first-party runtime stack above `pa
   - supports first-party replay telemetry sinks (`registerTelemetrySink`) including JSONL log capture/reload via `NimJsonlTelemetrySink` + `readNimJsonlTelemetry`.
   - supports pluggable canonical event persistence (`NimEventStore`) with first-party `InMemoryNimEventStore` and `NimSqliteEventStore` adapters used by stream/replay APIs.
   - supports pluggable session persistence (`NimSessionStore`) with first-party `InMemoryNimSessionStore` and `NimSqliteSessionStore` adapters for restart-safe continuation and idempotency reuse.
+  - persists follow-up queue state in session storage so queued turns survive restart and drain deterministically on next terminal turn.
 - `packages/nim-ui-core`: shared event projection layer (`debug` and `seamless` UI modes).
 - `packages/nim-test-tui`: independent test-oriented TUI surface that consumes shared Nim libraries only.
 

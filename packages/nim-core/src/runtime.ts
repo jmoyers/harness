@@ -1722,6 +1722,12 @@ export class InMemoryNimRuntime implements NimRuntime {
         : {}),
       eventSeq: state.eventSeq,
       ...(state.lastRunId !== undefined ? { lastRunId: state.lastRunId } : {}),
+      followups: state.followups.map((followup) => ({
+        queueId: followup.queueId,
+        text: followup.text,
+        priority: followup.priority,
+        dedupeKey: followup.dedupeKey,
+      })),
     });
   }
 
@@ -1742,7 +1748,12 @@ export class InMemoryNimRuntime implements NimRuntime {
         : {}),
       eventSeq: state.eventSeq,
       ...(state.lastRunId !== undefined ? { lastRunId: state.lastRunId } : {}),
-      followups: [],
+      followups: state.followups.map((followup) => ({
+        queueId: followup.queueId,
+        text: followup.text,
+        priority: followup.priority,
+        dedupeKey: followup.dedupeKey,
+      })),
       idempotencyToRunId,
     };
   }

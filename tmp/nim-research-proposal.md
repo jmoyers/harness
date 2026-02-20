@@ -34,6 +34,7 @@ This document is systems-first and maps public APIs to functional requirements w
 - Runtime now supports first-class telemetry sink registration (`registerTelemetrySink`) and first-party JSONL telemetry I/O (`NimJsonlTelemetrySink`, `readNimJsonlTelemetry`) for replay-grade event logging and deterministic reload.
 - Runtime now persists canonical envelopes through a pluggable event store abstraction (`NimEventStore`) with first-party `InMemoryNimEventStore` and `NimSqliteEventStore` adapters.
 - Runtime now persists session metadata and idempotency mappings through a pluggable session store abstraction (`NimSessionStore`) with first-party `InMemoryNimSessionStore` and `NimSqliteSessionStore` adapters.
+- Session store now persists queued follow-ups so queue ordering and dequeue semantics survive runtime restart boundaries.
 
 ## 1.2 Execution Evidence (2026-02-20)
 

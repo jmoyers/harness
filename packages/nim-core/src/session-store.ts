@@ -13,11 +13,19 @@ export type NimPersistedSession = {
   readonly skillsSnapshotVersion?: number;
   readonly eventSeq: number;
   readonly lastRunId?: string;
+  readonly followups: readonly NimPersistedFollowUp[];
 };
 
 export type NimPersistedIdempotency = {
   readonly idempotencyKey: string;
   readonly runId: string;
+};
+
+export type NimPersistedFollowUp = {
+  readonly queueId: string;
+  readonly text: string;
+  readonly priority: 'normal' | 'high';
+  readonly dedupeKey: string;
 };
 
 export interface NimSessionStore {
@@ -154,7 +162,7 @@ class DatabaseSync {
   }
 }
 
-const NIM_SESSION_STORE_SCHEMA_VERSION = 1;
+const NIM_SESSION_STORE_SCHEMA_VERSION = 2;
 
 function asRecord(value: unknown): Record<string, unknown> {
   if (typeof value !== 'object' || value === null) {
@@ -168,6 +176,13 @@ function asString(value: unknown, field: string): string {
     throw new Error(`expected string for ${field}`);
   }
   return value;
+}
+
+function asFollowupPriority(value: unknown, field: string): 'normal' | 'high' {
+  if (value === 'normal' || value === 'high') {
+    return value;
+  }
+  throw new Error(`expected follow-up priority for ${field}`);
 }
 
 function asStringOrUndefined(value: unknown, field: string): string | undefined {
@@ -191,6 +206,28 @@ function asNonNegativeIntegerOrUndefined(value: unknown, field: string): number 
   return asNonNegativeInteger(value, field);
 }
 
+function parseFollowupsJson(value: unknown): readonly NimPersistedFollowUp[] {
+  const json = asString(value, 'followups_json');
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    throw new Error('invalid followups_json');
+  }
+  if (!Array.isArray(parsed)) {
+    throw new Error('expected followups_json array');
+  }
+  return parsed.map((item, index) => {
+    const row = asRecord(item);
+    return {
+      queueId: asString(row.queueId, `followups_json[${String(index)}].queueId`),
+      text: asString(row.text, `followups_json[${String(index)}].text`),
+      priority: asFollowupPriority(row.priority, `followups_json[${String(index)}].priority`),
+      dedupeKey: asString(row.dedupeKey, `followups_json[${String(index)}].dedupeKey`),
+    };
+  });
+}
+
 function parsePersistedSessionRow(row: unknown): NimPersistedSession {
   const value = asRecord(row);
   const soulHash = asStringOrUndefined(value.soul_hash, 'soul_hash');
@@ -199,6 +236,7 @@ function parsePersistedSessionRow(row: unknown): NimPersistedSession {
     'skills_snapshot_version',
   );
   const lastRunId = asStringOrUndefined(value.last_run_id, 'last_run_id');
+  const followups = parseFollowupsJson(value.followups_json);
   return {
     sessionId: asString(value.session_id, 'session_id'),
     tenantId: asString(value.tenant_id, 'tenant_id'),
@@ -209,6 +247,7 @@ function parsePersistedSessionRow(row: unknown): NimPersistedSession {
     ...(skillsSnapshotVersion !== undefined ? { skillsSnapshotVersion } : {}),
     eventSeq: asNonNegativeInteger(value.event_seq, 'event_seq'),
     ...(lastRunId !== undefined ? { lastRunId } : {}),
+    followups,
   };
 }
 
@@ -254,8 +293,9 @@ export class NimSqliteSessionStore implements NimSessionStore {
         soul_hash,
         skills_snapshot_version,
         event_seq,
-        last_run_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        last_run_id,
+        followups_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(session_id) DO UPDATE SET
         tenant_id = excluded.tenant_id,
         user_id = excluded.user_id,
@@ -264,7 +304,8 @@ export class NimSqliteSessionStore implements NimSessionStore {
         soul_hash = excluded.soul_hash,
         skills_snapshot_version = excluded.skills_snapshot_version,
         event_seq = excluded.event_seq,
-        last_run_id = excluded.last_run_id
+        last_run_id = excluded.last_run_id,
+        followups_json = excluded.followups_json
     `,
       )
       .run(
@@ -277,6 +318,7 @@ export class NimSqliteSessionStore implements NimSessionStore {
         session.skillsSnapshotVersion ?? null,
         session.eventSeq,
         session.lastRunId ?? null,
+        JSON.stringify(session.followups),
       );
   }
 
@@ -293,7 +335,8 @@ export class NimSqliteSessionStore implements NimSessionStore {
         soul_hash,
         skills_snapshot_version,
         event_seq,
-        last_run_id
+        last_run_id,
+        followups_json
       FROM nim_sessions
       WHERE session_id = ?
       LIMIT 1
@@ -319,7 +362,8 @@ export class NimSqliteSessionStore implements NimSessionStore {
         soul_hash,
         skills_snapshot_version,
         event_seq,
-        last_run_id
+        last_run_id,
+        followups_json
       FROM nim_sessions
       WHERE tenant_id = ? AND user_id = ?
       ORDER BY session_id ASC
@@ -390,7 +434,12 @@ export class NimSqliteSessionStore implements NimSessionStore {
           `nim session store schema version ${String(currentVersion)} is newer than supported version ${String(NIM_SESSION_STORE_SCHEMA_VERSION)}`,
         );
       }
-      this.applySchemaV1();
+      if (currentVersion < 1) {
+        this.applySchemaV1();
+      }
+      if (currentVersion < 2) {
+        this.applySchemaV2();
+      }
       this.writeSchemaVersion(NIM_SESSION_STORE_SCHEMA_VERSION);
       this.db.exec('COMMIT');
     } catch (error) {
@@ -432,6 +481,15 @@ export class NimSqliteSessionStore implements NimSessionStore {
     `);
   }
 
+  private applySchemaV2(): void {
+    if (!this.tableHasColumn('nim_sessions', 'followups_json')) {
+      this.db.exec(`
+        ALTER TABLE nim_sessions
+        ADD COLUMN followups_json TEXT NOT NULL DEFAULT '[]';
+      `);
+    }
+  }
+
   private readSchemaVersion(): number {
     const row = this.db.prepare('PRAGMA user_version;').get();
     if (row === undefined) {
@@ -446,5 +504,13 @@ export class NimSqliteSessionStore implements NimSessionStore {
 
   private writeSchemaVersion(version: number): void {
     this.db.exec(`PRAGMA user_version = ${String(version)};`);
+  }
+
+  private tableHasColumn(tableName: string, columnName: string): boolean {
+    const rows = this.db.prepare(`PRAGMA table_info(${tableName});`).all();
+    return rows.some((row) => {
+      const name = asRecord(row).name;
+      return typeof name === 'string' && name === columnName;
+    });
   }
 }

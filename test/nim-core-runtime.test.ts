@@ -632,6 +632,77 @@ test('nim runtime resumes persisted session and idempotency across restart', asy
   }
 });
 
+test('nim runtime persists follow-up queue across restart and drains on next terminal run', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nim-runtime-followup-restart-'));
+  const eventDbPath = join(dir, 'events.sqlite');
+  const sessionDbPath = join(dir, 'sessions.sqlite');
+
+  const initialEventStore = new NimSqliteEventStore(eventDbPath);
+  const initialSessionStore = new NimSqliteSessionStore(sessionDbPath);
+  const initialRuntime = createRuntime({
+    eventStore: initialEventStore,
+    sessionStore: initialSessionStore,
+  });
+  const session = await createSession(initialRuntime);
+  const queued = await initialRuntime.queueFollowUp({
+    sessionId: session.sessionId,
+    text: 'queued after restart',
+    priority: 'high',
+  });
+  assert.equal(queued.queued, true);
+  assert.notEqual(queued.queueId, undefined);
+  const queueId = queued.queueId as string;
+  initialEventStore.close();
+  initialSessionStore.close();
+
+  const resumedEventStore = new NimSqliteEventStore(eventDbPath);
+  const resumedSessionStore = new NimSqliteSessionStore(sessionDbPath);
+  const resumedRuntime = createRuntime({
+    eventStore: resumedEventStore,
+    sessionStore: resumedSessionStore,
+  });
+  try {
+    const trigger = await resumedRuntime.sendTurn({
+      sessionId: session.sessionId,
+      input: 'trigger followup drain',
+      idempotencyKey: 'idem-restart-followup-trigger',
+    });
+    await trigger.done;
+    let replay = await resumedRuntime.replayEvents({
+      tenantId: 'tenant-a',
+      sessionId: session.sessionId,
+    });
+    const deadline = Date.now() + 2000;
+    while (
+      Date.now() < deadline &&
+      !replay.events.some(
+        (event) => event.type === 'turn.started' && event.idempotency_key === `followup:${queueId}`,
+      )
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      replay = await resumedRuntime.replayEvents({
+        tenantId: 'tenant-a',
+        sessionId: session.sessionId,
+      });
+    }
+    assert.equal(
+      replay.events.some(
+        (event) => event.type === 'turn.followup.dequeued' && event.queue_id === queueId,
+      ),
+      true,
+    );
+    assert.equal(
+      replay.events.some(
+        (event) => event.type === 'turn.started' && event.idempotency_key === `followup:${queueId}`,
+      ),
+      true,
+    );
+  } finally {
+    resumedEventStore.close();
+    resumedSessionStore.close();
+  }
+});
+
 test('nim runtime streamUi projects canonical events for debug and seamless modes', async () => {
   const runtime = createRuntime();
   const session = await createSession(runtime);

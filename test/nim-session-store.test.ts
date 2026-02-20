@@ -21,6 +21,7 @@ function buildSession(sessionId: string): NimPersistedSession {
     skillsSnapshotVersion: 1,
     eventSeq: 3,
     lastRunId: 'run-a',
+    followups: [],
   };
 }
 
@@ -87,6 +88,53 @@ test('nim sqlite session store fails closed on newer schema versions', () => {
   db.close();
 
   assert.throws(() => new NimSqliteSessionStore(dbPath), {
-    message: 'nim session store schema version 99 is newer than supported version 1',
+    message: 'nim session store schema version 99 is newer than supported version 2',
   });
+});
+
+test('nim sqlite session store migrates v1 schema to include followups', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nim-session-store-'));
+  const dbPath = join(dir, 'nim-sessions.sqlite');
+  const require = createRequire(import.meta.url);
+  const module = require('bun:sqlite') as {
+    Database: new (path: string) => {
+      exec: (sql: string) => void;
+      close: () => void;
+    };
+  };
+  const db = new module.Database(dbPath);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS nim_sessions (
+      session_id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      model TEXT NOT NULL,
+      lane TEXT NOT NULL,
+      soul_hash TEXT,
+      skills_snapshot_version INTEGER,
+      event_seq INTEGER NOT NULL,
+      last_run_id TEXT
+    );
+  `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS nim_session_idempotency (
+      session_id TEXT NOT NULL,
+      idempotency_key TEXT NOT NULL,
+      run_id TEXT NOT NULL,
+      PRIMARY KEY (session_id, idempotency_key)
+    );
+  `);
+  db.exec('PRAGMA user_version = 1;');
+  db.close();
+
+  const store = new NimSqliteSessionStore(dbPath);
+  try {
+    const session = buildSession('session-migrated');
+    store.upsertSession(session);
+    const loaded = store.getSession('session-migrated');
+    assert.notEqual(loaded, undefined);
+    assert.deepEqual(loaded?.followups, []);
+  } finally {
+    store.close();
+  }
 });
