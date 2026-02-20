@@ -843,6 +843,23 @@ void test('workspace rail row renderer covers active project rows muted rows and
   assert.equal(stripAnsi(zeroWidthMutedRowAnsi), '│');
 });
 
+void test('workspace rail row renderer keeps tasks nav spacing after emoji', () => {
+  const tasksRowAnsi = renderWorkspaceRailRowAnsiForTest(
+    {
+      kind: 'dir-header',
+      text: '├─ 🗂️ tasks',
+      active: false,
+      conversationSessionId: null,
+      directoryKey: null,
+      repositoryId: null,
+      railAction: 'tasks.open',
+      conversationStatus: null,
+    },
+    32,
+  );
+  assert.equal(stripAnsi(tasksRowAnsi).includes('🗂️ tasks'), true);
+});
+
 void test('workspace rail row renderer keeps title rows without status glyph unchanged', () => {
   const noGlyphTitleRowAnsi = renderWorkspaceRailRowAnsiForTest(
     {

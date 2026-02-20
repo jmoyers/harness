@@ -98,7 +98,7 @@ void test('ui surface draw text handles bounds, combining marks, and wide glyph 
   assert.equal(rows[0]?.includes('\u001b[0;1;38;5;160;49m'), false);
   const plain = stripAnsi(rows[0] ?? '');
   assert.equal(measureDisplayWidth(plain), 4);
-  assert.equal(plain.startsWith('a界'), true);
+  assert.equal(plain.startsWith('a\u0301界'), true);
 
   const overflowSurface = createUiSurface(2, 1);
   drawUiText(overflowSurface, 0, 0, 'abcd');

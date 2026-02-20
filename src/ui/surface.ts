@@ -166,11 +166,16 @@ export function drawUiText(
     return;
   }
   let col = Math.max(0, colStart);
+  let lastGlyphCol: number | null = null;
   const typedStyle = cloneStyle(style);
 
   for (const glyph of text) {
     const width = Math.max(0, measureDisplayWidth(glyph));
     if (width === 0) {
+      if (lastGlyphCol !== null) {
+        const cell = surface.cells[cellOffset(surface, lastGlyphCol, row)]!;
+        cell.glyph += glyph;
+      }
       continue;
     }
     if (col >= surface.cols) {
@@ -182,6 +187,7 @@ export function drawUiText(
       cell.glyph = glyph;
       cell.continued = false;
       cell.style = typedStyle;
+      lastGlyphCol = col;
       col += 1;
       continue;
     }
@@ -200,6 +206,7 @@ export function drawUiText(
       cell.continued = true;
       cell.style = typedStyle;
     }
+    lastGlyphCol = col;
     col += width;
   }
 }
