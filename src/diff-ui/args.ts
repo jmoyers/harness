@@ -283,7 +283,7 @@ export function parseDiffUiArgs(
 
 export function diffUiUsage(): string {
   return [
-    'usage: harness-diff [options]',
+    'usage: harness diff [options]',
     '',
     'diff source:',
     '  --staged',

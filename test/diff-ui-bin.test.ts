@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { test } from 'bun:test';
@@ -33,33 +33,27 @@ function createRepo(prefix: string): string {
   return repo;
 }
 
-function runDiffBin(args: readonly string[], cwd: string): RunResult {
+function runHarnessBin(args: readonly string[], cwd: string): RunResult {
   const packageJson = JSON.parse(
     readFileSync(resolve(process.cwd(), 'package.json'), 'utf8'),
   ) as PackageShape;
-  const binPath = packageJson.bin?.['harness-diff'];
+  const binPath = packageJson.bin?.['harness'];
   if (typeof binPath !== 'string') {
-    throw new Error('missing harness-diff bin path');
+    throw new Error('missing harness bin path');
   }
   const resolvedBinPath = resolve(process.cwd(), binPath);
-
-  const command =
-    process.platform === 'win32'
-      ? {
-          file: 'bun',
-          argv: [resolvedBinPath, ...args],
-        }
-      : {
-          file: resolvedBinPath,
-          argv: [...args],
-        };
-
-  const result = spawnSync(command.file, command.argv, {
+  const result = spawnSync(process.execPath, [resolvedBinPath, ...args], {
     cwd,
     stdio: ['ignore', 'pipe', 'pipe'],
     encoding: 'utf8',
-    env: process.env,
+    env: {
+      ...process.env,
+      HARNESS_BUN_COMMAND: process.execPath,
+      HARNESS_SUPPRESS_BUN_MIGRATION_HINT: '1',
+      HARNESS_INVOKE_CWD: cwd,
+    },
   });
+
   return {
     code: result.status ?? 1,
     stdout: result.stdout ?? '',
@@ -67,35 +61,34 @@ function runDiffBin(args: readonly string[], cwd: string): RunResult {
   };
 }
 
-test('harness-diff bin is bun-native and executable', () => {
+test('package bin exposes harness command with diff as a subcommand', () => {
   const packageJson = JSON.parse(
     readFileSync(resolve(process.cwd(), 'package.json'), 'utf8'),
   ) as PackageShape;
-  assert.equal(packageJson.bin?.['harness-diff'], 'scripts/harness-diff.ts');
-
-  const scriptPath = resolve(process.cwd(), 'scripts/harness-diff.ts');
-  chmodSync(scriptPath, 0o755);
-  const scriptText = readFileSync(scriptPath, 'utf8');
-  assert.equal(scriptText.startsWith('#!/usr/bin/env bun\n'), true);
+  assert.equal(packageJson.bin?.['harness'], 'scripts/harness-bin.js');
+  assert.equal(packageJson.bin?.['harness-diff'], undefined);
 });
 
-test('harness-diff bin renders help and validates flags', () => {
-  const workspace = mkdtempSync(join(tmpdir(), 'harness-diff-bin-help-'));
+test('harness diff subcommand renders help and validates flags', () => {
+  const workspace = mkdtempSync(join(tmpdir(), 'harness-diff-subcommand-help-'));
 
-  const help = runDiffBin(['--help'], workspace);
+  const help = runHarnessBin(['diff', '--help'], workspace);
   assert.equal(help.code, 0);
-  assert.equal(help.stdout.includes('usage: harness-diff [options]'), true);
+  assert.equal(help.stdout.includes('usage: harness diff [options]'), true);
 
-  const bad = runDiffBin(['--definitely-unknown-option'], workspace);
+  const bad = runHarnessBin(['diff', '--definitely-unknown-option'], workspace);
   assert.equal(bad.code, 1);
   assert.equal(bad.stderr.includes('unknown option'), true);
 });
 
-test('harness-diff bin runs against a git repository', () => {
-  const repo = createRepo('harness-diff-bin-repo-');
+test('harness diff subcommand runs against a git repository', () => {
+  const repo = createRepo('harness-diff-subcommand-repo-');
   writeFileSync(join(repo, 'src.ts'), 'const x = 1;\nconst y = 2;\n', 'utf8');
 
-  const result = runDiffBin(['--width', '90', '--height', '10', '--theme', 'plain'], repo);
+  const result = runHarnessBin(
+    ['diff', '--width', '90', '--height', '10', '--theme', 'plain'],
+    repo,
+  );
   assert.equal(result.code, 0);
   assert.equal(result.stdout.includes('[diff] mode=unstaged'), true);
   assert.equal(result.stdout.includes('File 1/1: src.ts'), true);

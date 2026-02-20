@@ -18,6 +18,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { connectControlPlaneStreamClient } from '../src/control-plane/stream-client.ts';
 import { parseStreamCommand } from '../src/control-plane/stream-command-parser.ts';
 import type { StreamCommand } from '../src/control-plane/stream-protocol.ts';
+import { diffUiUsage, runDiffUiCli } from '../src/diff-ui/index.ts';
 import { runHarnessAnimate } from './harness-animate.ts';
 import {
   clearDefaultGatewayPointerForRecordPath,
@@ -915,6 +916,7 @@ function printUsage(): void {
       '  harness [--session <name>] render-trace start [--output-path <path>] [--conversation-id <id>]',
       '  harness [--session <name>] render-trace stop',
       '  harness [--session <name>] render-trace [--output-path <path>] [--conversation-id <id>]',
+      '  harness [--session <name>] diff [diff-options...]',
       '  harness update',
       '  harness upgrade',
       '  harness cursor-hooks install [--hooks-file <path>]',
@@ -925,6 +927,22 @@ function printUsage(): void {
       '  --session accepts [A-Za-z0-9][A-Za-z0-9._-]{0,63} and isolates gateway record/log/db paths.',
     ].join('\n') + '\n',
   );
+}
+
+async function runDiffCommandEntry(
+  invocationDirectory: string,
+  argv: readonly string[],
+): Promise<number> {
+  if (argv.length > 0 && (argv[0] === '--help' || argv[0] === '-h')) {
+    process.stdout.write(`${diffUiUsage()}\n`);
+    return 0;
+  }
+  const result = await runDiffUiCli({
+    argv,
+    cwd: invocationDirectory,
+    env: process.env,
+  });
+  return result.exitCode;
 }
 
 function resolveScriptPath(
@@ -3006,6 +3024,10 @@ async function main(): Promise<number> {
       argv.slice(1),
       parsedGlobals.sessionName,
     );
+  }
+
+  if (argv.length > 0 && argv[0] === 'diff') {
+    return await runDiffCommandEntry(invocationDirectory, argv.slice(1));
   }
 
   if (argv.length > 0 && (argv[0] === 'update' || argv[0] === 'upgrade')) {

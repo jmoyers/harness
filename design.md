@@ -879,9 +879,9 @@ Left-rail rendering/style principles:
 - Use command envelopes for all actions a human can perform.
 - Subscribe to event streams for monitoring, intervention, and orchestration logic.
 
-### Standalone Diff UI Process (Phase 1)
+### Harness Diff Subcommand (Phase 1)
 
-- A first-party standalone process entrypoint exists at `scripts/harness-diff.ts` (invoked via `bun run harness:diff`).
+- A first-party diff command entrypoint exists as `harness diff` (wired through `scripts/harness.ts`).
 - Diff data source remains `src/diff/*` (`createDiffBuilder`) with budget-aware build semantics.
 - UI model/runtime modules live under `src/diff-ui/*` and are intentionally process-local (not coupled to mux runtime lifecycle):
   - `args.ts`: CLI option parsing/validation
@@ -891,7 +891,7 @@ Left-rail rendering/style principles:
   - `highlight.ts`: lightweight syntax tokenization/render merge
   - `render.ts`: split/unified viewport rendering with theme roles
   - `runtime.ts`: one-shot render orchestration and rpc-stdio command/event flow
-- Process mode supports:
+- Subcommand mode supports:
   - one-shot viewport render
   - NDJSON event emission (`--json-events`)
   - programmatic command loop over stdio (`--rpc-stdio`)

@@ -15,7 +15,7 @@ void test('diff-ui public api exports are reachable', async () => {
     isStdoutTty: false,
   });
   assert.equal(parsed.mode, 'unstaged');
-  assert.equal(diffUiUsage().includes('usage: harness-diff'), true);
+  assert.equal(diffUiUsage().includes('usage: harness diff'), true);
 
   const model = buildDiffUiModel(createSampleDiff());
   const finder = buildFinderResults(model, 'src');
