@@ -7,6 +7,7 @@ import {
   runCursorHooksCli,
   runDiffCli,
   runGatewayCli,
+  runNimCli,
   runProfileCli,
   runRenderTraceCli,
   runStatusTimelineCli,
@@ -249,6 +250,23 @@ class AnimateCommand extends HarnessCommandBase {
   }
 }
 
+class NimCommand extends HarnessCommandBase {
+  static override summary = 'Run Nim interactive TUI smoke/debug client.';
+
+  static override usage = ['nim [options]'];
+
+  static override flags = {
+    help: Flags.help({ char: 'h' }),
+    session: sessionFlag,
+  };
+
+  override async run(): Promise<void> {
+    const parsed = this.extractSessionArg(this.argv);
+    const code = await runNimCli(parsed.argv);
+    this.exitIfNeeded(code);
+  }
+}
+
 class DiffCommand extends HarnessCommandBase {
   static override summary = 'Render git diffs in the diff TUI/CLI view.';
 
@@ -274,6 +292,7 @@ const commands = {
   auth: AuthCommand,
   update: UpdateCommand,
   'cursor-hooks': CursorHooksCommand,
+  nim: NimCommand,
   animate: AnimateCommand,
   diff: DiffCommand,
 } satisfies Record<string, Command.Class>;

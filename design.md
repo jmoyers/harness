@@ -166,6 +166,41 @@ Design intent:
 - Preserve event-shape parity where practical while allowing focused, controlled divergence when provider behavior requires it.
 - Validate behavior through Bun unit, integration, and end-to-end tests under 100% coverage gates.
 
+## Experimental Nim Runtime Stack (Branch `jm/nim`)
+
+Branch-local execution work introduces a new first-party runtime stack above `packages/harness-ai`:
+
+- `packages/nim-core`: provider-agnostic agent runtime contracts + canonical event schema.
+  - includes provider routing (`NimProviderRouter`) and pluggable provider drivers (`NimProviderDriver`) for model execution.
+  - includes first Anthropic driver scaffold on `packages/harness-ai` (`createAnthropicNimProviderDriver`).
+  - enforces tool exposure from policy (`allow`/`deny` with deny precedence) and emits explicit `tool.policy.blocked` events when requested tools are not runnable.
+  - emits explicit per-turn context snapshot events for `soul`, `skill`, and `memory` (`*.snapshot.loaded` / `*.snapshot.missing`) and stamps `soul_hash` / `skills_snapshot_version` into run events.
+  - includes deterministic overflow-compaction retry/failure event paths for verifiable bounded recovery behavior.
+  - exposes deterministic event replay snapshots via `replayEvents` with optional event-id windowing for audit-grade timeline reconstruction.
+  - supports first-party replay telemetry sinks (`registerTelemetrySink`) including JSONL log capture/reload via `NimJsonlTelemetrySink` + `readNimJsonlTelemetry`.
+  - supports pluggable canonical event persistence (`NimEventStore`) with first-party `InMemoryNimEventStore` and `NimSqliteEventStore` adapters used by stream/replay APIs.
+  - supports pluggable session persistence (`NimSessionStore`) with first-party `InMemoryNimSessionStore` and `NimSqliteSessionStore` adapters for restart-safe continuation and idempotency reuse.
+  - emits first-class final assistant message events (`assistant.output.message`) alongside deltas for intact replay/UI rendering without sacrificing token-level streaming visibility.
+  - persists queued-turn state in session storage so queued turns survive restart and drain deterministically on next terminal turn.
+  - treats `steerTurn` as append-only in-turn steering (Codex-style mid-turn steer), with queueing modeled separately as `queueTurn`.
+  - provides a first-party SQLite runtime factory (`createSqliteBackedNimRuntime`) that composes event/session stores with optional JSONL telemetry sink.
+  - fails closed on restart idempotency ambiguity: stored idempotency run IDs without terminal events emit `turn.idempotency.unresolved` and reject reuse.
+- `packages/nim-ui-core`: shared event projection layer (`debug` and `seamless` UI modes).
+- `packages/nim-test-tui`: independent test-oriented TUI surface that consumes shared Nim libraries only.
+  - exposes stream-based collector utilities (`collectNimTestTuiFrame`) over canonical events for deterministic test UI snapshots.
+- `scripts/nim-tui-smoke.ts`: first-party interactive Nim CLI/TUI loop for human-in-the-loop validation over the same runtime/test-TUI libraries (`harness nim`, with direct script alias `bun run nim:tui`).
+
+Design constraints for this stack:
+
+- 100% transparency contract:
+  - thinking/tool-call/state transitions are first-class events, never hidden.
+  - one canonical stream supports both deep debug UI and seamless UI.
+- test surface independence:
+  - test framework/TUI must remain separate from Harness mux runtime wiring.
+  - if shared UI logic is needed, extract into first-party reusable libraries instead of coupling test UI to mux internals.
+- provider baseline:
+  - Anthropic Haiku is exercised throughout integration sweeps (mock + env-gated live path).
+
 ## Control Plane Stream Surface
 
 Required command categories:

@@ -24,6 +24,7 @@ import { parseStreamCommand } from '../src/control-plane/stream-command-parser.t
 import type { StreamCommand } from '../src/control-plane/stream-protocol.ts';
 import { diffUiUsage, runDiffUiCli } from '../src/diff-ui/index.ts';
 import { runHarnessAnimate } from './harness-animate.ts';
+import { runNimTuiSmoke } from './nim-tui-smoke.ts';
 import {
   clearDefaultGatewayPointerForRecordPath,
   writeDefaultGatewayPointerFromGatewayRecord,
@@ -4379,4 +4380,8 @@ export async function runClientCli(
 
 export async function runAnimateCli(args: readonly string[]): Promise<number> {
   return await runHarnessAnimate(args);
+}
+
+export async function runNimCli(args: readonly string[]): Promise<number> {
+  return await runNimTuiSmoke(args);
 }

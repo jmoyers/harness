@@ -21,6 +21,9 @@
     "src/**/*.d.ts",
     "test/**/*.ts",
     "scripts/**/*.ts",
-    "packages/harness-ai/src/**/*.ts"
+    "packages/harness-ai/src/**/*.ts",
+    "packages/nim-core/src/**/*.ts",
+    "packages/nim-ui-core/src/**/*.ts",
+    "packages/nim-test-tui/src/**/*.ts"
   ]
 }

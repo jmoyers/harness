@@ -16,6 +16,7 @@ const TOP_LEVEL_COMMANDS = new Set([
   'update',
   'upgrade',
   'cursor-hooks',
+  'nim',
   'animate',
   'diff',
 ]);
