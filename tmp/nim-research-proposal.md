@@ -31,7 +31,7 @@ This document is systems-first and maps public APIs to functional requirements w
 - Runtime now records explicit soul/skills/memory snapshot lifecycle events per turn and includes per-turn `soul_hash` / `skills_snapshot_version` envelope metadata for replayability.
 - Runtime now includes deterministic overflow compaction simulation paths with bounded retry/failure events for verifiable UC-06 behavior.
 - Runtime now exposes first-class `replayEvents` snapshots with deterministic event-id windowing (`fromEventIdExclusive`, `toEventIdInclusive`) for UC-09 replay APIs.
-- Runtime now supports first-class telemetry sink registration (`registerTelemetrySink`) and a first-party JSONL sink (`NimJsonlTelemetrySink`) for replay-grade event logging.
+- Runtime now supports first-class telemetry sink registration (`registerTelemetrySink`) and first-party JSONL telemetry I/O (`NimJsonlTelemetrySink`, `readNimJsonlTelemetry`) for replay-grade event logging and deterministic reload.
 
 ## 1.2 Execution Evidence (2026-02-20)
 
