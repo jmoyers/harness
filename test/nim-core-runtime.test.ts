@@ -208,7 +208,7 @@ test('nim runtime abortTurn cascades into aborted terminal state with lifecycle 
   }
 });
 
-test('nim runtime supports steering inject and interrupt-and-restart', async () => {
+test('nim runtime steerTurn appends input to the active run only', async () => {
   const runtime = createRuntime();
   const session = await createSession(runtime);
 
@@ -225,37 +225,25 @@ test('nim runtime supports steering inject and interrupt-and-restart', async () 
       idempotencyKey: 'idem-steer-1',
     });
 
-    const injectResult = await runtime.steerTurn({
+    const steerResult = await runtime.steerTurn({
       sessionId: session.sessionId,
       runId: turn.runId,
-      text: 'inject-me',
-      strategy: 'inject',
+      text: 'append-me',
     });
-    assert.equal(injectResult.accepted, true);
-
-    const restartResult = await runtime.steerTurn({
-      sessionId: session.sessionId,
-      runId: turn.runId,
-      text: 'second',
-      strategy: 'interrupt-and-restart',
-    });
-    assert.equal(restartResult.accepted, true);
-    assert.equal(typeof restartResult.replacedRunId, 'string');
+    assert.equal(steerResult.accepted, true);
 
     const firstResult = await turn.done;
-    assert.equal(firstResult.terminalState, 'aborted');
-
-    const replacementRunId = restartResult.replacedRunId as string;
+    assert.equal(firstResult.terminalState, 'completed');
     const events = await collectUntil(iterator, (items) =>
-      items.some((event) => event.type === 'turn.completed' && event.run_id === replacementRunId),
+      items.some((event) => event.type === 'turn.completed' && event.run_id === turn.runId),
     );
 
     assert.equal(
       events.some(
         (event) =>
           event.type === 'assistant.output.delta' &&
-          event.run_id === replacementRunId &&
-          String(event.data?.['text'] ?? '').includes('echo:second'),
+          event.run_id === turn.runId &&
+          String(event.data?.['text'] ?? '').includes('echo:first [steer:append-me]'),
       ),
       true,
     );
@@ -263,8 +251,8 @@ test('nim runtime supports steering inject and interrupt-and-restart', async () 
       events.some(
         (event) =>
           event.type === 'assistant.output.message' &&
-          event.run_id === replacementRunId &&
-          String(event.data?.['text'] ?? '').includes('echo:second'),
+          event.run_id === turn.runId &&
+          String(event.data?.['text'] ?? '').includes('echo:first [steer:append-me]'),
       ),
       true,
     );
@@ -272,7 +260,6 @@ test('nim runtime supports steering inject and interrupt-and-restart', async () 
     const noActive = await runtime.steerTurn({
       sessionId: session.sessionId,
       text: 'after',
-      strategy: 'inject',
     });
     assert.equal(noActive.accepted, false);
     assert.equal(noActive.reason, 'no-active-run');
@@ -281,7 +268,7 @@ test('nim runtime supports steering inject and interrupt-and-restart', async () 
   }
 });
 
-test('nim runtime follow-up queue prioritizes high priority and dedupes entries', async () => {
+test('nim runtime queueTurn prioritizes high priority and dedupes entries', async () => {
   const runtime = createRuntime();
   const session = await createSession(runtime);
 
@@ -298,16 +285,16 @@ test('nim runtime follow-up queue prioritizes high priority and dedupes entries'
       idempotencyKey: 'idem-q-1',
     });
 
-    const queuedNormal = await runtime.queueFollowUp({
+    const queuedNormal = await runtime.queueTurn({
       sessionId: session.sessionId,
       text: 'normal',
     });
-    const queuedHigh = await runtime.queueFollowUp({
+    const queuedHigh = await runtime.queueTurn({
       sessionId: session.sessionId,
       text: 'high',
       priority: 'high',
     });
-    const duplicate = await runtime.queueFollowUp({
+    const duplicate = await runtime.queueTurn({
       sessionId: session.sessionId,
       text: 'normal',
     });
@@ -342,7 +329,7 @@ test('nim runtime follow-up queue prioritizes high priority and dedupes entries'
     assert.equal(fullOutputs[2], 'echo:normal');
 
     assert.equal(
-      events.some((event) => event.type === 'turn.followup.dequeued'),
+      events.some((event) => event.type === 'turn.queue.dequeued'),
       true,
     );
   } finally {
@@ -350,11 +337,11 @@ test('nim runtime follow-up queue prioritizes high priority and dedupes entries'
   }
 });
 
-test('nim runtime queueFollowUp validates empty text and queue max', async () => {
+test('nim runtime queueTurn validates empty text and queue max', async () => {
   const runtime = createRuntime();
   const session = await createSession(runtime);
 
-  const invalid = await runtime.queueFollowUp({
+  const invalid = await runtime.queueTurn({
     sessionId: session.sessionId,
     text: ' ',
   });
@@ -362,14 +349,14 @@ test('nim runtime queueFollowUp validates empty text and queue max', async () =>
   assert.equal(invalid.reason, 'invalid-state');
 
   for (let index = 0; index < 64; index += 1) {
-    const queued = await runtime.queueFollowUp({
+    const queued = await runtime.queueTurn({
       sessionId: session.sessionId,
       text: `q-${String(index)}`,
     });
     assert.equal(queued.queued, true);
   }
 
-  const overflow = await runtime.queueFollowUp({
+  const overflow = await runtime.queueTurn({
     sessionId: session.sessionId,
     text: 'overflow',
   });
@@ -700,8 +687,8 @@ test('nim runtime fails closed on non-terminal persisted idempotency runs after 
   }
 });
 
-test('nim runtime persists follow-up queue across restart and drains on next terminal run', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'nim-runtime-followup-restart-'));
+test('nim runtime persists queued turns across restart and drains on next terminal run', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nim-runtime-queue-restart-'));
   const eventDbPath = join(dir, 'events.sqlite');
   const sessionDbPath = join(dir, 'sessions.sqlite');
 
@@ -712,7 +699,7 @@ test('nim runtime persists follow-up queue across restart and drains on next ter
     sessionStore: initialSessionStore,
   });
   const session = await createSession(initialRuntime);
-  const queued = await initialRuntime.queueFollowUp({
+  const queued = await initialRuntime.queueTurn({
     sessionId: session.sessionId,
     text: 'queued after restart',
     priority: 'high',
@@ -732,8 +719,8 @@ test('nim runtime persists follow-up queue across restart and drains on next ter
   try {
     const trigger = await resumedRuntime.sendTurn({
       sessionId: session.sessionId,
-      input: 'trigger followup drain',
-      idempotencyKey: 'idem-restart-followup-trigger',
+      input: 'trigger queue drain',
+      idempotencyKey: 'idem-restart-queue-trigger',
     });
     await trigger.done;
     let replay = await resumedRuntime.replayEvents({
@@ -744,7 +731,7 @@ test('nim runtime persists follow-up queue across restart and drains on next ter
     while (
       Date.now() < deadline &&
       !replay.events.some(
-        (event) => event.type === 'turn.started' && event.idempotency_key === `followup:${queueId}`,
+        (event) => event.type === 'turn.started' && event.idempotency_key === `queue:${queueId}`,
       )
     ) {
       await new Promise((resolve) => setTimeout(resolve, 25));
@@ -755,13 +742,13 @@ test('nim runtime persists follow-up queue across restart and drains on next ter
     }
     assert.equal(
       replay.events.some(
-        (event) => event.type === 'turn.followup.dequeued' && event.queue_id === queueId,
+        (event) => event.type === 'turn.queue.dequeued' && event.queue_id === queueId,
       ),
       true,
     );
     assert.equal(
       replay.events.some(
-        (event) => event.type === 'turn.started' && event.idempotency_key === `followup:${queueId}`,
+        (event) => event.type === 'turn.started' && event.idempotency_key === `queue:${queueId}`,
       ),
       true,
     );

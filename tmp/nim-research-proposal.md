@@ -13,7 +13,7 @@ Build a first-party, platform-agnostic agent runtime on top of `@harness/ai` tha
 - compaction
 - replay-grade telemetry/logging
 - full-stack abort
-- steering + queued follow-ups
+- steering + queued turns
 - memory
 - soul
 - skills
@@ -35,7 +35,7 @@ This document is systems-first and maps public APIs to functional requirements w
 - Runtime now persists canonical envelopes through a pluggable event store abstraction (`NimEventStore`) with first-party `InMemoryNimEventStore` and `NimSqliteEventStore` adapters.
 - Runtime now persists session metadata and idempotency mappings through a pluggable session store abstraction (`NimSessionStore`) with first-party `InMemoryNimSessionStore` and `NimSqliteSessionStore` adapters.
 - Runtime now emits canonical final assistant message envelopes (`assistant.output.message`) in addition to streaming deltas for intact replay and UI consumption.
-- Session store now persists queued follow-ups so queue ordering and dequeue semantics survive runtime restart boundaries.
+- Session store now persists queued turns so queue ordering and dequeue semantics survive runtime restart boundaries.
 - Runtime now includes first-party factory wiring (`createSqliteBackedNimRuntime`) for SQLite event/session stores plus optional JSONL telemetry sink composition.
 - Runtime now fails closed for restart idempotency ambiguity by emitting `turn.idempotency.unresolved` and rejecting reuse when stored run IDs have no terminal event.
 - `nim-test-tui` now includes canonical stream collector utilities (`collectNimTestTuiFrame`) for deterministic, independent test UI snapshots without mux-runtime coupling.
@@ -159,10 +159,10 @@ This document is systems-first and maps public APIs to functional requirements w
 - Test framework UI must be independent from Harness mux runtime and built on shared first-party Nim libraries.
 
 ### 3.6 Steering + queueing findings (Codex/OpenClaw)
-- Codex CLI exposes two distinct interaction paths while a turn is active: inject now vs queue for next turn.
+- Codex CLI exposes two distinct interaction paths while a turn is active: append now vs queue for next turn.
 - OpenClaw implements in-flight steer as a guarded operation: allowed only when run is active, streaming, and not compacting.
-- OpenClaw subagent steering restarts work with precedence: interrupt current run, clear queued follow-ups, wait for settle, relaunch steered run.
-- Queueing must be explicit and policy-driven (`steer`, `followup`, `collect`, `interrupt`, `steer-backlog` style modes are practical).
+- OpenClaw subagent steering restarts work with precedence: interrupt current run, clear queued turns, wait for settle, relaunch steered run.
+- Queueing must be explicit and policy-driven (`steer`, `queue`, `collect`, `interrupt`, `steer-backlog` style modes are practical).
 - Steering needs rate limits and anti-self-target rules for multi-agent orchestration.
 
 ## 4. Proposed System Boundaries
@@ -236,7 +236,7 @@ export interface NimRuntime {
   sendTurn(input: SendTurnInput): Promise<TurnHandle>;
   abortTurn(input: AbortTurnInput): Promise<void>;
   steerTurn(input: SteerTurnInput): Promise<SteerTurnResult>;
-  queueFollowUp(input: QueueFollowUpInput): Promise<QueueFollowUpResult>;
+  queueTurn(input: QueueTurnInput): Promise<QueueTurnResult>;
 
   compactSession(input: CompactSessionInput): Promise<CompactionResult>;
 
@@ -303,23 +303,21 @@ export interface SteerTurnInput {
   sessionId: string;
   runId?: string;
   text: string;
-  strategy: "inject" | "interrupt-and-restart";
 }
 
 export interface SteerTurnResult {
   accepted: boolean;
   reason?: "no-active-run" | "not-streaming" | "compacting" | "rate-limited";
-  replacedRunId?: string;
 }
 
-export interface QueueFollowUpInput {
+export interface QueueTurnInput {
   sessionId: string;
   text: string;
   priority?: "normal" | "high";
   dedupeKey?: string;
 }
 
-export interface QueueFollowUpResult {
+export interface QueueTurnResult {
   queued: boolean;
   queueId?: string;
   position?: number;
@@ -345,7 +343,7 @@ export type NimUiEvent =
 | Restart-safe continuation | runtime constructor with `NimSessionStore` + `NimEventStore` | `session.resumed`, `turn.idempotency.reused` after restart | pluggable session store (`NimSqliteSessionStore`) + canonical event store |
 | 100% transparency for stream/tool/thinking | `streamEvents(fidelity=raw|semantic)`, `streamUi(mode=debug|seamless)` | `assistant.state.*`, `provider.thinking.*`, `tool.call.*`, `tool.result.*` | no dropped state transitions between provider runtime and event store |
 | Abort up through stack | `abortTurn` | `turn.abort.requested/propagated/completed` | abort cause chain event + timeout/manual reason |
-| Steering + queued follow-ups | `steerTurn`, `queueFollowUp` | `turn.steer.requested/accepted/rejected`, `turn.followup.queued/dequeued/dropped` | queue state + steering decisions + linkage to run IDs |
+| Steering + queued turns | `steerTurn`, `queueTurn` | `turn.steer.requested/accepted/rejected`, `turn.queue.enqueued/dequeued/dropped` | queue state + steering decisions + linkage to run IDs |
 | Memory | `loadMemory` + memory tools | `memory.read/write/flush` | durable memory artifacts + index events |
 | Soul | `loadSoul` | `soul.loaded/validated/applied` | soul snapshot hash + source path |
 | Skills | `loadSkills` | `skills.snapshot.loaded/refreshed/blocked` | skills snapshot hash + snapshot version + eligibility reason |
@@ -375,13 +373,13 @@ sequenceDiagram
 
     alt user steer now
       U->>CP: turn.steer(runId, text)
-      CP->>N: steerTurn(strategy=inject)
-      N->>AI: inject steer into active run
+      CP->>N: steerTurn
+      N->>AI: append steer to active run
       N->>DB: append turn.steer.accepted
     else queue for next turn
-      U->>CP: turn.queueFollowUp(sessionId, text)
-      CP->>N: queueFollowUp
-      N->>DB: append turn.followup.queued
+      U->>CP: turn.queueTurn(sessionId, text)
+      CP->>N: queueTurn
+      N->>DB: append turn.queue.enqueued
     end
 
     alt context near threshold
@@ -400,8 +398,8 @@ sequenceDiagram
     end
 
     AI-->>N: finish/error/abort
-    N->>N: dequeue follow-up if present
-    N->>DB: append turn.followup.dequeued
+    N->>N: dequeue queued turn if present
+    N->>DB: append turn.queue.dequeued
     N->>DB: append turn.completed|failed
     N-->>CP: turn terminal status
 ```
@@ -427,9 +425,9 @@ Minimum event envelope fields (aligning to Harness logging laws):
 - `payload_hash`
 - `idempotency_key` (turn-scoped)
 - `lane` (execution lane label)
-- `queue_id` (if event belongs to queued follow-up)
+- `queue_id` (if event belongs to queued turn)
 - `queue_position`
-- `steer_strategy` (`inject|interrupt-and-restart`)
+- `steer_strategy` (`append`)
 - `strategy_phase` (planner/executor/tool-selection phase label)
 - `provider_event_index` (monotonic within provider stream)
 - `state` (`thinking|tool-calling|responding|idle`)
@@ -474,8 +472,8 @@ Replay rule: session/turn state must be reconstructable solely from ordered even
 | UC-07 | Skills snapshot continuity | `loadSkills` + `sendTurn` | Snapshot hash/version persisted; active turn stays stable while watcher updates next-turn snapshot | precedence resolver + watcher version bump logic | update `SKILL.md` between turns and verify version increments once |
 | UC-08 | Soul + memory injection | `loadSoul` + `loadMemory` + `sendTurn` | Soul hash and memory references recorded; missing files produce explicit non-silent events | hash/versioning + missing file error paths | run with bootstrap files present/missing and verify event trail |
 | UC-09 | Deterministic replay audit | `streamEvents` (+ replay API) | Timeline is reconstructable from event order and payload refs only | event ordering, schema completeness, payload hash verification | full turn replay from SQLite + JSONL parity comparison |
-| UC-10 | In-turn steering injection | `steerTurn(strategy=inject)` while run active | Steering accepted only for active+streaming+non-compacting run; steer event attached to run timeline | state guard matrix + validation + rate limit paths | inject steer mid-run and verify output reflects steering without orphaning state |
-| UC-11 | Queue follow-up for next turn | `queueFollowUp` while run active, auto-dequeue on terminal | Queue order preserved FIFO (or declared priority policy); dedupe prevents duplicate submissions | queue ordering + dedupe + overflow behavior | submit multiple follow-ups during long turn, verify deterministic dequeue sequence |
+| UC-10 | In-turn steering append | `steerTurn` while run active | Steering accepted only for active+streaming+non-compacting run; steer event attached to run timeline | state guard matrix + validation + rate limit paths | append steer mid-run and verify output reflects steering without orphaning state |
+| UC-11 | Queue next turn | `queueTurn` while run active, auto-dequeue on terminal | Queue order preserved FIFO (or declared priority policy); dedupe prevents duplicate submissions | queue ordering + dedupe + overflow behavior | submit multiple queued turns during long turn, verify deterministic dequeue sequence |
 | UC-12 | Full transparency stream for debug + seamless UIs | `streamEvents(fidelity=raw|semantic)` + `streamUi(mode=debug|seamless)` | Every thinking/tool-call/state transition is observable; UI stream is a pure projection of canonical events | event projection determinism + no-gap lifecycle assertions | compare raw stream vs projected debug/seamless streams for identical turn outcomes |
 
 ## 11. Verification Plan (100% coverage target)
@@ -491,8 +489,8 @@ All new Nim code must ship with:
 - Provider router: switch, fallback, invalid model ref, auth/transport errors.
 - Tool policy engine: profile layering, provider narrowing, deny precedence.
 - Conversation engine: continuation, idempotency, replay rebuild, tenant boundary checks.
-- Steering engine: active-run guards (active/streaming/compacting), strategy dispatch, and rate limiting.
-- Follow-up queue: FIFO/priority ordering, dedupe, queue capacity, and dequeue-on-terminal guarantees.
+- Steering engine: active-run guards (active/streaming/compacting) and rate limiting.
+- Queue engine: FIFO/priority ordering, dedupe, queue capacity, and dequeue-on-terminal guarantees.
 - Transparency pipeline: raw provider event capture, normalized semantic mapping, and UI projection invariants.
 - Compaction engine: threshold triggers, preserve-tail invariants, retry behavior, negative compaction failures.
 - Abort cascade: propagation from API -> runtime -> provider/tool executors.
@@ -503,8 +501,8 @@ All new Nim code must ship with:
 ### 11.2 Integration/functional matrix
 - End-to-end turn with tool loop and continuation.
 - Anthropic Haiku baseline run is required in every integration sweep (env-gated live path + deterministic mock path).
-- In-turn steer injection and interrupt-and-restart steer strategy behavior.
-- Follow-up queue during active run with deterministic dequeue after run terminal event.
+- In-turn steer append behavior.
+- Queue during active run with deterministic dequeue after run terminal event.
 - Debug UI and seamless UI fed from same canonical event log with no missing tool/thinking states.
 - Mid-turn abort with pending tool call and child-run cascade.
 - Auto-compaction + retry without duplicate outputs.
@@ -552,12 +550,11 @@ This ordering gets a usable runtime early while preserving correctness and repla
 - They are distinct APIs with distinct guarantees and event types.
 
 Codex-aligned interaction model:
-- inject now (`Enter` behavior): steer active run immediately.
-- queue next (`Tab` behavior): store follow-up and run it after terminal event.
+- append now (`Enter` behavior): steer active run immediately.
+- queue next (`Tab` behavior): store queued turn and run it after terminal event.
 
 OpenClaw-aligned safety model:
 - steering is rejected when no active run, not streaming, or compacting.
-- restart-steer can interrupt current run, clear stale queue entries, then relaunch with steer input.
 
 ### 14.2 State machine
 
@@ -565,9 +562,9 @@ OpenClaw-aligned safety model:
 stateDiagram-v2
     [*] --> idle
     idle --> running: sendTurn
-    running --> running: steerTurn(inject)
-    running --> queued: queueFollowUp
-    queued --> queued: queueFollowUp
+    running --> running: steerTurn(append)
+    running --> queued: queueTurn
+    queued --> queued: queueTurn
     running --> terminal: complete/failed/aborted
     queued --> running: auto dequeue + sendTurn
     terminal --> idle
@@ -575,9 +572,9 @@ stateDiagram-v2
 
 ### 14.3 Public API mapping to existing Harness transport
 
-- `steerTurn(strategy=inject)` maps to control-plane `session.respond` in current stack.
+- `steerTurn` maps to control-plane `session.respond` in current stack.
 - `abortTurn` maps to control-plane `session.interrupt` in current stack.
-- `queueFollowUp` is a new runtime concern that should live above stream transport and persist in events.
+- `queueTurn` is a new runtime concern that should live above stream transport and persist in events.
 
 Compatibility constraint:
 - do not break existing `session.respond`/`session.interrupt` clients; Nim should provide an adapter layer that preserves current behavior while adding queue semantics.
@@ -585,10 +582,10 @@ Compatibility constraint:
 ### 14.4 Invariants
 
 - I1: steer must never start a second concurrent run in the same session lane.
-- I2: queued follow-ups must be totally ordered per session.
+- I2: queued turns must be totally ordered per session.
 - I3: each queued item is consumed at most once (idempotent dequeue).
 - I4: steer/queue decisions must be replayable from events only.
-- I5: compaction window is non-steerable unless strategy explicitly supports interrupt-and-restart.
+- I5: compaction window is non-steerable.
 
 ## 15. Transparency Contract (hard requirement)
 

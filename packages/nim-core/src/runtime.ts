@@ -14,8 +14,8 @@ import type {
   NimToolDefinition,
   NimToolPolicy,
   NimUiEvent,
-  QueueFollowUpInput,
-  QueueFollowUpResult,
+  QueueTurnInput,
+  QueueTurnResult,
   ReplayEventsInput,
   ReplayEventsResult,
   ResumeSessionInput,
@@ -59,7 +59,7 @@ type SessionState = {
   eventSeq: number;
   lastRunId?: string;
   activeRunId?: string;
-  followups: QueueItem[];
+  queuedTurns: QueueItem[];
   idempotencyToRunId: Map<string, string>;
 };
 
@@ -104,7 +104,7 @@ type EventSubscriber = {
   readonly queue: AsyncPushQueue<NimEventEnvelope>;
 };
 
-const MAX_FOLLOWUPS_PER_SESSION = 64;
+const MAX_QUEUED_TURNS_PER_SESSION = 64;
 const MAX_OVERFLOW_COMPACTION_ATTEMPTS = 3;
 
 class AsyncPushQueue<T> {
@@ -207,7 +207,7 @@ export class InMemoryNimRuntime implements NimRuntime {
       ...(soulHash !== undefined ? { soulHash } : {}),
       ...(skillsSnapshot !== undefined ? { skillsSnapshotVersion: skillsSnapshot.version } : {}),
       eventSeq: 0,
-      followups: [],
+      queuedTurns: [],
       idempotencyToRunId: new Map<string, string>(),
     };
     this.sessions.set(sessionId, next);
@@ -507,46 +507,26 @@ export class InMemoryNimRuntime implements NimRuntime {
     this.appendRunEvent(session, activeRun, {
       type: 'turn.steer.requested',
       source: 'system',
+      steerStrategy: 'append',
       data: {
-        strategy: input.strategy,
+        strategy: 'append',
       },
     });
-
-    if (input.strategy === 'inject') {
-      activeRun.steers.push(input.text);
-      this.appendRunEvent(session, activeRun, {
-        type: 'turn.steer.accepted',
-        source: 'system',
-        data: {
-          strategy: input.strategy,
-        },
-      });
-      return {
-        accepted: true,
-      };
-    }
-
-    this.requestAbort(session, activeRun, 'manual');
-    const replacement = await this.sendTurn({
-      sessionId: input.sessionId,
-      input: input.text,
-      idempotencyKey: `restart:${randomUUID()}`,
-    });
+    activeRun.steers.push(input.text);
     this.appendRunEvent(session, activeRun, {
       type: 'turn.steer.accepted',
       source: 'system',
+      steerStrategy: 'append',
       data: {
-        strategy: input.strategy,
-        replacedRunId: replacement.runId,
+        strategy: 'append',
       },
     });
     return {
       accepted: true,
-      replacedRunId: replacement.runId,
     };
   }
 
-  public async queueFollowUp(input: QueueFollowUpInput): Promise<QueueFollowUpResult> {
+  public async queueTurn(input: QueueTurnInput): Promise<QueueTurnResult> {
     const session = this.requireSession(input.sessionId);
     if (input.text.trim().length === 0) {
       return {
@@ -555,7 +535,7 @@ export class InMemoryNimRuntime implements NimRuntime {
       };
     }
 
-    if (session.followups.length >= MAX_FOLLOWUPS_PER_SESSION) {
+    if (session.queuedTurns.length >= MAX_QUEUED_TURNS_PER_SESSION) {
       return {
         queued: false,
         reason: 'queue-full',
@@ -563,7 +543,7 @@ export class InMemoryNimRuntime implements NimRuntime {
     }
 
     const dedupeKey = input.dedupeKey ?? input.text;
-    const duplicate = session.followups.some((item) => item.dedupeKey === dedupeKey);
+    const duplicate = session.queuedTurns.some((item) => item.dedupeKey === dedupeKey);
     if (duplicate) {
       return {
         queued: false,
@@ -580,21 +560,21 @@ export class InMemoryNimRuntime implements NimRuntime {
 
     let position = 0;
     if (queueItem.priority === 'high') {
-      session.followups.unshift(queueItem);
+      session.queuedTurns.unshift(queueItem);
       position = 0;
     } else {
-      session.followups.push(queueItem);
-      position = session.followups.length - 1;
+      session.queuedTurns.push(queueItem);
+      position = session.queuedTurns.length - 1;
     }
 
     const run = session.activeRunId !== undefined ? this.runs.get(session.activeRunId) : undefined;
     this.appendSessionEvent(session, {
-      type: 'turn.followup.queued',
+      type: 'turn.queue.enqueued',
       source: 'system',
       runId: run?.runId ?? '',
       turnId: run?.runId ?? '',
-      stepId: 'step:followup-queued',
-      idempotencyKey: run?.idempotencyKey ?? 'followup',
+      stepId: 'step:queue-enqueued',
+      idempotencyKey: run?.idempotencyKey ?? 'queue',
       queueId: queueItem.queueId,
       queuePosition: position,
     });
@@ -1336,14 +1316,14 @@ export class InMemoryNimRuntime implements NimRuntime {
       terminalState: state,
     });
 
-    if (session.followups.length > 0) {
-      const queueItem = session.followups.shift() as QueueItem;
+    if (session.queuedTurns.length > 0) {
+      const queueItem = session.queuedTurns.shift() as QueueItem;
       this.appendSessionEvent(session, {
-        type: 'turn.followup.dequeued',
+        type: 'turn.queue.dequeued',
         source: 'system',
         runId: run.runId,
         turnId: run.runId,
-        stepId: 'step:followup-dequeued',
+        stepId: 'step:queue-dequeued',
         idempotencyKey: run.idempotencyKey,
         queueId: queueItem.queueId,
         queuePosition: 0,
@@ -1351,7 +1331,7 @@ export class InMemoryNimRuntime implements NimRuntime {
       await this.sendTurn({
         sessionId: session.sessionId,
         input: queueItem.text,
-        idempotencyKey: `followup:${queueItem.queueId}`,
+        idempotencyKey: `queue:${queueItem.queueId}`,
       });
     }
   }
@@ -1391,6 +1371,7 @@ export class InMemoryNimRuntime implements NimRuntime {
       type: string;
       source: NimEventEnvelope['source'];
       state?: NimEventEnvelope['state'];
+      steerStrategy?: NimEventEnvelope['steer_strategy'];
       toolCallId?: string;
       data?: Record<string, unknown>;
     },
@@ -1413,6 +1394,7 @@ export class InMemoryNimRuntime implements NimRuntime {
       payload_hash: `hash:${run.runId}:${run.stepCounter}`,
       idempotency_key: run.idempotencyKey,
       lane: session.lane,
+      ...(input.steerStrategy !== undefined ? { steer_strategy: input.steerStrategy } : {}),
       policy_hash: this.toolPolicy.hash,
       ...(run.skillsSnapshotVersion !== undefined
         ? { skills_snapshot_version: run.skillsSnapshotVersion }
@@ -1758,11 +1740,11 @@ export class InMemoryNimRuntime implements NimRuntime {
         : {}),
       eventSeq: state.eventSeq,
       ...(state.lastRunId !== undefined ? { lastRunId: state.lastRunId } : {}),
-      followups: state.followups.map((followup) => ({
-        queueId: followup.queueId,
-        text: followup.text,
-        priority: followup.priority,
-        dedupeKey: followup.dedupeKey,
+      followups: state.queuedTurns.map((queuedTurn) => ({
+        queueId: queuedTurn.queueId,
+        text: queuedTurn.text,
+        priority: queuedTurn.priority,
+        dedupeKey: queuedTurn.dedupeKey,
       })),
     });
   }
@@ -1784,11 +1766,11 @@ export class InMemoryNimRuntime implements NimRuntime {
         : {}),
       eventSeq: state.eventSeq,
       ...(state.lastRunId !== undefined ? { lastRunId: state.lastRunId } : {}),
-      followups: state.followups.map((followup) => ({
-        queueId: followup.queueId,
-        text: followup.text,
-        priority: followup.priority,
-        dedupeKey: followup.dedupeKey,
+      queuedTurns: state.followups.map((queuedTurn) => ({
+        queueId: queuedTurn.queueId,
+        text: queuedTurn.text,
+        priority: queuedTurn.priority,
+        dedupeKey: queuedTurn.dedupeKey,
       })),
       idempotencyToRunId,
     };

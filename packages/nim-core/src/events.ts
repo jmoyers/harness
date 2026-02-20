@@ -32,7 +32,7 @@ export const nimEventEnvelopeSchema = z
     lane: z.string().min(1),
     queue_id: z.string().min(1).optional(),
     queue_position: z.number().int().nonnegative().optional(),
-    steer_strategy: z.enum(['inject', 'interrupt-and-restart']).optional(),
+    steer_strategy: z.enum(['append']).optional(),
     strategy_phase: z.string().min(1).optional(),
     provider_event_index: z.number().int().nonnegative().optional(),
     state: nimEventStateSchema.optional(),

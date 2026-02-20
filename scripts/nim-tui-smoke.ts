@@ -30,6 +30,7 @@ type Command =
   | { readonly type: 'help' }
   | { readonly type: 'exit' }
   | { readonly type: 'send'; readonly text: string }
+  | { readonly type: 'steer'; readonly text: string }
   | { readonly type: 'queue'; readonly text: string; readonly priority: 'normal' | 'high' }
   | { readonly type: 'abort' }
   | { readonly type: 'state' }
@@ -238,6 +239,16 @@ export function parseNimTuiCommand(input: string): Command {
       text,
     };
   }
+  if (trimmed.startsWith('/steer ')) {
+    const text = trimmed.slice('/steer '.length).trim();
+    if (text.length === 0) {
+      throw new Error('missing text for /steer');
+    }
+    return {
+      type: 'steer',
+      text,
+    };
+  }
   if (trimmed.startsWith('/queue ')) {
     const body = trimmed.slice('/queue '.length).trim();
     if (body.length === 0) {
@@ -297,6 +308,7 @@ function printHelp(): void {
       '  /help',
       '  /exit',
       '  /send <text>            (plain text without slash also sends)',
+      '  /steer <text>           (append input to active run)',
       '  /abort                   (abort active run)',
       '  /queue [high|normal] <text>',
       '  /replay [count]',
@@ -572,12 +584,21 @@ async function runNimTuiInteractive(args: ParsedArgs): Promise<void> {
         continue;
       }
       if (command.type === 'queue') {
-        const queued = await runtime.queueFollowUp({
+        const queued = await runtime.queueTurn({
           sessionId: currentSession.sessionId,
           text: command.text,
           priority: command.priority,
         });
         process.stdout.write(`${JSON.stringify(queued)}\n`);
+        continue;
+      }
+      if (command.type === 'steer') {
+        const steered = await runtime.steerTurn({
+          sessionId: currentSession.sessionId,
+          ...(activeRunId !== undefined ? { runId: activeRunId } : {}),
+          text: command.text,
+        });
+        process.stdout.write(`${JSON.stringify(steered)}\n`);
         continue;
       }
       if (command.type === 'replay') {

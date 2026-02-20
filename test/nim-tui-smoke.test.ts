@@ -70,6 +70,7 @@ test('nim tui command parser maps interactive commands', () => {
   assert.deepEqual(parseNimTuiCommand('/abort'), { type: 'abort' });
   assert.deepEqual(parseNimTuiCommand('/send hello'), { type: 'send', text: 'hello' });
   assert.deepEqual(parseNimTuiCommand('plain hello'), { type: 'send', text: 'plain hello' });
+  assert.deepEqual(parseNimTuiCommand('/steer hello'), { type: 'steer', text: 'hello' });
   assert.deepEqual(parseNimTuiCommand('/queue hello'), {
     type: 'queue',
     text: 'hello',

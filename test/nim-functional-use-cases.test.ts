@@ -801,7 +801,7 @@ test('UC-09 deterministic replay snapshot is stable and fully ordered', async ()
   );
 });
 
-test('UC-10 in-turn steer inject mutates active run output and keeps single terminal', async () => {
+test('UC-10 in-turn steer append mutates active run output and keeps single terminal', async () => {
   const runtime = new InMemoryNimRuntime();
   runtime.registerProvider({
     id: 'anthropic',
@@ -824,8 +824,7 @@ test('UC-10 in-turn steer inject mutates active run output and keeps single term
   const steer = await runtime.steerTurn({
     sessionId: session.sessionId,
     runId: run.runId,
-    text: 'inject-now',
-    strategy: 'inject',
+    text: 'append-now',
   });
   assert.equal(steer.accepted, true);
 
@@ -848,13 +847,13 @@ test('UC-10 in-turn steer inject mutates active run output and keeps single term
       events.some((event) => event.type === 'turn.steer.accepted'),
       true,
     );
-    assert.match(assistantText(events), /\[steer:inject-now\]/u);
+    assert.match(assistantText(events), /\[steer:append-now\]/u);
   } finally {
     await iterator.return?.();
   }
 });
 
-test('UC-11 queued follow-ups dequeue deterministically by priority and preserve order', async () => {
+test('UC-11 queued turns dequeue deterministically by priority and preserve order', async () => {
   const runtime = new InMemoryNimRuntime();
   runtime.registerProvider({
     id: 'anthropic',
@@ -874,12 +873,12 @@ test('UC-11 queued follow-ups dequeue deterministically by priority and preserve
     idempotencyKey: 'uc11-root',
   });
 
-  const normal = await runtime.queueFollowUp({
+  const normal = await runtime.queueTurn({
     sessionId: session.sessionId,
     text: 'follow-normal',
     priority: 'normal',
   });
-  const high = await runtime.queueFollowUp({
+  const high = await runtime.queueTurn({
     sessionId: session.sessionId,
     text: 'follow-high',
     priority: 'high',
@@ -902,7 +901,7 @@ test('UC-11 queued follow-ups dequeue deterministically by priority and preserve
       1200,
     );
 
-    const dequeues = events.filter((event) => event.type === 'turn.followup.dequeued');
+    const dequeues = events.filter((event) => event.type === 'turn.queue.dequeued');
     assert.equal(dequeues.length, 2);
     assert.equal(dequeues[0]?.queue_id, high.queueId);
     assert.equal(dequeues[1]?.queue_id, normal.queueId);

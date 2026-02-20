@@ -99,23 +99,21 @@ export type SteerTurnInput = {
   readonly sessionId: string;
   readonly runId?: string;
   readonly text: string;
-  readonly strategy: 'inject' | 'interrupt-and-restart';
 };
 
 export type SteerTurnResult = {
   readonly accepted: boolean;
   readonly reason?: 'no-active-run' | 'not-streaming' | 'compacting' | 'rate-limited';
-  readonly replacedRunId?: string;
 };
 
-export type QueueFollowUpInput = {
+export type QueueTurnInput = {
   readonly sessionId: string;
   readonly text: string;
   readonly priority?: 'normal' | 'high';
   readonly dedupeKey?: string;
 };
 
-export type QueueFollowUpResult = {
+export type QueueTurnResult = {
   readonly queued: boolean;
   readonly queueId?: string;
   readonly position?: number;
@@ -231,7 +229,7 @@ export interface NimRuntime {
   sendTurn(input: SendTurnInput): Promise<TurnHandle>;
   abortTurn(input: AbortTurnInput): Promise<void>;
   steerTurn(input: SteerTurnInput): Promise<SteerTurnResult>;
-  queueFollowUp(input: QueueFollowUpInput): Promise<QueueFollowUpResult>;
+  queueTurn(input: QueueTurnInput): Promise<QueueTurnResult>;
 
   compactSession(input: CompactSessionInput): Promise<CompactionResult>;
 
