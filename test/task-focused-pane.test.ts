@@ -96,7 +96,7 @@ void test('focused pane renders selected repository tasks with editable task buf
     false,
   );
   assert.equal(
-    view.rows.some((row) => row.includes('[ d queued ]')),
+    view.rows.some((row) => row.includes('[ d draft ]')),
     true,
   );
   assert.equal(
@@ -168,7 +168,7 @@ void test('focused pane handles empty/archived repository states and dropdown se
   );
 });
 
-void test('focused pane repository dropdown follows left-rail homePriority ordering', () => {
+void test('focused pane repository dropdown preserves left-rail repository insertion order', () => {
   const repositories = new Map<string, TaskFocusedPaneRepositoryRecord>([
     ['repo-ash', repository('repo-ash', 'ash', null, { homePriority: 1 })],
     ['repo-harness', repository('repo-harness', 'harness', null, { homePriority: 0 })],
@@ -189,8 +189,8 @@ void test('focused pane repository dropdown follows left-rail homePriority order
     scrollTop: 0,
   });
   const dropdownRows = view.rows.filter((row) => row.includes('●') || row.includes('○'));
-  assert.equal(dropdownRows[0]?.includes('harness') ?? false, true);
-  assert.equal(dropdownRows[1]?.includes('ash') ?? false, true);
+  assert.equal(dropdownRows[0]?.includes('ash') ?? false, true);
+  assert.equal(dropdownRows[1]?.includes('harness') ?? false, true);
 });
 
 void test('focused pane supports row/cell hit testing and row clamping', () => {
@@ -387,11 +387,109 @@ void test('focused pane orders finite timestamps and renders in-progress glyph',
     scrollTop: 0,
   });
   const orderedTaskRows = view.taskIds.filter((taskId): taskId is string => taskId !== null);
-  assert.deepEqual(orderedTaskRows, ['early', 'late']);
+  assert.deepEqual(orderedTaskRows, ['late', 'early']);
   assert.equal(
     view.rows.some((row) => row.includes('◔')),
     true,
   );
+});
+
+void test('focused pane groups tasks by status and replaces focused row content with editor', () => {
+  const repositories = new Map<string, TaskFocusedPaneRepositoryRecord>([
+    ['r-a', repository('r-a', 'alpha')],
+  ]);
+  const tasks = new Map<string, TaskFocusedPaneTaskRecord>([
+    ['ready', task('ready', 'r-a', 'ready', 2, 'ready title', 'ready body')],
+    ['in-progress', task('in-progress', 'r-a', 'in-progress', 9, 'ip title', 'ip body')],
+    ['draft', task('draft', 'r-a', 'draft', 1, 'draft title', 'duplicate text')],
+    ['complete', task('complete', 'r-a', 'completed', 0, 'done title', 'done body')],
+  ]);
+  const view = buildTaskFocusedPaneView({
+    repositories,
+    tasks,
+    selectedRepositoryId: 'r-a',
+    repositoryDropdownOpen: false,
+    editorTarget: {
+      kind: 'task',
+      taskId: 'draft',
+    },
+    draftBuffer: createTaskComposerBuffer(''),
+    taskBufferById: new Map([
+      [
+        'draft',
+        {
+          text: 'duplicate text\nmore',
+          cursor: 1,
+        },
+      ],
+    ]),
+    notice: null,
+    cols: 80,
+    rows: 24,
+    scrollTop: 0,
+  });
+
+  const inProgHeaderIndex = view.rows.findIndex((row) => row.includes('◔ in prog'));
+  const readyHeaderIndex = view.rows.findIndex((row) => row.includes('○ ready'));
+  const draftHeaderIndex = view.rows.findIndex((row) => row.includes('◇ draft'));
+  const completeHeaderIndex = view.rows.findIndex((row) => row.includes('✓ complete'));
+  assert.equal(inProgHeaderIndex >= 0, true);
+  assert.equal(readyHeaderIndex > inProgHeaderIndex, true);
+  assert.equal(draftHeaderIndex > readyHeaderIndex, true);
+  assert.equal(completeHeaderIndex > draftHeaderIndex, true);
+  assert.equal(
+    view.rows.some((row) => row.includes('▸ ◇ editing')),
+    true,
+  );
+
+  const editorOnlyRowCount = view.rows.filter((row) => row.includes('more')).length;
+  assert.equal(editorOnlyRowCount, 1);
+});
+
+void test('focused pane status-order sorter handles same-status orderIndex and createdAt tiebreaks', () => {
+  const repositories = new Map<string, TaskFocusedPaneRepositoryRecord>([
+    ['r-a', repository('r-a', 'alpha')],
+  ]);
+  const tasks = new Map<string, TaskFocusedPaneTaskRecord>([
+    ['ready-high-order', task('ready-high-order', 'r-a', 'ready', 3, 'ready high', 'ready high')],
+    ['ready-low-order', task('ready-low-order', 'r-a', 'ready', 0, 'ready low', 'ready low')],
+    [
+      'draft-late',
+      {
+        ...task('draft-late', 'r-a', 'draft', 7, 'draft late', 'draft late'),
+        createdAt: '2026-01-05T00:00:00.000Z',
+      },
+    ],
+    [
+      'draft-early',
+      {
+        ...task('draft-early', 'r-a', 'draft', 7, 'draft early', 'draft early'),
+        createdAt: '2026-01-02T00:00:00.000Z',
+      },
+    ],
+  ]);
+  const view = buildTaskFocusedPaneView({
+    repositories,
+    tasks,
+    selectedRepositoryId: 'r-a',
+    repositoryDropdownOpen: false,
+    editorTarget: {
+      kind: 'draft',
+    },
+    draftBuffer: createTaskComposerBuffer(''),
+    taskBufferById: new Map(),
+    notice: null,
+    cols: 80,
+    rows: 24,
+    scrollTop: 0,
+  });
+  const orderedTaskRows = view.taskIds.filter((taskId): taskId is string => taskId !== null);
+  assert.deepEqual(orderedTaskRows, [
+    'ready-low-order',
+    'ready-high-order',
+    'draft-early',
+    'draft-late',
+  ]);
 });
 
 void test('focused pane truncates narrow notice rows to ellipsis', () => {

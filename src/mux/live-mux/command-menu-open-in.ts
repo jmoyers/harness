@@ -36,7 +36,7 @@ const OPEN_IN_TARGET_DEFAULTS: Readonly<Record<HarnessMuxOpenInTargetId, OpenInT
     launchCommand: 'zed',
   },
   cursor: {
-    title: 'Cursor IDE',
+    title: 'Cursor',
     aliases: ['cursor', 'cursor ide', 'editor'],
     keywords: ['cursor', 'editor', 'ide'],
     macAppName: 'Cursor',
@@ -220,7 +220,7 @@ interface CommandMenuOpenInProviderOptions<TContext> {
     provider: (context: TContext) => readonly RegisteredCommandMenuAction<TContext>[],
   ) => () => void;
   readonly providerId?: string;
-  readonly resolveDirectories: () => readonly CommandMenuOpenInProviderDirectory[];
+  readonly resolveDirectories: (context: TContext) => readonly CommandMenuOpenInProviderDirectory[];
   readonly resolveTargets: () => readonly ResolvedCommandMenuOpenInTarget[];
   readonly projectPathTail: (directoryPath: string) => string;
   readonly openInTarget: (
@@ -235,10 +235,10 @@ export function registerCommandMenuOpenInProvider<TContext>(
   options: CommandMenuOpenInProviderOptions<TContext>,
 ): () => void {
   const providerId = options.providerId ?? 'project.open-in';
-  return options.registerProvider(providerId, () => {
+  return options.registerProvider(providerId, (context) => {
     const actions: RegisteredCommandMenuAction<TContext>[] = [];
     const targets = options.resolveTargets();
-    for (const directory of options.resolveDirectories()) {
+    for (const directory of options.resolveDirectories(context)) {
       const projectLabel = options.projectPathTail(directory.path);
       for (const target of targets) {
         actions.push({

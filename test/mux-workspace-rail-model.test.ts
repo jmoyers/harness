@@ -854,6 +854,57 @@ void test('workspace rail model renders home as a selectable directory-style blo
   assert.equal(firstProjectHeaderIndex - homeHeaderIndex > 1, true);
 });
 
+void test('workspace rail model does not mark conversation active while tasks selection is enabled', () => {
+  const rows = buildWorkspaceRailViewRows(
+    {
+      directories: [
+        {
+          key: 'dir-a',
+          workspaceId: 'alpha',
+          worktreeId: 'none',
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0,
+          },
+        },
+      ],
+      conversations: [
+        {
+          sessionId: 'conversation-a',
+          directoryKey: 'dir-a',
+          title: 'task',
+          agentLabel: 'codex',
+          cpuPercent: 0,
+          memoryMb: 0,
+          lastKnownWork: null,
+          status: 'running',
+          attentionReason: null,
+          startedAt: '2026-01-01T00:00:00.000Z',
+          lastEventAt: '2026-01-01T00:00:01.000Z',
+        },
+      ],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: 'conversation-a',
+      projectSelectionEnabled: false,
+      homeSelectionEnabled: false,
+      repositorySelectionEnabled: false,
+      tasksSelectionEnabled: true,
+      nowMs: Date.parse('2026-01-01T00:00:05.000Z'),
+    },
+    24,
+  );
+
+  const tasksRow = rows.find((row) => row.railAction === 'tasks.open');
+  assert.equal(tasksRow?.active, true);
+  assert.equal(
+    rows.some((row) => row.kind === 'conversation-title' && row.active),
+    false,
+  );
+});
+
 void test('workspace rail model overrides default shortcut text when custom hint is set', () => {
   const rows = buildWorkspaceRailViewRows(
     {

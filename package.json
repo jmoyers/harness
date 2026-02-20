@@ -91,7 +91,8 @@
     "test:integration:nim:haiku": "bun scripts/integration-nim-haiku.ts",
     "smoke:harness-ai": "bun scripts/harness-ai-smoke.ts",
     "smoke:harness-ai:parity": "bun scripts/harness-ai-parity-smoke.mts",
-    "test:coverage": "bun run build:ptyd && bun test --coverage --coverage-reporter=lcov --coverage-dir .harness/coverage-bun && bun run coverage:check",
+    "test:coverage": "bun run build:ptyd && bun run test:sharded -- --coverage --coverage-reporter=lcov --coverage-dir .harness/coverage-bun && bun run coverage:check",
+    "test:coverage:serial": "bun run build:ptyd && bun test --coverage --coverage-reporter=lcov --coverage-dir .harness/coverage-bun && bun run coverage:check",
     "verify": "bun run format:check && bun run lint && bun run typecheck && bun run deadcode && bun run test:coverage",
     "verify:strict": "bun run verify && bun run loc:verify:enforce"
   },

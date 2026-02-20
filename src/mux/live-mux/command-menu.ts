@@ -1,5 +1,7 @@
 const COMMAND_MENU_MAX_RESULTS = 8;
 const THREAD_ACTION_ID_PATTERN = /^thread\.(?:start|install)\.([a-z0-9-]+)$/u;
+const TASK_SUMMARY_MAX_CHARS = 96;
+const DEFAULT_TASK_SUMMARY = 'untitled task';
 
 type CommandMenuScope = 'all' | 'thread-start' | 'theme-select';
 type CommandMenuInitialGroup = 'agent-types' | 'actions';
@@ -73,6 +75,29 @@ interface CommandMenuInputReduction {
 
 function normalizeQuery(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function truncateCommandMenuSummary(value: string, maxChars: number): string {
+  if (value.length <= maxChars) {
+    return value;
+  }
+  if (maxChars <= 3) {
+    return value.slice(0, Math.max(1, maxChars));
+  }
+  return `${value.slice(0, maxChars - 3)}...`;
+}
+
+export function summarizeTaskForCommandMenu(body: string, title: string): string {
+  const bodyLines = body.split('\n').map((line) => line.trim());
+  const firstBodyLine = bodyLines.find((line) => line.length > 0) ?? '';
+  const fallbackTitle = title.trim();
+  const summarySource =
+    firstBodyLine.length > 0
+      ? firstBodyLine
+      : fallbackTitle.length > 0
+        ? fallbackTitle
+        : DEFAULT_TASK_SUMMARY;
+  return truncateCommandMenuSummary(summarySource, TASK_SUMMARY_MAX_CHARS);
 }
 
 function normalizedTokens(query: string): readonly string[] {
