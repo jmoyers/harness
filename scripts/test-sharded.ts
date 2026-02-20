@@ -486,6 +486,25 @@ async function runShards(runnerOptions: RunnerOptions, baseCoverageDir: string):
     throw new Error('no test files found under test/');
   }
 
+  if (runnerOptions.coverage.enabled) {
+    const serialCoverageShard: ShardConfig = {
+      name: 'coverage-serial',
+      files: [...allFiles],
+      estimatedCost: allFiles.reduce((sum, filePath) => sum + estimateFileCost(filePath), 0),
+    };
+    console.log(
+      `[test:sharded] coverage mode: running ${String(allFiles.length)} files in a single shard for deterministic coverage`,
+    );
+    const exitCode = await runShardWithOptions(serialCoverageShard, runnerOptions, baseCoverageDir);
+    if (exitCode !== 0) {
+      console.error(
+        `[test:sharded] shard failed: ${serialCoverageShard.name} (exit=${String(exitCode)})`,
+      );
+      return 1;
+    }
+    return 0;
+  }
+
   const shards = buildShards(allFiles);
   console.log(
     `[test:sharded] running ${String(allFiles.length)} files across ${String(shards.length)} shards`,
