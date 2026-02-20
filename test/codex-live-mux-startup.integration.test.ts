@@ -538,7 +538,7 @@ function runGit(cwd: string, args: readonly string[]): void {
 }
 
 void test(
-  'codex-live-mux startup bootstraps task hydration without temporal dead zone fatal errors',
+  'codex-live-mux default startup is home-first, stable, and avoids implicit conversation creation',
   async () => {
     const workspace = createWorkspace();
 
@@ -549,6 +549,22 @@ void test(
       assert.equal(output.includes('codex:live:mux fatal error'), false);
       assert.equal(output.includes('Cannot access'), false);
       assert.equal(output.includes('ReferenceError'), false);
+      assert.equal(output.includes('🏠 home'), true);
+      assert.equal(output.includes('repositories [-]'), false);
+      assert.equal(output.includes('[ > add repository ]'), false);
+      assert.equal(output.includes('[ > add project ]'), true);
+      assert.equal(output.includes('[ + new thread ]'), false);
+      assert.equal(output.includes('GSV Sleeper Service'), true);
+      assert.equal(output.includes('○ codex'), false);
+
+      const storePath = join(workspaceRuntimeRoot(workspace), 'control-plane.sqlite');
+      assert.equal(existsSync(storePath), true);
+      const store = new SqliteControlPlaneStore(storePath);
+      try {
+        assert.equal(store.listConversations({ includeArchived: true }).length, 0);
+      } finally {
+        store.close();
+      }
     } finally {
       rmSync(workspace, { recursive: true, force: true });
     }
@@ -840,51 +856,6 @@ void test(
     } finally {
       client.close();
       await server.close();
-      rmSync(workspace, { recursive: true, force: true });
-    }
-  },
-  { timeout: 20000 },
-);
-
-void test(
-  'codex-live-mux shows home-first controls on startup',
-  async () => {
-    const workspace = createWorkspace();
-
-    try {
-      const result = await captureMuxBootOutput(workspace, 1800);
-      const output = result.output;
-      assert.equal(output.includes('🏠 home'), true);
-      assert.equal(output.includes('repositories [-]'), false);
-      assert.equal(output.includes('[ > add repository ]'), false);
-      assert.equal(output.includes('[ > add project ]'), true);
-      assert.equal(output.includes('[ + new thread ]'), false);
-      assert.equal(output.includes('GSV Sleeper Service'), true);
-      assert.equal(output.includes('○ codex'), false);
-    } finally {
-      rmSync(workspace, { recursive: true, force: true });
-    }
-  },
-  { timeout: 20000 },
-);
-
-void test(
-  'codex-live-mux startup does not auto-create conversation records before explicit thread creation',
-  async () => {
-    const workspace = createWorkspace();
-
-    try {
-      await captureMuxBootOutput(workspace, 1800);
-      const storePath = join(workspaceRuntimeRoot(workspace), 'control-plane.sqlite');
-      assert.equal(existsSync(storePath), true);
-
-      const store = new SqliteControlPlaneStore(storePath);
-      try {
-        assert.equal(store.listConversations({ includeArchived: true }).length, 0);
-      } finally {
-        store.close();
-      }
-    } finally {
       rmSync(workspace, { recursive: true, force: true });
     }
   },

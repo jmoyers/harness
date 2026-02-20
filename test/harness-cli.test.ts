@@ -466,7 +466,7 @@ void test('harness migrates legacy local config when global config is only boots
   }
 });
 
-void test('harness gateway start ignores stale record state db path and uses runtime default', async () => {
+void test('harness gateway start normalizes stale and legacy env db paths to runtime default', async () => {
   const workspace = createWorkspace();
   const port = await reservePort();
   const runtimeRoot = workspaceRuntimeRoot(workspace);
@@ -491,48 +491,39 @@ void test('harness gateway start ignores stale record state db path and uses run
     ),
     'utf8',
   );
-  const env = {
-    HARNESS_CONTROL_PLANE_PORT: String(port),
-  };
-  try {
-    const startResult = await runHarness(
-      workspace,
-      ['gateway', 'start', '--port', String(port)],
-      env,
-    );
-    assert.equal(startResult.code, 0);
-    const recordRaw = readFileSync(recordPath, 'utf8');
-    const record = parseGatewayRecordText(recordRaw);
-    assert.notEqual(record, null);
-    assert.equal(record?.stateDbPath, join(runtimeRoot, 'control-plane.sqlite'));
-  } finally {
-    void runHarness(workspace, ['gateway', 'stop', '--force'], env).catch(() => undefined);
-    rmSync(workspace, { recursive: true, force: true });
-  }
-});
 
-void test('harness gateway start ignores HARNESS_CONTROL_PLANE_DB_PATH and uses runtime default', async () => {
-  const workspace = createWorkspace();
-  const port = await reservePort();
-  const runtimeRoot = workspaceRuntimeRoot(workspace);
-  const recordPath = join(runtimeRoot, 'gateway.json');
-  const env = {
+  const baseEnv = {
     HARNESS_CONTROL_PLANE_PORT: String(port),
-    HARNESS_CONTROL_PLANE_DB_PATH: join(workspace, '.harness', 'legacy-control-plane.sqlite'),
   };
   try {
-    const startResult = await runHarness(
+    const staleStartResult = await runHarness(
       workspace,
       ['gateway', 'start', '--port', String(port)],
-      env,
+      baseEnv,
     );
-    assert.equal(startResult.code, 0);
-    const recordRaw = readFileSync(recordPath, 'utf8');
-    const record = parseGatewayRecordText(recordRaw);
-    assert.notEqual(record, null);
-    assert.equal(record?.stateDbPath, join(runtimeRoot, 'control-plane.sqlite'));
+    assert.equal(staleStartResult.code, 0);
+    const staleRecordRaw = readFileSync(recordPath, 'utf8');
+    const staleRecord = parseGatewayRecordText(staleRecordRaw);
+    assert.notEqual(staleRecord, null);
+    assert.equal(staleRecord?.stateDbPath, join(runtimeRoot, 'control-plane.sqlite'));
+
+    await runHarness(workspace, ['gateway', 'stop', '--force'], baseEnv);
+
+    const legacyEnvStartResult = await runHarness(
+      workspace,
+      ['gateway', 'start', '--port', String(port)],
+      {
+        ...baseEnv,
+        HARNESS_CONTROL_PLANE_DB_PATH: join(workspace, '.harness', 'legacy-control-plane.sqlite'),
+      },
+    );
+    assert.equal(legacyEnvStartResult.code, 0);
+    const legacyEnvRecordRaw = readFileSync(recordPath, 'utf8');
+    const legacyEnvRecord = parseGatewayRecordText(legacyEnvRecordRaw);
+    assert.notEqual(legacyEnvRecord, null);
+    assert.equal(legacyEnvRecord?.stateDbPath, join(runtimeRoot, 'control-plane.sqlite'));
   } finally {
-    void runHarness(workspace, ['gateway', 'stop', '--force'], env).catch(() => undefined);
+    void runHarness(workspace, ['gateway', 'stop', '--force'], baseEnv).catch(() => undefined);
     rmSync(workspace, { recursive: true, force: true });
   }
 });
@@ -540,10 +531,10 @@ void test('harness gateway start ignores HARNESS_CONTROL_PLANE_DB_PATH and uses 
 void test('harness gateway start rejects local workspace .harness state db path', async () => {
   const workspace = createWorkspace();
   const port = await reservePort();
+  const localLegacyDbPath = join(workspace, '.harness', 'control-plane.sqlite');
   const env = {
     HARNESS_CONTROL_PLANE_PORT: String(port),
   };
-  const localLegacyDbPath = join(workspace, '.harness', 'control-plane.sqlite');
   try {
     const startResult = await runHarness(
       workspace,
@@ -836,7 +827,7 @@ void test('harness animate default color output uses muted palette', async () =>
   }
 });
 
-void test('harness gateway start/status/call/stop manages daemon lifecycle', async () => {
+void test('harness gateway lifecycle and github.pr-create validation stay healthy', async () => {
   const workspace = createWorkspace();
   const port = await reservePort();
   const recordPath = join(workspaceRuntimeRoot(workspace), 'gateway.json');
@@ -875,34 +866,6 @@ void test('harness gateway start/status/call/stop manages daemon lifecycle', asy
     assert.equal(callResult.code, 0);
     assert.equal(callResult.stdout.includes('"sessions"'), true);
 
-    const stopResult = await runHarness(workspace, ['gateway', 'stop'], env);
-    assert.equal(stopResult.code, 0);
-    assert.equal(stopResult.stdout.includes('gateway stopped'), true);
-
-    const finalStatus = await runHarness(workspace, ['gateway', 'status'], env);
-    assert.equal(finalStatus.code, 0);
-    assert.equal(finalStatus.stdout.includes('gateway status: stopped'), true);
-    assert.equal(existsSync(recordPath), false);
-  } finally {
-    void runHarness(workspace, ['gateway', 'stop', '--force'], env).catch(() => undefined);
-    rmSync(workspace, { recursive: true, force: true });
-  }
-});
-
-void test('harness gateway call github.pr-create reaches command validation before github disabled guard', async () => {
-  const workspace = createWorkspace();
-  const port = await reservePort();
-  const env = {
-    HARNESS_CONTROL_PLANE_PORT: String(port),
-  };
-  try {
-    const startResult = await runHarness(
-      workspace,
-      ['gateway', 'start', '--port', String(port)],
-      env,
-    );
-    assert.equal(startResult.code, 0);
-
     const missingDirectoryCall = await runHarness(
       workspace,
       [
@@ -919,6 +882,15 @@ void test('harness gateway call github.pr-create reaches command validation befo
       true,
     );
     assert.equal(missingDirectoryCall.stderr.includes('github integration is disabled'), false);
+
+    const stopResult = await runHarness(workspace, ['gateway', 'stop'], env);
+    assert.equal(stopResult.code, 0);
+    assert.equal(stopResult.stdout.includes('gateway stopped'), true);
+
+    const finalStatus = await runHarness(workspace, ['gateway', 'status'], env);
+    assert.equal(finalStatus.code, 0);
+    assert.equal(finalStatus.stdout.includes('gateway status: stopped'), true);
+    assert.equal(existsSync(recordPath), false);
   } finally {
     void runHarness(workspace, ['gateway', 'stop', '--force'], env).catch(() => undefined);
     rmSync(workspace, { recursive: true, force: true });
