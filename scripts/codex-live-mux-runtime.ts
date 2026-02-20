@@ -3124,8 +3124,14 @@ async function main(): Promise<number> {
       {
         id: 'task.selected.ready',
         title: 'Task: Set Ready',
-        aliases: ['task ready', 'set task ready', ...taskSummaryAliases],
-        keywords: ['task', 'status', 'ready', 'set'],
+        aliases: [
+          'task ready',
+          'set task ready',
+          'task read',
+          'set task read',
+          ...taskSummaryAliases,
+        ],
+        keywords: ['task', 'status', 'ready', 'read', 'set'],
         detail: selectedTaskDetail,
         priority: actionPriority,
         run: () => {

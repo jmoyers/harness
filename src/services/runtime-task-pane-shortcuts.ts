@@ -103,6 +103,29 @@ export class RuntimeTaskPaneShortcuts<TTaskRecord extends TaskRecordShape> {
     }
   }
 
+  private taskNavigationIds(): readonly string[] {
+    const ids: string[] = [];
+    const seen = new Set<string>();
+    for (const taskId of this.options.workspace.latestTaskPaneView.taskIds) {
+      if (taskId === null || seen.has(taskId)) {
+        continue;
+      }
+      ids.push(taskId);
+      seen.add(taskId);
+    }
+    if (ids.length > 0) {
+      return ids;
+    }
+    for (const task of this.options.selectedRepositoryTaskRecords()) {
+      if (seen.has(task.taskId)) {
+        continue;
+      }
+      ids.push(task.taskId);
+      seen.add(task.taskId);
+    }
+    return ids;
+  }
+
   submitDraftTaskFromComposer(mode: 'ready' | 'queue'): void {
     const repositoryId = this.options.workspace.taskPaneSelectedRepositoryId;
     if (repositoryId === null || !this.options.repositoriesHas(repositoryId)) {
@@ -136,24 +159,44 @@ export class RuntimeTaskPaneShortcuts<TTaskRecord extends TaskRecordShape> {
 
   moveTaskEditorFocusUp(): void {
     const workspace = this.options.workspace;
-    const scopedTasks = this.options.selectedRepositoryTaskRecords();
+    const navigationTaskIds = this.taskNavigationIds();
     if (workspace.taskEditorTarget.kind === 'draft') {
-      const fallback = scopedTasks[scopedTasks.length - 1];
-      if (fallback !== undefined) {
-        this.options.focusTaskComposer(fallback.taskId);
+      const fallbackTaskId = navigationTaskIds[navigationTaskIds.length - 1];
+      if (fallbackTaskId !== undefined) {
+        this.options.focusTaskComposer(fallbackTaskId);
       }
       return;
     }
 
     const focusedTaskId = workspace.taskEditorTarget.taskId;
-    const index = scopedTasks.findIndex((task) => task.taskId === focusedTaskId);
+    const index = navigationTaskIds.indexOf(focusedTaskId);
     if (index <= 0) {
       return;
     }
-    const target = scopedTasks[index - 1];
-    if (target !== undefined) {
-      this.options.focusTaskComposer(target.taskId);
+    const targetTaskId = navigationTaskIds[index - 1];
+    if (targetTaskId !== undefined) {
+      this.options.focusTaskComposer(targetTaskId);
     }
+  }
+
+  moveTaskEditorFocusDown(): void {
+    const workspace = this.options.workspace;
+    if (workspace.taskEditorTarget.kind !== 'task') {
+      return;
+    }
+    const navigationTaskIds = this.taskNavigationIds();
+    const focusedTaskId = workspace.taskEditorTarget.taskId;
+    const index = navigationTaskIds.indexOf(focusedTaskId);
+    if (index < 0) {
+      this.options.focusDraftComposer();
+      return;
+    }
+    const targetTaskId = navigationTaskIds[index + 1];
+    if (targetTaskId !== undefined) {
+      this.options.focusTaskComposer(targetTaskId);
+      return;
+    }
+    this.options.focusDraftComposer();
   }
 
   handleInput(input: Buffer): boolean {
@@ -170,6 +213,9 @@ export class RuntimeTaskPaneShortcuts<TTaskRecord extends TaskRecordShape> {
       },
       moveTaskEditorFocusUp: () => {
         this.moveTaskEditorFocusUp();
+      },
+      moveTaskEditorFocusDown: () => {
+        this.moveTaskEditorFocusDown();
       },
       focusDraftComposer: () => {
         this.options.focusDraftComposer();
