@@ -8,6 +8,7 @@ It is built for people who want to move faster than a single chat window: implem
 
 - Parallel threads across `codex`, `claude`, `cursor`, `terminal`, and `critique`.
 - One command palette (`ctrl+p` / `cmd+p`) to jump threads, run actions, and control workflow quickly.
+- Command palette project actions can open any tracked project directly in installed local tools (`iTerm2`, `Ghostty`, `Zed`, `Cursor IDE`, `VSCode`, `Warp`, `Finder`) and copy project paths.
 - Built-in update flow (`Update Harness`) and startup `What's New` modal with one-click update and quick links to full GitHub notes.
 - Long-running work survives reconnects through a detached gateway.
 - Gateway control is resilient: lifecycle operations are lock-serialized per session, and missing stale records can be recovered automatically.
@@ -81,6 +82,7 @@ Common customizations:
 - Set install commands for `codex`, `claude`, `cursor`, and `critique`.
 - Configure critique launch defaults.
 - Customize keybindings.
+- Override command palette project `Open in X` targets/detection/launch commands via `mux.openIn.targets`.
 - Choose a theme preset or custom OpenCode-compatible theme file.
 
 ## License

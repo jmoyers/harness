@@ -47,10 +47,7 @@ function resolveCommandMenuActionIdByRow(
   if (displayEntryIndex < 0 || displayEntryIndex >= page.displayEntries.length) {
     return null;
   }
-  const entry = page.displayEntries[displayEntryIndex];
-  if (entry === undefined) {
-    return null;
-  }
+  const entry = page.displayEntries[displayEntryIndex]!;
   return entry.action.id;
 }
 

@@ -42,6 +42,12 @@ import {
   type RegisteredCommandMenuAction,
 } from '../src/mux/live-mux/command-menu.ts';
 import {
+  registerCommandMenuOpenInProvider,
+  resolveCommandMenuOpenInCommand,
+  resolveCommandMenuOpenInTargets,
+  type ResolvedCommandMenuOpenInTarget,
+} from '../src/mux/live-mux/command-menu-open-in.ts';
+import {
   buildProjectPaneSnapshot,
   projectPaneActionAtRow,
   sortedRepositoryList,
@@ -477,6 +483,21 @@ function openUrlInBrowser(url: string): boolean {
   }
 }
 
+function isMacApplicationInstalled(appName: string): boolean {
+  const target = appName.trim();
+  if (target.length === 0 || process.platform !== 'darwin') {
+    return false;
+  }
+  try {
+    execFileSync('open', ['-Ra', target], {
+      stdio: 'ignore',
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function commandExistsOnPath(command: string): boolean {
   const normalized = command.trim();
   if (normalized.length === 0) {
@@ -599,6 +620,12 @@ async function main(): Promise<number> {
     rows: size.rows,
   });
   const configuredMuxUi = loadedConfig.config.mux.ui;
+  const commandMenuOpenInTargets = resolveCommandMenuOpenInTargets({
+    platform: process.platform,
+    overrides: loadedConfig.config.mux.openIn.targets,
+    isCommandAvailable: commandExistsOnPath,
+    isMacApplicationInstalled,
+  });
   let runtimeThemeConfig: HarnessMuxThemeConfig | null = configuredMuxUi.theme;
   const resolveAndApplyRuntimeTheme = (
     nextThemeConfig: HarnessMuxThemeConfig | null,
@@ -1800,6 +1827,30 @@ async function main(): Promise<number> {
     workspace.taskPaneNotice = message;
     debugFooterNotice.set(message);
     markDirty();
+  };
+  const openDirectoryInCommandMenuTarget = (
+    target: ResolvedCommandMenuOpenInTarget,
+    directoryPath: string,
+  ): boolean => {
+    const resolved = resolveCommandMenuOpenInCommand(target, directoryPath);
+    if (resolved === null) {
+      return false;
+    }
+    try {
+      const child = spawn(resolved.command, [...resolved.args], {
+        detached: true,
+        stdio: 'ignore',
+        ...(process.platform === 'win32'
+          ? {
+              windowsHide: true,
+            }
+          : {}),
+      });
+      child.unref();
+      return true;
+    } catch {
+      return false;
+    }
   };
   const persistReleaseNotesState = (nextState: ReleaseNotesState): void => {
     try {
@@ -3336,7 +3387,8 @@ async function main(): Promise<number> {
             }
             const issue = asRecord(parsedResult['issue']);
             const task = asRecord(parsedResult['task']);
-            const identifier = typeof issue?.['identifier'] === 'string' ? issue['identifier'] : null;
+            const identifier =
+              typeof issue?.['identifier'] === 'string' ? issue['identifier'] : null;
             const taskId = typeof task?.['taskId'] === 'string' ? task['taskId'] : null;
             if (identifier === null || taskId === null) {
               setCommandNotice('linear import result malformed');
@@ -3373,24 +3425,15 @@ async function main(): Promise<number> {
     );
   });
 
-  commandMenuRegistry.registerProvider('project.open', () => {
-    return [...directoryRecords.values()].map(
-      (directory): RegisteredCommandMenuAction<RuntimeCommandMenuContext> => ({
-        id: `project.open.${directory.directoryId}`,
-        title: `Project ${commandMenuProjectPathTail(directory.path)}`,
-        aliases: [
-          'go to project',
-          'project',
-          directory.path,
-          commandMenuProjectPathTail(directory.path),
-        ],
-        keywords: ['project', 'open', 'go'],
-        run: () => {
-          enterProjectPane(directory.directoryId);
-          markDirty();
-        },
-      }),
-    );
+  registerCommandMenuOpenInProvider<RuntimeCommandMenuContext>({
+    registerProvider: (providerId, provider) =>
+      commandMenuRegistry.registerProvider(providerId, provider),
+    resolveDirectories: () => [...directoryRecords.values()],
+    resolveTargets: () => commandMenuOpenInTargets,
+    projectPathTail: commandMenuProjectPathTail,
+    openInTarget: openDirectoryInCommandMenuTarget,
+    copyPath: (directoryPath) => writeTextToClipboard(directoryPath),
+    setNotice: setCommandNotice,
   });
 
   commandMenuRegistry.registerProvider('github.repo.open', (context) => {

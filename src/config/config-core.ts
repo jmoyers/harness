@@ -41,10 +41,36 @@ const HARNESS_LIFECYCLE_EVENT_TYPES = [
 
 export type HarnessLifecycleEventType = (typeof HARNESS_LIFECYCLE_EVENT_TYPES)[number];
 
+export const HARNESS_MUX_OPEN_IN_TARGET_IDS = [
+  'iterm2',
+  'ghostty',
+  'zed',
+  'cursor',
+  'vscode',
+  'warp',
+  'finder',
+] as const;
+
+export type HarnessMuxOpenInTargetId = (typeof HARNESS_MUX_OPEN_IN_TARGET_IDS)[number];
+
+export interface HarnessMuxOpenInTargetOverrideConfig {
+  readonly enabled?: boolean;
+  readonly appName?: string;
+  readonly detectCommand?: string | null;
+  readonly launchCommand?: readonly string[];
+}
+
+interface HarnessMuxOpenInConfig {
+  readonly targets: Readonly<
+    Partial<Record<HarnessMuxOpenInTargetId, HarnessMuxOpenInTargetOverrideConfig>>
+  >;
+}
+
 interface HarnessMuxConfig {
   readonly keybindings: Readonly<Record<string, readonly string[]>>;
   readonly ui: HarnessMuxUiConfig;
   readonly git: HarnessMuxGitConfig;
+  readonly openIn: HarnessMuxOpenInConfig;
 }
 
 type HarnessMuxThemeMode = 'dark' | 'light';
@@ -265,6 +291,9 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
       burstWindowMs: 2500,
       triggerDebounceMs: 180,
       maxConcurrency: 1,
+    },
+    openIn: {
+      targets: {},
     },
   },
   github: {
@@ -647,6 +676,77 @@ function normalizeMuxGitConfig(input: unknown): HarnessMuxGitConfig {
         DEFAULT_HARNESS_CONFIG.mux.git.maxConcurrency,
       ),
     ),
+  };
+}
+
+function normalizeMuxOpenInTargetOverride(
+  input: unknown,
+): HarnessMuxOpenInTargetOverrideConfig | null {
+  const record = asRecord(input);
+  if (record === null) {
+    return null;
+  }
+  const enabled = typeof record['enabled'] === 'boolean' ? record['enabled'] : undefined;
+  const appName =
+    typeof record['appName'] === 'string' && record['appName'].trim().length > 0
+      ? record['appName'].trim()
+      : undefined;
+  const detectCommand =
+    record['detectCommand'] === null
+      ? null
+      : typeof record['detectCommand'] === 'string' && record['detectCommand'].trim().length > 0
+        ? record['detectCommand'].trim()
+        : undefined;
+  const launchCommandFromArray = Array.isArray(record['launchCommand'])
+    ? record['launchCommand']
+        .flatMap((entry) => (typeof entry === 'string' ? [entry.trim()] : []))
+        .filter((entry) => entry.length > 0)
+    : null;
+  const launchCommand =
+    launchCommandFromArray !== null
+      ? launchCommandFromArray.length > 0
+        ? launchCommandFromArray
+        : undefined
+      : typeof record['launchCommand'] === 'string' && record['launchCommand'].trim().length > 0
+        ? [record['launchCommand'].trim()]
+        : undefined;
+  if (
+    enabled === undefined &&
+    appName === undefined &&
+    detectCommand === undefined &&
+    launchCommand === undefined
+  ) {
+    return null;
+  }
+  return {
+    ...(enabled === undefined ? {} : { enabled }),
+    ...(appName === undefined ? {} : { appName }),
+    ...(detectCommand === undefined ? {} : { detectCommand }),
+    ...(launchCommand === undefined ? {} : { launchCommand }),
+  };
+}
+
+function normalizeMuxOpenInConfig(input: unknown): HarnessMuxOpenInConfig {
+  const record = asRecord(input);
+  if (record === null) {
+    return DEFAULT_HARNESS_CONFIG.mux.openIn;
+  }
+  const targetsRecord = asRecord(record['targets']);
+  if (targetsRecord === null) {
+    return DEFAULT_HARNESS_CONFIG.mux.openIn;
+  }
+  const normalizedTargets: Partial<
+    Record<HarnessMuxOpenInTargetId, HarnessMuxOpenInTargetOverrideConfig>
+  > = {};
+  for (const targetId of HARNESS_MUX_OPEN_IN_TARGET_IDS) {
+    const raw = targetsRecord[targetId];
+    const normalized = normalizeMuxOpenInTargetOverride(raw);
+    if (normalized !== null) {
+      normalizedTargets[targetId] = normalized;
+    }
+  }
+  return {
+    targets: normalizedTargets,
   };
 }
 
@@ -1443,6 +1543,8 @@ export function parseHarnessConfigText(text: string): HarnessConfig {
       keybindings: mux === null ? {} : normalizeKeybindings(mux['keybindings']),
       ui: mux === null ? DEFAULT_HARNESS_CONFIG.mux.ui : normalizeMuxUiConfig(mux['ui']),
       git: mux === null ? DEFAULT_HARNESS_CONFIG.mux.git : normalizeMuxGitConfig(mux['git']),
+      openIn:
+        mux === null ? DEFAULT_HARNESS_CONFIG.mux.openIn : normalizeMuxOpenInConfig(mux['openIn']),
     },
     github,
     gateway,

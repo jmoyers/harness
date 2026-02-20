@@ -265,7 +265,8 @@ Pass-through stream invariants:
   - run Critique AI review for staged changes (`critique review --staged`) from command menu (`Critique AI Review: Staged Changes (git)`)
   - run Critique AI review against base branch (`critique review <base> HEAD`) from command menu (`Critique AI Review: Current Branch vs Base (git)`)
   - close active thread
-  - go to project
+  - open tracked projects in installed local tools (`iTerm2`, `Ghostty`, `Zed`, `Cursor IDE`, `VSCode`, `Warp`, `Finder`)
+  - copy tracked project path to clipboard
   - open GitHub for the active-project repository (`Open GitHub for This Repo (git)`)
   - show a filtered GitHub URL for your open pull requests in the active-project repository (`Show My Open Pull Requests (git)`)
   - open/create GitHub PR for the tracked active-project non-default branch (open when present, create when absent; `Open PR (git)` / `Create PR (git)`)
@@ -277,6 +278,7 @@ Pass-through stream invariants:
   - start/stop profiler
   - start/stop status logging
   - quit
+- Project `Open in X` command-menu targets are auto-detected at startup and can be overridden by config under `mux.openIn.targets` (`enabled`, `appName`, `detectCommand`, `launchCommand`).
 - Thread "delete" in the mux is soft-delete (archive); hard delete remains an explicit control-plane command.
 - Project lifecycle in the mux is first-class: `directory.upsert`, `directory.list`, and `directory.archive` drive add/close behavior through the same control-plane stream API as automation clients.
 - Mux applies workspace lifecycle observed events (`directory-upserted`, `directory-archived`, `conversation-created`, `conversation-updated`, `conversation-archived`, `conversation-deleted`) directly into in-memory state so cross-client project/thread changes appear without restart.

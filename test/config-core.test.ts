@@ -32,6 +32,7 @@ const DEFAULT_UI = {
   theme: null,
 } as const;
 const DEFAULT_GIT = DEFAULT_HARNESS_CONFIG.mux.git;
+const DEFAULT_OPEN_IN = DEFAULT_HARNESS_CONFIG.mux.openIn;
 const DEFAULT_GITHUB = DEFAULT_HARNESS_CONFIG.github;
 const DEFAULT_LINEAR = DEFAULT_HARNESS_CONFIG.linear;
 const TEST_MODULE_DIR = dirname(fileURLToPath(import.meta.url));
@@ -255,6 +256,58 @@ void test('parseHarnessConfigText parses mux ui theme selection and normalizes i
   assert.equal(explicitNull.mux.ui.theme, null);
 });
 
+void test('parseHarnessConfigText normalizes mux open-in target overrides', () => {
+  const parsed = parseHarnessConfigText(`
+    {
+      "mux": {
+        "openIn": {
+          "targets": {
+            "iterm2": {
+              "enabled": true,
+              "appName": " iTerm Custom ",
+              "detectCommand": null,
+              "launchCommand": [" open ", "-a", "iTerm", "{path}"]
+            },
+            "vscode": {
+              "detectCommand": " code-insiders ",
+              "launchCommand": "code-insiders"
+            },
+            "ghostty": {
+              "launchCommand": []
+            },
+            "unknown": {
+              "enabled": true
+            }
+          }
+        }
+      }
+    }
+  `);
+  assert.deepEqual(parsed.mux.openIn.targets, {
+    iterm2: {
+      enabled: true,
+      appName: 'iTerm Custom',
+      detectCommand: null,
+      launchCommand: ['open', '-a', 'iTerm', '{path}'],
+    },
+    vscode: {
+      detectCommand: 'code-insiders',
+      launchCommand: ['code-insiders'],
+    },
+  });
+
+  const invalid = parseHarnessConfigText(`
+    {
+      "mux": {
+        "openIn": {
+          "targets": "nope"
+        }
+      }
+    }
+  `);
+  assert.deepEqual(invalid.mux.openIn, DEFAULT_OPEN_IN);
+});
+
 void test('parseHarnessConfigText falls back for invalid root shapes', () => {
   assert.deepEqual(parseHarnessConfigText('[]'), DEFAULT_HARNESS_CONFIG);
   assert.deepEqual(parseHarnessConfigText('{"mux":[] }'), DEFAULT_HARNESS_CONFIG);
@@ -264,6 +317,7 @@ void test('parseHarnessConfigText falls back for invalid root shapes', () => {
       keybindings: {},
       ui: DEFAULT_UI,
       git: DEFAULT_GIT,
+      openIn: DEFAULT_OPEN_IN,
     },
   });
 });
@@ -412,6 +466,7 @@ void test('loadHarnessConfig reads valid config file', () => {
       theme: null,
     },
     git: DEFAULT_GIT,
+    openIn: DEFAULT_OPEN_IN,
   });
   assert.equal(loaded.fromLastKnownGood, false);
   assert.equal(loaded.error, null);
@@ -440,6 +495,7 @@ void test('loadHarnessConfig falls back atomically on parse errors', () => {
           theme: null,
         },
         git: DEFAULT_GIT,
+        openIn: DEFAULT_OPEN_IN,
       },
       debug: {
         ...DEFAULT_HARNESS_CONFIG.debug,
@@ -460,6 +516,7 @@ void test('loadHarnessConfig falls back atomically on parse errors', () => {
         theme: null,
       },
       git: DEFAULT_GIT,
+      openIn: DEFAULT_OPEN_IN,
     },
     debug: {
       ...DEFAULT_HARNESS_CONFIG.debug,
@@ -503,6 +560,7 @@ void test('loadHarnessConfig supports explicit file path override', () => {
     },
     ui: DEFAULT_UI,
     git: DEFAULT_GIT,
+    openIn: DEFAULT_OPEN_IN,
   });
   assert.equal(loaded.fromLastKnownGood, false);
   assert.equal(loaded.error, null);
@@ -529,6 +587,7 @@ void test('loadHarnessConfig resolves defaults from process cwd when options are
       },
       ui: DEFAULT_UI,
       git: DEFAULT_GIT,
+      openIn: DEFAULT_OPEN_IN,
     });
   } finally {
     process.chdir(previousCwd);
@@ -1629,6 +1688,7 @@ void test('updateHarnessConfig writes new config file when absent', () => {
       theme: null,
     },
     git: DEFAULT_GIT,
+    openIn: DEFAULT_OPEN_IN,
   });
   assert.equal(updated.configVersion, HARNESS_CONFIG_VERSION);
   const loaded = loadHarnessConfig({ filePath, cwd: baseDir });

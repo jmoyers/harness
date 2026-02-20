@@ -17,6 +17,9 @@
       "triggerDebounceMs": 180,
       "maxConcurrency": 1,
     },
+    "openIn": {
+      "targets": {},
+    },
   },
   "github": {
     "enabled": true,
