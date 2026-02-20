@@ -86,6 +86,7 @@ class GatewayCommand extends HarnessCommandBase {
     'gateway [--session <name>] status',
     'gateway [--session <name>] restart [--host <host>] [--port <port>] [--auth-token <token>] [--state-db-path <path>]',
     'gateway [--session <name>] call --json \'{"type":"session.list"}\'',
+    'gateway [--session <name>] gc [--older-than-days <days>]',
   ];
 
   static override flags = {

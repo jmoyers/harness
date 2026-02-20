@@ -240,12 +240,13 @@ Pass-through stream invariants:
 - `ctrl+c` requests mux shutdown immediately and is not forwarded to active threads.
 - In canonical remote/gateway mode, mux exits without closing live sessions so work continues after client disconnect.
 - In embedded/local mode, mux shutdown also closes live PTYs.
-- Gateway CLI lifecycle commands (`start`/`stop`/`status`/`restart`/`run`) are serialized through a per-session lock file (`gateway.lock`) to prevent concurrent start/stop races.
+- Gateway CLI lifecycle commands (`start`/`stop`/`status`/`restart`/`run`/`gc`) are serialized through a per-session lock file (`gateway.lock`) to prevent concurrent start/stop races.
 - Gateway identity is persisted in `gateway.json` (`pid`, `host`, `port`, `authToken`, `stateDbPath`, `startedAt`, `workspaceRoot`, optional `gatewayRunId`).
 - If `gateway.json` is missing but the endpoint is reachable, the CLI may adopt the running daemon by matching process-table host/port/auth/db-path identity; ambiguous matches fail closed.
 - If `gateway.json` is missing and host/port probing cannot identify the daemon, the CLI may deterministically adopt a single reachable daemon candidate by matching `stateDbPath`; ambiguous matches fail closed.
 - Named sessions prefer configured/default ports but auto-fallback to an available local port when the preferred port is already occupied and no explicit `--port` override is provided.
 - Named-session gateway stop prunes session-scoped gateway artifacts (`gateway.log`) after confirmed shutdown to avoid stale per-session runtime clutter.
+- `harness gateway gc` prunes named-session runtime directories older than 7 days by default (configurable via `--older-than-days`), while skipping live sessions.
 - `ctrl+p` and `cmd+p` open the command menu; command search is live-filtered and executes context-aware actions.
 - Empty-query command-menu results are grouped by type with visible delimiters; agent thread types are surfaced first, with default selection on `codex`, and typed input returns to normal score+alpha ordering.
 - On startup, mux may asynchronously check GitHub releases and open a `What's New` modal when newer stable versions exist than the installed local version.

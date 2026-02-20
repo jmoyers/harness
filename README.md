@@ -66,6 +66,7 @@ Named sessions automatically fall back to an available gateway port when the pre
 - Theme selection is built in (`Set a Theme`) with OpenCode-compatible presets and live preview.
 - API keys can be set directly from `ctrl+p` / `cmd+p` (`Set Anthropic API Key`, `Set OpenAI API Key`, `Set Linear API Key`), with overwrite warning and paste-friendly entry.
 - OAuth login is available from CLI (`harness auth login github`, `harness auth login linear`) with `harness auth status|refresh|logout` for lifecycle control.
+- Gateway maintenance supports named-session garbage collection: `harness gateway gc` prunes named session runtime directories older than 7 days (skips live sessions).
 - Select a Linear issue URL in the terminal, then run `Create Task from Linear Ticket URL` from `ctrl+p` / `cmd+p` to import it into the task list.
 - `Show What's New` opens release highlights (first lines only); if notes are empty it falls back to a simple version-available notice with links.
 - `Update Harness` (aliases: `update`, `upgrade`) runs `harness update` in a terminal thread.
