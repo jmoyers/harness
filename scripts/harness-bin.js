@@ -67,8 +67,13 @@ if (!ensureBunAvailable({ command: bunCommand })) {
 const here = dirname(fileURLToPath(import.meta.url));
 const scriptPath = resolve(here, './harness.ts');
 const runtimeArgs = [scriptPath, ...process.argv.slice(2)];
+const runtimeEnv = {
+  ...process.env,
+  HARNESS_INVOKE_CWD: process.cwd(),
+};
 const child = spawn(bunCommand, runtimeArgs, {
   stdio: 'inherit',
+  env: runtimeEnv,
 });
 
 child.once('exit', (code, signal) => {

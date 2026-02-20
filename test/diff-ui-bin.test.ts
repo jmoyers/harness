@@ -33,7 +33,11 @@ function createRepo(prefix: string): string {
   return repo;
 }
 
-function runHarnessBin(args: readonly string[], cwd: string): RunResult {
+function runHarnessBin(
+  args: readonly string[],
+  cwd: string,
+  envOverrides: Record<string, string | undefined> = {},
+): RunResult {
   const packageJson = JSON.parse(
     readFileSync(resolve(process.cwd(), 'package.json'), 'utf8'),
   ) as PackageShape;
@@ -50,7 +54,7 @@ function runHarnessBin(args: readonly string[], cwd: string): RunResult {
       ...process.env,
       HARNESS_BUN_COMMAND: process.execPath,
       HARNESS_SUPPRESS_BUN_MIGRATION_HINT: '1',
-      HARNESS_INVOKE_CWD: cwd,
+      ...envOverrides,
     },
   });
 
@@ -92,4 +96,20 @@ test('harness diff subcommand runs against a git repository', () => {
   assert.equal(result.code, 0);
   assert.equal(result.stdout.includes('[diff] mode=unstaged'), true);
   assert.equal(result.stdout.includes('File 1/1: src.ts'), true);
+});
+
+test('harness diff subcommand ignores stale inherited HARNESS_INVOKE_CWD', () => {
+  const cleanRepo = createRepo('harness-diff-subcommand-clean-repo-');
+  const dirtyRepo = createRepo('harness-diff-subcommand-dirty-repo-');
+  writeFileSync(join(dirtyRepo, 'src.ts'), 'const x = 1;\nconst y = 2;\n', 'utf8');
+
+  const result = runHarnessBin(
+    ['diff', '--width', '90', '--height', '10', '--theme', 'plain'],
+    cleanRepo,
+    {
+      HARNESS_INVOKE_CWD: dirtyRepo,
+    },
+  );
+  assert.equal(result.code, 0);
+  assert.equal(result.stdout.includes('files=0'), true);
 });
