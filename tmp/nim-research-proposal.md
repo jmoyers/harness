@@ -35,12 +35,14 @@ This document is systems-first and maps public APIs to functional requirements w
 - Runtime now persists canonical envelopes through a pluggable event store abstraction (`NimEventStore`) with first-party `InMemoryNimEventStore` and `NimSqliteEventStore` adapters.
 - Runtime now persists session metadata and idempotency mappings through a pluggable session store abstraction (`NimSessionStore`) with first-party `InMemoryNimSessionStore` and `NimSqliteSessionStore` adapters.
 - Session store now persists queued follow-ups so queue ordering and dequeue semantics survive runtime restart boundaries.
+- Runtime now includes first-party factory wiring (`createSqliteBackedNimRuntime`) for SQLite event/session stores plus optional JSONL telemetry sink composition.
 
 ## 1.2 Execution Evidence (2026-02-20)
 
 - Functional UC coverage (`test/nim-functional-use-cases.test.ts`) now spans UC-01 through UC-12 and is passing.
 - Runtime/provider/snapshot regression suite is passing:
   - `test/nim-core-runtime.test.ts`
+  - `test/nim-runtime-factory.test.ts`
   - `test/nim-session-store.test.ts`
   - `test/nim-replay-parity.test.ts`
   - `test/nim-runtime-provider-driver.test.ts`
