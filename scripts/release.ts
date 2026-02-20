@@ -35,6 +35,17 @@ interface ParsedSemver {
   prerelease: string[];
 }
 
+interface ReleaseCommandStep {
+  label: string;
+  command: string;
+  args: readonly string[];
+}
+
+interface ReleaseCommandResult {
+  label: string;
+  durationMs: number;
+}
+
 const DEFAULT_OPTIONS: ReleaseOptions = {
   version: null,
   bump: null,
@@ -294,6 +305,72 @@ function commandText(command: string, args: readonly string[]): string {
   return [command, ...args.map((arg) => quoteArg(arg))].join(' ');
 }
 
+function formatDuration(ms: number): string {
+  if (ms < 1000) {
+    return `${String(ms)}ms`;
+  }
+  if (ms < 60_000) {
+    return `${(ms / 1000).toFixed(1)}s`;
+  }
+  const minutes = Math.floor(ms / 60_000);
+  const seconds = Math.round((ms % 60_000) / 1000);
+  return `${String(minutes)}m ${String(seconds)}s`;
+}
+
+function printReleaseBanner(options: ReleaseOptions, runtime: ReleaseRuntime): void {
+  runtime.stdout('\n== Harness Release ==\n');
+  runtime.stdout(`branch: ${options.branch}\n`);
+  runtime.stdout(`remote: ${options.remote}\n`);
+  runtime.stdout(`verify: ${options.skipVerify ? 'skip' : 'bun run verify'}\n`);
+  runtime.stdout('\n');
+}
+
+function runCommandStep(
+  step: ReleaseCommandStep,
+  index: number,
+  total: number,
+  runtime: ReleaseRuntime,
+): ReleaseCommandResult {
+  runtime.stdout(`[${String(index)}/${String(total)}] ${step.label}\n`);
+  runtime.stdout(`    $ ${commandText(step.command, step.args)}\n`);
+  const startedAt = Date.now();
+  try {
+    runtime.run(step.command, step.args);
+  } catch (error: unknown) {
+    const elapsed = Date.now() - startedAt;
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `${step.label} failed after ${formatDuration(elapsed)} (${commandText(step.command, step.args)}): ${message}`,
+    );
+  }
+  const durationMs = Date.now() - startedAt;
+  runtime.stdout(`    ok ${formatDuration(durationMs)}\n`);
+  return {
+    label: step.label,
+    durationMs,
+  };
+}
+
+function printReleaseSummary(
+  tag: string,
+  previousVersion: string,
+  targetVersion: string,
+  commandResults: readonly ReleaseCommandResult[],
+  totalDurationMs: number,
+  runtime: ReleaseRuntime,
+): void {
+  runtime.stdout('\nSummary:\n');
+  const width = commandResults.reduce((max, result) => Math.max(max, result.label.length), 0);
+  for (const result of commandResults) {
+    const label = result.label.padEnd(width, ' ');
+    runtime.stdout(`  - ${label}  ${formatDuration(result.durationMs)}\n`);
+  }
+  runtime.stdout(`  - version      ${previousVersion} -> ${targetVersion}\n`);
+  runtime.stdout(`  - tag          ${tag}\n`);
+  runtime.stdout(`  - total        ${formatDuration(totalDurationMs)}\n\n`);
+  runtime.stdout(`pushed ${tag}; GitHub release workflow should start shortly.\n`);
+}
+
 function requireCleanWorkingTree(runtime: ReleaseRuntime): void {
   const status = runtime.capture('git', ['status', '--porcelain']).trim();
   if (status.length > 0) {
@@ -332,34 +409,97 @@ function updatePackageVersion(tag: string, runtime: ReleaseRuntime): void {
 }
 
 function executeRelease(options: ReleaseOptions, runtime: ReleaseRuntime): string {
+  const startedAt = Date.now();
+  printReleaseBanner(options, runtime);
+  const commandResults: ReleaseCommandResult[] = [];
+
   if (!options.allowDirty) {
     requireCleanWorkingTree(runtime);
   }
 
-  const runStep = (command: string, args: readonly string[]): void => {
-    runtime.stdout(`> ${commandText(command, args)}\n`);
-    runtime.run(command, args);
-  };
+  const commandSteps: ReleaseCommandStep[] = [];
 
   if (!options.skipVerify) {
-    runStep('bun', ['run', 'verify']);
+    commandSteps.push({
+      label: 'Verify quality gate',
+      command: 'bun',
+      args: ['run', 'verify'],
+    });
   }
-  runStep('git', ['checkout', options.branch]);
-  runStep('git', ['pull', '--ff-only', options.remote, options.branch]);
+  commandSteps.push({
+    label: `Checkout ${options.branch}`,
+    command: 'git',
+    args: ['checkout', options.branch],
+  });
+  commandSteps.push({
+    label: `Pull ${options.remote}/${options.branch}`,
+    command: 'git',
+    args: ['pull', '--ff-only', options.remote, options.branch],
+  });
+
+  for (let index = 0; index < commandSteps.length; index += 1) {
+    commandResults.push(
+      runCommandStep(commandSteps[index]!, index + 1, commandSteps.length, runtime),
+    );
+  }
+
   const previousVersion = readPackageVersion(runtime);
-  const tag = resolveReleaseTag(options, runtime);
-  runtime.stdout(`release tag: ${tag}\n`);
+  const tag =
+    options.version !== null
+      ? normalizeSemverTag(options.version)
+      : normalizeSemverTag(bumpSemverVersion(previousVersion, options.bump ?? 'patch'));
   const targetVersion = tag.slice(1);
   ensureReleaseVersionIsIncreasing(previousVersion, targetVersion);
   ensureTagDoesNotExist(tag, options.remote, runtime);
-  runtime.stdout(`bump package version: ${previousVersion} -> ${targetVersion}\n`);
+
+  runtime.stdout(`\nrelease tag: ${tag}\n`);
+  runtime.stdout(`bump package version: ${previousVersion} -> ${targetVersion}\n\n`);
   updatePackageVersion(tag, runtime);
-  runStep('git', ['add', 'package.json']);
-  runStep('git', ['commit', '-m', `chore: release ${tag}`]);
-  runStep('git', ['push', options.remote, options.branch]);
-  runStep('git', ['tag', '-a', tag, '-m', tag]);
-  runStep('git', ['push', options.remote, tag]);
-  runtime.stdout(`pushed ${tag}; GitHub release workflow should start shortly.\n`);
+
+  const commitArgs = !options.skipVerify
+    ? ['commit', '--no-verify', '-m', `chore: release ${tag}`]
+    : ['commit', '-m', `chore: release ${tag}`];
+  const publishSteps: ReleaseCommandStep[] = [
+    {
+      label: 'Stage package.json',
+      command: 'git',
+      args: ['add', 'package.json'],
+    },
+    {
+      label: 'Create release commit',
+      command: 'git',
+      args: commitArgs,
+    },
+    {
+      label: `Push ${options.branch}`,
+      command: 'git',
+      args: ['push', options.remote, options.branch],
+    },
+    {
+      label: `Create tag ${tag}`,
+      command: 'git',
+      args: ['tag', '-a', tag, '-m', tag],
+    },
+    {
+      label: `Push tag ${tag}`,
+      command: 'git',
+      args: ['push', options.remote, tag],
+    },
+  ];
+  for (let index = 0; index < publishSteps.length; index += 1) {
+    commandResults.push(
+      runCommandStep(publishSteps[index]!, index + 1, publishSteps.length, runtime),
+    );
+  }
+
+  printReleaseSummary(
+    tag,
+    previousVersion,
+    targetVersion,
+    commandResults,
+    Date.now() - startedAt,
+    runtime,
+  );
   return tag;
 }
 

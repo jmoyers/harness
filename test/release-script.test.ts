@@ -336,7 +336,7 @@ void test('release script default flow executes verify, bump commit, and tag seq
     ['git', 'checkout', 'main'].join('\u0000'),
     ['git', 'pull', '--ff-only', 'origin', 'main'].join('\u0000'),
     ['git', 'add', 'package.json'].join('\u0000'),
-    ['git', 'commit', '-m', 'chore: release v0.1.1'].join('\u0000'),
+    ['git', 'commit', '--no-verify', '-m', 'chore: release v0.1.1'].join('\u0000'),
     ['git', 'push', 'origin', 'main'].join('\u0000'),
     ['git', 'tag', '-a', 'v0.1.1', '-m', 'v0.1.1'].join('\u0000'),
     ['git', 'push', 'origin', 'v0.1.1'].join('\u0000'),
@@ -481,4 +481,35 @@ void test('release script rejects explicit non-increasing versions', () => {
       ),
     /release version must be greater than package\.json version/u,
   );
+});
+
+void test('release script prints a structured step log and summary', () => {
+  const statusKey = ['git', 'status', '--porcelain'].join('\u0000');
+  const localTagKey = ['git', 'tag', '--list', 'v0.1.1'].join('\u0000');
+  const remoteTagKey = ['git', 'ls-remote', '--tags', 'origin', 'refs/tags/v0.1.1'].join('\u0000');
+  const { runtime, runtimeState } = createRuntime({
+    captures: new Map<string, string>([
+      [statusKey, ''],
+      [localTagKey, ''],
+      [remoteTagKey, ''],
+    ]),
+  });
+
+  __releaseInternals.executeRelease(
+    {
+      version: null,
+      bump: null,
+      skipVerify: false,
+      branch: 'main',
+      remote: 'origin',
+      allowDirty: false,
+    },
+    runtime,
+  );
+
+  const output = runtimeState.stdoutLines.join('');
+  assert.match(output, /== Harness Release ==/u);
+  assert.match(output, /\[1\/3\] Verify quality gate/u);
+  assert.match(output, /Summary:/u);
+  assert.match(output, /version\s+0\.1\.0 -> 0\.1\.1/u);
 });

@@ -45,120 +45,21 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Generate release notes with Claude Code (optional)
-        id: notes
-        env:
-          TAG: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-
-          notes_file="$(mktemp)"
-          echo "notes_file=$notes_file" >> "$GITHUB_OUTPUT"
-          echo "mode=generate-notes" >> "$GITHUB_OUTPUT"
-
-          if ! command -v claude >/dev/null 2>&1; then
-            echo "Claude Code is not installed; using GitHub generated notes."
-            exit 0
-          fi
-
-          previous_tag="$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)"
-          if [ -n "$previous_tag" ]; then
-            commit_range="${previous_tag}..${TAG}"
-          else
-            commit_range="$TAG"
-          fi
-
-          commit_list="$(git log --no-merges --pretty=format:'- %h %s' "$commit_range" | head -n 200)"
-          if [ -z "$commit_list" ]; then
-            echo "No commits found in range $commit_range; using GitHub generated notes."
-            exit 0
-          fi
-
-          prompt_file="$(mktemp)"
-          {
-            echo "Write release notes in markdown for $TAG."
-            if [ -n "$previous_tag" ]; then
-              echo "Use changes since $previous_tag."
-            else
-              echo "This is the first tagged release."
-            fi
-            echo
-            echo "Output format requirements:"
-            echo "1. Use exactly two H2 sections named:"
-            echo "   - ## User-facing features"
-            echo "   - ## Bug fixes"
-            echo "2. Use concise bullet points under each section."
-            echo "3. Focus on externally visible behavior and important fixes."
-            echo "4. If one section has no valid entries, include a single bullet: - None."
-            echo
-            echo "Commit summaries:"
-            printf '%s\n' "$commit_list"
-          } > "$prompt_file"
-          prompt_text="$(cat "$prompt_file")"
-
-          try_claude_release_notes() {
-            local output_path="$1"
-            local prompt="$2"
-            if timeout 240s claude --model opus-4.6 -p "$prompt" >"$output_path" 2>/dev/null; then
-              return 0
-            fi
-            if timeout 240s claude --model opus-4.6 --print "$prompt" >"$output_path" 2>/dev/null; then
-              return 0
-            fi
-            if timeout 240s claude -p "$prompt" >"$output_path" 2>/dev/null; then
-              return 0
-            fi
-            if timeout 240s claude --print "$prompt" >"$output_path" 2>/dev/null; then
-              return 0
-            fi
-            return 1
-          }
-
-          if ! try_claude_release_notes "$notes_file" "$prompt_text"; then
-            echo "Claude notes generation failed; using GitHub generated notes."
-            exit 0
-          fi
-
-          if [ ! -s "$notes_file" ]; then
-            echo "Claude produced empty notes; using GitHub generated notes."
-            exit 0
-          fi
-
-          if ! grep -q '^## User-facing features' "$notes_file"; then
-            echo "Claude notes missing user-facing section; using GitHub generated notes."
-            exit 0
-          fi
-          if ! grep -q '^## Bug fixes' "$notes_file"; then
-            echo "Claude notes missing bug-fixes section; using GitHub generated notes."
-            exit 0
-          fi
-
-          echo "mode=notes-file" >> "$GITHUB_OUTPUT"
-          echo "Claude-generated release notes are ready at $notes_file."
-
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
-          RELEASE_NOTES_MODE: ${{ steps.notes.outputs.mode }}
-          RELEASE_NOTES_FILE: ${{ steps.notes.outputs.notes_file }}
         run: |
+          set -euo pipefail
+
           if gh release view "$TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
             echo "Release $TAG already exists; nothing to do."
             exit 0
           fi
 
-          if [ "$RELEASE_NOTES_MODE" = "notes-file" ] && [ -n "$RELEASE_NOTES_FILE" ] && [ -s "$RELEASE_NOTES_FILE" ]; then
-            gh release create "$TAG" \
-              --repo "$GH_REPO" \
-              --title "$TAG" \
-              --verify-tag \
-              --notes-file "$RELEASE_NOTES_FILE"
-          else
-            gh release create "$TAG" \
-              --repo "$GH_REPO" \
-              --title "$TAG" \
-              --verify-tag \
-              --generate-notes
-          fi
+          gh release create "$TAG" \
+            --repo "$GH_REPO" \
+            --title "$TAG" \
+            --verify-tag \
+            --generate-notes
