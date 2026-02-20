@@ -749,39 +749,47 @@ test('UC-09 deterministic replay snapshot is stable and fully ordered', async ()
   });
   await second.done;
 
-  const firstStream = runtime.streamEvents({
+  const firstReplay = await runtime.replayEvents({
     tenantId: 'tenant-a',
     sessionId: session.sessionId,
     fidelity: 'semantic',
   });
-  const secondStream = runtime.streamEvents({
+  const secondReplay = await runtime.replayEvents({
     tenantId: 'tenant-a',
     sessionId: session.sessionId,
     fidelity: 'semantic',
   });
-  const firstIterator = firstStream[Symbol.asyncIterator]();
-  const secondIterator = secondStream[Symbol.asyncIterator]();
 
-  try {
-    const firstReplay = await collectUntil(firstIterator, (items) =>
-      items.some((event) => event.type === 'turn.completed' && event.run_id === second.runId),
-    );
-    const secondReplay = await collectUntil(secondIterator, (items) =>
-      items.some((event) => event.type === 'turn.completed' && event.run_id === second.runId),
-    );
+  assert.deepEqual(firstReplay, secondReplay);
 
-    assert.deepEqual(firstReplay, secondReplay);
-
-    const sessionEvents = firstReplay.filter((event) => event.session_id === session.sessionId);
-    for (let index = 0; index < sessionEvents.length; index += 1) {
-      assert.equal(sessionEvents[index]?.event_seq, index + 1);
-      assert.equal(typeof sessionEvents[index]?.payload_hash, 'string');
-      assert.notEqual(String(sessionEvents[index]?.payload_hash).length, 0);
-    }
-  } finally {
-    await firstIterator.return?.();
-    await secondIterator.return?.();
+  const sessionEvents = firstReplay.events.filter(
+    (event) => event.session_id === session.sessionId,
+  );
+  for (let index = 0; index < sessionEvents.length; index += 1) {
+    assert.equal(sessionEvents[index]?.event_seq, index + 1);
+    assert.equal(typeof sessionEvents[index]?.payload_hash, 'string');
+    assert.notEqual(String(sessionEvents[index]?.payload_hash).length, 0);
   }
+
+  const anchor = sessionEvents.find(
+    (event) => event.type === 'turn.started' && event.run_id === second.runId,
+  );
+  assert.notEqual(anchor, undefined);
+  const anchorEvent = anchor as NimEventEnvelope;
+  const lastSessionEvent = sessionEvents[sessionEvents.length - 1];
+  assert.notEqual(lastSessionEvent, undefined);
+  const endEvent = lastSessionEvent as NimEventEnvelope;
+  const windowedReplay = await runtime.replayEvents({
+    tenantId: 'tenant-a',
+    sessionId: session.sessionId,
+    fromEventIdExclusive: anchorEvent.event_id,
+    toEventIdInclusive: endEvent.event_id,
+    fidelity: 'semantic',
+  });
+  assert.equal(
+    windowedReplay.events.every((event) => event.event_seq > anchorEvent.event_seq),
+    true,
+  );
 });
 
 test('UC-10 in-turn steer inject mutates active run output and keeps single terminal', async () => {

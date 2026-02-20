@@ -139,6 +139,21 @@ export type StreamUiInput = {
   readonly mode: 'debug' | 'seamless';
 };
 
+export type ReplayEventsInput = {
+  readonly tenantId: string;
+  readonly sessionId?: string;
+  readonly runId?: string;
+  readonly fromEventIdExclusive?: string;
+  readonly toEventIdInclusive?: string;
+  readonly fidelity?: 'raw' | 'semantic';
+  readonly includeThoughtDeltas?: boolean;
+  readonly includeToolArgumentDeltas?: boolean;
+};
+
+export type ReplayEventsResult = {
+  readonly events: readonly NimEventEnvelope[];
+};
+
 export type SoulSource = {
   readonly name: string;
 };
@@ -212,4 +227,5 @@ export interface NimRuntime {
 
   streamEvents(input: StreamEventsInput): AsyncIterable<NimEventEnvelope>;
   streamUi(input: StreamUiInput): AsyncIterable<NimUiEvent>;
+  replayEvents(input: ReplayEventsInput): Promise<ReplayEventsResult>;
 }

@@ -15,6 +15,8 @@ import type {
   NimUiEvent,
   QueueFollowUpInput,
   QueueFollowUpResult,
+  ReplayEventsInput,
+  ReplayEventsResult,
   ResumeSessionInput,
   SendTurnInput,
   SessionHandle,
@@ -667,6 +669,40 @@ export class InMemoryNimRuntime implements NimRuntime {
           }
         }
       },
+    };
+  }
+
+  public async replayEvents(input: ReplayEventsInput): Promise<ReplayEventsResult> {
+    const fromEvent = this.resolveFromEvent(input.fromEventIdExclusive);
+    const toEvent = this.resolveToEvent(input.toEventIdInclusive);
+    const streamInput: StreamEventsInput = {
+      tenantId: input.tenantId,
+      ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
+      ...(input.runId !== undefined ? { runId: input.runId } : {}),
+      ...(input.fidelity !== undefined ? { fidelity: input.fidelity } : {}),
+      ...(input.includeThoughtDeltas !== undefined
+        ? { includeThoughtDeltas: input.includeThoughtDeltas }
+        : {}),
+      ...(input.includeToolArgumentDeltas !== undefined
+        ? { includeToolArgumentDeltas: input.includeToolArgumentDeltas }
+        : {}),
+    };
+
+    const events = this.events.filter((event) => {
+      if (!this.matchesSubscriberEvent(streamInput, event)) {
+        return false;
+      }
+      if (!this.matchesFidelityFilter(streamInput, event)) {
+        return false;
+      }
+      if (!this.matchesReplayWindow(event, fromEvent, toEvent)) {
+        return false;
+      }
+      return true;
+    });
+
+    return {
+      events,
     };
   }
 
@@ -1507,6 +1543,31 @@ export class InMemoryNimRuntime implements NimRuntime {
       return undefined;
     }
     return this.eventById.get(fromEventIdExclusive);
+  }
+
+  private resolveToEvent(toEventIdInclusive?: string): NimEventEnvelope | undefined {
+    if (toEventIdInclusive === undefined) {
+      return undefined;
+    }
+    return this.eventById.get(toEventIdInclusive);
+  }
+
+  private matchesReplayWindow(
+    event: NimEventEnvelope,
+    fromEvent?: NimEventEnvelope,
+    toEvent?: NimEventEnvelope,
+  ): boolean {
+    if (fromEvent !== undefined && event.session_id === fromEvent.session_id) {
+      if (event.event_seq <= fromEvent.event_seq) {
+        return false;
+      }
+    }
+    if (toEvent !== undefined && event.session_id === toEvent.session_id) {
+      if (event.event_seq > toEvent.event_seq) {
+        return false;
+      }
+    }
+    return true;
   }
 
   private requireSession(sessionId: string): SessionState {

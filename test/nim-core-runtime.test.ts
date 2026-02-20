@@ -402,6 +402,49 @@ test('nim runtime streamEvents supports fromEventIdExclusive continuation cursor
   }
 });
 
+test('nim runtime replayEvents supports deterministic windowed replay', async () => {
+  const runtime = createRuntime();
+  const session = await createSession(runtime);
+
+  const turn = await runtime.sendTurn({
+    sessionId: session.sessionId,
+    input: 'use-tool mock-tool',
+    idempotencyKey: 'idem-replay-window',
+  });
+  await turn.done;
+
+  const full = await runtime.replayEvents({
+    tenantId: 'tenant-a',
+    sessionId: session.sessionId,
+    fidelity: 'semantic',
+  });
+  assert.equal(full.events.length > 0, true);
+
+  const anchor = full.events.find((event) => event.type === 'turn.started');
+  assert.notEqual(anchor, undefined);
+  const anchorEvent = anchor as NimEventEnvelope;
+  const lastFullEvent = full.events[full.events.length - 1];
+  assert.notEqual(lastFullEvent, undefined);
+  const endEvent = lastFullEvent as NimEventEnvelope;
+
+  const windowed = await runtime.replayEvents({
+    tenantId: 'tenant-a',
+    sessionId: session.sessionId,
+    fromEventIdExclusive: anchorEvent.event_id,
+    toEventIdInclusive: endEvent.event_id,
+    fidelity: 'semantic',
+  });
+  assert.equal(windowed.events.length > 0, true);
+  const firstWindowed = windowed.events[0];
+  assert.notEqual(firstWindowed, undefined);
+  assert.equal((firstWindowed as NimEventEnvelope).event_seq > anchorEvent.event_seq, true);
+  const maxFullSeq = endEvent.event_seq;
+  assert.equal(
+    windowed.events.every((event) => event.event_seq <= maxFullSeq),
+    true,
+  );
+});
+
 test('nim runtime streamUi projects canonical events for debug and seamless modes', async () => {
   const runtime = createRuntime();
   const session = await createSession(runtime);
