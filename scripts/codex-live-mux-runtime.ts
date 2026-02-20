@@ -38,6 +38,7 @@ import {
   createCommandMenuState,
   filterThemePresetActionsForScope,
   resolveSelectedCommandMenuActionId,
+  summarizeTaskForCommandMenu,
   type CommandMenuActionDescriptor,
   type RegisteredCommandMenuAction,
 } from '../src/mux/live-mux/command-menu.ts';
@@ -264,6 +265,7 @@ interface RuntimeCommandMenuContext {
   readonly taskPaneActive: boolean;
   readonly taskSelectedTaskId: string | null;
   readonly taskSelectedTaskStatus: ControlPlaneTaskRecord['status'] | null;
+  readonly taskSelectedTaskSummary: string | null;
   readonly profileRunning: boolean;
   readonly statusTimelineRunning: boolean;
   readonly githubRepositoryId: string | null;
@@ -1636,6 +1638,10 @@ async function main(): Promise<number> {
     const taskSelectedTaskId = workspace.taskPaneSelectedTaskId;
     const taskSelectedTask =
       taskSelectedTaskId === null ? null : (taskManager.getTask(taskSelectedTaskId) ?? null);
+    const taskSelectedTaskSummary =
+      taskSelectedTask === null
+        ? null
+        : summarizeTaskForCommandMenu(taskSelectedTask.body, taskSelectedTask.title);
     return {
       activeDirectoryId,
       activeConversationId: conversationManager.activeConversationId,
@@ -1645,6 +1651,7 @@ async function main(): Promise<number> {
       taskPaneActive: workspace.leftNavSelection.kind === 'tasks',
       taskSelectedTaskId,
       taskSelectedTaskStatus: taskSelectedTask?.status ?? null,
+      taskSelectedTaskSummary,
       profileRunning: hasActiveProfileState(
         resolveProfileStatePath(options.invocationDirectory, muxSessionName),
       ),
@@ -3109,13 +3116,15 @@ async function main(): Promise<number> {
     if (!context.taskPaneActive || context.taskSelectedTaskId === null) {
       return [];
     }
-    const selectedTaskDetail = `selected ${context.taskSelectedTaskId} (${context.taskSelectedTaskStatus ?? 'unknown'})`;
+    const selectedTaskDetail = `${context.taskSelectedTaskSummary ?? 'selected task'} (${context.taskSelectedTaskStatus ?? 'unknown'})`;
+    const taskSummaryAliases =
+      context.taskSelectedTaskSummary === null ? [] : [context.taskSelectedTaskSummary];
     const actionPriority = 200;
     return [
       {
         id: 'task.selected.ready',
         title: 'Task: Set Ready',
-        aliases: ['task ready', 'set task ready'],
+        aliases: ['task ready', 'set task ready', ...taskSummaryAliases],
         keywords: ['task', 'status', 'ready', 'set'],
         detail: selectedTaskDetail,
         priority: actionPriority,
@@ -3126,7 +3135,7 @@ async function main(): Promise<number> {
       {
         id: 'task.selected.draft',
         title: 'Task: Set Draft (Uncomplete)',
-        aliases: ['task draft', 'uncomplete task', 'undo complete task'],
+        aliases: ['task draft', 'uncomplete task', 'undo complete task', ...taskSummaryAliases],
         keywords: ['task', 'status', 'draft', 'queue', 'uncomplete', 'undo'],
         detail: selectedTaskDetail,
         priority: actionPriority,
@@ -3137,7 +3146,7 @@ async function main(): Promise<number> {
       {
         id: 'task.selected.complete',
         title: 'Task: Set Complete',
-        aliases: ['complete task', 'mark task complete'],
+        aliases: ['complete task', 'mark task complete', ...taskSummaryAliases],
         keywords: ['task', 'status', 'complete', 'done'],
         detail: selectedTaskDetail,
         priority: actionPriority,
@@ -3148,7 +3157,7 @@ async function main(): Promise<number> {
       {
         id: 'task.selected.reorder-up',
         title: 'Task: Move Up',
-        aliases: ['task move up', 'task reorder up'],
+        aliases: ['task move up', 'task reorder up', ...taskSummaryAliases],
         keywords: ['task', 'reorder', 'move', 'up'],
         detail: selectedTaskDetail,
         priority: actionPriority,
@@ -3159,7 +3168,7 @@ async function main(): Promise<number> {
       {
         id: 'task.selected.reorder-down',
         title: 'Task: Move Down',
-        aliases: ['task move down', 'task reorder down'],
+        aliases: ['task move down', 'task reorder down', ...taskSummaryAliases],
         keywords: ['task', 'reorder', 'move', 'down'],
         detail: selectedTaskDetail,
         priority: actionPriority,
@@ -3170,7 +3179,7 @@ async function main(): Promise<number> {
       {
         id: 'task.selected.delete',
         title: 'Task: Delete',
-        aliases: ['delete task', 'remove task'],
+        aliases: ['delete task', 'remove task', ...taskSummaryAliases],
         keywords: ['task', 'delete', 'remove'],
         detail: selectedTaskDetail,
         priority: actionPriority,

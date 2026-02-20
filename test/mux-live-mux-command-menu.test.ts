@@ -9,6 +9,7 @@ import {
   resolveCommandMenuPage,
   resolveCommandMenuMatches,
   resolveSelectedCommandMenuActionId,
+  summarizeTaskForCommandMenu,
   type RegisteredCommandMenuAction,
 } from '../src/mux/live-mux/command-menu.ts';
 
@@ -345,5 +346,23 @@ void test('command menu theme scope hides preset actions in main scope and only 
   assert.deepEqual(
     themePickerScope.map((action) => action.id),
     ['theme.set.github'],
+  );
+});
+
+void test('command menu task summary prefers task body text over opaque ids and falls back safely', () => {
+  assert.equal(
+    summarizeTaskForCommandMenu(
+      '\n\nFix selector ordering in task pane so grouped status rendering stays stable\nnext line',
+      'task-293ba4f4',
+    ),
+    'Fix selector ordering in task pane so grouped status rendering stays stable',
+  );
+  assert.equal(
+    summarizeTaskForCommandMenu('   \n', 'Refactor task ordering'),
+    'Refactor task ordering',
+  );
+  assert.equal(
+    summarizeTaskForCommandMenu('   ', '   '),
+    'untitled task',
   );
 });

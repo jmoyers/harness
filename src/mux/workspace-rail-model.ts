@@ -447,6 +447,7 @@ function buildContentRows(
         const active =
           !projectSelectionEnabled &&
           !homeSelectionEnabled &&
+          !tasksSelectionEnabled &&
           !repositorySelectionEnabled &&
           conversation.sessionId === model.activeConversationId;
         const projection = projectWorkspaceRailConversation(conversation, {
