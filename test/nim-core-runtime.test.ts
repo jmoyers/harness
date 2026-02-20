@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'bun:test';
 import {
   InMemoryNimRuntime,
   type NimEventEnvelope,
   type NimUiEvent,
+  NimSqliteEventStore,
 } from '../packages/nim-core/src/index.ts';
 
 async function nextWithTimeout<T>(
@@ -46,8 +50,8 @@ async function collectUntil<T>(
   throw new Error(`stream predicate not met after ${String(events.length)} events`);
 }
 
-function createRuntime() {
-  const runtime = new InMemoryNimRuntime();
+function createRuntime(input?: ConstructorParameters<typeof InMemoryNimRuntime>[0]) {
+  const runtime = new InMemoryNimRuntime(input);
   runtime.registerProvider({
     id: 'anthropic',
     displayName: 'Anthropic',
@@ -504,6 +508,46 @@ test('nim runtime emits canonical events to constructor and registered telemetry
     registeredEvents.map((event) => event.event_id),
     replay.events.map((event) => event.event_id),
   );
+});
+
+test('nim runtime uses sqlite event store for replayable persistence', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nim-runtime-sqlite-'));
+  const dbPath = join(dir, 'events.sqlite');
+  const eventStore = new NimSqliteEventStore(dbPath);
+  const runtime = createRuntime({
+    eventStore,
+  });
+  const session = await createSession(runtime);
+  const turn = await runtime.sendTurn({
+    sessionId: session.sessionId,
+    input: 'use-tool mock-tool',
+    idempotencyKey: 'idem-runtime-sqlite-store',
+  });
+  await turn.done;
+
+  const replay = await runtime.replayEvents({
+    tenantId: 'tenant-a',
+    sessionId: session.sessionId,
+    includeThoughtDeltas: true,
+    includeToolArgumentDeltas: true,
+  });
+  assert.equal(replay.events.length > 0, true);
+  eventStore.close();
+
+  const persisted = new NimSqliteEventStore(dbPath);
+  try {
+    const rows = persisted.list({
+      tenantId: 'tenant-a',
+      sessionId: session.sessionId,
+    });
+    assert.equal(rows.length, replay.events.length);
+    assert.deepEqual(
+      rows.map((event) => event.event_id),
+      replay.events.map((event) => event.event_id),
+    );
+  } finally {
+    persisted.close();
+  }
 });
 
 test('nim runtime streamUi projects canonical events for debug and seamless modes', async () => {
