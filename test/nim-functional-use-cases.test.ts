@@ -392,3 +392,186 @@ test('UC-12 debug and seamless projections are pure functions of canonical strea
     await seamlessIterator.return?.();
   }
 });
+
+test('UC-02 resume session continues conversation without duplicating prior turns', async () => {
+  const runtime = new InMemoryNimRuntime();
+  runtime.registerProvider({
+    id: 'anthropic',
+    displayName: 'Anthropic',
+    models: ['anthropic/claude-3-haiku-20240307'],
+  });
+  runtime.registerProviderDriver(providerDriver('anthropic', 'anthropic'));
+
+  const session = await runtime.startSession({
+    tenantId: 'tenant-a',
+    userId: 'user-a',
+    model: 'anthropic/claude-3-haiku-20240307',
+  });
+
+  const first = await runtime.sendTurn({
+    sessionId: session.sessionId,
+    input: 'turn one',
+    idempotencyKey: 'uc02-a',
+  });
+  await first.done;
+
+  const resumed = await runtime.resumeSession({
+    tenantId: 'tenant-a',
+    userId: 'user-a',
+    sessionId: session.sessionId,
+  });
+  assert.equal(resumed.sessionId, session.sessionId);
+
+  const second = await runtime.sendTurn({
+    sessionId: session.sessionId,
+    input: 'turn two',
+    idempotencyKey: 'uc02-b',
+  });
+  await second.done;
+
+  const stream = runtime.streamEvents({
+    tenantId: 'tenant-a',
+    sessionId: session.sessionId,
+    fidelity: 'semantic',
+  });
+  const iterator = stream[Symbol.asyncIterator]();
+  try {
+    const events = await collectUntil(iterator, (items) =>
+      items.some((event) => event.type === 'turn.completed' && event.run_id === second.runId),
+    );
+
+    assert.equal(events.filter((event) => event.type === 'session.resumed').length, 1);
+    assert.equal(events.filter((event) => event.type === 'turn.started').length, 2);
+    assert.match(
+      assistantText(events.filter((event) => event.run_id === first.runId)),
+      /anthropic:turn one/u,
+    );
+    assert.match(
+      assistantText(events.filter((event) => event.run_id === second.runId)),
+      /anthropic:turn two/u,
+    );
+  } finally {
+    await iterator.return?.();
+  }
+});
+
+test('UC-10 in-turn steer inject mutates active run output and keeps single terminal', async () => {
+  const runtime = new InMemoryNimRuntime();
+  runtime.registerProvider({
+    id: 'anthropic',
+    displayName: 'Anthropic',
+    models: ['anthropic/claude-3-haiku-20240307'],
+  });
+
+  const session = await runtime.startSession({
+    tenantId: 'tenant-a',
+    userId: 'user-a',
+    model: 'anthropic/claude-3-haiku-20240307',
+  });
+
+  const run = await runtime.sendTurn({
+    sessionId: session.sessionId,
+    input: 'base input',
+    idempotencyKey: 'uc10-a',
+  });
+
+  const steer = await runtime.steerTurn({
+    sessionId: session.sessionId,
+    runId: run.runId,
+    text: 'inject-now',
+    strategy: 'inject',
+  });
+  assert.equal(steer.accepted, true);
+
+  const result = await run.done;
+  assert.equal(result.terminalState, 'completed');
+
+  const stream = runtime.streamEvents({
+    tenantId: 'tenant-a',
+    sessionId: session.sessionId,
+    runId: run.runId,
+    fidelity: 'semantic',
+  });
+  const iterator = stream[Symbol.asyncIterator]();
+  try {
+    const events = await collectUntil(iterator, (items) =>
+      items.some((event) => event.type === 'turn.completed' && event.run_id === run.runId),
+    );
+    assert.equal(events.filter((event) => event.type === 'turn.completed').length, 1);
+    assert.equal(
+      events.some((event) => event.type === 'turn.steer.accepted'),
+      true,
+    );
+    assert.match(assistantText(events), /\[steer:inject-now\]/u);
+  } finally {
+    await iterator.return?.();
+  }
+});
+
+test('UC-11 queued follow-ups dequeue deterministically by priority and preserve order', async () => {
+  const runtime = new InMemoryNimRuntime();
+  runtime.registerProvider({
+    id: 'anthropic',
+    displayName: 'Anthropic',
+    models: ['anthropic/claude-3-haiku-20240307'],
+  });
+
+  const session = await runtime.startSession({
+    tenantId: 'tenant-a',
+    userId: 'user-a',
+    model: 'anthropic/claude-3-haiku-20240307',
+  });
+
+  const firstRun = await runtime.sendTurn({
+    sessionId: session.sessionId,
+    input: 'root',
+    idempotencyKey: 'uc11-root',
+  });
+
+  const normal = await runtime.queueFollowUp({
+    sessionId: session.sessionId,
+    text: 'follow-normal',
+    priority: 'normal',
+  });
+  const high = await runtime.queueFollowUp({
+    sessionId: session.sessionId,
+    text: 'follow-high',
+    priority: 'high',
+  });
+  assert.equal(normal.queued, true);
+  assert.equal(high.queued, true);
+
+  await firstRun.done;
+
+  const stream = runtime.streamEvents({
+    tenantId: 'tenant-a',
+    sessionId: session.sessionId,
+    fidelity: 'semantic',
+  });
+  const iterator = stream[Symbol.asyncIterator]();
+  try {
+    const events = await collectUntil(
+      iterator,
+      (items) => {
+        return items.filter((event) => event.type === 'turn.completed').length === 3;
+      },
+      1200,
+    );
+
+    const dequeues = events.filter((event) => event.type === 'turn.followup.dequeued');
+    assert.equal(dequeues.length, 2);
+    assert.equal(dequeues[0]?.queue_id, high.queueId);
+    assert.equal(dequeues[1]?.queue_id, normal.queueId);
+
+    const outputs = events
+      .filter((event) => event.type === 'assistant.output.delta')
+      .map((event) => String(event.data?.['text'] ?? ''));
+    const highOutputIndex = outputs.findIndex((text) => text.includes('echo:follow-high'));
+    const normalOutputIndex = outputs.findIndex((text) => text.includes('echo:follow-normal'));
+    assert.equal(highOutputIndex >= 0, true);
+    assert.equal(normalOutputIndex >= 0, true);
+    assert.equal(highOutputIndex < normalOutputIndex, true);
+  } finally {
+    await iterator.return?.();
+  }
+});
