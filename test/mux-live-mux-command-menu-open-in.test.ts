@@ -59,7 +59,7 @@ void test('command menu open-in command resolution replaces path token and appen
   const withToken = resolveCommandMenuOpenInCommand(
     {
       id: 'cursor',
-      title: 'Cursor IDE',
+      title: 'Cursor',
       aliases: [],
       keywords: [],
       launchCommand: ['open', '-a', 'Cursor', '{path}'],
@@ -74,7 +74,7 @@ void test('command menu open-in command resolution replaces path token and appen
   const withoutToken = resolveCommandMenuOpenInCommand(
     {
       id: 'cursor',
-      title: 'Cursor IDE',
+      title: 'Cursor',
       aliases: [],
       keywords: [],
       launchCommand: ['cursor'],
@@ -89,7 +89,7 @@ void test('command menu open-in command resolution replaces path token and appen
   const invalid = resolveCommandMenuOpenInCommand(
     {
       id: 'cursor',
-      title: 'Cursor IDE',
+      title: 'Cursor',
       aliases: [],
       keywords: [],
       launchCommand: [' '],
@@ -103,7 +103,7 @@ void test('command menu open-in provider registers actions for open and copy-pat
   const targets: readonly ResolvedCommandMenuOpenInTarget[] = [
     {
       id: 'cursor',
-      title: 'Cursor IDE',
+      title: 'Cursor',
       aliases: ['cursor'],
       keywords: ['cursor'],
       launchCommand: ['cursor', '{path}'],
@@ -111,12 +111,29 @@ void test('command menu open-in provider registers actions for open and copy-pat
   ];
   const notices: string[] = [];
   const calls: string[] = [];
+  const directories = [
+    {
+      directoryId: 'dir-1',
+      path: '/tmp/alpha',
+    },
+    {
+      directoryId: 'dir-2',
+      path: '/tmp/beta',
+    },
+  ] as const;
   const providerHolder: {
     provider?: (context: {
+      activeDirectoryId: string | null;
       scope: string;
-    }) => readonly RegisteredCommandMenuAction<{ scope: string }>[];
+    }) => readonly RegisteredCommandMenuAction<{
+      activeDirectoryId: string | null;
+      scope: string;
+    }>[];
   } = {};
-  const unregister = registerCommandMenuOpenInProvider<{ scope: string }>({
+  const unregister = registerCommandMenuOpenInProvider<{
+    activeDirectoryId: string | null;
+    scope: string;
+  }>({
     registerProvider: (providerId, registeredProvider) => {
       calls.push(`register:${providerId}`);
       providerHolder.provider = registeredProvider;
@@ -124,16 +141,8 @@ void test('command menu open-in provider registers actions for open and copy-pat
         calls.push(`unregister:${providerId}`);
       };
     },
-    resolveDirectories: () => [
-      {
-        directoryId: 'dir-1',
-        path: '/tmp/alpha',
-      },
-      {
-        directoryId: 'dir-2',
-        path: '/tmp/beta',
-      },
-    ],
+    resolveDirectories: (context) =>
+      directories.filter((directory) => directory.directoryId === context.activeDirectoryId),
     resolveTargets: () => targets,
     projectPathTail: (path) => path.split('/').pop() ?? path,
     openInTarget: (_target, path) => path.endsWith('/alpha'),
@@ -146,31 +155,28 @@ void test('command menu open-in provider registers actions for open and copy-pat
   if (providerHolder.provider === undefined) {
     throw new Error('expected provider registration');
   }
-  const actions = providerHolder.provider({ scope: 'all' });
+  const actions = providerHolder.provider({ activeDirectoryId: 'dir-1', scope: 'all' });
   assert.deepEqual(
     actions.map((action) => action.id),
-    [
-      'project.open-in.cursor.dir-1',
-      'project.copy-path.dir-1',
-      'project.open-in.cursor.dir-2',
-      'project.copy-path.dir-2',
-    ],
+    ['project.open-in.cursor.dir-1', 'project.copy-path.dir-1'],
   );
   const openAlpha = actions.find((action) => action.id === 'project.open-in.cursor.dir-1');
-  const openBeta = actions.find((action) => action.id === 'project.open-in.cursor.dir-2');
   const copyAlpha = actions.find((action) => action.id === 'project.copy-path.dir-1');
-  const copyBeta = actions.find((action) => action.id === 'project.copy-path.dir-2');
   assert.equal(openAlpha?.detail, '/tmp/alpha');
-  assert.equal(openBeta?.detail, '/tmp/beta');
-  openAlpha?.run({ scope: 'all' });
-  openBeta?.run({ scope: 'all' });
-  copyAlpha?.run({ scope: 'all' });
-  copyBeta?.run({ scope: 'all' });
+  openAlpha?.run({ activeDirectoryId: 'dir-1', scope: 'all' });
+  copyAlpha?.run({ activeDirectoryId: 'dir-1', scope: 'all' });
+  const actionsForSecondDirectory = providerHolder.provider({
+    activeDirectoryId: 'dir-2',
+    scope: 'all',
+  });
+  const openBeta = actionsForSecondDirectory.find(
+    (action) => action.id === 'project.open-in.cursor.dir-2',
+  );
+  openBeta?.run({ activeDirectoryId: 'dir-2', scope: 'all' });
   assert.deepEqual(notices, [
-    'opened alpha in Cursor IDE',
-    'failed to open beta in Cursor IDE',
+    'opened alpha in Cursor',
     'failed to copy path',
-    'copied path: /tmp/beta',
+    'failed to open beta in Cursor',
   ]);
   unregister();
   assert.deepEqual(calls, ['register:project.open-in', 'unregister:project.open-in']);
@@ -185,7 +191,7 @@ void test('command menu open-in provider still registers copy-path actions when 
       providerHolder.provider = registeredProvider;
       return () => {};
     },
-    resolveDirectories: () => [{ directoryId: 'dir-1', path: '/tmp/solo' }],
+    resolveDirectories: (_context) => [{ directoryId: 'dir-1', path: '/tmp/solo' }],
     resolveTargets: () => [],
     projectPathTail: (path) => path,
     openInTarget: () => false,

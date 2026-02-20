@@ -3437,7 +3437,14 @@ async function main(): Promise<number> {
   registerCommandMenuOpenInProvider<RuntimeCommandMenuContext>({
     registerProvider: (providerId, provider) =>
       commandMenuRegistry.registerProvider(providerId, provider),
-    resolveDirectories: () => [...directoryRecords.values()],
+    resolveDirectories: (context) => {
+      const directoryId = context.activeDirectoryId;
+      if (directoryId === null) {
+        return [];
+      }
+      const directory = directoryRecords.get(directoryId);
+      return directory === undefined ? [] : [directory];
+    },
     resolveTargets: () => commandMenuOpenInTargets,
     projectPathTail: commandMenuProjectPathTail,
     openInTarget: openDirectoryInCommandMenuTarget,

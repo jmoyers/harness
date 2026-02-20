@@ -361,8 +361,5 @@ void test('command menu task summary prefers task body text over opaque ids and 
     summarizeTaskForCommandMenu('   \n', 'Refactor task ordering'),
     'Refactor task ordering',
   );
-  assert.equal(
-    summarizeTaskForCommandMenu('   ', '   '),
-    'untitled task',
-  );
+  assert.equal(summarizeTaskForCommandMenu('   ', '   '), 'untitled task');
 });
