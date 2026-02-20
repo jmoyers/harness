@@ -4,7 +4,12 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { test } from 'bun:test';
-import { buildGitDiffArgs, readGitDiffPreflight, streamGitLines } from '../src/diff/git-invoke.ts';
+import {
+  buildGitDiffArgs,
+  readGitDiffPreflight,
+  resolveRangeBaseRef,
+  streamGitLines,
+} from '../src/diff/git-invoke.ts';
 import type { GitDiffInvocationOptions } from '../src/diff/git-invoke.ts';
 
 function runGit(cwd: string, args: readonly string[]): string {
@@ -221,4 +226,164 @@ void test('streamGitLines marks timedOut when timeout budget is exhausted', asyn
   });
   assert.equal(result.timedOut, true);
   assert.equal(result.aborted, true);
+});
+
+void test('resolveRangeBaseRef prefers origin/HEAD when available', async () => {
+  const repo = createTempRepository('harness-diff-range-base-origin-head-');
+  runGit(repo, ['branch', '-M', 'main']);
+  const bareRemote = mkdtempSync(join(tmpdir(), 'harness-diff-range-base-origin-head-remote-'));
+  runGit(bareRemote, ['init', '--bare']);
+  runGit(repo, ['remote', 'add', 'origin', bareRemote]);
+  runGit(repo, ['push', '-u', 'origin', 'main']);
+  runGit(repo, ['fetch', 'origin']);
+  runGit(repo, ['symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main']);
+  runGit(repo, ['checkout', '-b', 'feature/range-base-origin-head']);
+  writeFileSync(join(repo, 'file.txt'), 'line-1\nline-2\n', 'utf8');
+  runGit(repo, ['add', 'file.txt']);
+  runGit(repo, ['commit', '-m', 'feature-change']);
+
+  const expected = runGit(repo, ['merge-base', 'origin/main', 'HEAD']);
+  const resolved = await resolveRangeBaseRef({
+    cwd: repo,
+    headRef: 'HEAD',
+    timeoutMs: 5000,
+  });
+  assert.equal(resolved, expected);
+});
+
+void test('resolveRangeBaseRef falls back to HEAD when canonical base branches are absent', async () => {
+  const repo = createTempRepository('harness-diff-range-base-head-fallback-');
+  runGit(repo, ['branch', '-M', 'dev']);
+  const expected = runGit(repo, ['rev-parse', '--verify', 'HEAD']);
+  const resolved = await resolveRangeBaseRef({
+    cwd: repo,
+    headRef: 'HEAD',
+    timeoutMs: 5000,
+  });
+  assert.equal(resolved, expected);
+});
+
+void test('resolveRangeBaseRef rejects when merge-base returns no output', async () => {
+  await assert.rejects(
+    () =>
+      resolveRangeBaseRef({
+        cwd: '/repo',
+        headRef: 'HEAD',
+        timeoutMs: 5000,
+        runCommand: async (_cwd, args) => {
+          if (args[0] === 'symbolic-ref') {
+            return {
+              exitCode: 0,
+              aborted: false,
+              timedOut: false,
+              stdout: '   \n',
+              stderr: '',
+            };
+          }
+          if (args[0] === 'rev-parse') {
+            return {
+              exitCode: 1,
+              aborted: false,
+              timedOut: false,
+              stdout: '',
+              stderr: '',
+            };
+          }
+          return {
+            exitCode: 0,
+            aborted: false,
+            timedOut: false,
+            stdout: '',
+            stderr: '',
+          };
+        },
+      }),
+    /returned no output/u,
+  );
+});
+
+void test('resolveRangeBaseRef merge-base failure messages include timeout, stderr, and unknown reasons', async () => {
+  await assert.rejects(
+    () =>
+      resolveRangeBaseRef({
+        cwd: '/repo',
+        headRef: 'HEAD',
+        timeoutMs: 5000,
+        runCommand: async (_cwd, args) => {
+          if (args[0] === 'merge-base') {
+            return {
+              exitCode: 1,
+              aborted: true,
+              timedOut: true,
+              stdout: '',
+              stderr: '',
+            };
+          }
+          return {
+            exitCode: 1,
+            aborted: false,
+            timedOut: false,
+            stdout: '',
+            stderr: '',
+          };
+        },
+      }),
+    /timed out/u,
+  );
+
+  await assert.rejects(
+    () =>
+      resolveRangeBaseRef({
+        cwd: '/repo',
+        headRef: 'HEAD',
+        timeoutMs: 5000,
+        runCommand: async (_cwd, args) => {
+          if (args[0] === 'merge-base') {
+            return {
+              exitCode: 1,
+              aborted: false,
+              timedOut: false,
+              stdout: '',
+              stderr: 'fatal: bad revision',
+            };
+          }
+          return {
+            exitCode: 1,
+            aborted: false,
+            timedOut: false,
+            stdout: '',
+            stderr: '',
+          };
+        },
+      }),
+    /fatal: bad revision/u,
+  );
+
+  await assert.rejects(
+    () =>
+      resolveRangeBaseRef({
+        cwd: '/repo',
+        headRef: 'HEAD',
+        timeoutMs: 5000,
+        runCommand: async (_cwd, args) => {
+          if (args[0] === 'merge-base') {
+            return {
+              exitCode: 1,
+              aborted: false,
+              timedOut: false,
+              stdout: '',
+              stderr: '',
+            };
+          }
+          return {
+            exitCode: 1,
+            aborted: false,
+            timedOut: false,
+            stdout: '',
+            stderr: '',
+          };
+        },
+      }),
+    /unknown error/u,
+  );
 });

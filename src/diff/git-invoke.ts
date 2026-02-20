@@ -19,6 +19,13 @@ interface GitDiffPreflight {
   readonly binaryFiles: number;
 }
 
+interface ResolveRangeBaseRefOptions {
+  readonly cwd: string;
+  readonly headRef: string;
+  readonly timeoutMs: number;
+  readonly runCommand?: ResolveRangeBaseRefCommandRunner;
+}
+
 interface StreamGitLinesInput {
   readonly cwd: string;
   readonly args: readonly string[];
@@ -37,6 +44,20 @@ interface StreamGitLinesResult {
   readonly stderr: string;
 }
 
+interface GitCommandOutput {
+  readonly exitCode: number;
+  readonly aborted: boolean;
+  readonly timedOut: boolean;
+  readonly stdout: string;
+  readonly stderr: string;
+}
+
+type ResolveRangeBaseRefCommandRunner = (
+  cwd: string,
+  args: readonly string[],
+  timeoutMs: number,
+) => Promise<GitCommandOutput>;
+
 function trimLineEnding(line: string): string {
   return line.endsWith('\r') ? line.slice(0, -1) : line;
 }
@@ -44,6 +65,16 @@ function trimLineEnding(line: string): string {
 function parseFiniteInteger(value: string): number {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+function firstNonEmptyLine(text: string): string | null {
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed.length > 0) {
+      return trimmed;
+    }
+  }
+  return null;
 }
 
 export function buildGitDiffArgs(
@@ -159,6 +190,83 @@ export async function streamGitLines(input: StreamGitLinesInput): Promise<Stream
       });
     });
   });
+}
+
+async function runGitCommandCapture(
+  cwd: string,
+  args: readonly string[],
+  timeoutMs: number,
+): Promise<GitCommandOutput> {
+  const lines: string[] = [];
+  const result = await streamGitLines({
+    cwd,
+    args,
+    timeoutMs,
+    onLine: (line) => {
+      lines.push(line);
+    },
+  });
+  return {
+    exitCode: result.exitCode,
+    aborted: result.aborted,
+    timedOut: result.timedOut,
+    stdout: lines.join('\n').trim(),
+    stderr: result.stderr,
+  };
+}
+
+async function resolveRangeBaseTargetRef(
+  cwd: string,
+  timeoutMs: number,
+  runCommand: ResolveRangeBaseRefCommandRunner,
+): Promise<string> {
+  const remoteHead = await runCommand(
+    cwd,
+    ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD'],
+    timeoutMs,
+  );
+  if (remoteHead.exitCode === 0 && !remoteHead.aborted) {
+    const remoteHeadRef = firstNonEmptyLine(remoteHead.stdout);
+    if (remoteHeadRef !== null) {
+      return remoteHeadRef;
+    }
+  }
+
+  for (const candidate of ['origin/main', 'main', 'origin/master', 'master']) {
+    const exists = await runCommand(
+      cwd,
+      ['rev-parse', '--verify', '--quiet', candidate],
+      timeoutMs,
+    );
+    if (exists.exitCode === 0 && !exists.aborted && firstNonEmptyLine(exists.stdout) !== null) {
+      return candidate;
+    }
+  }
+
+  return 'HEAD';
+}
+
+export async function resolveRangeBaseRef(options: ResolveRangeBaseRefOptions): Promise<string> {
+  const runCommand = options.runCommand ?? runGitCommandCapture;
+  const targetRef = await resolveRangeBaseTargetRef(options.cwd, options.timeoutMs, runCommand);
+  const mergeBase = await runCommand(
+    options.cwd,
+    ['merge-base', targetRef, options.headRef],
+    options.timeoutMs,
+  );
+  if (mergeBase.exitCode !== 0 || mergeBase.aborted) {
+    const reason = mergeBase.timedOut
+      ? 'timed out'
+      : mergeBase.stderr.length > 0
+        ? mergeBase.stderr
+        : 'unknown error';
+    throw new Error(`git merge-base ${targetRef} ${options.headRef} failed: ${reason}`);
+  }
+  const resolved = firstNonEmptyLine(mergeBase.stdout);
+  if (resolved === null) {
+    throw new Error(`git merge-base ${targetRef} ${options.headRef} returned no output`);
+  }
+  return resolved;
 }
 
 export async function readGitDiffPreflight(

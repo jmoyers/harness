@@ -98,16 +98,35 @@ void test('parseDiffUiArgs parses range and runtime options', () => {
 });
 
 void test('parseDiffUiArgs applies range defaults and validates incompatible options', () => {
-  const withBaseOnly = parseDiffUiArgs(['--base', 'main'], {
+  const withExplicitBaseOnly = parseDiffUiArgs(['--base', 'main'], {
     cwd: '/repo',
     env: {
       NO_COLOR: '1',
     },
     isStdoutTty: true,
   });
-  assert.equal(withBaseOnly.mode, 'range');
-  assert.equal(withBaseOnly.headRef, 'HEAD');
-  assert.equal(withBaseOnly.color, false);
+  assert.equal(withExplicitBaseOnly.mode, 'range');
+  assert.equal(withExplicitBaseOnly.baseRef, 'main');
+  assert.equal(withExplicitBaseOnly.headRef, 'HEAD');
+  assert.equal(withExplicitBaseOnly.color, false);
+
+  const withAutoBaseOnly = parseDiffUiArgs(['--base'], {
+    cwd: '/repo',
+    env: {},
+    isStdoutTty: true,
+  });
+  assert.equal(withAutoBaseOnly.mode, 'range');
+  assert.equal(withAutoBaseOnly.baseRef, null);
+  assert.equal(withAutoBaseOnly.headRef, 'HEAD');
+
+  const withAutoBaseAndHead = parseDiffUiArgs(['--base', '--head', 'HEAD~2'], {
+    cwd: '/repo',
+    env: {},
+    isStdoutTty: true,
+  });
+  assert.equal(withAutoBaseAndHead.mode, 'range');
+  assert.equal(withAutoBaseAndHead.baseRef, null);
+  assert.equal(withAutoBaseAndHead.headRef, 'HEAD~2');
 
   const staged = parseDiffUiArgs(['--staged'], {
     cwd: '/repo',
@@ -204,6 +223,7 @@ void test('diffUiUsage documents supported flags', () => {
   assert.equal(usage.includes('--view <auto|split|unified>'), true);
   assert.equal(usage.includes('--rpc-stdio'), true);
   assert.equal(usage.includes('--max-runtime-ms <n>'), true);
+  assert.equal(usage.includes('--base [<ref>] [--head <ref>]'), true);
   assert.equal(
     parseDiffUiArgs(['--renames', '--no-renames'], { cwd: '/repo', env: {} }).noRenames,
     true,

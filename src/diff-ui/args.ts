@@ -45,6 +45,10 @@ function readNextValue(argv: readonly string[], index: number, flag: string): st
   return next;
 }
 
+function hasFlagPrefix(value: string): boolean {
+  return value.startsWith('--');
+}
+
 function parseViewMode(raw: string): DiffUiViewMode {
   if (raw === 'auto' || raw === 'split' || raw === 'unified') {
     return raw;
@@ -119,10 +123,14 @@ export function parseDiffUiArgs(
       continue;
     }
     if (arg === '--base') {
-      const value = readNextValue(argv, index, '--base');
-      baseRef = value;
+      const next = argv[index + 1];
+      if (next !== undefined && !hasFlagPrefix(next)) {
+        baseRef = next;
+        index += 1;
+      } else {
+        baseRef = null;
+      }
       mode = 'range';
-      index += 1;
       continue;
     }
     if (arg === '--head') {
@@ -287,7 +295,7 @@ export function diffUiUsage(): string {
     '',
     'diff source:',
     '  --staged',
-    '  --base <ref> [--head <ref>]',
+    '  --base [<ref>] [--head <ref>]',
     '',
     'display:',
     '  --view <auto|split|unified>',

@@ -128,6 +128,34 @@ void test('diff builder supports range mode refs', async () => {
   assert.equal(result.diff.files.length >= 1, true);
 });
 
+void test('diff builder resolves merge-base when range mode omits explicit base ref', async () => {
+  const repo = createRepo('harness-diff-range-auto-base-');
+  runGit(repo, ['branch', '-M', 'main']);
+  runGit(repo, ['checkout', '-b', 'feature/diff-auto-base']);
+  writeFileSync(join(repo, 'src.ts'), 'const x = 1;\nconst y = 2;\n', 'utf8');
+  runGit(repo, ['add', 'src.ts']);
+  runGit(repo, ['commit', '-m', 'feature-update']);
+
+  const expectedMergeBase = runGit(repo, ['merge-base', 'main', 'HEAD']);
+  const builder = createDiffBuilder();
+  const result = await builder.build({
+    cwd: repo,
+    mode: 'range',
+    headRef: 'HEAD',
+    budget: {
+      maxFiles: 100,
+      maxHunks: 100,
+      maxLines: 1000,
+      maxBytes: 1024 * 1024,
+      maxRuntimeMs: 30_000,
+    },
+  });
+  assert.equal(result.diff.spec.mode, 'range');
+  assert.equal(result.diff.spec.baseRef, expectedMergeBase);
+  assert.equal(result.diff.spec.headRef, 'HEAD');
+  assert.equal(result.diff.files.length >= 1, true);
+});
+
 void test('diff builder stream surfaces failures through async iterator', async () => {
   const builder = createDiffBuilder();
   let thrown: unknown = null;

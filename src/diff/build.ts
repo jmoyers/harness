@@ -3,6 +3,7 @@ import { computeDiffId } from './hash.ts';
 import {
   buildGitDiffArgs,
   readGitDiffPreflight,
+  resolveRangeBaseRef,
   streamGitLines,
   type GitDiffInvocationOptions,
 } from './git-invoke.ts';
@@ -61,6 +62,36 @@ function toInvocationOptions(options: NormalizedBuildOptions): GitDiffInvocation
   };
 }
 
+async function resolveRangeRefs(options: NormalizedBuildOptions): Promise<{
+  readonly baseRef: string | null;
+  readonly headRef: string | null;
+}> {
+  if (options.mode !== 'range') {
+    return {
+      baseRef: options.baseRef,
+      headRef: options.headRef,
+    };
+  }
+
+  const headRef = options.headRef ?? 'HEAD';
+  if (options.baseRef !== null) {
+    return {
+      baseRef: options.baseRef,
+      headRef,
+    };
+  }
+
+  const baseRef = await resolveRangeBaseRef({
+    cwd: options.cwd,
+    headRef,
+    timeoutMs: options.budget.maxRuntimeMs,
+  });
+  return {
+    baseRef,
+    headRef,
+  };
+}
+
 function resolveCoverage(input: {
   filesObservedInPreflight: number;
   filesIncluded: number;
@@ -97,7 +128,12 @@ async function runBuild(
     type: 'start',
     mode: options.mode,
   });
-  const invocation = toInvocationOptions(options);
+  const resolvedRefs = await resolveRangeRefs(options);
+  const invocation = toInvocationOptions({
+    ...options,
+    baseRef: resolvedRefs.baseRef,
+    headRef: resolvedRefs.headRef,
+  });
   const preflight = await readGitDiffPreflight(invocation, options.budget.maxRuntimeMs);
 
   const budget = new DiffBudgetTracker(options.budget, startedAtMs);
@@ -157,10 +193,10 @@ async function runBuild(
   const generatedAt = new Date().toISOString();
   const diff: NormalizedDiff = {
     spec: {
-      diffId: computeDiffId(options.mode, options.baseRef, options.headRef, parsed.files),
+      diffId: computeDiffId(options.mode, invocation.baseRef, invocation.headRef, parsed.files),
       mode: options.mode,
-      baseRef: options.baseRef,
-      headRef: options.headRef,
+      baseRef: invocation.baseRef,
+      headRef: invocation.headRef,
       generatedAt,
     },
     files: parsed.files,
