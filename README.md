@@ -1,21 +1,17 @@
 # Harness
 
-Harness is a terminal-native workspace for running multiple coding-agent threads in parallel, without losing project context.
+Harness is minimal agent orchestration in the terminal.
 
-It is built for people who want to move faster than a single chat window: implementation, review, and follow-up work can run side by side in one keyboard-first interface.
+Programmable, agent-agnostic, threaded, ergonomic, and fast.
 
 ## What matters most
 
 - Parallel threads across `codex`, `claude`, `cursor`, `terminal`, and `critique`.
 - One command palette (`ctrl+p` / `cmd+p`) to jump threads, run actions, and control workflow quickly.
-- Command palette project actions can open the active project directory directly in installed local tools (`iTerm2`, `Ghostty`, `Zed`, `Cursor`, `VSCode`, `Warp`, `Finder`) and copy its path.
-- Built-in update flow (`Update Harness`) and startup `What's New` modal with one-click update and quick links to full GitHub notes.
-- Built-in diff subcommand (`harness diff`) with interactive pager-by-default UX, explicit scrollback output mode (`--no-pager`), syntax-aware rendering, and rpc/json event modes for automation.
-- Long-running work survives reconnects through a detached gateway.
-- Gateway control is resilient: lifecycle operations are lock-serialized per session, and missing stale records can be recovered automatically.
-- Fast left-rail navigation across `Home`, repositories, projects, and threads, with optional `Tasks` view and automatic, readable thread titles.
-- Built-in GitHub actions (`Open GitHub`, `Show My Open Pull Requests`, `Open PR`, `Create PR`) from inside Harness.
-- Built-in Linear import action to create a Harness task directly from a selected Linear issue URL.
+- Codex, Claude Code, and Cursor together in one workspace.
+- Diff with Critique, with integrated terminals (`harness diff` + critique actions).
+- Detached gateway sessions keep long-running work alive through reconnects.
+- Open the active project directly in local tools (`iTerm2`, `Ghostty`, `Zed`, `Cursor`, `VSCode`, `Warp`, `Finder`) or copy its path from the palette.
 
 ## Demo
 
@@ -56,45 +52,17 @@ Standalone diff viewer (phase 1):
 harness diff --help
 ```
 
-## Typical workflow
+## Architecture (VTE path)
 
-1. Open Harness in your repository.
-2. Start separate threads for implementation and review.
-3. Use `ctrl+p` / `cmd+p` to switch context and run project actions.
-4. Open or create a PR from the same workspace.
-
-## User details
-
-- Thread-scoped command palette (`[+ thread]`) can launch/install supported agent CLIs per project.
-- Critique review actions are available from the global palette and run in a terminal thread.
-- `ctrl+g` opens the project’s critique thread (or creates one if needed).
-- `ctrl` and `cmd` shortcut chords are distinct; configure both explicitly when you want cross-platform parity.
-- In terminal threads, most `ctrl`-only readline chords (for example `ctrl+r`, `ctrl+w`, `ctrl+u`, `ctrl+a`, `ctrl+e`, `ctrl+p`, `ctrl+n`) pass through to the shell; `ctrl+j/k` remain reserved for thread navigation.
-- Theme selection is built in (`Set a Theme`) with OpenCode-compatible presets and live preview.
-- API keys can be set directly from `ctrl+p` / `cmd+p` (`Set Anthropic API Key`, `Set OpenAI API Key`, `Set Linear API Key`), with overwrite warning and paste-friendly entry.
-- OAuth login is available from CLI (`harness auth login github`, `harness auth login linear`) with `harness auth status|refresh|logout` for lifecycle control.
-- Gateway maintenance supports named-session garbage collection: `harness gateway gc` prunes named session runtime directories older than 7 days (skips live sessions).
-- Select a Linear issue URL in the terminal, then run `Create Task from Linear Ticket URL` from `ctrl+p` / `cmd+p` to import it into the task list.
-- `Show What's New` opens release highlights (first lines only); if notes are empty it falls back to a simple version-available notice with links.
-- `Update Harness` (aliases: `update`, `upgrade`) runs `harness update` in a terminal thread.
-- `Create PR` uses `GITHUB_TOKEN` first, then `HARNESS_GITHUB_OAUTH_ACCESS_TOKEN`, and still falls back to an authenticated `gh` CLI session when needed.
-
-## Configuration
-
-Runtime behavior is controlled by `harness.config.jsonc`.
-
-When upgrading from a workspace-local `.harness`, Harness automatically migrates legacy config into the global config location if that global config is still uninitialized (missing, empty, or default template), then removes stale local `.harness` folders once migration targets are confirmed.
-
-Common customizations:
-
-- Set `gateway.host` to bind/connect the gateway on a custom host/IP.
-- Set install commands for `codex`, `claude`, `cursor`, and `critique`.
-- Configure critique launch defaults.
-- Customize keybindings.
-- Set `mux.ui.showTasks` to show or hide the `Tasks` rail entry (default: hidden).
-- Override command palette project `Open in X` targets/detection/launch commands via `mux.openIn.targets`.
-- Choose a theme preset or custom OpenCode-compatible theme file.
-
-## License
-
-MIT (`LICENSE`)
+```mermaid
+flowchart LR
+    U[Keyboard + Command Palette] --> UI[Harness TUI]
+    UI --> CP[Control Plane Stream API]
+    CP --> TM[Thread Manager]
+    TM --> AG[Agent Threads<br/>Codex / Claude / Cursor]
+    TM --> PTY[Integrated PTY Terminals]
+    PTY --> VTE[VTE Parser + Screen Model]
+    VTE --> R[Terminal Renderer]
+    TM --> DF[harness diff + Critique]
+    DF --> R
+```
