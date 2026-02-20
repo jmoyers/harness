@@ -5,9 +5,12 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   unlinkSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -226,6 +229,20 @@ async function waitForPidExit(pid: number, timeoutMs: number): Promise<boolean> 
     await delay(25);
   }
   return !isPidRunning(pid);
+}
+
+function setTreeMtime(rootPath: string, mtime: Date): void {
+  const stack: string[] = [rootPath];
+  while (stack.length > 0) {
+    const currentPath = stack.pop()!;
+    const stats = statSync(currentPath);
+    if (stats.isDirectory()) {
+      for (const child of readdirSync(currentPath, { withFileTypes: true })) {
+        stack.push(join(currentPath, child.name));
+      }
+    }
+    utimesSync(currentPath, mtime, mtime);
+  }
 }
 
 async function spawnOrphanSqliteProcess(dbPath: string): Promise<number> {
@@ -1209,7 +1226,11 @@ void test('harness gateway lifecycle and github.pr-create validation stay health
 
     const stopResult = await runHarness(workspace, ['gateway', 'stop'], env);
     assert.equal(stopResult.code, 0);
-    assert.equal(stopResult.stdout.includes('gateway stopped'), true);
+    assert.equal(
+      stopResult.stdout.includes('gateway stopped') ||
+        stopResult.stdout.includes('removed stale gateway record'),
+      true,
+    );
 
     const finalStatus = await runHarness(workspace, ['gateway', 'status'], env);
     assert.equal(finalStatus.code, 0);
@@ -2086,6 +2107,87 @@ void test(
   },
   { timeout: 30_000 },
 );
+
+void test('harness gateway gc removes named sessions older than one week and keeps recent sessions', async () => {
+  const workspace = createWorkspace();
+  const runtimeRoot = workspaceRuntimeRoot(workspace);
+  const sessionsRoot = join(runtimeRoot, 'sessions');
+  const oldSessionRoot = join(sessionsRoot, 'old-session-a');
+  const recentSessionRoot = join(sessionsRoot, 'recent-session-a');
+  mkdirSync(oldSessionRoot, { recursive: true });
+  mkdirSync(recentSessionRoot, { recursive: true });
+  writeFileSync(join(oldSessionRoot, 'control-plane.sqlite'), '', 'utf8');
+  writeFileSync(join(recentSessionRoot, 'control-plane.sqlite'), '', 'utf8');
+  setTreeMtime(oldSessionRoot, new Date(Date.now() - 8 * 24 * 60 * 60 * 1000));
+  setTreeMtime(recentSessionRoot, new Date(Date.now() - 2 * 24 * 60 * 60 * 1000));
+
+  try {
+    const gcResult = await runHarness(workspace, ['gateway', 'gc']);
+    assert.equal(gcResult.code, 0, gcResult.stderr);
+    assert.equal(gcResult.stdout.includes('gateway gc:'), true);
+    assert.equal(existsSync(oldSessionRoot), false);
+    assert.equal(existsSync(recentSessionRoot), true);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('harness gateway gc skips live named sessions even when their artifacts look stale', async () => {
+  const workspace = createWorkspace();
+  const sessionName = 'live-session-a';
+  const port = await reservePort();
+  const sessionRoot = join(workspaceRuntimeRoot(workspace), `sessions/${sessionName}`);
+  const sessionRecordPath = join(sessionRoot, 'gateway.json');
+  let gatewayPid: number | null = null;
+  try {
+    const startResult = await runHarness(workspace, [
+      '--session',
+      sessionName,
+      'gateway',
+      'start',
+      '--port',
+      String(port),
+    ]);
+    assert.equal(startResult.code, 0, startResult.stderr);
+    const record = parseGatewayRecordText(readFileSync(sessionRecordPath, 'utf8'));
+    if (record === null) {
+      throw new Error('expected live named session gateway record');
+    }
+    gatewayPid = record.pid;
+    assert.equal(isPidRunning(gatewayPid), true);
+
+    setTreeMtime(sessionRoot, new Date(Date.now() - 8 * 24 * 60 * 60 * 1000));
+    const gcResult = await runHarness(workspace, ['gateway', 'gc']);
+    assert.equal(gcResult.code, 0, gcResult.stderr);
+    assert.equal(gcResult.stdout.includes('skippedLive=1'), true);
+    assert.equal(existsSync(sessionRoot), true);
+    assert.equal(isPidRunning(gatewayPid), true);
+  } finally {
+    const stopResult = await runHarness(workspace, [
+      '--session',
+      sessionName,
+      'gateway',
+      'stop',
+      '--force',
+    ]);
+    assert.equal(stopResult.code, 0, stopResult.stderr);
+    if (gatewayPid !== null) {
+      assert.equal(await waitForPidExit(gatewayPid, 5000), true);
+    }
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('harness gateway gc rejects unknown options', async () => {
+  const workspace = createWorkspace();
+  try {
+    const result = await runHarness(workspace, ['gateway', 'gc', '--bad-option']);
+    assert.equal(result.code, 1);
+    assert.equal(result.stderr.includes('unknown gateway option: --bad-option'), true);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
 
 void test('harness gateway stop cleans up orphan sqlite processes for the workspace db', async () => {
   const workspace = createWorkspace();

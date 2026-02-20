@@ -4,15 +4,18 @@ import {
   existsSync,
   mkdirSync,
   openSync,
+  readdirSync,
   readFileSync,
+  rmSync,
   renameSync,
+  statSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { execFileSync, spawn } from 'node:child_process';
 import { createServer as createHttpServer } from 'node:http';
 import { createServer as createNetServer } from 'node:net';
-import { dirname, resolve } from 'node:path';
+import { basename, dirname, resolve } from 'node:path';
 import { fileURLToPath, URL } from 'node:url';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -91,6 +94,7 @@ const DEFAULT_GATEWAY_STOP_TIMEOUT_MS = 5000;
 const DEFAULT_GATEWAY_STOP_POLL_MS = 50;
 const DEFAULT_GATEWAY_LOCK_TIMEOUT_MS = 7000;
 const DEFAULT_GATEWAY_LOCK_POLL_MS = 40;
+const DEFAULT_GATEWAY_GC_OLDER_THAN_DAYS = 7;
 const GATEWAY_LOCK_VERSION = 1;
 const DEFAULT_PROFILE_ROOT_PATH = 'profiles';
 const DEFAULT_SESSION_ROOT_PATH = 'sessions';
@@ -127,11 +131,16 @@ interface GatewayStopOptions {
   cleanupOrphans: boolean;
 }
 
+interface GatewayGcOptions {
+  olderThanDays: number;
+}
+
 interface ParsedGatewayCommand {
-  type: 'start' | 'stop' | 'status' | 'restart' | 'run' | 'call';
+  type: 'start' | 'stop' | 'status' | 'restart' | 'run' | 'call' | 'gc';
   startOptions?: GatewayStartOptions;
   stopOptions?: GatewayStopOptions;
   callJson?: string;
+  gcOptions?: GatewayGcOptions;
 }
 
 interface ParsedProfileRunCommand {
@@ -961,6 +970,25 @@ function parseGatewayCallOptions(argv: readonly string[]): { json: string } {
   return { json };
 }
 
+function parseGatewayGcOptions(argv: readonly string[]): GatewayGcOptions {
+  let olderThanDays = DEFAULT_GATEWAY_GC_OLDER_THAN_DAYS;
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index]!;
+    if (arg === '--older-than-days') {
+      olderThanDays = parsePositiveIntFlag(
+        readCliValue(argv, index, '--older-than-days'),
+        '--older-than-days',
+      );
+      index += 1;
+      continue;
+    }
+    throw new Error(`unknown gateway option: ${arg}`);
+  }
+  return {
+    olderThanDays,
+  };
+}
+
 function parseGatewayCommand(argv: readonly string[]): ParsedGatewayCommand {
   if (argv.length === 0) {
     throw new Error('missing gateway subcommand');
@@ -1004,6 +1032,12 @@ function parseGatewayCommand(argv: readonly string[]): ParsedGatewayCommand {
     return {
       type: 'call',
       callJson: parsed.json,
+    };
+  }
+  if (subcommand === 'gc') {
+    return {
+      type: 'gc',
+      gcOptions: parseGatewayGcOptions(rest),
     };
   }
   throw new Error(`unknown gateway subcommand: ${subcommand}`);
@@ -1852,6 +1886,7 @@ function printUsage(): void {
       '  harness [--session <name>] gateway status',
       '  harness [--session <name>] gateway restart [--host <host>] [--port <port>] [--auth-token <token>] [--state-db-path <path>]',
       '  harness [--session <name>] gateway call --json \'{"type":"session.list"}\'',
+      '  harness [--session <name>] gateway gc [--older-than-days <days>]',
       '  harness [--session <name>] profile start [--profile-dir <path>]',
       '  harness [--session <name>] profile stop [--timeout-ms <ms>]',
       '  harness [--session <name>] profile run [--profile-dir <path>] [mux-args...]',
@@ -3159,6 +3194,163 @@ async function stopGateway(
   };
 }
 
+interface GatewayGcResult {
+  scanned: number;
+  deleted: number;
+  skippedRecent: number;
+  skippedLive: number;
+  skippedCurrent: number;
+  deletedSessions: readonly string[];
+  errors: readonly string[];
+}
+
+function resolveNamedSessionsRoot(invocationDirectory: string): string {
+  const workspaceDirectory = resolveHarnessWorkspaceDirectory(invocationDirectory, process.env);
+  return resolve(workspaceDirectory, DEFAULT_SESSION_ROOT_PATH);
+}
+
+function listNamedSessionNames(invocationDirectory: string): readonly string[] {
+  const sessionsRoot = resolveNamedSessionsRoot(invocationDirectory);
+  if (!existsSync(sessionsRoot)) {
+    return [];
+  }
+  return readdirSync(sessionsRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function readGatewayRecordForSessionRoot(sessionRoot: string): GatewayRecord | null {
+  const recordPath = resolve(sessionRoot, 'gateway.json');
+  if (!existsSync(recordPath)) {
+    return null;
+  }
+  try {
+    const parsed = parseGatewayRecordText(readFileSync(recordPath, 'utf8'));
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function resolveNewestSessionArtifactMtimeMs(sessionRoot: string): number {
+  let newestMtimeMs = 0;
+  const stack: string[] = [sessionRoot];
+  while (stack.length > 0) {
+    const currentPath = stack.pop()!;
+    if (basename(currentPath) === 'gateway.lock') {
+      continue;
+    }
+    let currentStats: ReturnType<typeof statSync>;
+    try {
+      currentStats = statSync(currentPath);
+    } catch {
+      continue;
+    }
+    if (!currentStats.isDirectory()) {
+      if (currentStats.mtimeMs > newestMtimeMs) {
+        newestMtimeMs = currentStats.mtimeMs;
+      }
+      continue;
+    }
+    let childNames: readonly string[] = [];
+    try {
+      childNames = readdirSync(currentPath, { withFileTypes: true, encoding: 'utf8' }).map(
+        (child) => child.name,
+      );
+    } catch {
+      continue;
+    }
+    for (const childName of childNames) {
+      stack.push(resolve(currentPath, childName));
+    }
+  }
+  return newestMtimeMs;
+}
+
+async function isSessionGatewayLive(sessionRoot: string): Promise<boolean> {
+  const expectedStateDbPath = resolve(sessionRoot, 'control-plane.sqlite');
+  const daemonCandidates = listGatewayDaemonProcesses().filter(
+    (candidate) => candidate.stateDbPath === expectedStateDbPath,
+  );
+  if (daemonCandidates.length > 0) {
+    return true;
+  }
+  const record = readGatewayRecordForSessionRoot(sessionRoot);
+  if (record === null) {
+    return false;
+  }
+  const probe = await probeGateway(record);
+  if (probe.connected) {
+    return true;
+  }
+  return isPidRunning(record.pid);
+}
+
+async function runGatewaySessionGc(
+  invocationDirectory: string,
+  sessionName: string | null,
+  options: GatewayGcOptions,
+): Promise<GatewayGcResult> {
+  const maxAgeMs = options.olderThanDays * 24 * 60 * 60 * 1000;
+  const nowMs = Date.now();
+  const deletedSessions: string[] = [];
+  const errors: string[] = [];
+  let scanned = 0;
+  let deleted = 0;
+  let skippedRecent = 0;
+  let skippedLive = 0;
+  let skippedCurrent = 0;
+
+  for (const candidateSessionName of listNamedSessionNames(invocationDirectory)) {
+    if (sessionName !== null && candidateSessionName === sessionName) {
+      skippedCurrent += 1;
+      continue;
+    }
+    scanned += 1;
+    const sessionRoot = resolve(
+      resolveNamedSessionsRoot(invocationDirectory),
+      candidateSessionName,
+    );
+    const sessionLockPath = resolve(sessionRoot, 'gateway.lock');
+    let handle: GatewayControlLockHandle | null = null;
+    try {
+      handle = await acquireGatewayControlLock(sessionLockPath, invocationDirectory);
+      if (!existsSync(sessionRoot)) {
+        continue;
+      }
+      if (await isSessionGatewayLive(sessionRoot)) {
+        skippedLive += 1;
+        continue;
+      }
+      const newestMtimeMs = resolveNewestSessionArtifactMtimeMs(sessionRoot);
+      if (newestMtimeMs > 0 && nowMs - newestMtimeMs < maxAgeMs) {
+        skippedRecent += 1;
+        continue;
+      }
+      rmSync(sessionRoot, { recursive: true, force: true });
+      deleted += 1;
+      deletedSessions.push(candidateSessionName);
+    } catch (error: unknown) {
+      errors.push(
+        `${candidateSessionName}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    } finally {
+      handle?.release();
+    }
+  }
+
+  return {
+    scanned,
+    deleted,
+    skippedRecent,
+    skippedLive,
+    skippedCurrent,
+    deletedSessions,
+    errors,
+  };
+}
+
 async function runMuxClient(
   muxScriptPath: string,
   invocationDirectory: string,
@@ -3399,6 +3591,33 @@ async function runGatewayCommandEntry(
     process.stdout.write(`log: ${logPath}\n`);
     process.stdout.write(`lock: ${lockPath}\n`);
     return 0;
+  }
+
+  if (command.type === 'gc') {
+    const gcOptions = command.gcOptions ?? {
+      olderThanDays: DEFAULT_GATEWAY_GC_OLDER_THAN_DAYS,
+    };
+    const gcResult = await withLock(
+      async () => await runGatewaySessionGc(invocationDirectory, sessionName, gcOptions),
+    );
+    process.stdout.write(
+      [
+        'gateway gc:',
+        `olderThanDays=${String(gcOptions.olderThanDays)}`,
+        `scanned=${String(gcResult.scanned)}`,
+        `deleted=${String(gcResult.deleted)}`,
+        `skippedRecent=${String(gcResult.skippedRecent)}`,
+        `skippedLive=${String(gcResult.skippedLive)}`,
+        `skippedCurrent=${String(gcResult.skippedCurrent)}`,
+      ].join(' ') + '\n',
+    );
+    if (gcResult.deletedSessions.length > 0) {
+      process.stdout.write(`deleted sessions: ${gcResult.deletedSessions.join(', ')}\n`);
+    }
+    for (const error of gcResult.errors) {
+      process.stderr.write(`gateway gc error: ${error}\n`);
+    }
+    return gcResult.errors.length === 0 ? 0 : 1;
   }
 
   if (command.type === 'restart') {
