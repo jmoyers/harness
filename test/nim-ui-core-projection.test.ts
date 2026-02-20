@@ -38,6 +38,14 @@ test('nim-ui-core projection projects assistant output deltas in both modes', ()
   assert.deepEqual(seamless, [{ type: 'assistant.text.delta', text: 'hello' }]);
 });
 
+test('nim-ui-core projection maps assistant output message event', () => {
+  const raw = makeEvent({ type: 'assistant.output.message', data: { text: 'hello world' } });
+  const debug = projectEventToUiEvents(raw, 'debug');
+  const seamless = projectEventToUiEvents(raw, 'seamless');
+  assert.deepEqual(debug, [{ type: 'assistant.text.message', text: 'hello world' }]);
+  assert.deepEqual(seamless, [{ type: 'assistant.text.message', text: 'hello world' }]);
+});
+
 test('nim-ui-core projection maps tool start differently for debug and seamless', () => {
   const raw = makeEvent({
     source: 'tool',

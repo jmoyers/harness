@@ -369,7 +369,7 @@ async function collectTurnTrace(input: {
       );
       const projected = controller.consume(event);
       for (const item of projected) {
-        if (item.type === 'assistant.text.delta') {
+        if (item.type === 'assistant.text.message') {
           process.stdout.write(`assistant> ${item.text}\n`);
         }
       }

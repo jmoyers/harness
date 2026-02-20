@@ -92,6 +92,8 @@ type RunState = {
   abortReason?: AbortReason;
   abortSignalCleanup?: () => void;
   steers: string[];
+  assistantOutputBuffer: string;
+  assistantOutputDeltaCount: number;
   resolveDone: (result: TurnResult) => void;
   done: Promise<TurnResult>;
 };
@@ -426,6 +428,8 @@ export class InMemoryNimRuntime implements NimRuntime {
       compacting: false,
       aborted: false,
       steers: [],
+      assistantOutputBuffer: '',
+      assistantOutputDeltaCount: 0,
       resolveDone: turnDeferred.resolve,
       done: turnDeferred.promise,
     };
@@ -927,14 +931,8 @@ export class InMemoryNimRuntime implements NimRuntime {
     }
 
     const steerSuffix = run.steers.length > 0 ? ` [steer:${run.steers.join(' | ')}]` : '';
-    this.appendRunEvent(session, run, {
-      type: 'assistant.output.delta',
-      source: 'provider',
-      state: 'responding',
-      data: {
-        text: `echo:${run.input}${steerSuffix}`,
-      },
-    });
+    this.appendAssistantOutputDelta(session, run, `echo:${run.input}${steerSuffix}`);
+    this.flushAssistantOutputMessage(session, run);
     this.appendRunEvent(session, run, {
       type: 'assistant.output.completed',
       source: 'provider',
@@ -1249,18 +1247,12 @@ export class InMemoryNimRuntime implements NimRuntime {
     }
 
     if (event.type === 'assistant.output.delta') {
-      this.appendRunEvent(session, run, {
-        type: 'assistant.output.delta',
-        source: 'provider',
-        state: 'responding',
-        data: {
-          text: event.text,
-        },
-      });
+      this.appendAssistantOutputDelta(session, run, event.text);
       return 'completed';
     }
 
     if (event.type === 'assistant.output.completed') {
+      this.flushAssistantOutputMessage(session, run);
       this.appendRunEvent(session, run, {
         type: 'assistant.output.completed',
         source: 'provider',
@@ -1313,6 +1305,10 @@ export class InMemoryNimRuntime implements NimRuntime {
 
     if (session.activeRunId === run.runId) {
       delete session.activeRunId;
+    }
+
+    if (state === 'completed') {
+      this.flushAssistantOutputMessage(session, run);
     }
 
     if (state === 'aborted') {
@@ -1428,6 +1424,38 @@ export class InMemoryNimRuntime implements NimRuntime {
       ...(input.data !== undefined ? { data: input.data } : {}),
     };
     this.emitEvent(session, event);
+  }
+
+  private appendAssistantOutputDelta(session: SessionState, run: RunState, text: string): void {
+    if (text.length === 0) {
+      return;
+    }
+    run.assistantOutputBuffer += text;
+    run.assistantOutputDeltaCount += 1;
+    this.appendRunEvent(session, run, {
+      type: 'assistant.output.delta',
+      source: 'provider',
+      state: 'responding',
+      data: {
+        text,
+      },
+    });
+  }
+
+  private flushAssistantOutputMessage(session: SessionState, run: RunState): void {
+    if (run.assistantOutputDeltaCount === 0) {
+      return;
+    }
+    this.appendRunEvent(session, run, {
+      type: 'assistant.output.message',
+      source: 'provider',
+      state: 'responding',
+      data: {
+        text: run.assistantOutputBuffer,
+      },
+    });
+    run.assistantOutputBuffer = '';
+    run.assistantOutputDeltaCount = 0;
   }
 
   private appendSessionEvent(

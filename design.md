@@ -180,6 +180,7 @@ Branch-local execution work introduces a new first-party runtime stack above `pa
   - supports first-party replay telemetry sinks (`registerTelemetrySink`) including JSONL log capture/reload via `NimJsonlTelemetrySink` + `readNimJsonlTelemetry`.
   - supports pluggable canonical event persistence (`NimEventStore`) with first-party `InMemoryNimEventStore` and `NimSqliteEventStore` adapters used by stream/replay APIs.
   - supports pluggable session persistence (`NimSessionStore`) with first-party `InMemoryNimSessionStore` and `NimSqliteSessionStore` adapters for restart-safe continuation and idempotency reuse.
+  - emits first-class final assistant message events (`assistant.output.message`) alongside deltas for intact replay/UI rendering without sacrificing token-level streaming visibility.
   - persists follow-up queue state in session storage so queued turns survive restart and drain deterministically on next terminal turn.
   - provides a first-party SQLite runtime factory (`createSqliteBackedNimRuntime`) that composes event/session stores with optional JSONL telemetry sink.
   - fails closed on restart idempotency ambiguity: stored idempotency run IDs without terminal events emit `turn.idempotency.unresolved` and reject reuse.

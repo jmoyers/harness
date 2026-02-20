@@ -194,6 +194,10 @@ export type NimUiEvent =
       readonly text: string;
     }
   | {
+      readonly type: 'assistant.text.message';
+      readonly text: string;
+    }
+  | {
       readonly type: 'tool.activity';
       readonly toolCallId: string;
       readonly toolName: string;

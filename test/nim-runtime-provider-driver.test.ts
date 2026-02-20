@@ -144,6 +144,14 @@ test('nim runtime consumes provider-driver stream and projects canonical events'
       ),
       true,
     );
+    assert.equal(
+      events.some(
+        (event) =>
+          event.type === 'assistant.output.message' &&
+          String(event.data?.['text'] ?? '') === 'driver:hello',
+      ),
+      true,
+    );
   } finally {
     await iterator.return?.();
   }

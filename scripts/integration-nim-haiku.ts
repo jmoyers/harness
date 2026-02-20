@@ -254,7 +254,13 @@ async function runNimRuntimeHaikuObservabilityCheck(input: {
       })
       .map((event) => String(event.data?.['text'] ?? ''))
       .join('');
+    const runMessage = runEvents.find(
+      (event): event is NimEventEnvelope & { type: 'assistant.output.message' } => {
+        return event.type === 'assistant.output.message';
+      },
+    );
     assert.match(runOutput, /NIM_HAIKU_OK/u);
+    assert.match(String(runMessage?.data?.['text'] ?? ''), /NIM_HAIKU_OK/u);
     assert.equal(
       runEvents.some((event) => event.type === 'provider.thinking.started'),
       true,

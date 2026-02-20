@@ -259,6 +259,15 @@ test('nim runtime supports steering inject and interrupt-and-restart', async () 
       ),
       true,
     );
+    assert.equal(
+      events.some(
+        (event) =>
+          event.type === 'assistant.output.message' &&
+          event.run_id === replacementRunId &&
+          String(event.data?.['text'] ?? '').includes('echo:second'),
+      ),
+      true,
+    );
 
     const noActive = await runtime.steerTurn({
       sessionId: session.sessionId,
@@ -321,10 +330,16 @@ test('nim runtime follow-up queue prioritizes high priority and dedupes entries'
     const outputs = events
       .filter((event) => event.type === 'assistant.output.delta')
       .map((event) => String(event.data?.['text'] ?? ''));
+    const fullOutputs = events
+      .filter((event) => event.type === 'assistant.output.message')
+      .map((event) => String(event.data?.['text'] ?? ''));
 
     assert.equal(outputs[0], 'echo:first');
     assert.equal(outputs[1], 'echo:high');
     assert.equal(outputs[2], 'echo:normal');
+    assert.equal(fullOutputs[0], 'echo:first');
+    assert.equal(fullOutputs[1], 'echo:high');
+    assert.equal(fullOutputs[2], 'echo:normal');
 
     assert.equal(
       events.some((event) => event.type === 'turn.followup.dequeued'),

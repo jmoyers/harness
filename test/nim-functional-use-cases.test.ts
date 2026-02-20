@@ -210,6 +210,15 @@ test('UC-01 start session and first turn emits replayable lifecycle', async () =
       events.some((event) => event.type === 'turn.completed' && event.run_id === turn.runId),
       true,
     );
+    assert.equal(
+      events.some(
+        (event) =>
+          event.type === 'assistant.output.message' &&
+          event.run_id === turn.runId &&
+          typeof event.data?.['text'] === 'string',
+      ),
+      true,
+    );
 
     const completed = events.find(
       (event) => event.type === 'turn.completed' && event.run_id === turn.runId,

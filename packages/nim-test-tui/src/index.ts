@@ -29,12 +29,14 @@ export class NimTestTuiController {
   private runId: string;
   private state: 'thinking' | 'tool-calling' | 'responding' | 'idle';
   private lines: string[];
+  private pendingAssistantText: string;
 
   public constructor(input: { mode: NimUiMode; runId: string }) {
     this.mode = input.mode;
     this.runId = input.runId;
     this.state = 'idle';
     this.lines = [];
+    this.pendingAssistantText = '';
   }
 
   public consume(event: NimEventEnvelope): readonly NimUiEvent[] {
@@ -48,6 +50,11 @@ export class NimTestTuiController {
         continue;
       }
       if (item.type === 'assistant.text.delta') {
+        this.pendingAssistantText += item.text;
+        continue;
+      }
+      if (item.type === 'assistant.text.message') {
+        this.pendingAssistantText = '';
         this.lines.push(item.text);
         continue;
       }
@@ -63,10 +70,14 @@ export class NimTestTuiController {
   }
 
   public snapshot(): TestTuiFrame {
+    const lines =
+      this.pendingAssistantText.length > 0
+        ? [...this.lines, this.pendingAssistantText]
+        : this.lines.slice();
     return {
       mode: this.mode,
       runId: this.runId,
-      lines: this.lines.slice(),
+      lines,
       state: this.state,
     };
   }

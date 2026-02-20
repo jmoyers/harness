@@ -33,6 +33,14 @@ export function projectEventToUiEvents(
     return [{ type: 'assistant.text.delta', text }];
   }
 
+  if (event.type === 'assistant.output.message') {
+    const text = typeof event.data?.['text'] === 'string' ? event.data['text'] : '';
+    if (text.length === 0) {
+      return [];
+    }
+    return [{ type: 'assistant.text.message', text }];
+  }
+
   if (event.type === 'tool.call.started') {
     if (mode === 'seamless') {
       return [toStateEvent('tool-calling')];

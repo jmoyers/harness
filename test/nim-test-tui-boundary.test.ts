@@ -63,6 +63,18 @@ test('nim-test-tui builds a snapshot from canonical events', () => {
   assert.deepEqual(snapshot.lines, ['hello']);
 });
 
+test('nim-test-tui coalesces assistant deltas when final message event is emitted', () => {
+  const controller = new NimTestTuiController({
+    mode: 'debug',
+    runId: 'run-a',
+  });
+  controller.consume(makeEvent({ type: 'assistant.output.delta', data: { text: 'Hel' } }));
+  controller.consume(makeEvent({ type: 'assistant.output.delta', data: { text: 'lo' } }));
+  controller.consume(makeEvent({ type: 'assistant.output.message', data: { text: 'Hello' } }));
+  const snapshot = controller.snapshot();
+  assert.deepEqual(snapshot.lines, ['Hello']);
+});
+
 test('nim-test-tui collect helper returns idle frame from canonical stream events', async () => {
   const runtime = new InMemoryNimRuntime();
   runtime.registerProvider({
