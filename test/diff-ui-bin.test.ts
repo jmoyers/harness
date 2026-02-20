@@ -119,7 +119,6 @@ test('harness diff subcommand runs against a git repository', () => {
     repo,
   );
   assert.equal(result.code, 0);
-  assert.equal(result.stdout.includes('[diff] mode=unstaged'), true);
   assert.equal(result.stdout.includes('File 1/1: src.ts'), true);
 });
 
@@ -136,7 +135,7 @@ test('harness diff subcommand ignores stale inherited HARNESS_INVOKE_CWD', () =>
     },
   );
   assert.equal(result.code, 0);
-  assert.equal(result.stdout.includes('files=0'), true);
+  assert.equal(result.stdout.trim().length, 0);
 });
 
 test('harness diff script entry ignores stale HARNESS_INVOKE_CWD', () => {
@@ -152,5 +151,5 @@ test('harness diff script entry ignores stale HARNESS_INVOKE_CWD', () => {
     },
   );
   assert.equal(result.code, 0);
-  assert.equal(result.stdout.includes('files=0'), true);
+  assert.equal(result.stdout.trim().length, 0);
 });

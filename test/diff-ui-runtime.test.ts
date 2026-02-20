@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import { test } from 'bun:test';
 import type { DiffBuilder } from '../src/diff/types.ts';
 import { runDiffUiCli } from '../src/diff-ui/runtime.ts';
@@ -20,7 +21,35 @@ function createBuilder(): DiffBuilder {
   };
 }
 
-void test('runDiffUiCli renders one-shot viewport output', async () => {
+function createEmptyBuilder(): DiffBuilder {
+  return {
+    build: async () => ({
+      diff: {
+        ...createSampleDiff(),
+        files: [],
+        totals: {
+          filesChanged: 0,
+          additions: 0,
+          deletions: 0,
+          binaryFiles: 0,
+          generatedFiles: 0,
+          hunks: 0,
+          lines: 0,
+        },
+      },
+      diagnostics: {
+        elapsedMs: 1,
+        peakBufferBytes: 1,
+        parseWarnings: [],
+      },
+    }),
+    stream: async function* () {
+      // no-op
+    },
+  };
+}
+
+void test('runDiffUiCli renders one-shot document output', async () => {
   let stdout = '';
   let stderr = '';
 
@@ -39,12 +68,12 @@ void test('runDiffUiCli renders one-shot viewport output', async () => {
   });
 
   assert.equal(result.exitCode, 0);
-  assert.equal(result.renderedLines.length, 10);
+  assert.equal(result.renderedLines.length > 0, true);
   assert.equal(
     result.events.some((event) => event.type === 'diff.loaded'),
     true,
   );
-  assert.equal(stdout.includes('[diff] mode=unstaged'), true);
+  assert.equal(stdout.includes('File 1/2: src/a.ts'), true);
   assert.equal(stderr, '');
 });
 
@@ -223,6 +252,25 @@ void test('runDiffUiCli default stdout/stderr writers are exercised', async () =
   assert.equal(capturedStderr.includes('unknown option'), true);
 });
 
+void test('runDiffUiCli does not print blank output for empty document diffs', async () => {
+  let stdout = '';
+  const result = await runDiffUiCli({
+    argv: [],
+    cwd: '/repo',
+    env: {},
+    writeStdout: (text) => {
+      stdout += text;
+    },
+    writeStderr: () => {},
+    createBuilder: createEmptyBuilder,
+    isStdoutTty: false,
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.renderedLines.length, 0);
+  assert.equal(stdout, '');
+});
+
 void test('runDiffUiCli forwards rename limit git options into diff builder', async () => {
   let capturedRenameLimit: number | null = null;
   let capturedNoRenames: boolean | null = null;
@@ -256,4 +304,61 @@ void test('runDiffUiCli forwards rename limit git options into diff builder', as
   assert.equal(result.exitCode, 0);
   assert.equal(capturedNoRenames, false);
   assert.equal(capturedRenameLimit, 5);
+});
+
+interface FakePagerInputStream extends EventEmitter {
+  isTTY: boolean;
+  setRawMode: (mode: boolean) => void;
+  resume: () => void;
+  pause: () => void;
+}
+
+interface FakePagerOutputStream extends EventEmitter {
+  isTTY: boolean;
+  columns: number;
+  rows: number;
+}
+
+void test('runDiffUiCli supports interactive pager mode', async () => {
+  let stdout = '';
+  let stderr = '';
+  const input = new EventEmitter() as FakePagerInputStream;
+  input.isTTY = true;
+  input.setRawMode = () => {};
+  input.resume = () => {};
+  input.pause = () => {};
+  const output = new EventEmitter() as FakePagerOutputStream;
+  output.isTTY = true;
+  output.columns = 90;
+  output.rows = 12;
+
+  const resultPromise = runDiffUiCli({
+    argv: ['--pager', '--theme', 'plain'],
+    cwd: '/repo',
+    env: {},
+    writeStdout: (text) => {
+      stdout += text;
+    },
+    writeStderr: (text) => {
+      stderr += text;
+    },
+    createBuilder,
+    isStdoutTty: true,
+    pagerStdin: input,
+    pagerStdout: output,
+  });
+
+  setTimeout(() => {
+    input.emit('data', Buffer.from('q', 'utf8'));
+  }, 0);
+  const result = await resultPromise;
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(
+    result.events.some((event) => event.type === 'session.quit'),
+    true,
+  );
+  assert.equal(stdout.includes('\u001b[?1049h'), true);
+  assert.equal(stdout.includes('\u001b[?1049l'), true);
+  assert.equal(stderr, '');
 });

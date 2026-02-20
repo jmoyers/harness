@@ -896,14 +896,17 @@ Left-rail rendering/style principles:
 - Diff data source remains `src/diff/*` (`createDiffBuilder`) with budget-aware build semantics.
 - UI model/runtime modules live under `src/diff-ui/*` and are intentionally process-local (not coupled to mux runtime lifecycle):
   - `args.ts`: CLI option parsing/validation
+  - `commands.ts`: shared command parsing/mapping for rpc and pager input paths
   - `model.ts`: virtual row index from `NormalizedDiff`
   - `finder.ts`: fuzzy file scoring/ranking
   - `state.ts`: reducer-based navigation/finder/search state
   - `highlight.ts`: lightweight syntax tokenization/render merge
-  - `render.ts`: split/unified viewport rendering with theme roles
-  - `runtime.ts`: one-shot render orchestration and rpc-stdio command/event flow
+  - `render.ts`: scrollback document rendering plus split/unified viewport rendering with theme roles
+  - `pager.ts`: interactive pager event loop, terminal lifecycle handling, and key-to-command mapping
+  - `runtime.ts`: diff build orchestration, default print mode, pager dispatch, and rpc-stdio command/event flow
 - Subcommand mode supports:
-  - one-shot viewport render
+  - default scrollback-friendly document print output
+  - interactive pager mode (`--pager`) with reducer-driven navigation and resize support
   - NDJSON event emission (`--json-events`)
   - programmatic command loop over stdio (`--rpc-stdio`)
 - Human and automation parity is preserved by routing navigation/finder/view operations through a shared command/state reducer path.

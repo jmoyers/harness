@@ -26,6 +26,7 @@ export interface DiffUiCliOptions {
   readonly syntaxMode: DiffUiSyntaxMode;
   readonly wordDiffMode: DiffUiWordDiffMode;
   readonly color: boolean;
+  readonly pager: boolean;
   readonly watch: boolean;
   readonly jsonEvents: boolean;
   readonly rpcStdio: boolean;

@@ -10,7 +10,7 @@ It is built for people who want to move faster than a single chat window: implem
 - One command palette (`ctrl+p` / `cmd+p`) to jump threads, run actions, and control workflow quickly.
 - Command palette project actions can open the active project directory directly in installed local tools (`iTerm2`, `Ghostty`, `Zed`, `Cursor`, `VSCode`, `Warp`, `Finder`) and copy its path.
 - Built-in update flow (`Update Harness`) and startup `What's New` modal with one-click update and quick links to full GitHub notes.
-- Built-in diff subcommand (`harness diff`) with split/unified views, syntax-aware rendering, and rpc/json event modes for automation.
+- Built-in diff subcommand (`harness diff`) with scrollback-friendly default output, optional interactive pager mode (`--pager`), syntax-aware rendering, and rpc/json event modes for automation.
 - Long-running work survives reconnects through a detached gateway.
 - Gateway control is resilient: lifecycle operations are lock-serialized per session, and missing stale records can be recovered automatically.
 - Fast left-rail navigation across `Home`, `Tasks`, repositories, projects, and threads with automatic, readable thread titles.

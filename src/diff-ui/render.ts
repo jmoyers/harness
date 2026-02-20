@@ -312,3 +312,26 @@ export function renderDiffUiViewport(input: {
     lines: [header, ...bodyLines, footer],
   };
 }
+
+export function renderDiffUiDocument(input: {
+  readonly model: DiffUiModel;
+  readonly syntaxMode: DiffUiSyntaxMode;
+  readonly wordDiffMode: DiffUiWordDiffMode;
+  readonly color: boolean;
+  readonly theme: DiffUiRenderTheme;
+}): readonly string[] {
+  const lines: string[] = [];
+  for (const row of input.model.rows) {
+    lines.push(
+      decorateRow({
+        row,
+        plainText: row.unified,
+        theme: input.theme,
+        color: input.color,
+        syntaxMode: input.syntaxMode,
+        wordDiffMode: input.wordDiffMode,
+      }),
+    );
+  }
+  return lines;
+}

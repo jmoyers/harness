@@ -18,6 +18,7 @@ void test('parseDiffUiArgs resolves defaults', () => {
   assert.equal(parsed.wordDiffMode, 'auto');
   assert.equal(parsed.noRenames, true);
   assert.equal(parsed.renameLimit, null);
+  assert.equal(parsed.pager, false);
   assert.equal(parsed.width, null);
   assert.equal(parsed.height, null);
 });
@@ -79,6 +80,7 @@ void test('parseDiffUiArgs parses range and runtime options', () => {
   assert.equal(parsed.syntaxMode, 'on');
   assert.equal(parsed.wordDiffMode, 'off');
   assert.equal(parsed.color, false);
+  assert.equal(parsed.pager, false);
   assert.equal(parsed.jsonEvents, true);
   assert.equal(parsed.rpcStdio, true);
   assert.equal(parsed.snapshot, true);
@@ -216,6 +218,27 @@ void test('parseDiffUiArgs applies range defaults and validates incompatible opt
       }),
     /help requested/u,
   );
+
+  assert.throws(
+    () =>
+      parseDiffUiArgs(['--pager', '--json-events'], {
+        cwd: '/repo',
+        env: {},
+      }),
+    /cannot be combined/u,
+  );
+
+  const pagerEnabled = parseDiffUiArgs(['--pager'], {
+    cwd: '/repo',
+    env: {},
+  });
+  assert.equal(pagerEnabled.pager, true);
+
+  const pagerDisabled = parseDiffUiArgs(['--pager', '--no-pager'], {
+    cwd: '/repo',
+    env: {},
+  });
+  assert.equal(pagerDisabled.pager, false);
 });
 
 void test('diffUiUsage documents supported flags', () => {
@@ -224,6 +247,7 @@ void test('diffUiUsage documents supported flags', () => {
   assert.equal(usage.includes('--rpc-stdio'), true);
   assert.equal(usage.includes('--max-runtime-ms <n>'), true);
   assert.equal(usage.includes('--base [<ref>] [--head <ref>]'), true);
+  assert.equal(usage.includes('--pager'), true);
   assert.equal(
     parseDiffUiArgs(['--renames', '--no-renames'], { cwd: '/repo', env: {} }).noRenames,
     true,

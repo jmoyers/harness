@@ -1,20 +1,18 @@
 import { readFileSync } from 'node:fs';
 import { createDiffBuilder } from '../diff/build.ts';
 import type { DiffBuildResult, DiffBuilder } from '../diff/types.ts';
+import { Screen } from '../ui/screen.ts';
 import { parseDiffUiArgs } from './args.ts';
+import { diffUiCommandToStateAction, parseDiffUiCommand } from './commands.ts';
 import { buildDiffUiModel } from './model.ts';
-import { renderDiffUiViewport, resolveDiffUiTheme } from './render.ts';
+import {
+  runDiffUiPagerProcess,
+  type DiffUiPagerInputStream,
+  type DiffUiPagerOutputStream,
+} from './pager.ts';
+import { renderDiffUiDocument, renderDiffUiViewport, resolveDiffUiTheme } from './render.ts';
 import { createInitialDiffUiState, reduceDiffUiState } from './state.ts';
-import type {
-  DiffUiCliOptions,
-  DiffUiCommand,
-  DiffUiEvent,
-  DiffUiRunOutput,
-  DiffUiState,
-  DiffUiStateAction,
-} from './types.ts';
-
-type DiffUiActionCommand = Exclude<DiffUiCommand, { readonly type: 'session.quit' }>;
+import type { DiffUiCliOptions, DiffUiEvent, DiffUiRunOutput, DiffUiState } from './types.ts';
 
 interface RunDiffUiCliDeps {
   readonly cwd?: string;
@@ -27,123 +25,12 @@ interface RunDiffUiCliDeps {
   readonly readStdinText?: () => string;
   readonly createBuilder?: () => DiffBuilder;
   readonly isStdoutTty?: boolean;
-}
-
-function parseCommand(value: unknown): DiffUiCommand | null {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    return null;
-  }
-  const record = value as Record<string, unknown>;
-  const type = record['type'];
-  if (typeof type !== 'string') {
-    return null;
-  }
-
-  if (type === 'view.setMode') {
-    const mode = record['mode'];
-    if (mode === 'auto' || mode === 'split' || mode === 'unified') {
-      return { type, mode };
-    }
-    return null;
-  }
-  if (type === 'nav.scroll') {
-    const delta = record['delta'];
-    return typeof delta === 'number' && Number.isFinite(delta) ? { type, delta } : null;
-  }
-  if (type === 'nav.page') {
-    const delta = record['delta'];
-    return typeof delta === 'number' && Number.isFinite(delta) ? { type, delta } : null;
-  }
-  if (type === 'nav.gotoFile' || type === 'nav.gotoHunk') {
-    const index = record['index'];
-    if (typeof index !== 'number' || !Number.isFinite(index)) {
-      return null;
-    }
-    if (type === 'nav.gotoFile') {
-      return { type, index };
-    }
-    return { type, index };
-  }
-  if (type === 'finder.open' || type === 'finder.close' || type === 'finder.accept') {
-    return { type };
-  }
-  if (type === 'finder.query' || type === 'search.set') {
-    const query = record['query'];
-    if (typeof query !== 'string') {
-      return null;
-    }
-    if (type === 'finder.query') {
-      return { type, query };
-    }
-    return { type, query };
-  }
-  if (type === 'finder.move') {
-    const delta = record['delta'];
-    return typeof delta === 'number' && Number.isFinite(delta) ? { type, delta } : null;
-  }
-  if (type === 'session.quit') {
-    return { type };
-  }
-
-  return null;
-}
-
-function commandToAction(command: DiffUiActionCommand, pageSize: number): DiffUiStateAction {
-  switch (command.type) {
-    case 'view.setMode':
-      return {
-        type: 'view.setMode',
-        mode: command.mode,
-      };
-    case 'nav.scroll':
-      return {
-        type: 'nav.scroll',
-        delta: Math.trunc(command.delta),
-      };
-    case 'nav.page':
-      return {
-        type: 'nav.page',
-        delta: Math.trunc(command.delta),
-        pageSize,
-      };
-    case 'nav.gotoFile':
-      return {
-        type: 'nav.gotoFile',
-        fileIndex: Math.trunc(command.index),
-      };
-    case 'nav.gotoHunk':
-      return {
-        type: 'nav.gotoHunk',
-        hunkIndex: Math.trunc(command.index),
-      };
-    case 'finder.open':
-      return {
-        type: 'finder.open',
-      };
-    case 'finder.close':
-      return {
-        type: 'finder.close',
-      };
-    case 'finder.query':
-      return {
-        type: 'finder.query',
-        query: command.query,
-      };
-    case 'finder.move':
-      return {
-        type: 'finder.move',
-        delta: Math.trunc(command.delta),
-      };
-    case 'finder.accept':
-      return {
-        type: 'finder.accept',
-      };
-    case 'search.set':
-      return {
-        type: 'search.set',
-        query: command.query,
-      };
-  }
+  readonly pagerStdin?: DiffUiPagerInputStream;
+  readonly pagerStdout?: DiffUiPagerOutputStream;
+  readonly createScreen?: (deps: {
+    readonly writeOutput: (output: string) => void;
+    readonly writeError: (output: string) => void;
+  }) => Pick<Screen, 'markDirty' | 'flush'>;
 }
 
 function viewportFromOptions(
@@ -168,6 +55,9 @@ function emitEvents(events: readonly DiffUiEvent[], writeStdout: (text: string) 
 }
 
 function emitRenderedLines(lines: readonly string[], writeStdout: (text: string) => void): void {
+  if (lines.length === 0) {
+    return;
+  }
   writeStdout(`${lines.join('\n')}\n`);
 }
 
@@ -189,6 +79,19 @@ function renderCurrentViewport(input: {
     color: input.options.color,
     theme: resolveDiffUiTheme(input.options.theme),
   }).lines;
+}
+
+function renderDocument(input: {
+  readonly model: ReturnType<typeof buildDiffUiModel>;
+  readonly options: DiffUiCliOptions;
+}): readonly string[] {
+  return renderDiffUiDocument({
+    model: input.model,
+    syntaxMode: input.options.syntaxMode,
+    wordDiffMode: input.options.wordDiffMode,
+    color: input.options.color,
+    theme: resolveDiffUiTheme(input.options.theme),
+  });
 }
 
 async function buildDiffResult(
@@ -254,27 +157,53 @@ export async function runDiffUiCli(deps: RunDiffUiCliDeps = {}): Promise<DiffUiR
     });
 
     let state = createInitialDiffUiState(model, options.viewMode, viewport.width);
-    let renderedLines = renderCurrentViewport({
-      model,
-      state,
-      options,
-      width: viewport.width,
-      height: viewport.height,
-    });
+    let renderedLines: readonly string[] = [];
 
-    events.push({
-      type: 'state.changed',
-      state,
-    });
-    events.push({
-      type: 'render.completed',
-      rows: renderedLines.length,
-      width: viewport.width,
-      height: viewport.height,
-      view: state.effectiveViewMode,
-    });
+    if (options.pager) {
+      const pagerResult = await runDiffUiPagerProcess({
+        model,
+        options,
+        initialState: state,
+        writeStdout,
+        writeStderr,
+        stdin: deps.pagerStdin ?? (process.stdin as unknown as DiffUiPagerInputStream),
+        stdout: deps.pagerStdout ?? (process.stdout as unknown as DiffUiPagerOutputStream),
+        createScreen:
+          deps.createScreen ??
+          ((screenDeps) => {
+            return new Screen(screenDeps);
+          }),
+      });
+      state = pagerResult.state;
+      renderedLines = pagerResult.renderedLines;
+      events.push(...pagerResult.events);
+      return {
+        exitCode: 0,
+        events,
+        renderedLines,
+      };
+    }
 
     if (options.rpcStdio) {
+      renderedLines = renderCurrentViewport({
+        model,
+        state,
+        options,
+        width: viewport.width,
+        height: viewport.height,
+      });
+      events.push({
+        type: 'state.changed',
+        state,
+      });
+      events.push({
+        type: 'render.completed',
+        rows: renderedLines.length,
+        width: viewport.width,
+        height: viewport.height,
+        view: state.effectiveViewMode,
+      });
+
       const stdinText = deps.readStdinText?.() ?? readFileSync(0, 'utf8');
       for (const rawLine of stdinText.split('\n')) {
         const line = rawLine.trim();
@@ -292,7 +221,7 @@ export async function runDiffUiCli(deps: RunDiffUiCliDeps = {}): Promise<DiffUiR
           continue;
         }
 
-        const command = parseCommand(parsed);
+        const command = parseDiffUiCommand(parsed);
         if (command === null) {
           events.push({
             type: 'warning',
@@ -307,7 +236,7 @@ export async function runDiffUiCli(deps: RunDiffUiCliDeps = {}): Promise<DiffUiR
           break;
         }
 
-        const action = commandToAction(command, pageSize);
+        const action = diffUiCommandToStateAction(command, pageSize);
         state = reduceDiffUiState({
           model,
           state,
@@ -335,6 +264,22 @@ export async function runDiffUiCli(deps: RunDiffUiCliDeps = {}): Promise<DiffUiR
           view: state.effectiveViewMode,
         });
       }
+    } else {
+      renderedLines = renderDocument({
+        model,
+        options,
+      });
+      events.push({
+        type: 'state.changed',
+        state,
+      });
+      events.push({
+        type: 'render.completed',
+        rows: renderedLines.length,
+        width: viewport.width,
+        height: viewport.height,
+        view: state.effectiveViewMode,
+      });
     }
 
     if (options.jsonEvents || options.rpcStdio) {
