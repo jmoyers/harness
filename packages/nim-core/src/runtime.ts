@@ -373,6 +373,18 @@ export class InMemoryNimRuntime implements NimRuntime {
           done: existing.done,
         };
       }
+      const resolved = this.resolveStoredTurnResult(session, existingRunId);
+      if (resolved === undefined) {
+        this.appendSessionEvent(session, {
+          type: 'turn.idempotency.unresolved',
+          source: 'system',
+          runId: existingRunId,
+          turnId: existingRunId,
+          stepId: 'step:idempotency-unresolved',
+          idempotencyKey: input.idempotencyKey,
+        });
+        throw new Error(`idempotency run is non-terminal: ${existingRunId}`);
+      }
       session.idempotencyToRunId.set(input.idempotencyKey, existingRunId);
       this.sessionStore.upsertIdempotency(session.sessionId, input.idempotencyKey, existingRunId);
       this.appendSessionEvent(session, {
@@ -383,7 +395,6 @@ export class InMemoryNimRuntime implements NimRuntime {
         stepId: 'step:idempotency-reused',
         idempotencyKey: input.idempotencyKey,
       });
-      const resolved = this.resolveStoredTurnResult(session, existingRunId);
       return {
         runId: existingRunId,
         sessionId: session.sessionId,
@@ -1634,7 +1645,7 @@ export class InMemoryNimRuntime implements NimRuntime {
     return true;
   }
 
-  private resolveStoredTurnResult(session: SessionState, runId: string): TurnResult {
+  private resolveStoredTurnResult(session: SessionState, runId: string): TurnResult | undefined {
     const events = this.eventStore.list({
       tenantId: session.tenantId,
       sessionId: session.sessionId,
@@ -1661,10 +1672,7 @@ export class InMemoryNimRuntime implements NimRuntime {
         };
       }
     }
-    return {
-      runId,
-      terminalState: 'completed',
-    };
+    return undefined;
   }
 
   private requireSession(sessionId: string): SessionState {

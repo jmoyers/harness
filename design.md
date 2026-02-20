@@ -182,6 +182,7 @@ Branch-local execution work introduces a new first-party runtime stack above `pa
   - supports pluggable session persistence (`NimSessionStore`) with first-party `InMemoryNimSessionStore` and `NimSqliteSessionStore` adapters for restart-safe continuation and idempotency reuse.
   - persists follow-up queue state in session storage so queued turns survive restart and drain deterministically on next terminal turn.
   - provides a first-party SQLite runtime factory (`createSqliteBackedNimRuntime`) that composes event/session stores with optional JSONL telemetry sink.
+  - fails closed on restart idempotency ambiguity: stored idempotency run IDs without terminal events emit `turn.idempotency.unresolved` and reject reuse.
 - `packages/nim-ui-core`: shared event projection layer (`debug` and `seamless` UI modes).
 - `packages/nim-test-tui`: independent test-oriented TUI surface that consumes shared Nim libraries only.
 

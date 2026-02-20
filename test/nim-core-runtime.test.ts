@@ -632,6 +632,59 @@ test('nim runtime resumes persisted session and idempotency across restart', asy
   }
 });
 
+test('nim runtime fails closed on non-terminal persisted idempotency runs after restart', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nim-runtime-idempotency-fail-closed-'));
+  const eventDbPath = join(dir, 'events.sqlite');
+  const sessionDbPath = join(dir, 'sessions.sqlite');
+
+  const initialEventStore = new NimSqliteEventStore(eventDbPath);
+  const initialSessionStore = new NimSqliteSessionStore(sessionDbPath);
+  const initialRuntime = createRuntime({
+    eventStore: initialEventStore,
+    sessionStore: initialSessionStore,
+  });
+  const session = await createSession(initialRuntime);
+  initialSessionStore.upsertIdempotency(
+    session.sessionId,
+    'idem-restart-non-terminal',
+    'run-non-terminal',
+  );
+  initialEventStore.close();
+  initialSessionStore.close();
+
+  const resumedEventStore = new NimSqliteEventStore(eventDbPath);
+  const resumedSessionStore = new NimSqliteSessionStore(sessionDbPath);
+  const resumedRuntime = createRuntime({
+    eventStore: resumedEventStore,
+    sessionStore: resumedSessionStore,
+  });
+  try {
+    await assert.rejects(
+      async () => {
+        await resumedRuntime.sendTurn({
+          sessionId: session.sessionId,
+          input: 'retry stale idempotency',
+          idempotencyKey: 'idem-restart-non-terminal',
+        });
+      },
+      {
+        message: 'idempotency run is non-terminal: run-non-terminal',
+      },
+    );
+    const replay = await resumedRuntime.replayEvents({
+      tenantId: 'tenant-a',
+      sessionId: session.sessionId,
+    });
+    assert.equal(
+      replay.events.some((event) => event.type === 'turn.idempotency.unresolved'),
+      true,
+    );
+  } finally {
+    resumedEventStore.close();
+    resumedSessionStore.close();
+  }
+});
+
 test('nim runtime persists follow-up queue across restart and drains on next terminal run', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'nim-runtime-followup-restart-'));
   const eventDbPath = join(dir, 'events.sqlite');
