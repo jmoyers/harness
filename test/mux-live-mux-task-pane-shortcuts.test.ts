@@ -112,6 +112,22 @@ void test('task pane shortcuts ignore non-home panes and handle escape/raw-input
   assert.equal(printableFallback.buffer.text.endsWith('Q!'), true);
 });
 
+void test('task pane shortcuts accept bracketed paste payloads for composer input', () => {
+  const pasted = runShortcut({
+    input: Buffer.from('\u001b[200~line 1\nline 2\u001b[201~', 'utf8'),
+    initialBuffer: createTaskComposerBuffer('seed '),
+  });
+  assert.equal(pasted.handled, true);
+  assert.equal(pasted.buffer.text, 'seed line 1\nline 2');
+
+  const unsupportedEscape = runShortcut({
+    input: Buffer.from('\u001b[A', 'utf8'),
+    initialBuffer: createTaskComposerBuffer('seed'),
+  });
+  assert.equal(unsupportedEscape.handled, false);
+  assert.equal(unsupportedEscape.buffer.text, 'seed');
+});
+
 void test('task pane shortcut actions route repository controls and task actions', () => {
   const toggle = runShortcut({
     input: 'g',

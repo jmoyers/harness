@@ -29,6 +29,7 @@ const DEFAULT_UI = {
   paneWidthPercent: null,
   repositoriesCollapsed: false,
   shortcutsCollapsed: false,
+  showTasks: false,
   theme: null,
 } as const;
 const DEFAULT_GIT = DEFAULT_HARNESS_CONFIG.mux.git;
@@ -155,7 +156,8 @@ void test('parseHarnessConfigText normalizes mux ui and falls back for invalid v
         "ui": {
           "paneWidthPercent": 37.375,
           "repositoriesCollapsed": true,
-          "shortcutsCollapsed": true
+          "shortcutsCollapsed": true,
+          "showTasks": true
         }
       }
     }
@@ -164,6 +166,7 @@ void test('parseHarnessConfigText normalizes mux ui and falls back for invalid v
     paneWidthPercent: 37.375,
     repositoriesCollapsed: true,
     shortcutsCollapsed: true,
+    showTasks: true,
     theme: null,
   });
 
@@ -463,6 +466,7 @@ void test('loadHarnessConfig reads valid config file', () => {
       paneWidthPercent: 41,
       repositoriesCollapsed: false,
       shortcutsCollapsed: true,
+      showTasks: false,
       theme: null,
     },
     git: DEFAULT_GIT,
@@ -492,6 +496,7 @@ void test('loadHarnessConfig falls back atomically on parse errors', () => {
           paneWidthPercent: 30,
           repositoriesCollapsed: false,
           shortcutsCollapsed: true,
+          showTasks: false,
           theme: null,
         },
         git: DEFAULT_GIT,
@@ -513,6 +518,7 @@ void test('loadHarnessConfig falls back atomically on parse errors', () => {
         paneWidthPercent: 30,
         repositoriesCollapsed: false,
         shortcutsCollapsed: true,
+        showTasks: false,
         theme: null,
       },
       git: DEFAULT_GIT,
@@ -1562,6 +1568,7 @@ void test('updateHarnessMuxUiConfig persists mux ui state and rounds percentage'
     paneWidthPercent: 33.33,
     repositoriesCollapsed: false,
     shortcutsCollapsed: true,
+    showTasks: false,
     theme: null,
   });
   assert.deepEqual(updated.mux.keybindings, {
@@ -1573,6 +1580,7 @@ void test('updateHarnessMuxUiConfig persists mux ui state and rounds percentage'
     paneWidthPercent: 33.33,
     repositoriesCollapsed: false,
     shortcutsCollapsed: true,
+    showTasks: false,
     theme: null,
   });
 });
@@ -1605,6 +1613,7 @@ void test('updateHarnessMuxUiConfig rejects invalid percent and preserves existi
   assert.equal(updatedInvalid.mux.ui.paneWidthPercent, null);
   assert.equal(updatedInvalid.mux.ui.repositoriesCollapsed, false);
   assert.equal(updatedInvalid.mux.ui.shortcutsCollapsed, false);
+  assert.equal(updatedInvalid.mux.ui.showTasks, false);
 
   const updatedPartial = updateHarnessMuxUiConfig(
     {
@@ -1617,6 +1626,7 @@ void test('updateHarnessMuxUiConfig rejects invalid percent and preserves existi
   assert.equal(updatedPartial.mux.ui.paneWidthPercent, null);
   assert.equal(updatedPartial.mux.ui.repositoriesCollapsed, false);
   assert.equal(updatedPartial.mux.ui.shortcutsCollapsed, true);
+  assert.equal(updatedPartial.mux.ui.showTasks, false);
 });
 
 void test('updateHarnessMuxUiConfig preserves existing theme configuration', () => {
@@ -1630,6 +1640,7 @@ void test('updateHarnessMuxUiConfig preserves existing theme configuration', () 
           paneWidthPercent: 44,
           repositoriesCollapsed: false,
           shortcutsCollapsed: false,
+          showTasks: true,
           theme: {
             preset: 'tokyonight',
             mode: 'dark',
@@ -1654,6 +1665,7 @@ void test('updateHarnessMuxUiConfig preserves existing theme configuration', () 
     mode: 'dark',
     customThemePath: 'themes/custom.json',
   });
+  assert.equal(updated.mux.ui.showTasks, true);
 });
 
 void test('updateHarnessConfig writes new config file when absent', () => {
@@ -1672,6 +1684,7 @@ void test('updateHarnessConfig writes new config file when absent', () => {
           paneWidthPercent: 25,
           repositoriesCollapsed: false,
           shortcutsCollapsed: true,
+          showTasks: false,
           theme: null,
         },
       },
@@ -1685,6 +1698,7 @@ void test('updateHarnessConfig writes new config file when absent', () => {
       paneWidthPercent: 25,
       repositoriesCollapsed: false,
       shortcutsCollapsed: true,
+      showTasks: false,
       theme: null,
     },
     git: DEFAULT_GIT,
@@ -1761,6 +1775,7 @@ void test('updateHarnessMuxUiConfig supports cwd-only config path resolution', (
           paneWidthPercent: 35,
           repositoriesCollapsed: false,
           shortcutsCollapsed: false,
+          showTasks: false,
           theme: null,
         },
       },
@@ -1780,6 +1795,7 @@ void test('updateHarnessMuxUiConfig supports cwd-only config path resolution', (
     paneWidthPercent: 35,
     repositoriesCollapsed: false,
     shortcutsCollapsed: true,
+    showTasks: false,
     theme: null,
   });
 });

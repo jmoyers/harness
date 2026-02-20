@@ -66,6 +66,7 @@ interface RuntimeRightPaneRenderOptions<
   TTaskRecord extends TaskFocusedPaneTaskRecord,
 > {
   readonly workspace: WorkspaceModel;
+  readonly showTasks?: boolean;
   readonly repositories: ReadonlyMap<string, TRepositoryRecord>;
   readonly taskManager: TaskManager<TTaskRecord, TaskComposerBuffer, NodeJS.Timeout>;
   readonly conversationPane: ConversationPaneLike;
@@ -96,7 +97,8 @@ export class RuntimeRightPaneRender<
         layout: input.layout,
         repositories: this.options.repositories,
         tasks: this.options.taskManager.readonlyTasks(),
-        showTaskPlanningUi: workspace.leftNavSelection.kind === 'tasks',
+        showTaskPlanningUi:
+          (this.options.showTasks ?? true) && workspace.leftNavSelection.kind === 'tasks',
         selectedRepositoryId: workspace.taskPaneSelectedRepositoryId,
         repositoryDropdownOpen: workspace.taskRepositoryDropdownOpen,
         editorTarget: workspace.taskEditorTarget,

@@ -622,6 +622,7 @@ async function main(): Promise<number> {
     rows: size.rows,
   });
   const configuredMuxUi = loadedConfig.config.mux.ui;
+  const showTasksEntry = configuredMuxUi.showTasks;
   const commandMenuOpenInTargets = resolveCommandMenuOpenInTargets({
     platform: process.platform,
     overrides: loadedConfig.config.mux.openIn.targets,
@@ -3814,6 +3815,7 @@ async function main(): Promise<number> {
     },
     rightPaneRender: {
       workspace,
+      showTasks: showTasksEntry,
       repositories,
       taskManager,
       conversationPane,
@@ -3847,6 +3849,7 @@ async function main(): Promise<number> {
       processUsageBySessionId: () => processUsageRefreshService.readonlyUsage(),
       shortcutBindings,
       loadingGitSummary: GIT_SUMMARY_LOADING,
+      showTasksEntry,
       activeConversationId: () => conversationManager.activeConversationId,
       orderedConversationIds: () => conversationManager.orderedIds(),
     },
@@ -4091,7 +4094,11 @@ async function main(): Promise<number> {
     toggleCommandMenu,
     firstDirectoryForRepositoryGroup,
     enterHomePane,
-    enterTasksPane,
+    ...(showTasksEntry
+      ? {
+          enterTasksPane,
+        }
+      : {}),
     enterProjectPane,
     queuePersistMuxUiState,
     repositoryGroupIdForDirectory,
@@ -4161,22 +4168,33 @@ async function main(): Promise<number> {
       },
       handleRepositoryFoldInput: (input) => runtimeInputRouter.handleRepositoryFoldInput(input),
       handleGlobalShortcutInput: (input) => runtimeInputRouter.handleGlobalShortcutInput(input),
-      handleTaskPaneShortcutInput: (input) =>
-        runtimeWorkspaceActions.handleTaskPaneShortcutInput(input),
+      handleTaskPaneShortcutInput: (input) => {
+        const handled = runtimeWorkspaceActions.handleTaskPaneShortcutInput(input);
+        if (handled && (workspace.selection !== null || workspace.selectionDrag !== null)) {
+          workspace.selection = null;
+          workspace.selectionDrag = null;
+          releaseViewportPinForSelection();
+          markDirty();
+        }
+        return handled;
+      },
       handleCopyShortcutInput: (input) => {
-        if (
-          workspace.mainPaneMode !== 'conversation' ||
-          workspace.selection === null ||
-          !isCopyShortcutInput(input)
-        ) {
+        if (workspace.selection === null || !isCopyShortcutInput(input)) {
           return false;
         }
-        const active = conversationManager.getActiveConversation();
-        if (active === null) {
+        let textToCopy = workspace.selection.text;
+        if (workspace.mainPaneMode === 'conversation') {
+          const active = conversationManager.getActiveConversation();
+          if (active === null) {
+            return true;
+          }
+          const selectedFrame = active.oracle.snapshotWithoutHash();
+          textToCopy = selectionText(selectedFrame, workspace.selection);
+        }
+        if (textToCopy.length === 0) {
           return true;
         }
-        const selectedFrame = active.oracle.snapshotWithoutHash();
-        const copied = writeTextToClipboard(selectionText(selectedFrame, workspace.selection));
+        const copied = writeTextToClipboard(textToCopy);
         if (copied) {
           markDirty();
         }

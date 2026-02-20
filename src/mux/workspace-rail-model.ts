@@ -62,6 +62,7 @@ interface WorkspaceRailModel {
   readonly conversations: readonly WorkspaceRailConversationSummary[];
   readonly processes: readonly WorkspaceRailProcessSummary[];
   readonly showTaskPlanningUi?: boolean;
+  readonly showTasksEntry?: boolean;
   readonly activeProjectId: string | null;
   readonly activeRepositoryId?: string | null;
   readonly activeConversationId: string | null;
@@ -282,6 +283,7 @@ function buildContentRows(
 ): readonly WorkspaceRailViewRow[] {
   const rows: WorkspaceRailViewRow[] = [];
   const showTaskPlanningUi = model.showTaskPlanningUi ?? true;
+  const showTasksEntry = model.showTasksEntry ?? showTaskPlanningUi;
   const homeSelectionEnabled = model.homeSelectionEnabled ?? false;
   const tasksSelectionEnabled = model.tasksSelectionEnabled ?? false;
   const projectSelectionEnabled = model.projectSelectionEnabled ?? false;
@@ -370,16 +372,18 @@ function buildContentRows(
 
   if (showTaskPlanningUi) {
     pushRow(rows, 'dir-header', '├─ 🏠 home', homeSelectionEnabled, null, null, null, 'home.open');
-    pushRow(
-      rows,
-      'dir-header',
-      '├─ 🗂️ tasks',
-      tasksSelectionEnabled,
-      null,
-      null,
-      null,
-      'tasks.open',
-    );
+    if (showTasksEntry) {
+      pushRow(
+        rows,
+        'dir-header',
+        '├─ 🗂️ tasks',
+        tasksSelectionEnabled,
+        null,
+        null,
+        null,
+        'tasks.open',
+      );
+    }
   }
 
   if (orderedRepositoryGroupIds.length === 0) {

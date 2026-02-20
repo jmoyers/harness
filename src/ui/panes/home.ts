@@ -70,6 +70,7 @@ export class HomePane {
     const rows = Array.from({ length: safeRows }, () => blankRow);
     return {
       rows,
+      plainRows: rows,
       taskIds: Array.from({ length: safeRows }, () => null),
       repositoryIds: Array.from({ length: safeRows }, () => null),
       actions: Array.from({ length: safeRows }, () => null),
@@ -101,6 +102,7 @@ export class HomePane {
       : this.hiddenTaskPlanningView(input.layout);
     return {
       ...view,
+      plainRows: view.rows,
       rows: this.renderBackgroundRows({
         cols: input.layout.rightCols,
         rows: input.layout.paneRows,

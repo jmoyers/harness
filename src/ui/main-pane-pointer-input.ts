@@ -40,6 +40,7 @@ interface MainPanePointerInputOptions<TProjectSnapshot extends { directoryId: st
   readonly setTaskRepositoryDropdownOpen: (open: boolean) => void;
   readonly taskIdAtRow: (rowIndex: number) => string | null;
   readonly repositoryIdAtRow: (rowIndex: number) => string | null;
+  readonly rowTextAtRow?: (rowIndex: number) => string | null;
   readonly selectTaskById: (taskId: string) => void;
   readonly selectRepositoryById: (repositoryId: string) => void;
   readonly runTaskPaneAction: (action: 'task.ready' | 'task.draft' | 'task.complete') => void;
@@ -115,7 +116,7 @@ export class MainPanePointerInput<TProjectSnapshot extends { directoryId: string
       isLeftButtonPress(input.code, input.final) &&
       !hasAltModifier(input.code) &&
       !isMotionMouseCode(input.code);
-    return this.homePanePointerClick({
+    const homePointerInput = {
       clickEligible,
       paneRows: input.paneRows,
       rightCols: input.rightCols,
@@ -145,6 +146,12 @@ export class MainPanePointerInput<TProjectSnapshot extends { directoryId: string
       openTaskEditPrompt: this.options.openTaskEditPrompt,
       openRepositoryPromptForEdit: this.options.openRepositoryPromptForEdit,
       markDirty: this.options.markDirty,
-    });
+      ...(this.options.rowTextAtRow === undefined
+        ? {}
+        : {
+            rowTextAtRow: this.options.rowTextAtRow,
+          }),
+    };
+    return this.homePanePointerClick(homePointerInput);
   }
 }

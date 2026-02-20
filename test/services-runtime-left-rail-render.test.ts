@@ -141,6 +141,7 @@ void test('runtime left-rail renderer refreshes selector snapshot and delegates 
     loadingGitSummary: {
       branch: '(loading)',
     },
+    showTasksEntry: true,
     activeConversationId: () => 'session-1',
     orderedConversationIds: () => orderedConversationIds,
   });

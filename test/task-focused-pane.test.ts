@@ -105,7 +105,7 @@ void test('focused pane renders selected repository tasks with editable task buf
     false,
   );
   assert.equal(
-    view.rows.some((row) => row.includes('tab queue')),
+    view.rows.some((row) => row.includes('tab draft')),
     true,
   );
 });
@@ -455,6 +455,69 @@ void test('focused pane groups tasks by status and replaces focused row content 
 
   const editorOnlyRowCount = view.rows.filter((row) => row.includes('more')).length;
   assert.equal(editorOnlyRowCount, 1);
+});
+
+void test('focused pane task editor renders a fixed status glyph prefix for focused rows', () => {
+  const repositories = new Map<string, TaskFocusedPaneRepositoryRecord>([
+    ['r-a', repository('r-a', 'alpha')],
+  ]);
+  const tasks = new Map<string, TaskFocusedPaneTaskRecord>([
+    ['ready-task', task('ready-task', 'r-a', 'ready', 0, 'ready title', 'ready body')],
+  ]);
+  const view = buildTaskFocusedPaneView({
+    repositories,
+    tasks,
+    selectedRepositoryId: 'r-a',
+    repositoryDropdownOpen: false,
+    editorTarget: {
+      kind: 'task',
+      taskId: 'ready-task',
+    },
+    draftBuffer: createTaskComposerBuffer(''),
+    taskBufferById: new Map([
+      [
+        'ready-task',
+        {
+          text: 'edited',
+          cursor: 6,
+        },
+      ],
+    ]),
+    notice: null,
+    cols: 60,
+    rows: 16,
+    scrollTop: 0,
+  });
+
+  const editorRowIndex = view.taskIds.findIndex((taskId) => taskId === 'ready-task');
+  assert.equal(editorRowIndex >= 0, true);
+  const editorRow = view.rows[editorRowIndex] ?? '';
+  assert.equal(editorRow.includes('│○ edited'), true);
+});
+
+void test('focused pane wraps focused draft input content and grows by wrapped rows', () => {
+  const view = buildTaskFocusedPaneView({
+    repositories: new Map<string, TaskFocusedPaneRepositoryRecord>([
+      ['repo-1', repository('repo-1', 'alpha')],
+    ]),
+    tasks: new Map(),
+    selectedRepositoryId: 'repo-1',
+    repositoryDropdownOpen: false,
+    editorTarget: {
+      kind: 'draft',
+    },
+    draftBuffer: createTaskComposerBuffer('this is a wrapped draft line'),
+    taskBufferById: new Map(),
+    notice: null,
+    cols: 24,
+    rows: 24,
+    scrollTop: 0,
+  });
+
+  const wrappedRows = view.rows.filter((row) => row.includes('│this is a wrapped dr'));
+  const continuationRows = view.rows.filter((row) => row.includes('│aft line'));
+  assert.equal(wrappedRows.length > 0, true);
+  assert.equal(continuationRows.length > 0, true);
 });
 
 void test('focused pane status-order sorter handles same-status orderIndex and createdAt tiebreaks', () => {

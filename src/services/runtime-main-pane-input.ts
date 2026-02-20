@@ -1,4 +1,5 @@
 import type { WorkspaceModel } from '../domain/workspace.ts';
+import { compareSelectionPoints, type PaneSelection } from '../mux/live-mux/selection.ts';
 import type { LeftRailPointerInput } from '../ui/left-rail-pointer-input.ts';
 import { MainPanePointerInput } from '../ui/main-pane-pointer-input.ts';
 import { PointerRoutingInput } from '../ui/pointer-routing-input.ts';
@@ -17,6 +18,61 @@ type InputTokenRouterOptions = ConstructorParameters<typeof InputTokenRouter>[0]
 
 type RouteTokensInput = Parameters<InputTokenRouter['routeTokens']>[0];
 type RouteTokensResult = ReturnType<InputTokenRouter['routeTokens']>;
+
+function stripAnsiSgr(value: string): string {
+  let output = '';
+  let index = 0;
+  while (index < value.length) {
+    const char = value[index]!;
+    if (char === '\u001b' && value[index + 1] === '[') {
+      index += 2;
+      while (index < value.length) {
+        const nextChar = value[index]!;
+        if (nextChar >= '@' && nextChar <= '~') {
+          index += 1;
+          break;
+        }
+        index += 1;
+      }
+      continue;
+    }
+    output += char;
+    index += 1;
+  }
+  return output;
+}
+
+function selectionTextFromHomePaneRows(
+  rows: readonly string[],
+  viewportTop: number,
+  selection: PaneSelection,
+): string {
+  const normalized =
+    compareSelectionPoints(selection.anchor, selection.focus) <= 0
+      ? {
+          start: selection.anchor,
+          end: selection.focus,
+        }
+      : {
+          start: selection.focus,
+          end: selection.anchor,
+        };
+  const selectedRows: string[] = [];
+  for (let rowAbs = normalized.start.rowAbs; rowAbs <= normalized.end.rowAbs; rowAbs += 1) {
+    const rowIndex = rowAbs - viewportTop;
+    const rowText = rows[rowIndex] ?? '';
+    const rowStart = rowAbs === normalized.start.rowAbs ? normalized.start.col : 0;
+    const rowEnd = rowAbs === normalized.end.rowAbs ? normalized.end.col : rowText.length - 1;
+    if (rowEnd < rowStart || rowStart >= rowText.length) {
+      selectedRows.push('');
+      continue;
+    }
+    const start = Math.max(0, rowStart);
+    const endExclusive = Math.min(rowText.length, rowEnd + 1);
+    selectedRows.push(rowText.slice(start, endExclusive));
+  }
+  return selectedRows.join('\n');
+}
 
 interface RuntimeMainPaneWorkspaceActions {
   runTaskPaneAction(action: 'task.ready' | 'task.draft' | 'task.complete'): void;
@@ -135,6 +191,8 @@ export class RuntimeMainPaneInput {
         options.taskPaneTaskIdAtRow(options.workspace.latestTaskPaneView, rowIndex),
       repositoryIdAtRow: (rowIndex) =>
         options.taskPaneRepositoryIdAtRow(options.workspace.latestTaskPaneView, rowIndex),
+      rowTextAtRow: (rowIndex) =>
+        options.workspace.latestTaskPaneView.plainRows?.[rowIndex] ?? null,
       selectTaskById: options.selectTaskById,
       selectRepositoryById: options.selectRepositoryById,
       runTaskPaneAction: (action) => {
@@ -217,6 +275,19 @@ export class RuntimeMainPaneInput {
 
     this.inputTokenRouter = createInputTokenRouter({
       getMainPaneMode: () => options.workspace.mainPaneMode,
+      getHomePaneSelectionContext: () => {
+        const plainRows =
+          options.workspace.latestTaskPaneView.plainRows ??
+          options.workspace.latestTaskPaneView.rows;
+        const rows = plainRows.map((row) => stripAnsiSgr(row));
+        const viewportTop = Math.max(0, options.workspace.latestTaskPaneView.top);
+        return {
+          viewportTop,
+          totalRows: Math.max(1, viewportTop + rows.length),
+          resolveSelectionText: (selection) =>
+            selectionTextFromHomePaneRows(rows, viewportTop, selection),
+        };
+      },
       pointerRoutingInput,
       mainPanePointerInput,
       leftRailPointerInput: options.leftRailPointerInput,

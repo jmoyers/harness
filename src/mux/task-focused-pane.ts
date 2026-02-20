@@ -1,11 +1,8 @@
 import { padOrTrimDisplay } from './dual-pane-core.ts';
 import type { TaskStatus } from './harness-core-ui.ts';
 import { formatUiButton } from '../ui/kit.ts';
-import {
-  taskComposerTextFromTaskFields,
-  taskComposerVisibleLines,
-  type TaskComposerBuffer,
-} from './task-composer.ts';
+import { renderWrappingInputLines } from '../ui/wrapping-input.ts';
+import { taskComposerTextFromTaskFields, type TaskComposerBuffer } from './task-composer.ts';
 
 export type TaskFocusedPaneAction =
   | 'repository.dropdown.toggle'
@@ -72,6 +69,7 @@ interface PaneLine {
 
 export interface TaskFocusedPaneView {
   readonly rows: readonly string[];
+  readonly plainRows?: readonly string[];
   readonly taskIds: readonly (string | null)[];
   readonly repositoryIds: readonly (string | null)[];
   readonly actions: readonly (TaskFocusedPaneAction | null)[];
@@ -296,18 +294,21 @@ export function buildTaskFocusedPaneView(
         options.editorTarget.kind === 'task' && options.editorTarget.taskId === task.taskId;
       if (focused) {
         const editBuffer = taskBufferFromRecord(task, options.taskBufferById);
-        const linesWithCursor = taskComposerVisibleLines(
-          editBuffer,
-          '█',
-          options.cursorVisible ?? true,
-        );
-        const editorInnerWidth = Math.max(1, safeCols - 6);
-        push(`    ┌${'─'.repeat(editorInnerWidth)}┐`);
+        const editorInnerWidth = Math.max(1, safeCols - 4);
+        const editorPrefix = `${statusGlyph(task.status)} `;
+        const linesWithCursor = renderWrappingInputLines({
+          buffer: editBuffer,
+          width: editorInnerWidth,
+          linePrefix: editorPrefix,
+          cursorToken: '█',
+          cursorVisible: options.cursorVisible ?? true,
+        });
+        push(` ┌${'─'.repeat(editorInnerWidth)}┐`);
         for (const line of linesWithCursor) {
           const content = padOrTrimDisplay(line, editorInnerWidth);
-          push(`    │${content}│`, task.taskId, selectedRepositoryId, 'task.focus');
+          push(` │${content}│`, task.taskId, selectedRepositoryId, 'task.focus');
         }
-        push(`    └${'─'.repeat(editorInnerWidth)}┘`);
+        push(` └${'─'.repeat(editorInnerWidth)}┘`);
         continue;
       }
 
@@ -321,17 +322,18 @@ export function buildTaskFocusedPaneView(
   push(` draft ${draftFocused ? '(editing)' : '(saved)'}`);
   const draftInnerWidth = Math.max(1, safeCols - 4);
   push(` ┌${'─'.repeat(draftInnerWidth)}┐`);
-  const draftLines = draftFocused
-    ? taskComposerVisibleLines(options.draftBuffer, '█', options.cursorVisible ?? true)
-    : options.draftBuffer.text.length === 0
-      ? ['']
-      : options.draftBuffer.text.split('\n');
+  const draftLines = renderWrappingInputLines({
+    buffer: options.draftBuffer,
+    width: draftInnerWidth,
+    cursorToken: '█',
+    cursorVisible: draftFocused && (options.cursorVisible ?? true),
+  });
   for (const line of draftLines) {
     const content = padOrTrimDisplay(line, draftInnerWidth);
     push(` │${content}│`);
   }
   push(` └${'─'.repeat(draftInnerWidth)}┘`);
-  push(' enter ready  tab queue  shift+enter newline');
+  push(' enter ready  tab draft  shift+enter newline');
   push(' alt+g repos  ctrl+up/down reorder');
 
   const maxTop = Math.max(0, lines.length - safeRows);
@@ -348,6 +350,7 @@ export function buildTaskFocusedPaneView(
   }
   return {
     rows: viewport.map((line) => line.text),
+    plainRows: viewport.map((line) => line.text),
     taskIds: viewport.map((line) => line.taskId),
     repositoryIds: viewport.map((line) => line.repositoryId),
     actions: viewport.map((line) => line.action),

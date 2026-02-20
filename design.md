@@ -330,6 +330,7 @@ Pass-through stream invariants:
 - Mux exposes a dedicated conversation interrupt action (`mux.conversation.interrupt`) mapped to control-plane `session.interrupt` for parity-safe thread interruption without quitting the client.
 - The left rail treats Home and Tasks as sibling first-class selectable entries (each with its own row and emoji); `ctrl+j/k` cycles visible left-nav selection in visual order: Home -> Tasks -> repository group -> project header -> project threads -> next visible item.
 - Repository/task planning is exposed through the dedicated Tasks entry in the left rail; Home and Tasks share the same pane container, but task CRUD rendering/shortcuts are active only when Tasks is selected while control-plane repository/task commands and subscriptions remain the source of truth.
+- Task editors in the Tasks pane are multiline and width-wrapped: long lines soft-wrap to pane width, the input box auto-grows by wrapped rows, and drag-selection/copy works over the rendered wrapped content.
 - Active project directories are scraped for GitHub remotes at startup/refresh; remotes are normalized and deduped, auto-upserted into canonical repository records, and reused for rail grouping.
 - Gateway-side GitHub sync persists PR records + per-PR CI job records and emits realtime observed events (`github-pr-upserted`, `github-pr-closed`, `github-pr-jobs-updated`) so UI/API clients stay live without polling their own GitHub state.
 - GitHub auth resolution is lazy and non-fatal: gateway prefers configured manual token env (`github.tokenEnvVar`, default `GITHUB_TOKEN`), then OAuth access token env (`HARNESS_GITHUB_OAUTH_ACCESS_TOKEN`), then `gh auth token`, and keeps startup healthy when auth is unavailable.
@@ -848,6 +849,9 @@ Design constraints:
   - `customThemePath` optionally loads a local OpenCode theme JSON file (`https://opencode.ai/theme.json`) and overrides preset colors when valid
   - semantic role mapping is mandatory for rail/modal rendering: calm/neutral content uses `text`/`textMuted`/`conceal`, interactive controls use `accent`/`primary`, and runtime-state indicators use `success`/`warning`/`error`/`info`
   - invalid custom files or unknown presets must fall back deterministically to a safe preset while keeping mux startup healthy
+- Mux task-rail visibility is config-governed under `mux.ui.showTasks`:
+  - default is hidden (`false`)
+  - when disabled, the left rail keeps `Home` visible but omits the `Tasks` entry and task-planning pane activation
 - Config lifecycle:
   - on first run, bootstrap config by copying the checked-in template (`src/config/harness.config.template.jsonc`)
   - when upgrading from legacy local workspace state (`<workspace>/.harness`), copy runtime artifacts into the user-global workspace-scoped runtime path on first run; migrate legacy local `harness.config.jsonc` when the global config is uninitialized (missing, empty, or bootstrapped default), and never overwrite user-customized global config
@@ -864,7 +868,7 @@ Design constraints:
 ### TUI (v1)
 
 - Core requirements:
-  - left rail: Home -> Tasks -> repository-group tree -> projects -> conversations, with per-repository collapse and untracked grouping
+  - left rail: Home -> optional Tasks -> repository-group tree -> projects -> conversations, with per-repository collapse and untracked grouping
   - right pane: active live steerable PTY session
   - left-rail activation via keyboard and mouse with deterministic row hit-testing
   - normalized action-oriented conversation status labels (`starting`, `needs action`, `working`, `idle`, `exited`)
