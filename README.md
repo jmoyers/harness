@@ -47,7 +47,7 @@ Use a named session when you want isolated state:
 harness --session my-session
 ```
 
-For restart/load diagnostics, use a named session with a non-default gateway port so you do not disrupt your active workspace gateway.
+Named sessions automatically fall back to an available gateway port when the preferred port is already occupied. For deterministic restart/load diagnostics, you can still set an explicit non-default gateway port.
 
 ## Typical workflow
 

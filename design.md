@@ -243,6 +243,9 @@ Pass-through stream invariants:
 - Gateway CLI lifecycle commands (`start`/`stop`/`status`/`restart`/`run`) are serialized through a per-session lock file (`gateway.lock`) to prevent concurrent start/stop races.
 - Gateway identity is persisted in `gateway.json` (`pid`, `host`, `port`, `authToken`, `stateDbPath`, `startedAt`, `workspaceRoot`, optional `gatewayRunId`).
 - If `gateway.json` is missing but the endpoint is reachable, the CLI may adopt the running daemon by matching process-table host/port/auth/db-path identity; ambiguous matches fail closed.
+- If `gateway.json` is missing and host/port probing cannot identify the daemon, the CLI may deterministically adopt a single reachable daemon candidate by matching `stateDbPath`; ambiguous matches fail closed.
+- Named sessions prefer configured/default ports but auto-fallback to an available local port when the preferred port is already occupied and no explicit `--port` override is provided.
+- Named-session gateway stop prunes session-scoped gateway artifacts (`gateway.log`) after confirmed shutdown to avoid stale per-session runtime clutter.
 - `ctrl+p` and `cmd+p` open the command menu; command search is live-filtered and executes context-aware actions.
 - Empty-query command-menu results are grouped by type with visible delimiters; agent thread types are surfaced first, with default selection on `codex`, and typed input returns to normal score+alpha ordering.
 - On startup, mux may asynchronously check GitHub releases and open a `What's New` modal when newer stable versions exist than the installed local version.
@@ -751,6 +754,7 @@ Design constraints:
   - default session: `<workspace-runtime>/gateway.json`, `<workspace-runtime>/gateway.log`, `<workspace-runtime>/gateway.lock`, `<workspace-runtime>/control-plane.sqlite`
   - named sessions: `<workspace-runtime>/sessions/<session-name>/gateway.json|gateway.log|gateway.lock|control-plane.sqlite`
   - global default-session pointer: `~/.harness/default-gateway.json` (or `$XDG_CONFIG_HOME/harness/default-gateway.json`) tracks the active default-session workspace/log/record paths; named sessions do not mutate this pointer
+  - on named-session gateway stop, `gateway.log` is pruned for that session after successful/stale shutdown handling; session DB/state paths remain intact
 - Config payloads are explicitly versioned with top-level `configVersion`.
 - JSON-with-comments format (JSONC) is required to allow inline documentation and annotation.
 - Single configuration abstraction only (`config-core`) used by every subsystem and process.

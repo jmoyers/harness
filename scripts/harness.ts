@@ -826,6 +826,30 @@ function removeFileIfExists(filePath: string): void {
   }
 }
 
+async function canBindPort(host: string, port: number): Promise<boolean> {
+  return await new Promise<boolean>((resolveCanBind, rejectCanBind) => {
+    const server = createNetServer();
+    server.unref();
+    server.once('error', (error: unknown) => {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === 'EADDRINUSE') {
+        resolveCanBind(false);
+        return;
+      }
+      rejectCanBind(error);
+    });
+    server.listen(port, host, () => {
+      server.close((error) => {
+        if (error !== undefined) {
+          rejectCanBind(error);
+          return;
+        }
+        resolveCanBind(true);
+      });
+    });
+  });
+}
+
 async function reservePort(host: string): Promise<number> {
   return await new Promise<number>((resolvePort, reject) => {
     const server = createNetServer();
@@ -2856,6 +2880,19 @@ function findReachableGatewayDaemonCandidates(
   });
 }
 
+function findGatewayDaemonCandidatesByStateDbPath(
+  invocationDirectory: string,
+  stateDbPath: string,
+): readonly ParsedGatewayDaemonEntry[] {
+  const normalizedStateDbPath = resolve(stateDbPath);
+  return listGatewayDaemonProcesses().filter((candidate) => {
+    if (candidate.stateDbPath !== normalizedStateDbPath) {
+      return false;
+    }
+    return isPathWithinWorkspaceRuntimeScope(candidate.stateDbPath, invocationDirectory);
+  });
+}
+
 function createAdoptedGatewayRecord(
   invocationDirectory: string,
   daemon: ParsedGatewayDaemonEntry,
@@ -2872,8 +2909,46 @@ function createAdoptedGatewayRecord(
   };
 }
 
+function shouldAutoResolveNamedSessionPort(
+  sessionName: string | null,
+  overrides: GatewayStartOptions,
+): boolean {
+  if (sessionName === null) {
+    return false;
+  }
+  if (overrides.port !== undefined) {
+    return false;
+  }
+  return true;
+}
+
+async function resolveAdoptableGatewayByStateDbPath(
+  invocationDirectory: string,
+  stateDbPath: string,
+): Promise<ParsedGatewayDaemonEntry | null> {
+  const candidates = findGatewayDaemonCandidatesByStateDbPath(invocationDirectory, stateDbPath);
+  const reachable: ParsedGatewayDaemonEntry[] = [];
+  for (const candidate of candidates) {
+    const probe = await probeGatewayEndpoint(candidate.host, candidate.port, candidate.authToken);
+    if (probe.connected) {
+      reachable.push(candidate);
+    }
+  }
+  if (reachable.length === 0) {
+    return null;
+  }
+  if (reachable.length > 1) {
+    const pidList = reachable.map((candidate) => String(candidate.pid)).join(', ');
+    throw new Error(
+      `gateway db path is served by multiple reachable daemon candidates (${pidList}); stop with \`harness gateway stop --force\` and retry`,
+    );
+  }
+  return reachable[0] ?? null;
+}
+
 async function ensureGatewayRunning(
   invocationDirectory: string,
+  sessionName: string | null,
   recordPath: string,
   logPath: string,
   daemonScriptPath: string,
@@ -2906,13 +2981,31 @@ async function ensureGatewayRunning(
     defaultStateDbPath,
   );
   if (existingRecord === null) {
+    const adoptedByDbPath = await resolveAdoptableGatewayByStateDbPath(
+      invocationDirectory,
+      settings.stateDbPath,
+    );
+    if (adoptedByDbPath !== null) {
+      const adoptedRecord = createAdoptedGatewayRecord(invocationDirectory, adoptedByDbPath);
+      writeGatewayRecord(recordPath, adoptedRecord);
+      return {
+        record: adoptedRecord,
+        started: false,
+      };
+    }
+  }
+  let resolvedSettings = settings;
+  if (existingRecord === null) {
     const endpointProbe = await probeGatewayEndpoint(
-      settings.host,
-      settings.port,
-      settings.authToken,
+      resolvedSettings.host,
+      resolvedSettings.port,
+      resolvedSettings.authToken,
     );
     if (endpointProbe.connected) {
-      const candidates = findReachableGatewayDaemonCandidates(invocationDirectory, settings);
+      const candidates = findReachableGatewayDaemonCandidates(
+        invocationDirectory,
+        resolvedSettings,
+      );
       if (candidates.length === 1) {
         const adopted = createAdoptedGatewayRecord(invocationDirectory, candidates[0]!);
         writeGatewayRecord(recordPath, adopted);
@@ -2931,12 +3024,23 @@ async function ensureGatewayRunning(
         'gateway endpoint is reachable but no matching daemon could be adopted; stop with `harness gateway stop --force` and retry',
       );
     }
+
+    if (shouldAutoResolveNamedSessionPort(sessionName, overrides)) {
+      const currentPortAvailable = await canBindPort(resolvedSettings.host, resolvedSettings.port);
+      if (!currentPortAvailable) {
+        const fallbackPort = await reservePort(resolvedSettings.host);
+        resolvedSettings = {
+          ...resolvedSettings,
+          port: fallbackPort,
+        };
+      }
+    }
   }
   const record = await startDetachedGateway(
     invocationDirectory,
     recordPath,
     logPath,
-    settings,
+    resolvedSettings,
     daemonScriptPath,
     daemonRuntimeArgs,
   );
@@ -2946,10 +3050,22 @@ async function ensureGatewayRunning(
   };
 }
 
+function isNamedSessionGatewayRecordPath(recordPath: string): boolean {
+  return /[\\/]sessions[\\/][^\\/]+[\\/]gateway\.json$/u.test(resolve(recordPath));
+}
+
+function cleanupNamedSessionGatewayArtifacts(recordPath: string, logPath: string): void {
+  if (!isNamedSessionGatewayRecordPath(recordPath)) {
+    return;
+  }
+  removeFileIfExists(logPath);
+}
+
 async function stopGateway(
   invocationDirectory: string,
   daemonScriptPath: string,
   recordPath: string,
+  logPath: string,
   defaultStateDbPath: string,
   options: GatewayStopOptions,
 ): Promise<{ stopped: boolean; message: string }> {
@@ -2978,6 +3094,7 @@ async function stopGateway(
 
   const record = readGatewayRecord(recordPath);
   if (record === null) {
+    cleanupNamedSessionGatewayArtifacts(recordPath, logPath);
     return {
       stopped: false,
       message: await appendCleanupSummary('gateway not running (no record)', defaultStateDbPath),
@@ -2996,6 +3113,7 @@ async function stopGateway(
 
   if (!pidRunning) {
     removeGatewayRecord(recordPath);
+    cleanupNamedSessionGatewayArtifacts(recordPath, logPath);
     return {
       stopped: true,
       message: await appendCleanupSummary('removed stale gateway record', record.stateDbPath),
@@ -3005,6 +3123,7 @@ async function stopGateway(
   const signaledTerm = signalPidWithOptionalProcessGroup(record.pid, 'SIGTERM', true);
   if (!signaledTerm) {
     removeGatewayRecord(recordPath);
+    cleanupNamedSessionGatewayArtifacts(recordPath, logPath);
     return {
       stopped: true,
       message: await appendCleanupSummary('gateway already exited', record.stateDbPath),
@@ -3029,6 +3148,7 @@ async function stopGateway(
   }
 
   removeGatewayRecord(recordPath);
+  cleanupNamedSessionGatewayArtifacts(recordPath, logPath);
   return {
     stopped: true,
     message: await appendCleanupSummary(
@@ -3184,6 +3304,7 @@ async function executeGatewayCall(record: GatewayRecord, rawCommand: string): Pr
 async function runGatewayCommandEntry(
   command: ParsedGatewayCommand,
   invocationDirectory: string,
+  sessionName: string | null,
   daemonScriptPath: string,
   lockPath: string,
   recordPath: string,
@@ -3241,6 +3362,7 @@ async function runGatewayCommandEntry(
           invocationDirectory,
           daemonScriptPath,
           recordPath,
+          logPath,
           defaultStateDbPath,
           stopOptions,
         ),
@@ -3254,6 +3376,7 @@ async function runGatewayCommandEntry(
       async () =>
         await ensureGatewayRunning(
           invocationDirectory,
+          sessionName,
           recordPath,
           logPath,
           daemonScriptPath,
@@ -3280,17 +3403,25 @@ async function runGatewayCommandEntry(
   if (command.type === 'restart') {
     const stopResult = await withLock(
       async () =>
-        await stopGateway(invocationDirectory, daemonScriptPath, recordPath, defaultStateDbPath, {
-          force: true,
-          timeoutMs: DEFAULT_GATEWAY_STOP_TIMEOUT_MS,
-          cleanupOrphans: true,
-        }),
+        await stopGateway(
+          invocationDirectory,
+          daemonScriptPath,
+          recordPath,
+          logPath,
+          defaultStateDbPath,
+          {
+            force: true,
+            timeoutMs: DEFAULT_GATEWAY_STOP_TIMEOUT_MS,
+            cleanupOrphans: true,
+          },
+        ),
     );
     process.stdout.write(`${stopResult.message}\n`);
     const ensured = await withLock(
       async () =>
         await ensureGatewayRunning(
           invocationDirectory,
+          sessionName,
           recordPath,
           logPath,
           daemonScriptPath,
@@ -3360,6 +3491,7 @@ async function runDefaultClient(
     async () =>
       await ensureGatewayRunning(
         invocationDirectory,
+        sessionName,
         recordPath,
         logPath,
         daemonScriptPath,
@@ -3487,6 +3619,7 @@ async function runProfileRun(
         invocationDirectory,
         daemonScriptPath,
         sessionPaths.recordPath,
+        sessionPaths.logPath,
         sessionPaths.defaultStateDbPath,
         {
           force: true,
@@ -3897,6 +4030,7 @@ async function main(): Promise<number> {
     return await runGatewayCommandEntry(
       command,
       invocationDirectory,
+      parsedGlobals.sessionName,
       daemonScriptPath,
       sessionPaths.lockPath,
       sessionPaths.recordPath,
