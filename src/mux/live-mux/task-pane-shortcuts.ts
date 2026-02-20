@@ -24,6 +24,9 @@ type TaskPaneActionShortcut =
   | 'task.reorder-down';
 type TaskComposerSubmitMode = 'ready' | 'queue';
 
+const BRACKETED_PASTE_START = Buffer.from('\u001b[200~', 'utf8');
+const BRACKETED_PASTE_END = Buffer.from('\u001b[201~', 'utf8');
+
 interface TaskEditorTargetDraft {
   kind: 'draft';
 }
@@ -50,6 +53,50 @@ interface HandleTaskPaneShortcutInputOptions {
   getTaskRepositoryDropdownOpen: () => boolean;
   setTaskRepositoryDropdownOpen: (open: boolean) => void;
   markDirty: () => void;
+}
+
+function matchesSequence(input: Buffer, startIndex: number, sequence: Buffer): boolean {
+  if (startIndex < 0 || startIndex + sequence.length > input.length) {
+    return false;
+  }
+  for (let index = 0; index < sequence.length; index += 1) {
+    if (input[startIndex + index] !== sequence[index]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function extractTaskPaneInsertText(input: Buffer): string | null {
+  const chunks: Buffer[] = [];
+  let inBracketedPaste = false;
+  for (let index = 0; index < input.length; index += 1) {
+    if (!inBracketedPaste && matchesSequence(input, index, BRACKETED_PASTE_START)) {
+      inBracketedPaste = true;
+      index += BRACKETED_PASTE_START.length - 1;
+      continue;
+    }
+    if (inBracketedPaste && matchesSequence(input, index, BRACKETED_PASTE_END)) {
+      inBracketedPaste = false;
+      index += BRACKETED_PASTE_END.length - 1;
+      continue;
+    }
+    const byte = input[index]!;
+    if (inBracketedPaste) {
+      chunks.push(Buffer.from([byte]));
+      continue;
+    }
+    if (byte === 0x1b) {
+      return null;
+    }
+    if (byte >= 32 && byte <= 126) {
+      chunks.push(Buffer.from([byte]));
+    }
+  }
+  if (chunks.length === 0) {
+    return '';
+  }
+  return Buffer.concat(chunks).toString('utf8').replace(/\r\n?/gu, '\n');
 }
 
 export function handleTaskPaneShortcutInput(options: HandleTaskPaneShortcutInputOptions): boolean {
@@ -178,21 +225,13 @@ export function handleTaskPaneShortcutInput(options: HandleTaskPaneShortcutInput
     }
   }
 
-  if (input.includes(0x1b)) {
+  const inserted = extractTaskPaneInsertText(input);
+  if (inserted === null) {
     return false;
   }
-
-  let next = homeEditorBuffer();
-  let changed = false;
-  for (const byte of input) {
-    if (byte >= 32 && byte <= 126) {
-      next = insertTaskComposerText(next, String.fromCharCode(byte));
-      changed = true;
-    }
-  }
-  if (!changed) {
+  if (inserted.length === 0) {
     return false;
   }
-  updateHomeEditorBuffer(next);
+  updateHomeEditorBuffer(insertTaskComposerText(homeEditorBuffer(), inserted));
   return true;
 }

@@ -24,6 +24,12 @@ interface MouseSelectionEvent {
   readonly final: 'M' | 'm';
 }
 
+interface HomePaneSelectionContext {
+  readonly viewportTop: number;
+  readonly totalRows: number;
+  readonly resolveSelectionText: (selection: PaneSelection) => string;
+}
+
 interface ConversationInputLike {
   readonly oracle: {
     isMouseTrackingEnabled: () => boolean;
@@ -104,6 +110,7 @@ interface ConversationSelectionInputLike {
 
 interface InputTokenRouterOptions {
   readonly getMainPaneMode: () => MainPaneMode;
+  readonly getHomePaneSelectionContext?: () => HomePaneSelectionContext | null;
   readonly pointerRoutingInput: PointerRoutingInputLike;
   readonly mainPanePointerInput: MainPanePointerInputLike;
   readonly leftRailPointerInput: LeftRailPointerInputLike;
@@ -146,6 +153,44 @@ export class InputTokenRouter {
     this.hasAltModifier = dependencies.hasAltModifier ?? hasAltModifierFrame;
     this.hasShiftModifier = dependencies.hasShiftModifier ?? hasShiftModifierFrame;
     this.isMotionMouseCode = dependencies.isMotionMouseCode ?? isMotionMouseCodeFrame;
+  }
+
+  private buildHomeSelectionFrame(
+    layout: DualPaneLayout,
+    context: HomePaneSelectionContext | null,
+  ): TerminalSnapshotFrameCore | null {
+    if (context === null) {
+      return null;
+    }
+    return {
+      rows: Math.max(1, layout.paneRows),
+      cols: Math.max(1, layout.rightCols),
+      activeScreen: 'primary',
+      modes: {
+        bracketedPaste: false,
+        decMouseX10: false,
+        decMouseButtonEvent: false,
+        decMouseAnyEvent: false,
+        decFocusTracking: false,
+        decMouseSgrEncoding: false,
+      },
+      cursor: {
+        row: 0,
+        col: 0,
+        visible: false,
+        style: {
+          shape: 'block',
+          blinking: false,
+        },
+      },
+      viewport: {
+        top: Math.max(0, context.viewportTop),
+        totalRows: Math.max(1, context.totalRows),
+        followOutput: true,
+      },
+      lines: [],
+      richLines: [],
+    };
   }
 
   routeTokens(input: RouteTokensInput): RouteTokensResult {
@@ -279,27 +324,36 @@ export class InputTokenRouter {
       ) {
         continue;
       }
-      if (snapshotForInput === null || this.options.getMainPaneMode() !== 'conversation') {
-        routedTokens.push(token);
-        continue;
-      }
-      const mouseSelectionInput =
-        resolveSelectionText === null
-          ? {
-              layout: input.layout,
-              frame: snapshotForInput,
-              isMainPaneTarget,
-              event: token.event,
-            }
-          : {
-              layout: input.layout,
-              frame: snapshotForInput,
-              isMainPaneTarget,
-              resolveSelectionText,
-              event: token.event,
-            };
-      if (this.options.conversationSelectionInput.handleMouseSelection(mouseSelectionInput)) {
-        continue;
+      const mainPaneMode = this.options.getMainPaneMode();
+      const homeSelectionContext =
+        mainPaneMode === 'home' ? (this.options.getHomePaneSelectionContext?.() ?? null) : null;
+      const selectionFrame =
+        mainPaneMode === 'conversation'
+          ? snapshotForInput
+          : this.buildHomeSelectionFrame(input.layout, homeSelectionContext);
+      const selectionResolver =
+        mainPaneMode === 'conversation'
+          ? resolveSelectionText
+          : (homeSelectionContext?.resolveSelectionText ?? null);
+      if (selectionFrame !== null) {
+        const mouseSelectionInput =
+          selectionResolver === null
+            ? {
+                layout: input.layout,
+                frame: selectionFrame,
+                isMainPaneTarget,
+                event: token.event,
+              }
+            : {
+                layout: input.layout,
+                frame: selectionFrame,
+                isMainPaneTarget,
+                resolveSelectionText: selectionResolver,
+                event: token.event,
+              };
+        if (this.options.conversationSelectionInput.handleMouseSelection(mouseSelectionInput)) {
+          continue;
+        }
       }
 
       routedTokens.push(token);

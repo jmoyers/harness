@@ -19,6 +19,7 @@ interface CapturedMainPaneOptions {
   setTaskRepositoryDropdownOpen(open: boolean): void;
   taskIdAtRow(rowIndex: number): string | null;
   repositoryIdAtRow(rowIndex: number): string | null;
+  rowTextAtRow?(rowIndex: number): string | null;
   runTaskPaneAction(action: 'task.ready' | 'task.draft' | 'task.complete'): void;
   getTaskEditClickState(): { entityId: string; atMs: number } | null;
   getRepositoryEditClickState(): { entityId: string; atMs: number } | null;
@@ -66,6 +67,15 @@ interface CapturedSelectionOptions {
 
 interface CapturedRouterOptions {
   getMainPaneMode(): string;
+  getHomePaneSelectionContext?(): {
+    viewportTop: number;
+    totalRows: number;
+    resolveSelectionText: (selection: {
+      anchor: { rowAbs: number; col: number };
+      focus: { rowAbs: number; col: number };
+      text: string;
+    }) => string;
+  } | null;
 }
 
 function createWorkspace(): WorkspaceModel {
@@ -320,6 +330,7 @@ void test('runtime main pane input composes constructors and delegates token rou
   mainPaneOptions.setTaskRepositoryDropdownOpen(true);
   mainPaneOptions.taskIdAtRow(0);
   mainPaneOptions.repositoryIdAtRow(0);
+  mainPaneOptions.rowTextAtRow?.(0);
   mainPaneOptions.runTaskPaneAction('task.ready');
   mainPaneOptions.getTaskEditClickState();
   mainPaneOptions.getRepositoryEditClickState();
@@ -368,6 +379,46 @@ void test('runtime main pane input composes constructors and delegates token rou
   selectionOptions.releaseViewportPinForSelection();
   selectionOptions.markDirty();
   routerOptions.getMainPaneMode();
+  workspace.latestTaskPaneView = {
+    rows: ['\u001b[31m hello world \u001b[0m'],
+    plainRows: [' hello world '],
+    taskIds: [null],
+    repositoryIds: [null],
+    actions: [null],
+    actionCells: [null],
+    top: 3,
+    selectedRepositoryId: null,
+  };
+  const homeSelectionContext = routerOptions.getHomePaneSelectionContext?.() ?? null;
+  assert.notEqual(homeSelectionContext, null);
+  assert.equal(homeSelectionContext?.viewportTop, 3);
+  assert.equal(homeSelectionContext?.totalRows, 4);
+  assert.equal(
+    homeSelectionContext?.resolveSelectionText({
+      anchor: { rowAbs: 3, col: 1 },
+      focus: { rowAbs: 3, col: 5 },
+      text: '',
+    }),
+    'hello',
+  );
+  workspace.latestTaskPaneView = {
+    rows: ['\u001b[31m ansi line \u001b[0m'],
+    taskIds: [null],
+    repositoryIds: [null],
+    actions: [null],
+    actionCells: [null],
+    top: 0,
+    selectedRepositoryId: null,
+  };
+  const ansiFallbackContext = routerOptions.getHomePaneSelectionContext?.() ?? null;
+  assert.equal(
+    ansiFallbackContext?.resolveSelectionText({
+      anchor: { rowAbs: 0, col: 1 },
+      focus: { rowAbs: 0, col: 4 },
+      text: '',
+    }),
+    'ansi',
+  );
 
   const result = runtimeMainPaneInput.routeTokens({
     tokens: [],

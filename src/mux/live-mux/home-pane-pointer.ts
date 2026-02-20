@@ -30,6 +30,7 @@ interface HandleHomePanePointerClickOptions {
   setTaskRepositoryDropdownOpen: (open: boolean) => void;
   taskIdAtRow: (rowIndex: number) => string | null;
   repositoryIdAtRow: (rowIndex: number) => string | null;
+  rowTextAtRow?: (rowIndex: number) => string | null;
   selectTaskById: (taskId: string) => void;
   selectRepositoryById: (repositoryId: string) => void;
   runTaskPaneAction: (action: 'task.ready' | 'task.draft' | 'task.complete') => void;
@@ -55,6 +56,15 @@ export function handleHomePanePointerClick(options: HandleHomePanePointerClickOp
     0,
     Math.min(options.rightCols - 1, options.pointerCol - options.rightStartCol),
   );
+  const rowText = options.rowTextAtRow?.(rowIndex) ?? null;
+  const isTaskEditorContentRow =
+    options.taskIdAtRow(rowIndex) !== null &&
+    rowText !== null &&
+    rowText.trimEnd().startsWith(' │') &&
+    rowText.trimEnd().includes('│');
+  if (isTaskEditorContentRow) {
+    return false;
+  }
   const action = options.actionAtCell(rowIndex, colIndex) ?? options.actionAtRow(rowIndex);
   if (
     handleHomePaneActionClick({

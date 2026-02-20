@@ -49,6 +49,19 @@ function mouseToken(code: number, col: number, row: number) {
   };
 }
 
+function mouseTokenWithFinal(code: number, col: number, row: number, final: 'M' | 'm') {
+  return {
+    kind: 'mouse' as const,
+    event: {
+      sequence: `\u001b[<${code};${col};${row}${final}`,
+      code,
+      col,
+      row,
+      final,
+    },
+  };
+}
+
 void test('input token router delegates staged mouse routing and preserves passthrough tokens', () => {
   const layout = computeDualPaneLayout(100, 24);
   const rightCol = layout.rightStartCol;
@@ -341,5 +354,63 @@ void test('input token router supports dependency overrides and null-conversatio
   assert.deepEqual(calls, ['wheel', 'left-rail:false']);
   assert.equal(selectionCalled, false);
   assert.deepEqual(result.routedTokens, [tokenRouted]);
+  assert.equal(result.snapshotForInput, null);
+});
+
+void test('input token router routes home-pane mouse selection through shared selection reducer', () => {
+  const layout = computeDualPaneLayout(100, 24);
+  const rightCol = layout.rightStartCol + 4;
+  const calls: string[] = [];
+  let capturedText = '';
+  const router = new InputTokenRouter({
+    getMainPaneMode: () => 'home',
+    getHomePaneSelectionContext: () => ({
+      viewportTop: 3,
+      totalRows: 12,
+      resolveSelectionText: (selection) => {
+        capturedText = `rows:${selection.anchor.rowAbs}-${selection.focus.rowAbs}`;
+        return capturedText;
+      },
+    }),
+    pointerRoutingInput: {
+      handlePaneDividerDrag: () => false,
+      handleHomePaneDragRelease: () => false,
+      handleSeparatorPointerPress: () => false,
+      handleMainPaneWheel: () => false,
+      handleHomePaneDragMove: () => false,
+    },
+    mainPanePointerInput: {
+      handleProjectPanePointerClick: () => false,
+      handleHomePanePointerClick: () => false,
+    },
+    leftRailPointerInput: {
+      handlePointerClick: () => false,
+    },
+    conversationSelectionInput: {
+      clearSelectionOnTextToken: () => false,
+      handleMouseSelection: ({ frame, event, resolveSelectionText }) => {
+        calls.push(`selection:${event.code}:${event.final}:${frame.viewport.top}`);
+        const text =
+          resolveSelectionText?.({
+            anchor: { rowAbs: 3, col: 0 },
+            focus: { rowAbs: 4, col: 5 },
+            text: '',
+          }) ?? '';
+        calls.push(`text:${text}`);
+        return true;
+      },
+    },
+  });
+
+  const result = router.routeTokens({
+    tokens: [mouseToken(0, rightCol, 2), mouseTokenWithFinal(0, rightCol, 2, 'm')],
+    layout,
+    conversation: null,
+    snapshotForInput: null,
+  });
+
+  assert.deepEqual(calls, ['selection:0:M:3', 'text:rows:3-4', 'selection:0:m:3', 'text:rows:3-4']);
+  assert.equal(capturedText, 'rows:3-4');
+  assert.deepEqual(result.routedTokens, []);
   assert.equal(result.snapshotForInput, null);
 });

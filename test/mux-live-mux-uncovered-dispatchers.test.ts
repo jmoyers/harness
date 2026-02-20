@@ -289,6 +289,7 @@ void test('home pane entity click handles task/repository single+double click an
     repositoryEditClickState: null as { entityId: string; atMs: number } | null,
     taskIdAtRow: () => 'task-a' as string | null,
     repositoryIdAtRow: () => null as string | null,
+    rowTextAtRow: () => null as string | null,
     selectTaskById: (taskId: string) => {
       calls.push(`selectTaskById:${taskId}`);
     },
@@ -450,6 +451,16 @@ void test('home pane pointer click routes action-first then entity handlers', ()
     true,
   );
   assert.equal(calls.includes('selectTaskById:task-a'), true);
+
+  calls.length = 0;
+  assert.equal(
+    handleHomePanePointerClick({
+      ...common,
+      rowTextAtRow: () => ' │editor line│ ',
+    }),
+    false,
+  );
+  assert.deepEqual(calls, []);
 });
 
 void test('left-nav activation routes targets and cycle helper handles empty/normal/unstable keys', async () => {
