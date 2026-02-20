@@ -929,17 +929,14 @@ function printUsage(): void {
   );
 }
 
-async function runDiffCommandEntry(
-  invocationDirectory: string,
-  argv: readonly string[],
-): Promise<number> {
+async function runDiffCommandEntry(argv: readonly string[]): Promise<number> {
   if (argv.length > 0 && (argv[0] === '--help' || argv[0] === '-h')) {
     process.stdout.write(`${diffUiUsage()}\n`);
     return 0;
   }
   const result = await runDiffUiCli({
     argv,
-    cwd: invocationDirectory,
+    cwd: process.cwd(),
     env: process.env,
   });
   return result.exitCode;
@@ -3027,7 +3024,7 @@ async function main(): Promise<number> {
   }
 
   if (argv.length > 0 && argv[0] === 'diff') {
-    return await runDiffCommandEntry(invocationDirectory, argv.slice(1));
+    return await runDiffCommandEntry(argv.slice(1));
   }
 
   if (argv.length > 0 && (argv[0] === 'update' || argv[0] === 'upgrade')) {
