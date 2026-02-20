@@ -31,6 +31,18 @@ This document is systems-first and maps public APIs to functional requirements w
 - Runtime now records explicit soul/skills/memory snapshot lifecycle events per turn and includes per-turn `soul_hash` / `skills_snapshot_version` envelope metadata for replayability.
 - Runtime now includes deterministic overflow compaction simulation paths with bounded retry/failure events for verifiable UC-06 behavior.
 
+## 1.2 Execution Evidence (2026-02-20)
+
+- Functional UC coverage (`test/nim-functional-use-cases.test.ts`) now spans UC-01 through UC-12 and is passing.
+- Runtime/provider/snapshot regression suite is passing:
+  - `test/nim-core-runtime.test.ts`
+  - `test/nim-runtime-provider-driver.test.ts`
+  - `test/nim-functional-use-cases.test.ts`
+- Branch quality gates are passing at 100%:
+  - `bun run verify`
+  - `bun run test:integration:nim:haiku`
+- Live Haiku integration continues to verify runtime transparency signals (state transitions + tool lifecycle visibility).
+
 ## 2. Sources Reviewed
 
 ### Harness baseline
