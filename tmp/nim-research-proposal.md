@@ -37,6 +37,7 @@ This document is systems-first and maps public APIs to functional requirements w
 - Session store now persists queued follow-ups so queue ordering and dequeue semantics survive runtime restart boundaries.
 - Runtime now includes first-party factory wiring (`createSqliteBackedNimRuntime`) for SQLite event/session stores plus optional JSONL telemetry sink composition.
 - Runtime now fails closed for restart idempotency ambiguity by emitting `turn.idempotency.unresolved` and rejecting reuse when stored run IDs have no terminal event.
+- `nim-test-tui` now includes canonical stream collector utilities (`collectNimTestTuiFrame`) for deterministic, independent test UI snapshots without mux-runtime coupling.
 
 ## 1.2 Execution Evidence (2026-02-20)
 
@@ -47,6 +48,7 @@ This document is systems-first and maps public APIs to functional requirements w
   - `test/nim-session-store.test.ts`
   - `test/nim-replay-parity.test.ts`
   - `test/nim-runtime-provider-driver.test.ts`
+  - `test/nim-test-tui-boundary.test.ts`
   - `test/nim-functional-use-cases.test.ts`
 - Branch quality gates are passing at 100%:
   - `bun run verify`

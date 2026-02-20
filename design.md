@@ -185,6 +185,7 @@ Branch-local execution work introduces a new first-party runtime stack above `pa
   - fails closed on restart idempotency ambiguity: stored idempotency run IDs without terminal events emit `turn.idempotency.unresolved` and reject reuse.
 - `packages/nim-ui-core`: shared event projection layer (`debug` and `seamless` UI modes).
 - `packages/nim-test-tui`: independent test-oriented TUI surface that consumes shared Nim libraries only.
+  - exposes stream-based collector utilities (`collectNimTestTuiFrame`) over canonical events for deterministic test UI snapshots.
 
 Design constraints for this stack:
 
