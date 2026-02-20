@@ -814,6 +814,9 @@ Design constraints:
   - `customThemePath` optionally loads a local OpenCode theme JSON file (`https://opencode.ai/theme.json`) and overrides preset colors when valid
   - semantic role mapping is mandatory for rail/modal rendering: calm/neutral content uses `text`/`textMuted`/`conceal`, interactive controls use `accent`/`primary`, and runtime-state indicators use `success`/`warning`/`error`/`info`
   - invalid custom files or unknown presets must fall back deterministically to a safe preset while keeping mux startup healthy
+- Mux task-rail visibility is config-governed under `mux.ui.showTasks`:
+  - default is hidden (`false`)
+  - when disabled, the left rail keeps `Home` visible but omits the `Tasks` entry and task-planning pane activation
 - Config lifecycle:
   - on first run, bootstrap config by copying the checked-in template (`src/config/harness.config.template.jsonc`)
   - when upgrading from legacy local workspace state (`<workspace>/.harness`), copy runtime artifacts into the user-global workspace-scoped runtime path on first run; migrate legacy local `harness.config.jsonc` when the global config is uninitialized (missing, empty, or bootstrapped default), and never overwrite user-customized global config
@@ -830,7 +833,7 @@ Design constraints:
 ### TUI (v1)
 
 - Core requirements:
-  - left rail: Home -> Tasks -> repository-group tree -> projects -> conversations, with per-repository collapse and untracked grouping
+  - left rail: Home -> optional Tasks -> repository-group tree -> projects -> conversations, with per-repository collapse and untracked grouping
   - right pane: active live steerable PTY session
   - left-rail activation via keyboard and mouse with deterministic row hit-testing
   - normalized action-oriented conversation status labels (`starting`, `needs action`, `working`, `idle`, `exited`)

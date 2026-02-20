@@ -85,6 +85,7 @@ interface HarnessMuxUiConfig {
   readonly paneWidthPercent: number | null;
   readonly repositoriesCollapsed: boolean;
   readonly shortcutsCollapsed: boolean;
+  readonly showTasks: boolean;
   readonly theme: HarnessMuxThemeConfig | null;
 }
 
@@ -281,6 +282,7 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
       paneWidthPercent: null,
       repositoriesCollapsed: false,
       shortcutsCollapsed: false,
+      showTasks: false,
       theme: null,
     },
     git: {
@@ -631,10 +633,15 @@ function normalizeMuxUiConfig(input: unknown): HarnessMuxUiConfig {
     typeof record['repositoriesCollapsed'] === 'boolean'
       ? record['repositoriesCollapsed']
       : DEFAULT_HARNESS_CONFIG.mux.ui.repositoriesCollapsed;
+  const showTasks =
+    typeof record['showTasks'] === 'boolean'
+      ? record['showTasks']
+      : DEFAULT_HARNESS_CONFIG.mux.ui.showTasks;
   return {
     paneWidthPercent,
     repositoriesCollapsed,
     shortcutsCollapsed,
+    showTasks,
     theme: normalizeMuxThemeConfig(record['theme']),
   };
 }
@@ -1716,6 +1723,7 @@ export function updateHarnessMuxUiConfig(
     paneWidthPercent: number | null;
     repositoriesCollapsed: boolean;
     shortcutsCollapsed: boolean;
+    showTasks: boolean;
   }>,
   options?: {
     cwd?: string;
@@ -1742,6 +1750,8 @@ export function updateHarnessMuxUiConfig(
         update.repositoriesCollapsed === undefined
           ? current.mux.ui.repositoriesCollapsed
           : update.repositoriesCollapsed;
+      const nextShowTasks =
+        update.showTasks === undefined ? current.mux.ui.showTasks : update.showTasks;
       return {
         ...current,
         mux: {
@@ -1751,6 +1761,7 @@ export function updateHarnessMuxUiConfig(
               nextPaneWidthPercent === null ? null : roundUiPercent(nextPaneWidthPercent),
             repositoriesCollapsed: nextRepositoriesCollapsed,
             shortcutsCollapsed: nextShortcutsCollapsed,
+            showTasks: nextShowTasks,
             theme: current.mux.ui.theme,
           },
         },

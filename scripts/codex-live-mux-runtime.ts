@@ -622,6 +622,7 @@ async function main(): Promise<number> {
     rows: size.rows,
   });
   const configuredMuxUi = loadedConfig.config.mux.ui;
+  const showTasksEntry = configuredMuxUi.showTasks;
   const commandMenuOpenInTargets = resolveCommandMenuOpenInTargets({
     platform: process.platform,
     overrides: loadedConfig.config.mux.openIn.targets,
@@ -3814,6 +3815,7 @@ async function main(): Promise<number> {
     },
     rightPaneRender: {
       workspace,
+      showTasks: showTasksEntry,
       repositories,
       taskManager,
       conversationPane,
@@ -3847,6 +3849,7 @@ async function main(): Promise<number> {
       processUsageBySessionId: () => processUsageRefreshService.readonlyUsage(),
       shortcutBindings,
       loadingGitSummary: GIT_SUMMARY_LOADING,
+      showTasksEntry,
       activeConversationId: () => conversationManager.activeConversationId,
       orderedConversationIds: () => conversationManager.orderedIds(),
     },
@@ -4091,7 +4094,11 @@ async function main(): Promise<number> {
     toggleCommandMenu,
     firstDirectoryForRepositoryGroup,
     enterHomePane,
-    enterTasksPane,
+    ...(showTasksEntry
+      ? {
+          enterTasksPane,
+        }
+      : {}),
     enterProjectPane,
     queuePersistMuxUiState,
     repositoryGroupIdForDirectory,

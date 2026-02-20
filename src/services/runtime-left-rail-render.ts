@@ -45,6 +45,7 @@ interface LeftRailPaneLike<
     repositorySelectionEnabled: boolean;
     homeSelectionEnabled: boolean;
     tasksSelectionEnabled: boolean;
+    showTasksEntry: boolean;
     repositoriesCollapsed: boolean;
     collapsedRepositoryGroupIds: ReadonlySet<string>;
     shortcutsCollapsed: boolean;
@@ -94,6 +95,7 @@ interface RuntimeLeftRailRenderOptions<
   readonly processUsageBySessionId: () => ReadonlyMap<string, TProcessUsage>;
   readonly shortcutBindings: TShortcutBindings;
   readonly loadingGitSummary: TGitSummary;
+  readonly showTasksEntry?: boolean;
   readonly activeConversationId: () => string | null;
   readonly orderedConversationIds: () => readonly string[];
 }
@@ -148,6 +150,7 @@ export class RuntimeLeftRailRender<
       repositorySelectionEnabled: this.options.workspace.leftNavSelection.kind === 'repository',
       homeSelectionEnabled: this.options.workspace.leftNavSelection.kind === 'home',
       tasksSelectionEnabled: this.options.workspace.leftNavSelection.kind === 'tasks',
+      showTasksEntry: this.options.showTasksEntry ?? true,
       repositoriesCollapsed: this.options.workspace.repositoriesCollapsed,
       collapsedRepositoryGroupIds:
         this.options.repositoryManager.readonlyCollapsedRepositoryGroupIds(),

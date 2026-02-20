@@ -13,7 +13,7 @@ It is built for people who want to move faster than a single chat window: implem
 - Built-in diff subcommand (`harness diff`) with interactive pager-by-default UX, explicit scrollback output mode (`--no-pager`), syntax-aware rendering, and rpc/json event modes for automation.
 - Long-running work survives reconnects through a detached gateway.
 - Gateway control is resilient: lifecycle operations are lock-serialized per session, and missing stale records can be recovered automatically.
-- Fast left-rail navigation across `Home`, `Tasks`, repositories, projects, and threads with automatic, readable thread titles.
+- Fast left-rail navigation across `Home`, repositories, projects, and threads, with optional `Tasks` view and automatic, readable thread titles.
 - Built-in GitHub actions (`Open GitHub`, `Show My Open Pull Requests`, `Open PR`, `Create PR`) from inside Harness.
 - Built-in Linear import action to create a Harness task directly from a selected Linear issue URL.
 
@@ -91,6 +91,7 @@ Common customizations:
 - Set install commands for `codex`, `claude`, `cursor`, and `critique`.
 - Configure critique launch defaults.
 - Customize keybindings.
+- Set `mux.ui.showTasks` to show or hide the `Tasks` rail entry (default: hidden).
 - Override command palette project `Open in X` targets/detection/launch commands via `mux.openIn.targets`.
 - Choose a theme preset or custom OpenCode-compatible theme file.
 

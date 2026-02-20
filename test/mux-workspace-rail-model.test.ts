@@ -337,6 +337,32 @@ void test('workspace rail model can hide repository and task controls from the r
   );
 });
 
+void test('workspace rail model can hide the tasks entry while keeping home visible', () => {
+  const rows = buildWorkspaceRailViewRows(
+    {
+      showTaskPlanningUi: true,
+      showTasksEntry: false,
+      repositories: [],
+      directories: [],
+      conversations: [],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: null,
+      nowMs: Date.parse('2026-01-01T00:00:10.000Z'),
+    },
+    18,
+  );
+
+  assert.equal(
+    rows.some((row) => row.railAction === 'home.open'),
+    true,
+  );
+  assert.equal(
+    rows.some((row) => row.railAction === 'tasks.open'),
+    false,
+  );
+});
+
 void test('workspace rail model formats finite process stats without repository rail rows', () => {
   const rows = buildWorkspaceRailViewRows(
     {
