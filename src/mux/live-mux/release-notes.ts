@@ -16,7 +16,7 @@ const DEFAULT_RELEASE_NOTES_URL = 'https://github.com/jmoyers/harness/releases';
 const DEFAULT_RELEASE_NOTES_API_URL = 'https://api.github.com/repos/jmoyers/harness/releases';
 const PACKAGE_JSON_PATH = resolve(dirname(fileURLToPath(import.meta.url)), '../../../package.json');
 
-export const RELEASE_NOTES_STATE_VERSION = 1;
+const RELEASE_NOTES_STATE_VERSION = 1;
 
 interface ParsedSemver {
   readonly major: number;
@@ -38,7 +38,7 @@ export interface ReleaseNotesState {
   readonly dismissedLatestTag: string | null;
 }
 
-export interface ReleaseNotesPromptRelease {
+interface ReleaseNotesPromptRelease {
   readonly tag: string;
   readonly name: string;
   readonly url: string;
@@ -168,7 +168,10 @@ export function compareSemverTags(leftTag: string, rightTag: string): number {
   return comparePrerelease(left.prerelease, right.prerelease);
 }
 
-function previewLinesForBody(body: string, maxLines: number): {
+function previewLinesForBody(
+  body: string,
+  maxLines: number,
+): {
   readonly lines: readonly string[];
   readonly truncated: boolean;
 } {
@@ -230,7 +233,9 @@ function parseGitHubReleaseList(raw: unknown): readonly NormalizedGitHubRelease[
 export function resolveReleaseNotesPrompt(
   options: ResolveReleaseNotesPromptOptions,
 ): ReleaseNotesPrompt | null {
-  const sorted = [...options.releases].sort((left, right) => compareSemverTags(right.tag, left.tag));
+  const sorted = [...options.releases].sort((left, right) =>
+    compareSemverTags(right.tag, left.tag),
+  );
   if (sorted.length === 0) {
     return null;
   }

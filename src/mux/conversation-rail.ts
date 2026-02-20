@@ -12,6 +12,7 @@ import {
   renderUiSurfaceAnsiRows,
 } from '../ui/surface.ts';
 import { paintUiRow } from '../ui/kit.ts';
+import { getActiveMuxTheme } from '../ui/mux-theme.ts';
 
 export interface ConversationRailSessionSummary {
   readonly sessionId: string;
@@ -194,56 +195,6 @@ export function buildConversationRailLines(
   return rows.map((row) => padOrTrimDisplay(row.text, safeWidth));
 }
 
-const HEADER_ROW_STYLE = {
-  fg: { kind: 'indexed', index: 250 } as const,
-  bg: { kind: 'indexed', index: 236 } as const,
-  bold: false,
-};
-const NORMAL_ROW_STYLE = DEFAULT_UI_STYLE;
-const ACTIVE_ROW_STYLE = {
-  fg: { kind: 'indexed', index: 255 } as const,
-  bg: { kind: 'indexed', index: 238 } as const,
-  bold: false,
-};
-const ACTIVE_INDICATOR_STYLE = {
-  fg: { kind: 'indexed', index: 231 } as const,
-  bg: { kind: 'indexed', index: 238 } as const,
-  bold: true,
-};
-const BADGE_STYLES = {
-  'needs-input': {
-    fg: { kind: 'indexed', index: 231 } as const,
-    bg: { kind: 'indexed', index: 166 } as const,
-    bold: true,
-  },
-  running: {
-    fg: { kind: 'indexed', index: 231 } as const,
-    bg: { kind: 'indexed', index: 24 } as const,
-    bold: true,
-  },
-  completed: {
-    fg: { kind: 'indexed', index: 231 } as const,
-    bg: { kind: 'indexed', index: 28 } as const,
-    bold: true,
-  },
-  exited: {
-    fg: { kind: 'indexed', index: 250 } as const,
-    bg: { kind: 'indexed', index: 239 } as const,
-    bold: true,
-  },
-} as const;
-const ACTIVE_TEXT_STYLE = {
-  fg: { kind: 'indexed', index: 255 } as const,
-  bg: { kind: 'indexed', index: 238 } as const,
-  bold: false,
-};
-const NORMAL_TEXT_STYLE = DEFAULT_UI_STYLE;
-const MUTED_TEXT_STYLE = {
-  fg: { kind: 'indexed', index: 245 } as const,
-  bg: { kind: 'default' } as const,
-  bold: false,
-};
-
 function badgeLabel(status: StreamSessionRuntimeStatus): string {
   if (status === 'needs-input') {
     return 'NEED';
@@ -277,40 +228,53 @@ export function renderConversationRailAnsiRows(
   const safeWidth = Math.max(1, width);
   const rows = buildConversationRailRows(sessions, activeSessionId, maxRows, order);
   const surface = createUiSurface(safeWidth, rows.length, DEFAULT_UI_STYLE);
+  const theme = getActiveMuxTheme().conversationRail;
 
   for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
     const row = rows[rowIndex]!;
     if (row.kind === 'header') {
-      paintUiRow(surface, rowIndex, row.text, HEADER_ROW_STYLE, HEADER_ROW_STYLE, 1);
+      paintUiRow(surface, rowIndex, row.text, theme.headerStyle, theme.headerStyle, 1);
       continue;
     }
 
     if (row.kind === 'empty') {
-      paintUiRow(surface, rowIndex, '', NORMAL_ROW_STYLE, NORMAL_ROW_STYLE);
+      paintUiRow(surface, rowIndex, '', theme.normalRowStyle, theme.normalRowStyle);
       continue;
     }
 
     const session = row.session!;
     const active = row.active === true;
-    fillUiRow(surface, rowIndex, active ? ACTIVE_ROW_STYLE : NORMAL_ROW_STYLE);
+    fillUiRow(surface, rowIndex, active ? theme.activeRowStyle : theme.normalRowStyle);
     drawUiText(
       surface,
       0,
       rowIndex,
       active ? '>' : ' ',
-      active ? ACTIVE_INDICATOR_STYLE : NORMAL_TEXT_STYLE,
+      active ? theme.activeIndicatorStyle : theme.normalTextStyle,
     );
-    drawUiText(surface, 2, rowIndex, badgeLabel(session.status), BADGE_STYLES[session.status]);
+    drawUiText(
+      surface,
+      2,
+      rowIndex,
+      badgeLabel(session.status),
+      session.status === 'needs-input'
+        ? theme.statusBadgeStyles.needsInput
+        : session.status === 'running'
+          ? theme.statusBadgeStyles.running
+          : session.status === 'completed'
+            ? theme.statusBadgeStyles.completed
+            : theme.statusBadgeStyles.exited,
+    );
     drawUiText(
       surface,
       7,
       rowIndex,
       rowBodyText(session),
-      active ? ACTIVE_TEXT_STYLE : NORMAL_TEXT_STYLE,
+      active ? theme.activeTextStyle : theme.normalTextStyle,
     );
 
     if (!session.live && session.attentionReason === null) {
-      drawUiText(surface, 7, rowIndex, rowBodyText(session), MUTED_TEXT_STYLE);
+      drawUiText(surface, 7, rowIndex, rowBodyText(session), theme.deadTextStyle);
     }
   }
 

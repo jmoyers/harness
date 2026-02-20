@@ -3894,7 +3894,9 @@ async function main(): Promise<number> {
       onOpenLatest: (prompt) => {
         const releaseUrl = prompt.releases[0]?.url ?? prompt.releasesPageUrl;
         const opened = openUrlInBrowser(releaseUrl);
-        setCommandNotice(opened ? 'opened release notes in browser' : `open release notes: ${releaseUrl}`);
+        setCommandNotice(
+          opened ? 'opened release notes in browser' : `open release notes: ${releaseUrl}`,
+        );
       },
       onUpdate: () => {
         runHarnessUpdateFromMenu();

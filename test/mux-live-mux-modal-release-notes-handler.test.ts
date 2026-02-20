@@ -201,7 +201,10 @@ void test('release notes modal handler supports quit dismiss outside-click and a
   prompt = PROMPT;
   assert.equal(
     handleReleaseNotesModalInput({
-      input: Buffer.from(`\u001b[<0;10;${10 + RELEASE_NOTES_UPDATE_ACTION_ROW_OFFSET + 1}M`, 'utf8'),
+      input: Buffer.from(
+        `\u001b[<0;10;${10 + RELEASE_NOTES_UPDATE_ACTION_ROW_OFFSET + 1}M`,
+        'utf8',
+      ),
       prompt,
       isQuitShortcut: () => false,
       dismissOnOutsideClick: (_input, _dismiss, onInsidePointerPress) => {

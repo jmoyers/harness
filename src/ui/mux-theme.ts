@@ -47,11 +47,28 @@ export interface MuxWorkspaceRailTheme {
   readonly statusColors: MuxWorkspaceRailStatusColors;
 }
 
+interface MuxConversationRailTheme {
+  readonly headerStyle: UiStyle;
+  readonly normalRowStyle: UiStyle;
+  readonly activeRowStyle: UiStyle;
+  readonly activeIndicatorStyle: UiStyle;
+  readonly normalTextStyle: UiStyle;
+  readonly activeTextStyle: UiStyle;
+  readonly deadTextStyle: UiStyle;
+  readonly statusBadgeStyles: {
+    readonly needsInput: UiStyle;
+    readonly running: UiStyle;
+    readonly completed: UiStyle;
+    readonly exited: UiStyle;
+  };
+}
+
 interface ActiveMuxTheme {
   readonly name: string;
   readonly mode: OpenCodeThemeMode;
   readonly modalTheme: UiModalTheme;
   readonly workspaceRail: MuxWorkspaceRailTheme;
+  readonly conversationRail: MuxConversationRailTheme;
   readonly terminalForegroundHex: string | null;
   readonly terminalBackgroundHex: string | null;
 }
@@ -168,6 +185,65 @@ const LEGACY_MUX_THEME: ActiveMuxTheme = {
       needsAction: { kind: 'indexed', index: 220 },
       starting: { kind: 'indexed', index: 110 },
       idle: { kind: 'indexed', index: 245 },
+    },
+  },
+  conversationRail: {
+    headerStyle: {
+      fg: { kind: 'indexed', index: 250 },
+      bg: { kind: 'indexed', index: 236 },
+      bold: false,
+    },
+    normalRowStyle: {
+      fg: { kind: 'default' },
+      bg: { kind: 'default' },
+      bold: false,
+    },
+    activeRowStyle: {
+      fg: { kind: 'indexed', index: 255 },
+      bg: { kind: 'indexed', index: 238 },
+      bold: false,
+    },
+    activeIndicatorStyle: {
+      fg: { kind: 'indexed', index: 231 },
+      bg: { kind: 'indexed', index: 238 },
+      bold: true,
+    },
+    normalTextStyle: {
+      fg: { kind: 'default' },
+      bg: { kind: 'default' },
+      bold: false,
+    },
+    activeTextStyle: {
+      fg: { kind: 'indexed', index: 255 },
+      bg: { kind: 'indexed', index: 238 },
+      bold: false,
+    },
+    deadTextStyle: {
+      fg: { kind: 'indexed', index: 245 },
+      bg: { kind: 'default' },
+      bold: false,
+    },
+    statusBadgeStyles: {
+      needsInput: {
+        fg: { kind: 'indexed', index: 231 },
+        bg: { kind: 'indexed', index: 166 },
+        bold: true,
+      },
+      running: {
+        fg: { kind: 'indexed', index: 231 },
+        bg: { kind: 'indexed', index: 24 },
+        bold: true,
+      },
+      completed: {
+        fg: { kind: 'indexed', index: 231 },
+        bg: { kind: 'indexed', index: 28 },
+        bold: true,
+      },
+      exited: {
+        fg: { kind: 'indexed', index: 250 },
+        bg: { kind: 'indexed', index: 239 },
+        bold: true,
+      },
     },
   },
   terminalForegroundHex: null,
@@ -290,6 +366,15 @@ function uiStyle(fgHex: string, bgHex: string | null, bold = false): UiStyle {
   };
 }
 
+function preferredForegroundHex(backgroundHex: string): string {
+  const normalized = normalizeHex(backgroundHex) ?? '#000000';
+  const red = Number.parseInt(normalized.slice(1, 3), 16);
+  const green = Number.parseInt(normalized.slice(3, 5), 16);
+  const blue = Number.parseInt(normalized.slice(5, 7), 16);
+  const luminance = 0.299 * red + 0.587 * green + 0.114 * blue;
+  return luminance > 150 ? '#111111' : '#f5f7fa';
+}
+
 function resolveThemeDocumentFromFile(
   path: string,
   readFile: (path: string) => string,
@@ -310,10 +395,12 @@ function resolveThemeDocumentFromFile(
 }
 
 function buildActiveTheme(name: string, input: OpenCodeThemeInput): ActiveMuxTheme {
+  const hasSelectedListItemText = input.document.theme['selectedListItemText'] !== undefined;
   const text = themeHex(input, 'text', FALLBACK_HEX.text);
   const textMuted = themeHex(input, 'textMuted', FALLBACK_HEX.textMuted);
   const conceal = themeHex(input, 'conceal', FALLBACK_HEX.conceal);
   const primary = themeHex(input, 'primary', FALLBACK_HEX.primary);
+  const accent = themeHex(input, 'accent', primary);
   const success = themeHex(input, 'success', FALLBACK_HEX.success);
   const error = themeHex(input, 'error', FALLBACK_HEX.error);
   const warning = themeHex(input, 'warning', FALLBACK_HEX.warning);
@@ -321,7 +408,9 @@ function buildActiveTheme(name: string, input: OpenCodeThemeInput): ActiveMuxThe
   const background = themeHex(input, 'background', FALLBACK_HEX.background);
   const backgroundPanel = themeHex(input, 'backgroundPanel', FALLBACK_HEX.backgroundPanel);
   const backgroundElement = themeHex(input, 'backgroundElement', FALLBACK_HEX.backgroundElement);
-  const syntaxFunction = themeHex(input, 'syntaxFunction', primary);
+  const selectedListItemText = themeHex(input, 'selectedListItemText', text);
+  const selectedForegroundFor = (backgroundHex: string): string =>
+    hasSelectedListItemText ? selectedListItemText : preferredForegroundHex(backgroundHex);
 
   return {
     name,
@@ -334,21 +423,36 @@ function buildActiveTheme(name: string, input: OpenCodeThemeInput): ActiveMuxThe
     },
     workspaceRail: {
       normalStyle: uiStyle(text, null, false),
-      headerStyle: uiStyle(primary, null, true),
+      headerStyle: uiStyle(text, null, true),
       activeRowStyle: uiStyle(text, backgroundElement, false),
       metaStyle: uiStyle(textMuted, null, false),
       conversationBodyStyle: uiStyle(textMuted, null, false),
-      processStyle: uiStyle(info, null, false),
-      repositoryRowStyle: uiStyle(syntaxFunction, null, false),
+      processStyle: uiStyle(textMuted, null, false),
+      repositoryRowStyle: uiStyle(text, null, false),
       mutedStyle: uiStyle(conceal, null, false),
       shortcutStyle: uiStyle(textMuted, null, false),
-      actionStyle: uiStyle(primary, backgroundElement, false),
+      actionStyle: uiStyle(accent, backgroundElement, false),
       statusColors: {
         working: hexToUiColor(success),
         exited: hexToUiColor(error),
         needsAction: hexToUiColor(warning),
-        starting: hexToUiColor(primary),
+        starting: hexToUiColor(info),
         idle: hexToUiColor(conceal),
+      },
+    },
+    conversationRail: {
+      headerStyle: uiStyle(textMuted, backgroundPanel, false),
+      normalRowStyle: uiStyle(text, null, false),
+      activeRowStyle: uiStyle(text, backgroundElement, false),
+      activeIndicatorStyle: uiStyle(accent, backgroundElement, true),
+      normalTextStyle: uiStyle(text, null, false),
+      activeTextStyle: uiStyle(text, backgroundElement, false),
+      deadTextStyle: uiStyle(conceal, null, false),
+      statusBadgeStyles: {
+        needsInput: uiStyle(selectedForegroundFor(warning), warning, true),
+        running: uiStyle(selectedForegroundFor(info), info, true),
+        completed: uiStyle(selectedForegroundFor(success), success, true),
+        exited: uiStyle(selectedForegroundFor(backgroundElement), backgroundElement, true),
       },
     },
     terminalForegroundHex: text.slice(1),

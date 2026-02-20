@@ -279,9 +279,18 @@ void test('release notes state parser validates version and field shapes', () =>
       dismissedLatestTag: 'v1.2.3',
     },
   );
-  assert.equal(parseReleaseNotesState({ version: 2, neverShow: false, dismissedLatestTag: null }), null);
-  assert.equal(parseReleaseNotesState({ version: 1, neverShow: 'no', dismissedLatestTag: null }), null);
-  assert.equal(parseReleaseNotesState({ version: 1, neverShow: false, dismissedLatestTag: 5 }), null);
+  assert.equal(
+    parseReleaseNotesState({ version: 2, neverShow: false, dismissedLatestTag: null }),
+    null,
+  );
+  assert.equal(
+    parseReleaseNotesState({ version: 1, neverShow: 'no', dismissedLatestTag: null }),
+    null,
+  );
+  assert.equal(
+    parseReleaseNotesState({ version: 1, neverShow: false, dismissedLatestTag: 5 }),
+    null,
+  );
   assert.equal(parseReleaseNotesState(null), null);
   assert.equal(parseReleaseNotesState([]), null);
   assert.equal(parseReleaseNotesState('invalid'), null);
@@ -344,10 +353,11 @@ void test('release notes state write rethrows filesystem errors after temp clean
 void test('release notes resolves runtime state path and installed package version', () => {
   const workspace = mkdtempSync(join(tmpdir(), 'harness-release-notes-path-'));
   try {
+    const xdgConfigHome = join(workspace, '.xdg');
     const env: NodeJS.ProcessEnv = {
-      XDG_CONFIG_HOME: join(workspace, '.xdg'),
+      XDG_CONFIG_HOME: xdgConfigHome,
     };
-    mkdirSync(env.XDG_CONFIG_HOME, { recursive: true });
+    mkdirSync(xdgConfigHome, { recursive: true });
     const statePath = resolveReleaseNotesStatePath('/tmp/harness-workspace', env);
     assert.equal(statePath.includes('release-notes.json'), true);
     const installedVersion = readInstalledHarnessVersion();

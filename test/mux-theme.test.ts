@@ -75,9 +75,9 @@ void test('resolveConfiguredMuxTheme resolves built-in presets and applies rgb s
   assert.equal(resolved.theme.terminalBackgroundHex, 'ffffff');
   assert.deepEqual(resolved.theme.workspaceRail.headerStyle.fg, {
     kind: 'rgb',
-    r: 5,
-    g: 80,
-    b: 174,
+    r: 36,
+    g: 41,
+    b: 47,
   });
 });
 
@@ -274,9 +274,9 @@ void test('resolveConfiguredMuxTheme handles unknown references, transparent col
   assert.equal(resolved.theme.terminalBackgroundHex, '0f1419');
   assert.deepEqual(resolved.theme.workspaceRail.headerStyle.fg, {
     kind: 'rgb',
-    r: 170,
-    g: 187,
-    b: 204,
+    r: 208,
+    g: 215,
+    b: 222,
   });
 });
 
@@ -304,8 +304,92 @@ void test('resolveConfiguredMuxTheme handles missing keys, blank refs, and non-o
   assert.equal(resolved.theme.terminalBackgroundHex, '000000');
   assert.deepEqual(resolved.theme.workspaceRail.headerStyle.fg, {
     kind: 'rgb',
-    r: 108,
-    g: 182,
+    r: 208,
+    g: 215,
+    b: 222,
+  });
+});
+
+void test('resolveConfiguredMuxTheme falls back when dark/light variant object is malformed', () => {
+  const resolved = resolveConfiguredMuxTheme({
+    config: {
+      preset: 'github',
+      mode: 'dark',
+      customThemePath: 'themes/invalid-variant.json',
+    },
+    cwd: '/workspace/project',
+    readFile: () =>
+      JSON.stringify({
+        theme: {
+          text: {
+            dark: '#112233',
+          },
+          textMuted: '#445566',
+          conceal: '#778899',
+          primary: '#123456',
+          success: '#00aa00',
+          error: '#aa0000',
+          warning: '#aaaa00',
+          info: '#0099aa',
+          background: '#010203',
+          backgroundPanel: '#111111',
+          backgroundElement: '#222222',
+        },
+      }),
+  });
+  assert.equal(resolved.theme.name, 'custom:themes/invalid-variant.json');
+  assert.equal(resolved.theme.terminalForegroundHex, 'd0d7de');
+});
+
+void test('resolveConfiguredMuxTheme maps semantic categories to calm content + bright actions/status', () => {
+  const resolved = resolveConfiguredMuxTheme({
+    config: {
+      preset: 'github',
+      mode: 'dark',
+      customThemePath: 'themes/semantic-categories.json',
+    },
+    cwd: '/workspace/project',
+    readFile: () =>
+      JSON.stringify({
+        theme: {
+          text: '#c0c1c2',
+          textMuted: '#7a7b7c',
+          conceal: '#565758',
+          primary: '#223344',
+          accent: '#2ecc71',
+          success: '#11aa44',
+          error: '#ee3344',
+          warning: '#ffcc00',
+          info: '#3399ff',
+          background: '#0a0b0c',
+          backgroundPanel: '#111213',
+          backgroundElement: '#1a1b1c',
+        },
+      }),
+  });
+  assert.equal(resolved.theme.name, 'custom:themes/semantic-categories.json');
+  assert.deepEqual(resolved.theme.workspaceRail.headerStyle.fg, {
+    kind: 'rgb',
+    r: 192,
+    g: 193,
+    b: 194,
+  });
+  assert.deepEqual(resolved.theme.workspaceRail.actionStyle.fg, {
+    kind: 'rgb',
+    r: 46,
+    g: 204,
+    b: 113,
+  });
+  assert.deepEqual(resolved.theme.workspaceRail.processStyle.fg, {
+    kind: 'rgb',
+    r: 122,
+    g: 123,
+    b: 124,
+  });
+  assert.deepEqual(resolved.theme.conversationRail.statusBadgeStyles.running.bg, {
+    kind: 'rgb',
+    r: 51,
+    g: 153,
     b: 255,
   });
 });

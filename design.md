@@ -775,6 +775,7 @@ Design constraints:
   - `preset` selects a built-in OpenCode-compatible preset set mirrored from canonical upstream OpenCode themes, with special value `default` for the legacy default mux theme
   - `mode` selects `dark` or `light` variant resolution
   - `customThemePath` optionally loads a local OpenCode theme JSON file (`https://opencode.ai/theme.json`) and overrides preset colors when valid
+  - semantic role mapping is mandatory for rail/modal rendering: calm/neutral content uses `text`/`textMuted`/`conceal`, interactive controls use `accent`/`primary`, and runtime-state indicators use `success`/`warning`/`error`/`info`
   - invalid custom files or unknown presets must fall back deterministically to a safe preset while keeping mux startup healthy
 - Config lifecycle:
   - on first run, bootstrap config by copying the checked-in template (`src/config/harness.config.template.jsonc`)

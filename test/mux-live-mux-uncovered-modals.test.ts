@@ -1406,7 +1406,10 @@ void test('modal overlay builders return null for missing state and build overla
     },
     theme,
   );
-  assert.equal(apiKeyErrorOverlay?.rows.some((row) => row.includes('error: invalid token')), true);
+  assert.equal(
+    apiKeyErrorOverlay?.rows.some((row) => row.includes('error: invalid token')),
+    true,
+  );
   const apiKeyDefaultOverlay = buildApiKeyModalOverlay(
     80,
     24,
@@ -1483,13 +1486,22 @@ void test('modal overlay builders return null for missing state and build overla
     theme,
   );
   assert.notEqual(releaseNotesOverlay, null);
-  assert.equal(releaseNotesOverlay?.rows.some((row) => row.includes("What's New")), true);
-  assert.equal(releaseNotesOverlay?.rows.some((row) => row.includes('cmd+click: https://')), true);
+  assert.equal(
+    releaseNotesOverlay?.rows.some((row) => row.includes("What's New")),
+    true,
+  );
+  assert.equal(
+    releaseNotesOverlay?.rows.some((row) => row.includes('cmd+click: https://')),
+    true,
+  );
   assert.equal(
     releaseNotesOverlay?.rows.some((row) => row.includes(RELEASE_NOTES_UPDATE_ACTION_LABEL)),
     true,
   );
-  assert.equal(releaseNotesOverlay?.rows.some((row) => row.includes('enter dismiss')), true);
+  assert.equal(
+    releaseNotesOverlay?.rows.some((row) => row.includes('enter dismiss')),
+    true,
+  );
 
   const releaseNotesEmptyOverlay = buildReleaseNotesModalOverlay(
     80,
