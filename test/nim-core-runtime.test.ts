@@ -104,6 +104,19 @@ test('nim runtime supports session lifecycle and tenant/user enforcement', async
     model: 'anthropic/claude-3-5-haiku-latest',
     reason: 'manual',
   });
+
+  await assert.rejects(
+    async () => {
+      await runtime.switchModel({
+        sessionId: session.sessionId,
+        model: 'anthropic/unsupported-model',
+        reason: 'manual',
+      });
+    },
+    {
+      message: 'model not registered for provider anthropic: anthropic/unsupported-model',
+    },
+  );
 });
 
 test('nim runtime reuses run for idempotency key and emits reuse event', async () => {

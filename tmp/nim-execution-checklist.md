@@ -7,7 +7,9 @@ Status Date: 2026-02-20
 ## Execution Notes
 - 2026-02-20: Phase A scaffolding created for `nim-core`, `nim-ui-core`, and `nim-test-tui`.
 - 2026-02-20: New unit tests pass for schema/projection/independence.
-- 2026-02-20: `bun run test:integration:nim:haiku` currently fails in this environment due Anthropic Haiku model availability (`404 not_found_error` for tested Haiku IDs).
+- 2026-02-20: Provider router + pluggable provider-driver contracts added in `nim-core` with runtime integration tests.
+- 2026-02-20: Added first `harness-ai` Anthropic provider driver scaffolding (`createAnthropicNimProviderDriver`) with deterministic mapping tests.
+- 2026-02-20: Updated Haiku integration smoke to include reachable fallback (`claude-3-haiku-20240307`); smoke now passes in this environment.
 
 ## 0. Operating Rules
 - [ ] Keep this checklist branch-local and temporary only.
@@ -39,7 +41,7 @@ Status Date: 2026-02-20
 - [x] Add env-gated live Anthropic Haiku integration smoke.
 - [x] Assert tool-call lifecycle visibility with Haiku path.
 - [ ] Assert thinking/tool/assistant state transitions are observable in Haiku path.
-- [ ] Run Haiku smoke in every integration sweep on this branch.
+- [x] Run Haiku smoke in every integration sweep on this branch.
 
 ## 5. Functional Execution (per spec)
 - [ ] Execute UC-01 through UC-12 progressively.
@@ -47,12 +49,12 @@ Status Date: 2026-02-20
 - [ ] Verify debug and seamless projections derive from same canonical events.
 
 ## 6. Quality Gates
-- [ ] `bun run format:check`
-- [ ] `bun run lint`
-- [ ] `bun run typecheck`
-- [ ] `bun run deadcode`
-- [ ] `bun run test:coverage`
-- [ ] `bun run test:integration:nim:haiku` (when env configured)
+- [x] `bun run format:check`
+- [x] `bun run lint`
+- [x] `bun run typecheck`
+- [x] `bun run deadcode`
+- [x] `bun run test:coverage`
+- [x] `bun run test:integration:nim:haiku` (when env configured)
 
 ## 7. Finalization
 - [ ] Summarize completed checkpoints and evidence.

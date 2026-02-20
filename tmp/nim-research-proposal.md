@@ -20,6 +20,13 @@ Build a first-party, platform-agnostic agent runtime on top of `@harness/ai` tha
 
 This document is systems-first and maps public APIs to functional requirements with verifiable acceptance criteria.
 
+## 1.1 Current Branch Status (`jm/nim`)
+
+- `nim-core` now includes a provider router and driver contract (`NimProviderRouter`, `NimProviderDriver`) and runtime integration path.
+- `InMemoryNimRuntime` routes provider-backed turns through registered provider drivers, with fallback mock execution when no driver is registered.
+- First provider-driver scaffold exists for Anthropic on top of `packages/harness-ai` (`createAnthropicNimProviderDriver`).
+- Live Haiku smoke now includes fallback model `claude-3-haiku-20240307` for environments where `claude-3-5-haiku-*` IDs are unavailable.
+
 ## 2. Sources Reviewed
 
 ### Harness baseline

@@ -32,6 +32,11 @@ import type {
   TurnResult,
 } from './contracts.ts';
 import type { NimEventEnvelope } from './events.ts';
+import {
+  NimProviderRouter,
+  type NimProviderDriver,
+  type NimProviderTurnEvent,
+} from './provider-router.ts';
 import { projectEventToUiEvents } from '../../nim-ui-core/src/projection.ts';
 
 type SessionState = {
@@ -64,6 +69,7 @@ type RunState = {
   readonly idempotencyKey: string;
   readonly input: string;
   readonly traceId: string;
+  readonly abortController: AbortController;
   stepCounter: number;
   active: boolean;
   streaming: boolean;
@@ -138,7 +144,7 @@ function sleep(ms: number): Promise<void> {
 export class InMemoryNimRuntime implements NimRuntime {
   private sessions = new Map<string, SessionState>();
   private runs = new Map<string, RunState>();
-  private providers = new Map<string, NimProvider>();
+  private providerRouter: NimProviderRouter;
   private tools: readonly NimToolDefinition[] = [];
   private toolPolicy: NimToolPolicy = {
     hash: 'policy-default',
@@ -154,7 +160,12 @@ export class InMemoryNimRuntime implements NimRuntime {
   private globalLane: Promise<void> = Promise.resolve();
   private sessionLanes = new Map<string, Promise<void>>();
 
+  public constructor(input?: { providerRouter?: NimProviderRouter }) {
+    this.providerRouter = input?.providerRouter ?? new NimProviderRouter();
+  }
+
   public async startSession(input: StartSessionInput): Promise<SessionHandle> {
+    this.providerRouter.resolveModel(input.model);
     const sessionId = randomUUID();
     const lane = input.lane ?? `session:${sessionId}`;
     const next: SessionState = {
@@ -219,10 +230,15 @@ export class InMemoryNimRuntime implements NimRuntime {
   }
 
   public registerProvider(provider: NimProvider): void {
-    this.providers.set(provider.id, provider);
+    this.providerRouter.registerProvider(provider);
+  }
+
+  public registerProviderDriver(driver: NimProviderDriver): void {
+    this.providerRouter.registerDriver(driver);
   }
 
   public async switchModel(input: SwitchModelInput): Promise<void> {
+    this.providerRouter.resolveModel(input.model);
     const session = this.requireSession(input.sessionId);
     session.model = input.model;
     this.appendSessionEvent(session, {
@@ -301,6 +317,7 @@ export class InMemoryNimRuntime implements NimRuntime {
       idempotencyKey: input.idempotencyKey,
       input: input.input,
       traceId: randomUUID(),
+      abortController: new AbortController(),
       stepCounter: 0,
       active: true,
       streaming: true,
@@ -612,99 +629,24 @@ export class InMemoryNimRuntime implements NimRuntime {
         source: 'system',
         state: 'responding',
       });
-      this.appendRunEvent(session, run, {
-        type: 'assistant.state.changed',
-        source: 'system',
-        state: 'thinking',
-      });
-      this.appendRunEvent(session, run, {
-        type: 'provider.thinking.started',
-        source: 'provider',
-        state: 'thinking',
-      });
 
-      await sleep(15);
-      if (run.aborted) {
-        await this.finalizeRun(session, run, 'aborted');
-        return;
-      }
+      const resolvedModel = this.providerRouter.resolveModel(session.model);
+      const terminalState =
+        resolvedModel.driver === undefined
+          ? await this.executeRunWithMockProvider(session, run)
+          : await this.executeRunWithProviderDriver(
+              session,
+              run,
+              resolvedModel.driver,
+              resolvedModel.parsedModel.providerModelId,
+            );
 
-      const shouldUseTool = run.input.includes('use-tool');
-      if (shouldUseTool) {
-        const toolCallId = randomUUID();
-        const toolName = this.tools[0]?.name ?? 'mock-tool';
-
-        this.appendRunEvent(session, run, {
-          type: 'assistant.state.changed',
-          source: 'system',
-          state: 'tool-calling',
-          toolCallId,
-        });
-        this.appendRunEvent(session, run, {
-          type: 'tool.call.started',
-          source: 'tool',
-          state: 'tool-calling',
-          toolCallId,
-          data: {
-            toolName,
-          },
-        });
-
-        await sleep(1);
-        if (run.aborted) {
-          await this.finalizeRun(session, run, 'aborted');
-          return;
-        }
-
-        this.appendRunEvent(session, run, {
-          type: 'tool.call.completed',
-          source: 'tool',
-          state: 'tool-calling',
-          toolCallId,
-          data: {
-            toolName,
-          },
-        });
-        this.appendRunEvent(session, run, {
-          type: 'tool.result.emitted',
-          source: 'tool',
-          state: 'responding',
-          toolCallId,
-        });
-      }
-
-      this.appendRunEvent(session, run, {
-        type: 'provider.thinking.completed',
-        source: 'provider',
-        state: 'responding',
-      });
-
-      if (run.aborted) {
-        await this.finalizeRun(session, run, 'aborted');
-        return;
-      }
-
-      const steerSuffix = run.steers.length > 0 ? ` [steer:${run.steers.join(' | ')}]` : '';
-      this.appendRunEvent(session, run, {
-        type: 'assistant.output.delta',
-        source: 'provider',
-        state: 'responding',
-        data: {
-          text: `echo:${run.input}${steerSuffix}`,
-        },
-      });
-      this.appendRunEvent(session, run, {
-        type: 'assistant.output.completed',
-        source: 'provider',
-        state: 'responding',
-      });
       this.appendRunEvent(session, run, {
         type: 'assistant.state.changed',
         source: 'system',
         state: 'idle',
       });
-
-      await this.finalizeRun(session, run, 'completed');
+      await this.finalizeRun(session, run, terminalState);
     } catch (error) {
       if (run.active) {
         this.appendRunEvent(session, run, {
@@ -718,6 +660,298 @@ export class InMemoryNimRuntime implements NimRuntime {
         await this.finalizeRun(session, run, 'failed');
       }
     }
+  }
+
+  private async executeRunWithMockProvider(
+    session: SessionState,
+    run: RunState,
+  ): Promise<'completed' | 'aborted'> {
+    this.appendRunEvent(session, run, {
+      type: 'assistant.state.changed',
+      source: 'system',
+      state: 'thinking',
+    });
+    this.appendRunEvent(session, run, {
+      type: 'provider.thinking.started',
+      source: 'provider',
+      state: 'thinking',
+    });
+
+    await sleep(15);
+    if (run.aborted) {
+      return 'aborted';
+    }
+
+    const shouldUseTool = run.input.includes('use-tool');
+    if (shouldUseTool) {
+      const toolCallId = randomUUID();
+      const toolName = this.tools[0]?.name ?? 'mock-tool';
+
+      this.appendRunEvent(session, run, {
+        type: 'assistant.state.changed',
+        source: 'system',
+        state: 'tool-calling',
+        toolCallId,
+      });
+      this.appendRunEvent(session, run, {
+        type: 'tool.call.started',
+        source: 'tool',
+        state: 'tool-calling',
+        toolCallId,
+        data: {
+          toolName,
+        },
+      });
+
+      await sleep(1);
+      if (run.aborted) {
+        return 'aborted';
+      }
+
+      this.appendRunEvent(session, run, {
+        type: 'tool.call.completed',
+        source: 'tool',
+        state: 'tool-calling',
+        toolCallId,
+        data: {
+          toolName,
+        },
+      });
+      this.appendRunEvent(session, run, {
+        type: 'tool.result.emitted',
+        source: 'tool',
+        state: 'responding',
+        toolCallId,
+      });
+    }
+
+    this.appendRunEvent(session, run, {
+      type: 'provider.thinking.completed',
+      source: 'provider',
+      state: 'responding',
+    });
+
+    if (run.aborted) {
+      return 'aborted';
+    }
+
+    const steerSuffix = run.steers.length > 0 ? ` [steer:${run.steers.join(' | ')}]` : '';
+    this.appendRunEvent(session, run, {
+      type: 'assistant.output.delta',
+      source: 'provider',
+      state: 'responding',
+      data: {
+        text: `echo:${run.input}${steerSuffix}`,
+      },
+    });
+    this.appendRunEvent(session, run, {
+      type: 'assistant.output.completed',
+      source: 'provider',
+      state: 'responding',
+    });
+
+    return 'completed';
+  }
+
+  private async executeRunWithProviderDriver(
+    session: SessionState,
+    run: RunState,
+    driver: NimProviderDriver,
+    providerModelId: string,
+  ): Promise<'completed' | 'aborted' | 'failed'> {
+    let terminalState: 'completed' | 'aborted' | 'failed' = 'completed';
+    for await (const providerEvent of driver.runTurn({
+      modelRef: session.model,
+      providerModelId,
+      input: run.input,
+      tools: this.tools,
+      abortSignal: run.abortController.signal,
+    })) {
+      if (run.aborted) {
+        return 'aborted';
+      }
+      terminalState = this.appendProviderTurnEvent(session, run, providerEvent);
+      if (terminalState === 'failed') {
+        return terminalState;
+      }
+    }
+    return run.aborted ? 'aborted' : terminalState;
+  }
+
+  private appendProviderTurnEvent(
+    session: SessionState,
+    run: RunState,
+    event: NimProviderTurnEvent,
+  ): 'completed' | 'failed' {
+    if (event.type === 'provider.thinking.started') {
+      this.appendRunEvent(session, run, {
+        type: 'assistant.state.changed',
+        source: 'system',
+        state: 'thinking',
+      });
+      this.appendRunEvent(session, run, {
+        type: 'provider.thinking.started',
+        source: 'provider',
+        state: 'thinking',
+      });
+      return 'completed';
+    }
+
+    if (event.type === 'provider.thinking.delta') {
+      this.appendRunEvent(session, run, {
+        type: 'provider.thinking.delta',
+        source: 'provider',
+        state: 'thinking',
+        data: {
+          text: event.text,
+        },
+      });
+      return 'completed';
+    }
+
+    if (event.type === 'provider.thinking.completed') {
+      this.appendRunEvent(session, run, {
+        type: 'provider.thinking.completed',
+        source: 'provider',
+        state: 'responding',
+      });
+      this.appendRunEvent(session, run, {
+        type: 'assistant.state.changed',
+        source: 'system',
+        state: 'responding',
+      });
+      return 'completed';
+    }
+
+    if (event.type === 'tool.call.started') {
+      this.appendRunEvent(session, run, {
+        type: 'assistant.state.changed',
+        source: 'system',
+        state: 'tool-calling',
+        toolCallId: event.toolCallId,
+      });
+      this.appendRunEvent(session, run, {
+        type: 'tool.call.started',
+        source: 'tool',
+        state: 'tool-calling',
+        toolCallId: event.toolCallId,
+        data: {
+          toolName: event.toolName,
+        },
+      });
+      return 'completed';
+    }
+
+    if (event.type === 'tool.call.arguments.delta') {
+      this.appendRunEvent(session, run, {
+        type: 'tool.call.arguments.delta',
+        source: 'tool',
+        state: 'tool-calling',
+        toolCallId: event.toolCallId,
+        data: {
+          delta: event.delta,
+        },
+      });
+      return 'completed';
+    }
+
+    if (event.type === 'tool.call.completed') {
+      this.appendRunEvent(session, run, {
+        type: 'tool.call.completed',
+        source: 'tool',
+        state: 'tool-calling',
+        toolCallId: event.toolCallId,
+        data: {
+          toolName: event.toolName,
+        },
+      });
+      this.appendRunEvent(session, run, {
+        type: 'assistant.state.changed',
+        source: 'system',
+        state: 'responding',
+      });
+      return 'completed';
+    }
+
+    if (event.type === 'tool.call.failed') {
+      this.appendRunEvent(session, run, {
+        type: 'tool.call.failed',
+        source: 'tool',
+        state: 'responding',
+        toolCallId: event.toolCallId,
+        data: {
+          toolName: event.toolName,
+          error: event.error,
+        },
+      });
+      this.appendRunEvent(session, run, {
+        type: 'assistant.state.changed',
+        source: 'system',
+        state: 'responding',
+      });
+      return 'completed';
+    }
+
+    if (event.type === 'tool.result.emitted') {
+      this.appendRunEvent(session, run, {
+        type: 'tool.result.emitted',
+        source: 'tool',
+        state: 'responding',
+        toolCallId: event.toolCallId,
+        data: {
+          toolName: event.toolName,
+          ...(event.output !== undefined ? { output: event.output } : {}),
+        },
+      });
+      return 'completed';
+    }
+
+    if (event.type === 'assistant.output.delta') {
+      this.appendRunEvent(session, run, {
+        type: 'assistant.output.delta',
+        source: 'provider',
+        state: 'responding',
+        data: {
+          text: event.text,
+        },
+      });
+      return 'completed';
+    }
+
+    if (event.type === 'assistant.output.completed') {
+      this.appendRunEvent(session, run, {
+        type: 'assistant.output.completed',
+        source: 'provider',
+        state: 'responding',
+      });
+      return 'completed';
+    }
+
+    if (event.type === 'provider.turn.error') {
+      this.appendRunEvent(session, run, {
+        type: 'turn.failed',
+        source: 'system',
+        state: 'idle',
+        data: {
+          message: event.message,
+        },
+      });
+      return 'failed';
+    }
+
+    if (event.type === 'provider.turn.finished' && event.finishReason === 'error') {
+      this.appendRunEvent(session, run, {
+        type: 'turn.failed',
+        source: 'system',
+        state: 'idle',
+        data: {
+          message: 'provider finished with error',
+        },
+      });
+      return 'failed';
+    }
+
+    return 'completed';
   }
 
   private async finalizeRun(
@@ -791,6 +1025,7 @@ export class InMemoryNimRuntime implements NimRuntime {
 
     run.aborted = true;
     run.abortReason = reason;
+    run.abortController.abort(reason);
 
     this.appendRunEvent(session, run, {
       type: 'turn.abort.requested',
