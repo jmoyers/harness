@@ -18,7 +18,7 @@ void test('parseDiffUiArgs resolves defaults', () => {
   assert.equal(parsed.wordDiffMode, 'auto');
   assert.equal(parsed.noRenames, true);
   assert.equal(parsed.renameLimit, null);
-  assert.equal(parsed.pager, false);
+  assert.equal(parsed.pager, true);
   assert.equal(parsed.width, null);
   assert.equal(parsed.height, null);
 });
@@ -137,6 +137,7 @@ void test('parseDiffUiArgs applies range defaults and validates incompatible opt
   });
   assert.equal(staged.mode, 'staged');
   assert.equal(staged.color, false);
+  assert.equal(staged.pager, false);
 
   assert.throws(
     () =>
@@ -248,6 +249,7 @@ void test('diffUiUsage documents supported flags', () => {
   assert.equal(usage.includes('--max-runtime-ms <n>'), true);
   assert.equal(usage.includes('--base [<ref>] [--head <ref>]'), true);
   assert.equal(usage.includes('--pager'), true);
+  assert.equal(usage.includes('--no-pager'), true);
   assert.equal(
     parseDiffUiArgs(['--renames', '--no-renames'], { cwd: '/repo', env: {} }).noRenames,
     true,

@@ -362,3 +362,25 @@ void test('runDiffUiCli supports interactive pager mode', async () => {
   assert.equal(stdout.includes('\u001b[?1049l'), true);
   assert.equal(stderr, '');
 });
+
+void test('runDiffUiCli honors --no-pager in tty mode', async () => {
+  let stdout = '';
+  const result = await runDiffUiCli({
+    argv: ['--no-pager', '--theme', 'plain'],
+    cwd: '/repo',
+    env: {},
+    writeStdout: (text) => {
+      stdout += text;
+    },
+    writeStderr: () => {},
+    createBuilder,
+    isStdoutTty: true,
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(
+    result.events.some((event) => event.type === 'session.quit'),
+    false,
+  );
+  assert.equal(stdout.includes('File 1/2: src/a.ts'), true);
+});

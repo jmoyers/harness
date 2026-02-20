@@ -903,10 +903,10 @@ Left-rail rendering/style principles:
   - `highlight.ts`: lightweight syntax tokenization/render merge
   - `render.ts`: scrollback document rendering plus split/unified viewport rendering with theme roles
   - `pager.ts`: interactive pager event loop, terminal lifecycle handling, and key-to-command mapping
-  - `runtime.ts`: diff build orchestration, default print mode, pager dispatch, and rpc-stdio command/event flow
+  - `runtime.ts`: diff build orchestration, pager-by-default dispatch for interactive terminals, and rpc-stdio command/event flow
 - Subcommand mode supports:
-  - default scrollback-friendly document print output
-  - interactive pager mode (`--pager`) with reducer-driven navigation and resize support
+  - interactive pager mode by default on interactive terminals (or explicit `--pager`) with reducer-driven navigation and resize support
+  - explicit scrollback-friendly document print output (`--no-pager`)
   - NDJSON event emission (`--json-events`)
   - programmatic command loop over stdio (`--rpc-stdio`)
 - Human and automation parity is preserved by routing navigation/finder/view operations through a shared command/state reducer path.

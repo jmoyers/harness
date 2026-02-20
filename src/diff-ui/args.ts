@@ -101,7 +101,7 @@ export function parseDiffUiArgs(
   let syntaxMode: DiffUiSyntaxMode = 'auto';
   let wordDiffMode: DiffUiWordDiffMode = 'auto';
   let color = stdoutIsTty && env.NO_COLOR === undefined;
-  let pager = false;
+  let pagerExplicit: boolean | null = null;
   let watch = false;
   let jsonEvents = false;
   let rpcStdio = false;
@@ -163,11 +163,11 @@ export function parseDiffUiArgs(
       continue;
     }
     if (arg === '--pager') {
-      pager = true;
+      pagerExplicit = true;
       continue;
     }
     if (arg === '--no-pager') {
-      pager = false;
+      pagerExplicit = false;
       continue;
     }
     if (arg === '--json-events') {
@@ -273,7 +273,9 @@ export function parseDiffUiArgs(
   if (mode !== 'range' && (baseRef !== null || headRef !== null)) {
     throw new Error('--base/--head are only valid for range mode');
   }
-  if (pager && (jsonEvents || rpcStdio || snapshot)) {
+  const pagerIncompatibleMode = jsonEvents || rpcStdio || snapshot;
+  const pager = pagerExplicit === null ? stdoutIsTty && !pagerIncompatibleMode : pagerExplicit;
+  if (pager && pagerIncompatibleMode) {
     throw new Error('--pager cannot be combined with --json-events, --rpc-stdio, or --snapshot');
   }
 
@@ -317,6 +319,7 @@ export function diffUiUsage(): string {
     '  --theme <name>',
     '  --no-color',
     '  --pager',
+    '  --no-pager',
     '  --width <n>',
     '  --height <n>',
     '',
