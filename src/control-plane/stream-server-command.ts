@@ -420,9 +420,7 @@ interface ExecuteCommandContext {
     enabled: boolean;
   };
   readonly linearApi: {
-    issueByIdentifier(input: {
-      identifier: string;
-    }): Promise<{
+    issueByIdentifier(input: { identifier: string }): Promise<{
       identifier: string;
       title: string;
       description: string | null;
@@ -577,9 +575,7 @@ function parseGitHubOwnerRepo(remoteUrl: string): { owner: string; repo: string 
   return null;
 }
 
-function parseLinearIssueIdentifierFromUrl(
-  issueUrl: string,
-): {
+function parseLinearIssueIdentifierFromUrl(issueUrl: string): {
   identifier: string;
 } | null {
   const trimmed = issueUrl.trim();

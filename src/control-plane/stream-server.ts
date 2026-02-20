@@ -1155,9 +1155,7 @@ export class ControlPlaneStreamServer {
     }): Promise<GitHubRemotePullRequest>;
   };
   private readonly linearApi: {
-    issueByIdentifier(input: {
-      identifier: string;
-    }): Promise<{
+    issueByIdentifier(input: { identifier: string }): Promise<{
       identifier: string;
       title: string;
       description: string | null;
@@ -2671,9 +2669,7 @@ export class ControlPlaneStreamServer {
     return await response.json();
   }
 
-  private async fetchLinearIssueByIdentifier(input: {
-    identifier: string;
-  }): Promise<{
+  private async fetchLinearIssueByIdentifier(input: { identifier: string }): Promise<{
     identifier: string;
     title: string;
     description: string | null;
@@ -2689,22 +2685,25 @@ export class ControlPlaneStreamServer {
       apiKey: token,
       apiUrl: this.linear.apiBaseUrl,
     });
-    const response = await client.client.rawRequest<{
-      issues?: {
-        nodes?: Array<{
-          identifier?: string;
-          title?: string;
-          description?: string | null;
-          url?: string | null;
-          state?: {
-            name?: string | null;
-          } | null;
-          team?: {
-            key?: string | null;
-          } | null;
-        }>;
-      };
-    }, { identifier: string }>(
+    const response = await client.client.rawRequest<
+      {
+        issues?: {
+          nodes?: Array<{
+            identifier?: string;
+            title?: string;
+            description?: string | null;
+            url?: string | null;
+            state?: {
+              name?: string | null;
+            } | null;
+            team?: {
+              key?: string | null;
+            } | null;
+          }>;
+        };
+      },
+      { identifier: string }
+    >(
       `
         query HarnessLinearIssueImport($identifier: String!) {
           issues(filter: { identifier: { eq: $identifier } }, first: 1) {
