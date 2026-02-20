@@ -34,6 +34,7 @@ This project has two core documents:
 
 - Commit often, but only after verified output.
 - Every commit must correspond to a concrete, demonstrated checkpoint (tests, benchmark gate, or acceptance check).
+- Local Git `pre-commit` must run `bun run verify`; commits are blocked when `verify` fails.
 - Do not batch unrelated changes into a single commit.
 - Push whenever you commit unless explicitly told not to push.
 

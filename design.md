@@ -946,6 +946,7 @@ Subsystems where mature dependencies are acceptable because they are outside dir
 
 - Behavior equivalence is mandatory: refactors must preserve interaction semantics (input routing, pane behavior, control-plane parity).
 - Verification is gate-based and continuous: lint, typecheck, dead-code, full tests, and coverage must stay green.
+- Local commit flow uses a repository-managed Git `pre-commit` hook (`core.hooksPath=.githooks`) that runs `bun run verify` and blocks commits on failures.
 - Coverage is non-negotiable: all code paths must remain covered at 100% lines/functions/branches.
 - Terminal parity is regression-tested with deterministic snapshots and parity scenes, not visual guesswork.
 - Latency-sensitive changes require before/after benchmark evidence from the mux hot-path harness.
