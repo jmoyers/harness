@@ -61,6 +61,17 @@ function emitRenderedLines(lines: readonly string[], writeStdout: (text: string)
   writeStdout(`${lines.join('\n')}\n`);
 }
 
+function readRpcStdinText(readStdinText: (() => string) | undefined): string {
+  if (readStdinText !== undefined) {
+    return readStdinText();
+  }
+  // Avoid blocking forever when rpc mode is started from an interactive terminal.
+  if (process.stdin.isTTY === true) {
+    return '';
+  }
+  return readFileSync(0, 'utf8');
+}
+
 function renderCurrentViewport(input: {
   readonly model: ReturnType<typeof buildDiffUiModel>;
   readonly state: DiffUiState;
@@ -204,7 +215,7 @@ export async function runDiffUiCli(deps: RunDiffUiCliDeps = {}): Promise<DiffUiR
         view: state.effectiveViewMode,
       });
 
-      const stdinText = deps.readStdinText?.() ?? readFileSync(0, 'utf8');
+      const stdinText = readRpcStdinText(deps.readStdinText);
       for (const rawLine of stdinText.split('\n')) {
         const line = rawLine.trim();
         if (line.length === 0) {
