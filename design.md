@@ -174,6 +174,8 @@ Branch-local execution work introduces a new first-party runtime stack above `pa
   - includes provider routing (`NimProviderRouter`) and pluggable provider drivers (`NimProviderDriver`) for model execution.
   - includes first Anthropic driver scaffold on `packages/harness-ai` (`createAnthropicNimProviderDriver`).
   - enforces tool exposure from policy (`allow`/`deny` with deny precedence) and emits explicit `tool.policy.blocked` events when requested tools are not runnable.
+  - emits explicit per-turn context snapshot events for `soul`, `skill`, and `memory` (`*.snapshot.loaded` / `*.snapshot.missing`) and stamps `soul_hash` / `skills_snapshot_version` into run events.
+  - includes deterministic overflow-compaction retry/failure event paths for verifiable bounded recovery behavior.
 - `packages/nim-ui-core`: shared event projection layer (`debug` and `seamless` UI modes).
 - `packages/nim-test-tui`: independent test-oriented TUI surface that consumes shared Nim libraries only.
 

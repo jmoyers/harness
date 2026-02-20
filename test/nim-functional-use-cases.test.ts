@@ -484,6 +484,242 @@ test('UC-05 abort running turn prevents post-abort tool results and output', asy
   }
 });
 
+test('UC-06 overflow compaction is bounded and deterministic for recover/fail modes', async () => {
+  const runtime = new InMemoryNimRuntime();
+  runtime.registerProvider({
+    id: 'anthropic',
+    displayName: 'Anthropic',
+    models: ['anthropic/claude-3-haiku-20240307'],
+  });
+  runtime.registerProviderDriver(providerDriver('anthropic', 'anthropic'));
+  runtime.registerTools([{ name: 'ping', description: 'ping tool' }]);
+  runtime.setToolPolicy({
+    hash: 'policy:uc06',
+    allow: ['ping'],
+    deny: [],
+  });
+
+  const session = await runtime.startSession({
+    tenantId: 'tenant-a',
+    userId: 'user-a',
+    model: 'anthropic/claude-3-haiku-20240307',
+  });
+
+  const recoveredRun = await runtime.sendTurn({
+    sessionId: session.sessionId,
+    input: 'force-overflow-recover use-tool ping',
+    idempotencyKey: 'uc06-recover',
+  });
+  const recovered = await recoveredRun.done;
+  assert.equal(recovered.terminalState, 'completed');
+
+  const failedRun = await runtime.sendTurn({
+    sessionId: session.sessionId,
+    input: 'force-overflow-fail use-tool ping',
+    idempotencyKey: 'uc06-fail',
+  });
+  const failed = await failedRun.done;
+  assert.equal(failed.terminalState, 'failed');
+
+  const stream = runtime.streamEvents({
+    tenantId: 'tenant-a',
+    sessionId: session.sessionId,
+    fidelity: 'semantic',
+  });
+  const iterator = stream[Symbol.asyncIterator]();
+  try {
+    const events = await collectUntil(iterator, (items) =>
+      items.some((event) => event.type === 'turn.completed' && event.run_id === failedRun.runId),
+    );
+
+    const recoverEvents = events.filter((event) => event.run_id === recoveredRun.runId);
+    assert.equal(
+      recoverEvents.some((event) => event.type === 'provider.context.compaction.started'),
+      true,
+    );
+    assert.equal(
+      recoverEvents.some((event) => event.type === 'provider.context.compaction.completed'),
+      true,
+    );
+
+    const failEvents = events.filter((event) => event.run_id === failedRun.runId);
+    assert.equal(
+      failEvents.some((event) => event.type === 'provider.context.compaction.retry'),
+      true,
+    );
+    assert.equal(
+      failEvents.some((event) => event.type === 'provider.context.compaction.failed'),
+      true,
+    );
+    const failureReason = failEvents.find((event) => event.type === 'turn.failed');
+    assert.equal(
+      String(failureReason?.data?.['message'] ?? ''),
+      'context overflow after compaction retries',
+    );
+    assert.equal(
+      failEvents.some((event) => event.type === 'assistant.output.delta'),
+      false,
+    );
+  } finally {
+    await iterator.return?.();
+  }
+});
+
+test('UC-07 skills snapshot version is stable during active turn and advances next turn', async () => {
+  const runtime = new InMemoryNimRuntime();
+  runtime.registerProvider({
+    id: 'anthropic',
+    displayName: 'Anthropic',
+    models: ['anthropic/claude-3-haiku-20240307'],
+  });
+  runtime.registerProviderDriver(slowToolDriver('anthropic'));
+  runtime.registerSkillSource({ name: 'skills-v1' });
+
+  const session = await runtime.startSession({
+    tenantId: 'tenant-a',
+    userId: 'user-a',
+    model: 'anthropic/claude-3-haiku-20240307',
+  });
+  assert.equal(session.skillsSnapshotVersion, 1);
+
+  const firstStream = runtime.streamEvents({
+    tenantId: 'tenant-a',
+    sessionId: session.sessionId,
+    fidelity: 'semantic',
+  });
+  const firstIterator = firstStream[Symbol.asyncIterator]();
+  const firstRun = await runtime.sendTurn({
+    sessionId: session.sessionId,
+    input: 'turn-one',
+    idempotencyKey: 'uc07-a',
+  });
+
+  try {
+    await collectUntil(firstIterator, (items) =>
+      items.some((event) => event.type === 'turn.started' && event.run_id === firstRun.runId),
+    );
+    runtime.registerSkillSource({ name: 'skills-v2' });
+
+    const firstDone = await firstRun.done;
+    assert.equal(firstDone.terminalState, 'completed');
+    const firstEvents = await collectUntil(firstIterator, (items) =>
+      items.some((event) => event.type === 'turn.completed' && event.run_id === firstRun.runId),
+    );
+
+    const firstVersions = new Set(
+      firstEvents
+        .filter((event) => event.run_id === firstRun.runId)
+        .map((event) => event.skills_snapshot_version),
+    );
+    assert.deepEqual([...firstVersions], [1]);
+  } finally {
+    await firstIterator.return?.();
+  }
+
+  const secondRun = await runtime.sendTurn({
+    sessionId: session.sessionId,
+    input: 'turn-two',
+    idempotencyKey: 'uc07-b',
+  });
+  await secondRun.done;
+  const secondStream = runtime.streamEvents({
+    tenantId: 'tenant-a',
+    sessionId: session.sessionId,
+    runId: secondRun.runId,
+    fidelity: 'semantic',
+  });
+  const secondIterator = secondStream[Symbol.asyncIterator]();
+  try {
+    const secondEvents = await collectUntil(secondIterator, (items) =>
+      items.some((event) => event.type === 'turn.completed' && event.run_id === secondRun.runId),
+    );
+    const secondVersions = new Set(secondEvents.map((event) => event.skills_snapshot_version));
+    assert.deepEqual([...secondVersions], [2]);
+    assert.equal(
+      secondEvents.some((event) => event.type === 'skills.snapshot.loaded'),
+      true,
+    );
+  } finally {
+    await secondIterator.return?.();
+  }
+});
+
+test('UC-08 soul and memory snapshot load/missing are explicit in run timeline', async () => {
+  const runtime = new InMemoryNimRuntime();
+  runtime.registerProvider({
+    id: 'anthropic',
+    displayName: 'Anthropic',
+    models: ['anthropic/claude-3-haiku-20240307'],
+  });
+  runtime.registerProviderDriver(providerDriver('anthropic', 'anthropic'));
+
+  const session = await runtime.startSession({
+    tenantId: 'tenant-a',
+    userId: 'user-a',
+    model: 'anthropic/claude-3-haiku-20240307',
+  });
+
+  const missingRun = await runtime.sendTurn({
+    sessionId: session.sessionId,
+    input: 'missing-context',
+    idempotencyKey: 'uc08-missing',
+  });
+  await missingRun.done;
+
+  runtime.registerSoulSource({ name: 'soul-v1' });
+  runtime.registerMemoryStore({ name: 'memory-v1' });
+  const loadedRun = await runtime.sendTurn({
+    sessionId: session.sessionId,
+    input: 'loaded-context',
+    idempotencyKey: 'uc08-loaded',
+  });
+  await loadedRun.done;
+
+  const stream = runtime.streamEvents({
+    tenantId: 'tenant-a',
+    sessionId: session.sessionId,
+    fidelity: 'semantic',
+  });
+  const iterator = stream[Symbol.asyncIterator]();
+  try {
+    const events = await collectUntil(iterator, (items) =>
+      items.some((event) => event.type === 'turn.completed' && event.run_id === loadedRun.runId),
+    );
+
+    const missingEvents = events.filter((event) => event.run_id === missingRun.runId);
+    assert.equal(
+      missingEvents.some((event) => event.type === 'soul.snapshot.missing'),
+      true,
+    );
+    assert.equal(
+      missingEvents.some((event) => event.type === 'memory.snapshot.missing'),
+      true,
+    );
+    assert.equal(
+      missingEvents.some((event) => event.soul_hash !== undefined),
+      false,
+    );
+
+    const loadedEvents = events.filter((event) => event.run_id === loadedRun.runId);
+    assert.equal(
+      loadedEvents.some((event) => event.type === 'soul.snapshot.loaded'),
+      true,
+    );
+    assert.equal(
+      loadedEvents.some((event) => event.type === 'memory.snapshot.loaded'),
+      true,
+    );
+    assert.equal(
+      loadedEvents.some((event) => event.soul_hash === 'soul:1'),
+      true,
+    );
+    const memoryLoaded = loadedEvents.find((event) => event.type === 'memory.snapshot.loaded');
+    assert.equal(memoryLoaded?.data?.['hash'], 'memory:1');
+  } finally {
+    await iterator.return?.();
+  }
+});
+
 test('UC-09 deterministic replay snapshot is stable and fully ordered', async () => {
   const runtime = new InMemoryNimRuntime();
   runtime.registerProvider({

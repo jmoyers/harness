@@ -71,6 +71,10 @@ type RunState = {
   readonly input: string;
   readonly traceId: string;
   readonly abortController: AbortController;
+  readonly soulHash?: string;
+  readonly skillsHash?: string;
+  readonly skillsSnapshotVersion?: number;
+  readonly memoryHash?: string;
   stepCounter: number;
   active: boolean;
   streaming: boolean;
@@ -90,6 +94,7 @@ type EventSubscriber = {
 };
 
 const MAX_FOLLOWUPS_PER_SESSION = 64;
+const MAX_OVERFLOW_COMPACTION_ATTEMPTS = 3;
 
 class AsyncPushQueue<T> {
   private values: T[] = [];
@@ -169,12 +174,16 @@ export class InMemoryNimRuntime implements NimRuntime {
     this.providerRouter.resolveModel(input.model);
     const sessionId = randomUUID();
     const lane = input.lane ?? `session:${sessionId}`;
+    const soulHash = this.currentSoulHash();
+    const skillsSnapshot = this.currentSkillsSnapshot();
     const next: SessionState = {
       sessionId,
       tenantId: input.tenantId,
       userId: input.userId,
       model: input.model,
       lane,
+      ...(soulHash !== undefined ? { soulHash } : {}),
+      ...(skillsSnapshot !== undefined ? { skillsSnapshotVersion: skillsSnapshot.version } : {}),
       eventSeq: 0,
       followups: [],
       idempotencyToRunId: new Map<string, string>(),
@@ -258,10 +267,26 @@ export class InMemoryNimRuntime implements NimRuntime {
 
   public registerSoulSource(source: SoulSource): void {
     this.soulSources.push(source);
+    const soulHash = this.currentSoulHash();
+    for (const session of this.sessions.values()) {
+      if (soulHash === undefined) {
+        delete session.soulHash;
+      } else {
+        session.soulHash = soulHash;
+      }
+    }
   }
 
   public registerSkillSource(source: SkillSource): void {
     this.skillSources.push(source);
+    const snapshot = this.currentSkillsSnapshot();
+    for (const session of this.sessions.values()) {
+      if (snapshot === undefined) {
+        delete session.skillsSnapshotVersion;
+      } else {
+        session.skillsSnapshotVersion = snapshot.version;
+      }
+    }
   }
 
   public registerMemoryStore(store: MemoryStore): void {
@@ -289,6 +314,20 @@ export class InMemoryNimRuntime implements NimRuntime {
 
   public async sendTurn(input: SendTurnInput): Promise<TurnHandle> {
     const session = this.requireSession(input.sessionId);
+    const currentSoulHash = this.currentSoulHash();
+    const currentSkillsSnapshot = this.currentSkillsSnapshot();
+    const currentMemoryHash = this.currentMemoryHash();
+    if (currentSoulHash === undefined) {
+      delete session.soulHash;
+    } else {
+      session.soulHash = currentSoulHash;
+    }
+    if (currentSkillsSnapshot === undefined) {
+      delete session.skillsSnapshotVersion;
+    } else {
+      session.skillsSnapshotVersion = currentSkillsSnapshot.version;
+    }
+
     const existingRunId = session.idempotencyToRunId.get(input.idempotencyKey);
     if (existingRunId !== undefined) {
       const existing = this.runs.get(existingRunId);
@@ -319,6 +358,14 @@ export class InMemoryNimRuntime implements NimRuntime {
       input: input.input,
       traceId: randomUUID(),
       abortController: new AbortController(),
+      ...(session.soulHash !== undefined ? { soulHash: session.soulHash } : {}),
+      ...(currentSkillsSnapshot?.hash !== undefined
+        ? { skillsHash: currentSkillsSnapshot.hash }
+        : {}),
+      ...(session.skillsSnapshotVersion !== undefined
+        ? { skillsSnapshotVersion: session.skillsSnapshotVersion }
+        : {}),
+      ...(currentMemoryHash !== undefined ? { memoryHash: currentMemoryHash } : {}),
       stepCounter: 0,
       active: true,
       streaming: true,
@@ -630,6 +677,7 @@ export class InMemoryNimRuntime implements NimRuntime {
         source: 'system',
         state: 'responding',
       });
+      this.emitRunContextSnapshotEvents(session, run);
 
       const requestedToolName = this.requestedToolName(run.input);
       const exposedTools = this.resolveExposedTools();
@@ -649,23 +697,29 @@ export class InMemoryNimRuntime implements NimRuntime {
         });
       }
 
-      const resolvedModel = this.providerRouter.resolveModel(session.model);
-      const terminalState =
-        resolvedModel.driver === undefined
-          ? await this.executeRunWithMockProvider(
-              session,
-              run,
-              exposedTools,
-              requestedToolName,
-              blockedToolReason,
-            )
-          : await this.executeRunWithProviderDriver(
-              session,
-              run,
-              resolvedModel.driver,
-              resolvedModel.parsedModel.providerModelId,
-              exposedTools,
-            );
+      const autoCompaction = await this.runAutoOverflowCompactionIfNeeded(session, run);
+      let terminalState: 'completed' | 'aborted' | 'failed';
+      if (autoCompaction === 'failed' || autoCompaction === 'aborted') {
+        terminalState = autoCompaction;
+      } else {
+        const resolvedModel = this.providerRouter.resolveModel(session.model);
+        terminalState =
+          resolvedModel.driver === undefined
+            ? await this.executeRunWithMockProvider(
+                session,
+                run,
+                exposedTools,
+                requestedToolName,
+                blockedToolReason,
+              )
+            : await this.executeRunWithProviderDriver(
+                session,
+                run,
+                resolvedModel.driver,
+                resolvedModel.parsedModel.providerModelId,
+                exposedTools,
+              );
+      }
 
       this.appendRunEvent(session, run, {
         type: 'assistant.state.changed',
@@ -810,6 +864,156 @@ export class InMemoryNimRuntime implements NimRuntime {
       }
     }
     return run.aborted ? 'aborted' : terminalState;
+  }
+
+  private emitRunContextSnapshotEvents(session: SessionState, run: RunState): void {
+    if (run.soulHash === undefined) {
+      this.appendRunEvent(session, run, {
+        type: 'soul.snapshot.missing',
+        source: 'soul',
+        state: 'responding',
+        data: {
+          reason: 'no-soul-source',
+        },
+      });
+    } else {
+      this.appendRunEvent(session, run, {
+        type: 'soul.snapshot.loaded',
+        source: 'soul',
+        state: 'responding',
+        data: {
+          hash: run.soulHash,
+        },
+      });
+    }
+
+    if (run.skillsSnapshotVersion === undefined || run.skillsHash === undefined) {
+      this.appendRunEvent(session, run, {
+        type: 'skills.snapshot.missing',
+        source: 'skill',
+        state: 'responding',
+        data: {
+          reason: 'no-skill-source',
+        },
+      });
+    } else {
+      this.appendRunEvent(session, run, {
+        type: 'skills.snapshot.loaded',
+        source: 'skill',
+        state: 'responding',
+        data: {
+          hash: run.skillsHash,
+          version: run.skillsSnapshotVersion,
+        },
+      });
+    }
+
+    if (run.memoryHash === undefined) {
+      this.appendRunEvent(session, run, {
+        type: 'memory.snapshot.missing',
+        source: 'memory',
+        state: 'responding',
+        data: {
+          reason: 'no-memory-store',
+        },
+      });
+    } else {
+      this.appendRunEvent(session, run, {
+        type: 'memory.snapshot.loaded',
+        source: 'memory',
+        state: 'responding',
+        data: {
+          hash: run.memoryHash,
+        },
+      });
+    }
+  }
+
+  private resolveOverflowMode(input: string): 'none' | 'recoverable' | 'fatal' {
+    if (input.includes('force-overflow-fail')) {
+      return 'fatal';
+    }
+    if (input.includes('force-overflow-recover')) {
+      return 'recoverable';
+    }
+    return 'none';
+  }
+
+  private async runAutoOverflowCompactionIfNeeded(
+    session: SessionState,
+    run: RunState,
+  ): Promise<'continue' | 'aborted' | 'failed'> {
+    const mode = this.resolveOverflowMode(run.input);
+    if (mode === 'none') {
+      return 'continue';
+    }
+
+    for (let attempt = 1; attempt <= MAX_OVERFLOW_COMPACTION_ATTEMPTS; attempt += 1) {
+      this.appendRunEvent(session, run, {
+        type: 'provider.context.compaction.started',
+        source: 'provider',
+        state: 'thinking',
+        data: {
+          trigger: 'overflow',
+          attempt,
+          maxAttempts: MAX_OVERFLOW_COMPACTION_ATTEMPTS,
+        },
+      });
+
+      await sleep(1);
+      if (run.aborted) {
+        return 'aborted';
+      }
+
+      if (mode === 'recoverable') {
+        this.appendRunEvent(session, run, {
+          type: 'provider.context.compaction.completed',
+          source: 'provider',
+          state: 'responding',
+          data: {
+            trigger: 'overflow',
+            attempt,
+          },
+        });
+        return 'continue';
+      }
+
+      if (attempt < MAX_OVERFLOW_COMPACTION_ATTEMPTS) {
+        this.appendRunEvent(session, run, {
+          type: 'provider.context.compaction.retry',
+          source: 'provider',
+          state: 'thinking',
+          data: {
+            trigger: 'overflow',
+            attempt,
+            nextAttempt: attempt + 1,
+          },
+        });
+        continue;
+      }
+
+      this.appendRunEvent(session, run, {
+        type: 'provider.context.compaction.failed',
+        source: 'provider',
+        state: 'idle',
+        data: {
+          trigger: 'overflow',
+          attempt,
+          reason: 'overflow-retries-exhausted',
+        },
+      });
+      this.appendRunEvent(session, run, {
+        type: 'turn.failed',
+        source: 'system',
+        state: 'idle',
+        data: {
+          message: 'context overflow after compaction retries',
+        },
+      });
+      return 'failed';
+    }
+
+    return 'failed';
   }
 
   private appendProviderTurnEvent(
@@ -1110,6 +1314,10 @@ export class InMemoryNimRuntime implements NimRuntime {
       idempotency_key: run.idempotencyKey,
       lane: session.lane,
       policy_hash: this.toolPolicy.hash,
+      ...(run.skillsSnapshotVersion !== undefined
+        ? { skills_snapshot_version: run.skillsSnapshotVersion }
+        : {}),
+      ...(run.soulHash !== undefined ? { soul_hash: run.soulHash } : {}),
       trace_id: run.traceId,
       span_id: randomUUID(),
       ...(input.state !== undefined ? { state: input.state } : {}),
@@ -1222,6 +1430,31 @@ export class InMemoryNimRuntime implements NimRuntime {
       return false;
     }
     return true;
+  }
+
+  private currentSoulHash(): string | undefined {
+    if (this.soulSources.length === 0) {
+      return undefined;
+    }
+    return `soul:${this.soulSources.length}`;
+  }
+
+  private currentSkillsSnapshot(): { hash: string; version: number } | undefined {
+    const version = this.skillSources.length;
+    if (version === 0) {
+      return undefined;
+    }
+    return {
+      hash: `skills:${version}`,
+      version,
+    };
+  }
+
+  private currentMemoryHash(): string | undefined {
+    if (this.memoryStores.length === 0) {
+      return undefined;
+    }
+    return `memory:${this.memoryStores.length}`;
   }
 
   private requestedToolName(input: string): string | undefined {
