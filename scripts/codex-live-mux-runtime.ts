@@ -255,6 +255,9 @@ interface RuntimeCommandMenuContext {
   readonly selectedText: string;
   readonly linearEnabled: boolean;
   readonly leftNavSelectionKind: WorkspaceModel['leftNavSelection']['kind'];
+  readonly taskPaneActive: boolean;
+  readonly taskSelectedTaskId: string | null;
+  readonly taskSelectedTaskStatus: ControlPlaneTaskRecord['status'] | null;
   readonly profileRunning: boolean;
   readonly statusTimelineRunning: boolean;
   readonly githubRepositoryId: string | null;
@@ -1603,12 +1606,18 @@ async function main(): Promise<number> {
           : activeConversation === null
             ? ''
             : selectionText(activeConversation.oracle.snapshotWithoutHash(), workspace.selection);
+    const taskSelectedTaskId = workspace.taskPaneSelectedTaskId;
+    const taskSelectedTask =
+      taskSelectedTaskId === null ? null : (taskManager.getTask(taskSelectedTaskId) ?? null);
     return {
       activeDirectoryId,
       activeConversationId: conversationManager.activeConversationId,
       selectedText,
       linearEnabled: loadedConfig.config.linear.enabled,
       leftNavSelectionKind: workspace.leftNavSelection.kind,
+      taskPaneActive: workspace.leftNavSelection.kind === 'tasks',
+      taskSelectedTaskId,
+      taskSelectedTaskStatus: taskSelectedTask?.status ?? null,
       profileRunning: hasActiveProfileState(
         resolveProfileStatePath(options.invocationDirectory, muxSessionName),
       ),
@@ -1660,6 +1669,11 @@ async function main(): Promise<number> {
         ? {}
         : {
             detail: action.detail,
+          }),
+      ...(action.priority === undefined
+        ? {}
+        : {
+            priority: action.priority,
           }),
     }));
   };
@@ -2655,6 +2669,9 @@ async function main(): Promise<number> {
       createTask: async (payload) => {
         return await controlPlaneService.createTask(payload);
       },
+      taskReady: async (taskId) => {
+        return await controlPlaneService.taskReady(taskId);
+      },
       syncTaskPaneSelection,
       markDirty,
     },
@@ -3032,6 +3049,82 @@ async function main(): Promise<number> {
         detail: 'runs critique review <base> HEAD',
         run: () => {
           runCritiqueReviewFromCommandMenu(directoryId, 'base-branch');
+        },
+      },
+    ];
+  });
+
+  commandMenuRegistry.registerProvider('task.actions', (context) => {
+    if (!context.taskPaneActive || context.taskSelectedTaskId === null) {
+      return [];
+    }
+    const selectedTaskDetail = `selected ${context.taskSelectedTaskId} (${context.taskSelectedTaskStatus ?? 'unknown'})`;
+    const actionPriority = 200;
+    return [
+      {
+        id: 'task.selected.ready',
+        title: 'Task: Set Ready',
+        aliases: ['task ready', 'set task ready'],
+        keywords: ['task', 'status', 'ready', 'set'],
+        detail: selectedTaskDetail,
+        priority: actionPriority,
+        run: () => {
+          runtimeTaskPane.runTaskPaneAction('task.ready');
+        },
+      },
+      {
+        id: 'task.selected.draft',
+        title: 'Task: Set Draft (Uncomplete)',
+        aliases: ['task draft', 'uncomplete task', 'undo complete task'],
+        keywords: ['task', 'status', 'draft', 'queue', 'uncomplete', 'undo'],
+        detail: selectedTaskDetail,
+        priority: actionPriority,
+        run: () => {
+          runtimeTaskPane.runTaskPaneAction('task.draft');
+        },
+      },
+      {
+        id: 'task.selected.complete',
+        title: 'Task: Set Complete',
+        aliases: ['complete task', 'mark task complete'],
+        keywords: ['task', 'status', 'complete', 'done'],
+        detail: selectedTaskDetail,
+        priority: actionPriority,
+        run: () => {
+          runtimeTaskPane.runTaskPaneAction('task.complete');
+        },
+      },
+      {
+        id: 'task.selected.reorder-up',
+        title: 'Task: Move Up',
+        aliases: ['task move up', 'task reorder up'],
+        keywords: ['task', 'reorder', 'move', 'up'],
+        detail: selectedTaskDetail,
+        priority: actionPriority,
+        run: () => {
+          runtimeTaskPane.runTaskPaneAction('task.reorder-up');
+        },
+      },
+      {
+        id: 'task.selected.reorder-down',
+        title: 'Task: Move Down',
+        aliases: ['task move down', 'task reorder down'],
+        keywords: ['task', 'reorder', 'move', 'down'],
+        detail: selectedTaskDetail,
+        priority: actionPriority,
+        run: () => {
+          runtimeTaskPane.runTaskPaneAction('task.reorder-down');
+        },
+      },
+      {
+        id: 'task.selected.delete',
+        title: 'Task: Delete',
+        aliases: ['delete task', 'remove task'],
+        keywords: ['task', 'delete', 'remove'],
+        detail: selectedTaskDetail,
+        priority: actionPriority,
+        run: () => {
+          runtimeTaskPane.runTaskPaneAction('task.delete');
         },
       },
     ];

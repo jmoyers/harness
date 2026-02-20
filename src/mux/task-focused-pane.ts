@@ -1,5 +1,5 @@
 import { padOrTrimDisplay } from './dual-pane-core.ts';
-import { type TaskStatus } from './harness-core-ui.ts';
+import { sortedRepositoryList, type TaskStatus } from './harness-core-ui.ts';
 import { formatUiButton } from '../ui/kit.ts';
 import {
   taskComposerTextFromTaskFields,
@@ -24,6 +24,7 @@ interface ActionCell {
 export interface TaskFocusedPaneRepositoryRecord {
   readonly repositoryId: string;
   readonly name: string;
+  readonly metadata?: Record<string, unknown>;
   readonly archivedAt: string | null;
 }
 
@@ -58,6 +59,7 @@ interface BuildTaskFocusedPaneOptions {
   readonly cols: number;
   readonly rows: number;
   readonly scrollTop: number;
+  readonly cursorVisible?: boolean;
 }
 
 interface PaneLine {
@@ -94,12 +96,7 @@ const COMPLETE_CHIP_LABEL = formatUiButton({
 function sortedRepositories(
   repositories: ReadonlyMap<string, TaskFocusedPaneRepositoryRecord>,
 ): readonly TaskFocusedPaneRepositoryRecord[] {
-  return [...repositories.values()]
-    .filter((entry) => entry.archivedAt === null)
-    .sort(
-      (left, right) =>
-        left.name.localeCompare(right.name) || left.repositoryId.localeCompare(right.repositoryId),
-    );
+  return sortedRepositoryList(repositories);
 }
 
 function parseIsoMs(value: string): number {
@@ -194,20 +191,22 @@ function taskBufferFromRecord(
   task: TaskFocusedPaneTaskRecord,
   overrides: ReadonlyMap<string, TaskComposerBuffer>,
 ): TaskComposerBuffer {
+  const text = taskComposerTextFromTaskFields(task.title, task.body);
   return (
     overrides.get(task.taskId) ?? {
-      text: taskComposerTextFromTaskFields(task.title, task.body),
-      cursor: task.title.length,
+      text,
+      cursor: text.length,
     }
   );
 }
 
 function taskPreviewText(task: TaskFocusedPaneTaskRecord): string {
   const summary = task.body.split('\n')[0] ?? '';
-  if (summary.length === 0) {
-    return task.title;
+  const trimmed = summary.trim();
+  if (trimmed.length > 0) {
+    return trimmed;
   }
-  return `${task.title} · ${summary}`;
+  return task.title;
 }
 
 export function buildTaskFocusedPaneView(
@@ -310,18 +309,18 @@ export function buildTaskFocusedPaneView(
 
       if (focused) {
         const editBuffer = taskBufferFromRecord(task, options.taskBufferById);
-        const linesWithCursor = taskComposerVisibleLines(editBuffer);
-        push(
-          `    ${padOrTrimDisplay('─'.repeat(Math.max(4, Math.min(20, safeCols - 4))), Math.max(0, safeCols - 4))}`,
+        const linesWithCursor = taskComposerVisibleLines(
+          editBuffer,
+          '█',
+          options.cursorVisible ?? true,
         );
+        const editorInnerWidth = Math.max(1, safeCols - 6);
+        push(`    ┌${'─'.repeat(editorInnerWidth)}┐`);
         for (const line of linesWithCursor) {
-          push(
-            `    ${truncate(line, Math.max(1, safeCols - 4))}`,
-            task.taskId,
-            selectedRepositoryId,
-            'task.focus',
-          );
+          const content = padOrTrimDisplay(line, editorInnerWidth);
+          push(`    │${content}│`, task.taskId, selectedRepositoryId, 'task.focus');
         }
+        push(`    └${'─'.repeat(editorInnerWidth)}┘`);
       }
     }
   }
@@ -329,15 +328,20 @@ export function buildTaskFocusedPaneView(
   push('');
   const draftFocused = options.editorTarget.kind === 'draft';
   push(` draft ${draftFocused ? '(editing)' : '(saved)'}`);
+  const draftInnerWidth = Math.max(1, safeCols - 4);
+  push(` ┌${'─'.repeat(draftInnerWidth)}┐`);
   const draftLines = draftFocused
-    ? taskComposerVisibleLines(options.draftBuffer)
+    ? taskComposerVisibleLines(options.draftBuffer, '█', options.cursorVisible ?? true)
     : options.draftBuffer.text.length === 0
       ? ['']
       : options.draftBuffer.text.split('\n');
   for (const line of draftLines) {
-    push(` > ${truncate(line, Math.max(1, safeCols - 3))}`);
+    const content = padOrTrimDisplay(line, draftInnerWidth);
+    push(` │${content}│`);
   }
-  push(' enter ready  tab queue  shift+enter newline  ctrl+g repos');
+  push(` └${'─'.repeat(draftInnerWidth)}┘`);
+  push(' enter ready  tab queue  shift+enter newline');
+  push(' alt+g repos  ctrl+up/down reorder');
 
   const maxTop = Math.max(0, lines.length - safeRows);
   const top = Math.max(0, Math.min(maxTop, options.scrollTop));

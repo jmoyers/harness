@@ -62,7 +62,7 @@ function runShortcut(options: RunOptions): {
     },
     moveTaskEditorFocusUp: () => calls.push('move-up'),
     focusDraftComposer: () => calls.push('focus-draft'),
-    submitDraftTaskFromComposer: () => calls.push('submit-draft'),
+    submitDraftTaskFromComposer: (mode) => calls.push(`submit-draft:${mode}`),
     runTaskPaneAction: (action) => calls.push(`action:${action}`),
     selectRepositoryByDirection: (direction) => calls.push(`repo-direction:${direction}`),
     getTaskRepositoryDropdownOpen: () => dropdownOpen,
@@ -154,19 +154,29 @@ void test('task pane shortcut actions route repository controls and task actions
     input: 's',
     taskEditorTarget: { kind: 'draft' },
   });
-  assert.equal(submitDraft.calls.includes('submit-draft'), true);
+  assert.equal(submitDraft.calls.includes('submit-draft:ready'), true);
   const submitTask = runShortcut({
     input: 's',
     taskEditorTarget: { kind: 'task', taskId: 'task-a' },
   });
   assert.equal(submitTask.calls.includes('focus-draft'), true);
 
-  const queueFallsBackToTextInput = runShortcut({
+  const queueDraft = runShortcut({
     input: 'q',
+    taskEditorTarget: { kind: 'draft' },
     initialBuffer: createTaskComposerBuffer('seed'),
   });
-  assert.equal(queueFallsBackToTextInput.handled, true);
-  assert.equal(queueFallsBackToTextInput.buffer.text.endsWith('q'), true);
+  assert.equal(queueDraft.handled, true);
+  assert.equal(queueDraft.calls.includes('submit-draft:queue'), true);
+  assert.equal(queueDraft.buffer.text, 'seed');
+
+  const queueFromTaskEditorFocusesDraft = runShortcut({
+    input: 'q',
+    taskEditorTarget: { kind: 'task', taskId: 'task-a' },
+    initialBuffer: createTaskComposerBuffer('seed'),
+  });
+  assert.equal(queueFromTaskEditorFocusesDraft.handled, true);
+  assert.equal(queueFromTaskEditorFocusesDraft.calls.includes('focus-draft'), true);
 });
 
 void test('task pane editor cursor and delete actions route through composer operations', () => {

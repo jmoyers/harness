@@ -8,6 +8,7 @@ interface HomeGridfireOptions {
   readonly timeMs: number;
   readonly overlayTitle: string | null;
   readonly overlaySubtitle: string | null;
+  readonly overlayPlacement?: 'center' | 'bottom';
 }
 
 type RgbTriplet = readonly [number, number, number];
@@ -26,25 +27,25 @@ const GRID_CHARS = {
 } as const;
 
 const FG_PALETTE: readonly RgbTriplet[] = [
-  [14, 11, 28],
-  [28, 20, 55],
-  [50, 30, 100],
-  [75, 45, 155],
-  [55, 85, 200],
-  [90, 140, 240],
-  [150, 190, 255],
-  [220, 235, 255],
+  [8, 20, 24],
+  [10, 35, 42],
+  [14, 58, 70],
+  [20, 86, 105],
+  [28, 118, 146],
+  [42, 154, 188],
+  [90, 198, 220],
+  [180, 236, 244],
 ];
 
 const BG_PALETTE: readonly RgbTriplet[] = [
-  [8, 6, 16],
-  [12, 10, 22],
-  [16, 13, 30],
-  [20, 16, 38],
-  [18, 20, 45],
-  [16, 24, 50],
-  [20, 28, 55],
-  [24, 32, 58],
+  [2, 10, 12],
+  [4, 16, 18],
+  [6, 22, 24],
+  [8, 28, 30],
+  [10, 34, 36],
+  [12, 42, 44],
+  [14, 50, 54],
+  [18, 62, 66],
 ];
 
 function lerp(start: number, end: number, t: number): number {
@@ -289,14 +290,22 @@ export function renderHomeGridfireAnsiRows(options: HomeGridfireOptions): readon
     paintOverlayTextRow(surface, row, line, phase);
   }
 
-  const centerRow = Math.floor(safeRows / 2);
-  paintCenteredLabel(surface, centerRow, options.overlayTitle, phase);
-  paintCenteredLabel(
-    surface,
-    Math.min(safeRows - 1, centerRow + 2),
-    options.overlaySubtitle,
-    phase,
-  );
+  const overlayPlacement = options.overlayPlacement ?? 'center';
+  if (overlayPlacement === 'bottom') {
+    const subtitleRow = Math.max(0, safeRows - 2);
+    const titleRow = Math.max(0, subtitleRow - 1);
+    paintCenteredLabel(surface, titleRow, options.overlayTitle, phase);
+    paintCenteredLabel(surface, subtitleRow, options.overlaySubtitle, phase);
+  } else {
+    const centerRow = Math.floor(safeRows / 2);
+    paintCenteredLabel(surface, centerRow, options.overlayTitle, phase);
+    paintCenteredLabel(
+      surface,
+      Math.min(safeRows - 1, centerRow + 2),
+      options.overlaySubtitle,
+      phase,
+    );
+  }
 
   return renderUiSurfaceAnsiRows(surface);
 }

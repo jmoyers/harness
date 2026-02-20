@@ -81,6 +81,8 @@ export class HomePane {
 
   render(input: HomePaneRenderInput): TaskFocusedPaneView {
     const showTaskPlanningUi = input.showTaskPlanningUi ?? this.showTaskPlanningUi;
+    const nowMs = this.animateBackground ? this.nowMs() : this.staticBackgroundTimeMs;
+    const cursorVisible = Math.floor(nowMs / 530) % 2 === 0;
     const view = showTaskPlanningUi
       ? this.renderTaskFocusedPaneView({
           repositories: input.repositories,
@@ -94,6 +96,7 @@ export class HomePane {
           cols: input.layout.rightCols,
           rows: input.layout.paneRows,
           scrollTop: input.scrollTop,
+          cursorVisible,
         })
       : this.hiddenTaskPlanningView(input.layout);
     return {
@@ -102,9 +105,10 @@ export class HomePane {
         cols: input.layout.rightCols,
         rows: input.layout.paneRows,
         contentRows: view.rows,
-        timeMs: this.animateBackground ? this.nowMs() : this.staticBackgroundTimeMs,
+        timeMs: nowMs,
         overlayTitle: 'GSV Sleeper Service',
         overlaySubtitle: this.overlaySubtitle,
+        overlayPlacement: showTaskPlanningUi ? 'bottom' : 'center',
       }),
     };
   }

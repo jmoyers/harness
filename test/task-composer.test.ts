@@ -252,7 +252,18 @@ void test('visible lines and task field conversion preserve multiline payloads',
     text: 'line-1\nline-2',
     cursor: 3,
   });
-  assert.deepEqual(lines, ['lin_e-1', 'line-2']);
+  assert.deepEqual(lines, ['lin█-1', 'line-2']);
+  assert.deepEqual(
+    taskComposerVisibleLines(
+      {
+        text: 'line-1\nline-2',
+        cursor: 3,
+      },
+      '█',
+      false,
+    ),
+    ['line-1', 'line-2'],
+  );
 
   const fields = taskFieldsFromComposerText('title\nbody line 1\nbody line 2');
   assert.deepEqual(fields, {

@@ -258,13 +258,19 @@ export function taskComposerMoveVertical(
 
 export function taskComposerVisibleLines(
   buffer: TaskComposerBuffer,
-  cursorToken = '_',
+  cursorToken = '█',
+  cursorVisible = true,
 ): readonly string[] {
   const normalized = normalizeTaskComposerBuffer(buffer);
+  if (!cursorVisible) {
+    return normalized.text.split('\n');
+  }
   const textWithCursor =
-    normalized.text.slice(0, normalized.cursor) +
-    cursorToken +
-    normalized.text.slice(normalized.cursor);
+    normalized.cursor >= normalized.text.length
+      ? `${normalized.text}${cursorToken}`
+      : normalized.text.slice(0, normalized.cursor) +
+        cursorToken +
+        normalized.text.slice(normalized.cursor + 1);
   return textWithCursor.split('\n');
 }
 

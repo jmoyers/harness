@@ -22,6 +22,7 @@ type TaskPaneActionShortcut =
   | 'task.complete'
   | 'task.reorder-up'
   | 'task.reorder-down';
+type TaskComposerSubmitMode = 'ready' | 'queue';
 
 interface TaskEditorTargetDraft {
   kind: 'draft';
@@ -42,7 +43,7 @@ interface HandleTaskPaneShortcutInputOptions {
   updateHomeEditorBuffer: (next: TaskComposerBuffer) => void;
   moveTaskEditorFocusUp: () => void;
   focusDraftComposer: () => void;
-  submitDraftTaskFromComposer: () => void;
+  submitDraftTaskFromComposer: (mode: TaskComposerSubmitMode) => void;
   runTaskPaneAction: (action: TaskPaneActionShortcut) => void;
   selectRepositoryByDirection: (direction: 1 | -1) => void;
   getTaskRepositoryDropdownOpen: () => boolean;
@@ -73,118 +74,105 @@ export function handleTaskPaneShortcutInput(options: HandleTaskPaneShortcutInput
   }
   const action = detectTaskScreenKeybindingAction(input, taskScreenKeybindings);
   if (action !== null) {
-    if (action === 'mux.home.repo.dropdown.toggle') {
-      setTaskRepositoryDropdownOpen(!getTaskRepositoryDropdownOpen());
-      markDirty();
-      return true;
-    }
-    if (action === 'mux.home.repo.next') {
-      setTaskRepositoryDropdownOpen(true);
-      selectRepositoryByDirection(1);
-      return true;
-    }
-    if (action === 'mux.home.repo.previous') {
-      setTaskRepositoryDropdownOpen(true);
-      selectRepositoryByDirection(-1);
-      return true;
-    }
-    if (action === 'mux.home.task.status.ready') {
-      runTaskPaneAction('task.ready');
-      return true;
-    }
-    if (action === 'mux.home.task.status.draft') {
-      runTaskPaneAction('task.draft');
-      return true;
-    }
-    if (action === 'mux.home.task.status.complete') {
-      runTaskPaneAction('task.complete');
-      return true;
-    }
-    if (action === 'mux.home.task.reorder.up') {
-      runTaskPaneAction('task.reorder-up');
-      return true;
-    }
-    if (action === 'mux.home.task.reorder.down') {
-      runTaskPaneAction('task.reorder-down');
-      return true;
-    }
-    if (action === 'mux.home.task.newline') {
-      updateHomeEditorBuffer(insertTaskComposerText(homeEditorBuffer(), '\n'));
-      return true;
-    }
-    if (action === 'mux.home.task.submit') {
-      if (taskEditorTarget.kind === 'draft') {
-        submitDraftTaskFromComposer();
-      } else {
-        focusDraftComposer();
-      }
-      return true;
-    }
-    if (action === 'mux.home.editor.cursor.left') {
-      updateHomeEditorBuffer(taskComposerMoveLeft(homeEditorBuffer()));
-      return true;
-    }
-    if (action === 'mux.home.editor.cursor.right') {
-      updateHomeEditorBuffer(taskComposerMoveRight(homeEditorBuffer()));
-      return true;
-    }
-    if (action === 'mux.home.editor.cursor.up') {
-      const vertical = taskComposerMoveVertical(homeEditorBuffer(), -1);
-      if (vertical.hitBoundary) {
-        moveTaskEditorFocusUp();
-      } else {
-        updateHomeEditorBuffer(vertical.next);
-      }
-      return true;
-    }
-    if (action === 'mux.home.editor.cursor.down') {
-      if (taskEditorTarget.kind === 'task') {
-        const vertical = taskComposerMoveVertical(homeEditorBuffer(), 1);
-        if (vertical.hitBoundary) {
+    switch (action) {
+      case 'mux.home.repo.dropdown.toggle':
+        setTaskRepositoryDropdownOpen(!getTaskRepositoryDropdownOpen());
+        markDirty();
+        return true;
+      case 'mux.home.repo.next':
+        setTaskRepositoryDropdownOpen(true);
+        selectRepositoryByDirection(1);
+        return true;
+      case 'mux.home.repo.previous':
+        setTaskRepositoryDropdownOpen(true);
+        selectRepositoryByDirection(-1);
+        return true;
+      case 'mux.home.task.status.ready':
+        runTaskPaneAction('task.ready');
+        return true;
+      case 'mux.home.task.status.draft':
+        runTaskPaneAction('task.draft');
+        return true;
+      case 'mux.home.task.status.complete':
+        runTaskPaneAction('task.complete');
+        return true;
+      case 'mux.home.task.reorder.up':
+        runTaskPaneAction('task.reorder-up');
+        return true;
+      case 'mux.home.task.reorder.down':
+        runTaskPaneAction('task.reorder-down');
+        return true;
+      case 'mux.home.task.newline':
+        updateHomeEditorBuffer(insertTaskComposerText(homeEditorBuffer(), '\n'));
+        return true;
+      case 'mux.home.task.queue':
+        if (taskEditorTarget.kind === 'draft') {
+          submitDraftTaskFromComposer('queue');
+        } else {
           focusDraftComposer();
+        }
+        return true;
+      case 'mux.home.task.submit':
+        if (taskEditorTarget.kind === 'draft') {
+          submitDraftTaskFromComposer('ready');
+        } else {
+          focusDraftComposer();
+        }
+        return true;
+      case 'mux.home.editor.cursor.left':
+        updateHomeEditorBuffer(taskComposerMoveLeft(homeEditorBuffer()));
+        return true;
+      case 'mux.home.editor.cursor.right':
+        updateHomeEditorBuffer(taskComposerMoveRight(homeEditorBuffer()));
+        return true;
+      case 'mux.home.editor.cursor.up': {
+        const vertical = taskComposerMoveVertical(homeEditorBuffer(), -1);
+        if (vertical.hitBoundary) {
+          moveTaskEditorFocusUp();
         } else {
           updateHomeEditorBuffer(vertical.next);
         }
-      } else {
-        updateHomeEditorBuffer(taskComposerMoveVertical(homeEditorBuffer(), 1).next);
+        return true;
       }
-      return true;
-    }
-    if (action === 'mux.home.editor.line.start') {
-      updateHomeEditorBuffer(taskComposerMoveLineStart(homeEditorBuffer()));
-      return true;
-    }
-    if (action === 'mux.home.editor.line.end') {
-      updateHomeEditorBuffer(taskComposerMoveLineEnd(homeEditorBuffer()));
-      return true;
-    }
-    if (action === 'mux.home.editor.word.left') {
-      updateHomeEditorBuffer(taskComposerMoveWordLeft(homeEditorBuffer()));
-      return true;
-    }
-    if (action === 'mux.home.editor.word.right') {
-      updateHomeEditorBuffer(taskComposerMoveWordRight(homeEditorBuffer()));
-      return true;
-    }
-    if (action === 'mux.home.editor.delete.backward') {
-      updateHomeEditorBuffer(taskComposerBackspace(homeEditorBuffer()));
-      return true;
-    }
-    if (action === 'mux.home.editor.delete.forward') {
-      updateHomeEditorBuffer(taskComposerDeleteForward(homeEditorBuffer()));
-      return true;
-    }
-    if (action === 'mux.home.editor.delete.word.backward') {
-      updateHomeEditorBuffer(taskComposerDeleteWordLeft(homeEditorBuffer()));
-      return true;
-    }
-    if (action === 'mux.home.editor.delete.line.start') {
-      updateHomeEditorBuffer(taskComposerDeleteToLineStart(homeEditorBuffer()));
-      return true;
-    }
-    if (action === 'mux.home.editor.delete.line.end') {
-      updateHomeEditorBuffer(taskComposerDeleteToLineEnd(homeEditorBuffer()));
-      return true;
+      case 'mux.home.editor.cursor.down':
+        if (taskEditorTarget.kind === 'task') {
+          const vertical = taskComposerMoveVertical(homeEditorBuffer(), 1);
+          if (vertical.hitBoundary) {
+            focusDraftComposer();
+          } else {
+            updateHomeEditorBuffer(vertical.next);
+          }
+        } else {
+          updateHomeEditorBuffer(taskComposerMoveVertical(homeEditorBuffer(), 1).next);
+        }
+        return true;
+      case 'mux.home.editor.line.start':
+        updateHomeEditorBuffer(taskComposerMoveLineStart(homeEditorBuffer()));
+        return true;
+      case 'mux.home.editor.line.end':
+        updateHomeEditorBuffer(taskComposerMoveLineEnd(homeEditorBuffer()));
+        return true;
+      case 'mux.home.editor.word.left':
+        updateHomeEditorBuffer(taskComposerMoveWordLeft(homeEditorBuffer()));
+        return true;
+      case 'mux.home.editor.word.right':
+        updateHomeEditorBuffer(taskComposerMoveWordRight(homeEditorBuffer()));
+        return true;
+      case 'mux.home.editor.delete.backward':
+        updateHomeEditorBuffer(taskComposerBackspace(homeEditorBuffer()));
+        return true;
+      case 'mux.home.editor.delete.forward':
+        updateHomeEditorBuffer(taskComposerDeleteForward(homeEditorBuffer()));
+        return true;
+      case 'mux.home.editor.delete.word.backward':
+        updateHomeEditorBuffer(taskComposerDeleteWordLeft(homeEditorBuffer()));
+        return true;
+      case 'mux.home.editor.delete.line.start':
+        updateHomeEditorBuffer(taskComposerDeleteToLineStart(homeEditorBuffer()));
+        return true;
+      case 'mux.home.editor.delete.line.end':
+        updateHomeEditorBuffer(taskComposerDeleteToLineEnd(homeEditorBuffer()));
+        return true;
     }
   }
 

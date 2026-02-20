@@ -18,10 +18,12 @@ function repository(
   repositoryId: string,
   name: string,
   archivedAt: string | null = null,
+  metadata?: Record<string, unknown>,
 ): TaskFocusedPaneRepositoryRecord {
   return {
     repositoryId,
     name,
+    ...(metadata === undefined ? {} : { metadata }),
     archivedAt,
   };
 }
@@ -164,6 +166,31 @@ void test('focused pane handles empty/archived repository states and dropdown se
     view.rows.some((row) => row.includes('no tasks yet')),
     true,
   );
+});
+
+void test('focused pane repository dropdown follows left-rail homePriority ordering', () => {
+  const repositories = new Map<string, TaskFocusedPaneRepositoryRecord>([
+    ['repo-ash', repository('repo-ash', 'ash', null, { homePriority: 1 })],
+    ['repo-harness', repository('repo-harness', 'harness', null, { homePriority: 0 })],
+  ]);
+  const view = buildTaskFocusedPaneView({
+    repositories,
+    tasks: new Map(),
+    selectedRepositoryId: 'repo-harness',
+    repositoryDropdownOpen: true,
+    editorTarget: {
+      kind: 'draft',
+    },
+    draftBuffer: createTaskComposerBuffer(''),
+    taskBufferById: new Map(),
+    notice: null,
+    cols: 60,
+    rows: 12,
+    scrollTop: 0,
+  });
+  const dropdownRows = view.rows.filter((row) => row.includes('●') || row.includes('○'));
+  assert.equal(dropdownRows[0]?.includes('harness') ?? false, true);
+  assert.equal(dropdownRows[1]?.includes('ash') ?? false, true);
 });
 
 void test('focused pane supports row/cell hit testing and row clamping', () => {

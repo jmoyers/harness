@@ -163,6 +163,13 @@ void test('runtime task pane composes task actions and shortcuts behind one surf
         title: 'Created',
         body: '',
       }),
+      taskReady: async (taskId) => ({
+        taskId,
+        repositoryId: 'repo-1',
+        status: 'ready',
+        title: taskId,
+        body: '',
+      }),
       syncTaskPaneSelection: () => {},
       markDirty: () => {},
       handleTaskPaneShortcutInput: ({ runTaskPaneAction }) => {
@@ -258,10 +265,17 @@ void test('runtime task pane composes task actions and shortcuts behind one surf
         title: 'Created',
         body: '',
       }),
+      taskReady: async () => ({
+        taskId: 'task-created-via-shortcut',
+        repositoryId: 'repo-1',
+        status: 'ready',
+        title: 'Created',
+        body: '',
+      }),
       syncTaskPaneSelection: () => {},
       markDirty: () => {},
       handleTaskPaneShortcutInput: (options) => {
-        options.submitDraftTaskFromComposer();
+        options.submitDraftTaskFromComposer('ready');
         options.runTaskPaneAction('task.ready');
         return true;
       },

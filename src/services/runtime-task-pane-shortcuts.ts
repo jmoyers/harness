@@ -38,6 +38,7 @@ interface RuntimeTaskPaneShortcutsOptions<TTaskRecord extends TaskRecordShape> {
     title: string;
     body: string;
   }) => Promise<TTaskRecord>;
+  readonly taskReady: (taskId: string) => Promise<TTaskRecord>;
   readonly applyTaskRecord: (task: TTaskRecord) => void;
   readonly syncTaskPaneSelection: () => void;
   readonly markDirty: () => void;
@@ -102,7 +103,7 @@ export class RuntimeTaskPaneShortcuts<TTaskRecord extends TaskRecordShape> {
     }
   }
 
-  submitDraftTaskFromComposer(): void {
+  submitDraftTaskFromComposer(mode: 'ready' | 'queue'): void {
     const repositoryId = this.options.workspace.taskPaneSelectedRepositoryId;
     if (repositoryId === null || !this.options.repositoriesHas(repositoryId)) {
       this.options.workspace.taskPaneNotice = 'select a repository first';
@@ -115,18 +116,22 @@ export class RuntimeTaskPaneShortcuts<TTaskRecord extends TaskRecordShape> {
       this.options.markDirty();
       return;
     }
-    this.options.queueControlPlaneOp(async () => {
-      const task = await this.options.createTask({
-        repositoryId,
-        title: fields.title ?? '',
-        body: fields.body,
-      });
-      this.options.applyTaskRecord(task);
-      this.options.workspace.taskDraftComposer = this.createTaskComposerBuffer('');
-      this.options.workspace.taskPaneNotice = null;
-      this.options.syncTaskPaneSelection();
-      this.options.markDirty();
-    }, 'task-composer-create');
+    this.options.queueControlPlaneOp(
+      async () => {
+        const created = await this.options.createTask({
+          repositoryId,
+          title: fields.title ?? '',
+          body: fields.body,
+        });
+        const task = mode === 'ready' ? await this.options.taskReady(created.taskId) : created;
+        this.options.applyTaskRecord(task);
+        this.options.workspace.taskDraftComposer = this.createTaskComposerBuffer('');
+        this.options.workspace.taskPaneNotice = null;
+        this.options.syncTaskPaneSelection();
+        this.options.markDirty();
+      },
+      mode === 'ready' ? 'task-composer-submit-ready' : 'task-composer-queue',
+    );
   }
 
   moveTaskEditorFocusUp(): void {
@@ -169,8 +174,8 @@ export class RuntimeTaskPaneShortcuts<TTaskRecord extends TaskRecordShape> {
       focusDraftComposer: () => {
         this.options.focusDraftComposer();
       },
-      submitDraftTaskFromComposer: () => {
-        this.submitDraftTaskFromComposer();
+      submitDraftTaskFromComposer: (mode) => {
+        this.submitDraftTaskFromComposer(mode);
       },
       runTaskPaneAction: (action) => {
         this.options.runTaskPaneAction(action);

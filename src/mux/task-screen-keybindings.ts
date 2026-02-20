@@ -67,7 +67,7 @@ const ACTION_ORDER: readonly TaskScreenKeybindingAction[] = [
 export const DEFAULT_TASK_SCREEN_KEYBINDINGS_RAW: Readonly<
   Record<TaskScreenKeybindingAction, readonly string[]>
 > = {
-  'mux.home.repo.dropdown.toggle': ['ctrl+g'],
+  'mux.home.repo.dropdown.toggle': ['alt+g'],
   'mux.home.repo.next': ['ctrl+n'],
   'mux.home.repo.previous': ['ctrl+p'],
   'mux.home.task.submit': ['enter'],
@@ -76,8 +76,8 @@ export const DEFAULT_TASK_SCREEN_KEYBINDINGS_RAW: Readonly<
   'mux.home.task.status.ready': ['alt+r'],
   'mux.home.task.status.draft': ['alt+d'],
   'mux.home.task.status.complete': ['alt+c'],
-  'mux.home.task.reorder.up': ['alt+up'],
-  'mux.home.task.reorder.down': ['alt+down'],
+  'mux.home.task.reorder.up': ['ctrl+up'],
+  'mux.home.task.reorder.down': ['ctrl+down'],
   'mux.home.editor.cursor.left': ['left', 'ctrl+b'],
   'mux.home.editor.cursor.right': ['right', 'ctrl+f'],
   'mux.home.editor.cursor.up': ['up'],

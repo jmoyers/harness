@@ -98,6 +98,14 @@ function createHarness(overrides: Partial<ShortcutsOptions> = {}) {
       taskRecords.push(created);
       return created;
     },
+    taskReady: async (taskId) => {
+      calls.push(`taskReady:${taskId}`);
+      const existing = taskRecords.find((task) => task.taskId === taskId);
+      if (existing === undefined) {
+        throw new Error(`missing task: ${taskId}`);
+      }
+      return existing;
+    },
     applyTaskRecord: (task) => {
       calls.push(`applyTaskRecord:${task.taskId}`);
     },
@@ -243,7 +251,7 @@ void test('runtime task pane shortcuts submitDraftTaskFromComposer requires sele
     cursor: 10,
   };
 
-  harness.service.submitDraftTaskFromComposer();
+  harness.service.submitDraftTaskFromComposer('queue');
 
   assert.equal(harness.workspace.taskPaneNotice, 'select a repository first');
   assert.deepEqual(harness.calls, ['markDirty']);
@@ -257,7 +265,7 @@ void test('runtime task pane shortcuts submitDraftTaskFromComposer requires non-
     cursor: 1,
   };
 
-  harness.service.submitDraftTaskFromComposer();
+  harness.service.submitDraftTaskFromComposer('queue');
 
   assert.equal(harness.workspace.taskPaneNotice, 'task body is required');
   assert.deepEqual(harness.calls, ['markDirty']);
@@ -271,7 +279,7 @@ void test('runtime task pane shortcuts submitDraftTaskFromComposer queues create
     cursor: 12,
   };
 
-  harness.service.submitDraftTaskFromComposer();
+  harness.service.submitDraftTaskFromComposer('queue');
   await harness.flushQueued();
 
   assert.deepEqual(harness.createdPayloads, [
@@ -287,7 +295,27 @@ void test('runtime task pane shortcuts submitDraftTaskFromComposer queues create
   });
   assert.equal(harness.workspace.taskPaneNotice, null);
   assert.deepEqual(harness.calls, [
-    'queueControlPlaneOp:task-composer-create',
+    'queueControlPlaneOp:task-composer-queue',
+    'applyTaskRecord:task-1',
+    'syncTaskPaneSelection',
+    'markDirty',
+  ]);
+});
+
+void test('runtime task pane shortcuts submitDraftTaskFromComposer ready mode sets task ready before apply', async () => {
+  const harness = createHarness();
+  harness.workspace.taskPaneSelectedRepositoryId = 'repo-1';
+  harness.workspace.taskDraftComposer = {
+    text: 'Ready me',
+    cursor: 7,
+  };
+
+  harness.service.submitDraftTaskFromComposer('ready');
+  await harness.flushQueued();
+
+  assert.deepEqual(harness.calls, [
+    'queueControlPlaneOp:task-composer-submit-ready',
+    'taskReady:task-1',
     'applyTaskRecord:task-1',
     'syncTaskPaneSelection',
     'markDirty',
@@ -368,7 +396,7 @@ void test('runtime task pane shortcuts handleInput delegates through injected sh
       });
       options.moveTaskEditorFocusUp();
       options.focusDraftComposer();
-      options.submitDraftTaskFromComposer();
+      options.submitDraftTaskFromComposer('queue');
       options.runTaskPaneAction('task.ready');
       options.selectRepositoryByDirection(1);
       options.getTaskRepositoryDropdownOpen();

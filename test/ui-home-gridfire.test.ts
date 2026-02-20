@@ -73,6 +73,21 @@ void test('home gridfire paints centered startup labels and clamps subtitle row 
   assert.equal(stripped.includes('harness v0.1.0'), true);
 });
 
+void test('home gridfire can pin startup labels near bottom when requested', () => {
+  const rows = renderHomeGridfireAnsiRows({
+    cols: 40,
+    rows: 6,
+    contentRows: [],
+    timeMs: 0,
+    overlayTitle: 'GSV Sleeper Service',
+    overlaySubtitle: '- harness v0.1.0 -',
+    overlayPlacement: 'bottom',
+  });
+  const stripped = rows.map((row) => stripAnsi(row));
+  assert.equal((stripped[3] ?? '').includes('GSV Sleeper Service'), true);
+  assert.equal((stripped[4] ?? '').includes('- harness v0.1.0 -'), true);
+});
+
 void test('home gridfire ignores oversized title overlays and undefined content rows', () => {
   const rows = renderHomeGridfireAnsiRows({
     cols: 8,

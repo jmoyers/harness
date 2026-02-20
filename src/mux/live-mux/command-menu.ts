@@ -24,6 +24,7 @@ export interface CommandMenuActionDescriptor {
   readonly aliases?: readonly string[];
   readonly keywords?: readonly string[];
   readonly detail?: string;
+  readonly priority?: number;
 }
 
 export function filterThemePresetActionsForScope<TAction extends CommandMenuActionDescriptor>(
@@ -254,6 +255,10 @@ export function resolveCommandMenuMatches<TAction extends CommandMenuActionDescr
       return score === null ? [] : [{ action, score }];
     })
     .sort((left, right) => {
+      const priorityDelta = (right.action.priority ?? 0) - (left.action.priority ?? 0);
+      if (priorityDelta !== 0) {
+        return priorityDelta;
+      }
       if (useInitialSort) {
         const groupCompare = initialGroupRank(left.action) - initialGroupRank(right.action);
         if (groupCompare !== 0) {

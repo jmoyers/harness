@@ -141,6 +141,27 @@ void test('command menu typed query uses normal score+alpha sorting with no type
   );
 });
 
+void test('command menu action priority sorts higher-priority actions first', () => {
+  const actions = [
+    { id: 'thread.start.codex', title: 'Start Codex thread' },
+    { id: 'thread.start.claude', title: 'Start Claude thread' },
+    { id: 'task.selected.ready', title: 'Task: Set Ready', priority: 200 },
+    { id: 'task.selected.delete', title: 'Task: Delete', priority: 200 },
+  ] as const;
+
+  const emptyMatches = resolveCommandMenuMatches(actions, '', null);
+  assert.deepEqual(
+    emptyMatches.slice(0, 2).map((match) => match.action.id),
+    ['task.selected.delete', 'task.selected.ready'],
+  );
+
+  const typedMatches = resolveCommandMenuMatches(actions, 'task', null);
+  assert.deepEqual(
+    typedMatches.map((match) => match.action.id),
+    ['task.selected.delete', 'task.selected.ready'],
+  );
+});
+
 void test('command menu selected action resolution supports paged selections', () => {
   const actions = Array.from({ length: 12 }, (_, index) => ({
     id: `action-${String(index)}`,

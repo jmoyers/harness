@@ -98,6 +98,9 @@ void test('home pane renders task-focused view from repositories and tasks', () 
     true,
   );
   assert.equal(stripAnsi(view.rows[0] ?? '').length, 40);
+  const stripped = view.rows.map((row) => stripAnsi(row));
+  assert.equal((stripped[5] ?? '').includes('GSV Sleeper Service'), true);
+  assert.equal((stripped[6] ?? '').includes(`- harness v${HARNESS_VERSION} -`), true);
 });
 
 void test('home pane renders startup overlay when repositories and tasks are empty', () => {
@@ -214,6 +217,7 @@ void test('home pane can hide task/repository ui while keeping centered home tex
     strippedRows.some((row) => row.includes('GSV Sleeper Service')),
     true,
   );
+  assert.equal((strippedRows[Math.floor(strippedRows.length / 2)] ?? '').includes('GSV'), true);
   assert.equal(
     strippedRows.some((row) => row.includes('Wire pane')),
     false,
