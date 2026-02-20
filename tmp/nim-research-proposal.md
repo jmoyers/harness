@@ -32,6 +32,7 @@ This document is systems-first and maps public APIs to functional requirements w
 - Runtime now includes deterministic overflow compaction simulation paths with bounded retry/failure events for verifiable UC-06 behavior.
 - Runtime now exposes first-class `replayEvents` snapshots with deterministic event-id windowing (`fromEventIdExclusive`, `toEventIdInclusive`) for UC-09 replay APIs.
 - Runtime now supports first-class telemetry sink registration (`registerTelemetrySink`) and first-party JSONL telemetry I/O (`NimJsonlTelemetrySink`, `readNimJsonlTelemetry`) for replay-grade event logging and deterministic reload.
+- Runtime now persists canonical envelopes through a pluggable event store abstraction (`NimEventStore`) with first-party `InMemoryNimEventStore` and `NimSqliteEventStore` adapters.
 
 ## 1.2 Execution Evidence (2026-02-20)
 
@@ -328,7 +329,7 @@ export type NimUiEvent =
 | Exposing tools | `registerTools`, `setToolPolicy` | `tool.call.started/delta/completed/failed`, `tool.policy.applied` | tool policy/versioned registry events |
 | Conversation continuation | `startSession`, `resumeSession`, `sendTurn` | `session.started/resumed`, `turn.started/completed/failed`, `turn.idempotency.reused` | event-sourced session transcript |
 | Compaction | `compactSession` (manual + auto) | `provider.context.compaction.started/completed` | summary entry + compaction metadata events |
-| Telemetry/logging replayability | `streamEvents`, `replayEvents`, `registerTelemetrySink` | full turn/tool/provider lifecycle events | canonical JSONL + SQLite event IDs |
+| Telemetry/logging replayability | `streamEvents`, `replayEvents`, `registerTelemetrySink` | full turn/tool/provider lifecycle events | canonical JSONL + pluggable event store (`NimSqliteEventStore`) event IDs |
 | 100% transparency for stream/tool/thinking | `streamEvents(fidelity=raw|semantic)`, `streamUi(mode=debug|seamless)` | `assistant.state.*`, `provider.thinking.*`, `tool.call.*`, `tool.result.*` | no dropped state transitions between provider runtime and event store |
 | Abort up through stack | `abortTurn` | `turn.abort.requested/propagated/completed` | abort cause chain event + timeout/manual reason |
 | Steering + queued follow-ups | `steerTurn`, `queueFollowUp` | `turn.steer.requested/accepted/rejected`, `turn.followup.queued/dequeued/dropped` | queue state + steering decisions + linkage to run IDs |

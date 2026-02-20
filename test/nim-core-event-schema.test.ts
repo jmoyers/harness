@@ -48,3 +48,14 @@ test('nim-core event schema rejects invalid state values', () => {
   const result = nimEventEnvelopeSchema.safeParse(candidate);
   assert.equal(result.success, false);
 });
+
+test('nim-core event schema accepts session-scoped envelopes with empty run and turn ids', () => {
+  const candidate = {
+    ...buildValidEvent(),
+    run_id: '',
+    turn_id: '',
+    type: 'session.started',
+  };
+  const result = nimEventEnvelopeSchema.safeParse(candidate);
+  assert.equal(result.success, true);
+});

@@ -41,6 +41,7 @@ import {
   type NimProviderTurnEvent,
 } from './provider-router.ts';
 import { projectEventToUiEvents } from '../../nim-ui-core/src/projection.ts';
+import { InMemoryNimEventStore, type NimEventStore } from './event-store.ts';
 
 type SessionState = {
   readonly sessionId: string;
@@ -163,8 +164,7 @@ export class InMemoryNimRuntime implements NimRuntime {
   private soulSources: SoulSource[] = [];
   private skillSources: SkillSource[] = [];
   private memoryStores: MemoryStore[] = [];
-  private events: NimEventEnvelope[] = [];
-  private eventById = new Map<string, NimEventEnvelope>();
+  private eventStore: NimEventStore;
   private subscribers = new Map<string, EventSubscriber>();
   private telemetrySinks: NimTelemetrySink[] = [];
   private globalLane: Promise<void> = Promise.resolve();
@@ -173,11 +173,13 @@ export class InMemoryNimRuntime implements NimRuntime {
   public constructor(input?: {
     providerRouter?: NimProviderRouter;
     telemetrySinks?: readonly NimTelemetrySink[];
+    eventStore?: NimEventStore;
   }) {
     this.providerRouter = input?.providerRouter ?? new NimProviderRouter();
     if (input?.telemetrySinks !== undefined) {
       this.telemetrySinks = [...input.telemetrySinks];
     }
+    this.eventStore = input?.eventStore ?? new InMemoryNimEventStore();
   }
 
   public async startSession(input: StartSessionInput): Promise<SessionHandle> {
@@ -616,7 +618,11 @@ export class InMemoryNimRuntime implements NimRuntime {
       });
     }
 
-    const summaryEventId = this.events[this.events.length - 1]?.event_id;
+    const sessionEvents = this.eventStore.list({
+      tenantId: session.tenantId,
+      sessionId: session.sessionId,
+    });
+    const summaryEventId = sessionEvents[sessionEvents.length - 1]?.event_id;
     if (summaryEventId === undefined) {
       return {
         compacted: true,
@@ -641,7 +647,12 @@ export class InMemoryNimRuntime implements NimRuntime {
 
     this.subscribers.set(id, subscriber);
 
-    for (const event of this.events) {
+    const initialEvents = this.eventStore.list({
+      tenantId: input.tenantId,
+      ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
+      ...(input.runId !== undefined ? { runId: input.runId } : {}),
+    });
+    for (const event of initialEvents) {
       if (!this.shouldDeliverEvent(input, event, fromEvent)) {
         continue;
       }
@@ -700,7 +711,12 @@ export class InMemoryNimRuntime implements NimRuntime {
         : {}),
     };
 
-    const events = this.events.filter((event) => {
+    const events = this.eventStore.list({
+      tenantId: input.tenantId,
+      ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
+      ...(input.runId !== undefined ? { runId: input.runId } : {}),
+    });
+    const filtered = events.filter((event) => {
       if (!this.matchesSubscriberEvent(streamInput, event)) {
         return false;
       }
@@ -714,7 +730,7 @@ export class InMemoryNimRuntime implements NimRuntime {
     });
 
     return {
-      events,
+      events: filtered,
     };
   }
 
@@ -1420,8 +1436,7 @@ export class InMemoryNimRuntime implements NimRuntime {
       ...event,
       event_seq: session.eventSeq,
     };
-    this.events.push(finalized);
-    this.eventById.set(finalized.event_id, finalized);
+    this.eventStore.append(finalized);
     this.dispatchTelemetry(finalized);
 
     for (const subscriber of this.subscribers.values()) {
@@ -1561,14 +1576,14 @@ export class InMemoryNimRuntime implements NimRuntime {
     if (fromEventIdExclusive === undefined) {
       return undefined;
     }
-    return this.eventById.get(fromEventIdExclusive);
+    return this.eventStore.getById(fromEventIdExclusive);
   }
 
   private resolveToEvent(toEventIdInclusive?: string): NimEventEnvelope | undefined {
     if (toEventIdInclusive === undefined) {
       return undefined;
     }
-    return this.eventById.get(toEventIdInclusive);
+    return this.eventStore.getById(toEventIdInclusive);
   }
 
   private matchesReplayWindow(

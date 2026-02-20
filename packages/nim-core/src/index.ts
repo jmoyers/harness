@@ -1,4 +1,5 @@
 export * from './contracts.ts';
+export * from './event-store.ts';
 export * from './events.ts';
 export * from './provider-router.ts';
 export * from './providers/anthropic-driver.ts';

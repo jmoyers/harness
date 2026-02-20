@@ -178,6 +178,7 @@ Branch-local execution work introduces a new first-party runtime stack above `pa
   - includes deterministic overflow-compaction retry/failure event paths for verifiable bounded recovery behavior.
   - exposes deterministic event replay snapshots via `replayEvents` with optional event-id windowing for audit-grade timeline reconstruction.
   - supports first-party replay telemetry sinks (`registerTelemetrySink`) including JSONL log capture/reload via `NimJsonlTelemetrySink` + `readNimJsonlTelemetry`.
+  - supports pluggable canonical event persistence (`NimEventStore`) with first-party `InMemoryNimEventStore` and `NimSqliteEventStore` adapters used by stream/replay APIs.
 - `packages/nim-ui-core`: shared event projection layer (`debug` and `seamless` UI modes).
 - `packages/nim-test-tui`: independent test-oriented TUI surface that consumes shared Nim libraries only.
 
