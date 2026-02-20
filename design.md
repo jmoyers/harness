@@ -166,6 +166,25 @@ Design intent:
 - Preserve event-shape parity where practical while allowing focused, controlled divergence when provider behavior requires it.
 - Validate behavior through Bun unit, integration, and end-to-end tests under 100% coverage gates.
 
+## Experimental Nim Runtime Stack (Branch `jm/nim`)
+
+Branch-local execution work introduces a new first-party runtime stack above `packages/harness-ai`:
+
+- `packages/nim-core`: provider-agnostic agent runtime contracts + canonical event schema.
+- `packages/nim-ui-core`: shared event projection layer (`debug` and `seamless` UI modes).
+- `packages/nim-test-tui`: independent test-oriented TUI surface that consumes shared Nim libraries only.
+
+Design constraints for this stack:
+
+- 100% transparency contract:
+  - thinking/tool-call/state transitions are first-class events, never hidden.
+  - one canonical stream supports both deep debug UI and seamless UI.
+- test surface independence:
+  - test framework/TUI must remain separate from Harness mux runtime wiring.
+  - if shared UI logic is needed, extract into first-party reusable libraries instead of coupling test UI to mux internals.
+- provider baseline:
+  - Anthropic Haiku is exercised throughout integration sweeps (mock + env-gated live path).
+
 ## Control Plane Stream Surface
 
 Required command categories:

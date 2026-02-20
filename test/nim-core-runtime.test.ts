@@ -1,0 +1,486 @@
+import assert from 'node:assert/strict';
+import { test } from 'bun:test';
+import {
+  InMemoryNimRuntime,
+  type NimEventEnvelope,
+  type NimUiEvent,
+} from '../packages/nim-core/src/index.ts';
+
+async function nextWithTimeout<T>(
+  iterator: AsyncIterator<T>,
+  timeoutMs = 2000,
+): Promise<IteratorResult<T>> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      iterator.next(),
+      new Promise<IteratorResult<T>>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error('timed out waiting for stream event'));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+  }
+}
+
+async function collectUntil<T>(
+  iterator: AsyncIterator<T>,
+  predicate: (events: readonly T[]) => boolean,
+  maxEvents = 200,
+): Promise<T[]> {
+  const events: T[] = [];
+  while (events.length < maxEvents) {
+    const next = await nextWithTimeout(iterator);
+    if (next.done) {
+      break;
+    }
+    events.push(next.value);
+    if (predicate(events)) {
+      return events;
+    }
+  }
+  throw new Error(`stream predicate not met after ${String(events.length)} events`);
+}
+
+function createRuntime() {
+  const runtime = new InMemoryNimRuntime();
+  runtime.registerProvider({
+    id: 'anthropic',
+    displayName: 'Anthropic',
+    models: ['anthropic/claude-3-5-haiku-latest'],
+  });
+  runtime.registerTools([
+    {
+      name: 'mock-tool',
+      description: 'mock',
+    },
+  ]);
+  runtime.setToolPolicy({
+    hash: 'policy-test',
+    allow: ['mock-tool'],
+    deny: [],
+  });
+  return runtime;
+}
+
+async function createSession(runtime: InMemoryNimRuntime) {
+  return await runtime.startSession({
+    tenantId: 'tenant-a',
+    userId: 'user-a',
+    model: 'anthropic/claude-3-5-haiku-latest',
+  });
+}
+
+test('nim runtime supports session lifecycle and tenant/user enforcement', async () => {
+  const runtime = createRuntime();
+  const session = await createSession(runtime);
+
+  const listed = await runtime.listSessions({
+    tenantId: 'tenant-a',
+    userId: 'user-a',
+  });
+  assert.equal(listed.sessions.length, 1);
+  assert.equal(listed.sessions[0]?.sessionId, session.sessionId);
+
+  await assert.rejects(
+    async () => {
+      await runtime.resumeSession({
+        tenantId: 'tenant-a',
+        userId: 'user-b',
+        sessionId: session.sessionId,
+      });
+    },
+    {
+      message: 'session access denied',
+    },
+  );
+
+  await runtime.switchModel({
+    sessionId: session.sessionId,
+    model: 'anthropic/claude-3-5-haiku-latest',
+    reason: 'manual',
+  });
+});
+
+test('nim runtime reuses run for idempotency key and emits reuse event', async () => {
+  const runtime = createRuntime();
+  const session = await createSession(runtime);
+
+  const eventStream = runtime.streamEvents({
+    tenantId: 'tenant-a',
+    sessionId: session.sessionId,
+  });
+  const iterator = eventStream[Symbol.asyncIterator]();
+
+  try {
+    const first = await runtime.sendTurn({
+      sessionId: session.sessionId,
+      input: 'hello',
+      idempotencyKey: 'idem-1',
+    });
+    const second = await runtime.sendTurn({
+      sessionId: session.sessionId,
+      input: 'ignored',
+      idempotencyKey: 'idem-1',
+    });
+
+    assert.equal(first.runId, second.runId);
+    const done = await first.done;
+    assert.equal(done.terminalState, 'completed');
+
+    const events = await collectUntil(iterator, (items) =>
+      items.some((event) => event.type === 'turn.completed' && event.run_id === first.runId),
+    );
+    assert.equal(
+      events.some((event) => event.type === 'turn.idempotency.reused'),
+      true,
+    );
+  } finally {
+    await iterator.return?.();
+  }
+});
+
+test('nim runtime abortTurn cascades into aborted terminal state with lifecycle events', async () => {
+  const runtime = createRuntime();
+  const session = await createSession(runtime);
+
+  const eventStream = runtime.streamEvents({
+    tenantId: 'tenant-a',
+    sessionId: session.sessionId,
+  });
+  const iterator = eventStream[Symbol.asyncIterator]();
+
+  try {
+    const turn = await runtime.sendTurn({
+      sessionId: session.sessionId,
+      input: 'use-tool abort-me',
+      idempotencyKey: 'idem-abort',
+    });
+
+    await runtime.abortTurn({
+      runId: turn.runId,
+      reason: 'timeout',
+    });
+
+    const result = await turn.done;
+    assert.equal(result.terminalState, 'aborted');
+
+    const events = await collectUntil(iterator, (items) =>
+      items.some((event) => event.type === 'turn.completed' && event.run_id === turn.runId),
+    );
+
+    assert.equal(
+      events.some((event) => event.type === 'turn.abort.requested' && event.run_id === turn.runId),
+      true,
+    );
+    assert.equal(
+      events.some((event) => event.type === 'turn.abort.propagated' && event.run_id === turn.runId),
+      true,
+    );
+    assert.equal(
+      events.some((event) => event.type === 'turn.abort.completed' && event.run_id === turn.runId),
+      true,
+    );
+  } finally {
+    await iterator.return?.();
+  }
+});
+
+test('nim runtime supports steering inject and interrupt-and-restart', async () => {
+  const runtime = createRuntime();
+  const session = await createSession(runtime);
+
+  const stream = runtime.streamEvents({
+    tenantId: 'tenant-a',
+    sessionId: session.sessionId,
+  });
+  const iterator = stream[Symbol.asyncIterator]();
+
+  try {
+    const turn = await runtime.sendTurn({
+      sessionId: session.sessionId,
+      input: 'first',
+      idempotencyKey: 'idem-steer-1',
+    });
+
+    const injectResult = await runtime.steerTurn({
+      sessionId: session.sessionId,
+      runId: turn.runId,
+      text: 'inject-me',
+      strategy: 'inject',
+    });
+    assert.equal(injectResult.accepted, true);
+
+    const restartResult = await runtime.steerTurn({
+      sessionId: session.sessionId,
+      runId: turn.runId,
+      text: 'second',
+      strategy: 'interrupt-and-restart',
+    });
+    assert.equal(restartResult.accepted, true);
+    assert.equal(typeof restartResult.replacedRunId, 'string');
+
+    const firstResult = await turn.done;
+    assert.equal(firstResult.terminalState, 'aborted');
+
+    const replacementRunId = restartResult.replacedRunId as string;
+    const events = await collectUntil(iterator, (items) =>
+      items.some((event) => event.type === 'turn.completed' && event.run_id === replacementRunId),
+    );
+
+    assert.equal(
+      events.some(
+        (event) =>
+          event.type === 'assistant.output.delta' &&
+          event.run_id === replacementRunId &&
+          String(event.data?.['text'] ?? '').includes('echo:second'),
+      ),
+      true,
+    );
+
+    const noActive = await runtime.steerTurn({
+      sessionId: session.sessionId,
+      text: 'after',
+      strategy: 'inject',
+    });
+    assert.equal(noActive.accepted, false);
+    assert.equal(noActive.reason, 'no-active-run');
+  } finally {
+    await iterator.return?.();
+  }
+});
+
+test('nim runtime follow-up queue prioritizes high priority and dedupes entries', async () => {
+  const runtime = createRuntime();
+  const session = await createSession(runtime);
+
+  const stream = runtime.streamEvents({
+    tenantId: 'tenant-a',
+    sessionId: session.sessionId,
+  });
+  const iterator = stream[Symbol.asyncIterator]();
+
+  try {
+    const first = await runtime.sendTurn({
+      sessionId: session.sessionId,
+      input: 'first',
+      idempotencyKey: 'idem-q-1',
+    });
+
+    const queuedNormal = await runtime.queueFollowUp({
+      sessionId: session.sessionId,
+      text: 'normal',
+    });
+    const queuedHigh = await runtime.queueFollowUp({
+      sessionId: session.sessionId,
+      text: 'high',
+      priority: 'high',
+    });
+    const duplicate = await runtime.queueFollowUp({
+      sessionId: session.sessionId,
+      text: 'normal',
+    });
+
+    assert.equal(queuedNormal.queued, true);
+    assert.equal(queuedNormal.position, 0);
+    assert.equal(queuedHigh.queued, true);
+    assert.equal(queuedHigh.position, 0);
+    assert.equal(duplicate.queued, false);
+    assert.equal(duplicate.reason, 'duplicate');
+
+    const firstResult = await first.done;
+    assert.equal(firstResult.terminalState, 'completed');
+
+    const events = await collectUntil(iterator, (items) => {
+      const completed = items.filter((event) => event.type === 'turn.completed');
+      return completed.length >= 3;
+    });
+
+    const outputs = events
+      .filter((event) => event.type === 'assistant.output.delta')
+      .map((event) => String(event.data?.['text'] ?? ''));
+
+    assert.equal(outputs[0], 'echo:first');
+    assert.equal(outputs[1], 'echo:high');
+    assert.equal(outputs[2], 'echo:normal');
+
+    assert.equal(
+      events.some((event) => event.type === 'turn.followup.dequeued'),
+      true,
+    );
+  } finally {
+    await iterator.return?.();
+  }
+});
+
+test('nim runtime queueFollowUp validates empty text and queue max', async () => {
+  const runtime = createRuntime();
+  const session = await createSession(runtime);
+
+  const invalid = await runtime.queueFollowUp({
+    sessionId: session.sessionId,
+    text: ' ',
+  });
+  assert.equal(invalid.queued, false);
+  assert.equal(invalid.reason, 'invalid-state');
+
+  for (let index = 0; index < 64; index += 1) {
+    const queued = await runtime.queueFollowUp({
+      sessionId: session.sessionId,
+      text: `q-${String(index)}`,
+    });
+    assert.equal(queued.queued, true);
+  }
+
+  const overflow = await runtime.queueFollowUp({
+    sessionId: session.sessionId,
+    text: 'overflow',
+  });
+  assert.equal(overflow.queued, false);
+  assert.equal(overflow.reason, 'queue-full');
+});
+
+test('nim runtime streamEvents supports fromEventIdExclusive continuation cursor', async () => {
+  const runtime = createRuntime();
+  const session = await createSession(runtime);
+
+  const baselineStream = runtime.streamEvents({
+    tenantId: 'tenant-a',
+    sessionId: session.sessionId,
+  });
+  const baselineIterator = baselineStream[Symbol.asyncIterator]();
+
+  let baseline: NimEventEnvelope[] = [];
+  try {
+    const turn = await runtime.sendTurn({
+      sessionId: session.sessionId,
+      input: 'cursor-check',
+      idempotencyKey: 'idem-cursor',
+    });
+
+    await turn.done;
+    baseline = await collectUntil(baselineIterator, (items) =>
+      items.some((event) => event.type === 'turn.completed' && event.run_id === turn.runId),
+    );
+  } finally {
+    await baselineIterator.return?.();
+  }
+
+  const anchor = baseline[1];
+  assert.equal(anchor === undefined, false);
+
+  const resumedStream = runtime.streamEvents({
+    tenantId: 'tenant-a',
+    ...(anchor?.event_id !== undefined ? { fromEventIdExclusive: anchor.event_id } : {}),
+  });
+  const resumedIterator = resumedStream[Symbol.asyncIterator]();
+
+  try {
+    const next = await nextWithTimeout(resumedIterator);
+    assert.equal(next.done, false);
+    assert.equal(next.value.session_id, session.sessionId);
+    assert.equal(next.value.event_seq > (anchor as NimEventEnvelope).event_seq, true);
+  } finally {
+    await resumedIterator.return?.();
+  }
+});
+
+test('nim runtime streamUi projects canonical events for debug and seamless modes', async () => {
+  const runtime = createRuntime();
+  const session = await createSession(runtime);
+
+  const debugStream = runtime.streamUi({
+    tenantId: 'tenant-a',
+    sessionId: session.sessionId,
+    mode: 'debug',
+  });
+  const seamlessStream = runtime.streamUi({
+    tenantId: 'tenant-a',
+    sessionId: session.sessionId,
+    mode: 'seamless',
+  });
+
+  const debugIterator = debugStream[Symbol.asyncIterator]();
+  const seamlessIterator = seamlessStream[Symbol.asyncIterator]();
+
+  try {
+    const turn = await runtime.sendTurn({
+      sessionId: session.sessionId,
+      input: 'use-tool ui-check',
+      idempotencyKey: 'idem-ui',
+    });
+    await turn.done;
+
+    const debugEvents = await collectUntil<NimUiEvent>(debugIterator, (items) =>
+      items.some((event) => event.type === 'assistant.state' && event.state === 'idle'),
+    );
+    const seamlessEvents = await collectUntil<NimUiEvent>(seamlessIterator, (items) =>
+      items.some((event) => event.type === 'assistant.state' && event.state === 'idle'),
+    );
+
+    assert.equal(
+      debugEvents.some((event) => event.type === 'tool.activity'),
+      true,
+    );
+    assert.equal(
+      seamlessEvents.some(
+        (event) => event.type === 'assistant.state' && event.state === 'tool-calling',
+      ),
+      true,
+    );
+  } finally {
+    await debugIterator.return?.();
+    await seamlessIterator.return?.();
+  }
+});
+
+test('nim runtime loads soul/skills/memory snapshots from registered sources', async () => {
+  const runtime = createRuntime();
+  runtime.registerSoulSource({ name: 'workspace-soul' });
+  runtime.registerSkillSource({ name: 'workspace-skills' });
+  runtime.registerMemoryStore({ name: 'workspace-memory' });
+
+  const soul = await runtime.loadSoul();
+  const skills = await runtime.loadSkills();
+  const memory = await runtime.loadMemory();
+
+  assert.equal(soul.hash, 'soul:1');
+  assert.equal(skills.hash, 'skills:1');
+  assert.equal(skills.version, 1);
+  assert.equal(memory.hash, 'memory:1');
+});
+
+test('nim runtime supports compactSession and abort signal on sendTurn', async () => {
+  const runtime = createRuntime();
+  const session = await createSession(runtime);
+
+  const compactedWithoutRun = await runtime.compactSession({
+    sessionId: session.sessionId,
+    trigger: 'manual',
+    includeMemoryFlush: true,
+  });
+  assert.equal(compactedWithoutRun.compacted, true);
+  assert.equal(typeof compactedWithoutRun.summaryEventId, 'string');
+
+  const controller = new AbortController();
+  const run = await runtime.sendTurn({
+    sessionId: session.sessionId,
+    input: 'signal abort',
+    idempotencyKey: 'idem-signal',
+    abortSignal: controller.signal,
+  });
+
+  controller.abort();
+  const result = await run.done;
+  assert.equal(result.terminalState, 'aborted');
+
+  const compactedWithRun = await runtime.compactSession({
+    sessionId: session.sessionId,
+    trigger: 'policy',
+  });
+  assert.equal(compactedWithRun.compacted, true);
+});
