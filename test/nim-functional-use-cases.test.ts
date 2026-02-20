@@ -54,27 +54,81 @@ function providerDriver(providerId: string, prefix: string): NimProviderDriver {
     async *runTurn(input) {
       yield { type: 'provider.thinking.started' };
       yield { type: 'provider.thinking.completed' };
-      if (input.input.includes('use-tool')) {
-        yield {
-          type: 'tool.call.started',
-          toolCallId: `${prefix}-tool-1`,
-          toolName: 'ping',
-        };
-        yield {
-          type: 'tool.call.completed',
-          toolCallId: `${prefix}-tool-1`,
-          toolName: 'ping',
-        };
-        yield {
-          type: 'tool.result.emitted',
-          toolCallId: `${prefix}-tool-1`,
-          toolName: 'ping',
-          output: { ok: true },
-        };
+
+      const requestedToolMatch = /(?:^|\s)use-tool(?:\s+([A-Za-z0-9._:-]+))?/u.exec(input.input);
+      if (requestedToolMatch !== null) {
+        const requestedToolName =
+          requestedToolMatch[1] ??
+          (input.tools[0] !== undefined ? String(input.tools[0].name) : undefined);
+        const matchedTool = input.tools.find((tool) => tool.name === requestedToolName);
+        if (matchedTool !== undefined) {
+          const toolCallId = `${prefix}-tool-1`;
+          const toolName = matchedTool.name;
+          yield {
+            type: 'tool.call.started',
+            toolCallId,
+            toolName,
+          };
+          yield {
+            type: 'tool.call.completed',
+            toolCallId,
+            toolName,
+          };
+          yield {
+            type: 'tool.result.emitted',
+            toolCallId,
+            toolName,
+            output: { ok: true },
+          };
+        }
       }
+
       yield {
         type: 'assistant.output.delta',
         text: `${prefix}:${input.input}`,
+      };
+      yield { type: 'assistant.output.completed' };
+      yield {
+        type: 'provider.turn.finished',
+        finishReason: 'stop',
+      };
+    },
+  };
+}
+
+function slowToolDriver(providerId: string): NimProviderDriver {
+  return {
+    providerId,
+    async *runTurn(input) {
+      yield { type: 'provider.thinking.started' };
+      yield { type: 'provider.thinking.completed' };
+
+      const firstTool = input.tools[0];
+      if (firstTool !== undefined) {
+        const toolCallId = 'slow-tool-1';
+        yield {
+          type: 'tool.call.started',
+          toolCallId,
+          toolName: firstTool.name,
+        };
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        yield {
+          type: 'tool.call.completed',
+          toolCallId,
+          toolName: firstTool.name,
+        };
+        yield {
+          type: 'tool.result.emitted',
+          toolCallId,
+          toolName: firstTool.name,
+          output: { ok: true },
+        };
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      yield {
+        type: 'assistant.output.delta',
+        text: `slow:${input.input}`,
       };
       yield { type: 'assistant.output.completed' };
       yield {
@@ -172,6 +226,68 @@ test('UC-01 start session and first turn emits replayable lifecycle', async () =
   }
 });
 
+test('UC-02 resume session continues conversation without duplicating prior turns', async () => {
+  const runtime = new InMemoryNimRuntime();
+  runtime.registerProvider({
+    id: 'anthropic',
+    displayName: 'Anthropic',
+    models: ['anthropic/claude-3-haiku-20240307'],
+  });
+  runtime.registerProviderDriver(providerDriver('anthropic', 'anthropic'));
+
+  const session = await runtime.startSession({
+    tenantId: 'tenant-a',
+    userId: 'user-a',
+    model: 'anthropic/claude-3-haiku-20240307',
+  });
+
+  const first = await runtime.sendTurn({
+    sessionId: session.sessionId,
+    input: 'turn one',
+    idempotencyKey: 'uc02-a',
+  });
+  await first.done;
+
+  const resumed = await runtime.resumeSession({
+    tenantId: 'tenant-a',
+    userId: 'user-a',
+    sessionId: session.sessionId,
+  });
+  assert.equal(resumed.sessionId, session.sessionId);
+
+  const second = await runtime.sendTurn({
+    sessionId: session.sessionId,
+    input: 'turn two',
+    idempotencyKey: 'uc02-b',
+  });
+  await second.done;
+
+  const stream = runtime.streamEvents({
+    tenantId: 'tenant-a',
+    sessionId: session.sessionId,
+    fidelity: 'semantic',
+  });
+  const iterator = stream[Symbol.asyncIterator]();
+  try {
+    const events = await collectUntil(iterator, (items) =>
+      items.some((event) => event.type === 'turn.completed' && event.run_id === second.runId),
+    );
+
+    assert.equal(events.filter((event) => event.type === 'session.resumed').length, 1);
+    assert.equal(events.filter((event) => event.type === 'turn.started').length, 2);
+    assert.match(
+      assistantText(events.filter((event) => event.run_id === first.runId)),
+      /anthropic:turn one/u,
+    );
+    assert.match(
+      assistantText(events.filter((event) => event.run_id === second.runId)),
+      /anthropic:turn two/u,
+    );
+  } finally {
+    await iterator.return?.();
+  }
+});
+
 test('UC-03 switch model provider mid-session and preserve policy hash', async () => {
   const runtime = new InMemoryNimRuntime();
   runtime.registerProvider({
@@ -247,6 +363,127 @@ test('UC-03 switch model provider mid-session and preserve policy hash', async (
   }
 });
 
+test('UC-04 tool policy deny precedence emits blocked event and suppresses tool execution', async () => {
+  const runtime = new InMemoryNimRuntime();
+  runtime.registerProvider({
+    id: 'anthropic',
+    displayName: 'Anthropic',
+    models: ['anthropic/claude-3-haiku-20240307'],
+  });
+  runtime.registerProviderDriver(providerDriver('anthropic', 'anthropic'));
+  runtime.registerTools([
+    { name: 'ping', description: 'ping tool' },
+    { name: 'search', description: 'search tool' },
+  ]);
+  runtime.setToolPolicy({
+    hash: 'policy:uc04',
+    allow: ['ping', 'search'],
+    deny: ['ping'],
+  });
+
+  const session = await runtime.startSession({
+    tenantId: 'tenant-a',
+    userId: 'user-a',
+    model: 'anthropic/claude-3-haiku-20240307',
+  });
+  const run = await runtime.sendTurn({
+    sessionId: session.sessionId,
+    input: 'use-tool ping',
+    idempotencyKey: 'uc04-a',
+  });
+  await run.done;
+
+  const stream = runtime.streamEvents({
+    tenantId: 'tenant-a',
+    sessionId: session.sessionId,
+    runId: run.runId,
+    fidelity: 'semantic',
+  });
+  const iterator = stream[Symbol.asyncIterator]();
+  try {
+    const events = await collectUntil(iterator, (items) =>
+      items.some((event) => event.type === 'turn.completed' && event.run_id === run.runId),
+    );
+    const blocked = events.find((event) => event.type === 'tool.policy.blocked');
+    assert.notEqual(blocked, undefined);
+    assert.equal(blocked?.data?.['toolName'], 'ping');
+    assert.equal(blocked?.data?.['reason'], 'policy-deny');
+    assert.equal(
+      events.some((event) => event.type === 'tool.call.started'),
+      false,
+    );
+  } finally {
+    await iterator.return?.();
+  }
+});
+
+test('UC-05 abort running turn prevents post-abort tool results and output', async () => {
+  const runtime = new InMemoryNimRuntime();
+  runtime.registerProvider({
+    id: 'anthropic',
+    displayName: 'Anthropic',
+    models: ['anthropic/claude-3-haiku-20240307'],
+  });
+  runtime.registerProviderDriver(slowToolDriver('anthropic'));
+  runtime.registerTools([{ name: 'ping', description: 'ping tool' }]);
+
+  const session = await runtime.startSession({
+    tenantId: 'tenant-a',
+    userId: 'user-a',
+    model: 'anthropic/claude-3-haiku-20240307',
+  });
+  const stream = runtime.streamEvents({
+    tenantId: 'tenant-a',
+    sessionId: session.sessionId,
+    fidelity: 'semantic',
+  });
+  const iterator = stream[Symbol.asyncIterator]();
+  const run = await runtime.sendTurn({
+    sessionId: session.sessionId,
+    input: 'use-tool ping',
+    idempotencyKey: 'uc05-a',
+  });
+
+  try {
+    await collectUntil(iterator, (items) =>
+      items.some((event) => event.type === 'tool.call.started' && event.run_id === run.runId),
+    );
+
+    await runtime.abortTurn({
+      runId: run.runId,
+      reason: 'manual',
+    });
+    const done = await run.done;
+    assert.equal(done.terminalState, 'aborted');
+
+    const events = await collectUntil(iterator, (items) =>
+      items.some((event) => event.type === 'turn.completed' && event.run_id === run.runId),
+    );
+    assert.equal(
+      events.some((event) => event.type === 'turn.abort.requested'),
+      true,
+    );
+    assert.equal(
+      events.some((event) => event.type === 'turn.abort.completed'),
+      true,
+    );
+
+    const abortRequested = events.find((event) => event.type === 'turn.abort.requested');
+    assert.notEqual(abortRequested, undefined);
+    const abortEventSeq = Number(abortRequested?.event_seq ?? 0);
+    assert.equal(
+      events.some(
+        (event) =>
+          event.event_seq > abortEventSeq &&
+          (event.type === 'tool.result.emitted' || event.type === 'assistant.output.delta'),
+      ),
+      false,
+    );
+  } finally {
+    await iterator.return?.();
+  }
+});
+
 test('UC-09 deterministic replay snapshot is stable and fully ordered', async () => {
   const runtime = new InMemoryNimRuntime();
   runtime.registerProvider({
@@ -308,150 +545,6 @@ test('UC-09 deterministic replay snapshot is stable and fully ordered', async ()
   } finally {
     await firstIterator.return?.();
     await secondIterator.return?.();
-  }
-});
-
-test('UC-12 debug and seamless projections are pure functions of canonical stream', async () => {
-  const runtime = new InMemoryNimRuntime();
-  runtime.registerProvider({
-    id: 'anthropic',
-    displayName: 'Anthropic',
-    models: ['anthropic/claude-3-haiku-20240307'],
-  });
-  runtime.registerProviderDriver(providerDriver('anthropic', 'anthropic'));
-  runtime.registerTools([{ name: 'ping', description: 'ping tool' }]);
-
-  const session = await runtime.startSession({
-    tenantId: 'tenant-a',
-    userId: 'user-a',
-    model: 'anthropic/claude-3-haiku-20240307',
-  });
-
-  const turn = await runtime.sendTurn({
-    sessionId: session.sessionId,
-    input: 'use-tool projection',
-    idempotencyKey: 'uc12-a',
-  });
-  await turn.done;
-
-  const canonical = runtime.streamEvents({
-    tenantId: 'tenant-a',
-    sessionId: session.sessionId,
-    runId: turn.runId,
-    fidelity: 'semantic',
-  });
-  const debugUi = runtime.streamUi({
-    tenantId: 'tenant-a',
-    sessionId: session.sessionId,
-    runId: turn.runId,
-    mode: 'debug',
-  });
-  const seamlessUi = runtime.streamUi({
-    tenantId: 'tenant-a',
-    sessionId: session.sessionId,
-    runId: turn.runId,
-    mode: 'seamless',
-  });
-  const canonicalIterator = canonical[Symbol.asyncIterator]();
-  const debugIterator = debugUi[Symbol.asyncIterator]();
-  const seamlessIterator = seamlessUi[Symbol.asyncIterator]();
-
-  try {
-    const canonicalEvents = await collectUntil(canonicalIterator, (items) =>
-      items.some((event) => event.type === 'turn.completed' && event.run_id === turn.runId),
-    );
-    const debugUiEvents = await collectUntil<NimUiEvent>(debugIterator, (items) =>
-      items.some((event) => event.type === 'assistant.state' && event.state === 'idle'),
-    );
-    const seamlessUiEvents = await collectUntil<NimUiEvent>(seamlessIterator, (items) =>
-      items.some((event) => event.type === 'assistant.state' && event.state === 'idle'),
-    );
-
-    const projectedDebug = canonicalEvents.flatMap((event) =>
-      projectEventToUiEvents(event, 'debug'),
-    );
-    const projectedSeamless = canonicalEvents.flatMap((event) =>
-      projectEventToUiEvents(event, 'seamless'),
-    );
-
-    assert.deepEqual(debugUiEvents, projectedDebug);
-    assert.deepEqual(seamlessUiEvents, projectedSeamless);
-    assert.equal(
-      debugUiEvents.some((event) => event.type === 'tool.activity' && event.phase === 'start'),
-      true,
-    );
-    assert.equal(
-      seamlessUiEvents.some(
-        (event) => event.type === 'assistant.state' && event.state === 'tool-calling',
-      ),
-      true,
-    );
-  } finally {
-    await canonicalIterator.return?.();
-    await debugIterator.return?.();
-    await seamlessIterator.return?.();
-  }
-});
-
-test('UC-02 resume session continues conversation without duplicating prior turns', async () => {
-  const runtime = new InMemoryNimRuntime();
-  runtime.registerProvider({
-    id: 'anthropic',
-    displayName: 'Anthropic',
-    models: ['anthropic/claude-3-haiku-20240307'],
-  });
-  runtime.registerProviderDriver(providerDriver('anthropic', 'anthropic'));
-
-  const session = await runtime.startSession({
-    tenantId: 'tenant-a',
-    userId: 'user-a',
-    model: 'anthropic/claude-3-haiku-20240307',
-  });
-
-  const first = await runtime.sendTurn({
-    sessionId: session.sessionId,
-    input: 'turn one',
-    idempotencyKey: 'uc02-a',
-  });
-  await first.done;
-
-  const resumed = await runtime.resumeSession({
-    tenantId: 'tenant-a',
-    userId: 'user-a',
-    sessionId: session.sessionId,
-  });
-  assert.equal(resumed.sessionId, session.sessionId);
-
-  const second = await runtime.sendTurn({
-    sessionId: session.sessionId,
-    input: 'turn two',
-    idempotencyKey: 'uc02-b',
-  });
-  await second.done;
-
-  const stream = runtime.streamEvents({
-    tenantId: 'tenant-a',
-    sessionId: session.sessionId,
-    fidelity: 'semantic',
-  });
-  const iterator = stream[Symbol.asyncIterator]();
-  try {
-    const events = await collectUntil(iterator, (items) =>
-      items.some((event) => event.type === 'turn.completed' && event.run_id === second.runId),
-    );
-
-    assert.equal(events.filter((event) => event.type === 'session.resumed').length, 1);
-    assert.equal(events.filter((event) => event.type === 'turn.started').length, 2);
-    assert.match(
-      assistantText(events.filter((event) => event.run_id === first.runId)),
-      /anthropic:turn one/u,
-    );
-    assert.match(
-      assistantText(events.filter((event) => event.run_id === second.runId)),
-      /anthropic:turn two/u,
-    );
-  } finally {
-    await iterator.return?.();
   }
 });
 
@@ -552,9 +645,7 @@ test('UC-11 queued follow-ups dequeue deterministically by priority and preserve
   try {
     const events = await collectUntil(
       iterator,
-      (items) => {
-        return items.filter((event) => event.type === 'turn.completed').length === 3;
-      },
+      (items) => items.filter((event) => event.type === 'turn.completed').length === 3,
       1200,
     );
 
@@ -573,5 +664,87 @@ test('UC-11 queued follow-ups dequeue deterministically by priority and preserve
     assert.equal(highOutputIndex < normalOutputIndex, true);
   } finally {
     await iterator.return?.();
+  }
+});
+
+test('UC-12 debug and seamless projections are pure functions of canonical stream', async () => {
+  const runtime = new InMemoryNimRuntime();
+  runtime.registerProvider({
+    id: 'anthropic',
+    displayName: 'Anthropic',
+    models: ['anthropic/claude-3-haiku-20240307'],
+  });
+  runtime.registerProviderDriver(providerDriver('anthropic', 'anthropic'));
+  runtime.registerTools([{ name: 'ping', description: 'ping tool' }]);
+
+  const session = await runtime.startSession({
+    tenantId: 'tenant-a',
+    userId: 'user-a',
+    model: 'anthropic/claude-3-haiku-20240307',
+  });
+
+  const turn = await runtime.sendTurn({
+    sessionId: session.sessionId,
+    input: 'use-tool ping',
+    idempotencyKey: 'uc12-a',
+  });
+  await turn.done;
+
+  const canonical = runtime.streamEvents({
+    tenantId: 'tenant-a',
+    sessionId: session.sessionId,
+    runId: turn.runId,
+    fidelity: 'semantic',
+  });
+  const debugUi = runtime.streamUi({
+    tenantId: 'tenant-a',
+    sessionId: session.sessionId,
+    runId: turn.runId,
+    mode: 'debug',
+  });
+  const seamlessUi = runtime.streamUi({
+    tenantId: 'tenant-a',
+    sessionId: session.sessionId,
+    runId: turn.runId,
+    mode: 'seamless',
+  });
+  const canonicalIterator = canonical[Symbol.asyncIterator]();
+  const debugIterator = debugUi[Symbol.asyncIterator]();
+  const seamlessIterator = seamlessUi[Symbol.asyncIterator]();
+
+  try {
+    const canonicalEvents = await collectUntil(canonicalIterator, (items) =>
+      items.some((event) => event.type === 'turn.completed' && event.run_id === turn.runId),
+    );
+    const debugUiEvents = await collectUntil<NimUiEvent>(debugIterator, (items) =>
+      items.some((event) => event.type === 'assistant.state' && event.state === 'idle'),
+    );
+    const seamlessUiEvents = await collectUntil<NimUiEvent>(seamlessIterator, (items) =>
+      items.some((event) => event.type === 'assistant.state' && event.state === 'idle'),
+    );
+
+    const projectedDebug = canonicalEvents.flatMap((event) =>
+      projectEventToUiEvents(event, 'debug'),
+    );
+    const projectedSeamless = canonicalEvents.flatMap((event) =>
+      projectEventToUiEvents(event, 'seamless'),
+    );
+
+    assert.deepEqual(debugUiEvents, projectedDebug);
+    assert.deepEqual(seamlessUiEvents, projectedSeamless);
+    assert.equal(
+      debugUiEvents.some((event) => event.type === 'tool.activity' && event.phase === 'start'),
+      true,
+    );
+    assert.equal(
+      seamlessUiEvents.some(
+        (event) => event.type === 'assistant.state' && event.state === 'tool-calling',
+      ),
+      true,
+    );
+  } finally {
+    await canonicalIterator.return?.();
+    await debugIterator.return?.();
+    await seamlessIterator.return?.();
   }
 });

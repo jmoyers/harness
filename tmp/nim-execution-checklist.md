@@ -12,7 +12,7 @@ Status Date: 2026-02-20
 - 2026-02-20: Updated Haiku integration smoke to include reachable fallback (`claude-3-haiku-20240307`); smoke now passes in this environment.
 - 2026-02-20: Haiku integration now asserts runtime-level observability transitions (`thinking -> tool-calling -> responding -> idle`) via `nim-core` stream APIs.
 - 2026-02-20: `test:sharded --coverage` now runs deterministic single-process coverage mode so `test:coverage` preserves 100% thresholds while non-coverage test runs remain sharded.
-- 2026-02-20: Added functional UC suite (`test/nim-functional-use-cases.test.ts`) covering UC-01, UC-02, UC-03, UC-09, UC-10, UC-11, and UC-12 with explicit replay/projection assertions.
+- 2026-02-20: Added functional UC suite (`test/nim-functional-use-cases.test.ts`) covering UC-01, UC-02, UC-03, UC-04, UC-05, UC-09, UC-10, UC-11, and UC-12 with explicit replay/projection assertions.
 
 ## 0. Operating Rules
 - [ ] Keep this checklist branch-local and temporary only.

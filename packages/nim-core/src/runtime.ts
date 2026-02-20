@@ -62,6 +62,7 @@ type QueueItem = {
 };
 
 type AbortReason = 'manual' | 'timeout' | 'policy' | 'signal';
+type ToolBlockReason = 'policy-deny' | 'policy-allow-miss' | 'tool-unavailable';
 
 type RunState = {
   readonly runId: string;
@@ -630,15 +631,40 @@ export class InMemoryNimRuntime implements NimRuntime {
         state: 'responding',
       });
 
+      const requestedToolName = this.requestedToolName(run.input);
+      const exposedTools = this.resolveExposedTools();
+      const blockedToolReason =
+        requestedToolName === undefined
+          ? undefined
+          : this.resolveToolBlockReason(requestedToolName, exposedTools);
+      if (requestedToolName !== undefined && blockedToolReason !== undefined) {
+        this.appendRunEvent(session, run, {
+          type: 'tool.policy.blocked',
+          source: 'system',
+          state: 'responding',
+          data: {
+            toolName: requestedToolName,
+            reason: blockedToolReason,
+          },
+        });
+      }
+
       const resolvedModel = this.providerRouter.resolveModel(session.model);
       const terminalState =
         resolvedModel.driver === undefined
-          ? await this.executeRunWithMockProvider(session, run)
+          ? await this.executeRunWithMockProvider(
+              session,
+              run,
+              exposedTools,
+              requestedToolName,
+              blockedToolReason,
+            )
           : await this.executeRunWithProviderDriver(
               session,
               run,
               resolvedModel.driver,
               resolvedModel.parsedModel.providerModelId,
+              exposedTools,
             );
 
       this.appendRunEvent(session, run, {
@@ -665,6 +691,9 @@ export class InMemoryNimRuntime implements NimRuntime {
   private async executeRunWithMockProvider(
     session: SessionState,
     run: RunState,
+    exposedTools: readonly NimToolDefinition[],
+    requestedToolName?: string,
+    blockedToolReason?: ToolBlockReason,
   ): Promise<'completed' | 'aborted'> {
     this.appendRunEvent(session, run, {
       type: 'assistant.state.changed',
@@ -685,44 +714,48 @@ export class InMemoryNimRuntime implements NimRuntime {
     const shouldUseTool = run.input.includes('use-tool');
     if (shouldUseTool) {
       const toolCallId = randomUUID();
-      const toolName = this.tools[0]?.name ?? 'mock-tool';
+      const toolName = requestedToolName ?? exposedTools[0]?.name ?? 'mock-tool';
+      const canInvokeTool =
+        blockedToolReason === undefined && exposedTools.some((tool) => tool.name === toolName);
 
-      this.appendRunEvent(session, run, {
-        type: 'assistant.state.changed',
-        source: 'system',
-        state: 'tool-calling',
-        toolCallId,
-      });
-      this.appendRunEvent(session, run, {
-        type: 'tool.call.started',
-        source: 'tool',
-        state: 'tool-calling',
-        toolCallId,
-        data: {
-          toolName,
-        },
-      });
+      if (canInvokeTool) {
+        this.appendRunEvent(session, run, {
+          type: 'assistant.state.changed',
+          source: 'system',
+          state: 'tool-calling',
+          toolCallId,
+        });
+        this.appendRunEvent(session, run, {
+          type: 'tool.call.started',
+          source: 'tool',
+          state: 'tool-calling',
+          toolCallId,
+          data: {
+            toolName,
+          },
+        });
 
-      await sleep(1);
-      if (run.aborted) {
-        return 'aborted';
+        await sleep(1);
+        if (run.aborted) {
+          return 'aborted';
+        }
+
+        this.appendRunEvent(session, run, {
+          type: 'tool.call.completed',
+          source: 'tool',
+          state: 'tool-calling',
+          toolCallId,
+          data: {
+            toolName,
+          },
+        });
+        this.appendRunEvent(session, run, {
+          type: 'tool.result.emitted',
+          source: 'tool',
+          state: 'responding',
+          toolCallId,
+        });
       }
-
-      this.appendRunEvent(session, run, {
-        type: 'tool.call.completed',
-        source: 'tool',
-        state: 'tool-calling',
-        toolCallId,
-        data: {
-          toolName,
-        },
-      });
-      this.appendRunEvent(session, run, {
-        type: 'tool.result.emitted',
-        source: 'tool',
-        state: 'responding',
-        toolCallId,
-      });
     }
 
     this.appendRunEvent(session, run, {
@@ -758,13 +791,14 @@ export class InMemoryNimRuntime implements NimRuntime {
     run: RunState,
     driver: NimProviderDriver,
     providerModelId: string,
+    exposedTools: readonly NimToolDefinition[],
   ): Promise<'completed' | 'aborted' | 'failed'> {
     let terminalState: 'completed' | 'aborted' | 'failed' = 'completed';
     for await (const providerEvent of driver.runTurn({
       modelRef: session.model,
       providerModelId,
       input: run.input,
-      tools: this.tools,
+      tools: exposedTools,
       abortSignal: run.abortController.signal,
     })) {
       if (run.aborted) {
@@ -1188,6 +1222,51 @@ export class InMemoryNimRuntime implements NimRuntime {
       return false;
     }
     return true;
+  }
+
+  private requestedToolName(input: string): string | undefined {
+    const match = /(?:^|\s)use-tool(?:\s+([A-Za-z0-9._:-]+))?/u.exec(input);
+    if (match === null) {
+      return undefined;
+    }
+    const namedTool = match[1];
+    if (typeof namedTool === 'string' && namedTool.length > 0) {
+      return namedTool;
+    }
+    return this.tools[0]?.name;
+  }
+
+  private resolveExposedTools(): readonly NimToolDefinition[] {
+    const denySet = new Set(this.toolPolicy.deny);
+    const hasAllowList = this.toolPolicy.allow.length > 0;
+    const allowSet = new Set(this.toolPolicy.allow);
+    return this.tools.filter((tool) => {
+      if (denySet.has(tool.name)) {
+        return false;
+      }
+      if (hasAllowList && !allowSet.has(tool.name)) {
+        return false;
+      }
+      return true;
+    });
+  }
+
+  private resolveToolBlockReason(
+    requestedToolName: string,
+    exposedTools: readonly NimToolDefinition[],
+  ): ToolBlockReason | undefined {
+    const isRegistered = this.tools.some((tool) => tool.name === requestedToolName);
+    if (!isRegistered) {
+      return 'tool-unavailable';
+    }
+    if (this.toolPolicy.deny.includes(requestedToolName)) {
+      return 'policy-deny';
+    }
+    if (this.toolPolicy.allow.length > 0 && !this.toolPolicy.allow.includes(requestedToolName)) {
+      return 'policy-allow-miss';
+    }
+    const isExposed = exposedTools.some((tool) => tool.name === requestedToolName);
+    return isExposed ? undefined : 'tool-unavailable';
   }
 
   private resolveFromEvent(fromEventIdExclusive?: string): NimEventEnvelope | undefined {

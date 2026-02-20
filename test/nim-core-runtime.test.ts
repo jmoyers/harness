@@ -423,7 +423,7 @@ test('nim runtime streamUi projects canonical events for debug and seamless mode
   try {
     const turn = await runtime.sendTurn({
       sessionId: session.sessionId,
-      input: 'use-tool ui-check',
+      input: 'use-tool mock-tool',
       idempotencyKey: 'idem-ui',
     });
     await turn.done;
