@@ -19,8 +19,25 @@ interface LinePromptReduction {
   submit: boolean;
 }
 
+export interface LinePromptInputState {
+  readonly inBracketedPaste: boolean;
+  readonly pendingSequence: Buffer;
+}
+
+interface StatefulLinePromptReduction extends LinePromptReduction {
+  readonly lineInputState: LinePromptInputState;
+}
+
 const BRACKETED_PASTE_START = Buffer.from('\u001b[200~', 'utf8');
 const BRACKETED_PASTE_END = Buffer.from('\u001b[201~', 'utf8');
+const EMPTY_BUFFER = Buffer.alloc(0);
+
+export function createLinePromptInputState(): LinePromptInputState {
+  return {
+    inBracketedPaste: false,
+    pendingSequence: EMPTY_BUFFER,
+  };
+}
 
 function matchesSequence(input: Buffer, startIndex: number, sequence: Buffer): boolean {
   if (startIndex < 0 || startIndex + sequence.length > input.length) {
@@ -34,22 +51,60 @@ function matchesSequence(input: Buffer, startIndex: number, sequence: Buffer): b
   return true;
 }
 
-export function reduceLinePromptInput(value: string, input: Buffer): LinePromptReduction {
+function isTruncatedSequencePrefix(input: Buffer, startIndex: number, sequence: Buffer): boolean {
+  const remaining = input.length - startIndex;
+  if (remaining >= sequence.length) {
+    return false;
+  }
+  for (let index = 0; index < remaining; index += 1) {
+    if (input[startIndex + index] !== sequence[index]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+export function reduceLinePromptInput(value: string, input: Buffer): LinePromptReduction;
+export function reduceLinePromptInput(
+  value: string,
+  input: Buffer,
+  lineInputState: LinePromptInputState,
+): StatefulLinePromptReduction;
+export function reduceLinePromptInput(
+  value: string,
+  input: Buffer,
+  lineInputState?: LinePromptInputState,
+): LinePromptReduction | StatefulLinePromptReduction {
+  const activeState = lineInputState ?? createLinePromptInputState();
+  const mergedInput =
+    activeState.pendingSequence.length === 0
+      ? input
+      : Buffer.concat([activeState.pendingSequence, input]);
+
   let nextValue = value;
   let submit = false;
-  let inBracketedPaste = false;
-  for (let index = 0; index < input.length; index += 1) {
-    if (!inBracketedPaste && matchesSequence(input, index, BRACKETED_PASTE_START)) {
+  let inBracketedPaste = activeState.inBracketedPaste;
+  let pendingSequence = EMPTY_BUFFER;
+  for (let index = 0; index < mergedInput.length; index += 1) {
+    if (!inBracketedPaste && matchesSequence(mergedInput, index, BRACKETED_PASTE_START)) {
       inBracketedPaste = true;
       index += BRACKETED_PASTE_START.length - 1;
       continue;
     }
-    if (inBracketedPaste && matchesSequence(input, index, BRACKETED_PASTE_END)) {
+    if (matchesSequence(mergedInput, index, BRACKETED_PASTE_END)) {
       inBracketedPaste = false;
       index += BRACKETED_PASTE_END.length - 1;
       continue;
     }
-    const byte = input[index]!;
+    if (
+      isTruncatedSequencePrefix(mergedInput, index, BRACKETED_PASTE_START) ||
+      isTruncatedSequencePrefix(mergedInput, index, BRACKETED_PASTE_END)
+    ) {
+      pendingSequence = Buffer.from(mergedInput.subarray(index));
+      break;
+    }
+
+    const byte = mergedInput[index]!;
     if (inBracketedPaste) {
       if (byte >= 32 && byte <= 126) {
         nextValue += String.fromCharCode(byte);
@@ -68,9 +123,19 @@ export function reduceLinePromptInput(value: string, input: Buffer): LinePromptR
       nextValue += String.fromCharCode(byte);
     }
   }
+  if (lineInputState === undefined) {
+    return {
+      value: nextValue,
+      submit,
+    };
+  }
   return {
     value: nextValue,
     submit,
+    lineInputState: {
+      inBracketedPaste,
+      pendingSequence,
+    },
   };
 }
 

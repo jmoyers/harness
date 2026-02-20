@@ -3,6 +3,7 @@ import { test } from 'bun:test';
 import { createCommandMenuState } from '../src/mux/live-mux/command-menu.ts';
 import { createNewThreadPromptState } from '../src/mux/new-thread-prompt.ts';
 import {
+  createLinePromptInputState,
   reduceLinePromptInput,
   reduceTaskEditorPromptInput,
 } from '../src/mux/live-mux/modal-input-reducers.ts';
@@ -42,6 +43,70 @@ void test('modal input reducers normalize line and task-editor input branches', 
     {
       value: 'token=abc123',
       submit: false,
+    },
+  );
+  const splitPasteStart = reduceLinePromptInput(
+    '',
+    Buffer.from('\u001b[200~new-key', 'utf8'),
+    createLinePromptInputState(),
+  );
+  assert.deepEqual(
+    {
+      value: splitPasteStart.value,
+      submit: splitPasteStart.submit,
+    },
+    {
+      value: 'new-key',
+      submit: false,
+    },
+  );
+  const splitPasteEnd = reduceLinePromptInput(
+    splitPasteStart.value,
+    Buffer.from('\u001b[201~\n', 'utf8'),
+    splitPasteStart.lineInputState,
+  );
+  assert.deepEqual(
+    {
+      value: splitPasteEnd.value,
+      submit: splitPasteEnd.submit,
+    },
+    {
+      value: 'new-key',
+      submit: true,
+    },
+  );
+  const truncatedPastePrefix = reduceLinePromptInput(
+    '',
+    Buffer.from('\u001b[200', 'utf8'),
+    createLinePromptInputState(),
+  );
+  assert.deepEqual(
+    {
+      value: truncatedPastePrefix.value,
+      submit: truncatedPastePrefix.submit,
+      pending: truncatedPastePrefix.lineInputState.pendingSequence.toString('utf8'),
+    },
+    {
+      value: '',
+      submit: false,
+      pending: '\u001b[200',
+    },
+  );
+  const completedAfterTruncatedPrefix = reduceLinePromptInput(
+    truncatedPastePrefix.value,
+    Buffer.from('~next\u001b[201~', 'utf8'),
+    truncatedPastePrefix.lineInputState,
+  );
+  assert.deepEqual(
+    {
+      value: completedAfterTruncatedPrefix.value,
+      submit: completedAfterTruncatedPrefix.submit,
+      pending: completedAfterTruncatedPrefix.lineInputState.pendingSequence.toString('utf8'),
+    },
+    {
+      value: 'next',
+      submit: false,
+      pending: '',
     },
   );
 

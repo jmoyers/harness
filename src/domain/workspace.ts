@@ -1,6 +1,7 @@
 import type { ProjectPaneSnapshot } from '../mux/harness-core-ui.ts';
 import type { CommandMenuState } from '../mux/live-mux/command-menu.ts';
 import type { LeftNavSelection } from '../mux/live-mux/left-nav.ts';
+import type { LinePromptInputState } from '../mux/live-mux/modal-input-reducers.ts';
 import type { PaneSelection, PaneSelectionDrag } from '../mux/live-mux/selection.ts';
 import type { createNewThreadPromptState } from '../mux/new-thread-prompt.ts';
 import type { TaskComposerBuffer } from '../mux/task-composer.ts';
@@ -31,6 +32,7 @@ export interface ApiKeyPromptState {
   readonly value: string;
   readonly error: string | null;
   readonly hasExistingValue: boolean;
+  readonly lineInputState?: LinePromptInputState;
 }
 
 export interface TaskEditorPromptState {
