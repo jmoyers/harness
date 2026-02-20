@@ -3,7 +3,7 @@ const THREAD_ACTION_ID_PATTERN = /^thread\.(?:start|install)\.([a-z0-9-]+)$/u;
 const TASK_SUMMARY_MAX_CHARS = 96;
 const DEFAULT_TASK_SUMMARY = 'untitled task';
 
-type CommandMenuScope = 'all' | 'thread-start' | 'theme-select';
+type CommandMenuScope = 'all' | 'thread-start' | 'theme-select' | 'shortcuts';
 type CommandMenuInitialGroup = 'agent-types' | 'actions';
 
 const COMMAND_MENU_AGENT_TYPE_ORDER: Readonly<Record<string, number>> = {
@@ -26,6 +26,9 @@ export interface CommandMenuActionDescriptor {
   readonly aliases?: readonly string[];
   readonly keywords?: readonly string[];
   readonly detail?: string;
+  readonly screenLabel?: string;
+  readonly sectionLabel?: string;
+  readonly bindingHint?: string;
   readonly priority?: number;
 }
 

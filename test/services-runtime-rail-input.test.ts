@@ -68,7 +68,6 @@ function createWorkspace(): WorkspaceModel {
       cursor: 0,
     },
     repositoriesCollapsed: false,
-    shortcutsCollapsed: false,
   });
 }
 
@@ -255,7 +254,6 @@ void test('runtime rail input composes navigation and pointer input with workspa
           atMs: 22,
         });
         pointerOptions.clearSelection();
-        pointerOptions.toggleShortcutsCollapsed();
         pointerOptions.ensureConversationPaneActive('session-1');
         pointerOptions.queueArchiveConversation('session-1');
         pointerOptions.queueArchiveRepository('repo-1');
@@ -281,7 +279,6 @@ void test('runtime rail input composes navigation and pointer input with workspa
   });
   assert.equal(workspace.selection, null);
   assert.equal(workspace.selectionDrag, null);
-  assert.equal(workspace.shortcutsCollapsed, true);
   assert.equal(workspace.mainPaneMode, 'conversation');
   assert.equal(workspace.leftNavSelection.kind, 'conversation');
   assert.equal(workspace.conversationTitleEditClickState?.conversationId, 'session-clicked');
@@ -289,7 +286,6 @@ void test('runtime rail input composes navigation and pointer input with workspa
   assert.equal(calls.includes('openRepositoryPromptForCreate'), true);
   assert.equal(calls.includes('openRepositoryPromptForEdit:repo-2'), true);
   assert.equal(calls.includes('releaseViewportPinForSelection'), true);
-  assert.equal(calls.includes('queuePersistMuxUiState'), true);
   assert.equal(calls.includes('resetConversationPaneFrameCache'), true);
   assert.equal(calls.includes('queueControlPlaneOp:mouse-archive-conversation'), true);
   assert.equal(calls.includes('archiveConversation:session-1'), true);

@@ -22,7 +22,6 @@ void test('workspace model initializes defaults and preserves constructor state'
       cursor: 0,
     },
     repositoriesCollapsed: true,
-    shortcutsCollapsed: false,
   });
 
   assert.equal(workspace.activeDirectoryId, 'dir-a');
@@ -56,7 +55,6 @@ void test('workspace model initializes defaults and preserves constructor state'
   assert.deepEqual(workspace.previousSelectionRows, []);
   assert.deepEqual(workspace.latestRailViewRows, []);
   assert.equal(workspace.repositoriesCollapsed, true);
-  assert.equal(workspace.shortcutsCollapsed, false);
 });
 
 void test('workspace model left-nav transition methods own state updates', () => {
@@ -80,7 +78,6 @@ void test('workspace model left-nav transition methods own state updates', () =>
       cursor: 0,
     },
     repositoriesCollapsed: false,
-    shortcutsCollapsed: false,
   });
 
   workspace.selectLeftNavHome();
@@ -131,7 +128,6 @@ void test('workspace model pane transition methods own project/home state update
       cursor: 0,
     },
     repositoriesCollapsed: false,
-    shortcutsCollapsed: false,
   });
   workspace.homePaneDragState = {
     kind: 'task',

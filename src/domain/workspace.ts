@@ -60,7 +60,6 @@ interface WorkspaceModelInit {
   latestTaskPaneView: TaskFocusedPaneView;
   taskDraftComposer: TaskComposerBuffer;
   repositoriesCollapsed: boolean;
-  shortcutsCollapsed: boolean;
 }
 
 export class WorkspaceModel {
@@ -100,7 +99,6 @@ export class WorkspaceModel {
   latestRailViewRows: ReturnType<typeof buildWorkspaceRailViewRows> = [];
 
   repositoriesCollapsed: boolean;
-  shortcutsCollapsed: boolean;
 
   constructor(init: WorkspaceModelInit) {
     this.activeDirectoryId = init.activeDirectoryId;
@@ -108,7 +106,6 @@ export class WorkspaceModel {
     this.latestTaskPaneView = init.latestTaskPaneView;
     this.taskDraftComposer = init.taskDraftComposer;
     this.repositoriesCollapsed = init.repositoriesCollapsed;
-    this.shortcutsCollapsed = init.shortcutsCollapsed;
   }
 
   selectLeftNavHome(): void {

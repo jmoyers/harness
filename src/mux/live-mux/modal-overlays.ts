@@ -69,6 +69,45 @@ export const RELEASE_NOTES_UPDATE_ACTION_ROW_OFFSET =
   RELEASE_NOTES_BODY_START_ROW_OFFSET + RELEASE_NOTES_UPDATE_ACTION_BODY_LINE_INDEX;
 export const RELEASE_NOTES_UPDATE_ACTION_LABEL = '[ click to update now ]';
 
+function truncateColumn(value: string, width: number): string {
+  const safeWidth = Math.max(1, width);
+  const normalized = value.trim();
+  if (normalized.length <= safeWidth) {
+    return normalized.padEnd(safeWidth, ' ');
+  }
+  return safeWidth <= 1 ? normalized.slice(0, safeWidth) : `${normalized.slice(0, safeWidth - 1)}…`;
+}
+
+function renderShortcutsTableRows(
+  page: ReturnType<typeof resolveCommandMenuPage>,
+  totalWidth: number,
+): readonly string[] {
+  const tableWidth = Math.max(30, totalWidth - 2);
+  const separatorWidth = 6;
+  const baseColumnWidth = Math.max(6, Math.floor((tableWidth - separatorWidth) / 3));
+  const leftWidth = baseColumnWidth;
+  const middleWidth = baseColumnWidth;
+  const rightWidth = Math.max(8, tableWidth - leftWidth - middleWidth - separatorWidth);
+  const rows: string[] = [];
+  rows.push(
+    `${truncateColumn('screen', leftWidth)} | ${truncateColumn('action', middleWidth)} | ${truncateColumn('bindings', rightWidth)}`,
+  );
+  for (const entry of page.displayEntries) {
+    const prefix = entry.absoluteIndex === page.selectedIndex ? '>' : ' ';
+    const screen = entry.action.screenLabel ?? 'Global';
+    const action = `${prefix} ${entry.action.title}`;
+    const bindingText =
+      entry.action.bindingHint?.trim() ??
+      entry.action.detail?.trim() ??
+      entry.action.sectionLabel?.trim() ??
+      '';
+    rows.push(
+      `${truncateColumn(screen, leftWidth)} | ${truncateColumn(action, middleWidth)} | ${truncateColumn(bindingText, rightWidth)}`,
+    );
+  }
+  return rows;
+}
+
 export function buildNewThreadModalOverlay(
   layoutCols: number,
   viewportRows: number,
@@ -114,28 +153,43 @@ export function buildCommandMenuModalOverlay(
     return null;
   }
   const isThemePicker = menu.scope === 'theme-select';
+  const isShortcutsScope = menu.scope === 'shortcuts';
   const modalSize = resolveGoldenModalSize(layoutCols, viewportRows, {
-    preferredHeight: 18,
-    minWidth: 48,
-    maxWidth: 96,
+    preferredHeight: isShortcutsScope ? 24 : 18,
+    minWidth: isShortcutsScope ? 84 : 48,
+    maxWidth: isShortcutsScope ? 132 : 96,
   });
   const page = resolveCommandMenuPage(actions, menu);
-  const bodyLines: string[] = [`${isThemePicker ? 'theme' : 'search'}: ${menu.query}_`, ''];
+  const bodyLines: string[] = [
+    `${isThemePicker ? 'theme' : isShortcutsScope ? 'shortcuts' : 'search'}: ${menu.query}_`,
+    '',
+  ];
   if (page.matches.length === 0) {
     bodyLines.push('no actions match');
   } else {
-    for (const entry of page.displayEntries) {
-      const prefix = entry.absoluteIndex === page.selectedIndex ? '>' : ' ';
-      const detail = entry.action.detail?.trim() ?? '';
-      bodyLines.push(
-        detail.length > 0
-          ? `${prefix} ${entry.action.title} - ${detail}`
-          : `${prefix} ${entry.action.title}`,
-      );
+    if (isShortcutsScope) {
+      bodyLines.push(...renderShortcutsTableRows(page, modalSize.width));
+    } else {
+      for (const entry of page.displayEntries) {
+        const prefix = entry.absoluteIndex === page.selectedIndex ? '>' : ' ';
+        const detail = entry.action.detail?.trim() ?? '';
+        bodyLines.push(
+          detail.length > 0
+            ? `${prefix} ${entry.action.title} - ${detail}`
+            : `${prefix} ${entry.action.title}`,
+        );
+      }
     }
   }
-  bodyLines.push('', isThemePicker ? 'type to filter themes' : 'type to filter');
-  const title = isThemePicker ? 'Choose Theme' : 'Command Menu';
+  bodyLines.push(
+    '',
+    isThemePicker
+      ? 'type to filter themes'
+      : isShortcutsScope
+        ? 'type to filter keybindings'
+        : 'type to filter',
+  );
+  const title = isThemePicker ? 'Choose Theme' : isShortcutsScope ? 'Shortcuts' : 'Command Menu';
   return buildUiModalOverlay({
     viewportCols: layoutCols,
     viewportRows,
@@ -145,7 +199,11 @@ export function buildCommandMenuModalOverlay(
     marginRows: 1,
     title,
     bodyLines,
-    footer: isThemePicker ? 'enter apply  esc cancel' : 'enter run  esc',
+    footer: isThemePicker
+      ? 'enter apply  esc cancel'
+      : isShortcutsScope
+        ? 'enter close  esc'
+        : 'enter run  esc',
     theme,
   });
 }

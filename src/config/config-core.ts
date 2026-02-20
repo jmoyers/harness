@@ -84,7 +84,6 @@ export interface HarnessMuxThemeConfig {
 interface HarnessMuxUiConfig {
   readonly paneWidthPercent: number | null;
   readonly repositoriesCollapsed: boolean;
-  readonly shortcutsCollapsed: boolean;
   readonly showTasks: boolean;
   readonly theme: HarnessMuxThemeConfig | null;
 }
@@ -281,7 +280,6 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
     ui: {
       paneWidthPercent: null,
       repositoriesCollapsed: false,
-      shortcutsCollapsed: false,
       showTasks: false,
       theme: null,
     },
@@ -625,10 +623,6 @@ function normalizeMuxUiConfig(input: unknown): HarnessMuxUiConfig {
     record['paneWidthPercent'],
     DEFAULT_HARNESS_CONFIG.mux.ui.paneWidthPercent,
   );
-  const shortcutsCollapsed =
-    typeof record['shortcutsCollapsed'] === 'boolean'
-      ? record['shortcutsCollapsed']
-      : DEFAULT_HARNESS_CONFIG.mux.ui.shortcutsCollapsed;
   const repositoriesCollapsed =
     typeof record['repositoriesCollapsed'] === 'boolean'
       ? record['repositoriesCollapsed']
@@ -640,7 +634,6 @@ function normalizeMuxUiConfig(input: unknown): HarnessMuxUiConfig {
   return {
     paneWidthPercent,
     repositoriesCollapsed,
-    shortcutsCollapsed,
     showTasks,
     theme: normalizeMuxThemeConfig(record['theme']),
   };
@@ -1722,7 +1715,6 @@ export function updateHarnessMuxUiConfig(
   update: Partial<{
     paneWidthPercent: number | null;
     repositoriesCollapsed: boolean;
-    shortcutsCollapsed: boolean;
     showTasks: boolean;
   }>,
   options?: {
@@ -1742,10 +1734,6 @@ export function updateHarnessMuxUiConfig(
         update.paneWidthPercent === undefined
           ? current.mux.ui.paneWidthPercent
           : normalizePaneWidthPercent(update.paneWidthPercent, null);
-      const nextShortcutsCollapsed =
-        update.shortcutsCollapsed === undefined
-          ? current.mux.ui.shortcutsCollapsed
-          : update.shortcutsCollapsed;
       const nextRepositoriesCollapsed =
         update.repositoriesCollapsed === undefined
           ? current.mux.ui.repositoriesCollapsed
@@ -1760,7 +1748,6 @@ export function updateHarnessMuxUiConfig(
             paneWidthPercent:
               nextPaneWidthPercent === null ? null : roundUiPercent(nextPaneWidthPercent),
             repositoriesCollapsed: nextRepositoriesCollapsed,
-            shortcutsCollapsed: nextShortcutsCollapsed,
             showTasks: nextShowTasks,
             theme: current.mux.ui.theme,
           },

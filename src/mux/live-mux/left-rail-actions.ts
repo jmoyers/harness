@@ -20,7 +20,6 @@ interface HandleLeftRailActionClickOptions {
   enterHomePane: () => void;
   enterTasksPane?: () => void;
   queueCloseDirectory: (directoryId: string) => void;
-  toggleShortcutsCollapsed: () => void;
   markDirty: () => void;
 }
 
@@ -116,12 +115,6 @@ export function handleLeftRailActionClick(options: HandleLeftRailActionClickOpti
     if (targetDirectoryId !== null) {
       options.queueCloseDirectory(targetDirectoryId);
     }
-    options.markDirty();
-    return true;
-  }
-  if (options.action === 'shortcuts.toggle') {
-    options.clearConversationTitleEditClickState();
-    options.toggleShortcutsCollapsed();
     options.markDirty();
     return true;
   }

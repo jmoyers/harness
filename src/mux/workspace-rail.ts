@@ -191,22 +191,6 @@ function paintWorkspaceRailRow(
     paintUiRow(surface, rowIndex, row.text, theme.repositoryRowStyle, theme.normalStyle);
     return;
   }
-  if (row.kind === 'shortcut-header') {
-    const buttonLabel = row.text.endsWith('[+]') ? '[+]' : row.text.endsWith('[-]') ? '[-]' : null;
-    if (buttonLabel === null) {
-      drawTreeRow(surface, rowIndex, row, theme, theme.headerStyle, theme.activeRowStyle);
-    } else {
-      drawTreeRow(surface, rowIndex, row, theme, theme.headerStyle, theme.activeRowStyle, {
-        buttonLabel,
-        buttonStyle: theme.actionStyle,
-      });
-    }
-    return;
-  }
-  if (row.kind === 'shortcut-body') {
-    paintUiRow(surface, rowIndex, row.text, theme.shortcutStyle);
-    return;
-  }
   if (row.kind === 'action') {
     drawActionRow(surface, rowIndex, row, theme);
     return;

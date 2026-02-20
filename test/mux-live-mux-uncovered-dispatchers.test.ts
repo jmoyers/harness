@@ -669,9 +669,6 @@ void test('left-rail action click routes all supported actions and default false
     queueCloseDirectory: (directoryId: string) => {
       calls.push(`queueCloseDirectory:${directoryId}`);
     },
-    toggleShortcutsCollapsed: () => {
-      calls.push('toggleShortcutsCollapsed');
-    },
     markDirty: () => {
       calls.push('markDirty');
     },
@@ -689,7 +686,6 @@ void test('left-rail action click routes all supported actions and default false
     'home.open',
     'tasks.open',
     'project.close',
-    'shortcuts.toggle',
   ] as const;
   for (const action of actions) {
     assert.equal(handleLeftRailActionClick({ ...base, action }), true);
@@ -707,7 +703,6 @@ void test('left-rail action click routes all supported actions and default false
   assert.equal(calls.includes('collapseAllRepositoryGroups'), true);
   assert.equal(calls.includes('enterHomePane'), true);
   assert.equal(calls.includes('queueCloseDirectory:dir-a'), true);
-  assert.equal(calls.includes('toggleShortcutsCollapsed'), true);
   calls.length = 0;
   assert.equal(
     handleLeftRailActionClick({

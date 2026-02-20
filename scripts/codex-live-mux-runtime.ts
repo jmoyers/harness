@@ -27,6 +27,11 @@ import { resolveHarnessRuntimePath } from '../src/config/harness-paths.ts';
 import { migrateLegacyHarnessLayout } from '../src/config/harness-runtime-migration.ts';
 import { loadHarnessSecrets, upsertHarnessSecret } from '../src/config/secrets-core.ts';
 import { detectMuxGlobalShortcut, resolveMuxShortcutBindings } from '../src/mux/input-shortcuts.ts';
+import {
+  KEYBINDING_REGISTRY_ENTRIES,
+  type TaskScreenKeybindingAction,
+  type MuxGlobalShortcutAction,
+} from '../src/mux/keybinding-registry.ts';
 import { createMuxInputModeManager } from '../src/mux/terminal-input-modes.ts';
 import type { buildWorkspaceRailViewRows } from '../src/mux/workspace-rail-model.ts';
 import {
@@ -321,6 +326,7 @@ const REPOSITORY_TOGGLE_CHORD_TIMEOUT_MS = 1250;
 const REPOSITORY_COLLAPSE_ALL_CHORD_PREFIX = Buffer.from([0x0b]);
 const UNTRACKED_REPOSITORY_GROUP_ID = 'untracked';
 const THEME_PICKER_SCOPE = 'theme-select';
+const SHORTCUTS_SCOPE = 'shortcuts';
 const THEME_ACTION_ID_PREFIX = 'theme.set.';
 const API_KEY_ACTION_ID_PREFIX = 'api-key.set.';
 const RELEASE_NOTES_PREVIEW_LINE_COUNT = 6;
@@ -904,7 +910,6 @@ async function main(): Promise<number> {
     },
     taskDraftComposer: createTaskComposerBuffer(''),
     repositoriesCollapsed: configuredMuxUi.repositoriesCollapsed,
-    shortcutsCollapsed: configuredMuxUi.shortcutsCollapsed,
   });
   workspace.repositoryToggleChordPrefixAtMs = null;
   workspace.projectPaneSnapshot = null;
@@ -1670,6 +1675,34 @@ async function main(): Promise<number> {
       githubProjectPrLoading: githubProjectPrState?.loading ?? false,
     };
   };
+  const shortcutBindingsByAction = shortcutBindings.rawByAction;
+  const taskBindingsByAction = taskScreenKeybindings.rawByAction;
+  const resolveEffectiveKeybindingsForAction = (actionId: string): readonly string[] => {
+    if (actionId in shortcutBindingsByAction) {
+      return shortcutBindingsByAction[actionId as MuxGlobalShortcutAction] ?? [];
+    }
+    if (actionId in taskBindingsByAction) {
+      return taskBindingsByAction[actionId as TaskScreenKeybindingAction] ?? [];
+    }
+    return [];
+  };
+  const resolveShortcutCatalogActions = (): readonly CommandMenuActionDescriptor[] => {
+    return KEYBINDING_REGISTRY_ENTRIES.map((entry) => {
+      const effectiveBindings = resolveEffectiveKeybindingsForAction(entry.actionId);
+      const bindingHint =
+        effectiveBindings.length > 0 ? effectiveBindings.join(' / ') : '(unbound)';
+      return {
+        id: `shortcut.binding.${entry.actionId}`,
+        title: entry.title,
+        aliases: [entry.actionId, entry.header, entry.screen],
+        keywords: ['shortcut', 'keybind', entry.screen, entry.header.toLowerCase()],
+        detail: entry.description,
+        screenLabel: entry.screen === 'global' ? 'Global' : 'Home / Tasks',
+        sectionLabel: entry.header,
+        bindingHint,
+      };
+    });
+  };
   const resolveVisibleCommandMenuActions = (
     context: RuntimeCommandMenuContext,
   ): readonly RegisteredCommandMenuAction<RuntimeCommandMenuContext>[] => {
@@ -1687,6 +1720,9 @@ async function main(): Promise<number> {
     );
   };
   const resolveCommandMenuActions = (): readonly CommandMenuActionDescriptor[] => {
+    if (workspace.commandMenu?.scope === SHORTCUTS_SCOPE) {
+      return resolveShortcutCatalogActions();
+    }
     return resolveVisibleCommandMenuActions(commandMenuContext()).map((action) => ({
       id: action.id,
       title: action.title,
@@ -1704,6 +1740,21 @@ async function main(): Promise<number> {
         ? {}
         : {
             detail: action.detail,
+          }),
+      ...(action.screenLabel === undefined
+        ? {}
+        : {
+            screenLabel: action.screenLabel,
+          }),
+      ...(action.sectionLabel === undefined
+        ? {}
+        : {
+            sectionLabel: action.sectionLabel,
+          }),
+      ...(action.bindingHint === undefined
+        ? {}
+        : {
+            bindingHint: action.bindingHint,
           }),
       ...(action.priority === undefined
         ? {}
@@ -1974,6 +2025,15 @@ async function main(): Promise<number> {
     });
     markDirty();
   };
+  const startShortcutsSession = (): void => {
+    themePickerSession = null;
+    commandMenuScopedDirectoryId = null;
+    commandMenuGitHubProjectPrState = null;
+    workspace.commandMenu = createCommandMenuState({
+      scope: SHORTCUTS_SCOPE,
+    });
+    markDirty();
+  };
   const syncThemePickerPreview = (): void => {
     if (themePickerSession === null) {
       return;
@@ -2113,7 +2173,6 @@ async function main(): Promise<number> {
     initialState: {
       paneWidthPercent: paneWidthPercentFromLayout(layout),
       repositoriesCollapsed: configuredMuxUi.repositoriesCollapsed,
-      shortcutsCollapsed: configuredMuxUi.shortcutsCollapsed,
     },
     debounceMs: UI_STATE_PERSIST_DEBOUNCE_MS,
     persistState: (pending) => {
@@ -2126,12 +2185,10 @@ async function main(): Promise<number> {
             ? paneWidthPercentFromLayout(layout)
             : updated.mux.ui.paneWidthPercent,
         repositoriesCollapsed: updated.mux.ui.repositoriesCollapsed,
-        shortcutsCollapsed: updated.mux.ui.shortcutsCollapsed,
       };
     },
     applyState: (state) => {
       workspace.repositoriesCollapsed = state.repositoriesCollapsed;
-      workspace.shortcutsCollapsed = state.shortcutsCollapsed;
     },
     writeStderr: (text) => process.stderr.write(text),
   });
@@ -2142,7 +2199,6 @@ async function main(): Promise<number> {
     muxUiStatePersistence.queue({
       paneWidthPercent: paneWidthPercentFromLayout(layout),
       repositoriesCollapsed: workspace.repositoriesCollapsed,
-      shortcutsCollapsed: workspace.shortcutsCollapsed,
     });
   };
 
@@ -3320,6 +3376,16 @@ async function main(): Promise<number> {
   });
 
   commandMenuRegistry.registerAction({
+    id: 'shortcuts.browse',
+    title: 'Shortcuts',
+    aliases: ['keybinds', 'keyboard shortcuts', 'keys'],
+    keywords: ['shortcut', 'keybind', 'keyboard', 'hotkeys'],
+    run: () => {
+      startShortcutsSession();
+    },
+  });
+
+  commandMenuRegistry.registerAction({
     id: 'theme.choose',
     title: 'Set a Theme',
     aliases: ['theme', 'change theme', 'set theme'],
@@ -3727,7 +3793,6 @@ async function main(): Promise<number> {
     GitRepositorySnapshot,
     GitSummary,
     ProcessUsageSample,
-    ReturnType<typeof resolveMuxShortcutBindings>,
     ReturnType<typeof buildWorkspaceRailViewRows>,
     NonNullable<ReturnType<typeof buildCurrentModalOverlay>>,
     ReturnType<OutputLoadSampler['currentStatusRow']>
@@ -3847,7 +3912,6 @@ async function main(): Promise<number> {
       conversations: conversationRecords,
       gitSummaryByDirectoryId: gitSummaryByDirectoryId,
       processUsageBySessionId: () => processUsageRefreshService.readonlyUsage(),
-      shortcutBindings,
       loadingGitSummary: GIT_SUMMARY_LOADING,
       showTasksEntry,
       activeConversationId: () => conversationManager.activeConversationId,

@@ -873,19 +873,12 @@ void test(
 
     try {
       const homeCell = await waitForSnapshotLineContaining(interactive.oracle, '🏠 home', 12000);
-      await waitForSnapshotLineContaining(interactive.oracle, 'shortcuts [-]', 12000);
 
       writeLeftMouseClick(interactive.session, homeCell.col, homeCell.row);
       await delay(150);
 
-      const shortcutsCell = await waitForSnapshotLineContaining(
-        interactive.oracle,
-        'shortcuts [-]',
-        12000,
-      );
-      writeLeftMouseClick(interactive.session, shortcutsCell.col, shortcutsCell.row);
-
-      await waitForSnapshotLineContaining(interactive.oracle, 'shortcuts [+]', 12000);
+      writeLeftMouseClick(interactive.session, homeCell.col, homeCell.row);
+      await delay(150);
     } finally {
       try {
         await requestMuxShutdown(interactive.session);

@@ -8,7 +8,6 @@ import {
 const INITIAL_STATE: MuxUiStateSnapshot = {
   paneWidthPercent: 40,
   repositoriesCollapsed: false,
-  shortcutsCollapsed: false,
 };
 
 void test('mux ui state persistence debounces queue and persists latest state', () => {
@@ -40,12 +39,10 @@ void test('mux ui state persistence debounces queue and persists latest state', 
   muxUiStatePersistence.queue({
     paneWidthPercent: 41,
     repositoriesCollapsed: true,
-    shortcutsCollapsed: false,
   });
   muxUiStatePersistence.queue({
     paneWidthPercent: 42,
     repositoriesCollapsed: true,
-    shortcutsCollapsed: true,
   });
 
   assert.deepEqual(cleared, [1]);
@@ -58,14 +55,12 @@ void test('mux ui state persistence debounces queue and persists latest state', 
     {
       paneWidthPercent: 42,
       repositoriesCollapsed: true,
-      shortcutsCollapsed: true,
     },
   ]);
   assert.deepEqual(applied, [
     {
       paneWidthPercent: 42,
       repositoriesCollapsed: true,
-      shortcutsCollapsed: true,
     },
   ]);
 });
@@ -122,7 +117,6 @@ void test('mux ui state persistence no-ops when disabled', () => {
   muxUiStatePersistence.queue({
     paneWidthPercent: 55,
     repositoriesCollapsed: true,
-    shortcutsCollapsed: true,
   });
   muxUiStatePersistence.persistNow();
 
@@ -151,7 +145,6 @@ void test('mux ui state persistence reports persist failures', () => {
   muxUiStatePersistence.queue({
     paneWidthPercent: 60,
     repositoriesCollapsed: true,
-    shortcutsCollapsed: true,
   });
   muxUiStatePersistence.persistNow();
 
@@ -178,7 +171,6 @@ void test('mux ui state persistence reports non-error failures', () => {
   muxUiStatePersistence.queue({
     paneWidthPercent: 61,
     repositoriesCollapsed: false,
-    shortcutsCollapsed: true,
   });
   muxUiStatePersistence.persistNow();
 

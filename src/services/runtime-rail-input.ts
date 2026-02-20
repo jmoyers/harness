@@ -222,10 +222,6 @@ export class RuntimeRailInput {
       expandAllRepositoryGroups: options.expandAllRepositoryGroups,
       collapseAllRepositoryGroups: options.collapseAllRepositoryGroups,
       enterHomePane: options.enterHomePane,
-      toggleShortcutsCollapsed: () => {
-        options.workspace.shortcutsCollapsed = !options.workspace.shortcutsCollapsed;
-        options.queuePersistMuxUiState();
-      },
       previousConversationClickState: () => options.workspace.conversationTitleEditClickState,
       setConversationClickState: (next) => {
         options.workspace.conversationTitleEditClickState = next;

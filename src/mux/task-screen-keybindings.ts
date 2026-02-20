@@ -1,3 +1,12 @@
+import {
+  DEFAULT_TASK_SCREEN_KEYBINDINGS_RAW,
+  TASK_SCREEN_KEYBINDING_ACTION_ORDER,
+  type TaskScreenKeybindingAction,
+} from './keybinding-registry.ts';
+
+export { DEFAULT_TASK_SCREEN_KEYBINDINGS_RAW };
+export type { TaskScreenKeybindingAction };
+
 interface KeyStroke {
   readonly key: string;
   readonly ctrl: boolean;
@@ -11,87 +20,7 @@ interface ParsedBinding {
   readonly originalText: string;
 }
 
-export type TaskScreenKeybindingAction =
-  | 'mux.home.repo.dropdown.toggle'
-  | 'mux.home.repo.next'
-  | 'mux.home.repo.previous'
-  | 'mux.home.task.submit'
-  | 'mux.home.task.queue'
-  | 'mux.home.task.newline'
-  | 'mux.home.task.status.ready'
-  | 'mux.home.task.status.draft'
-  | 'mux.home.task.status.complete'
-  | 'mux.home.task.reorder.up'
-  | 'mux.home.task.reorder.down'
-  | 'mux.home.editor.cursor.left'
-  | 'mux.home.editor.cursor.right'
-  | 'mux.home.editor.cursor.up'
-  | 'mux.home.editor.cursor.down'
-  | 'mux.home.editor.line.start'
-  | 'mux.home.editor.line.end'
-  | 'mux.home.editor.word.left'
-  | 'mux.home.editor.word.right'
-  | 'mux.home.editor.delete.backward'
-  | 'mux.home.editor.delete.forward'
-  | 'mux.home.editor.delete.word.backward'
-  | 'mux.home.editor.delete.line.start'
-  | 'mux.home.editor.delete.line.end';
-
-const ACTION_ORDER: readonly TaskScreenKeybindingAction[] = [
-  'mux.home.repo.dropdown.toggle',
-  'mux.home.repo.next',
-  'mux.home.repo.previous',
-  'mux.home.task.submit',
-  'mux.home.task.queue',
-  'mux.home.task.newline',
-  'mux.home.task.status.ready',
-  'mux.home.task.status.draft',
-  'mux.home.task.status.complete',
-  'mux.home.task.reorder.up',
-  'mux.home.task.reorder.down',
-  'mux.home.editor.cursor.left',
-  'mux.home.editor.cursor.right',
-  'mux.home.editor.cursor.up',
-  'mux.home.editor.cursor.down',
-  'mux.home.editor.line.start',
-  'mux.home.editor.line.end',
-  'mux.home.editor.word.left',
-  'mux.home.editor.word.right',
-  'mux.home.editor.delete.backward',
-  'mux.home.editor.delete.forward',
-  'mux.home.editor.delete.word.backward',
-  'mux.home.editor.delete.line.start',
-  'mux.home.editor.delete.line.end',
-] as const;
-
-export const DEFAULT_TASK_SCREEN_KEYBINDINGS_RAW: Readonly<
-  Record<TaskScreenKeybindingAction, readonly string[]>
-> = {
-  'mux.home.repo.dropdown.toggle': ['alt+g'],
-  'mux.home.repo.next': ['ctrl+n'],
-  'mux.home.repo.previous': ['ctrl+p'],
-  'mux.home.task.submit': ['enter'],
-  'mux.home.task.queue': ['tab'],
-  'mux.home.task.newline': ['shift+enter'],
-  'mux.home.task.status.ready': ['alt+r'],
-  'mux.home.task.status.draft': ['alt+d'],
-  'mux.home.task.status.complete': ['alt+c'],
-  'mux.home.task.reorder.up': ['ctrl+up'],
-  'mux.home.task.reorder.down': ['ctrl+down'],
-  'mux.home.editor.cursor.left': ['left', 'ctrl+b'],
-  'mux.home.editor.cursor.right': ['right', 'ctrl+f'],
-  'mux.home.editor.cursor.up': ['up'],
-  'mux.home.editor.cursor.down': ['down'],
-  'mux.home.editor.line.start': ['ctrl+a', 'home'],
-  'mux.home.editor.line.end': ['ctrl+e', 'end'],
-  'mux.home.editor.word.left': ['alt+b'],
-  'mux.home.editor.word.right': ['alt+f'],
-  'mux.home.editor.delete.backward': ['backspace'],
-  'mux.home.editor.delete.forward': ['delete'],
-  'mux.home.editor.delete.word.backward': ['ctrl+w', 'alt+backspace'],
-  'mux.home.editor.delete.line.start': ['ctrl+u'],
-  'mux.home.editor.delete.line.end': ['ctrl+k'],
-};
+const ACTION_ORDER = TASK_SCREEN_KEYBINDING_ACTION_ORDER;
 
 const KEY_TOKEN_ALIASES = new Map<string, string>([
   ['cmd', 'meta'],

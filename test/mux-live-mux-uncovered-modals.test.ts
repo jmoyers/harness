@@ -1290,6 +1290,47 @@ void test('modal overlay builders return null for missing state and build overla
     pagedRows.some((row) => row.includes('results 9-12 of 12')),
     false,
   );
+  const shortcutsCommandMenuOverlay = buildCommandMenuModalOverlay(
+    84,
+    24,
+    createCommandMenuState({
+      scope: 'shortcuts',
+    }),
+    [
+      {
+        id: 'mux.command-menu.toggle',
+        title: 'Toggle command palette with an intentionally long label',
+        screenLabel: 'Global Navigation',
+        bindingHint: 'ctrl+p, cmd+p, alt+shift+p',
+      },
+      {
+        id: 'mux.directory.add',
+        title: 'Add project',
+        screenLabel: 'Projects',
+        sectionLabel: 'Projects',
+        detail: 'Open add-project prompt',
+      },
+    ],
+    theme,
+  );
+  assert.notEqual(shortcutsCommandMenuOverlay, null);
+  const shortcutsRows = shortcutsCommandMenuOverlay?.rows ?? [];
+  assert.equal(
+    shortcutsRows.some((row) => row.includes('Shortcuts')),
+    true,
+  );
+  assert.equal(
+    shortcutsRows.some((row) => row.includes('screen')),
+    true,
+  );
+  assert.equal(
+    shortcutsRows.some((row) => row.includes('bindings')),
+    true,
+  );
+  assert.equal(
+    shortcutsRows.some((row) => row.includes('type to filter keybindings')),
+    true,
+  );
 
   assert.equal(buildNewThreadModalOverlay(80, 24, null, theme), null);
   const newThreadOverlay = buildNewThreadModalOverlay(

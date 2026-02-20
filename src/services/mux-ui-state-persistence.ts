@@ -1,7 +1,6 @@
 export interface MuxUiStateSnapshot {
   paneWidthPercent: number;
   repositoriesCollapsed: boolean;
-  shortcutsCollapsed: boolean;
 }
 
 interface MuxUiStatePersistenceOptions {
@@ -75,8 +74,7 @@ export class MuxUiStatePersistence {
   private stateEqual(left: MuxUiStateSnapshot, right: MuxUiStateSnapshot): boolean {
     return (
       left.paneWidthPercent === right.paneWidthPercent &&
-      left.repositoriesCollapsed === right.repositoriesCollapsed &&
-      left.shortcutsCollapsed === right.shortcutsCollapsed
+      left.repositoriesCollapsed === right.repositoriesCollapsed
     );
   }
 }

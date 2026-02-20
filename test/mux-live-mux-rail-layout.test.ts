@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { resolveMuxShortcutBindings } from '../src/mux/input-shortcuts.ts';
 import { buildRailModel, buildRailRows } from '../src/mux/live-mux/rail-layout.ts';
 import { statusModelFor } from './support/status-model.ts';
 
@@ -107,10 +106,8 @@ void test('live-mux rail layout infers untracked directories from conversation-o
     homeSelectionEnabled: false,
     repositoriesCollapsed: false,
     collapsedRepositoryGroupIds: new Set<string>(),
-    shortcutsCollapsed: false,
     gitSummaryByDirectoryId: new Map(),
     processUsageBySessionId: new Map(),
-    shortcutBindings: resolveMuxShortcutBindings({}),
     loadingGitSummary: LOADING_GIT_SUMMARY,
   });
 
@@ -144,51 +141,13 @@ void test('live-mux rail model uses loading git summary fallback when project su
     homeSelectionEnabled: false,
     repositoriesCollapsed: false,
     collapsedRepositoryGroupIds: new Set<string>(),
-    shortcutsCollapsed: false,
     gitSummaryByDirectoryId: new Map(),
     processUsageBySessionId: new Map(),
-    shortcutBindings: resolveMuxShortcutBindings({}),
     loadingGitSummary: LOADING_GIT_SUMMARY,
   });
 
   const loadingDirectory = model.directories.find((directory) => directory.key === 'dir-loading');
   assert.equal(loadingDirectory?.git.branch, '(loading)');
-});
-
-void test('live-mux rail layout shortcut hint collapses next/previous into single token when equal', () => {
-  const rows = buildRailRows({
-    layout: LAYOUT,
-    repositories: new Map(),
-    repositoryAssociationByDirectoryId: new Map(),
-    directoryRepositorySnapshotByDirectoryId: new Map(),
-    directories: new Map(),
-    conversations: new Map(),
-    orderedIds: [],
-    activeProjectId: null,
-    activeRepositoryId: null,
-    activeConversationId: null,
-    projectSelectionEnabled: false,
-    repositorySelectionEnabled: false,
-    homeSelectionEnabled: true,
-    repositoriesCollapsed: false,
-    collapsedRepositoryGroupIds: new Set<string>(),
-    shortcutsCollapsed: false,
-    gitSummaryByDirectoryId: new Map(),
-    processUsageBySessionId: new Map(),
-    shortcutBindings: resolveMuxShortcutBindings({
-      'mux.conversation.next': ['ctrl+n'],
-      'mux.conversation.previous': ['ctrl+n'],
-    }),
-    loadingGitSummary: LOADING_GIT_SUMMARY,
-  });
-
-  const visible = rows.ansiRows.map(stripAnsi).join('\n');
-  assert.equal(visible.includes('ctrl+n switch nav'), true);
-  assert.equal(visible.includes('ctrl+n/ctrl+n switch nav'), false);
-  assert.equal(visible.includes('ctrl+p menu'), true);
-  assert.equal(visible.includes('ctrl+shift+p profile'), true);
-  assert.equal(visible.includes('alt+r status'), true);
-  assert.equal(visible.includes('ctrl+] render'), true);
 });
 
 void test('live-mux rail model selects latest repository snapshot metadata and skips missing sessions', () => {
@@ -266,10 +225,8 @@ void test('live-mux rail model selects latest repository snapshot metadata and s
     homeSelectionEnabled: false,
     repositoriesCollapsed: false,
     collapsedRepositoryGroupIds: new Set<string>(),
-    shortcutsCollapsed: false,
     gitSummaryByDirectoryId: new Map(),
     processUsageBySessionId: new Map(),
-    shortcutBindings: resolveMuxShortcutBindings({}),
     loadingGitSummary: LOADING_GIT_SUMMARY,
   });
 

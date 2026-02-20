@@ -1,7 +1,5 @@
 import { basename } from 'node:path';
 import type { ConversationRailSessionSummary } from '../conversation-rail.ts';
-import { firstShortcutText } from '../input-shortcuts.ts';
-import type { resolveMuxShortcutBindings } from '../input-shortcuts.ts';
 import { buildWorkspaceRailViewRows } from '../workspace-rail-model.ts';
 import { renderWorkspaceRailAnsiRows } from '../workspace-rail.ts';
 import type {
@@ -9,7 +7,6 @@ import type {
   StreamSessionStatusModel,
 } from '../../control-plane/stream-protocol.ts';
 
-type ResolvedMuxShortcutBindings = ReturnType<typeof resolveMuxShortcutBindings>;
 type WorkspaceRailModel = Parameters<typeof renderWorkspaceRailAnsiRows>[0];
 
 interface GitSummary {
@@ -75,10 +72,8 @@ interface BuildRailModelArgs {
   readonly showTasksEntry?: boolean;
   readonly repositoriesCollapsed: boolean;
   readonly collapsedRepositoryGroupIds: ReadonlySet<string>;
-  readonly shortcutsCollapsed: boolean;
   readonly gitSummaryByDirectoryId: ReadonlyMap<string, GitSummary>;
   readonly processUsageBySessionId: ReadonlyMap<string, MuxRailProcessUsageSample>;
-  readonly shortcutBindings: ResolvedMuxShortcutBindings;
   readonly loadingGitSummary: GitSummary;
 }
 
@@ -87,29 +82,6 @@ interface BuildRailRowsArgs extends BuildRailModelArgs {
     leftCols: number;
     paneRows: number;
   };
-}
-
-function shortcutHintText(bindings: ResolvedMuxShortcutBindings): string {
-  const newConversation = firstShortcutText(bindings, 'mux.conversation.new') || 'ctrl+t';
-  const critiqueConversation =
-    firstShortcutText(bindings, 'mux.conversation.critique.open-or-create') || 'ctrl+g';
-  const deleteConversation = firstShortcutText(bindings, 'mux.conversation.delete') || 'ctrl+x';
-  const takeoverConversation = firstShortcutText(bindings, 'mux.conversation.takeover') || 'ctrl+l';
-  const addProject = firstShortcutText(bindings, 'mux.directory.add') || 'ctrl+o';
-  const closeProject = firstShortcutText(bindings, 'mux.directory.close') || 'ctrl+w';
-  const next = firstShortcutText(bindings, 'mux.conversation.next') || 'ctrl+j';
-  const previous = firstShortcutText(bindings, 'mux.conversation.previous') || 'ctrl+k';
-  const interruptConversation = firstShortcutText(bindings, 'mux.conversation.interrupt');
-  const quit = firstShortcutText(bindings, 'mux.app.interrupt-all') || 'ctrl+c';
-  const commandMenu = firstShortcutText(bindings, 'mux.command-menu.toggle') || 'ctrl+p';
-  const profile = firstShortcutText(bindings, 'mux.gateway.profile.toggle') || 'ctrl+shift+p';
-  const statusTimeline =
-    firstShortcutText(bindings, 'mux.gateway.status-timeline.toggle') || 'alt+r';
-  const renderTrace = firstShortcutText(bindings, 'mux.gateway.render-trace.toggle') || 'ctrl+]';
-  const switchHint = next === previous ? next : `${next}/${previous}`;
-  const interruptHint =
-    interruptConversation.length === 0 ? '' : `  ${interruptConversation} interrupt`;
-  return `${commandMenu} menu  ${newConversation} new  ${critiqueConversation} critique  ${deleteConversation} archive  ${takeoverConversation} takeover  ${addProject}/${closeProject} projects  ${switchHint} switch nav  ${profile} profile  ${statusTimeline} status  ${renderTrace} render${interruptHint}  ←/→ collapse/expand  ${quit} quit`;
 }
 
 function conversationSummary(
@@ -229,8 +201,6 @@ export function buildRailModel(args: BuildRailModelArgs): WorkspaceRailModel {
     repositoriesCollapsed: args.repositoriesCollapsed,
     collapsedRepositoryGroupIds: [...args.collapsedRepositoryGroupIds],
     processes: [],
-    shortcutHint: shortcutHintText(args.shortcutBindings),
-    shortcutsCollapsed: args.shortcutsCollapsed,
     nowMs: Date.now(),
   };
 }

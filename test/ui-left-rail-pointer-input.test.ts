@@ -66,9 +66,6 @@ void test('left-rail pointer input delegates action and conversation routing', (
       queueCloseDirectory: (directoryId) => {
         calls.push(`close-directory:${directoryId}`);
       },
-      toggleShortcutsCollapsed: () => {
-        calls.push('toggle-shortcuts');
-      },
       previousConversationClickState: () => clickState,
       setConversationClickState: (next) => {
         clickState = next;
@@ -145,7 +142,6 @@ void test('left-rail pointer input delegates action and conversation routing', (
         options.queueCloseDirectory(
           options.selectedProjectId ?? options.resolveDirectoryForAction() ?? 'none',
         );
-        options.toggleShortcutsCollapsed();
         options.markDirty();
         return true;
       },
@@ -199,7 +195,6 @@ void test('left-rail pointer input delegates action and conversation routing', (
     'expand-all-repositories',
     'enter-home',
     'close-directory:dir-a',
-    'toggle-shortcuts',
     'mark-dirty',
     'conversation:session-a',
     'previous-click:prev',
@@ -239,7 +234,6 @@ void test('left-rail pointer input default dependencies handle ineligible clicks
     collapseAllRepositoryGroups: () => {},
     enterHomePane: () => {},
     queueCloseDirectory: () => {},
-    toggleShortcutsCollapsed: () => {},
     previousConversationClickState: () => null,
     setConversationClickState: () => {},
     nowMs: () => 0,
