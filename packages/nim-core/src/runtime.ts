@@ -42,6 +42,11 @@ import {
 } from './provider-router.ts';
 import { projectEventToUiEvents } from '../../nim-ui-core/src/projection.ts';
 import { InMemoryNimEventStore, type NimEventStore } from './event-store.ts';
+import {
+  InMemoryNimSessionStore,
+  type NimPersistedSession,
+  type NimSessionStore,
+} from './session-store.ts';
 
 type SessionState = {
   readonly sessionId: string;
@@ -165,6 +170,7 @@ export class InMemoryNimRuntime implements NimRuntime {
   private skillSources: SkillSource[] = [];
   private memoryStores: MemoryStore[] = [];
   private eventStore: NimEventStore;
+  private sessionStore: NimSessionStore;
   private subscribers = new Map<string, EventSubscriber>();
   private telemetrySinks: NimTelemetrySink[] = [];
   private globalLane: Promise<void> = Promise.resolve();
@@ -174,12 +180,14 @@ export class InMemoryNimRuntime implements NimRuntime {
     providerRouter?: NimProviderRouter;
     telemetrySinks?: readonly NimTelemetrySink[];
     eventStore?: NimEventStore;
+    sessionStore?: NimSessionStore;
   }) {
     this.providerRouter = input?.providerRouter ?? new NimProviderRouter();
     if (input?.telemetrySinks !== undefined) {
       this.telemetrySinks = [...input.telemetrySinks];
     }
     this.eventStore = input?.eventStore ?? new InMemoryNimEventStore();
+    this.sessionStore = input?.sessionStore ?? new InMemoryNimSessionStore();
   }
 
   public async startSession(input: StartSessionInput): Promise<SessionHandle> {
@@ -201,6 +209,7 @@ export class InMemoryNimRuntime implements NimRuntime {
       idempotencyToRunId: new Map<string, string>(),
     };
     this.sessions.set(sessionId, next);
+    this.persistSession(next);
     this.appendSessionEvent(next, {
       type: 'session.started',
       runId: '',
@@ -216,10 +225,7 @@ export class InMemoryNimRuntime implements NimRuntime {
   }
 
   public async resumeSession(input: ResumeSessionInput): Promise<SessionHandle> {
-    const state = this.sessions.get(input.sessionId);
-    if (state === undefined) {
-      throw new Error(`session not found: ${input.sessionId}`);
-    }
+    const state = this.requireSession(input.sessionId);
     if (state.tenantId !== input.tenantId || state.userId !== input.userId) {
       throw new Error('session access denied');
     }
@@ -235,9 +241,9 @@ export class InMemoryNimRuntime implements NimRuntime {
   }
 
   public async listSessions(input: ListSessionsInput): Promise<ListSessionsResult> {
-    const sessions = Array.from(this.sessions.values())
-      .filter((session) => session.tenantId === input.tenantId && session.userId === input.userId)
-      .map((session) => this.toHandle(session));
+    const sessions = this.sessionStore
+      .listSessions(input.tenantId, input.userId)
+      .map((session) => this.toHandleFromPersisted(session));
     return {
       sessions,
     };
@@ -290,6 +296,7 @@ export class InMemoryNimRuntime implements NimRuntime {
       } else {
         session.soulHash = soulHash;
       }
+      this.persistSession(session);
     }
   }
 
@@ -302,6 +309,7 @@ export class InMemoryNimRuntime implements NimRuntime {
       } else {
         session.skillsSnapshotVersion = snapshot.version;
       }
+      this.persistSession(session);
     }
   }
 
@@ -344,7 +352,9 @@ export class InMemoryNimRuntime implements NimRuntime {
       session.skillsSnapshotVersion = currentSkillsSnapshot.version;
     }
 
-    const existingRunId = session.idempotencyToRunId.get(input.idempotencyKey);
+    const existingRunId =
+      session.idempotencyToRunId.get(input.idempotencyKey) ??
+      this.sessionStore.getRunIdByIdempotency(session.sessionId, input.idempotencyKey);
     if (existingRunId !== undefined) {
       const existing = this.runs.get(existingRunId);
       if (existing !== undefined) {
@@ -363,6 +373,23 @@ export class InMemoryNimRuntime implements NimRuntime {
           done: existing.done,
         };
       }
+      session.idempotencyToRunId.set(input.idempotencyKey, existingRunId);
+      this.sessionStore.upsertIdempotency(session.sessionId, input.idempotencyKey, existingRunId);
+      this.appendSessionEvent(session, {
+        type: 'turn.idempotency.reused',
+        source: 'system',
+        runId: existingRunId,
+        turnId: existingRunId,
+        stepId: 'step:idempotency-reused',
+        idempotencyKey: input.idempotencyKey,
+      });
+      const resolved = this.resolveStoredTurnResult(session, existingRunId);
+      return {
+        runId: existingRunId,
+        sessionId: session.sessionId,
+        idempotencyKey: input.idempotencyKey,
+        done: Promise.resolve(resolved),
+      };
     }
 
     const runId = randomUUID();
@@ -410,6 +437,8 @@ export class InMemoryNimRuntime implements NimRuntime {
     session.lastRunId = runId;
     session.activeRunId = runId;
     session.idempotencyToRunId.set(input.idempotencyKey, runId);
+    this.sessionStore.upsertIdempotency(session.sessionId, input.idempotencyKey, runId);
+    this.persistSession(session);
 
     void this.enqueueSessionAndGlobal(session.sessionId, async () => {
       await this.executeRun(session, run);
@@ -1437,6 +1466,7 @@ export class InMemoryNimRuntime implements NimRuntime {
       event_seq: session.eventSeq,
     };
     this.eventStore.append(finalized);
+    this.persistSession(session);
     this.dispatchTelemetry(finalized);
 
     for (const subscriber of this.subscribers.values()) {
@@ -1604,12 +1634,51 @@ export class InMemoryNimRuntime implements NimRuntime {
     return true;
   }
 
+  private resolveStoredTurnResult(session: SessionState, runId: string): TurnResult {
+    const events = this.eventStore.list({
+      tenantId: session.tenantId,
+      sessionId: session.sessionId,
+      runId,
+    });
+    let completion: NimEventEnvelope | undefined;
+    for (let index = events.length - 1; index >= 0; index -= 1) {
+      const candidate = events[index];
+      if (candidate?.type === 'turn.completed') {
+        completion = candidate;
+        break;
+      }
+    }
+    if (completion?.data !== undefined) {
+      const terminalState = completion.data.terminalState;
+      if (
+        terminalState === 'completed' ||
+        terminalState === 'aborted' ||
+        terminalState === 'failed'
+      ) {
+        return {
+          runId,
+          terminalState,
+        };
+      }
+    }
+    return {
+      runId,
+      terminalState: 'completed',
+    };
+  }
+
   private requireSession(sessionId: string): SessionState {
     const session = this.sessions.get(sessionId);
-    if (session === undefined) {
+    if (session !== undefined) {
+      return session;
+    }
+    const persisted = this.sessionStore.getSession(sessionId);
+    if (persisted === undefined) {
       throw new Error(`session not found: ${sessionId}`);
     }
-    return session;
+    const hydrated = this.hydrateSessionState(persisted);
+    this.sessions.set(sessionId, hydrated);
+    return hydrated;
   }
 
   private toHandle(state: SessionState): SessionHandle {
@@ -1623,6 +1692,58 @@ export class InMemoryNimRuntime implements NimRuntime {
       ...(state.skillsSnapshotVersion !== undefined
         ? { skillsSnapshotVersion: state.skillsSnapshotVersion }
         : {}),
+    };
+  }
+
+  private toHandleFromPersisted(state: NimPersistedSession): SessionHandle {
+    return {
+      sessionId: state.sessionId,
+      tenantId: state.tenantId,
+      userId: state.userId,
+      model: state.model,
+      lane: state.lane,
+      ...(state.soulHash !== undefined ? { soulHash: state.soulHash } : {}),
+      ...(state.skillsSnapshotVersion !== undefined
+        ? { skillsSnapshotVersion: state.skillsSnapshotVersion }
+        : {}),
+    };
+  }
+
+  private persistSession(state: SessionState): void {
+    this.sessionStore.upsertSession({
+      sessionId: state.sessionId,
+      tenantId: state.tenantId,
+      userId: state.userId,
+      model: state.model,
+      lane: state.lane,
+      ...(state.soulHash !== undefined ? { soulHash: state.soulHash } : {}),
+      ...(state.skillsSnapshotVersion !== undefined
+        ? { skillsSnapshotVersion: state.skillsSnapshotVersion }
+        : {}),
+      eventSeq: state.eventSeq,
+      ...(state.lastRunId !== undefined ? { lastRunId: state.lastRunId } : {}),
+    });
+  }
+
+  private hydrateSessionState(state: NimPersistedSession): SessionState {
+    const idempotencyToRunId = new Map<string, string>();
+    for (const entry of this.sessionStore.listIdempotency(state.sessionId)) {
+      idempotencyToRunId.set(entry.idempotencyKey, entry.runId);
+    }
+    return {
+      sessionId: state.sessionId,
+      tenantId: state.tenantId,
+      userId: state.userId,
+      model: state.model,
+      lane: state.lane,
+      ...(state.soulHash !== undefined ? { soulHash: state.soulHash } : {}),
+      ...(state.skillsSnapshotVersion !== undefined
+        ? { skillsSnapshotVersion: state.skillsSnapshotVersion }
+        : {}),
+      eventSeq: state.eventSeq,
+      ...(state.lastRunId !== undefined ? { lastRunId: state.lastRunId } : {}),
+      followups: [],
+      idempotencyToRunId,
     };
   }
 

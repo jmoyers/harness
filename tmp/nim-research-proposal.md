@@ -33,12 +33,14 @@ This document is systems-first and maps public APIs to functional requirements w
 - Runtime now exposes first-class `replayEvents` snapshots with deterministic event-id windowing (`fromEventIdExclusive`, `toEventIdInclusive`) for UC-09 replay APIs.
 - Runtime now supports first-class telemetry sink registration (`registerTelemetrySink`) and first-party JSONL telemetry I/O (`NimJsonlTelemetrySink`, `readNimJsonlTelemetry`) for replay-grade event logging and deterministic reload.
 - Runtime now persists canonical envelopes through a pluggable event store abstraction (`NimEventStore`) with first-party `InMemoryNimEventStore` and `NimSqliteEventStore` adapters.
+- Runtime now persists session metadata and idempotency mappings through a pluggable session store abstraction (`NimSessionStore`) with first-party `InMemoryNimSessionStore` and `NimSqliteSessionStore` adapters.
 
 ## 1.2 Execution Evidence (2026-02-20)
 
 - Functional UC coverage (`test/nim-functional-use-cases.test.ts`) now spans UC-01 through UC-12 and is passing.
 - Runtime/provider/snapshot regression suite is passing:
   - `test/nim-core-runtime.test.ts`
+  - `test/nim-session-store.test.ts`
   - `test/nim-replay-parity.test.ts`
   - `test/nim-runtime-provider-driver.test.ts`
   - `test/nim-functional-use-cases.test.ts`
@@ -331,6 +333,7 @@ export type NimUiEvent =
 | Conversation continuation | `startSession`, `resumeSession`, `sendTurn` | `session.started/resumed`, `turn.started/completed/failed`, `turn.idempotency.reused` | event-sourced session transcript |
 | Compaction | `compactSession` (manual + auto) | `provider.context.compaction.started/completed` | summary entry + compaction metadata events |
 | Telemetry/logging replayability | `streamEvents`, `replayEvents`, `registerTelemetrySink` | full turn/tool/provider lifecycle events | canonical JSONL + pluggable event store (`NimSqliteEventStore`) event IDs |
+| Restart-safe continuation | runtime constructor with `NimSessionStore` + `NimEventStore` | `session.resumed`, `turn.idempotency.reused` after restart | pluggable session store (`NimSqliteSessionStore`) + canonical event store |
 | 100% transparency for stream/tool/thinking | `streamEvents(fidelity=raw|semantic)`, `streamUi(mode=debug|seamless)` | `assistant.state.*`, `provider.thinking.*`, `tool.call.*`, `tool.result.*` | no dropped state transitions between provider runtime and event store |
 | Abort up through stack | `abortTurn` | `turn.abort.requested/propagated/completed` | abort cause chain event + timeout/manual reason |
 | Steering + queued follow-ups | `steerTurn`, `queueFollowUp` | `turn.steer.requested/accepted/rejected`, `turn.followup.queued/dequeued/dropped` | queue state + steering decisions + linkage to run IDs |

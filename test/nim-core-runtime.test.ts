@@ -8,6 +8,7 @@ import {
   type NimEventEnvelope,
   type NimUiEvent,
   NimSqliteEventStore,
+  NimSqliteSessionStore,
 } from '../packages/nim-core/src/index.ts';
 
 async function nextWithTimeout<T>(
@@ -547,6 +548,87 @@ test('nim runtime uses sqlite event store for replayable persistence', async () 
     );
   } finally {
     persisted.close();
+  }
+});
+
+test('nim runtime resumes persisted session and idempotency across restart', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nim-runtime-restart-'));
+  const eventDbPath = join(dir, 'events.sqlite');
+  const sessionDbPath = join(dir, 'sessions.sqlite');
+
+  const initialEventStore = new NimSqliteEventStore(eventDbPath);
+  const initialSessionStore = new NimSqliteSessionStore(sessionDbPath);
+  const initialRuntime = createRuntime({
+    eventStore: initialEventStore,
+    sessionStore: initialSessionStore,
+  });
+  const session = await createSession(initialRuntime);
+  const first = await initialRuntime.sendTurn({
+    sessionId: session.sessionId,
+    input: 'use-tool mock-tool',
+    idempotencyKey: 'idem-restart-a',
+  });
+  const firstResult = await first.done;
+  initialEventStore.close();
+  initialSessionStore.close();
+
+  const resumedEventStore = new NimSqliteEventStore(eventDbPath);
+  const resumedSessionStore = new NimSqliteSessionStore(sessionDbPath);
+  const resumedRuntime = createRuntime({
+    eventStore: resumedEventStore,
+    sessionStore: resumedSessionStore,
+  });
+  try {
+    const listed = await resumedRuntime.listSessions({
+      tenantId: 'tenant-a',
+      userId: 'user-a',
+    });
+    assert.equal(
+      listed.sessions.some((item) => item.sessionId === session.sessionId),
+      true,
+    );
+
+    const resumed = await resumedRuntime.resumeSession({
+      tenantId: 'tenant-a',
+      userId: 'user-a',
+      sessionId: session.sessionId,
+    });
+    assert.equal(resumed.sessionId, session.sessionId);
+
+    const reused = await resumedRuntime.sendTurn({
+      sessionId: session.sessionId,
+      input: 'use-tool mock-tool',
+      idempotencyKey: 'idem-restart-a',
+    });
+    assert.equal(reused.runId, first.runId);
+    const reusedResult = await reused.done;
+    assert.deepEqual(reusedResult, firstResult);
+
+    const second = await resumedRuntime.sendTurn({
+      sessionId: session.sessionId,
+      input: 'second turn',
+      idempotencyKey: 'idem-restart-b',
+    });
+    await second.done;
+
+    const replay = await resumedRuntime.replayEvents({
+      tenantId: 'tenant-a',
+      sessionId: session.sessionId,
+    });
+    assert.equal(
+      replay.events.filter((event) => event.type === 'turn.started' && event.run_id === first.runId)
+        .length,
+      1,
+    );
+    assert.equal(
+      replay.events.some(
+        (event) => event.type === 'turn.idempotency.reused' && event.run_id === first.runId,
+      ),
+      true,
+    );
+  } finally {
+    resumedEventStore.close();
+    resumedSessionStore.close();
   }
 });
 
