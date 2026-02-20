@@ -2,6 +2,12 @@ import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { loadHarnessSecrets } from '../src/config/secrets-core.ts';
 import { createAnthropic, streamText } from '../packages/harness-ai/src/index.ts';
+import {
+  InMemoryNimRuntime,
+  createAnthropicNimProviderDriver,
+  type NimEventEnvelope,
+  type NimUiEvent,
+} from '../packages/nim-core/src/index.ts';
 
 interface ParsedArgs {
   readonly secretsFile: string;
@@ -70,6 +76,213 @@ async function collectAsync<T>(stream: AsyncIterable<T>): Promise<T[]> {
     output.push(value);
   }
   return output;
+}
+
+async function nextWithTimeout<T>(
+  iterator: AsyncIterator<T>,
+  timeoutMs = 20000,
+): Promise<IteratorResult<T>> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      iterator.next(),
+      new Promise<IteratorResult<T>>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error('timed out waiting for nim integration event'));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+  }
+}
+
+async function collectUntil<T>(
+  iterator: AsyncIterator<T>,
+  predicate: (events: readonly T[]) => boolean,
+  maxEvents = 400,
+): Promise<T[]> {
+  const events: T[] = [];
+  while (events.length < maxEvents) {
+    const next = await nextWithTimeout(iterator);
+    if (next.done) {
+      break;
+    }
+    events.push(next.value);
+    if (predicate(events)) {
+      return events;
+    }
+  }
+  throw new Error(`stream predicate not met after ${String(events.length)} events`);
+}
+
+function collapseStateTransitions(events: readonly NimUiEvent[]): string[] {
+  const collapsed: string[] = [];
+  for (const event of events) {
+    if (event.type !== 'assistant.state') {
+      continue;
+    }
+    if (collapsed[collapsed.length - 1] === event.state) {
+      continue;
+    }
+    collapsed.push(event.state);
+  }
+  return collapsed;
+}
+
+function includesOrderedSubsequence(
+  observed: readonly string[],
+  expected: readonly string[],
+): boolean {
+  let cursor = 0;
+  for (const item of observed) {
+    if (item === expected[cursor]) {
+      cursor += 1;
+      if (cursor === expected.length) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+async function runNimRuntimeHaikuObservabilityCheck(input: {
+  readonly apiKey: string;
+  readonly modelId: string;
+  readonly baseUrl?: string;
+}): Promise<{ readonly stateTransitions: readonly string[] }> {
+  const runtime = new InMemoryNimRuntime();
+  runtime.registerProvider({
+    id: 'anthropic',
+    displayName: 'Anthropic',
+    models: [`anthropic/${input.modelId}`],
+  });
+  runtime.registerProviderDriver(
+    createAnthropicNimProviderDriver({
+      apiKey: input.apiKey,
+      ...(input.baseUrl !== undefined ? { baseUrl: input.baseUrl } : {}),
+    }),
+  );
+  runtime.registerTools([
+    {
+      name: 'ping',
+      description: 'Echo a string',
+    },
+  ]);
+
+  const session = await runtime.startSession({
+    tenantId: 'nim-haiku-tenant',
+    userId: 'nim-haiku-user',
+    model: `anthropic/${input.modelId}`,
+  });
+
+  const uiStream = runtime.streamUi({
+    tenantId: session.tenantId,
+    sessionId: session.sessionId,
+    mode: 'debug',
+  });
+  const eventStream = runtime.streamEvents({
+    tenantId: session.tenantId,
+    sessionId: session.sessionId,
+    includeThoughtDeltas: true,
+    includeToolArgumentDeltas: true,
+  });
+  const uiIterator = uiStream[Symbol.asyncIterator]();
+  const eventIterator = eventStream[Symbol.asyncIterator]();
+
+  try {
+    const turn = await runtime.sendTurn({
+      sessionId: session.sessionId,
+      input: [
+        'Call the `ping` tool exactly once with {"value":"nim-haiku"}.',
+        'After the tool returns, respond exactly with NIM_HAIKU_OK.',
+        'Do not output any extra text.',
+      ].join(' '),
+      idempotencyKey: `nim-haiku-runtime:${input.modelId}`,
+    });
+
+    const [turnResult, uiEvents, runEvents] = await Promise.all([
+      turn.done,
+      collectUntil(
+        uiIterator,
+        (items) =>
+          items.some((event) => event.type === 'assistant.state' && event.state === 'idle'),
+        800,
+      ),
+      collectUntil(
+        eventIterator,
+        (items) =>
+          items.some((event) => event.type === 'turn.completed' && event.run_id === turn.runId),
+        800,
+      ),
+    ]);
+
+    assert.equal(turnResult.terminalState, 'completed');
+
+    const stateTransitions = collapseStateTransitions(uiEvents);
+    assert.equal(
+      includesOrderedSubsequence(stateTransitions, [
+        'thinking',
+        'tool-calling',
+        'responding',
+        'idle',
+      ]),
+      true,
+    );
+
+    const assistantText = uiEvents
+      .filter((event): event is Extract<NimUiEvent, { type: 'assistant.text.delta' }> => {
+        return event.type === 'assistant.text.delta';
+      })
+      .map((event) => event.text)
+      .join('');
+    assert.match(assistantText, /NIM_HAIKU_OK/u);
+    assert.equal(
+      uiEvents.some((event) => event.type === 'tool.activity' && event.phase === 'start'),
+      true,
+    );
+    assert.equal(
+      uiEvents.some((event) => event.type === 'tool.activity' && event.phase === 'end'),
+      true,
+    );
+
+    const runOutput = runEvents
+      .filter((event): event is NimEventEnvelope & { type: 'assistant.output.delta' } => {
+        return event.type === 'assistant.output.delta';
+      })
+      .map((event) => String(event.data?.['text'] ?? ''))
+      .join('');
+    assert.match(runOutput, /NIM_HAIKU_OK/u);
+    assert.equal(
+      runEvents.some((event) => event.type === 'provider.thinking.started'),
+      true,
+    );
+    assert.equal(
+      runEvents.some((event) => event.type === 'provider.thinking.completed'),
+      true,
+    );
+    assert.equal(
+      runEvents.some((event) => event.type === 'tool.call.started'),
+      true,
+    );
+    assert.equal(
+      runEvents.some((event) => event.type === 'tool.call.completed'),
+      true,
+    );
+    assert.equal(
+      runEvents.some((event) => event.type === 'tool.result.emitted'),
+      true,
+    );
+
+    return {
+      stateTransitions,
+    };
+  } finally {
+    await uiIterator.return?.();
+    await eventIterator.return?.();
+  }
 }
 
 async function main(): Promise<void> {
@@ -155,12 +368,21 @@ async function main(): Promise<void> {
       assert.equal(toolResults.length >= 1, true);
       assert.match(text, /NIM_HAIKU_OK/u);
 
+      const runtimeObservability = await runNimRuntimeHaikuObservabilityCheck({
+        apiKey,
+        modelId,
+        ...(args.baseUrl !== undefined ? { baseUrl: args.baseUrl } : {}),
+      });
+
       process.stdout.write('nim haiku integration passed\n');
       process.stdout.write(`model=${modelId}\n`);
       process.stdout.write(`stream_parts=${String(parts.length)}\n`);
       process.stdout.write(`tool_calls=${String(toolCalls.length)}\n`);
       process.stdout.write(`tool_results=${String(toolResults.length)}\n`);
       process.stdout.write(`reasoning_signals=${String(sawReasoningSignal)}\n`);
+      process.stdout.write(
+        `runtime_state_transitions=${runtimeObservability.stateTransitions.join('>')}\n`,
+      );
       return;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

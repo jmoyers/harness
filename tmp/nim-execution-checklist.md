@@ -10,6 +10,8 @@ Status Date: 2026-02-20
 - 2026-02-20: Provider router + pluggable provider-driver contracts added in `nim-core` with runtime integration tests.
 - 2026-02-20: Added first `harness-ai` Anthropic provider driver scaffolding (`createAnthropicNimProviderDriver`) with deterministic mapping tests.
 - 2026-02-20: Updated Haiku integration smoke to include reachable fallback (`claude-3-haiku-20240307`); smoke now passes in this environment.
+- 2026-02-20: Haiku integration now asserts runtime-level observability transitions (`thinking -> tool-calling -> responding -> idle`) via `nim-core` stream APIs.
+- 2026-02-20: `test:sharded --coverage` now runs deterministic single-process coverage mode so `test:coverage` preserves 100% thresholds while non-coverage test runs remain sharded.
 
 ## 0. Operating Rules
 - [ ] Keep this checklist branch-local and temporary only.
@@ -40,7 +42,7 @@ Status Date: 2026-02-20
 - [x] Add deterministic mock-provider tests for all contracts.
 - [x] Add env-gated live Anthropic Haiku integration smoke.
 - [x] Assert tool-call lifecycle visibility with Haiku path.
-- [ ] Assert thinking/tool/assistant state transitions are observable in Haiku path.
+- [x] Assert thinking/tool/assistant state transitions are observable in Haiku path.
 - [x] Run Haiku smoke in every integration sweep on this branch.
 
 ## 5. Functional Execution (per spec)
