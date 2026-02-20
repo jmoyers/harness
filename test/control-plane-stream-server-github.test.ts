@@ -284,7 +284,7 @@ void test('stream server github request/parser internals normalize api payloads'
         internals.githubJsonRequest('/repos/acme/harness/pulls', {
           method: 'GET',
         }),
-      /set GITHUB_TOKEN or run gh auth login/,
+      /set .*GITHUB_TOKEN.*HARNESS_GITHUB_OAUTH_ACCESS_TOKEN.*run gh auth login/,
     );
 
     assert.equal(
@@ -377,13 +377,83 @@ void test('stream server github token fallback is graceful when token and gh are
     assert.notEqual(internals.githubPollTimer, null);
     await assert.rejects(
       () => internals.githubJsonRequest('/repos/acme/harness/pulls?state=open'),
-      /set GITHUB_TOKEN or run gh auth login/,
+      /set .*GITHUB_TOKEN.*HARNESS_GITHUB_OAUTH_ACCESS_TOKEN.*run gh auth login/,
     );
     internals.gitStatusPollTimer = setInterval(() => undefined, 1000);
     internals.stopGitStatusPolling();
     assert.equal(internals.gitStatusPollTimer, null);
   } finally {
     await server.close();
+  }
+});
+
+void test('stream server github resolves env token precedence as manual then oauth', async () => {
+  const previousManual = process.env.GITHUB_TOKEN;
+  const previousOauth = process.env.HARNESS_GITHUB_OAUTH_ACCESS_TOKEN;
+  process.env.GITHUB_TOKEN = 'manual-github-token';
+  process.env.HARNESS_GITHUB_OAUTH_ACCESS_TOKEN = 'oauth-github-token';
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input),
+    github: {
+      enabled: true,
+      token: null,
+      tokenEnvVar: 'GITHUB_TOKEN',
+    },
+  });
+  const internals = server as unknown as {
+    github: {
+      token: string | null;
+    };
+  };
+  try {
+    assert.equal(internals.github.token, 'manual-github-token');
+  } finally {
+    await server.close();
+    if (previousManual === undefined) {
+      delete process.env.GITHUB_TOKEN;
+    } else {
+      process.env.GITHUB_TOKEN = previousManual;
+    }
+    if (previousOauth === undefined) {
+      delete process.env.HARNESS_GITHUB_OAUTH_ACCESS_TOKEN;
+    } else {
+      process.env.HARNESS_GITHUB_OAUTH_ACCESS_TOKEN = previousOauth;
+    }
+  }
+});
+
+void test('stream server github uses oauth env token when manual env token is absent', async () => {
+  const previousManual = process.env.GITHUB_TOKEN;
+  const previousOauth = process.env.HARNESS_GITHUB_OAUTH_ACCESS_TOKEN;
+  delete process.env.GITHUB_TOKEN;
+  process.env.HARNESS_GITHUB_OAUTH_ACCESS_TOKEN = 'oauth-github-token';
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input),
+    github: {
+      enabled: true,
+      token: null,
+      tokenEnvVar: 'GITHUB_TOKEN',
+    },
+  });
+  const internals = server as unknown as {
+    github: {
+      token: string | null;
+    };
+  };
+  try {
+    assert.equal(internals.github.token, 'oauth-github-token');
+  } finally {
+    await server.close();
+    if (previousManual === undefined) {
+      delete process.env.GITHUB_TOKEN;
+    } else {
+      process.env.GITHUB_TOKEN = previousManual;
+    }
+    if (previousOauth === undefined) {
+      delete process.env.HARNESS_GITHUB_OAUTH_ACCESS_TOKEN;
+    } else {
+      process.env.HARNESS_GITHUB_OAUTH_ACCESS_TOKEN = previousOauth;
+    }
   }
 });
 

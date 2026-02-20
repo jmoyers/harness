@@ -61,6 +61,7 @@ function runShortcut(options: RunOptions): {
       calls.push(`buffer:${next.text}:${next.cursor}`);
     },
     moveTaskEditorFocusUp: () => calls.push('move-up'),
+    moveTaskEditorFocusDown: () => calls.push('move-down'),
     focusDraftComposer: () => calls.push('focus-draft'),
     submitDraftTaskFromComposer: (mode) => calls.push(`submit-draft:${mode}`),
     runTaskPaneAction: (action) => calls.push(`action:${action}`),
@@ -228,7 +229,8 @@ void test('task pane editor cursor and delete actions route through composer ope
       cursor: 5,
     },
   });
-  assert.equal(downTaskBoundary.calls.includes('focus-draft'), true);
+  assert.equal(downTaskBoundary.calls.includes('move-down'), true);
+  assert.equal(downTaskBoundary.calls.includes('focus-draft'), false);
 
   const downTaskWithinText = runShortcut({
     input: 'm',

@@ -240,9 +240,13 @@ Pass-through stream invariants:
 - `ctrl+c` requests mux shutdown immediately and is not forwarded to active threads.
 - In canonical remote/gateway mode, mux exits without closing live sessions so work continues after client disconnect.
 - In embedded/local mode, mux shutdown also closes live PTYs.
-- Gateway CLI lifecycle commands (`start`/`stop`/`status`/`restart`/`run`) are serialized through a per-session lock file (`gateway.lock`) to prevent concurrent start/stop races.
+- Gateway CLI lifecycle commands (`start`/`stop`/`status`/`restart`/`run`/`gc`) are serialized through a per-session lock file (`gateway.lock`) to prevent concurrent start/stop races.
 - Gateway identity is persisted in `gateway.json` (`pid`, `host`, `port`, `authToken`, `stateDbPath`, `startedAt`, `workspaceRoot`, optional `gatewayRunId`).
 - If `gateway.json` is missing but the endpoint is reachable, the CLI may adopt the running daemon by matching process-table host/port/auth/db-path identity; ambiguous matches fail closed.
+- If `gateway.json` is missing and host/port probing cannot identify the daemon, the CLI may deterministically adopt a single reachable daemon candidate by matching `stateDbPath`; ambiguous matches fail closed.
+- Named sessions prefer configured/default ports but auto-fallback to an available local port when the preferred port is already occupied and no explicit `--port` override is provided.
+- Named-session gateway stop prunes session-scoped gateway artifacts (`gateway.log`) after confirmed shutdown to avoid stale per-session runtime clutter.
+- `harness gateway gc` prunes named-session runtime directories older than 7 days by default (configurable via `--older-than-days`), while skipping live sessions.
 - `ctrl+p` and `cmd+p` open the command menu; command search is live-filtered and executes context-aware actions.
 - Empty-query command-menu results are grouped by type with visible delimiters; agent thread types are surfaced first, with default selection on `codex`, and typed input returns to normal score+alpha ordering.
 - On startup, mux may asynchronously check GitHub releases and open a `What's New` modal when newer stable versions exist than the installed local version.
@@ -265,12 +269,13 @@ Pass-through stream invariants:
   - run Critique AI review for staged changes (`critique review --staged`) from command menu (`Critique AI Review: Staged Changes (git)`)
   - run Critique AI review against base branch (`critique review <base> HEAD`) from command menu (`Critique AI Review: Current Branch vs Base (git)`)
   - close active thread
-  - open tracked projects in installed local tools (`iTerm2`, `Ghostty`, `Zed`, `Cursor IDE`, `VSCode`, `Warp`, `Finder`)
-  - copy tracked project path to clipboard
+  - open the active project directory in installed local tools (`iTerm2`, `Ghostty`, `Zed`, `Cursor`, `VSCode`, `Warp`, `Finder`)
+  - copy the active project path to clipboard
   - open GitHub for the active-project repository (`Open GitHub for This Repo (git)`)
   - show a filtered GitHub URL for your open pull requests in the active-project repository (`Show My Open Pull Requests (git)`)
   - open/create GitHub PR for the tracked active-project non-default branch (open when present, create when absent; `Open PR (git)` / `Create PR (git)`)
   - set supported API keys (`Set Anthropic API Key`, `Set OpenAI API Key`, `Set Linear API Key`) and persist to `secrets.env`
+  - run OAuth auth lifecycle from CLI (`harness auth login|status|refresh|logout`) for GitHub + Linear and persist resolved tokens to user-global `secrets.env`
   - create a Harness task from selected Linear issue text/URL (`Create Task from Linear Ticket URL`) via control-plane command `linear.issue.import`
   - open a theme picker and set a built-in OpenCode preset or the special `default` theme
   - show release notes modal (`Show What's New`)
@@ -278,7 +283,7 @@ Pass-through stream invariants:
   - start/stop profiler
   - start/stop status logging
   - quit
-- Project `Open in X` command-menu targets are auto-detected at startup and can be overridden by config under `mux.openIn.targets` (`enabled`, `appName`, `detectCommand`, `launchCommand`).
+- Active-project `Open in X` command-menu targets are auto-detected at startup and can be overridden by config under `mux.openIn.targets` (`enabled`, `appName`, `detectCommand`, `launchCommand`).
 - Thread "delete" in the mux is soft-delete (archive); hard delete remains an explicit control-plane command.
 - Project lifecycle in the mux is first-class: `directory.upsert`, `directory.list`, and `directory.archive` drive add/close behavior through the same control-plane stream API as automation clients.
 - Mux applies workspace lifecycle observed events (`directory-upserted`, `directory-archived`, `conversation-created`, `conversation-updated`, `conversation-archived`, `conversation-deleted`) directly into in-memory state so cross-client project/thread changes appear without restart.
@@ -292,7 +297,7 @@ Pass-through stream invariants:
 - Repository/task planning is exposed through the dedicated Tasks entry in the left rail; Home and Tasks share the same pane container, but task CRUD rendering/shortcuts are active only when Tasks is selected while control-plane repository/task commands and subscriptions remain the source of truth.
 - Active project directories are scraped for GitHub remotes at startup/refresh; remotes are normalized and deduped, auto-upserted into canonical repository records, and reused for rail grouping.
 - Gateway-side GitHub sync persists PR records + per-PR CI job records and emits realtime observed events (`github-pr-upserted`, `github-pr-closed`, `github-pr-jobs-updated`) so UI/API clients stay live without polling their own GitHub state.
-- GitHub auth resolution is lazy and non-fatal: gateway prefers configured token env, falls back to `gh auth token`, and keeps startup healthy when auth is unavailable.
+- GitHub auth resolution is lazy and non-fatal: gateway prefers configured manual token env (`github.tokenEnvVar`, default `GITHUB_TOKEN`), then OAuth access token env (`HARNESS_GITHUB_OAUTH_ACCESS_TOKEN`), then `gh auth token`, and keeps startup healthy when auth is unavailable.
 - Command-menu GitHub PR actions surface a soft hint when auth is missing instead of throwing hard UI errors.
 - Left rail projects are grouped by canonical repository; projects with no detected canonical remote are grouped under `untracked`.
 - Repository groups are collapsible (`left/right` collapse/expand selected group, `ctrl+k ctrl+0` collapse all, `ctrl+k ctrl+j` expand all), and collapsed groups hide child projects/threads from keyboard traversal.
@@ -651,6 +656,28 @@ Open actions:
 - Open specific changed file.
 - Open workspace/worktree in terminal attach mode.
 
+## First-Party Diff Substrate (`src/diff/*`)
+
+`src/diff/*` provides the canonical first-party diff substrate for large-repository and large-branch workloads.
+
+Design commitments:
+
+- Git remains the authoritative source of truth; we parse `git diff` output rather than reimplementing a repository diff algorithm.
+- Parsing is streaming-first and budget-aware (files/hunks/lines/bytes/runtime) with explicit truncation coverage semantics.
+- Core diff objects are stable and deterministic (`diffId`, `fileId`, `hunkId`, `chunkId`) for replayability and downstream caching/resume.
+- The public API surface is `createDiffBuilder()` and `createDiffChunker()` with both snapshot and stream forms.
+- The model is provider-agnostic and intentionally shaped for future AI review pipelines without coupling provider logic into diff code.
+
+Module boundaries:
+
+- `types.ts`: canonical contracts and defaults.
+- `git-invoke.ts`: git process args + streamed line ingestion + preflight metadata.
+- `git-parse.ts`: streaming patch parser and normalization assembly.
+- `budget.ts`: shared limit tracking and stop conditions.
+- `build.ts`: orchestration and `DiffStreamEvent` lifecycle (`start`, `hunk`, `file`, `progress`, `coverage`, `complete`).
+- `chunker.ts`: deterministic hunk chunking for downstream consumers.
+- `hash.ts`: stable identity generation.
+
 ## Persistence
 
 Use one tenanted SQLite database for local durability and fast indexing.
@@ -750,6 +777,7 @@ Design constraints:
   - default session: `<workspace-runtime>/gateway.json`, `<workspace-runtime>/gateway.log`, `<workspace-runtime>/gateway.lock`, `<workspace-runtime>/control-plane.sqlite`
   - named sessions: `<workspace-runtime>/sessions/<session-name>/gateway.json|gateway.log|gateway.lock|control-plane.sqlite`
   - global default-session pointer: `~/.harness/default-gateway.json` (or `$XDG_CONFIG_HOME/harness/default-gateway.json`) tracks the active default-session workspace/log/record paths; named sessions do not mutate this pointer
+  - on named-session gateway stop, `gateway.log` is pruned for that session after successful/stale shutdown handling; session DB/state paths remain intact
 - Config payloads are explicitly versioned with top-level `configVersion`.
 - JSON-with-comments format (JSONC) is required to allow inline documentation and annotation.
 - Single configuration abstraction only (`config-core`) used by every subsystem and process.
@@ -757,15 +785,21 @@ Design constraints:
 - Runtime behavior toggles are config-first; environment variables are reserved for bootstrap/transport wiring and test harness injection, not the primary control surface.
 - Bootstrap secrets may be loaded from user-global `secrets.env` alongside `harness.config.jsonc` (dotenv-style `KEY=VALUE`) into process env before startup; explicitly exported environment variables remain authoritative over file-provided values.
 - Supported API keys can also be set from mux command-menu actions, which open a line-input modal (overwrite warning when a value already exists), persist to user-global `secrets.env`, and update launch env for subsequently started threads in the current session.
+- OAuth bootstrap is CLI-driven (`harness auth`):
+  - `harness auth login github` uses GitHub device flow and persists token data to user-global `secrets.env` (`HARNESS_GITHUB_OAUTH_ACCESS_TOKEN` + optional refresh/expiry metadata) without overwriting manual `GITHUB_TOKEN`/`github.tokenEnvVar`.
+  - `harness auth login linear` uses Linear OAuth Authorization Code + PKCE with loopback callback and persists token data to user-global `secrets.env` (`HARNESS_LINEAR_OAUTH_ACCESS_TOKEN` + refresh/expiry metadata) without overwriting manual `LINEAR_API_KEY`/`linear.tokenEnvVar`.
+  - `harness auth refresh linear` rotates expired Linear access tokens using stored refresh token metadata.
+  - `harness auth logout` clears stored OAuth provider token + OAuth metadata from user-global `secrets.env` while preserving manual token vars.
 - GitHub sync policy is config-governed under `github.*`:
   - `enabled` defaults to `true`
   - `apiBaseUrl`, `tokenEnvVar`, `pollMs`, `maxConcurrency`, `branchStrategy`, and optional `viewerLogin` are normalized by `config-core`
+  - control-plane resolves GitHub auth in order: `tokenEnvVar` (default `GITHUB_TOKEN`) then `HARNESS_GITHUB_OAUTH_ACCESS_TOKEN` then `gh auth token`
 - Gateway host policy is config-governed under `gateway.host`:
   - defaults to loopback (`127.0.0.1`) and is used by `harness` gateway/client startup when no explicit `--host` override is provided
 - Linear issue import policy is config-governed under `linear.*`:
   - `enabled` defaults to `true`
   - `apiBaseUrl` and `tokenEnvVar` are normalized by `config-core`
-  - control-plane uses `tokenEnvVar` (default `LINEAR_API_KEY`) to resolve the API key at startup
+  - control-plane resolves linear auth in order: `tokenEnvVar` (default `LINEAR_API_KEY`) then `HARNESS_LINEAR_OAUTH_ACCESS_TOKEN`
 - Launch policy is config-governed under each provider section:
   - `codex.launch`, `claude.launch`, and `cursor.launch`
   - each supports `defaultMode` (`yolo` or `standard`) as the fallback for all directories
@@ -857,6 +891,27 @@ Left-rail rendering/style principles:
 - Use command envelopes for all actions a human can perform.
 - Subscribe to event streams for monitoring, intervention, and orchestration logic.
 
+### Harness Diff Subcommand (Phase 1)
+
+- A first-party diff command entrypoint exists as `harness diff` (wired through `scripts/harness.ts`).
+- Diff data source remains `src/diff/*` (`createDiffBuilder`) with budget-aware build semantics.
+- UI model/runtime modules live under `src/diff-ui/*` and are intentionally process-local (not coupled to mux runtime lifecycle):
+  - `args.ts`: CLI option parsing/validation
+  - `commands.ts`: shared command parsing/mapping for rpc and pager input paths
+  - `model.ts`: virtual row index from `NormalizedDiff`
+  - `finder.ts`: fuzzy file scoring/ranking
+  - `state.ts`: reducer-based navigation/finder/search state
+  - `highlight.ts`: lightweight syntax tokenization/render merge
+  - `render.ts`: scrollback document rendering plus split/unified viewport rendering with theme roles
+  - `pager.ts`: interactive pager event loop, terminal lifecycle handling, and key-to-command mapping
+  - `runtime.ts`: diff build orchestration, pager-by-default dispatch for interactive terminals, and rpc-stdio command/event flow
+- Subcommand mode supports:
+  - interactive pager mode by default on interactive terminals (or explicit `--pager`) with reducer-driven navigation and resize support
+  - explicit scrollback-friendly document print output (`--no-pager`)
+  - NDJSON event emission (`--json-events`)
+  - programmatic command loop over stdio (`--rpc-stdio`)
+- Human and automation parity is preserved by routing navigation/finder/view operations through a shared command/state reducer path.
+
 ## Language and Runtime Choice
 
 ### Recommendation: TypeScript first
@@ -931,7 +986,7 @@ Subsystems where mature dependencies are acceptable because they are outside dir
   - Rationale: reliability and protocol correctness outside terminal hot-path rendering/input loops.
 
 - CLI parsing and config ergonomics:
-  - Use: `yargs`/`commander` and config parsing libraries.
+  - Use: `@oclif/core` command/flag framework and config parsing libraries.
   - Rationale: not latency sensitive; faster iteration and fewer parser edge-case bugs.
 
 - Validation and serialization helpers:

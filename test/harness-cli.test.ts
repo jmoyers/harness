@@ -5,14 +5,18 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   unlinkSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync, spawn } from 'node:child_process';
+import { createServer as createHttpServer } from 'node:http';
 import { createServer } from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
 import { parseGatewayRecordText } from '../src/cli/gateway-record.ts';
@@ -225,6 +229,20 @@ async function waitForPidExit(pid: number, timeoutMs: number): Promise<boolean> 
     await delay(25);
   }
   return !isPidRunning(pid);
+}
+
+function setTreeMtime(rootPath: string, mtime: Date): void {
+  const stack: string[] = [rootPath];
+  while (stack.length > 0) {
+    const currentPath = stack.pop()!;
+    const stats = statSync(currentPath);
+    if (stats.isDirectory()) {
+      for (const child of readdirSync(currentPath, { withFileTypes: true })) {
+        stack.push(join(currentPath, child.name));
+      }
+    }
+    utimesSync(currentPath, mtime, mtime);
+  }
 }
 
 async function spawnOrphanSqliteProcess(dbPath: string): Promise<number> {
@@ -466,7 +484,7 @@ void test('harness migrates legacy local config when global config is only boots
   }
 });
 
-void test('harness gateway start ignores stale record state db path and uses runtime default', async () => {
+void test('harness gateway start normalizes stale and legacy env db paths to runtime default', async () => {
   const workspace = createWorkspace();
   const port = await reservePort();
   const runtimeRoot = workspaceRuntimeRoot(workspace);
@@ -491,48 +509,39 @@ void test('harness gateway start ignores stale record state db path and uses run
     ),
     'utf8',
   );
-  const env = {
-    HARNESS_CONTROL_PLANE_PORT: String(port),
-  };
-  try {
-    const startResult = await runHarness(
-      workspace,
-      ['gateway', 'start', '--port', String(port)],
-      env,
-    );
-    assert.equal(startResult.code, 0);
-    const recordRaw = readFileSync(recordPath, 'utf8');
-    const record = parseGatewayRecordText(recordRaw);
-    assert.notEqual(record, null);
-    assert.equal(record?.stateDbPath, join(runtimeRoot, 'control-plane.sqlite'));
-  } finally {
-    void runHarness(workspace, ['gateway', 'stop', '--force'], env).catch(() => undefined);
-    rmSync(workspace, { recursive: true, force: true });
-  }
-});
 
-void test('harness gateway start ignores HARNESS_CONTROL_PLANE_DB_PATH and uses runtime default', async () => {
-  const workspace = createWorkspace();
-  const port = await reservePort();
-  const runtimeRoot = workspaceRuntimeRoot(workspace);
-  const recordPath = join(runtimeRoot, 'gateway.json');
-  const env = {
+  const baseEnv = {
     HARNESS_CONTROL_PLANE_PORT: String(port),
-    HARNESS_CONTROL_PLANE_DB_PATH: join(workspace, '.harness', 'legacy-control-plane.sqlite'),
   };
   try {
-    const startResult = await runHarness(
+    const staleStartResult = await runHarness(
       workspace,
       ['gateway', 'start', '--port', String(port)],
-      env,
+      baseEnv,
     );
-    assert.equal(startResult.code, 0);
-    const recordRaw = readFileSync(recordPath, 'utf8');
-    const record = parseGatewayRecordText(recordRaw);
-    assert.notEqual(record, null);
-    assert.equal(record?.stateDbPath, join(runtimeRoot, 'control-plane.sqlite'));
+    assert.equal(staleStartResult.code, 0);
+    const staleRecordRaw = readFileSync(recordPath, 'utf8');
+    const staleRecord = parseGatewayRecordText(staleRecordRaw);
+    assert.notEqual(staleRecord, null);
+    assert.equal(staleRecord?.stateDbPath, join(runtimeRoot, 'control-plane.sqlite'));
+
+    await runHarness(workspace, ['gateway', 'stop', '--force'], baseEnv);
+
+    const legacyEnvStartResult = await runHarness(
+      workspace,
+      ['gateway', 'start', '--port', String(port)],
+      {
+        ...baseEnv,
+        HARNESS_CONTROL_PLANE_DB_PATH: join(workspace, '.harness', 'legacy-control-plane.sqlite'),
+      },
+    );
+    assert.equal(legacyEnvStartResult.code, 0);
+    const legacyEnvRecordRaw = readFileSync(recordPath, 'utf8');
+    const legacyEnvRecord = parseGatewayRecordText(legacyEnvRecordRaw);
+    assert.notEqual(legacyEnvRecord, null);
+    assert.equal(legacyEnvRecord?.stateDbPath, join(runtimeRoot, 'control-plane.sqlite'));
   } finally {
-    void runHarness(workspace, ['gateway', 'stop', '--force'], env).catch(() => undefined);
+    void runHarness(workspace, ['gateway', 'stop', '--force'], baseEnv).catch(() => undefined);
     rmSync(workspace, { recursive: true, force: true });
   }
 });
@@ -540,10 +549,10 @@ void test('harness gateway start ignores HARNESS_CONTROL_PLANE_DB_PATH and uses 
 void test('harness gateway start rejects local workspace .harness state db path', async () => {
   const workspace = createWorkspace();
   const port = await reservePort();
+  const localLegacyDbPath = join(workspace, '.harness', 'control-plane.sqlite');
   const env = {
     HARNESS_CONTROL_PLANE_PORT: String(port),
   };
-  const localLegacyDbPath = join(workspace, '.harness', 'control-plane.sqlite');
   try {
     const startResult = await runHarness(
       workspace,
@@ -704,6 +713,306 @@ void test('harness update rejects unknown options', async () => {
   }
 });
 
+void test('harness auth login github requires HARNESS_GITHUB_OAUTH_CLIENT_ID', async () => {
+  const workspace = createWorkspace();
+  try {
+    const result = await runHarness(workspace, ['auth', 'login', 'github', '--no-browser'], {
+      HARNESS_GITHUB_OAUTH_CLIENT_ID: undefined,
+    });
+    assert.equal(result.code, 1);
+    assert.equal(result.stderr.includes('missing required HARNESS_GITHUB_OAUTH_CLIENT_ID'), true);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('harness auth login github stores oauth tokens in secrets.env', async () => {
+  const workspace = createWorkspace();
+  let deviceRequestCount = 0;
+  let tokenRequestCount = 0;
+  const oauthServer = createHttpServer((request, response) => {
+    const path = request.url ?? '/';
+    if (request.method === 'POST' && path === '/login/device/code') {
+      deviceRequestCount += 1;
+      response.statusCode = 200;
+      response.setHeader('content-type', 'application/json');
+      response.end(
+        JSON.stringify({
+          device_code: 'device-test-code',
+          user_code: 'ABCD-EFGH',
+          verification_uri: 'https://example.invalid/device',
+          verification_uri_complete: 'https://example.invalid/device?code=ABCD-EFGH',
+          expires_in: 600,
+          interval: 0.1,
+        }),
+      );
+      return;
+    }
+    if (request.method === 'POST' && path === '/login/oauth/access_token') {
+      tokenRequestCount += 1;
+      response.statusCode = 200;
+      response.setHeader('content-type', 'application/json');
+      response.end(
+        JSON.stringify({
+          access_token: 'gho_test_access_token',
+          refresh_token: 'ghr_test_refresh_token',
+          expires_in: 3600,
+        }),
+      );
+      return;
+    }
+    response.statusCode = 404;
+    response.end('not found');
+  });
+  await new Promise<void>((resolveListen, rejectListen) => {
+    oauthServer.once('error', rejectListen);
+    oauthServer.listen(0, '127.0.0.1', () => resolveListen());
+  });
+  const address = oauthServer.address();
+  if (address === null || typeof address === 'string') {
+    oauthServer.close();
+    throw new Error('failed to resolve github oauth server address');
+  }
+  const baseUrl = `http://127.0.0.1:${String(address.port)}`;
+  const secretsPath = join(workspaceConfigRoot(workspace), 'secrets.env');
+  mkdirSync(dirname(secretsPath), { recursive: true });
+  writeFileSync(secretsPath, 'GITHUB_TOKEN=manual_github_token\n', 'utf8');
+
+  try {
+    const result = await runHarness(workspace, ['auth', 'login', 'github', '--no-browser'], {
+      HARNESS_GITHUB_OAUTH_CLIENT_ID: 'github-client-id-test',
+      HARNESS_GITHUB_OAUTH_DEVICE_CODE_URL: `${baseUrl}/login/device/code`,
+      HARNESS_GITHUB_OAUTH_TOKEN_URL: `${baseUrl}/login/oauth/access_token`,
+      GITHUB_TOKEN: undefined,
+    });
+    assert.equal(result.code, 0);
+    assert.equal(result.stdout.includes('github oauth login complete'), true);
+    assert.equal(deviceRequestCount, 1);
+    assert.equal(tokenRequestCount >= 1, true);
+    const secretsText = readFileSync(secretsPath, 'utf8');
+    assert.equal(secretsText.includes('GITHUB_TOKEN=manual_github_token'), true);
+    assert.equal(
+      secretsText.includes('HARNESS_GITHUB_OAUTH_ACCESS_TOKEN=gho_test_access_token'),
+      true,
+    );
+    assert.equal(
+      secretsText.includes('HARNESS_GITHUB_OAUTH_REFRESH_TOKEN=ghr_test_refresh_token'),
+      true,
+    );
+    assert.equal(secretsText.includes('HARNESS_GITHUB_OAUTH_ACCESS_EXPIRES_AT='), true);
+  } finally {
+    await new Promise<void>((resolveClose) => oauthServer.close(() => resolveClose()));
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('harness auth login linear completes oauth callback flow and stores tokens', async () => {
+  const workspace = createWorkspace();
+  let tokenRequestBody: Record<string, unknown> | null = null;
+  const oauthServer = createHttpServer((request, response) => {
+    const requestUrl = new URL(request.url ?? '/', 'http://127.0.0.1');
+    if (request.method === 'GET' && requestUrl.pathname === '/oauth/authorize') {
+      const redirectUri = requestUrl.searchParams.get('redirect_uri');
+      const state = requestUrl.searchParams.get('state');
+      if (redirectUri === null || state === null) {
+        response.statusCode = 400;
+        response.end('missing redirect_uri/state');
+        return;
+      }
+      const redirect = new URL(redirectUri);
+      redirect.searchParams.set('code', 'linear-code-test');
+      redirect.searchParams.set('state', state);
+      response.statusCode = 302;
+      response.setHeader('location', redirect.toString());
+      response.end();
+      return;
+    }
+    if (request.method === 'POST' && requestUrl.pathname === '/oauth/token') {
+      const chunks: Buffer[] = [];
+      request.on('data', (chunk: Buffer) => {
+        chunks.push(chunk);
+      });
+      request.on('end', () => {
+        const bodyText = Buffer.concat(chunks).toString('utf8');
+        tokenRequestBody = JSON.parse(bodyText) as Record<string, unknown>;
+        response.statusCode = 200;
+        response.setHeader('content-type', 'application/json');
+        response.end(
+          JSON.stringify({
+            access_token: 'linear_access_token_test',
+            refresh_token: 'linear_refresh_token_test',
+            expires_in: 7200,
+          }),
+        );
+      });
+      return;
+    }
+    response.statusCode = 404;
+    response.end('not found');
+  });
+  await new Promise<void>((resolveListen, rejectListen) => {
+    oauthServer.once('error', rejectListen);
+    oauthServer.listen(0, '127.0.0.1', () => resolveListen());
+  });
+  const address = oauthServer.address();
+  if (address === null || typeof address === 'string') {
+    oauthServer.close();
+    throw new Error('failed to resolve linear oauth server address');
+  }
+  const baseUrl = `http://127.0.0.1:${String(address.port)}`;
+  const secretsPath = join(workspaceConfigRoot(workspace), 'secrets.env');
+  mkdirSync(dirname(secretsPath), { recursive: true });
+  writeFileSync(secretsPath, 'LINEAR_API_KEY=manual_linear_token\n', 'utf8');
+  const browserStubPath = join(workspace, 'browser-oauth-stub.js');
+  writeFileSync(
+    browserStubPath,
+    [
+      '#!/usr/bin/env node',
+      '(async () => {',
+      '  const target = process.argv[2];',
+      "  if (typeof target !== 'string' || target.length === 0) {",
+      '    process.exit(2);',
+      '    return;',
+      '  }',
+      "  const response = await fetch(target, { redirect: 'follow' });",
+      '  process.exit(response.ok ? 0 : 1);',
+      '})().catch(() => {',
+      '  process.exit(1);',
+      '});',
+    ].join('\n'),
+    'utf8',
+  );
+  chmodSync(browserStubPath, 0o755);
+
+  try {
+    const result = await runHarness(
+      workspace,
+      ['auth', 'login', 'linear', '--timeout-ms', '10000'],
+      {
+        HARNESS_AUTH_BROWSER_COMMAND: browserStubPath,
+        HARNESS_LINEAR_OAUTH_CLIENT_ID: 'linear-client-id-test',
+        HARNESS_LINEAR_OAUTH_AUTHORIZE_URL: `${baseUrl}/oauth/authorize`,
+        HARNESS_LINEAR_OAUTH_TOKEN_URL: `${baseUrl}/oauth/token`,
+        LINEAR_API_KEY: undefined,
+      },
+    );
+    assert.equal(result.code, 0);
+    assert.equal(result.stdout.includes('linear oauth login complete'), true);
+    assert.notEqual(tokenRequestBody, null);
+    assert.equal(tokenRequestBody?.['grant_type'], 'authorization_code');
+    assert.equal(tokenRequestBody?.['client_id'], 'linear-client-id-test');
+    assert.equal(tokenRequestBody?.['code'], 'linear-code-test');
+    assert.equal(typeof tokenRequestBody?.['code_verifier'], 'string');
+    const secretsText = readFileSync(secretsPath, 'utf8');
+    assert.equal(secretsText.includes('LINEAR_API_KEY=manual_linear_token'), true);
+    assert.equal(
+      secretsText.includes('HARNESS_LINEAR_OAUTH_ACCESS_TOKEN=linear_access_token_test'),
+      true,
+    );
+    assert.equal(
+      secretsText.includes('HARNESS_LINEAR_OAUTH_REFRESH_TOKEN=linear_refresh_token_test'),
+      true,
+    );
+    assert.equal(secretsText.includes('HARNESS_LINEAR_OAUTH_ACCESS_EXPIRES_AT='), true);
+  } finally {
+    await new Promise<void>((resolveClose) => oauthServer.close(() => resolveClose()));
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('harness auth refresh linear updates expired oauth token and auth logout clears secrets', async () => {
+  const workspace = createWorkspace();
+  let refreshRequestCount = 0;
+  const oauthServer = createHttpServer((request, response) => {
+    const requestUrl = new URL(request.url ?? '/', 'http://127.0.0.1');
+    if (request.method === 'POST' && requestUrl.pathname === '/oauth/token') {
+      refreshRequestCount += 1;
+      const chunks: Buffer[] = [];
+      request.on('data', (chunk: Buffer) => {
+        chunks.push(chunk);
+      });
+      request.on('end', () => {
+        const bodyText = Buffer.concat(chunks).toString('utf8');
+        const payload = JSON.parse(bodyText) as Record<string, unknown>;
+        if (payload['grant_type'] !== 'refresh_token') {
+          response.statusCode = 400;
+          response.end('invalid grant type');
+          return;
+        }
+        response.statusCode = 200;
+        response.setHeader('content-type', 'application/json');
+        response.end(
+          JSON.stringify({
+            access_token: 'linear_refreshed_access_token',
+            refresh_token: 'linear_refreshed_refresh_token',
+            expires_in: 3600,
+          }),
+        );
+      });
+      return;
+    }
+    response.statusCode = 404;
+    response.end('not found');
+  });
+  await new Promise<void>((resolveListen, rejectListen) => {
+    oauthServer.once('error', rejectListen);
+    oauthServer.listen(0, '127.0.0.1', () => resolveListen());
+  });
+  const address = oauthServer.address();
+  if (address === null || typeof address === 'string') {
+    oauthServer.close();
+    throw new Error('failed to resolve linear oauth refresh server address');
+  }
+  const baseUrl = `http://127.0.0.1:${String(address.port)}`;
+  const secretsPath = join(workspaceConfigRoot(workspace), 'secrets.env');
+  mkdirSync(dirname(secretsPath), { recursive: true });
+  writeFileSync(
+    secretsPath,
+    [
+      'LINEAR_API_KEY=manual_linear_token',
+      'HARNESS_LINEAR_OAUTH_ACCESS_TOKEN=linear_old_access_token',
+      'HARNESS_LINEAR_OAUTH_REFRESH_TOKEN=linear_old_refresh_token',
+      'HARNESS_LINEAR_OAUTH_ACCESS_EXPIRES_AT=1970-01-01T00:00:00.000Z',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+
+  try {
+    const refreshResult = await runHarness(workspace, ['auth', 'refresh', 'linear'], {
+      HARNESS_LINEAR_OAUTH_CLIENT_ID: 'linear-client-id-test',
+      HARNESS_LINEAR_OAUTH_TOKEN_URL: `${baseUrl}/oauth/token`,
+    });
+    assert.equal(refreshResult.code, 0);
+    assert.equal(refreshResult.stdout.includes('linear oauth refresh: refreshed'), true);
+    assert.equal(refreshRequestCount, 1);
+    const refreshedSecrets = readFileSync(secretsPath, 'utf8');
+    assert.equal(refreshedSecrets.includes('LINEAR_API_KEY=manual_linear_token'), true);
+    assert.equal(
+      refreshedSecrets.includes('HARNESS_LINEAR_OAUTH_ACCESS_TOKEN=linear_refreshed_access_token'),
+      true,
+    );
+    assert.equal(
+      refreshedSecrets.includes(
+        'HARNESS_LINEAR_OAUTH_REFRESH_TOKEN=linear_refreshed_refresh_token',
+      ),
+      true,
+    );
+
+    const logoutResult = await runHarness(workspace, ['auth', 'logout', 'linear']);
+    assert.equal(logoutResult.code, 0);
+    assert.equal(logoutResult.stdout.includes('auth logout complete'), true);
+    const afterLogoutSecrets = readFileSync(secretsPath, 'utf8');
+    assert.equal(afterLogoutSecrets.includes('LINEAR_API_KEY=manual_linear_token'), true);
+    assert.equal(afterLogoutSecrets.includes('HARNESS_LINEAR_OAUTH_ACCESS_TOKEN='), false);
+    assert.equal(afterLogoutSecrets.includes('HARNESS_LINEAR_OAUTH_REFRESH_TOKEN='), false);
+    assert.equal(afterLogoutSecrets.includes('HARNESS_LINEAR_OAUTH_ACCESS_EXPIRES_AT='), false);
+  } finally {
+    await new Promise<void>((resolveClose) => oauthServer.close(() => resolveClose()));
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 void test('harness cursor-hooks install creates managed cursor hooks in user scope', async () => {
   const workspace = createWorkspace();
   const fakeHome = join(workspace, 'fake-home');
@@ -788,17 +1097,40 @@ void test('harness animate --help prints usage', async () => {
   }
 });
 
+void test('harness --help prints oclif root command menu', async () => {
+  const workspace = createWorkspace();
+  try {
+    const result = await runHarness(workspace, ['--help']);
+    assert.equal(result.code, 0);
+    assert.equal(result.stdout.includes('USAGE'), true);
+    assert.equal(result.stdout.includes('COMMANDS'), true);
+    assert.equal(result.stdout.includes('gateway'), true);
+    assert.equal(result.stdout.includes('status-timeline'), true);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('harness gateway --help prints standardized command usage', async () => {
+  const workspace = createWorkspace();
+  try {
+    const result = await runHarness(workspace, ['gateway', '--help']);
+    assert.equal(result.code, 0);
+    assert.equal(result.stdout.includes('USAGE'), true);
+    assert.equal(result.stdout.includes('harness gateway'), true);
+    assert.equal(result.stdout.includes('--session'), true);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 void test('harness animate requires explicit bounds in non-tty mode', async () => {
   const workspace = createWorkspace();
   try {
     const result = await runHarness(workspace, ['animate']);
     assert.equal(result.code, 1);
-    assert.equal(
-      result.stderr.includes(
-        'harness animate requires a TTY or explicit --frames/--duration-ms bounds',
-      ),
-      true,
-    );
+    assert.equal(result.stderr.includes('harness animate requires a TTY'), true);
+    assert.equal(result.stderr.includes('--frames/--duration-ms'), true);
   } finally {
     rmSync(workspace, { recursive: true, force: true });
   }
@@ -836,7 +1168,7 @@ void test('harness animate default color output uses muted palette', async () =>
   }
 });
 
-void test('harness gateway start/status/call/stop manages daemon lifecycle', async () => {
+void test('harness gateway lifecycle and github.pr-create validation stay healthy', async () => {
   const workspace = createWorkspace();
   const port = await reservePort();
   const recordPath = join(workspaceRuntimeRoot(workspace), 'gateway.json');
@@ -875,34 +1207,6 @@ void test('harness gateway start/status/call/stop manages daemon lifecycle', asy
     assert.equal(callResult.code, 0);
     assert.equal(callResult.stdout.includes('"sessions"'), true);
 
-    const stopResult = await runHarness(workspace, ['gateway', 'stop'], env);
-    assert.equal(stopResult.code, 0);
-    assert.equal(stopResult.stdout.includes('gateway stopped'), true);
-
-    const finalStatus = await runHarness(workspace, ['gateway', 'status'], env);
-    assert.equal(finalStatus.code, 0);
-    assert.equal(finalStatus.stdout.includes('gateway status: stopped'), true);
-    assert.equal(existsSync(recordPath), false);
-  } finally {
-    void runHarness(workspace, ['gateway', 'stop', '--force'], env).catch(() => undefined);
-    rmSync(workspace, { recursive: true, force: true });
-  }
-});
-
-void test('harness gateway call github.pr-create reaches command validation before github disabled guard', async () => {
-  const workspace = createWorkspace();
-  const port = await reservePort();
-  const env = {
-    HARNESS_CONTROL_PLANE_PORT: String(port),
-  };
-  try {
-    const startResult = await runHarness(
-      workspace,
-      ['gateway', 'start', '--port', String(port)],
-      env,
-    );
-    assert.equal(startResult.code, 0);
-
     const missingDirectoryCall = await runHarness(
       workspace,
       [
@@ -919,6 +1223,19 @@ void test('harness gateway call github.pr-create reaches command validation befo
       true,
     );
     assert.equal(missingDirectoryCall.stderr.includes('github integration is disabled'), false);
+
+    const stopResult = await runHarness(workspace, ['gateway', 'stop'], env);
+    assert.equal(stopResult.code, 0);
+    assert.equal(
+      stopResult.stdout.includes('gateway stopped') ||
+        stopResult.stdout.includes('removed stale gateway record'),
+      true,
+    );
+
+    const finalStatus = await runHarness(workspace, ['gateway', 'status'], env);
+    assert.equal(finalStatus.code, 0);
+    assert.equal(finalStatus.stdout.includes('gateway status: stopped'), true);
+    assert.equal(existsSync(recordPath), false);
   } finally {
     void runHarness(workspace, ['gateway', 'stop', '--force'], env).catch(() => undefined);
     rmSync(workspace, { recursive: true, force: true });
@@ -965,6 +1282,72 @@ void test('harness default client auto-starts detached gateway and leaves it run
     const stopResult = await runHarness(workspace, ['gateway', 'stop'], env);
     assert.equal(stopResult.code, 0);
   } finally {
+    void runHarness(workspace, ['gateway', 'stop', '--force'], env).catch(() => undefined);
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('harness named session client auto-resolves gateway port when preferred port is occupied and cleans up named gateway artifacts on stop', async () => {
+  const workspace = createWorkspace();
+  const preferredPort = await reservePort();
+  const sessionName = 'secondary-auto-port-a';
+  const runtimeRoot = workspaceRuntimeRoot(workspace);
+  const muxArgsPath = join(runtimeRoot, `mux-${sessionName}-args.json`);
+  const muxStubPath = join(workspace, 'mux-named-session-auto-port-stub.js');
+  const defaultRecordPath = join(runtimeRoot, 'gateway.json');
+  const namedRecordPath = join(runtimeRoot, `sessions/${sessionName}/gateway.json`);
+  const namedLogPath = join(runtimeRoot, `sessions/${sessionName}/gateway.log`);
+  writeFileSync(
+    muxStubPath,
+    [
+      "import { mkdirSync, writeFileSync } from 'node:fs';",
+      "import { dirname } from 'node:path';",
+      'const target = process.env.HARNESS_TEST_MUX_ARGS_PATH;',
+      "if (typeof target === 'string' && target.length > 0) {",
+      '  mkdirSync(dirname(target), { recursive: true });',
+      "  writeFileSync(target, JSON.stringify(process.argv.slice(2)), 'utf8');",
+      '}',
+    ].join('\n'),
+    'utf8',
+  );
+  const env = {
+    HARNESS_CONTROL_PLANE_PORT: String(preferredPort),
+    HARNESS_MUX_SCRIPT_PATH: muxStubPath,
+    HARNESS_TEST_MUX_ARGS_PATH: muxArgsPath,
+  };
+  try {
+    const defaultStart = await runHarness(workspace, ['gateway', 'start'], env);
+    assert.equal(defaultStart.code, 0);
+    const defaultRecord = parseGatewayRecordText(readFileSync(defaultRecordPath, 'utf8'));
+    assert.notEqual(defaultRecord, null);
+    assert.equal(defaultRecord?.port, preferredPort);
+
+    const namedClientResult = await runHarness(workspace, ['--session', sessionName], env);
+    assert.equal(namedClientResult.code, 0);
+    assert.equal(existsSync(namedRecordPath), true);
+    assert.equal(existsSync(muxArgsPath), true);
+
+    const namedRecord = parseGatewayRecordText(readFileSync(namedRecordPath, 'utf8'));
+    assert.notEqual(namedRecord, null);
+    assert.notEqual(namedRecord?.port, preferredPort);
+
+    const muxArgs = JSON.parse(readFileSync(muxArgsPath, 'utf8')) as string[];
+    const portFlagIndex = muxArgs.indexOf('--harness-server-port');
+    assert.notEqual(portFlagIndex, -1);
+    assert.equal(muxArgs[portFlagIndex + 1], String(namedRecord?.port));
+
+    const namedStop = await runHarness(
+      workspace,
+      ['--session', sessionName, 'gateway', 'stop'],
+      env,
+    );
+    assert.equal(namedStop.code, 0);
+    assert.equal(existsSync(namedRecordPath), false);
+    assert.equal(existsSync(namedLogPath), false);
+  } finally {
+    void runHarness(workspace, ['--session', sessionName, 'gateway', 'stop', '--force'], env).catch(
+      () => undefined,
+    );
     void runHarness(workspace, ['gateway', 'stop', '--force'], env).catch(() => undefined);
     rmSync(workspace, { recursive: true, force: true });
   }
@@ -1724,6 +2107,87 @@ void test(
   },
   { timeout: 30_000 },
 );
+
+void test('harness gateway gc removes named sessions older than one week and keeps recent sessions', async () => {
+  const workspace = createWorkspace();
+  const runtimeRoot = workspaceRuntimeRoot(workspace);
+  const sessionsRoot = join(runtimeRoot, 'sessions');
+  const oldSessionRoot = join(sessionsRoot, 'old-session-a');
+  const recentSessionRoot = join(sessionsRoot, 'recent-session-a');
+  mkdirSync(oldSessionRoot, { recursive: true });
+  mkdirSync(recentSessionRoot, { recursive: true });
+  writeFileSync(join(oldSessionRoot, 'control-plane.sqlite'), '', 'utf8');
+  writeFileSync(join(recentSessionRoot, 'control-plane.sqlite'), '', 'utf8');
+  setTreeMtime(oldSessionRoot, new Date(Date.now() - 8 * 24 * 60 * 60 * 1000));
+  setTreeMtime(recentSessionRoot, new Date(Date.now() - 2 * 24 * 60 * 60 * 1000));
+
+  try {
+    const gcResult = await runHarness(workspace, ['gateway', 'gc']);
+    assert.equal(gcResult.code, 0, gcResult.stderr);
+    assert.equal(gcResult.stdout.includes('gateway gc:'), true);
+    assert.equal(existsSync(oldSessionRoot), false);
+    assert.equal(existsSync(recentSessionRoot), true);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('harness gateway gc skips live named sessions even when their artifacts look stale', async () => {
+  const workspace = createWorkspace();
+  const sessionName = 'live-session-a';
+  const port = await reservePort();
+  const sessionRoot = join(workspaceRuntimeRoot(workspace), `sessions/${sessionName}`);
+  const sessionRecordPath = join(sessionRoot, 'gateway.json');
+  let gatewayPid: number | null = null;
+  try {
+    const startResult = await runHarness(workspace, [
+      '--session',
+      sessionName,
+      'gateway',
+      'start',
+      '--port',
+      String(port),
+    ]);
+    assert.equal(startResult.code, 0, startResult.stderr);
+    const record = parseGatewayRecordText(readFileSync(sessionRecordPath, 'utf8'));
+    if (record === null) {
+      throw new Error('expected live named session gateway record');
+    }
+    gatewayPid = record.pid;
+    assert.equal(isPidRunning(gatewayPid), true);
+
+    setTreeMtime(sessionRoot, new Date(Date.now() - 8 * 24 * 60 * 60 * 1000));
+    const gcResult = await runHarness(workspace, ['gateway', 'gc']);
+    assert.equal(gcResult.code, 0, gcResult.stderr);
+    assert.equal(gcResult.stdout.includes('skippedLive=1'), true);
+    assert.equal(existsSync(sessionRoot), true);
+    assert.equal(isPidRunning(gatewayPid), true);
+  } finally {
+    const stopResult = await runHarness(workspace, [
+      '--session',
+      sessionName,
+      'gateway',
+      'stop',
+      '--force',
+    ]);
+    assert.equal(stopResult.code, 0, stopResult.stderr);
+    if (gatewayPid !== null) {
+      assert.equal(await waitForPidExit(gatewayPid, 5000), true);
+    }
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('harness gateway gc rejects unknown options', async () => {
+  const workspace = createWorkspace();
+  try {
+    const result = await runHarness(workspace, ['gateway', 'gc', '--bad-option']);
+    assert.equal(result.code, 1);
+    assert.equal(result.stderr.includes('unknown gateway option: --bad-option'), true);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
 
 void test('harness gateway stop cleans up orphan sqlite processes for the workspace db', async () => {
   const workspace = createWorkspace();
