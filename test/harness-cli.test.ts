@@ -1080,17 +1080,40 @@ void test('harness animate --help prints usage', async () => {
   }
 });
 
+void test('harness --help prints oclif root command menu', async () => {
+  const workspace = createWorkspace();
+  try {
+    const result = await runHarness(workspace, ['--help']);
+    assert.equal(result.code, 0);
+    assert.equal(result.stdout.includes('USAGE'), true);
+    assert.equal(result.stdout.includes('COMMANDS'), true);
+    assert.equal(result.stdout.includes('gateway'), true);
+    assert.equal(result.stdout.includes('status-timeline'), true);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('harness gateway --help prints standardized command usage', async () => {
+  const workspace = createWorkspace();
+  try {
+    const result = await runHarness(workspace, ['gateway', '--help']);
+    assert.equal(result.code, 0);
+    assert.equal(result.stdout.includes('USAGE'), true);
+    assert.equal(result.stdout.includes('harness gateway'), true);
+    assert.equal(result.stdout.includes('--session'), true);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 void test('harness animate requires explicit bounds in non-tty mode', async () => {
   const workspace = createWorkspace();
   try {
     const result = await runHarness(workspace, ['animate']);
     assert.equal(result.code, 1);
-    assert.equal(
-      result.stderr.includes(
-        'harness animate requires a TTY or explicit --frames/--duration-ms bounds',
-      ),
-      true,
-    );
+    assert.equal(result.stderr.includes('harness animate requires a TTY'), true);
+    assert.equal(result.stderr.includes('--frames/--duration-ms'), true);
   } finally {
     rmSync(workspace, { recursive: true, force: true });
   }

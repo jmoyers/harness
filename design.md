@@ -942,7 +942,7 @@ Subsystems where mature dependencies are acceptable because they are outside dir
   - Rationale: reliability and protocol correctness outside terminal hot-path rendering/input loops.
 
 - CLI parsing and config ergonomics:
-  - Use: `yargs`/`commander` and config parsing libraries.
+  - Use: `@oclif/core` command/flag framework and config parsing libraries.
   - Rationale: not latency sensitive; faster iteration and fewer parser edge-case bugs.
 
 - Validation and serialization helpers:
