@@ -16,6 +16,7 @@
     "scripts/control-plane-daemon.ts",
     "scripts/codex-live-mux-runtime.ts",
     "scripts/codex-live-mux.ts",
+    "scripts/harness-diff.ts",
     "scripts/cursor-hook-relay.ts",
     "scripts/harness-animate.ts",
     "scripts/harness-bin.js",
@@ -39,6 +40,7 @@
   "scripts": {
     "migrate:bun": "bash ./scripts/migrate-to-bun.sh",
     "harness": "bun scripts/harness.ts",
+    "harness:diff": "bun scripts/harness-diff.ts",
     "harness:core": "bun scripts/harness-core.ts",
     "build:ptyd": "bash ./scripts/build-ptyd.sh",
     "preinstall": "node scripts/require-bun.js",

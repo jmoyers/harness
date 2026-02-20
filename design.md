@@ -651,6 +651,28 @@ Open actions:
 - Open specific changed file.
 - Open workspace/worktree in terminal attach mode.
 
+## First-Party Diff Substrate (`src/diff/*`)
+
+`src/diff/*` provides the canonical first-party diff substrate for large-repository and large-branch workloads.
+
+Design commitments:
+
+- Git remains the authoritative source of truth; we parse `git diff` output rather than reimplementing a repository diff algorithm.
+- Parsing is streaming-first and budget-aware (files/hunks/lines/bytes/runtime) with explicit truncation coverage semantics.
+- Core diff objects are stable and deterministic (`diffId`, `fileId`, `hunkId`, `chunkId`) for replayability and downstream caching/resume.
+- The public API surface is `createDiffBuilder()` and `createDiffChunker()` with both snapshot and stream forms.
+- The model is provider-agnostic and intentionally shaped for future AI review pipelines without coupling provider logic into diff code.
+
+Module boundaries:
+
+- `types.ts`: canonical contracts and defaults.
+- `git-invoke.ts`: git process args + streamed line ingestion + preflight metadata.
+- `git-parse.ts`: streaming patch parser and normalization assembly.
+- `budget.ts`: shared limit tracking and stop conditions.
+- `build.ts`: orchestration and `DiffStreamEvent` lifecycle (`start`, `hunk`, `file`, `progress`, `coverage`, `complete`).
+- `chunker.ts`: deterministic hunk chunking for downstream consumers.
+- `hash.ts`: stable identity generation.
+
 ## Persistence
 
 Use one tenanted SQLite database for local durability and fast indexing.
@@ -856,6 +878,24 @@ Left-rail rendering/style principles:
 - Connect over the same authenticated stream protocol as TUI and web clients.
 - Use command envelopes for all actions a human can perform.
 - Subscribe to event streams for monitoring, intervention, and orchestration logic.
+
+### Standalone Diff UI Process (Phase 1)
+
+- A first-party standalone process entrypoint exists at `scripts/harness-diff.ts` (invoked via `bun run harness:diff`).
+- Diff data source remains `src/diff/*` (`createDiffBuilder`) with budget-aware build semantics.
+- UI model/runtime modules live under `src/diff-ui/*` and are intentionally process-local (not coupled to mux runtime lifecycle):
+  - `args.ts`: CLI option parsing/validation
+  - `model.ts`: virtual row index from `NormalizedDiff`
+  - `finder.ts`: fuzzy file scoring/ranking
+  - `state.ts`: reducer-based navigation/finder/search state
+  - `highlight.ts`: lightweight syntax tokenization/render merge
+  - `render.ts`: split/unified viewport rendering with theme roles
+  - `runtime.ts`: one-shot render orchestration and rpc-stdio command/event flow
+- Process mode supports:
+  - one-shot viewport render
+  - NDJSON event emission (`--json-events`)
+  - programmatic command loop over stdio (`--rpc-stdio`)
+- Human and automation parity is preserved by routing navigation/finder/view operations through a shared command/state reducer path.
 
 ## Language and Runtime Choice
 
