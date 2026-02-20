@@ -53,6 +53,10 @@ For restart/load diagnostics, use a named session with a non-default gateway por
 Standalone diff viewer (phase 1):
 
 ```bash
+# After global install:
+harness-diff --help
+
+# Direct from repo:
 bun run harness:diff -- --help
 ```
 

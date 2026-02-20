@@ -1,3 +1,5 @@
+#!/usr/bin/env bun
+
 import { diffUiUsage, runDiffUiCli } from '../src/diff-ui/index.ts';
 
 async function main(): Promise<void> {

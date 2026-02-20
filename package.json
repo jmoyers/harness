@@ -7,7 +7,8 @@
     "url": "https://github.com/jmoyers/harness"
   },
   "bin": {
-    "harness": "scripts/harness-bin.js"
+    "harness": "scripts/harness-bin.js",
+    "harness-diff": "scripts/harness-diff.ts"
   },
   "files": [
     "src",
