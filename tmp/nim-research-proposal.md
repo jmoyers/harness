@@ -38,7 +38,7 @@ This document is systems-first and maps public APIs to functional requirements w
 - Runtime now includes first-party factory wiring (`createSqliteBackedNimRuntime`) for SQLite event/session stores plus optional JSONL telemetry sink composition.
 - Runtime now fails closed for restart idempotency ambiguity by emitting `turn.idempotency.unresolved` and rejecting reuse when stored run IDs have no terminal event.
 - `nim-test-tui` now includes canonical stream collector utilities (`collectNimTestTuiFrame`) for deterministic, independent test UI snapshots without mux-runtime coupling.
-- A first interactive CLI/TUI smoke entrypoint now exists at `bun run nim:tui` (`scripts/nim-tui-smoke.ts`) for manual end-to-end validation of run/replay/queue/abort flows.
+- A first interactive CLI/TUI smoke entrypoint now exists as `harness nim` (with direct script alias `bun run nim:tui`) via `scripts/nim-tui-smoke.ts` for manual end-to-end validation of run/replay/queue/abort flows.
 
 ## 1.2 Execution Evidence (2026-02-20)
 

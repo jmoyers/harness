@@ -22,6 +22,7 @@
     "scripts/harness-core.ts",
     "scripts/harness-inspector.ts",
     "scripts/harness.ts",
+    "scripts/nim-tui-smoke.ts",
     "packages/harness-ai/src",
     "scripts/install-git-hooks.sh",
     "packages/nim-core/src",

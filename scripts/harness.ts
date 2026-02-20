@@ -19,6 +19,7 @@ import { connectControlPlaneStreamClient } from '../src/control-plane/stream-cli
 import { parseStreamCommand } from '../src/control-plane/stream-command-parser.ts';
 import type { StreamCommand } from '../src/control-plane/stream-protocol.ts';
 import { runHarnessAnimate } from './harness-animate.ts';
+import { runNimTuiSmoke } from './nim-tui-smoke.ts';
 import {
   clearDefaultGatewayPointerForRecordPath,
   writeDefaultGatewayPointerFromGatewayRecord,
@@ -919,6 +920,7 @@ function printUsage(): void {
       '  harness upgrade',
       '  harness cursor-hooks install [--hooks-file <path>]',
       '  harness cursor-hooks uninstall [--hooks-file <path>]',
+      '  harness nim [options]',
       '  harness animate [--fps <fps>] [--frames <count>] [--duration-ms <ms>] [--seed <seed>] [--no-color]',
       '',
       'session naming:',
@@ -3018,6 +3020,10 @@ async function main(): Promise<number> {
   if (argv.length > 0 && argv[0] === 'cursor-hooks') {
     const command = parseCursorHooksCommand(argv.slice(1));
     return await runCursorHooksCommandEntry(invocationDirectory, command);
+  }
+
+  if (argv.length > 0 && argv[0] === 'nim') {
+    return await runNimTuiSmoke(argv.slice(1));
   }
 
   if (argv.length > 0 && argv[0] === 'animate') {

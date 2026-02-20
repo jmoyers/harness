@@ -779,6 +779,28 @@ void test('harness animate --help prints usage', async () => {
   }
 });
 
+void test('harness nim --help prints usage', async () => {
+  const workspace = createWorkspace();
+  try {
+    const result = await runHarness(workspace, ['nim', '--help']);
+    assert.equal(result.code, 0);
+    assert.equal(result.stdout.includes('harness nim [options]'), true);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('harness nim rejects unknown arguments', async () => {
+  const workspace = createWorkspace();
+  try {
+    const result = await runHarness(workspace, ['nim', '--bad']);
+    assert.equal(result.code, 1);
+    assert.equal(result.stderr.includes('unknown argument: --bad'), true);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 void test('harness animate requires explicit bounds in non-tty mode', async () => {
   const workspace = createWorkspace();
   try {

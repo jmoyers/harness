@@ -186,7 +186,7 @@ Branch-local execution work introduces a new first-party runtime stack above `pa
 - `packages/nim-ui-core`: shared event projection layer (`debug` and `seamless` UI modes).
 - `packages/nim-test-tui`: independent test-oriented TUI surface that consumes shared Nim libraries only.
   - exposes stream-based collector utilities (`collectNimTestTuiFrame`) over canonical events for deterministic test UI snapshots.
-- `scripts/nim-tui-smoke.ts`: first-party interactive Nim CLI/TUI loop for human-in-the-loop validation over the same runtime/test-TUI libraries (`bun run nim:tui`).
+- `scripts/nim-tui-smoke.ts`: first-party interactive Nim CLI/TUI loop for human-in-the-loop validation over the same runtime/test-TUI libraries (`harness nim`, with direct script alias `bun run nim:tui`).
 
 Design constraints for this stack:
 

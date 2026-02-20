@@ -39,6 +39,29 @@ type Command =
   | { readonly type: 'session-new' }
   | { readonly type: 'session-resume'; readonly sessionId: string };
 
+function printUsage(): void {
+  process.stdout.write(
+    [
+      'usage:',
+      '  harness nim [options]',
+      '',
+      'options:',
+      '  --tenant-id <id>',
+      '  --user-id <id>',
+      '  --model <provider/model>',
+      '  --ui-mode <debug|seamless>',
+      '  --live-anthropic',
+      '  --session-id <id>',
+      '  --event-store-path <path>',
+      '  --session-store-path <path>',
+      '  --telemetry-path <path>',
+      '  --no-telemetry',
+      '  --secrets-file <path>',
+      '  --base-url <url>',
+    ].join('\n') + '\n',
+  );
+}
+
 export function parseNimTuiArgs(
   argv: readonly string[],
   input: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
@@ -353,8 +376,7 @@ async function collectTurnTrace(input: {
   }
 }
 
-async function main(): Promise<void> {
-  const args = parseNimTuiArgs(process.argv.slice(2));
+async function runNimTuiInteractive(args: ParsedArgs): Promise<void> {
   const runtimeHandle = createSqliteBackedNimRuntime({
     eventStorePath: args.eventStorePath,
     sessionStorePath: args.sessionStorePath,
@@ -590,6 +612,16 @@ async function main(): Promise<void> {
   }
 }
 
+export async function runNimTuiSmoke(argv: readonly string[]): Promise<number> {
+  if (argv.length > 0 && (argv[0] === '--help' || argv[0] === '-h')) {
+    printUsage();
+    return 0;
+  }
+  const args = parseNimTuiArgs(argv);
+  await runNimTuiInteractive(args);
+  return 0;
+}
+
 if (import.meta.main) {
-  await main();
+  process.exitCode = await runNimTuiSmoke(process.argv.slice(2));
 }
