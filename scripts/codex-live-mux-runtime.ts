@@ -1996,7 +1996,7 @@ async function main(): Promise<number> {
     applyThemePreset(preset, false);
   };
   const githubAuthHintNotice =
-    'GitHub PR actions become available after auth (`gh auth login` or `GITHUB_TOKEN`).';
+    'GitHub PR actions become available after auth (`gh auth login`, `GITHUB_TOKEN`, or `HARNESS_GITHUB_OAUTH_ACCESS_TOKEN`).';
   const setGitHubDebugAuthState = (
     update: Partial<Pick<GitHubDebugAuthState, 'token' | 'auth' | 'projectPr'>>,
   ): void => {
@@ -3124,8 +3124,14 @@ async function main(): Promise<number> {
       {
         id: 'task.selected.ready',
         title: 'Task: Set Ready',
-        aliases: ['task ready', 'set task ready', ...taskSummaryAliases],
-        keywords: ['task', 'status', 'ready', 'set'],
+        aliases: [
+          'task ready',
+          'set task ready',
+          'task read',
+          'set task read',
+          ...taskSummaryAliases,
+        ],
+        keywords: ['task', 'status', 'ready', 'read', 'set'],
         detail: selectedTaskDetail,
         priority: actionPriority,
         run: () => {

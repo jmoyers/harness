@@ -80,19 +80,6 @@ export interface TaskFocusedPaneView {
   readonly selectedRepositoryId: string | null;
 }
 
-const READY_CHIP_LABEL = formatUiButton({
-  label: 'ready',
-  prefixIcon: 'r',
-});
-const DRAFT_CHIP_LABEL = formatUiButton({
-  label: 'draft',
-  prefixIcon: 'd',
-});
-const COMPLETE_CHIP_LABEL = formatUiButton({
-  label: 'complete',
-  prefixIcon: 'c',
-});
-
 function sortedRepositories(
   repositories: ReadonlyMap<string, TaskFocusedPaneRepositoryRecord>,
 ): readonly TaskFocusedPaneRepositoryRecord[] {
@@ -183,45 +170,6 @@ function truncate(text: string, max: number): string {
     return '…';
   }
   return `${text.slice(0, safeMax - 1)}…`;
-}
-
-function composeRowWithRightChips(
-  left: string,
-  width: number,
-  chips: readonly { label: string; action: TaskFocusedPaneAction }[],
-): { readonly text: string; readonly cells: readonly ActionCell[] } {
-  const joined = chips.map((chip) => chip.label).join(' ');
-  if (joined.length === 0 || joined.length >= width) {
-    return {
-      text: padOrTrimDisplay(left, width),
-      cells: [],
-    };
-  }
-  const startCol = Math.max(0, width - joined.length);
-  const leftMax = Math.max(0, startCol - 1);
-  const leftText = padOrTrimDisplay(truncate(left, leftMax), leftMax);
-  const gap = width - leftText.length - joined.length;
-  let cursor = leftText.length + Math.max(0, gap);
-  const cells: ActionCell[] = [];
-  const parts: string[] = [leftText, ' '.repeat(Math.max(0, gap))];
-  for (let idx = 0; idx < chips.length; idx += 1) {
-    const chip = chips[idx]!;
-    parts.push(chip.label);
-    cells.push({
-      startCol: cursor,
-      endCol: cursor + chip.label.length - 1,
-      action: chip.action,
-    });
-    cursor += chip.label.length;
-    if (idx < chips.length - 1) {
-      parts.push(' ');
-      cursor += 1;
-    }
-  }
-  return {
-    text: padOrTrimDisplay(parts.join(''), width),
-    cells,
-  };
 }
 
 function taskBufferFromRecord(
@@ -346,19 +294,7 @@ export function buildTaskFocusedPaneView(
       }
       const focused =
         options.editorTarget.kind === 'task' && options.editorTarget.taskId === task.taskId;
-      const chips =
-        task.status === 'completed'
-          ? []
-          : [
-              { label: READY_CHIP_LABEL, action: 'task.status.ready' as const },
-              { label: DRAFT_CHIP_LABEL, action: 'task.status.draft' as const },
-              { label: COMPLETE_CHIP_LABEL, action: 'task.status.complete' as const },
-            ];
       if (focused) {
-        const focusedLabel = ` ▸ ${statusGlyph(task.status)} editing`;
-        const composed = composeRowWithRightChips(focusedLabel, safeCols, chips);
-        push(composed.text, task.taskId, selectedRepositoryId, 'task.focus', composed.cells);
-
         const editBuffer = taskBufferFromRecord(task, options.taskBufferById);
         const linesWithCursor = taskComposerVisibleLines(
           editBuffer,
@@ -375,9 +311,8 @@ export function buildTaskFocusedPaneView(
         continue;
       }
 
-      const leftLabel = `   ${statusGlyph(task.status)} ${truncate(taskPreviewText(task), Math.max(8, safeCols - 24))}`;
-      const composed = composeRowWithRightChips(leftLabel, safeCols, chips);
-      push(composed.text, task.taskId, selectedRepositoryId, 'task.focus', composed.cells);
+      const leftLabel = `   ${statusGlyph(task.status)} ${truncate(taskPreviewText(task), Math.max(8, safeCols - 6))}`;
+      push(leftLabel, task.taskId, selectedRepositoryId, 'task.focus');
     }
   }
 

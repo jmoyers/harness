@@ -96,8 +96,13 @@ void test('focused pane renders selected repository tasks with editable task buf
     false,
   );
   assert.equal(
-    view.rows.some((row) => row.includes('[ d draft ]')),
-    true,
+    view.rows.some(
+      (row) =>
+        row.includes('[ r ready ]') ||
+        row.includes('[ d draft ]') ||
+        row.includes('[ c complete ]'),
+    ),
+    false,
   );
   assert.equal(
     view.rows.some((row) => row.includes('tab queue')),
@@ -223,13 +228,19 @@ void test('focused pane supports row/cell hit testing and row clamping', () => {
   assert.equal(taskFocusedPaneRepositoryIdAtRow(view, taskRowIndex), 'r-a');
   assert.equal(taskFocusedPaneActionAtRow(view, taskRowIndex), 'task.focus');
 
-  const row = view.rows[taskRowIndex]!;
-  const readyChipCol = row.indexOf('[ r ready ]');
-  assert.equal(readyChipCol >= 0, true);
+  const repoRowIndex = view.rows.findIndex((value) => value.includes('repo: '));
+  assert.equal(repoRowIndex >= 0, true);
+  const repoRow = view.rows[repoRowIndex]!;
+  const repoButtonCol = repoRow.indexOf('[');
+  assert.equal(repoButtonCol >= 0, true);
   assert.equal(
-    taskFocusedPaneActionAtCell(view, taskRowIndex, readyChipCol + 1),
-    'task.status.ready',
+    taskFocusedPaneActionAtCell(view, repoRowIndex, repoButtonCol + 1),
+    'repository.dropdown.toggle',
   );
+  assert.equal(taskFocusedPaneActionAtCell(view, repoRowIndex, 0), 'repository.dropdown.toggle');
+
+  const row = view.rows[taskRowIndex]!;
+  assert.equal(taskFocusedPaneActionAtCell(view, taskRowIndex, 5), 'task.focus');
   assert.equal(taskFocusedPaneActionAtCell(view, taskRowIndex, row.length + 50), 'task.focus');
   assert.equal(taskFocusedPaneActionAtCell(view, -200, -100), taskFocusedPaneActionAtRow(view, 0));
 });
@@ -438,8 +449,8 @@ void test('focused pane groups tasks by status and replaces focused row content 
   assert.equal(draftHeaderIndex > readyHeaderIndex, true);
   assert.equal(completeHeaderIndex > draftHeaderIndex, true);
   assert.equal(
-    view.rows.some((row) => row.includes('▸ ◇ editing')),
-    true,
+    view.rows.some((row) => row.includes('editing')),
+    false,
   );
 
   const editorOnlyRowCount = view.rows.filter((row) => row.includes('more')).length;

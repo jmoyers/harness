@@ -47,7 +47,7 @@ Use a named session when you want isolated state:
 harness --session my-session
 ```
 
-For restart/load diagnostics, use a named session with a non-default gateway port so you do not disrupt your active workspace gateway.
+Named sessions automatically fall back to an available gateway port when the preferred port is already occupied. For deterministic restart/load diagnostics, you can still set an explicit non-default gateway port.
 
 ## Typical workflow
 
@@ -65,10 +65,12 @@ For restart/load diagnostics, use a named session with a non-default gateway por
 - In terminal threads, most `ctrl`-only readline chords (for example `ctrl+r`, `ctrl+w`, `ctrl+u`, `ctrl+a`, `ctrl+e`, `ctrl+p`, `ctrl+n`) pass through to the shell; `ctrl+j/k` remain reserved for thread navigation.
 - Theme selection is built in (`Set a Theme`) with OpenCode-compatible presets and live preview.
 - API keys can be set directly from `ctrl+p` / `cmd+p` (`Set Anthropic API Key`, `Set OpenAI API Key`, `Set Linear API Key`), with overwrite warning and paste-friendly entry.
+- OAuth login is available from CLI (`harness auth login github`, `harness auth login linear`) with `harness auth status|refresh|logout` for lifecycle control.
+- Gateway maintenance supports named-session garbage collection: `harness gateway gc` prunes named session runtime directories older than 7 days (skips live sessions).
 - Select a Linear issue URL in the terminal, then run `Create Task from Linear Ticket URL` from `ctrl+p` / `cmd+p` to import it into the task list.
 - `Show What's New` opens release highlights (first lines only); if notes are empty it falls back to a simple version-available notice with links.
 - `Update Harness` (aliases: `update`, `upgrade`) runs `harness update` in a terminal thread.
-- `Create PR` uses either `GITHUB_TOKEN` or an authenticated `gh` CLI session.
+- `Create PR` uses `GITHUB_TOKEN` first, then `HARNESS_GITHUB_OAUTH_ACCESS_TOKEN`, and still falls back to an authenticated `gh` CLI session when needed.
 
 ## Configuration
 

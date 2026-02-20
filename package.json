@@ -19,8 +19,10 @@
     "scripts/cursor-hook-relay.ts",
     "scripts/harness-animate.ts",
     "scripts/harness-bin.js",
+    "scripts/harness-commands.ts",
     "scripts/harness-core.ts",
     "scripts/harness-inspector.ts",
+    "scripts/harness-runtime.ts",
     "scripts/harness.ts",
     "scripts/nim-tui-smoke.ts",
     "packages/harness-ai/src",
@@ -39,6 +41,13 @@
   "type": "module",
   "publishConfig": {
     "access": "public"
+  },
+  "oclif": {
+    "bin": "harness",
+    "commands": {
+      "strategy": "explicit",
+      "target": "scripts/harness-commands.ts"
+    }
   },
   "scripts": {
     "migrate:bun": "bash ./scripts/migrate-to-bun.sh",
@@ -101,6 +110,7 @@
   "dependencies": {
     "@linear/sdk": "^75.0.0",
     "@napi-rs/canvas": "^0.1.92",
+    "@oclif/core": "^4.8.0",
     "gifenc": "^1.0.3"
   },
   "devDependencies": {
