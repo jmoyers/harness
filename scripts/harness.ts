@@ -10,10 +10,11 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { execFileSync, spawn } from 'node:child_process';
-import { createServer } from 'node:net';
+import { createServer as createHttpServer } from 'node:http';
+import { createServer as createNetServer } from 'node:net';
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { randomUUID } from 'node:crypto';
+import { fileURLToPath, URL } from 'node:url';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { connectControlPlaneStreamClient } from '../src/control-plane/stream-client.ts';
 import { parseStreamCommand } from '../src/control-plane/stream-command-parser.ts';
@@ -44,7 +45,11 @@ import {
   resolveHarnessWorkspaceDirectory,
 } from '../src/config/harness-paths.ts';
 import { migrateLegacyHarnessLayout } from '../src/config/harness-runtime-migration.ts';
-import { loadHarnessSecrets } from '../src/config/secrets-core.ts';
+import {
+  loadHarnessSecrets,
+  resolveHarnessSecretsPath,
+  upsertHarnessSecret,
+} from '../src/config/secrets-core.ts';
 import {
   buildCursorManagedHookRelayCommand,
   ensureManagedCursorHooksInstalled,
@@ -92,6 +97,18 @@ const PROFILE_STATE_FILE_NAME = 'active-profile.json';
 const PROFILE_CLIENT_FILE_NAME = 'client.cpuprofile';
 const PROFILE_GATEWAY_FILE_NAME = 'gateway.cpuprofile';
 const DEFAULT_HARNESS_UPDATE_PACKAGE = '@jmoyers/harness@latest';
+const DEFAULT_AUTH_TIMEOUT_MS = 120_000;
+const DEFAULT_GITHUB_DEVICE_BASE_URL = 'https://github.com';
+const DEFAULT_LINEAR_AUTHORIZE_URL = 'https://linear.app/oauth/authorize';
+const DEFAULT_LINEAR_TOKEN_URL = 'https://api.linear.app/oauth/token';
+const DEFAULT_GITHUB_OAUTH_SCOPE = 'repo read:user';
+const DEFAULT_LINEAR_OAUTH_SCOPE = 'read';
+const GITHUB_OAUTH_ACCESS_TOKEN_KEY = 'HARNESS_GITHUB_OAUTH_ACCESS_TOKEN';
+const GITHUB_OAUTH_REFRESH_TOKEN_KEY = 'HARNESS_GITHUB_OAUTH_REFRESH_TOKEN';
+const GITHUB_OAUTH_EXPIRES_AT_KEY = 'HARNESS_GITHUB_OAUTH_ACCESS_EXPIRES_AT';
+const LINEAR_OAUTH_ACCESS_TOKEN_KEY = 'HARNESS_LINEAR_OAUTH_ACCESS_TOKEN';
+const LINEAR_OAUTH_REFRESH_TOKEN_KEY = 'HARNESS_LINEAR_OAUTH_REFRESH_TOKEN';
+const LINEAR_OAUTH_EXPIRES_AT_KEY = 'HARNESS_LINEAR_OAUTH_ACCESS_EXPIRES_AT';
 const PROFILE_STATE_VERSION = 2;
 const PROFILE_LIVE_INSPECT_MODE = 'live-inspector';
 const SESSION_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
@@ -170,6 +187,37 @@ interface ParsedCursorHooksCommand {
   type: 'install' | 'uninstall';
   hooksFilePath: string | null;
 }
+
+type AuthProvider = 'github' | 'linear';
+type AuthProviderOrAll = AuthProvider | 'all';
+
+interface ParsedAuthStatusCommand {
+  type: 'status';
+}
+
+interface ParsedAuthLoginCommand {
+  type: 'login';
+  provider: AuthProvider;
+  noBrowser: boolean;
+  timeoutMs: number;
+  scopes: string | null;
+}
+
+interface ParsedAuthRefreshCommand {
+  type: 'refresh';
+  provider: AuthProviderOrAll;
+}
+
+interface ParsedAuthLogoutCommand {
+  type: 'logout';
+  provider: AuthProviderOrAll;
+}
+
+type ParsedAuthCommand =
+  | ParsedAuthStatusCommand
+  | ParsedAuthLoginCommand
+  | ParsedAuthRefreshCommand
+  | ParsedAuthLogoutCommand;
 
 interface RuntimeCpuProfileOptions {
   cpuProfileDir: string;
@@ -634,6 +682,102 @@ function parseCursorHooksCommand(argv: readonly string[]): ParsedCursorHooksComm
   throw new Error(`unknown cursor-hooks subcommand: ${subcommand}`);
 }
 
+function parseAuthProvider(value: string, allowAll: boolean): AuthProviderOrAll {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'github' || normalized === 'linear') {
+    return normalized;
+  }
+  if (allowAll && normalized === 'all') {
+    return 'all';
+  }
+  throw new Error(`unsupported auth provider: ${value}`);
+}
+
+function parseAuthLoginCommand(argv: readonly string[]): ParsedAuthLoginCommand {
+  if (argv.length === 0) {
+    throw new Error('missing auth login provider (expected: github|linear)');
+  }
+  const provider = parseAuthProvider(argv[0]!, false);
+  if (provider === 'all') {
+    throw new Error('auth login requires a single provider (github|linear)');
+  }
+  let noBrowser = false;
+  let timeoutMs = DEFAULT_AUTH_TIMEOUT_MS;
+  let scopes: string | null = null;
+  for (let index = 1; index < argv.length; index += 1) {
+    const arg = argv[index]!;
+    if (arg === '--no-browser') {
+      noBrowser = true;
+      continue;
+    }
+    if (arg === '--timeout-ms') {
+      timeoutMs = parsePositiveIntFlag(readCliValue(argv, index, '--timeout-ms'), '--timeout-ms');
+      index += 1;
+      continue;
+    }
+    if (arg === '--scopes') {
+      scopes = readCliValue(argv, index, '--scopes');
+      index += 1;
+      continue;
+    }
+    throw new Error(`unknown auth login option: ${arg}`);
+  }
+  return {
+    type: 'login',
+    provider,
+    noBrowser,
+    timeoutMs,
+    scopes,
+  };
+}
+
+function parseAuthProviderSelectorCommand(
+  type: 'refresh' | 'logout',
+  argv: readonly string[],
+): ParsedAuthRefreshCommand | ParsedAuthLogoutCommand {
+  if (argv.length > 1) {
+    throw new Error(`unknown auth ${type} option: ${argv[1]}`);
+  }
+  const provider = argv.length === 0 ? 'all' : parseAuthProvider(argv[0]!, true);
+  if (type === 'refresh') {
+    return {
+      type,
+      provider,
+    };
+  }
+  return {
+    type,
+    provider,
+  };
+}
+
+function parseAuthCommand(argv: readonly string[]): ParsedAuthCommand {
+  if (argv.length === 0) {
+    return {
+      type: 'status',
+    };
+  }
+  const subcommand = argv[0]!;
+  if (subcommand === 'status') {
+    if (argv.length > 1) {
+      throw new Error(`unknown auth status option: ${argv[1]}`);
+    }
+    return {
+      type: 'status',
+    };
+  }
+  if (subcommand === 'login') {
+    return parseAuthLoginCommand(argv.slice(1));
+  }
+  if (subcommand === 'refresh') {
+    return parseAuthProviderSelectorCommand('refresh', argv.slice(1));
+  }
+  if (subcommand === 'logout') {
+    return parseAuthProviderSelectorCommand('logout', argv.slice(1));
+  }
+  throw new Error(`unknown auth subcommand: ${subcommand}`);
+}
+
 function buildCpuProfileRuntimeArgs(options: RuntimeCpuProfileOptions): readonly string[] {
   return [
     '--cpu-prof',
@@ -684,7 +828,7 @@ function removeFileIfExists(filePath: string): void {
 
 async function reservePort(host: string): Promise<number> {
   return await new Promise<number>((resolvePort, reject) => {
-    const server = createServer();
+    const server = createNetServer();
     server.unref();
     server.once('error', reject);
     server.listen(0, host, () => {
@@ -894,6 +1038,784 @@ function runHarnessUpdateCommand(invocationDirectory: string, env: NodeJS.Proces
   }
 }
 
+function normalizeScopeList(rawValue: string | null | undefined, fallback: string): string {
+  const candidate = typeof rawValue === 'string' ? rawValue : fallback;
+  const tokens = candidate
+    .split(/[\s,]+/u)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+  if (tokens.length === 0) {
+    return fallback;
+  }
+  return [...new Set(tokens)].join(' ');
+}
+
+function readRequiredEnvValue(env: NodeJS.ProcessEnv, key: string): string {
+  const value = env[key];
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new Error(`missing required ${key}`);
+  }
+  return value.trim();
+}
+
+function parseOptionalIsoTimestamp(value: string | null | undefined): number | null {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return null;
+  }
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isTokenNearExpiry(expiresAtMs: number | null, skewMs = 60_000): boolean {
+  if (expiresAtMs === null) {
+    return false;
+  }
+  return Date.now() + skewMs >= expiresAtMs;
+}
+
+function expiresAtFromExpiresIn(rawExpiresIn: unknown): string | null {
+  if (typeof rawExpiresIn !== 'number' || !Number.isFinite(rawExpiresIn) || rawExpiresIn <= 0) {
+    return null;
+  }
+  const expiresMs = Math.floor(rawExpiresIn * 1000);
+  return new Date(Date.now() + expiresMs).toISOString();
+}
+
+function parseSecretLineKeyForDeletion(line: string): string | null {
+  const trimmed = line.trim();
+  if (trimmed.length === 0 || trimmed.startsWith('#')) {
+    return null;
+  }
+  const withoutExport = trimmed.startsWith('export ')
+    ? trimmed.slice('export '.length).trimStart()
+    : trimmed;
+  const equalIndex = withoutExport.indexOf('=');
+  if (equalIndex <= 0) {
+    return null;
+  }
+  return withoutExport.slice(0, equalIndex).trim();
+}
+
+function removeHarnessSecrets(
+  invocationDirectory: string,
+  keys: readonly string[],
+  env: NodeJS.ProcessEnv,
+): { filePath: string; removedCount: number } {
+  const uniqueKeys = [...new Set(keys)].filter((key) => key.length > 0);
+  const filePath = resolveHarnessSecretsPath(invocationDirectory, undefined, env);
+  if (uniqueKeys.length === 0) {
+    return {
+      filePath,
+      removedCount: 0,
+    };
+  }
+  let removedCount = 0;
+  if (existsSync(filePath)) {
+    const sourceText = readFileSync(filePath, 'utf8');
+    const sourceLines = sourceText.split(/\r?\n/u);
+    const nextLines: string[] = [];
+    for (const line of sourceLines) {
+      const key = parseSecretLineKeyForDeletion(line);
+      if (key !== null && uniqueKeys.includes(key)) {
+        removedCount += 1;
+        continue;
+      }
+      nextLines.push(line);
+    }
+    while (nextLines.length > 0 && nextLines[nextLines.length - 1] === '') {
+      nextLines.pop();
+    }
+    writeTextFileAtomically(filePath, `${nextLines.join('\n')}\n`);
+  }
+  for (const key of uniqueKeys) {
+    delete env[key];
+    delete process.env[key];
+  }
+  return {
+    filePath,
+    removedCount,
+  };
+}
+
+function upsertHarnessSecretValue(
+  invocationDirectory: string,
+  env: NodeJS.ProcessEnv,
+  key: string,
+  value: string,
+): void {
+  upsertHarnessSecret({
+    cwd: invocationDirectory,
+    env,
+    key,
+    value,
+  });
+  env[key] = value;
+  process.env[key] = value;
+}
+
+function tryOpenBrowserUrl(url: string, env: NodeJS.ProcessEnv): void {
+  const commandOverride =
+    typeof env.HARNESS_AUTH_BROWSER_COMMAND === 'string' &&
+    env.HARNESS_AUTH_BROWSER_COMMAND.trim().length > 0
+      ? env.HARNESS_AUTH_BROWSER_COMMAND.trim()
+      : null;
+  const child =
+    commandOverride !== null
+      ? spawn(commandOverride, [url], {
+          detached: true,
+          stdio: 'ignore',
+          env,
+        })
+      : process.platform === 'darwin'
+        ? spawn('open', [url], {
+            detached: true,
+            stdio: 'ignore',
+            env,
+          })
+        : process.platform === 'win32'
+          ? spawn('cmd', ['/c', 'start', '', url], {
+              detached: true,
+              stdio: 'ignore',
+              env,
+            })
+          : spawn('xdg-open', [url], {
+              detached: true,
+              stdio: 'ignore',
+              env,
+            });
+  child.once('error', () => undefined);
+  child.unref();
+}
+
+async function fetchJsonRecord(
+  url: string,
+  init: RequestInit & { timeoutMs?: number } = {},
+): Promise<Record<string, unknown>> {
+  const timeoutMs = init.timeoutMs ?? 15_000;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  timer.unref();
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+  const text = await response.text();
+  let parsed: unknown = {};
+  if (text.trim().length > 0) {
+    try {
+      parsed = JSON.parse(text);
+    } catch (error: unknown) {
+      throw new Error(
+        `oauth endpoint returned non-json payload (${response.status}): ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+  if (!response.ok) {
+    const message =
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      typeof (parsed as Record<string, unknown>)['error_description'] === 'string'
+        ? ((parsed as Record<string, unknown>)['error_description'] as string)
+        : text || response.statusText;
+    throw new Error(`oauth request failed (${response.status}): ${message}`);
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new Error('oauth endpoint returned malformed payload');
+  }
+  return parsed as Record<string, unknown>;
+}
+
+function asStringField(record: Record<string, unknown>, key: string): string | null {
+  const value = record[key];
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function resolveGitHubDeviceCodeUrl(env: NodeJS.ProcessEnv): string {
+  if (
+    typeof env.HARNESS_GITHUB_OAUTH_DEVICE_CODE_URL === 'string' &&
+    env.HARNESS_GITHUB_OAUTH_DEVICE_CODE_URL.trim().length > 0
+  ) {
+    return env.HARNESS_GITHUB_OAUTH_DEVICE_CODE_URL.trim();
+  }
+  const base =
+    typeof env.HARNESS_GITHUB_OAUTH_BASE_URL === 'string' &&
+    env.HARNESS_GITHUB_OAUTH_BASE_URL.trim().length > 0
+      ? env.HARNESS_GITHUB_OAUTH_BASE_URL.trim().replace(/\/+$/u, '')
+      : DEFAULT_GITHUB_DEVICE_BASE_URL;
+  return `${base}/login/device/code`;
+}
+
+function resolveGitHubOauthTokenUrl(env: NodeJS.ProcessEnv): string {
+  if (
+    typeof env.HARNESS_GITHUB_OAUTH_TOKEN_URL === 'string' &&
+    env.HARNESS_GITHUB_OAUTH_TOKEN_URL.trim().length > 0
+  ) {
+    return env.HARNESS_GITHUB_OAUTH_TOKEN_URL.trim();
+  }
+  const base =
+    typeof env.HARNESS_GITHUB_OAUTH_BASE_URL === 'string' &&
+    env.HARNESS_GITHUB_OAUTH_BASE_URL.trim().length > 0
+      ? env.HARNESS_GITHUB_OAUTH_BASE_URL.trim().replace(/\/+$/u, '')
+      : DEFAULT_GITHUB_DEVICE_BASE_URL;
+  return `${base}/login/oauth/access_token`;
+}
+
+function resolveLinearAuthorizeUrl(env: NodeJS.ProcessEnv): string {
+  if (
+    typeof env.HARNESS_LINEAR_OAUTH_AUTHORIZE_URL === 'string' &&
+    env.HARNESS_LINEAR_OAUTH_AUTHORIZE_URL.trim().length > 0
+  ) {
+    return env.HARNESS_LINEAR_OAUTH_AUTHORIZE_URL.trim();
+  }
+  return DEFAULT_LINEAR_AUTHORIZE_URL;
+}
+
+function resolveLinearTokenUrl(env: NodeJS.ProcessEnv): string {
+  if (
+    typeof env.HARNESS_LINEAR_OAUTH_TOKEN_URL === 'string' &&
+    env.HARNESS_LINEAR_OAUTH_TOKEN_URL.trim().length > 0
+  ) {
+    return env.HARNESS_LINEAR_OAUTH_TOKEN_URL.trim();
+  }
+  return DEFAULT_LINEAR_TOKEN_URL;
+}
+
+function createPkceVerifier(): string {
+  return randomBytes(32).toString('base64url');
+}
+
+function createPkceChallenge(verifier: string): string {
+  return createHash('sha256').update(verifier).digest('base64url');
+}
+
+function resolveIntegrationTokenEnvVars(invocationDirectory: string): {
+  githubTokenEnvVar: string;
+  linearTokenEnvVar: string;
+} {
+  const loaded = loadHarnessConfig({
+    cwd: invocationDirectory,
+    env: process.env,
+  });
+  return {
+    githubTokenEnvVar: loaded.config.github.tokenEnvVar,
+    linearTokenEnvVar: loaded.config.linear.tokenEnvVar,
+  };
+}
+
+async function loginGitHubWithOAuthDeviceFlow(
+  invocationDirectory: string,
+  command: ParsedAuthLoginCommand,
+  env: NodeJS.ProcessEnv,
+): Promise<void> {
+  const clientId = readRequiredEnvValue(env, 'HARNESS_GITHUB_OAUTH_CLIENT_ID');
+  const clientSecret =
+    typeof env.HARNESS_GITHUB_OAUTH_CLIENT_SECRET === 'string' &&
+    env.HARNESS_GITHUB_OAUTH_CLIENT_SECRET.trim().length > 0
+      ? env.HARNESS_GITHUB_OAUTH_CLIENT_SECRET.trim()
+      : null;
+  const scopes = normalizeScopeList(
+    command.scopes ?? env.HARNESS_GITHUB_OAUTH_SCOPES,
+    DEFAULT_GITHUB_OAUTH_SCOPE,
+  );
+  const deviceCodePayload = await fetchJsonRecord(resolveGitHubDeviceCodeUrl(env), {
+    method: 'POST',
+    timeoutMs: command.timeoutMs,
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({
+      client_id: clientId,
+      scope: scopes,
+    }).toString(),
+  });
+  const deviceCode = asStringField(deviceCodePayload, 'device_code');
+  const userCode = asStringField(deviceCodePayload, 'user_code');
+  const verificationUri = asStringField(deviceCodePayload, 'verification_uri');
+  const verificationUriComplete =
+    asStringField(deviceCodePayload, 'verification_uri_complete') ?? verificationUri;
+  const expiresInRaw = deviceCodePayload['expires_in'];
+  const expiresIn =
+    typeof expiresInRaw === 'number' && Number.isFinite(expiresInRaw) && expiresInRaw > 0
+      ? expiresInRaw
+      : 900;
+  const intervalRaw = deviceCodePayload['interval'];
+  let intervalMs =
+    typeof intervalRaw === 'number' && Number.isFinite(intervalRaw) && intervalRaw > 0
+      ? Math.floor(intervalRaw * 1000)
+      : 5000;
+  if (deviceCode === null || userCode === null || verificationUri === null) {
+    throw new Error('github oauth device-code response malformed');
+  }
+
+  process.stdout.write(`github oauth user code: ${userCode}\n`);
+  process.stdout.write(`github oauth verify url: ${verificationUri}\n`);
+  if (verificationUriComplete !== null) {
+    process.stdout.write(`github oauth direct url: ${verificationUriComplete}\n`);
+    if (!command.noBrowser) {
+      tryOpenBrowserUrl(verificationUriComplete, env);
+    }
+  }
+
+  const pollDeadlineMs = Date.now() + Math.min(command.timeoutMs, Math.floor(expiresIn * 1000));
+  let tokenPayload: Record<string, unknown> | null = null;
+  while (Date.now() <= pollDeadlineMs) {
+    await delay(intervalMs);
+    const candidatePayload = await fetchJsonRecord(resolveGitHubOauthTokenUrl(env), {
+      method: 'POST',
+      timeoutMs: command.timeoutMs,
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        client_id: clientId,
+        ...(clientSecret === null ? {} : { client_secret: clientSecret }),
+        device_code: deviceCode,
+        grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+      }).toString(),
+    });
+    const accessToken = asStringField(candidatePayload, 'access_token');
+    if (accessToken !== null) {
+      tokenPayload = candidatePayload;
+      break;
+    }
+    const errorCode = asStringField(candidatePayload, 'error');
+    if (errorCode === 'authorization_pending') {
+      continue;
+    }
+    if (errorCode === 'slow_down') {
+      intervalMs = Math.min(30_000, intervalMs + 5000);
+      continue;
+    }
+    if (errorCode !== null) {
+      const description =
+        asStringField(candidatePayload, 'error_description') ??
+        asStringField(candidatePayload, 'error_uri') ??
+        'oauth device login failed';
+      throw new Error(`github oauth login failed (${errorCode}): ${description}`);
+    }
+  }
+  if (tokenPayload === null) {
+    throw new Error('timed out waiting for github oauth authorization');
+  }
+
+  const accessToken = asStringField(tokenPayload, 'access_token');
+  if (accessToken === null) {
+    throw new Error('github oauth token response missing access_token');
+  }
+  const refreshToken = asStringField(tokenPayload, 'refresh_token');
+  const expiresAt = expiresAtFromExpiresIn(tokenPayload['expires_in']);
+  upsertHarnessSecretValue(invocationDirectory, env, 'HARNESS_GITHUB_OAUTH_CLIENT_ID', clientId);
+  upsertHarnessSecretValue(invocationDirectory, env, GITHUB_OAUTH_ACCESS_TOKEN_KEY, accessToken);
+  if (refreshToken !== null) {
+    upsertHarnessSecretValue(
+      invocationDirectory,
+      env,
+      GITHUB_OAUTH_REFRESH_TOKEN_KEY,
+      refreshToken,
+    );
+  } else {
+    removeHarnessSecrets(invocationDirectory, [GITHUB_OAUTH_REFRESH_TOKEN_KEY], env);
+  }
+  if (expiresAt !== null) {
+    upsertHarnessSecretValue(invocationDirectory, env, GITHUB_OAUTH_EXPIRES_AT_KEY, expiresAt);
+  } else {
+    removeHarnessSecrets(invocationDirectory, [GITHUB_OAUTH_EXPIRES_AT_KEY], env);
+  }
+  process.stdout.write(
+    `github oauth login complete: token saved to ${GITHUB_OAUTH_ACCESS_TOKEN_KEY}\n`,
+  );
+}
+
+async function waitForLinearOauthCodeViaCallback(
+  clientId: string,
+  scopes: string,
+  timeoutMs: number,
+  noBrowser: boolean,
+  env: NodeJS.ProcessEnv,
+): Promise<{ code: string; redirectUri: string; verifier: string }> {
+  const verifier = createPkceVerifier();
+  const challenge = createPkceChallenge(verifier);
+  const state = randomUUID();
+  const authorizeBaseUrl = resolveLinearAuthorizeUrl(env);
+  return await new Promise<{ code: string; redirectUri: string; verifier: string }>(
+    (resolveCode, rejectCode) => {
+      let settled = false;
+      const server = createHttpServer((request, response) => {
+        const requestUrl = new URL(request.url ?? '/', 'http://127.0.0.1');
+        if (requestUrl.pathname !== '/oauth/callback') {
+          response.statusCode = 404;
+          response.end('Not found');
+          return;
+        }
+        const code = requestUrl.searchParams.get('code');
+        const receivedState = requestUrl.searchParams.get('state');
+        if (receivedState !== state) {
+          response.statusCode = 400;
+          response.end('State mismatch');
+          finish(new Error('linear oauth callback state mismatch'));
+          return;
+        }
+        if (code === null || code.trim().length === 0) {
+          response.statusCode = 400;
+          response.end('Missing code');
+          finish(new Error('linear oauth callback missing code'));
+          return;
+        }
+        response.statusCode = 200;
+        response.setHeader('content-type', 'text/html; charset=utf-8');
+        response.end(
+          '<html><body><h3>Harness Linear OAuth complete</h3><p>You can close this tab.</p></body></html>',
+        );
+        finish(null, {
+          code: code.trim(),
+          redirectUri,
+          verifier,
+        });
+      });
+      const finish = (
+        error: Error | null,
+        result?: { code: string; redirectUri: string; verifier: string },
+      ): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timeoutHandle);
+        server.close(() => {
+          if (error !== null) {
+            rejectCode(error);
+            return;
+          }
+          if (result === undefined) {
+            rejectCode(new Error('linear oauth callback failed without result'));
+            return;
+          }
+          resolveCode(result);
+        });
+      };
+      server.once('error', (error) => {
+        finish(error instanceof Error ? error : new Error(String(error)));
+      });
+      const timeoutHandle = setTimeout(() => {
+        finish(new Error('timed out waiting for linear oauth callback'));
+      }, timeoutMs);
+      timeoutHandle.unref();
+      let redirectUri = '';
+      server.listen(0, '127.0.0.1', () => {
+        const address = server.address();
+        if (address === null || typeof address === 'string') {
+          finish(new Error('unable to determine linear oauth callback address'));
+          return;
+        }
+        redirectUri = `http://127.0.0.1:${String(address.port)}/oauth/callback`;
+        const authorizeUrl = new URL(authorizeBaseUrl);
+        authorizeUrl.searchParams.set('response_type', 'code');
+        authorizeUrl.searchParams.set('client_id', clientId);
+        authorizeUrl.searchParams.set('redirect_uri', redirectUri);
+        authorizeUrl.searchParams.set('scope', scopes);
+        authorizeUrl.searchParams.set('state', state);
+        authorizeUrl.searchParams.set('code_challenge', challenge);
+        authorizeUrl.searchParams.set('code_challenge_method', 'S256');
+        const authorizeUrlText = authorizeUrl.toString();
+        process.stdout.write(`linear oauth authorize url: ${authorizeUrlText}\n`);
+        if (!noBrowser) {
+          tryOpenBrowserUrl(authorizeUrlText, env);
+        }
+      });
+    },
+  );
+}
+
+async function loginLinearWithOAuthPkce(
+  invocationDirectory: string,
+  command: ParsedAuthLoginCommand,
+  env: NodeJS.ProcessEnv,
+): Promise<void> {
+  const clientId = readRequiredEnvValue(env, 'HARNESS_LINEAR_OAUTH_CLIENT_ID');
+  const clientSecret =
+    typeof env.HARNESS_LINEAR_OAUTH_CLIENT_SECRET === 'string' &&
+    env.HARNESS_LINEAR_OAUTH_CLIENT_SECRET.trim().length > 0
+      ? env.HARNESS_LINEAR_OAUTH_CLIENT_SECRET.trim()
+      : null;
+  const scopes = normalizeScopeList(
+    command.scopes ?? env.HARNESS_LINEAR_OAUTH_SCOPES,
+    DEFAULT_LINEAR_OAUTH_SCOPE,
+  );
+  const callback = await waitForLinearOauthCodeViaCallback(
+    clientId,
+    scopes,
+    command.timeoutMs,
+    command.noBrowser,
+    env,
+  );
+  const tokenPayload = await fetchJsonRecord(resolveLinearTokenUrl(env), {
+    method: 'POST',
+    timeoutMs: command.timeoutMs,
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      grant_type: 'authorization_code',
+      client_id: clientId,
+      ...(clientSecret === null ? {} : { client_secret: clientSecret }),
+      code: callback.code,
+      redirect_uri: callback.redirectUri,
+      code_verifier: callback.verifier,
+    }),
+  });
+  const accessToken = asStringField(tokenPayload, 'access_token');
+  if (accessToken === null) {
+    throw new Error('linear oauth token response missing access_token');
+  }
+  const refreshToken = asStringField(tokenPayload, 'refresh_token');
+  const expiresAt = expiresAtFromExpiresIn(tokenPayload['expires_in']);
+  upsertHarnessSecretValue(invocationDirectory, env, 'HARNESS_LINEAR_OAUTH_CLIENT_ID', clientId);
+  upsertHarnessSecretValue(invocationDirectory, env, LINEAR_OAUTH_ACCESS_TOKEN_KEY, accessToken);
+  if (refreshToken !== null) {
+    upsertHarnessSecretValue(
+      invocationDirectory,
+      env,
+      LINEAR_OAUTH_REFRESH_TOKEN_KEY,
+      refreshToken,
+    );
+  } else {
+    removeHarnessSecrets(invocationDirectory, [LINEAR_OAUTH_REFRESH_TOKEN_KEY], env);
+  }
+  if (expiresAt !== null) {
+    upsertHarnessSecretValue(invocationDirectory, env, LINEAR_OAUTH_EXPIRES_AT_KEY, expiresAt);
+  } else {
+    removeHarnessSecrets(invocationDirectory, [LINEAR_OAUTH_EXPIRES_AT_KEY], env);
+  }
+  process.stdout.write(
+    `linear oauth login complete: token saved to ${LINEAR_OAUTH_ACCESS_TOKEN_KEY}\n`,
+  );
+}
+
+interface RefreshLinearOauthTokenOptions {
+  invocationDirectory: string;
+  env: NodeJS.ProcessEnv;
+  force: boolean;
+  timeoutMs: number;
+}
+
+async function refreshLinearOauthToken(
+  options: RefreshLinearOauthTokenOptions,
+): Promise<{ refreshed: boolean; skippedReason: string | null }> {
+  const refreshToken = options.env[LINEAR_OAUTH_REFRESH_TOKEN_KEY];
+  if (typeof refreshToken !== 'string' || refreshToken.trim().length === 0) {
+    return {
+      refreshed: false,
+      skippedReason: 'missing linear oauth refresh token',
+    };
+  }
+  const expiresAt = parseOptionalIsoTimestamp(options.env[LINEAR_OAUTH_EXPIRES_AT_KEY]);
+  if (!options.force && !isTokenNearExpiry(expiresAt)) {
+    return {
+      refreshed: false,
+      skippedReason: 'linear oauth token still valid',
+    };
+  }
+  const clientId = readRequiredEnvValue(options.env, 'HARNESS_LINEAR_OAUTH_CLIENT_ID');
+  const clientSecret =
+    typeof options.env.HARNESS_LINEAR_OAUTH_CLIENT_SECRET === 'string' &&
+    options.env.HARNESS_LINEAR_OAUTH_CLIENT_SECRET.trim().length > 0
+      ? options.env.HARNESS_LINEAR_OAUTH_CLIENT_SECRET.trim()
+      : null;
+  const tokenPayload = await fetchJsonRecord(resolveLinearTokenUrl(options.env), {
+    method: 'POST',
+    timeoutMs: options.timeoutMs,
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      grant_type: 'refresh_token',
+      client_id: clientId,
+      ...(clientSecret === null ? {} : { client_secret: clientSecret }),
+      refresh_token: refreshToken.trim(),
+    }),
+  });
+  const accessToken = asStringField(tokenPayload, 'access_token');
+  if (accessToken === null) {
+    throw new Error('linear oauth refresh response missing access_token');
+  }
+  const nextRefreshToken = asStringField(tokenPayload, 'refresh_token') ?? refreshToken.trim();
+  const nextExpiresAt = expiresAtFromExpiresIn(tokenPayload['expires_in']);
+  upsertHarnessSecretValue(
+    options.invocationDirectory,
+    options.env,
+    LINEAR_OAUTH_ACCESS_TOKEN_KEY,
+    accessToken,
+  );
+  upsertHarnessSecretValue(
+    options.invocationDirectory,
+    options.env,
+    LINEAR_OAUTH_REFRESH_TOKEN_KEY,
+    nextRefreshToken,
+  );
+  if (nextExpiresAt !== null) {
+    upsertHarnessSecretValue(
+      options.invocationDirectory,
+      options.env,
+      LINEAR_OAUTH_EXPIRES_AT_KEY,
+      nextExpiresAt,
+    );
+  }
+  return {
+    refreshed: true,
+    skippedReason: null,
+  };
+}
+
+async function maybeRefreshLinearOauthTokenForGatewayStart(
+  invocationDirectory: string,
+  env: NodeJS.ProcessEnv,
+): Promise<void> {
+  try {
+    const tokenEnvVars = resolveIntegrationTokenEnvVars(invocationDirectory);
+    const manualToken = env[tokenEnvVars.linearTokenEnvVar];
+    if (typeof manualToken === 'string' && manualToken.trim().length > 0) {
+      return;
+    }
+    const result = await refreshLinearOauthToken({
+      invocationDirectory,
+      env,
+      force: false,
+      timeoutMs: 10_000,
+    });
+    if (result.refreshed) {
+      process.stdout.write('[auth] linear oauth token refreshed before gateway start\n');
+    }
+  } catch (error: unknown) {
+    process.stderr.write(
+      `[auth] linear oauth refresh skipped: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+  }
+}
+
+function formatAuthProviderStatusLine(
+  provider: AuthProvider,
+  manualTokenEnvVar: string,
+  oauthAccessTokenEnvVar: string,
+  env: NodeJS.ProcessEnv,
+): string {
+  const manualToken = env[manualTokenEnvVar];
+  const oauthAccessToken = env[oauthAccessTokenEnvVar];
+  const manualPresent = typeof manualToken === 'string' && manualToken.trim().length > 0;
+  const oauthPresent = typeof oauthAccessToken === 'string' && oauthAccessToken.trim().length > 0;
+  const activeSource = manualPresent ? 'manual' : oauthPresent ? 'oauth' : 'none';
+  const refreshKey =
+    provider === 'github' ? GITHUB_OAUTH_REFRESH_TOKEN_KEY : LINEAR_OAUTH_REFRESH_TOKEN_KEY;
+  const expiresKey =
+    provider === 'github' ? GITHUB_OAUTH_EXPIRES_AT_KEY : LINEAR_OAUTH_EXPIRES_AT_KEY;
+  const refreshPresent =
+    typeof env[refreshKey] === 'string' && (env[refreshKey] as string).trim().length > 0;
+  const expiresAt = env[expiresKey];
+  const expiresText =
+    typeof expiresAt === 'string' && expiresAt.trim().length > 0 ? expiresAt.trim() : 'n/a';
+  return `${provider}: ${activeSource === 'none' ? 'disconnected' : 'connected'} active=${activeSource} manualEnvVar=${manualTokenEnvVar} oauthEnvVar=${oauthAccessTokenEnvVar} refresh=${refreshPresent ? 'yes' : 'no'} expiresAt=${expiresText}`;
+}
+
+async function runAuthCommandEntry(
+  invocationDirectory: string,
+  args: readonly string[],
+): Promise<number> {
+  const command = parseAuthCommand(args);
+  const tokenEnvVars = resolveIntegrationTokenEnvVars(invocationDirectory);
+  if (command.type === 'status') {
+    process.stdout.write(
+      `${formatAuthProviderStatusLine(
+        'github',
+        tokenEnvVars.githubTokenEnvVar,
+        GITHUB_OAUTH_ACCESS_TOKEN_KEY,
+        process.env,
+      )}\n`,
+    );
+    process.stdout.write(
+      `${formatAuthProviderStatusLine(
+        'linear',
+        tokenEnvVars.linearTokenEnvVar,
+        LINEAR_OAUTH_ACCESS_TOKEN_KEY,
+        process.env,
+      )}\n`,
+    );
+    return 0;
+  }
+  if (command.type === 'login') {
+    if (command.provider === 'github') {
+      await loginGitHubWithOAuthDeviceFlow(invocationDirectory, command, process.env);
+      return 0;
+    }
+    await loginLinearWithOAuthPkce(invocationDirectory, command, process.env);
+    return 0;
+  }
+  if (command.type === 'refresh') {
+    const providers: readonly AuthProvider[] =
+      command.provider === 'all' ? ['github', 'linear'] : [command.provider];
+    let hadFailure = false;
+    for (const provider of providers) {
+      if (provider === 'github') {
+        process.stdout.write(
+          'github oauth refresh: skipped (device-flow tokens do not guarantee refresh support)\n',
+        );
+        continue;
+      }
+      try {
+        const result = await refreshLinearOauthToken({
+          invocationDirectory,
+          env: process.env,
+          force: true,
+          timeoutMs: DEFAULT_AUTH_TIMEOUT_MS,
+        });
+        if (result.refreshed) {
+          process.stdout.write('linear oauth refresh: refreshed\n');
+          continue;
+        }
+        process.stdout.write(
+          `linear oauth refresh: skipped (${result.skippedReason ?? 'unknown'})\n`,
+        );
+      } catch (error: unknown) {
+        hadFailure = true;
+        process.stderr.write(
+          `linear oauth refresh failed: ${error instanceof Error ? error.message : String(error)}\n`,
+        );
+      }
+    }
+    return hadFailure ? 1 : 0;
+  }
+  const providers: readonly AuthProvider[] =
+    command.provider === 'all' ? ['github', 'linear'] : [command.provider];
+  const keysToRemove: string[] = [];
+  for (const provider of providers) {
+    if (provider === 'github') {
+      keysToRemove.push(
+        GITHUB_OAUTH_ACCESS_TOKEN_KEY,
+        GITHUB_OAUTH_REFRESH_TOKEN_KEY,
+        GITHUB_OAUTH_EXPIRES_AT_KEY,
+      );
+      continue;
+    }
+    keysToRemove.push(
+      LINEAR_OAUTH_ACCESS_TOKEN_KEY,
+      LINEAR_OAUTH_REFRESH_TOKEN_KEY,
+      LINEAR_OAUTH_EXPIRES_AT_KEY,
+    );
+  }
+  const removed = removeHarnessSecrets(invocationDirectory, keysToRemove, process.env);
+  process.stdout.write(
+    `auth logout complete: providers=${providers.join(',')} removed=${String(removed.removedCount)} file=${removed.filePath}\n`,
+  );
+  return 0;
+}
+
 function printUsage(): void {
   process.stdout.write(
     [
@@ -917,6 +1839,10 @@ function printUsage(): void {
       '  harness [--session <name>] render-trace [--output-path <path>] [--conversation-id <id>]',
       '  harness update',
       '  harness upgrade',
+      '  harness auth status',
+      '  harness auth login <github|linear> [--no-browser] [--timeout-ms <ms>] [--scopes <list>]',
+      '  harness auth refresh [github|linear|all]',
+      '  harness auth logout [github|linear|all]',
       '  harness cursor-hooks install [--hooks-file <path>]',
       '  harness cursor-hooks uninstall [--hooks-file <path>]',
       '  harness animate [--fps <fps>] [--frames <count>] [--duration-ms <ms>] [--seed <seed>] [--no-color]',
@@ -1838,6 +2764,7 @@ async function startDetachedGateway(
   daemonScriptPath: string,
   runtimeArgs: readonly string[] = [],
 ): Promise<GatewayRecord> {
+  await maybeRefreshLinearOauthTokenForGatewayStart(invocationDirectory, process.env);
   mkdirSync(dirname(logPath), { recursive: true });
   const logFd = openSync(logPath, 'a');
   const gatewayRunId = randomUUID();
@@ -2156,6 +3083,7 @@ async function runGatewayForeground(
   settings: ResolvedGatewaySettings,
   runtimeArgs: readonly string[] = [],
 ): Promise<number> {
+  await maybeRefreshLinearOauthTokenForGatewayStart(invocationDirectory, process.env);
   const gatewayRunId = randomUUID();
   const existingRecord = readGatewayRecord(recordPath);
   if (existingRecord !== null) {
@@ -3006,6 +3934,14 @@ async function main(): Promise<number> {
       argv.slice(1),
       parsedGlobals.sessionName,
     );
+  }
+
+  if (argv.length > 0 && argv[0] === 'auth') {
+    if (argv.length > 1 && (argv[1] === '--help' || argv[1] === '-h')) {
+      printUsage();
+      return 0;
+    }
+    return await runAuthCommandEntry(invocationDirectory, argv.slice(1));
   }
 
   if (argv.length > 0 && (argv[0] === 'update' || argv[0] === 'upgrade')) {

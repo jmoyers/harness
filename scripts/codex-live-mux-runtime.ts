@@ -1996,7 +1996,7 @@ async function main(): Promise<number> {
     applyThemePreset(preset, false);
   };
   const githubAuthHintNotice =
-    'GitHub PR actions become available after auth (`gh auth login` or `GITHUB_TOKEN`).';
+    'GitHub PR actions become available after auth (`gh auth login`, `GITHUB_TOKEN`, or `HARNESS_GITHUB_OAUTH_ACCESS_TOKEN`).';
   const setGitHubDebugAuthState = (
     update: Partial<Pick<GitHubDebugAuthState, 'token' | 'auth' | 'projectPr'>>,
   ): void => {
