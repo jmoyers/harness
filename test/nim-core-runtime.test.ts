@@ -445,6 +445,67 @@ test('nim runtime replayEvents supports deterministic windowed replay', async ()
   );
 });
 
+test('nim runtime emits canonical events to constructor and registered telemetry sinks', async () => {
+  const constructorEvents: NimEventEnvelope[] = [];
+  const registeredEvents: NimEventEnvelope[] = [];
+  const runtime = new InMemoryNimRuntime({
+    telemetrySinks: [
+      {
+        name: 'constructor-sink',
+        record(event) {
+          constructorEvents.push(event);
+        },
+      },
+    ],
+  });
+  runtime.registerTelemetrySink({
+    name: 'registered-sink',
+    record(event) {
+      registeredEvents.push(event);
+    },
+  });
+  runtime.registerProvider({
+    id: 'anthropic',
+    displayName: 'Anthropic',
+    models: ['anthropic/claude-3-5-haiku-latest'],
+  });
+  runtime.registerTools([
+    {
+      name: 'mock-tool',
+      description: 'mock',
+    },
+  ]);
+  runtime.setToolPolicy({
+    hash: 'policy-test',
+    allow: ['mock-tool'],
+    deny: [],
+  });
+  const session = await createSession(runtime);
+  const turn = await runtime.sendTurn({
+    sessionId: session.sessionId,
+    input: 'use-tool mock-tool',
+    idempotencyKey: 'idem-telemetry-sink',
+  });
+  await turn.done;
+
+  const replay = await runtime.replayEvents({
+    tenantId: 'tenant-a',
+    sessionId: session.sessionId,
+    includeThoughtDeltas: true,
+    includeToolArgumentDeltas: true,
+  });
+  assert.equal(constructorEvents.length, replay.events.length);
+  assert.equal(registeredEvents.length, replay.events.length);
+  assert.deepEqual(
+    constructorEvents.map((event) => event.event_id),
+    replay.events.map((event) => event.event_id),
+  );
+  assert.deepEqual(
+    registeredEvents.map((event) => event.event_id),
+    replay.events.map((event) => event.event_id),
+  );
+});
+
 test('nim runtime streamUi projects canonical events for debug and seamless modes', async () => {
   const runtime = createRuntime();
   const session = await createSession(runtime);

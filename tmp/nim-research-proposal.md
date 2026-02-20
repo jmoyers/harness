@@ -31,6 +31,7 @@ This document is systems-first and maps public APIs to functional requirements w
 - Runtime now records explicit soul/skills/memory snapshot lifecycle events per turn and includes per-turn `soul_hash` / `skills_snapshot_version` envelope metadata for replayability.
 - Runtime now includes deterministic overflow compaction simulation paths with bounded retry/failure events for verifiable UC-06 behavior.
 - Runtime now exposes first-class `replayEvents` snapshots with deterministic event-id windowing (`fromEventIdExclusive`, `toEventIdInclusive`) for UC-09 replay APIs.
+- Runtime now supports first-class telemetry sink registration (`registerTelemetrySink`) and a first-party JSONL sink (`NimJsonlTelemetrySink`) for replay-grade event logging.
 
 ## 1.2 Execution Evidence (2026-02-20)
 
@@ -209,6 +210,7 @@ export interface NimRuntime {
 
   registerProvider(provider: NimProvider): void;
   switchModel(input: SwitchModelInput): Promise<void>;
+  registerTelemetrySink(sink: NimTelemetrySink): void;
 
   registerSoulSource(source: SoulSource): void;
   registerSkillSource(source: SkillSource): void;
@@ -326,7 +328,7 @@ export type NimUiEvent =
 | Exposing tools | `registerTools`, `setToolPolicy` | `tool.call.started/delta/completed/failed`, `tool.policy.applied` | tool policy/versioned registry events |
 | Conversation continuation | `startSession`, `resumeSession`, `sendTurn` | `session.started/resumed`, `turn.started/completed/failed`, `turn.idempotency.reused` | event-sourced session transcript |
 | Compaction | `compactSession` (manual + auto) | `provider.context.compaction.started/completed` | summary entry + compaction metadata events |
-| Telemetry/logging replayability | `streamEvents`, `replayEvents` | full turn/tool/provider lifecycle events | canonical JSONL + SQLite event IDs |
+| Telemetry/logging replayability | `streamEvents`, `replayEvents`, `registerTelemetrySink` | full turn/tool/provider lifecycle events | canonical JSONL + SQLite event IDs |
 | 100% transparency for stream/tool/thinking | `streamEvents(fidelity=raw|semantic)`, `streamUi(mode=debug|seamless)` | `assistant.state.*`, `provider.thinking.*`, `tool.call.*`, `tool.result.*` | no dropped state transitions between provider runtime and event store |
 | Abort up through stack | `abortTurn` | `turn.abort.requested/propagated/completed` | abort cause chain event + timeout/manual reason |
 | Steering + queued follow-ups | `steerTurn`, `queueFollowUp` | `turn.steer.requested/accepted/rejected`, `turn.followup.queued/dequeued/dropped` | queue state + steering decisions + linkage to run IDs |

@@ -154,6 +154,11 @@ export type ReplayEventsResult = {
   readonly events: readonly NimEventEnvelope[];
 };
 
+export type NimTelemetrySink = {
+  readonly name: string;
+  record(event: NimEventEnvelope): void;
+};
+
 export type SoulSource = {
   readonly name: string;
 };
@@ -209,6 +214,7 @@ export interface NimRuntime {
 
   registerProvider(provider: NimProvider): void;
   switchModel(input: SwitchModelInput): Promise<void>;
+  registerTelemetrySink(sink: NimTelemetrySink): void;
 
   registerSoulSource(source: SoulSource): void;
   registerSkillSource(source: SkillSource): void;

@@ -10,6 +10,7 @@ import type {
   NimModelRef,
   NimProvider,
   NimRuntime,
+  NimTelemetrySink,
   NimToolDefinition,
   NimToolPolicy,
   NimUiEvent,
@@ -165,11 +166,18 @@ export class InMemoryNimRuntime implements NimRuntime {
   private events: NimEventEnvelope[] = [];
   private eventById = new Map<string, NimEventEnvelope>();
   private subscribers = new Map<string, EventSubscriber>();
+  private telemetrySinks: NimTelemetrySink[] = [];
   private globalLane: Promise<void> = Promise.resolve();
   private sessionLanes = new Map<string, Promise<void>>();
 
-  public constructor(input?: { providerRouter?: NimProviderRouter }) {
+  public constructor(input?: {
+    providerRouter?: NimProviderRouter;
+    telemetrySinks?: readonly NimTelemetrySink[];
+  }) {
     this.providerRouter = input?.providerRouter ?? new NimProviderRouter();
+    if (input?.telemetrySinks !== undefined) {
+      this.telemetrySinks = [...input.telemetrySinks];
+    }
   }
 
   public async startSession(input: StartSessionInput): Promise<SessionHandle> {
@@ -243,6 +251,10 @@ export class InMemoryNimRuntime implements NimRuntime {
 
   public registerProvider(provider: NimProvider): void {
     this.providerRouter.registerProvider(provider);
+  }
+
+  public registerTelemetrySink(sink: NimTelemetrySink): void {
+    this.telemetrySinks.push(sink);
   }
 
   public registerProviderDriver(driver: NimProviderDriver): void {
@@ -1410,12 +1422,19 @@ export class InMemoryNimRuntime implements NimRuntime {
     };
     this.events.push(finalized);
     this.eventById.set(finalized.event_id, finalized);
+    this.dispatchTelemetry(finalized);
 
     for (const subscriber of this.subscribers.values()) {
       if (!this.shouldDeliverEvent(subscriber.input, finalized, subscriber.fromEvent)) {
         continue;
       }
       subscriber.queue.push(finalized);
+    }
+  }
+
+  private dispatchTelemetry(event: NimEventEnvelope): void {
+    for (const sink of this.telemetrySinks) {
+      sink.record(event);
     }
   }
 
