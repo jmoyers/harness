@@ -47,6 +47,7 @@ interface LeftRailPaneLike<
     tasksSelectionEnabled: boolean;
     showTasksEntry: boolean;
     showGitHubIntegration: boolean;
+    visibleGitHubDirectoryIds?: ReadonlySet<string>;
     githubReviewByDirectoryId: ReadonlyMap<string, ProjectPaneGitHubReviewSummary>;
     githubSelectionEnabled: boolean;
     activeGitHubProjectId: string | null;
@@ -95,6 +96,7 @@ interface RuntimeLeftRailRenderOptions<
   readonly processUsageBySessionId: () => ReadonlyMap<string, TProcessUsage>;
   readonly loadingGitSummary: TGitSummary;
   readonly showGitHubIntegration?: boolean;
+  readonly visibleGitHubDirectoryIds?: ReadonlySet<string>;
   readonly githubReviewByDirectoryId?: ReadonlyMap<string, ProjectPaneGitHubReviewSummary>;
   readonly showTasksEntry?: boolean;
   readonly activeConversationId: () => string | null;
@@ -151,6 +153,7 @@ export class RuntimeLeftRailRender<
       tasksSelectionEnabled: this.options.workspace.leftNavSelection.kind === 'tasks',
       showTasksEntry: this.options.showTasksEntry ?? true,
       showGitHubIntegration: this.options.showGitHubIntegration ?? false,
+      visibleGitHubDirectoryIds: this.options.visibleGitHubDirectoryIds,
       githubReviewByDirectoryId: this.options.githubReviewByDirectoryId ?? new Map(),
       githubSelectionEnabled: this.options.workspace.leftNavSelection.kind === 'github',
       activeGitHubProjectId:

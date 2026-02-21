@@ -68,6 +68,7 @@ interface WorkspaceRailModel {
   readonly conversations: readonly WorkspaceRailConversationSummary[];
   readonly processes: readonly WorkspaceRailProcessSummary[];
   readonly showGitHubIntegration?: boolean;
+  readonly visibleGitHubDirectoryKeys?: ReadonlySet<string> | readonly string[];
   readonly githubReviewByDirectoryKey?: ReadonlyMap<string, ProjectPaneGitHubReviewSummary>;
   readonly showTaskPlanningUi?: boolean;
   readonly showTasksEntry?: boolean;
@@ -338,6 +339,12 @@ function buildContentRows(
   const rows: WorkspaceRailViewRow[] = [];
   const showTaskPlanningUi = model.showTaskPlanningUi ?? true;
   const showGitHubIntegration = model.showGitHubIntegration ?? false;
+  const visibleGitHubDirectoryKeys =
+    model.visibleGitHubDirectoryKeys === undefined
+      ? new Set<string>()
+      : model.visibleGitHubDirectoryKeys instanceof Set
+        ? model.visibleGitHubDirectoryKeys
+        : new Set(model.visibleGitHubDirectoryKeys);
   const githubReviewByDirectoryKey =
     model.githubReviewByDirectoryKey ?? new Map<string, ProjectPaneGitHubReviewSummary>();
   const showTasksEntry = model.showTasksEntry ?? showTaskPlanningUi;
@@ -502,7 +509,10 @@ function buildContentRows(
       );
       const processes = model.processes.filter((process) => process.directoryKey === directory.key);
 
-      if (showGitHubIntegration && group.tracked) {
+      const githubVisibleForDirectory =
+        visibleGitHubDirectoryKeys.has(directory.key) ||
+        (githubSelectionEnabled && directory.key === activeGitHubProjectId);
+      if (showGitHubIntegration && group.tracked && githubVisibleForDirectory) {
         const githubReview = githubReviewByDirectoryKey.get(directory.key) ?? null;
         const githubSelected =
           githubSelectionEnabled && directory.key === activeGitHubProjectId;

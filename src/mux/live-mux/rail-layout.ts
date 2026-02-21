@@ -72,6 +72,7 @@ interface BuildRailModelArgs {
   readonly tasksSelectionEnabled?: boolean;
   readonly showTasksEntry?: boolean;
   readonly showGitHubIntegration?: boolean;
+  readonly visibleGitHubDirectoryIds?: ReadonlySet<string>;
   readonly githubReviewByDirectoryId?: ReadonlyMap<string, ProjectPaneGitHubReviewSummary>;
   readonly githubSelectionEnabled?: boolean;
   readonly activeGitHubProjectId?: string | null;
@@ -200,6 +201,11 @@ export function buildRailModel(args: BuildRailModelArgs): WorkspaceRailModel {
     showTaskPlanningUi: true,
     showTasksEntry: args.showTasksEntry ?? true,
     showGitHubIntegration: args.showGitHubIntegration ?? false,
+    ...(args.visibleGitHubDirectoryIds === undefined
+      ? {}
+      : {
+          visibleGitHubDirectoryKeys: [...args.visibleGitHubDirectoryIds],
+        }),
     ...(args.githubReviewByDirectoryId === undefined
       ? {}
       : {

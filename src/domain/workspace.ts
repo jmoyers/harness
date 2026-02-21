@@ -101,6 +101,7 @@ export class WorkspaceModel {
   paneDividerDragActive = false;
   previousSelectionRows: readonly number[] = [];
   latestRailViewRows: ReturnType<typeof buildWorkspaceRailViewRows> = [];
+  visibleGitHubDirectoryIds = new Set<string>();
 
   repositoriesCollapsed: boolean;
   shortcutsCollapsed: boolean;

@@ -100,7 +100,7 @@ Behavior fragments:
 
 - Left/right pane layout and divider semantics.
 - Home/project/task pane render branching.
-- Left rail exposes a project-scoped GitHub PR node that opens like a thread target.
+- Left rail keeps project-scoped GitHub PR nodes hidden until explicitly opened from command palette (`Open GitHub Thread (git)`).
 - Selecting a GitHub rail node opens the project main panel in GitHub review mode and renders full tracked-branch PR details (lifecycle + open/resolved review threads and comments).
 - GitHub rail rows show compact PR summary detail inline when the rail node is active.
 - GitHub review data loads via centralized runtime cache with TTL freshness, in-flight dedupe, and active-pane timed refresh.

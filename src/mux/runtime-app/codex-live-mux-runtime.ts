@@ -2750,9 +2750,11 @@ class CodexLiveMuxRuntimeApplication {
       if (!directoryManager.hasDirectory(directoryId)) {
         return;
       }
+      const forceRefresh = !workspace.visibleGitHubDirectoryIds.has(directoryId);
+      workspace.visibleGitHubDirectoryIds.add(directoryId);
       workspace.enterGitHubPane(directoryId, repositoryGroupIdForDirectory(directoryId));
       noteGitActivity(directoryId);
-      refreshProjectPaneGitHubReviewState(directoryId);
+      refreshProjectPaneGitHubReviewState(directoryId, forceRefresh ? { forceRefresh: true } : {});
       refreshProjectPaneSnapshot(directoryId);
       screen.resetFrameCache();
     };
@@ -3952,6 +3954,30 @@ class CodexLiveMuxRuntimeApplication {
       setNotice: setCommandNotice,
     });
 
+    commandMenuRegistry.registerProvider('github.thread.open', (context) => {
+      const directoryId = context.activeDirectoryId;
+      if (directoryId === null || context.githubRepositoryUrl === null) {
+        return [];
+      }
+      return [
+        {
+          id: 'github.thread.open',
+          title: 'Open GitHub Thread (git)',
+          aliases: [
+            'github thread',
+            'open github thread',
+            'open github review thread',
+            'show github thread',
+          ],
+          keywords: ['github', 'thread', 'review', 'pr', 'open'],
+          detail: context.githubTrackedBranch ?? 'current project',
+          run: () => {
+            enterGitHubPane(directoryId);
+          },
+        },
+      ];
+    });
+
     commandMenuRegistry.registerProvider('github.repo.open', (context) => {
       const repositoryUrl = context.githubRepositoryUrl;
       if (repositoryUrl === null) {
@@ -4352,6 +4378,7 @@ class CodexLiveMuxRuntimeApplication {
         processUsageBySessionId: () => processUsageRefreshService.readonlyUsage(),
         loadingGitSummary: GIT_SUMMARY_LOADING,
         showGitHubIntegration: loadedConfig.config.github.enabled,
+        visibleGitHubDirectoryIds: workspace.visibleGitHubDirectoryIds,
         githubReviewByDirectoryId: projectPaneGitHubReviewByDirectoryId,
         showTasksEntry,
         activeConversationId: () => conversationManager.activeConversationId,
@@ -4754,6 +4781,28 @@ class CodexLiveMuxRuntimeApplication {
             return null;
           }
           return conversationRecords.get(activeConversationId)?.agentType ?? null;
+        },
+        resolveConversationForAction: () => {
+          if (workspace.mainPaneMode === 'conversation') {
+            return conversationManager.activeConversationId;
+          }
+          if (workspace.leftNavSelection.kind !== 'github') {
+            return null;
+          }
+          const targetDirectoryId = workspace.leftNavSelection.directoryId;
+          const activeConversationId = conversationManager.activeConversationId;
+          if (
+            activeConversationId !== null &&
+            conversationManager.directoryIdOf(activeConversationId) === targetDirectoryId
+          ) {
+            return activeConversationId;
+          }
+          return (
+            conversationManager
+              .orderedIds()
+              .find((sessionId) => conversationManager.directoryIdOf(sessionId) === targetDirectoryId) ??
+            null
+          );
         },
         conversationsHas: (sessionId) => conversationManager.has(sessionId),
         activeDirectoryId: () => workspace.activeDirectoryId,

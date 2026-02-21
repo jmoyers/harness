@@ -2316,6 +2316,7 @@ void test('workspace rail model renders github project row and expands summary w
   const collapsedRows = buildWorkspaceRailViewRowsRaw(
     {
       showGitHubIntegration: true,
+      visibleGitHubDirectoryKeys: ['dir'],
       githubReviewByDirectoryKey: reviewByDirectory,
       directories: [
         {
@@ -2359,6 +2360,7 @@ void test('workspace rail model renders github project row and expands summary w
   const expandedRows = buildWorkspaceRailViewRowsRaw(
     {
       showGitHubIntegration: true,
+      visibleGitHubDirectoryKeys: ['dir'],
       githubReviewByDirectoryKey: reviewByDirectory,
       githubSelectionEnabled: true,
       activeGitHubProjectId: 'dir',
@@ -2410,6 +2412,45 @@ void test('workspace rail model renders github project row and expands summary w
     ),
     true,
   );
+});
+
+void test('workspace rail model keeps github project row hidden until explicitly requested', () => {
+  const rows = buildWorkspaceRailViewRowsRaw(
+    {
+      showGitHubIntegration: true,
+      directories: [
+        {
+          key: 'dir',
+          workspaceId: 'harness',
+          worktreeId: '/tmp/harness',
+          repositoryId: 'repo-a',
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0,
+          },
+        },
+      ],
+      repositories: [
+        {
+          repositoryId: 'repo-a',
+          name: 'harness',
+          remoteUrl: 'https://github.com/acme/harness.git',
+          associatedProjectCount: 1,
+          commitCount: 100,
+          lastCommitAt: '2026-02-21T00:00:00.000Z',
+          shortCommitHash: 'abc1234',
+        },
+      ],
+      conversations: [],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: null,
+    },
+    24,
+  );
+  assert.equal(rows.some((row) => row.kind === 'github-header' && row.directoryKey === 'dir'), false);
 });
 
 void test('workspace rail model github row covers loading, error, missing review, and no-pr detail states', () => {
@@ -2545,6 +2586,7 @@ void test('workspace rail model github summary labels draft, merged, and closed 
     buildWorkspaceRailViewRowsRaw(
       {
         showGitHubIntegration: true,
+        visibleGitHubDirectoryKeys: ['dir'],
         githubReviewByDirectoryKey: new Map([
           [
             'dir',

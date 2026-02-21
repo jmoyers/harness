@@ -40,6 +40,7 @@ interface RuntimeWorkspaceStateLike {
   } | null;
   projectPaneScrollTop: number;
   activeDirectoryId: string | null;
+  visibleGitHubDirectoryIds?: Set<string>;
   selectLeftNavConversation(sessionId: string): void;
 }
 
@@ -92,6 +93,7 @@ export class RuntimeWorkspaceObservedEvents<TObservedEvent> {
     }
 
     for (const directoryId of reduced.removedDirectoryIds) {
+      this.options.workspace.visibleGitHubDirectoryIds?.delete(directoryId);
       if (this.options.workspace.projectPaneSnapshot?.directoryId === directoryId) {
         this.options.workspace.projectPaneSnapshot = null;
         this.options.workspace.projectPaneScrollTop = 0;

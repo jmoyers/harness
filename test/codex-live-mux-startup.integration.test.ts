@@ -1184,6 +1184,9 @@ void test(
         join(configDirectory, 'harness.config.jsonc'),
         JSON.stringify({
           configVersion: 1,
+          github: {
+            enabled: true,
+          },
           mux: {
             keybindings: {
               'mux.command-menu.toggle': ['alt+z'],
@@ -1230,6 +1233,21 @@ void test(
       await closeCommandMenuWithEscape(interactive.session, interactive.oracle, 12000);
       await openCommandMenuWithShortcut(interactive.session, interactive.oracle, 12000);
 
+      interactive.session.write('open github thread');
+      await waitForSnapshotLineContaining(
+        interactive.oracle,
+        'Open GitHub Thread (git)',
+        12000,
+      );
+      const openGitHubThreadCell = await waitForSnapshotLineContaining(
+        interactive.oracle,
+        'Open GitHub Thread (git)',
+        12000,
+      );
+      void openGitHubThreadCell;
+      await closeCommandMenuWithEscape(interactive.session, interactive.oracle, 12000);
+
+      await openCommandMenuWithShortcut(interactive.session, interactive.oracle, 12000);
       interactive.session.write('open pr');
       await waitForSnapshotLineContaining(interactive.oracle, 'Open PR (git)', 12000);
       await waitForSnapshotLineNotContaining(interactive.oracle, 'Create PR (git)', 12000);

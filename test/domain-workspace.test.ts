@@ -54,6 +54,7 @@ void test('workspace model initializes defaults and preserves constructor state'
   assert.equal(workspace.paneDividerDragActive, false);
   assert.deepEqual(workspace.previousSelectionRows, []);
   assert.deepEqual(workspace.latestRailViewRows, []);
+  assert.equal(workspace.visibleGitHubDirectoryIds.size, 0);
   assert.equal(workspace.repositoriesCollapsed, true);
 });
 

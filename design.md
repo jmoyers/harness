@@ -155,10 +155,10 @@ All surfaces follow the same command/event contracts.
 
 ## GitHub Branch Review Surface
 
-Project-scoped GitHub review state is exposed as a control-plane-backed left-rail node with a dedicated main-panel details view.
+Project-scoped GitHub review state is exposed as a control-plane-backed left-rail node (revealed on demand from command palette) with a dedicated main-panel details view.
 
 - Source command: `github.project-review` (directory-scoped).
-- Left rail interaction: GitHub node is navigable like other thread/project targets and can expand compact PR summary details in-rail.
+- Left rail interaction: command-palette GitHub thread open reveals a navigable GitHub rail node for that project and can expand compact PR summary details in-rail.
 - Branch context: tracked branch name plus source (`pinned` or `current`).
 - PR lifecycle projection: `draft`, `open`, `merged`, `closed`.
 - Review thread projection: open and resolved thread groups with per-comment author/body metadata.
