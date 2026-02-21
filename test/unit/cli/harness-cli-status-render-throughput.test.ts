@@ -29,7 +29,7 @@ import {
 import { resolveHarnessWorkspaceDirectory } from '../../../src/config/harness-paths.ts';
 
 import {
-  createSerialCliTest,
+  createConcurrentCliTest,
   createStubCommand,
   createWorkspace,
   isPidRunning,
@@ -51,7 +51,7 @@ import {
   writeWorkspaceHarnessConfig,
 } from '../../helpers/harness-cli-test-helpers.ts';
 
-const serialCliTest = createSerialCliTest();
+const serialCliTest = createConcurrentCliTest();
 
 void serialCliTest('harness profile start fails when target session gateway is not running', async () => {
   const workspace = createWorkspace();
@@ -510,4 +510,3 @@ void serialCliTest(
   },
   { timeout: 45_000 },
 );
-

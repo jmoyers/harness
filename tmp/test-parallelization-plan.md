@@ -37,8 +37,12 @@ Date: 2026-02-21
 - Completed: set `bun run test` and `bun run test:coverage` to use stable `--concurrent` mode.
 - Completed: extracted shared helpers for split `harness-cli*` tests into `test/helpers/harness-cli-test-helpers.ts`.
 - Completed: extracted shared helpers for split `codex-live-mux-startup*` tests into `test/helpers/codex-live-mux-startup-test-helpers.ts`.
-- Completed: added non-locking `createConcurrentCliTest()` and migrated `harness-cli-bootstrap-auth-help` to run safely without per-file serialization lock.
+- Completed: added non-locking `createConcurrentCliTest()` and migrated `harness-cli-bootstrap-auth-help` + `harness-cli-status-render-throughput` to run safely without per-file serialization lock.
+- Verified-unsafe for intra-file parallelism (kept serial wrapper):
+  - `harness-cli-gateway-client-profile` (gateway lifecycle/profile collisions)
+  - `harness-cli-gc-orphan-cleanup` (stop/gc orphan-cleanup collisions)
 - Latest verification:
   - `bun run lint` -> pass
   - `bun run typecheck` -> pass
-  - `bun run test` -> pass (`1690 pass`, ~45s wall clock)
+  - `bun run test` -> pass (`1690 pass`, ~35.47s wall clock)
+  - `bun test --concurrent` on 4 split `harness-cli` files -> pass (`53 pass`, ~15.98s)
