@@ -14,6 +14,9 @@ export interface CommandMenuActionDescriptor {
   readonly aliases?: readonly string[];
   readonly keywords?: readonly string[];
   readonly detail?: string;
+  readonly screenLabel?: string;
+  readonly sectionLabel?: string;
+  readonly bindingHint?: string;
   readonly priority?: number;
 }
 

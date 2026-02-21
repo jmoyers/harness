@@ -43,6 +43,27 @@ export function filterThemePresetActionsForScope<TAction extends CommandMenuActi
   return actions.filter((action) => !action.id.startsWith(themeActionIdPrefix));
 }
 
+export function filterCommandMenuActionsForScope<TAction extends CommandMenuActionDescriptor>(
+  actions: readonly TAction[],
+  scope: CommandMenuScope,
+  options: {
+    readonly themeActionIdPrefix: string;
+    readonly shortcutsActionIdPrefix: string;
+  },
+): readonly TAction[] {
+  const { themeActionIdPrefix, shortcutsActionIdPrefix } = options;
+  if (scope === 'theme-select') {
+    return actions.filter((action) => action.id.startsWith(themeActionIdPrefix));
+  }
+  if (scope === 'shortcuts') {
+    return actions.filter((action) => action.id.startsWith(shortcutsActionIdPrefix));
+  }
+  return actions.filter(
+    (action) =>
+      !action.id.startsWith(themeActionIdPrefix) && !action.id.startsWith(shortcutsActionIdPrefix),
+  );
+}
+
 export interface RegisteredCommandMenuAction<TContext> extends CommandMenuActionDescriptor {
   readonly when?: (context: TContext) => boolean;
   readonly run: (context: TContext) => Promise<void> | void;

@@ -17,7 +17,7 @@ interface ParsedShortcutBinding {
   readonly originalText: string;
 }
 
-interface ResolvedMuxShortcutBindings {
+export interface ResolvedMuxShortcutBindings {
   readonly rawByAction: Readonly<Record<MuxGlobalShortcutAction, readonly string[]>>;
   readonly parsedByAction: Readonly<
     Record<MuxGlobalShortcutAction, readonly ParsedShortcutBinding[]>

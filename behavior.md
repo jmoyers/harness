@@ -56,6 +56,7 @@ Behavior fragments:
 - Shortcut decoding across raw/control/protocol variants.
 - Global shortcut routing separate from pane-local semantics.
 - Config override support with deterministic normalization.
+- Command-menu shortcuts catalog (`cmd+p` -> `Show Keybindings`) with `shortcuts`/`keybinds` aliases and filterable binding table.
 
 Owners:
 

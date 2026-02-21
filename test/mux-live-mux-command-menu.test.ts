@@ -4,6 +4,7 @@ import {
   clampCommandMenuState,
   CommandMenuRegistry,
   createCommandMenuState,
+  filterCommandMenuActionsForScope,
   filterThemePresetActionsForScope,
   reduceCommandMenuInput,
   resolveCommandMenuPage,
@@ -12,6 +13,7 @@ import {
   summarizeTaskForCommandMenu,
   type RegisteredCommandMenuAction,
 } from '../src/mux/live-mux/command-menu.ts';
+import { SHOW_KEYBINDINGS_COMMAND_ACTION } from '../src/mux/keybinding-catalog.ts';
 
 void test('command menu state helpers initialize and clamp selection', () => {
   assert.deepEqual(createCommandMenuState(), {
@@ -347,6 +349,45 @@ void test('command menu theme scope hides preset actions in main scope and only 
     themePickerScope.map((action) => action.id),
     ['theme.set.github'],
   );
+});
+
+void test('command menu scope filtering isolates shortcuts entries and keeps shortcuts launcher in all scope', () => {
+  const actions = [
+    { id: SHOW_KEYBINDINGS_COMMAND_ACTION.id, title: SHOW_KEYBINDINGS_COMMAND_ACTION.title },
+    { id: 'theme.set.github', title: 'github' },
+    { id: 'project.open.repo-a', title: 'Project repo-a' },
+    { id: 'shortcut.binding.mux.command-menu.toggle', title: 'Toggle Command Menu' },
+  ] as const;
+  const scopeOptions = {
+    themeActionIdPrefix: 'theme.set.',
+    shortcutsActionIdPrefix: 'shortcut.binding.',
+  } as const;
+
+  assert.deepEqual(
+    filterCommandMenuActionsForScope(actions, 'all', scopeOptions).map((action) => action.id),
+    [SHOW_KEYBINDINGS_COMMAND_ACTION.id, 'project.open.repo-a'],
+  );
+  assert.deepEqual(
+    filterCommandMenuActionsForScope(actions, 'theme-select', scopeOptions).map(
+      (action) => action.id,
+    ),
+    ['theme.set.github'],
+  );
+  assert.deepEqual(
+    filterCommandMenuActionsForScope(actions, 'shortcuts', scopeOptions).map((action) => action.id),
+    ['shortcut.binding.mux.command-menu.toggle'],
+  );
+});
+
+void test('command menu matcher finds shortcuts launcher by alias', () => {
+  const matches = resolveCommandMenuMatches([SHOW_KEYBINDINGS_COMMAND_ACTION], 'keybinds', null);
+  assert.equal(matches[0]?.action.id, SHOW_KEYBINDINGS_COMMAND_ACTION.id);
+  const shortcutsMatches = resolveCommandMenuMatches(
+    [SHOW_KEYBINDINGS_COMMAND_ACTION],
+    'shortcuts',
+    null,
+  );
+  assert.equal(shortcutsMatches[0]?.action.id, SHOW_KEYBINDINGS_COMMAND_ACTION.id);
 });
 
 void test('command menu task summary prefers task body text over opaque ids and falls back safely', () => {

@@ -44,7 +44,7 @@ import {
 import {
   CommandMenuRegistry,
   createCommandMenuState,
-  filterThemePresetActionsForScope,
+  filterCommandMenuActionsForScope,
   resolveSelectedCommandMenuActionId,
   summarizeTaskForCommandMenu,
   type CommandMenuActionDescriptor,
@@ -75,6 +75,11 @@ import {
   type TaskComposerBuffer,
 } from '../../mux/task-composer.ts';
 import { resolveTaskScreenKeybindings } from '../../mux/task-screen-keybindings.ts';
+import {
+  buildKeybindingCatalogEntries,
+  SHORTCUT_CATALOG_ACTION_ID_PREFIX,
+  SHOW_KEYBINDINGS_COMMAND_ACTION,
+} from '../../mux/keybinding-catalog.ts';
 import { applyMuxControlPlaneKeyEvent } from '../../mux/runtime-wiring.ts';
 import {
   applyModalOverlay,
@@ -397,6 +402,7 @@ const REPOSITORY_TOGGLE_CHORD_TIMEOUT_MS = 1250;
 const REPOSITORY_COLLAPSE_ALL_CHORD_PREFIX = Buffer.from([0x0b]);
 const UNTRACKED_REPOSITORY_GROUP_ID = 'untracked';
 const THEME_PICKER_SCOPE = 'theme-select';
+const SHORTCUTS_SCOPE = 'shortcuts';
 const THEME_ACTION_ID_PREFIX = 'theme.set.';
 const API_KEY_ACTION_ID_PREFIX = 'api-key.set.';
 const RELEASE_NOTES_PREVIEW_LINE_COUNT = 6;
@@ -675,6 +681,10 @@ class CodexLiveMuxRuntimeApplication {
     }
     const shortcutBindings = resolveMuxShortcutBindings(loadedConfig.config.mux.keybindings);
     const taskScreenKeybindings = resolveTaskScreenKeybindings(loadedConfig.config.mux.keybindings);
+    const keybindingCatalogEntries = buildKeybindingCatalogEntries({
+      globalBindings: shortcutBindings,
+      taskScreenKeybindings,
+    });
     const modalDismissShortcutBindings = resolveMuxShortcutBindings({
       'mux.app.quit': ['escape'],
       'mux.app.interrupt-all': [],
@@ -1768,11 +1778,10 @@ class CodexLiveMuxRuntimeApplication {
             action.id.startsWith('thread.start.') || action.id.startsWith('thread.install.'),
         );
       }
-      return filterThemePresetActionsForScope(
-        actions,
-        workspace.commandMenu?.scope ?? 'all',
-        THEME_ACTION_ID_PREFIX,
-      );
+      return filterCommandMenuActionsForScope(actions, workspace.commandMenu?.scope ?? 'all', {
+        themeActionIdPrefix: THEME_ACTION_ID_PREFIX,
+        shortcutsActionIdPrefix: SHORTCUT_CATALOG_ACTION_ID_PREFIX,
+      });
     };
     const resolveCommandMenuActions = (): readonly CommandMenuActionDescriptor[] => {
       return resolveVisibleCommandMenuActions(commandMenuContext()).map((action) => ({
@@ -1792,6 +1801,21 @@ class CodexLiveMuxRuntimeApplication {
           ? {}
           : {
               detail: action.detail,
+            }),
+        ...(action.screenLabel === undefined
+          ? {}
+          : {
+              screenLabel: action.screenLabel,
+            }),
+        ...(action.sectionLabel === undefined
+          ? {}
+          : {
+              sectionLabel: action.sectionLabel,
+            }),
+        ...(action.bindingHint === undefined
+          ? {}
+          : {
+              bindingHint: action.bindingHint,
             }),
         ...(action.priority === undefined
           ? {}
@@ -2979,14 +3003,7 @@ class CodexLiveMuxRuntimeApplication {
       );
     };
 
-    const toggleCommandMenu = (): void => {
-      if (workspace.commandMenu !== null) {
-        workspace.commandMenu = null;
-        commandMenuGitHubProjectPrState = null;
-        commandMenuScopedDirectoryId = null;
-        markDirty();
-        return;
-      }
+    const openCommandMenuForScope = (scope: 'all' | 'shortcuts'): void => {
       workspace.newThreadPrompt = null;
       workspace.addDirectoryPrompt = null;
       workspace.apiKeyPrompt = null;
@@ -2997,16 +3014,33 @@ class CodexLiveMuxRuntimeApplication {
       }
       commandMenuScopedDirectoryId = null;
       workspace.commandMenu = createCommandMenuState({
-        scope: 'all',
+        scope,
       });
-      commandMenuAgentTools.refresh();
-      const directoryId = resolveDirectoryForAction();
-      if (directoryId === null) {
-        commandMenuGitHubProjectPrState = null;
+      if (scope === 'all') {
+        commandMenuAgentTools.refresh();
+        const directoryId = resolveDirectoryForAction();
+        if (directoryId === null) {
+          commandMenuGitHubProjectPrState = null;
+        } else {
+          refreshCommandMenuGitHubProjectPrState(directoryId);
+        }
       } else {
-        refreshCommandMenuGitHubProjectPrState(directoryId);
+        commandMenuGitHubProjectPrState = null;
       }
       markDirty();
+    };
+    const openShortcutsMenu = (): void => {
+      openCommandMenuForScope(SHORTCUTS_SCOPE);
+    };
+    const toggleCommandMenu = (): void => {
+      if (workspace.commandMenu !== null) {
+        workspace.commandMenu = null;
+        commandMenuGitHubProjectPrState = null;
+        commandMenuScopedDirectoryId = null;
+        markDirty();
+        return;
+      }
+      openCommandMenuForScope('all');
     };
 
     const openApiKeyPrompt = (apiKey: AllowedCommandMenuApiKey): void => {
@@ -3463,6 +3497,17 @@ class CodexLiveMuxRuntimeApplication {
       },
     });
 
+    commandMenuRegistry.registerAction({
+      id: SHOW_KEYBINDINGS_COMMAND_ACTION.id,
+      title: SHOW_KEYBINDINGS_COMMAND_ACTION.title,
+      aliases: SHOW_KEYBINDINGS_COMMAND_ACTION.aliases,
+      keywords: SHOW_KEYBINDINGS_COMMAND_ACTION.keywords,
+      detail: SHOW_KEYBINDINGS_COMMAND_ACTION.detail,
+      run: () => {
+        openShortcutsMenu();
+      },
+    });
+
     commandMenuRegistry.registerProvider('api-key.set', () => {
       return COMMAND_MENU_ALLOWED_API_KEYS.map(
         (apiKey): RegisteredCommandMenuAction<RuntimeCommandMenuContext> => ({
@@ -3550,6 +3595,22 @@ class CodexLiveMuxRuntimeApplication {
             }
             applyThemePreset(preset, true);
           },
+        }),
+      );
+    });
+
+    commandMenuRegistry.registerProvider('shortcuts.catalog', () => {
+      return keybindingCatalogEntries.map(
+        (entry): RegisteredCommandMenuAction<RuntimeCommandMenuContext> => ({
+          id: entry.id,
+          title: entry.title,
+          aliases: entry.aliases,
+          keywords: entry.keywords,
+          detail: entry.detail,
+          screenLabel: entry.screenLabel,
+          sectionLabel: entry.sectionLabel,
+          bindingHint: entry.bindingHint,
+          run: () => {},
         }),
       );
     });
