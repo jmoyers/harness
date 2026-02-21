@@ -275,16 +275,23 @@ void test('conversation input forwarder can forward controlled session and skip 
 
 void test('conversation input forwarder supports null conversation with explicit strategies', () => {
   let remainder = '';
+  const passthrough: string[] = [];
   const forwarder = new ConversationInputForwarder({
     getInputRemainder: () => remainder,
     setInputRemainder: (next) => {
       remainder = next;
     },
-    getMainPaneMode: () => 'home',
+    getMainPaneMode: () => 'nim',
     getLayout: () => computeDualPaneLayout(80, 24),
     inputTokenRouter: {
       routeTokens: (input) => ({
-        routedTokens: [...input.tokens],
+        routedTokens: [
+          ...input.tokens,
+          {
+            kind: 'passthrough',
+            text: 'abc',
+          },
+        ],
         snapshotForInput: input.snapshotForInput,
       }),
     },
@@ -304,8 +311,12 @@ void test('conversation input forwarder supports null conversation with explicit
     }),
     classifyPaneAt: () => 'left',
     normalizeMuxKeyboardInputForPty: (input) => input,
+    handlePassthroughTextInMainPaneMode: (input) => {
+      passthrough.push(`${input.mainPaneMode}:${input.text}`);
+    },
   });
 
   forwarder.handleInput(Buffer.from('z'));
   assert.equal(remainder, '');
+  assert.deepEqual(passthrough, ['nim:abc']);
 });

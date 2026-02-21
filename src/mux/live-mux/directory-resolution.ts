@@ -3,7 +3,7 @@ interface ResolveDirectoryForActionConversationState {
 }
 
 interface ResolveDirectoryForActionOptions {
-  mainPaneMode: 'conversation' | 'project' | 'home';
+  mainPaneMode: 'conversation' | 'project' | 'home' | 'nim';
   activeDirectoryId: string | null;
   activeConversationId: string | null;
   conversations: ReadonlyMap<string, ResolveDirectoryForActionConversationState>;

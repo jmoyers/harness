@@ -1,5 +1,5 @@
 type ShortcutCycleDirection = 'next' | 'previous';
-type MainPaneMode = 'conversation' | 'project' | 'home';
+type MainPaneMode = 'conversation' | 'project' | 'home' | 'nim';
 
 function parseNumericPrefix(value: string): number | null {
   const parsed = Number.parseInt(value, 10);

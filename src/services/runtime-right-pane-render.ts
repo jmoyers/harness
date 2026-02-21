@@ -2,6 +2,7 @@ import type { WorkspaceModel } from '../domain/workspace.ts';
 import type { TaskManager } from '../domain/tasks.ts';
 import type { ProjectPaneSnapshot } from '../mux/harness-core-ui.ts';
 import type { TaskComposerBuffer } from '../mux/task-composer.ts';
+import type { NimPaneViewModel } from '../ui/panes/nim.ts';
 import type {
   TaskFocusedPaneRepositoryRecord,
   TaskFocusedPaneTaskRecord,
@@ -54,7 +55,9 @@ interface ProjectPaneLike {
 }
 
 interface NimPaneLike {
-  render(input: { layout: RuntimeRightPaneLayout }): { readonly rows: readonly string[] };
+  render(input: { layout: RuntimeRightPaneLayout; viewModel: NimPaneViewModel }): {
+    readonly rows: readonly string[];
+  };
 }
 
 interface RuntimeRightPaneRenderInput {
@@ -78,6 +81,7 @@ interface RuntimeRightPaneRenderOptions<
   readonly homePane: HomePaneLike<TRepositoryRecord, TTaskRecord>;
   readonly projectPane: ProjectPaneLike;
   readonly nimPane: NimPaneLike;
+  readonly getNimViewModel: () => NimPaneViewModel;
   readonly refreshProjectPaneSnapshot: (directoryId: string) => ProjectPaneSnapshot | null;
   readonly emptyTaskPaneView: () => TaskFocusedPaneView;
 }
@@ -122,6 +126,7 @@ export class RuntimeRightPaneRender<
     if (input.nimPaneActive) {
       const view = this.options.nimPane.render({
         layout: input.layout,
+        viewModel: this.options.getNimViewModel(),
       });
       return view.rows;
     }

@@ -237,6 +237,7 @@ import { RuntimeTaskComposerPersistenceService } from '../../services/runtime-ta
 import { RuntimeTaskPaneActions } from '../../services/runtime-task-pane-actions.ts';
 import { RuntimeTaskPaneShortcuts } from '../../services/runtime-task-pane-shortcuts.ts';
 import { RuntimeProjectPaneGitHubReviewCache } from '../../services/runtime-project-pane-github-review-cache.ts';
+import { RuntimeNimSession } from '../../services/runtime-nim-session.ts';
 import { TaskPaneSelectionActions } from '../../services/task-pane-selection-actions.ts';
 import { TaskPlanningHydrationService } from '../../services/task-planning-hydration.ts';
 import { TaskPlanningObservedEvents } from '../../services/task-planning-observed-events.ts';
@@ -2115,6 +2116,11 @@ class CodexLiveMuxRuntimeApplication {
     const markDirty = (): void => {
       runtimeRenderLifecycle.markDirty();
     };
+    const runtimeNimSession = new RuntimeNimSession({
+      tenantId: options.scope.tenantId,
+      userId: options.scope.userId,
+      markDirty,
+    });
     const controlPlaneOps = new RuntimeControlPlaneOps({
       onFatal: (error: unknown) => {
         handleRuntimeFatal('control-plane-pump', error);
@@ -4331,6 +4337,7 @@ class CodexLiveMuxRuntimeApplication {
         conversationPane,
         homePane,
         nimPane,
+        getNimViewModel: () => runtimeNimSession.snapshot(),
         projectPane,
         refreshProjectPaneSnapshot: (directoryId) => {
           refreshProjectPaneSnapshot(directoryId);
@@ -5120,6 +5127,7 @@ class CodexLiveMuxRuntimeApplication {
         onHomeWheel: (delta) => {
           workspace.taskPaneScrollTop = Math.max(0, workspace.taskPaneScrollTop + delta);
         },
+        onNimWheel: () => {},
         markDirty,
       },
       {
@@ -5205,6 +5213,10 @@ class CodexLiveMuxRuntimeApplication {
             if (escapeTarget !== null) {
               streamClient.sendInput(escapeTarget.sessionId, input);
             }
+            return;
+          }
+          if (workspace.mainPaneMode === 'nim') {
+            runtimeNimSession.handleEscape();
           }
         },
         onFocusIn: () => {
@@ -5276,6 +5288,11 @@ class CodexLiveMuxRuntimeApplication {
       routeInputTokensForConversation,
       classifyPaneAt,
       normalizeMuxKeyboardInputForPty,
+      handlePassthroughTextInMainPaneMode: (input) => {
+        if (input.mainPaneMode === 'nim') {
+          runtimeNimSession.handleInputChunk(input.text);
+        }
+      },
     });
 
     const onInput = (chunk: Buffer): void => {
@@ -5297,6 +5314,7 @@ class CodexLiveMuxRuntimeApplication {
       handleRuntimeFatal,
     });
 
+    await runtimeNimSession.start();
     await startupOrchestrator.hydrateStartupState(startupObservedCursor);
 
     runtimeProcessWiring.attach();

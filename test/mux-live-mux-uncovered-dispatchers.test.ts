@@ -1428,6 +1428,9 @@ void test('pointer routing helpers cover drag, separator press, wheel routing, a
       onHomeWheel: () => {
         calls.push('onHomeWheel');
       },
+      onNimWheel: () => {
+        calls.push('onNimWheel');
+      },
       onConversationWheel: () => {
         calls.push('onConversationWheel');
       },
@@ -1447,6 +1450,9 @@ void test('pointer routing helpers cover drag, separator press, wheel routing, a
       },
       onHomeWheel: (delta) => {
         calls.push(`onHomeWheel:${String(delta)}`);
+      },
+      onNimWheel: (delta) => {
+        calls.push(`onNimWheel:${String(delta)}`);
       },
       onConversationWheel: (delta) => {
         calls.push(`onConversationWheel:${String(delta)}`);
@@ -1468,6 +1474,9 @@ void test('pointer routing helpers cover drag, separator press, wheel routing, a
       onHomeWheel: (delta) => {
         calls.push(`onHomeWheel:${String(delta)}`);
       },
+      onNimWheel: (delta) => {
+        calls.push(`onNimWheel:${String(delta)}`);
+      },
       onConversationWheel: () => {
         calls.push('onConversationWheel');
       },
@@ -1488,8 +1497,34 @@ void test('pointer routing helpers cover drag, separator press, wheel routing, a
       onHomeWheel: () => {
         calls.push('onHomeWheel');
       },
+      onNimWheel: () => {
+        calls.push('onNimWheel');
+      },
       onConversationWheel: (delta) => {
         calls.push(`onConversationWheel:${String(delta)}`);
+      },
+      markDirty: () => {
+        calls.push('markDirty');
+      },
+    }),
+    true,
+  );
+  assert.equal(
+    handleMainPaneWheelInput({
+      target: 'right',
+      wheelDelta: 5,
+      mainPaneMode: 'nim',
+      onProjectWheel: () => {
+        calls.push('onProjectWheel');
+      },
+      onHomeWheel: () => {
+        calls.push('onHomeWheel');
+      },
+      onNimWheel: (delta) => {
+        calls.push(`onNimWheel:${String(delta)}`);
+      },
+      onConversationWheel: () => {
+        calls.push('onConversationWheel');
       },
       markDirty: () => {
         calls.push('markDirty');

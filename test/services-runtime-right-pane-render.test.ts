@@ -77,6 +77,14 @@ void test('runtime right-pane renderer resets task view and renders conversation
         throw new Error('nimPane.render should not run for frame render');
       },
     },
+    getNimViewModel: () => ({
+      sessionId: null,
+      status: 'idle',
+      composerText: '',
+      queuedCount: 0,
+      transcriptLines: [],
+      assistantDraftText: '',
+    }),
     refreshProjectPaneSnapshot: () => null,
     emptyTaskPaneView,
   });
@@ -141,6 +149,14 @@ void test('runtime right-pane renderer delegates home-pane render and updates wo
         throw new Error('nimPane.render should not run for home render');
       },
     },
+    getNimViewModel: () => ({
+      sessionId: null,
+      status: 'idle',
+      composerText: '',
+      queuedCount: 0,
+      transcriptLines: [],
+      assistantDraftText: '',
+    }),
     refreshProjectPaneSnapshot: () => null,
     emptyTaskPaneView,
   });
@@ -205,6 +221,14 @@ void test('runtime right-pane renderer enables task-planning view only when task
         throw new Error('nimPane.render should not run for home render');
       },
     },
+    getNimViewModel: () => ({
+      sessionId: null,
+      status: 'idle',
+      composerText: '',
+      queuedCount: 0,
+      transcriptLines: [],
+      assistantDraftText: '',
+    }),
     refreshProjectPaneSnapshot: () => null,
     emptyTaskPaneView,
   });
@@ -266,6 +290,14 @@ void test('runtime right-pane renderer keeps task-planning hidden when tasks are
         throw new Error('nimPane.render should not run for home render');
       },
     },
+    getNimViewModel: () => ({
+      sessionId: null,
+      status: 'idle',
+      composerText: '',
+      queuedCount: 0,
+      transcriptLines: [],
+      assistantDraftText: '',
+    }),
     refreshProjectPaneSnapshot: () => null,
     emptyTaskPaneView,
   });
@@ -330,6 +362,14 @@ void test('runtime right-pane renderer refreshes project snapshot once and reuse
         throw new Error('nimPane.render should not run for project render');
       },
     },
+    getNimViewModel: () => ({
+      sessionId: null,
+      status: 'idle',
+      composerText: '',
+      queuedCount: 0,
+      transcriptLines: [],
+      assistantDraftText: '',
+    }),
     refreshProjectPaneSnapshot: (directoryId) => {
       refreshCalls.push(directoryId);
       return snapshot;
@@ -401,6 +441,14 @@ void test('runtime right-pane renderer falls back to blank rows when no pane bra
         rows: ['unexpected'],
       }),
     },
+    getNimViewModel: () => ({
+      sessionId: null,
+      status: 'idle',
+      composerText: '',
+      queuedCount: 0,
+      transcriptLines: [],
+      assistantDraftText: '',
+    }),
     refreshProjectPaneSnapshot: () => null,
     emptyTaskPaneView,
   });
@@ -448,6 +496,14 @@ void test('runtime right-pane renderer delegates nim-pane render when nim pane i
         rows: ['nim-row'],
       }),
     },
+    getNimViewModel: () => ({
+      sessionId: 'session-nim',
+      status: 'responding',
+      composerText: 'draft',
+      queuedCount: 1,
+      transcriptLines: ['nim> hi'],
+      assistantDraftText: 'working',
+    }),
     refreshProjectPaneSnapshot: () => null,
     emptyTaskPaneView,
   });

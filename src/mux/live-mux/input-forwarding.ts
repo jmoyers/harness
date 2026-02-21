@@ -17,7 +17,7 @@ type RoutedInputToken =
 
 interface RouteInputTokensForConversationOptions {
   tokens: readonly RoutedInputToken[];
-  mainPaneMode: 'conversation' | 'project' | 'home';
+  mainPaneMode: 'conversation' | 'project' | 'home' | 'nim';
   normalizeMuxKeyboardInputForPty: (input: Buffer) => Buffer;
   classifyPaneAt: (col: number, row: number) => string;
   wheelDeltaRowsFromCode: (code: number) => number | null;

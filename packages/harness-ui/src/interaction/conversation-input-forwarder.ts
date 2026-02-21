@@ -1,4 +1,4 @@
-type MainPaneMode = 'conversation' | 'project' | 'home';
+type MainPaneMode = 'conversation' | 'project' | 'home' | 'nim';
 
 interface ConversationSnapshotViewport {
   readonly top: number;
@@ -131,6 +131,10 @@ export interface ConversationInputForwarderOptions<
   ): RouteConversationTokensResult;
   classifyPaneAt(layout: ConversationInputLayout, col: number, row: number): string;
   normalizeMuxKeyboardInputForPty(input: Buffer): Buffer;
+  handlePassthroughTextInMainPaneMode?: (input: {
+    readonly mainPaneMode: Exclude<MainPaneMode, 'conversation'>;
+    readonly text: string;
+  }) => void;
 }
 
 export class ConversationInputForwarder<
@@ -143,6 +147,7 @@ export class ConversationInputForwarder<
   ) {}
 
   handleInput(input: Buffer): void {
+    const mainPaneMode = this.options.getMainPaneMode();
     const parsed = this.options.parseMuxInputChunk(this.options.getInputRemainder(), input);
     this.options.setInputRemainder(parsed.remainder);
 
@@ -158,7 +163,7 @@ export class ConversationInputForwarder<
 
     const { mainPaneScrollRows, forwardToSession } = this.options.routeInputTokensForConversation({
       tokens: routedTokens,
-      mainPaneMode: this.options.getMainPaneMode(),
+      mainPaneMode,
       normalizeMuxKeyboardInputForPty: this.options.normalizeMuxKeyboardInputForPty,
       classifyPaneAt: (col, row) => this.options.classifyPaneAt(layout, col, row),
       wheelDeltaRowsFromCode,
@@ -172,6 +177,21 @@ export class ConversationInputForwarder<
       appMouseTrackingEnabled:
         inputConversation === null ? false : inputConversation.oracle.isMouseTrackingEnabled(),
     });
+
+    if (
+      mainPaneMode !== 'conversation' &&
+      this.options.handlePassthroughTextInMainPaneMode !== undefined
+    ) {
+      for (const token of routedTokens) {
+        if (token.kind !== 'passthrough' || token.text.length === 0) {
+          continue;
+        }
+        this.options.handlePassthroughTextInMainPaneMode({
+          mainPaneMode,
+          text: token.text,
+        });
+      }
+    }
 
     if (mainPaneScrollRows !== 0 && inputConversation !== null) {
       inputConversation.oracle.scrollViewport(mainPaneScrollRows);

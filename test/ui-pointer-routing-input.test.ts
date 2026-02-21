@@ -25,10 +25,11 @@ void test('pointer routing input delegates drag, separator, wheel, and move hand
     latestRowIndex: 1,
     hasDragged: true,
   };
-  let mainPaneMode: 'conversation' | 'project' | 'home' = 'home';
+  let mainPaneMode: 'conversation' | 'project' | 'home' | 'nim' = 'home';
   let conversationWheelDelta = 0;
   let projectScroll = 0;
   let homeScroll = 0;
+  let nimScroll = 0;
   const input = new PointerRoutingInput(
     {
       getPaneDividerDragActive: () => paneDividerDragActive,
@@ -60,6 +61,10 @@ void test('pointer routing input delegates drag, separator, wheel, and move hand
       onHomeWheel: (delta) => {
         homeScroll += delta;
         calls.push(`home-wheel:${delta}`);
+      },
+      onNimWheel: (delta) => {
+        nimScroll += delta;
+        calls.push(`nim-wheel:${delta}`);
       },
       markDirty: () => {
         calls.push('mark-dirty');
@@ -103,6 +108,7 @@ void test('pointer routing input delegates drag, separator, wheel, and move hand
         calls.push(`wheel:${options.target}:${options.wheelDelta}:${options.mainPaneMode}`);
         options.onProjectWheel(1);
         options.onHomeWheel(-2);
+        options.onNimWheel(4);
         options.onConversationWheel(5);
         options.markDirty();
         return true;
@@ -147,6 +153,7 @@ void test('pointer routing input delegates drag, separator, wheel, and move hand
   assert.equal(conversationWheelDelta, 5);
   assert.equal(projectScroll, 1);
   assert.equal(homeScroll, -2);
+  assert.equal(nimScroll, 4);
   assert.equal(homePaneDragState?.itemId, 'repo-dragged');
   assert.deepEqual(calls, [
     'divider:true:true:true:22',
@@ -164,6 +171,7 @@ void test('pointer routing input delegates drag, separator, wheel, and move hand
     'wheel:right:-1:home',
     'project-wheel:1',
     'home-wheel:-2',
+    'nim-wheel:4',
     'conversation-wheel:5',
     'mark-dirty',
     'move:conversation:right:true:false:5',
@@ -187,6 +195,7 @@ void test('pointer routing input default dependencies return false for ineligibl
       reorderRepositoryByDrop: () => {},
       onProjectWheel: () => {},
       onHomeWheel: () => {},
+      onNimWheel: () => {},
       markDirty: () => {},
     },
     {

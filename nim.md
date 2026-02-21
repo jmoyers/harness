@@ -128,9 +128,9 @@ flowchart LR
 
 ### Phase 2: Runtime Wiring (Mock and Deterministic)
 
-- [ ] Instantiate/reuse NIM runtime handle from mux services.
-- [ ] Wire send/steer/queue/abort to NIM actions.
-- [ ] Render streamed deltas + state transitions in the NIM pane.
+- [x] Instantiate/reuse NIM runtime handle from mux services.
+- [x] Wire send/steer/queue/abort to NIM actions.
+- [x] Render streamed deltas + state transitions in the NIM pane.
 - Exit criteria:
 - deterministic mock mode fully functional in mux with replayable event trace.
 
