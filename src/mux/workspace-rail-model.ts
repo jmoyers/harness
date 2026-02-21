@@ -64,6 +64,7 @@ interface WorkspaceRailModel {
   readonly conversations: readonly WorkspaceRailConversationSummary[];
   readonly processes: readonly WorkspaceRailProcessSummary[];
   readonly showTaskPlanningUi?: boolean;
+  readonly showNimEntry?: boolean;
   readonly showTasksEntry?: boolean;
   readonly activeProjectId: string | null;
   readonly activeRepositoryId?: string | null;
@@ -71,6 +72,7 @@ interface WorkspaceRailModel {
   readonly projectSelectionEnabled?: boolean;
   readonly repositorySelectionEnabled?: boolean;
   readonly homeSelectionEnabled?: boolean;
+  readonly nimSelectionEnabled?: boolean;
   readonly tasksSelectionEnabled?: boolean;
   readonly repositoriesCollapsed?: boolean;
   readonly collapsedRepositoryGroupIds?: readonly string[];
@@ -110,6 +112,7 @@ type WorkspaceRailAction =
   | 'conversation.delete'
   | 'project.add'
   | 'home.open'
+  | 'nim.open'
   | 'tasks.open'
   | 'project.close'
   | 'repository.toggle'
@@ -280,8 +283,10 @@ function buildContentRows(
 ): readonly WorkspaceRailViewRow[] {
   const rows: WorkspaceRailViewRow[] = [];
   const showTaskPlanningUi = model.showTaskPlanningUi ?? true;
+  const showNimEntry = model.showNimEntry ?? true;
   const showTasksEntry = model.showTasksEntry ?? showTaskPlanningUi;
   const homeSelectionEnabled = model.homeSelectionEnabled ?? false;
+  const nimSelectionEnabled = model.nimSelectionEnabled ?? false;
   const tasksSelectionEnabled = model.tasksSelectionEnabled ?? false;
   const projectSelectionEnabled = model.projectSelectionEnabled ?? false;
   const repositorySelectionEnabled = model.repositorySelectionEnabled ?? false;
@@ -369,6 +374,9 @@ function buildContentRows(
 
   if (showTaskPlanningUi) {
     pushRow(rows, 'dir-header', '├─ 🏠 home', homeSelectionEnabled, null, null, null, 'home.open');
+    if (showNimEntry) {
+      pushRow(rows, 'dir-header', '├─ ✦ NIM', nimSelectionEnabled, null, null, null, 'nim.open');
+    }
     if (showTasksEntry) {
       pushRow(
         rows,
@@ -448,6 +456,7 @@ function buildContentRows(
         const active =
           !projectSelectionEnabled &&
           !homeSelectionEnabled &&
+          !nimSelectionEnabled &&
           !tasksSelectionEnabled &&
           !repositorySelectionEnabled &&
           conversation.sessionId === model.activeConversationId;

@@ -5,6 +5,9 @@ export type LeftNavSelection =
       readonly kind: 'home';
     }
   | {
+      readonly kind: 'nim';
+    }
+  | {
       readonly kind: 'tasks';
     }
   | {
@@ -23,6 +26,9 @@ export type LeftNavSelection =
 export function leftNavTargetKey(target: LeftNavSelection): string {
   if (target.kind === 'home') {
     return 'home';
+  }
+  if (target.kind === 'nim') {
+    return 'nim';
   }
   if (target.kind === 'tasks') {
     return 'tasks';
@@ -47,6 +53,11 @@ function leftNavTargetFromRow(
   if (row.railAction === 'home.open') {
     return {
       kind: 'home',
+    };
+  }
+  if (row.railAction === 'nim.open') {
+    return {
+      kind: 'nim',
     };
   }
   if (row.railAction === 'tasks.open') {

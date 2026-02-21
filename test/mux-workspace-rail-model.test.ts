@@ -531,7 +531,7 @@ void test('workspace rail model keeps key navigation rows when constrained to ti
   assert.equal(truncated.length, 3);
   assert.equal(truncated[0]?.railAction, 'project.add');
   assert.equal(truncated[1]?.railAction, 'home.open');
-  assert.equal(truncated[2]?.railAction, 'tasks.open');
+  assert.equal(truncated[2]?.railAction, 'nim.open');
 });
 
 void test('workspace rail model supports starting normalization custom shortcuts and row hit-testing', () => {
@@ -843,11 +843,14 @@ void test('workspace rail model renders home as a selectable directory-style blo
   assert.equal(rows[homeHeaderIndex]?.active, true);
   assert.equal(rows[homeHeaderIndex]?.railAction, 'home.open');
   assert.equal(rows[homeHeaderIndex + 1]?.kind, 'dir-header');
-  assert.equal(rows[homeHeaderIndex + 1]?.text.includes('🗂️ tasks'), true);
-  assert.equal(rows[homeHeaderIndex + 1]?.text.startsWith('├─ '), true);
-  assert.equal(rows[homeHeaderIndex + 1]?.text.includes('│  └─'), false);
-  assert.equal(rows[homeHeaderIndex + 1]?.railAction, 'tasks.open');
-  assert.equal(rows[homeHeaderIndex + 2]?.kind, 'repository-header');
+  assert.equal(rows[homeHeaderIndex + 1]?.text.includes('✦ NIM'), true);
+  assert.equal(rows[homeHeaderIndex + 1]?.railAction, 'nim.open');
+  assert.equal(rows[homeHeaderIndex + 2]?.kind, 'dir-header');
+  assert.equal(rows[homeHeaderIndex + 2]?.text.includes('🗂️ tasks'), true);
+  assert.equal(rows[homeHeaderIndex + 2]?.text.startsWith('├─ '), true);
+  assert.equal(rows[homeHeaderIndex + 2]?.text.includes('│  └─'), false);
+  assert.equal(rows[homeHeaderIndex + 2]?.railAction, 'tasks.open');
+  assert.equal(rows[homeHeaderIndex + 3]?.kind, 'repository-header');
   assert.equal(
     rows.some((row) => row.kind === 'conversation-title' && row.active),
     false,

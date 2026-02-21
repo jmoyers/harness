@@ -127,6 +127,11 @@ void test('runtime render pipeline composes underlying render services and deleg
           scrollTop: 0,
         }),
       },
+      nimPane: {
+        render: () => ({
+          rows: [],
+        }),
+      },
       refreshProjectPaneSnapshot: () => null,
       emptyTaskPaneView: () => workspace.latestTaskPaneView,
     },
@@ -265,6 +270,11 @@ void test('runtime render pipeline renders right pane and flushes when render st
         render: () => ({
           rows: ['project'],
           scrollTop: 0,
+        }),
+      },
+      nimPane: {
+        render: () => ({
+          rows: ['nim'],
         }),
       },
       refreshProjectPaneSnapshot: () => null,

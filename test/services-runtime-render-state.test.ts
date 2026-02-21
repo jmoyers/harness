@@ -104,6 +104,7 @@ void test('runtime render state builds dragged selection payload when drag is ac
   }
   assert.equal(state.projectPaneActive, false);
   assert.equal(state.homePaneActive, false);
+  assert.equal(state.nimPaneActive, false);
   assert.deepEqual(state.activeConversation, { id: 'session-1' });
   assert.deepEqual(state.rightFrame, { id: 'frame-1' });
   assert.deepEqual(state.renderSelection, {
@@ -169,6 +170,33 @@ void test('runtime render state allows project-pane rendering without active con
   }
   assert.equal(state.projectPaneActive, true);
   assert.equal(state.homePaneActive, false);
+  assert.equal(state.nimPaneActive, false);
+  assert.equal(state.activeConversation, null);
+  assert.equal(state.rightFrame, null);
+  assert.equal(state.renderSelection, null);
+  assert.deepEqual(state.selectionRows, []);
+});
+
+void test('runtime render state allows nim-pane rendering without active conversation', () => {
+  const workspace = createWorkspace();
+  workspace.mainPaneMode = 'nim';
+
+  const service = new RuntimeRenderState<ConversationRecord, FrameRecord>({
+    workspace,
+    hasDirectory: () => true,
+    activeConversationId: () => null,
+    activeConversation: () => null,
+    snapshotFrame: () => ({ id: 'frame-1' }),
+    selectionVisibleRows: () => [2],
+  });
+
+  const state = service.prepareRenderState(baseSelection, null);
+  if (state === null) {
+    throw new Error('expected render state');
+  }
+  assert.equal(state.projectPaneActive, false);
+  assert.equal(state.homePaneActive, false);
+  assert.equal(state.nimPaneActive, true);
   assert.equal(state.activeConversation, null);
   assert.equal(state.rightFrame, null);
   assert.equal(state.renderSelection, null);

@@ -72,6 +72,11 @@ void test('runtime right-pane renderer resets task view and renders conversation
         throw new Error('projectPane.render should not run for frame render');
       },
     },
+    nimPane: {
+      render: () => {
+        throw new Error('nimPane.render should not run for frame render');
+      },
+    },
     refreshProjectPaneSnapshot: () => null,
     emptyTaskPaneView,
   });
@@ -83,6 +88,7 @@ void test('runtime right-pane renderer resets task view and renders conversation
     },
     rightFrame: {} as Parameters<typeof render.renderRightRows>[0]['rightFrame'],
     homePaneActive: false,
+    nimPaneActive: false,
     projectPaneActive: false,
     activeDirectoryId: null,
   });
@@ -130,6 +136,11 @@ void test('runtime right-pane renderer delegates home-pane render and updates wo
         throw new Error('projectPane.render should not run for home render');
       },
     },
+    nimPane: {
+      render: () => {
+        throw new Error('nimPane.render should not run for home render');
+      },
+    },
     refreshProjectPaneSnapshot: () => null,
     emptyTaskPaneView,
   });
@@ -141,6 +152,7 @@ void test('runtime right-pane renderer delegates home-pane render and updates wo
     },
     rightFrame: null,
     homePaneActive: true,
+    nimPaneActive: false,
     projectPaneActive: false,
     activeDirectoryId: 'dir-1',
   });
@@ -188,6 +200,11 @@ void test('runtime right-pane renderer enables task-planning view only when task
         throw new Error('projectPane.render should not run for home render');
       },
     },
+    nimPane: {
+      render: () => {
+        throw new Error('nimPane.render should not run for home render');
+      },
+    },
     refreshProjectPaneSnapshot: () => null,
     emptyTaskPaneView,
   });
@@ -199,6 +216,7 @@ void test('runtime right-pane renderer enables task-planning view only when task
     },
     rightFrame: null,
     homePaneActive: true,
+    nimPaneActive: false,
     projectPaneActive: false,
     activeDirectoryId: null,
   });
@@ -243,6 +261,11 @@ void test('runtime right-pane renderer keeps task-planning hidden when tasks are
         throw new Error('projectPane.render should not run for home render');
       },
     },
+    nimPane: {
+      render: () => {
+        throw new Error('nimPane.render should not run for home render');
+      },
+    },
     refreshProjectPaneSnapshot: () => null,
     emptyTaskPaneView,
   });
@@ -254,6 +277,7 @@ void test('runtime right-pane renderer keeps task-planning hidden when tasks are
     },
     rightFrame: null,
     homePaneActive: true,
+    nimPaneActive: false,
     projectPaneActive: false,
     activeDirectoryId: null,
   });
@@ -301,6 +325,11 @@ void test('runtime right-pane renderer refreshes project snapshot once and reuse
         };
       },
     },
+    nimPane: {
+      render: () => {
+        throw new Error('nimPane.render should not run for project render');
+      },
+    },
     refreshProjectPaneSnapshot: (directoryId) => {
       refreshCalls.push(directoryId);
       return snapshot;
@@ -315,6 +344,7 @@ void test('runtime right-pane renderer refreshes project snapshot once and reuse
     },
     rightFrame: null,
     homePaneActive: false,
+    nimPaneActive: false,
     projectPaneActive: true,
     activeDirectoryId: 'dir-1',
   });
@@ -325,6 +355,7 @@ void test('runtime right-pane renderer refreshes project snapshot once and reuse
     },
     rightFrame: null,
     homePaneActive: false,
+    nimPaneActive: false,
     projectPaneActive: true,
     activeDirectoryId: 'dir-1',
   });
@@ -365,6 +396,11 @@ void test('runtime right-pane renderer falls back to blank rows when no pane bra
         scrollTop: 0,
       }),
     },
+    nimPane: {
+      render: () => ({
+        rows: ['unexpected'],
+      }),
+    },
     refreshProjectPaneSnapshot: () => null,
     emptyTaskPaneView,
   });
@@ -376,9 +412,57 @@ void test('runtime right-pane renderer falls back to blank rows when no pane bra
     },
     rightFrame: null,
     homePaneActive: false,
+    nimPaneActive: false,
     projectPaneActive: true,
     activeDirectoryId: null,
   });
 
   assert.deepEqual(rows, ['   ', '   ']);
+});
+
+void test('runtime right-pane renderer delegates nim-pane render when nim pane is active', () => {
+  const workspace = createWorkspace();
+  const taskManager = new TaskManager<TaskRecord, TaskComposerBuffer, NodeJS.Timeout>();
+  const render = new RuntimeRightPaneRender<RepoRecord, TaskRecord>({
+    workspace,
+    showTasks: true,
+    repositories: new Map(),
+    taskManager,
+    conversationPane: {
+      render: () => {
+        throw new Error('conversationPane.render should not run for nim render');
+      },
+    },
+    homePane: {
+      render: () => {
+        throw new Error('homePane.render should not run for nim render');
+      },
+    },
+    projectPane: {
+      render: () => {
+        throw new Error('projectPane.render should not run for nim render');
+      },
+    },
+    nimPane: {
+      render: () => ({
+        rows: ['nim-row'],
+      }),
+    },
+    refreshProjectPaneSnapshot: () => null,
+    emptyTaskPaneView,
+  });
+
+  const rows = render.renderRightRows({
+    layout: {
+      rightCols: 20,
+      paneRows: 4,
+    },
+    rightFrame: null,
+    homePaneActive: false,
+    nimPaneActive: true,
+    projectPaneActive: false,
+    activeDirectoryId: null,
+  });
+
+  assert.deepEqual(rows, ['nim-row']);
 });

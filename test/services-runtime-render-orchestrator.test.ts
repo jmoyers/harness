@@ -189,6 +189,7 @@ void test('runtime render orchestrator composes rail, right rows, and flush payl
     prepareRenderState: () => ({
       projectPaneActive: true,
       homePaneActive: false,
+      nimPaneActive: false,
       activeConversation: { id: 'conversation-1' },
       rightFrame: { id: 'frame-1' },
       renderSelection: { id: 'selection-1' },
@@ -235,6 +236,7 @@ void test('runtime render orchestrator composes rail, right rows, and flush payl
     layout: { id: 'layout-4' },
     rightFrame: { id: 'frame-1' },
     homePaneActive: false,
+    nimPaneActive: false,
     projectPaneActive: true,
     activeDirectoryId: 'dir-123',
   });

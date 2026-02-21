@@ -3,6 +3,9 @@ export type LeftNavSelection =
       readonly kind: 'home';
     }
   | {
+      readonly kind: 'nim';
+    }
+  | {
       readonly kind: 'tasks';
     }
   | {
@@ -25,6 +28,7 @@ export interface LeftNavState {
 
 export interface LeftNavActions {
   readonly enterHomePane: () => void;
+  readonly enterNimPane?: () => void;
   readonly enterTasksPane?: () => void;
   readonly firstDirectoryForRepositoryGroup: (repositoryGroupId: string) => string | null;
   readonly enterProjectPane: (directoryId: string) => void;
@@ -51,6 +55,7 @@ export interface ActivateLeftNavTargetInput {
   readonly target: LeftNavSelection;
   readonly direction: 'next' | 'previous';
   readonly enterHomePane: () => void;
+  readonly enterNimPane?: () => void;
   readonly enterTasksPane?: () => void;
   readonly firstDirectoryForRepositoryGroup: (repositoryGroupId: string) => string | null;
   readonly enterProjectPane: (directoryId: string) => void;
@@ -103,6 +108,11 @@ export class LeftNavInput {
       target,
       direction,
       enterHomePane: this.actions.enterHomePane,
+      ...(this.actions.enterNimPane === undefined
+        ? {}
+        : {
+            enterNimPane: this.actions.enterNimPane,
+          }),
       firstDirectoryForRepositoryGroup: this.actions.firstDirectoryForRepositoryGroup,
       enterProjectPane: this.actions.enterProjectPane,
       setMainPaneProjectMode: this.actions.setMainPaneProjectMode,

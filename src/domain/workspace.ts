@@ -8,7 +8,7 @@ import type { TaskComposerBuffer } from '../mux/task-composer.ts';
 import type { TaskFocusedPaneView } from '../mux/task-focused-pane.ts';
 import type { buildWorkspaceRailViewRows } from '../mux/workspace-rail-model.ts';
 
-type MainPaneMode = 'conversation' | 'project' | 'home';
+type MainPaneMode = 'conversation' | 'project' | 'home' | 'nim';
 
 export interface ConversationTitleEditState {
   conversationId: string;
@@ -122,6 +122,12 @@ export class WorkspaceModel {
     };
   }
 
+  selectLeftNavNim(): void {
+    this.leftNavSelection = {
+      kind: 'nim',
+    };
+  }
+
   selectLeftNavTasks(): void {
     this.leftNavSelection = {
       kind: 'tasks',
@@ -164,6 +170,19 @@ export class WorkspaceModel {
   enterHomePane(): void {
     this.mainPaneMode = 'home';
     this.selectLeftNavHome();
+    this.projectPaneSnapshot = null;
+    this.projectPaneScrollTop = 0;
+    this.taskPaneScrollTop = 0;
+    this.taskPaneNotice = null;
+    this.taskRepositoryDropdownOpen = false;
+    this.taskPaneTaskEditClickState = null;
+    this.taskPaneRepositoryEditClickState = null;
+    this.homePaneDragState = null;
+  }
+
+  enterNimPane(): void {
+    this.mainPaneMode = 'nim';
+    this.selectLeftNavNim();
     this.projectPaneSnapshot = null;
     this.projectPaneScrollTop = 0;
     this.taskPaneScrollTop = 0;

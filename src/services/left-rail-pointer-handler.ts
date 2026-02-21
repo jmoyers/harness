@@ -53,6 +53,7 @@ interface LeftRailPointerActions {
   readonly expandAllRepositoryGroups: () => void;
   readonly collapseAllRepositoryGroups: () => void;
   readonly enterHomePane: () => void;
+  readonly enterNimPane?: () => void;
   readonly enterTasksPane?: () => void;
   readonly queueCloseDirectory: (directoryId: string) => void;
   readonly toggleShortcutsCollapsed: () => void;
@@ -196,6 +197,17 @@ export class LeftRailPointerHandler
     if (hit.selectedAction === 'home.open') {
       this.actions.clearConversationTitleEditClickState();
       this.actions.enterHomePane();
+      this.actions.markDirty();
+      return true;
+    }
+
+    if (hit.selectedAction === 'nim.open') {
+      this.actions.clearConversationTitleEditClickState();
+      if (this.actions.enterNimPane !== undefined) {
+        this.actions.enterNimPane();
+      } else {
+        this.actions.enterHomePane();
+      }
       this.actions.markDirty();
       return true;
     }

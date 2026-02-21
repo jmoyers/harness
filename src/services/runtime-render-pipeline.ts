@@ -145,6 +145,7 @@ export class RuntimeRenderPipeline<
           layout: input.layout,
           rightFrame: input.rightFrame,
           homePaneActive: input.homePaneActive,
+          nimPaneActive: input.nimPaneActive,
           projectPaneActive: input.projectPaneActive,
           activeDirectoryId: input.activeDirectoryId,
         }),

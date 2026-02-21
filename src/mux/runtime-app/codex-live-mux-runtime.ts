@@ -277,6 +277,7 @@ import {
 import { ConversationPane } from '../../ui/panes/conversation.ts';
 import { DebugFooterNotice } from '../../ui/debug-footer-notice.ts';
 import { HomePane } from '../../ui/panes/home.ts';
+import { NimPane } from '../../ui/panes/nim.ts';
 import { ProjectPane } from '../../ui/panes/project.ts';
 import { LeftRailPane } from '../../ui/panes/left-rail.ts';
 import { ModalManager } from '../../../packages/harness-ui/src/modal-manager.ts';
@@ -1817,6 +1818,7 @@ class CodexLiveMuxRuntimeApplication {
     const screen = new Screen(new MuxScreenWriter());
     const conversationPane = new ConversationPane();
     const homePane = new HomePane();
+    const nimPane = new NimPane();
     const projectPane = new ProjectPane();
     const leftRailPane = new LeftRailPane();
     let stop = false;
@@ -2878,6 +2880,15 @@ class CodexLiveMuxRuntimeApplication {
       releaseViewportPinForSelection();
       syncTaskPaneSelection();
       syncTaskPaneRepositorySelection();
+      screen.resetFrameCache();
+      markDirty();
+    };
+
+    const enterNimPane = (): void => {
+      workspace.enterNimPane();
+      workspace.selection = null;
+      workspace.selectionDrag = null;
+      releaseViewportPinForSelection();
       screen.resetFrameCache();
       markDirty();
     };
@@ -4305,6 +4316,7 @@ class CodexLiveMuxRuntimeApplication {
         taskManager,
         conversationPane,
         homePane,
+        nimPane,
         projectPane,
         refreshProjectPaneSnapshot: (directoryId) => {
           refreshProjectPaneSnapshot(directoryId);
@@ -4665,6 +4677,7 @@ class CodexLiveMuxRuntimeApplication {
       },
       {
         enterHomePane,
+        enterNimPane,
         firstDirectoryForRepositoryGroup,
         enterProjectPane,
         setMainPaneProjectMode: () => {
@@ -4833,6 +4846,7 @@ class CodexLiveMuxRuntimeApplication {
         expandAllRepositoryGroups,
         collapseAllRepositoryGroups,
         enterHomePane,
+        enterNimPane,
         ...(showTasksEntry
           ? {
               enterTasksPane,

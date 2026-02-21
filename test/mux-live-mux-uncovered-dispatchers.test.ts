@@ -45,6 +45,7 @@ interface HandleLeftRailActionClickOptions {
   expandAllRepositoryGroups: () => void;
   collapseAllRepositoryGroups: () => void;
   enterHomePane: () => void;
+  enterNimPane?: () => void;
   enterTasksPane?: () => void;
   queueCloseDirectory: (directoryId: string) => void;
   toggleShortcutsCollapsed: () => void;
@@ -100,6 +101,11 @@ function handleLeftRailActionClick(options: HandleLeftRailActionClickOptions): b
       expandAllRepositoryGroups: options.expandAllRepositoryGroups,
       collapseAllRepositoryGroups: options.collapseAllRepositoryGroups,
       enterHomePane: options.enterHomePane,
+      ...(options.enterNimPane === undefined
+        ? {}
+        : {
+            enterNimPane: options.enterNimPane,
+          }),
       ...(options.enterTasksPane === undefined
         ? {}
         : {
@@ -155,6 +161,7 @@ function handleLeftRailConversationClick(options: HandleLeftRailConversationClic
       expandAllRepositoryGroups: () => {},
       collapseAllRepositoryGroups: () => {},
       enterHomePane: () => {},
+      enterNimPane: () => {},
       queueCloseDirectory: () => {},
       toggleShortcutsCollapsed: () => {},
       setConversationClickState: options.setConversationClickState,
@@ -581,6 +588,9 @@ void test('left-nav activation routes targets and cycle helper handles empty/nor
     enterHomePane: () => {
       calls.push('enterHomePane');
     },
+    enterNimPane: () => {
+      calls.push('enterNimPane');
+    },
     enterTasksPane: () => {
       calls.push('enterTasksPane');
     },
@@ -618,7 +628,13 @@ void test('left-nav activation routes targets and cycle helper handles empty/nor
   };
 
   activateLeftNavTarget({ ...common, target: { kind: 'home' } });
+  activateLeftNavTarget({ ...common, target: { kind: 'nim' } });
   activateLeftNavTarget({ ...common, target: { kind: 'tasks' } });
+  const { enterNimPane: _enterNimPaneOmitted, ...withoutNimPane } = common;
+  activateLeftNavTarget({
+    ...withoutNimPane,
+    target: { kind: 'nim' },
+  });
   const { enterTasksPane: _enterTasksPaneOmitted, ...withoutTasksPane } = common;
   activateLeftNavTarget({
     ...withoutTasksPane,
@@ -638,6 +654,7 @@ void test('left-nav activation routes targets and cycle helper handles empty/nor
     await queued.shift()?.();
   }
   assert.equal(calls.includes('enterHomePane'), true);
+  assert.equal(calls.includes('enterNimPane'), true);
   assert.equal(calls.includes('enterTasksPane'), true);
   assert.equal(calls.includes('enterProjectPane:dir-a'), true);
   assert.equal(calls.includes('setMainPaneProjectMode'), true);
@@ -680,6 +697,7 @@ void test('left-nav activation routes targets and cycle helper handles empty/nor
     cycleLeftNavSelection({
       visibleTargets: [
         { kind: 'home' },
+        { kind: 'nim' },
         { kind: 'tasks' },
         { kind: 'project', directoryId: 'dir-a' },
       ],
@@ -691,7 +709,7 @@ void test('left-nav activation routes targets and cycle helper handles empty/nor
     }),
     true,
   );
-  assert.deepEqual(activated, ['tasks:next']);
+  assert.deepEqual(activated, ['nim:next']);
 
   let flip = false;
   const unstable = {
@@ -830,6 +848,9 @@ void test('left-rail action click routes all supported actions and default false
     enterHomePane: () => {
       calls.push('enterHomePane');
     },
+    enterNimPane: () => {
+      calls.push('enterNimPane');
+    },
     queueCloseDirectory: (directoryId: string) => {
       calls.push(`queueCloseDirectory:${directoryId}`);
     },
@@ -851,6 +872,7 @@ void test('left-rail action click routes all supported actions and default false
     'repository.toggle',
     'repositories.toggle',
     'home.open',
+    'nim.open',
     'tasks.open',
     'project.close',
   ] as const;
@@ -869,6 +891,7 @@ void test('left-rail action click routes all supported actions and default false
   assert.equal(calls.includes('selectLeftNavRepository:repo-a'), true);
   assert.equal(calls.includes('collapseAllRepositoryGroups'), true);
   assert.equal(calls.includes('enterHomePane'), true);
+  assert.equal(calls.includes('enterNimPane'), true);
   assert.equal(calls.includes('queueCloseDirectory:dir-a'), true);
   calls.length = 0;
   assert.equal(

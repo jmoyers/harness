@@ -53,10 +53,15 @@ interface ProjectPaneLike {
   };
 }
 
+interface NimPaneLike {
+  render(input: { layout: RuntimeRightPaneLayout }): { readonly rows: readonly string[] };
+}
+
 interface RuntimeRightPaneRenderInput {
   readonly layout: RuntimeRightPaneLayout;
   readonly rightFrame: TerminalSnapshotFrameCore | null;
   readonly homePaneActive: boolean;
+  readonly nimPaneActive: boolean;
   readonly projectPaneActive: boolean;
   readonly activeDirectoryId: string | null;
 }
@@ -72,6 +77,7 @@ interface RuntimeRightPaneRenderOptions<
   readonly conversationPane: ConversationPaneLike;
   readonly homePane: HomePaneLike<TRepositoryRecord, TTaskRecord>;
   readonly projectPane: ProjectPaneLike;
+  readonly nimPane: NimPaneLike;
   readonly refreshProjectPaneSnapshot: (directoryId: string) => ProjectPaneSnapshot | null;
   readonly emptyTaskPaneView: () => TaskFocusedPaneView;
 }
@@ -110,6 +116,13 @@ export class RuntimeRightPaneRender<
       workspace.taskPaneSelectedRepositoryId = view.selectedRepositoryId;
       workspace.taskPaneScrollTop = view.top;
       workspace.latestTaskPaneView = view;
+      return view.rows;
+    }
+
+    if (input.nimPaneActive) {
+      const view = this.options.nimPane.render({
+        layout: input.layout,
+      });
       return view.rows;
     }
 

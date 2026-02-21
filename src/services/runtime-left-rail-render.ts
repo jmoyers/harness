@@ -43,6 +43,7 @@ interface LeftRailPaneLike<
     projectSelectionEnabled: boolean;
     repositorySelectionEnabled: boolean;
     homeSelectionEnabled: boolean;
+    nimSelectionEnabled: boolean;
     tasksSelectionEnabled: boolean;
     showTasksEntry: boolean;
     repositoriesCollapsed: boolean;
@@ -141,6 +142,7 @@ export class RuntimeLeftRailRender<
       projectSelectionEnabled: this.options.workspace.leftNavSelection.kind === 'project',
       repositorySelectionEnabled: this.options.workspace.leftNavSelection.kind === 'repository',
       homeSelectionEnabled: this.options.workspace.leftNavSelection.kind === 'home',
+      nimSelectionEnabled: this.options.workspace.leftNavSelection.kind === 'nim',
       tasksSelectionEnabled: this.options.workspace.leftNavSelection.kind === 'tasks',
       showTasksEntry: this.options.showTasksEntry ?? true,
       repositoriesCollapsed: this.options.workspace.repositoriesCollapsed,
