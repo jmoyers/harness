@@ -3176,6 +3176,19 @@ class CodexLiveMuxRuntimeApplication {
       }, 'command-menu-harness-update');
     };
 
+    const runOAuthLoginFromMenu = (provider: 'github' | 'linear'): void => {
+      const directoryId = resolveUpdateDirectoryId();
+      if (directoryId === null) {
+        setCommandNotice('oauth login unavailable: add a project first');
+        return;
+      }
+      const providerLabel = provider === 'github' ? 'GitHub' : 'Linear';
+      queueControlPlaneOp(async () => {
+        await runCommandInNewTerminalThread(directoryId, `harness auth login ${provider}`);
+        setCommandNotice(`running ${providerLabel} oauth login in a new terminal thread`);
+      }, `command-menu-oauth-login:${provider}`);
+    };
+
     const resolveCritiqueReviewAgentFromEnvironment = (): 'claude' | 'opencode' | null => {
       const claudeAvailable =
         commandMenuAgentTools.statusForAgent('claude')?.available === true ||
@@ -3533,6 +3546,34 @@ class CodexLiveMuxRuntimeApplication {
           },
         }),
       );
+    });
+
+    commandMenuRegistry.registerProvider('auth.login', (context) => {
+      const actions: RegisteredCommandMenuAction<RuntimeCommandMenuContext>[] = [
+        {
+          id: 'auth.login.github',
+          title: 'Log In to GitHub (OAuth)',
+          aliases: ['log in to github', 'login github', 'github oauth login', 'connect github'],
+          keywords: ['auth', 'oauth', 'login', 'github'],
+          detail: 'runs `harness auth login github` in a terminal thread',
+          run: () => {
+            runOAuthLoginFromMenu('github');
+          },
+        },
+      ];
+      if (context.linearEnabled) {
+        actions.push({
+          id: 'auth.login.linear',
+          title: 'Log In to Linear (OAuth)',
+          aliases: ['log in to linear', 'login linear', 'linear oauth login', 'connect linear'],
+          keywords: ['auth', 'oauth', 'login', 'linear'],
+          detail: 'runs `harness auth login linear` in a terminal thread',
+          run: () => {
+            runOAuthLoginFromMenu('linear');
+          },
+        });
+      }
+      return actions;
     });
 
     commandMenuRegistry.registerProvider('linear.issue.import', (context) => {

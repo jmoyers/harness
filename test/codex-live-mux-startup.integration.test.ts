@@ -949,6 +949,47 @@ void test(
 );
 
 void test(
+  'codex-live-mux command menu exposes oauth login actions for github and linear',
+  async () => {
+    const workspace = createWorkspace();
+    const interactive = startInteractiveMuxSession(workspace, {
+      cols: 100,
+      rows: 30,
+    });
+
+    try {
+      await waitForSnapshotLineContaining(interactive.oracle, '🏠 home', 12000);
+      await openCommandMenuWithShortcut(interactive.session, interactive.oracle, 12000);
+      interactive.session.write('log in to github');
+      await waitForSnapshotLineContaining(
+        interactive.oracle,
+        'Log In to GitHub (OAuth)',
+        12000,
+      );
+
+      await closeCommandMenuWithEscape(interactive.session, interactive.oracle, 12000);
+      await openCommandMenuWithShortcut(interactive.session, interactive.oracle, 12000);
+      interactive.session.write('log in to linear');
+      await waitForSnapshotLineContaining(
+        interactive.oracle,
+        'Log In to Linear (OAuth)',
+        12000,
+      );
+    } finally {
+      try {
+        await requestMuxShutdown(interactive.session);
+        const exit = await interactive.waitForExit;
+        assert.equal(exit.signal, null);
+        assert.equal(exit.code === 0 || exit.code === 130, true);
+      } finally {
+        rmSync(workspace, { recursive: true, force: true });
+      }
+    }
+  },
+  { timeout: 30000 },
+);
+
+void test(
   'codex-live-mux command menu shows github repo + open pr actions with git suffix when repository has an open PR',
   async () => {
     const workspace = createWorkspace();
