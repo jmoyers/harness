@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import {
   applySummaryToConversation,
+  composeDebugStatusFooter,
   compactDebugText,
   conversationSummary,
   createConversationState,
@@ -142,6 +143,18 @@ void test('conversation-state launchCommand, debug footer, and compaction helper
   );
   assert.equal(
     debugFooterForConversation({
+      launchCommand: null,
+    } as ConversationState),
+    '[dbg] (launch command unavailable)',
+  );
+
+  assert.equal(composeDebugStatusFooter(false, '[gh:on tk:ok au:ok pr:ok]', conversation), '');
+  assert.equal(
+    composeDebugStatusFooter(true, '[gh:on tk:ok au:ok pr:ok]', conversation),
+    "[gh:on tk:ok au:ok pr:ok] [dbg] bunx critique@latest --watch '' 'hello world' 'it'\"'\"'s'",
+  );
+  assert.equal(
+    composeDebugStatusFooter(true, '   ', {
       launchCommand: null,
     } as ConversationState),
     '[dbg] (launch command unavailable)',

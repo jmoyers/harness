@@ -187,3 +187,16 @@ export function debugFooterForConversation(conversation: ConversationState): str
       : compactDebugText(conversation.launchCommand);
   return `[dbg] ${launchCommand}`;
 }
+
+export function composeDebugStatusFooter(
+  showDebugBar: boolean,
+  githubDebugTokens: string,
+  conversation: ConversationState,
+): string {
+  if (!showDebugBar) {
+    return '';
+  }
+  const githubPrefix = githubDebugTokens.trim();
+  const debugFooter = debugFooterForConversation(conversation);
+  return githubPrefix.length === 0 ? debugFooter : `${githubPrefix} ${debugFooter}`;
+}

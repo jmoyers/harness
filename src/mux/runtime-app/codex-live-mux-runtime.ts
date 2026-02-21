@@ -131,8 +131,8 @@ import {
   unsubscribeObservedStream,
 } from '../../mux/live-mux/observed-stream.ts';
 import {
+  composeDebugStatusFooter,
   createConversationState,
-  debugFooterForConversation,
   formatCommandForDebugBar,
   launchCommandForAgent,
   type ConversationState,
@@ -3849,7 +3849,11 @@ class CodexLiveMuxRuntimeApplication {
       renderFlush: {
         perfNowNs,
         statusFooterForConversation: (conversation) =>
-          `${formatGitHubDebugTokens(githubDebugAuthState)} ${debugFooterForConversation(conversation)}`,
+          composeDebugStatusFooter(
+            workspace.showDebugBar,
+            formatGitHubDebugTokens(githubDebugAuthState),
+            conversation,
+          ),
         currentStatusNotice: () => debugFooterNotice.current(),
         currentStatusRow: () => outputLoadSampler.currentStatusRow(),
         onStatusLineComposed: (input) => {
