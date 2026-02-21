@@ -30,7 +30,6 @@ This project has three core docs:
 ## Commit Discipline
 
 - Commit only at verified checkpoints (tests/benchmarks/acceptance checks).
-- Pre-commit runs `bun run verify`; failing verify blocks commit.
 - Keep commits scoped to one coherent change.
 - Push after commit unless explicitly instructed otherwise.
 
