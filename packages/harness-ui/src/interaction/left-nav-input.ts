@@ -36,7 +36,6 @@ export interface LeftNavActions {
   readonly conversationDirectoryId: (sessionId: string) => string | null;
   readonly queueControlPlaneOp: (task: () => Promise<void>, label: string) => void;
   readonly activateConversation: (sessionId: string) => Promise<void>;
-  readonly shouldActivateConversation?: (sessionId: string) => boolean;
   readonly conversationsHas: (sessionId: string) => boolean;
 }
 
@@ -56,7 +55,6 @@ export interface ActivateLeftNavTargetInput {
   readonly conversationDirectoryId: (sessionId: string) => string | null;
   readonly queueControlPlaneOp: (task: () => Promise<void>, label: string) => void;
   readonly activateConversation: (sessionId: string) => Promise<void>;
-  readonly shouldActivateConversation?: (sessionId: string) => boolean;
   readonly conversationsHas: (sessionId: string) => boolean;
 }
 
@@ -104,11 +102,6 @@ export class LeftNavInput {
       conversationDirectoryId: this.actions.conversationDirectoryId,
       queueControlPlaneOp: this.actions.queueControlPlaneOp,
       activateConversation: this.actions.activateConversation,
-      ...(this.actions.shouldActivateConversation === undefined
-        ? {}
-        : {
-            shouldActivateConversation: this.actions.shouldActivateConversation,
-          }),
       conversationsHas: this.actions.conversationsHas,
       ...(this.actions.enterTasksPane === undefined
         ? {}

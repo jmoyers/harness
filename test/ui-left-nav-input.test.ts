@@ -142,37 +142,3 @@ void test('left-nav input default dependencies cover activation and empty cycle 
   selection = { kind: 'repository', repositoryId: 'repo-a' };
   assert.equal(input.cycleSelection('next'), false);
 });
-
-void test('left-nav input forwards shouldActivateConversation callback to activation strategy', () => {
-  let forwardedResult: boolean | null = null;
-  const input = new LeftNavInput(
-    {
-      latestRailRows: () => [] as never,
-      currentSelection: () => ({ kind: 'conversation', sessionId: 'session-a' }),
-    },
-    {
-      enterHomePane: () => {},
-      firstDirectoryForRepositoryGroup: () => null,
-      enterProjectPane: () => {},
-      setMainPaneProjectMode: () => {},
-      selectLeftNavRepository: () => {},
-      markDirty: () => {},
-      directoriesHas: () => false,
-      conversationDirectoryId: () => null,
-      queueControlPlaneOp: () => {},
-      activateConversation: async () => {},
-      shouldActivateConversation: (sessionId) => sessionId === 'session-a',
-      conversationsHas: () => true,
-    },
-    {
-      visibleTargets: () => [{ kind: 'conversation', sessionId: 'session-a' }],
-      activateTarget: (options) => {
-        forwardedResult = options.shouldActivateConversation?.('session-a') ?? null;
-      },
-      cycleSelection: () => false,
-    },
-  );
-
-  input.activateTarget({ kind: 'conversation', sessionId: 'session-a' }, 'next');
-  assert.equal(forwardedResult, true);
-});

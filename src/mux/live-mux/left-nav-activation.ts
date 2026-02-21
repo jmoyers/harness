@@ -17,7 +17,6 @@ interface ActivateLeftNavTargetOptions {
   conversationDirectoryId: (sessionId: string) => string | null;
   queueControlPlaneOp: (task: () => Promise<void>, label: string) => void;
   activateConversation: (sessionId: string) => Promise<void>;
-  shouldActivateConversation?: (sessionId: string) => boolean;
   conversationsHas: (sessionId: string) => boolean;
 }
 
@@ -38,7 +37,6 @@ export function activateLeftNavTarget(options: ActivateLeftNavTargetOptions): vo
     conversationDirectoryId,
     queueControlPlaneOp,
     activateConversation,
-    shouldActivateConversation,
     conversationsHas,
   } = options;
   if (target.kind === 'home') {
@@ -80,9 +78,6 @@ export function activateLeftNavTarget(options: ActivateLeftNavTargetOptions): vo
       selectLeftNavConversation?.(fallbackConversation.sessionId);
       markDirty();
       queueControlPlaneOp(async () => {
-        if (shouldActivateConversation?.(fallbackConversation.sessionId) === false) {
-          return;
-        }
         await activateConversation(fallbackConversation.sessionId);
       }, `shortcut-activate-${direction}-directory-fallback`);
     }
@@ -94,9 +89,6 @@ export function activateLeftNavTarget(options: ActivateLeftNavTargetOptions): vo
   selectLeftNavConversation?.(target.sessionId);
   markDirty();
   queueControlPlaneOp(async () => {
-    if (shouldActivateConversation?.(target.sessionId) === false) {
-      return;
-    }
     await activateConversation(target.sessionId);
   }, `shortcut-activate-${direction}`);
 }
