@@ -96,18 +96,25 @@ Behavior fragments:
 
 - Left/right pane layout and divider semantics.
 - Home/project/task pane render branching.
+- Project pane GitHub review tree for tracked branch state (PR lifecycle + open/resolved review threads).
 - Navigation transitions and selection synchronization.
 - Local Git repositories without GitHub remotes still hydrate into repository groups (not `untracked`).
 
 Owners:
 
 - `src/services/runtime-right-pane-render.ts`
+- `src/mux/project-pane-github-review.ts`
+- `src/mux/harness-core-ui.ts`
+- `src/mux/live-mux/project-pane-pointer.ts`
 - `src/services/runtime-left-rail-render.ts`
 - `src/mux/live-mux/rail-layout.ts`
 
 Test anchors:
 
 - `test/services-runtime-right-pane-render.test.ts`
+- `test/project-pane-github-review.test.ts`
+- `test/mux-harness-core-ui.test.ts`
+- `test/mux-live-mux-uncovered-small.test.ts`
 - `test/services-runtime-left-rail-render.test.ts`
 - `test/mux-live-mux-rail-layout.test.ts`
 

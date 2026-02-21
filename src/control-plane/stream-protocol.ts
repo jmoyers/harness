@@ -310,6 +310,11 @@ interface GitHubProjectPrCommand {
   directoryId: string;
 }
 
+interface GitHubProjectReviewCommand {
+  type: 'github.project-review';
+  directoryId: string;
+}
+
 interface GitHubPrListCommand {
   type: 'github.pr-list';
   tenantId?: string;
@@ -515,6 +520,7 @@ export type StreamCommand =
   | AutomationPolicyGetCommand
   | AutomationPolicySetCommand
   | GitHubProjectPrCommand
+  | GitHubProjectReviewCommand
   | GitHubPrListCommand
   | GitHubPrCreateCommand
   | GitHubPrJobsListCommand

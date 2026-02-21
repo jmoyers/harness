@@ -98,6 +98,52 @@ void test('stream server github request/parser internals normalize api payloads'
             updated_at: FIXED_TS,
             created_at: FIXED_TS,
             closed_at: null,
+            merged_at: null,
+          }),
+        );
+      }
+      if (url.endsWith('/graphql')) {
+        return new Response(
+          JSON.stringify({
+            data: {
+              repository: {
+                pullRequest: {
+                  reviewThreads: {
+                    nodes: [
+                      {
+                        id: 'thread-1',
+                        isResolved: false,
+                        isOutdated: false,
+                        resolvedBy: null,
+                        comments: {
+                          nodes: [
+                            {
+                              id: 'comment-1',
+                              body: 'Please update this name',
+                              bodyText: 'Please update this name',
+                              url: 'https://github.com/acme/harness/pull/501#discussion_r1',
+                              createdAt: FIXED_TS,
+                              updatedAt: FIXED_TS,
+                              author: {
+                                login: 'reviewer-a',
+                              },
+                            },
+                          ],
+                        },
+                      },
+                      {
+                        id: 7,
+                        isResolved: false,
+                        isOutdated: false,
+                        comments: {
+                          nodes: [],
+                        },
+                      },
+                    ],
+                  },
+                },
+              },
+            },
           }),
         );
       }
@@ -166,6 +212,31 @@ void test('stream server github request/parser internals normalize api payloads'
       repo: string;
       headBranch: string;
     }) => Promise<Record<string, unknown> | null>;
+    findGitHubPullRequestForBranch: (input: {
+      owner: string;
+      repo: string;
+      headBranch: string;
+    }) => Promise<Record<string, unknown> | null>;
+    listGitHubPullRequestReviewThreads: (input: {
+      owner: string;
+      repo: string;
+      pullNumber: number;
+    }) => Promise<
+      readonly {
+        threadId: string;
+        isResolved: boolean;
+        isOutdated: boolean;
+        resolvedByLogin: string | null;
+        comments: readonly {
+          commentId: string;
+          authorLogin: string | null;
+          body: string;
+          url: string | null;
+          createdAt: string;
+          updatedAt: string;
+        }[];
+      }[]
+    >;
     createGitHubPullRequest: (input: {
       owner: string;
       repo: string;
@@ -191,6 +262,31 @@ void test('stream server github request/parser internals normalize api payloads'
         repo: string;
         headBranch: string;
       }) => Promise<Record<string, unknown> | null>;
+      findPullRequestForBranch: (input: {
+        owner: string;
+        repo: string;
+        headBranch: string;
+      }) => Promise<Record<string, unknown> | null>;
+      listPullRequestReviewThreads: (input: {
+        owner: string;
+        repo: string;
+        pullNumber: number;
+      }) => Promise<
+        readonly {
+          threadId: string;
+          isResolved: boolean;
+          isOutdated: boolean;
+          resolvedByLogin: string | null;
+          comments: readonly {
+            commentId: string;
+            authorLogin: string | null;
+            body: string;
+            url: string | null;
+            createdAt: string;
+            updatedAt: string;
+          }[];
+        }[]
+      >;
       createPullRequest: (input: {
         owner: string;
         repo: string;
@@ -231,6 +327,7 @@ void test('stream server github request/parser internals normalize api payloads'
       updated_at: FIXED_TS,
       created_at: FIXED_TS,
       closed_at: FIXED_TS,
+      merged_at: FIXED_TS,
     });
     assert.notEqual(parsed, null);
 
@@ -240,6 +337,20 @@ void test('stream server github request/parser internals normalize api payloads'
       headBranch: 'feature/github-poll',
     });
     assert.equal(opened?.['number'], 501);
+    const found = await internals.findGitHubPullRequestForBranch({
+      owner: 'acme',
+      repo: 'harness',
+      headBranch: 'feature/github-poll',
+    });
+    assert.equal(found?.['number'], 501);
+    const reviewThreads = await internals.listGitHubPullRequestReviewThreads({
+      owner: 'acme',
+      repo: 'harness',
+      pullNumber: 501,
+    });
+    assert.equal(reviewThreads.length, 1);
+    assert.equal(reviewThreads[0]?.threadId, 'thread-1');
+    assert.equal(reviewThreads[0]?.comments.length, 1);
 
     const created = await internals.createGitHubPullRequest({
       owner: 'acme',
@@ -257,6 +368,18 @@ void test('stream server github request/parser internals normalize api payloads'
       headBranch: 'feature/github-poll',
     });
     assert.equal(openedViaApi?.['number'], 501);
+    const foundViaApi = await internals.githubApi.findPullRequestForBranch({
+      owner: 'acme',
+      repo: 'harness',
+      headBranch: 'feature/github-poll',
+    });
+    assert.equal(foundViaApi?.['number'], 501);
+    const reviewThreadsViaApi = await internals.githubApi.listPullRequestReviewThreads({
+      owner: 'acme',
+      repo: 'harness',
+      pullNumber: 501,
+    });
+    assert.equal(reviewThreadsViaApi.length, 1);
     const createdViaApi = await internals.githubApi.createPullRequest({
       owner: 'acme',
       repo: 'harness',

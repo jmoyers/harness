@@ -987,6 +987,17 @@ function parseGitHubProjectPr(record: CommandRecord): StreamCommand | null {
   };
 }
 
+function parseGitHubProjectReview(record: CommandRecord): StreamCommand | null {
+  const directoryId = readString(record['directoryId']);
+  if (directoryId === null) {
+    return null;
+  }
+  return {
+    type: 'github.project-review',
+    directoryId,
+  };
+}
+
 function parseGitHubPrList(record: CommandRecord): StreamCommand | null {
   const tenantId = readOptionalString(record, 'tenantId');
   const userId = readOptionalString(record, 'userId');
@@ -1583,6 +1594,7 @@ export const DEFAULT_STREAM_COMMAND_PARSERS: StreamCommandParserRegistry = {
   'automation.policy-get': parseAutomationPolicyGet,
   'automation.policy-set': parseAutomationPolicySet,
   'github.project-pr': parseGitHubProjectPr,
+  'github.project-review': parseGitHubProjectReview,
   'github.pr-list': parseGitHubPrList,
   'github.pr-create': parseGitHubPrCreate,
   'github.pr-jobs-list': parseGitHubPrJobsList,

@@ -151,6 +151,7 @@ void test('workspace model pane transition methods own project/home state update
     directoryId: 'dir-a',
     path: '/repo/dir-a',
     lines: [],
+    actionBySourceLineIndex: {},
     actionLineIndexByKind: {
       conversationNew: 0,
       projectClose: 1,
@@ -207,6 +208,7 @@ void test('workspace model pane transition methods own project/home state update
     directoryId: 'dir-b',
     path: '/repo/dir-b',
     lines: [],
+    actionBySourceLineIndex: {},
     actionLineIndexByKind: {
       conversationNew: 0,
       projectClose: 1,

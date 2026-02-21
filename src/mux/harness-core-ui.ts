@@ -3,10 +3,18 @@ import { padOrTrimDisplay } from './dual-pane-core.ts';
 import { buildProjectTreeLines } from './project-tree.ts';
 import { wrapTextForColumns } from '../terminal/snapshot-oracle.ts';
 import { UiKit } from '../../packages/harness-ui/src/kit.ts';
+import {
+  buildProjectPaneGitHubReviewLines,
+  type ProjectPaneGitHubReviewSummary,
+  type ProjectPaneGitHubToggleAction,
+} from './project-pane-github-review.ts';
 
 const UI_KIT = new UiKit();
 
-export type ProjectPaneAction = 'conversation.new' | 'project.close';
+export type ProjectPaneAction =
+  | 'conversation.new'
+  | 'project.close'
+  | ProjectPaneGitHubToggleAction;
 export type TaskStatus = 'draft' | 'ready' | 'in-progress' | 'completed';
 export type TaskPaneAction =
   | 'task.create'
@@ -25,6 +33,7 @@ export interface ProjectPaneSnapshot {
   readonly directoryId: string;
   readonly path: string;
   readonly lines: readonly string[];
+  readonly actionBySourceLineIndex: Readonly<Record<number, ProjectPaneAction>>;
   readonly actionLineIndexByKind: {
     readonly conversationNew: number;
     readonly projectClose: number;
@@ -463,23 +472,94 @@ export function resolveGoldenModalSize(
 
 export function buildProjectPaneSnapshot(directoryId: string, path: string): ProjectPaneSnapshot {
   const projectName = basename(path) || path;
-  const actionLineIndexByKind = {
-    conversationNew: 3,
-    projectClose: 4,
-  } as const;
+  const lines: string[] = [];
+  const actionBySourceLineIndex: Record<number, ProjectPaneAction> = {};
+  const pushLine = (line: string, action: ProjectPaneAction | null = null): number => {
+    const index = lines.length;
+    lines.push(line);
+    if (action !== null) {
+      actionBySourceLineIndex[index] = action;
+    }
+    return index;
+  };
+  pushLine(`project ${projectName}`);
+  pushLine(`path ${path}`);
+  pushLine('');
+  const conversationNewLineIndex = pushLine(
+    PROJECT_PANE_NEW_CONVERSATION_BUTTON_LABEL,
+    'conversation.new',
+  );
+  const projectCloseLineIndex = pushLine(PROJECT_PANE_CLOSE_PROJECT_BUTTON_LABEL, 'project.close');
+  pushLine('');
+  for (const line of buildProjectTreeLines(path)) {
+    pushLine(line);
+  }
   return {
     directoryId,
     path,
-    lines: [
-      `project ${projectName}`,
-      `path ${path}`,
-      '',
-      PROJECT_PANE_NEW_CONVERSATION_BUTTON_LABEL,
-      PROJECT_PANE_CLOSE_PROJECT_BUTTON_LABEL,
-      '',
-      ...buildProjectTreeLines(path),
-    ],
-    actionLineIndexByKind,
+    lines,
+    actionBySourceLineIndex,
+    actionLineIndexByKind: {
+      conversationNew: conversationNewLineIndex,
+      projectClose: projectCloseLineIndex,
+    },
+  };
+}
+
+interface BuildProjectPaneSnapshotOptions {
+  readonly githubReview?: ProjectPaneGitHubReviewSummary | null;
+  readonly expandedNodeIds?: ReadonlySet<string>;
+}
+
+export function buildProjectPaneSnapshotWithOptions(
+  directoryId: string,
+  path: string,
+  options: BuildProjectPaneSnapshotOptions = {},
+): ProjectPaneSnapshot {
+  const base = buildProjectPaneSnapshot(directoryId, path);
+  if (options.githubReview === undefined || options.githubReview === null) {
+    return base;
+  }
+  const lines: string[] = [];
+  const actionBySourceLineIndex: Record<number, ProjectPaneAction> = {};
+  const pushBaseLine = (line: string, action: ProjectPaneAction | null = null): number => {
+    const index = lines.length;
+    lines.push(line);
+    if (action !== null) {
+      actionBySourceLineIndex[index] = action;
+    }
+    return index;
+  };
+  const lineCountBeforeTree = Math.min(
+    base.lines.length,
+    base.actionLineIndexByKind.projectClose + 2,
+  );
+  for (let index = 0; index < lineCountBeforeTree; index += 1) {
+    const action = base.actionBySourceLineIndex[index] ?? null;
+    pushBaseLine(base.lines[index]!, action);
+  }
+  const reviewLines = buildProjectPaneGitHubReviewLines({
+    review: options.githubReview,
+    expandedNodeIds: options.expandedNodeIds ?? new Set<string>(),
+  });
+  for (let index = 0; index < reviewLines.lines.length; index += 1) {
+    const action = reviewLines.actionByRelativeLineIndex[index] ?? null;
+    pushBaseLine(reviewLines.lines[index]!, action);
+  }
+  pushBaseLine('');
+  const treeStartIndex = lineCountBeforeTree;
+  for (let index = treeStartIndex; index < base.lines.length; index += 1) {
+    pushBaseLine(base.lines[index]!);
+  }
+  return {
+    directoryId: base.directoryId,
+    path: base.path,
+    lines,
+    actionBySourceLineIndex,
+    actionLineIndexByKind: {
+      conversationNew: base.actionLineIndexByKind.conversationNew,
+      projectClose: base.actionLineIndexByKind.projectClose,
+    },
   };
 }
 
@@ -520,6 +600,10 @@ export function projectPaneActionAtRow(
   const nextTop = Math.max(0, Math.min(maxTop, scrollTop));
   const normalizedRow = Math.max(0, Math.min(safeRows - 1, rowIndex));
   const line = wrappedLines[nextTop + normalizedRow]!;
+  const mappedAction = snapshot.actionBySourceLineIndex[line.sourceLineIndex];
+  if (mappedAction !== undefined) {
+    return mappedAction;
+  }
   if (line.sourceLineIndex === snapshot.actionLineIndexByKind.conversationNew) {
     return 'conversation.new';
   }

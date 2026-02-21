@@ -271,6 +271,7 @@ void test('runtime right-pane renderer refreshes project snapshot once and reuse
     directoryId: 'dir-1',
     path: '/repo/dir-1',
     lines: [],
+    actionBySourceLineIndex: {},
     actionLineIndexByKind: {
       conversationNew: 0,
       projectClose: 1,

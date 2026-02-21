@@ -14,6 +14,7 @@ interface HandleProjectPaneActionClickOptions<TSnapshot extends { directoryId: s
   ) => string | null;
   openNewThreadPrompt: (directoryId: string) => void;
   queueCloseDirectory: (directoryId: string) => void;
+  handleProjectPaneAction?: (action: string, directoryId: string) => boolean;
   markDirty: () => void;
 }
 
@@ -37,6 +38,13 @@ export function handleProjectPaneActionClick<TSnapshot extends { directoryId: st
   }
   if (action === 'project.close') {
     options.queueCloseDirectory(options.snapshot.directoryId);
+    options.markDirty();
+    return true;
+  }
+  if (
+    action !== null &&
+    options.handleProjectPaneAction?.(action, options.snapshot.directoryId) === true
+  ) {
     options.markDirty();
     return true;
   }

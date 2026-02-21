@@ -465,6 +465,16 @@ void test('parseStreamCommand parses github command shapes', () => {
   );
   assert.deepEqual(
     parseStreamCommand({
+      type: 'github.project-review',
+      directoryId: 'directory-1',
+    }),
+    {
+      type: 'github.project-review',
+      directoryId: 'directory-1',
+    },
+  );
+  assert.deepEqual(
+    parseStreamCommand({
       type: 'github.pr-list',
       tenantId: 'tenant-1',
       userId: 'user-1',
@@ -769,6 +779,12 @@ void test('parseStreamCommand rejects unknown or malformed command shapes', () =
   assert.equal(
     parseStreamCommand({
       type: 'github.project-pr',
+    }),
+    null,
+  );
+  assert.equal(
+    parseStreamCommand({
+      type: 'github.project-review',
     }),
     null,
   );

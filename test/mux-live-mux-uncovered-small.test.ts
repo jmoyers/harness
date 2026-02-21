@@ -401,11 +401,68 @@ void test('handleProjectPaneActionClick routes new-thread and close actions', ()
     }),
     false,
   );
+  assert.equal(
+    handleProjectPaneActionClick({
+      clickEligible: true,
+      snapshot: {
+        directoryId: 'dir-a',
+      },
+      rightCols: 100,
+      paneRows: 20,
+      projectPaneScrollTop: 0,
+      rowIndex: 1,
+      projectPaneActionAtRow: () => 'project.github.toggle:github/open-threads',
+      openNewThreadPrompt: () => {
+        calls.push('openNewThreadPrompt');
+      },
+      queueCloseDirectory: () => {
+        calls.push('queueCloseDirectory');
+      },
+      handleProjectPaneAction: (action, directoryId) => {
+        calls.push(`handleProjectPaneAction:${action}:${directoryId}`);
+        return true;
+      },
+      markDirty: () => {
+        calls.push('markDirty');
+      },
+    }),
+    true,
+  );
+  assert.equal(
+    handleProjectPaneActionClick({
+      clickEligible: true,
+      snapshot: {
+        directoryId: 'dir-a',
+      },
+      rightCols: 100,
+      paneRows: 20,
+      projectPaneScrollTop: 0,
+      rowIndex: 1,
+      projectPaneActionAtRow: () => 'project.github.toggle:github/resolved-threads',
+      openNewThreadPrompt: () => {
+        calls.push('openNewThreadPrompt');
+      },
+      queueCloseDirectory: () => {
+        calls.push('queueCloseDirectory');
+      },
+      handleProjectPaneAction: (action, directoryId) => {
+        calls.push(`handleProjectPaneAction:${action}:${directoryId}`);
+        return false;
+      },
+      markDirty: () => {
+        calls.push('markDirty');
+      },
+    }),
+    false,
+  );
   assert.deepEqual(calls, [
     'openNewThreadPrompt:dir-a',
     'markDirty',
     'queueCloseDirectory:dir-a',
     'markDirty',
+    'handleProjectPaneAction:project.github.toggle:github/open-threads:dir-a',
+    'markDirty',
+    'handleProjectPaneAction:project.github.toggle:github/resolved-threads:dir-a',
   ]);
 });
 

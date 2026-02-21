@@ -256,6 +256,7 @@ interface GitHubRemotePullRequest {
   readonly baseBranch: string;
   readonly state: 'open' | 'closed';
   readonly isDraft: boolean;
+  readonly mergedAt: string | null;
   readonly updatedAt: string;
   readonly createdAt: string;
   readonly closedAt: string | null;
@@ -270,6 +271,23 @@ interface GitHubRemotePrJob {
   readonly url: string | null;
   readonly startedAt: string | null;
   readonly completedAt: string | null;
+}
+
+interface GitHubRemotePrReviewComment {
+  readonly commentId: string;
+  readonly authorLogin: string | null;
+  readonly body: string;
+  readonly url: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+interface GitHubRemotePrReviewThread {
+  readonly threadId: string;
+  readonly isResolved: boolean;
+  readonly isOutdated: boolean;
+  readonly resolvedByLogin: string | null;
+  readonly comments: readonly GitHubRemotePrReviewComment[];
 }
 
 type GitDirectorySnapshot = Awaited<ReturnType<typeof readGitDirectorySnapshot>>;
@@ -1156,6 +1174,16 @@ export class ControlPlaneStreamServer {
       repo: string;
       headBranch: string;
     }): Promise<GitHubRemotePullRequest | null>;
+    findPullRequestForBranch(input: {
+      owner: string;
+      repo: string;
+      headBranch: string;
+    }): Promise<GitHubRemotePullRequest | null>;
+    listPullRequestReviewThreads(input: {
+      owner: string;
+      repo: string;
+      pullNumber: number;
+    }): Promise<readonly GitHubRemotePrReviewThread[]>;
     createPullRequest(input: {
       owner: string;
       repo: string;
@@ -1251,6 +1279,9 @@ export class ControlPlaneStreamServer {
     this.githubFetch = options.githubFetch ?? fetch;
     this.githubApi = {
       openPullRequestForBranch: async (input) => await this.openGitHubPullRequestForBranch(input),
+      findPullRequestForBranch: async (input) => await this.findGitHubPullRequestForBranch(input),
+      listPullRequestReviewThreads: async (input) =>
+        await this.listGitHubPullRequestReviewThreads(input),
       createPullRequest: async (input) => await this.createGitHubPullRequest(input),
     };
     this.linearApi = {
@@ -2773,6 +2804,8 @@ export class ControlPlaneStreamServer {
     const updatedAt = record['updated_at'];
     const createdAt = record['created_at'];
     const closedAt = record['closed_at'];
+    const mergedAtRaw = record['merged_at'];
+    const mergedAt = mergedAtRaw === undefined ? null : mergedAtRaw;
     if (
       typeof number !== 'number' ||
       typeof title !== 'string' ||
@@ -2782,6 +2815,7 @@ export class ControlPlaneStreamServer {
       typeof updatedAt !== 'string' ||
       typeof createdAt !== 'string' ||
       (closedAt !== null && typeof closedAt !== 'string') ||
+      (mergedAt !== null && typeof mergedAt !== 'string') ||
       typeof head !== 'object' ||
       head === null ||
       Array.isArray(head) ||
@@ -2816,6 +2850,7 @@ export class ControlPlaneStreamServer {
       baseBranch: baseRef,
       state,
       isDraft: draft,
+      mergedAt: mergedAt as string | null,
       updatedAt,
       createdAt,
       closedAt: closedAt as string | null,
@@ -2834,6 +2869,204 @@ export class ControlPlaneStreamServer {
       return null;
     }
     return this.parseGitHubPullRequest(payload[0]);
+  }
+
+  private async findGitHubPullRequestForBranch(input: {
+    owner: string;
+    repo: string;
+    headBranch: string;
+  }): Promise<GitHubRemotePullRequest | null> {
+    const head = encodeURIComponent(`${input.owner}:${input.headBranch}`);
+    const path = `/repos/${encodeURIComponent(input.owner)}/${encodeURIComponent(input.repo)}/pulls?state=all&head=${head}&per_page=10&sort=updated&direction=desc`;
+    const payload = await this.githubJsonRequest(path);
+    if (!Array.isArray(payload) || payload.length === 0) {
+      return null;
+    }
+    for (const value of payload) {
+      const parsed = this.parseGitHubPullRequest(value);
+      if (parsed !== null) {
+        return parsed;
+      }
+    }
+    return null;
+  }
+
+  private async listGitHubPullRequestReviewThreads(input: {
+    owner: string;
+    repo: string;
+    pullNumber: number;
+  }): Promise<readonly GitHubRemotePrReviewThread[]> {
+    const payload = await this.githubJsonRequest('/graphql', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        query: `
+          query HarnessPullRequestReviewThreads($owner: String!, $repo: String!, $number: Int!) {
+            repository(owner: $owner, name: $repo) {
+              pullRequest(number: $number) {
+                reviewThreads(first: 100) {
+                  nodes {
+                    id
+                    isResolved
+                    isOutdated
+                    resolvedBy {
+                      login
+                    }
+                    comments(first: 100) {
+                      nodes {
+                        id
+                        body
+                        bodyText
+                        url
+                        createdAt
+                        updatedAt
+                        author {
+                          login
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        `,
+        variables: {
+          owner: input.owner,
+          repo: input.repo,
+          number: input.pullNumber,
+        },
+      }),
+    });
+    if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+      throw new Error('github graphql review threads response malformed');
+    }
+    const payloadRecord = payload as Record<string, unknown>;
+    const errors = payloadRecord['errors'];
+    if (Array.isArray(errors) && errors.length > 0) {
+      const firstError = errors[0];
+      if (typeof firstError === 'object' && firstError !== null && !Array.isArray(firstError)) {
+        const message = (firstError as Record<string, unknown>)['message'];
+        if (typeof message === 'string' && message.trim().length > 0) {
+          throw new Error(`github graphql review threads failed: ${message}`);
+        }
+      }
+      throw new Error('github graphql review threads failed');
+    }
+    const data =
+      typeof payloadRecord['data'] === 'object' &&
+      payloadRecord['data'] !== null &&
+      !Array.isArray(payloadRecord['data'])
+        ? (payloadRecord['data'] as Record<string, unknown>)
+        : null;
+    const repository =
+      data !== null &&
+      typeof data['repository'] === 'object' &&
+      data['repository'] !== null &&
+      !Array.isArray(data['repository'])
+        ? (data['repository'] as Record<string, unknown>)
+        : null;
+    const pullRequest =
+      repository !== null &&
+      typeof repository['pullRequest'] === 'object' &&
+      repository['pullRequest'] !== null &&
+      !Array.isArray(repository['pullRequest'])
+        ? (repository['pullRequest'] as Record<string, unknown>)
+        : null;
+    const reviewThreads =
+      pullRequest !== null &&
+      typeof pullRequest['reviewThreads'] === 'object' &&
+      pullRequest['reviewThreads'] !== null &&
+      !Array.isArray(pullRequest['reviewThreads'])
+        ? (pullRequest['reviewThreads'] as Record<string, unknown>)
+        : null;
+    const threadNodes = reviewThreads?.['nodes'];
+    if (!Array.isArray(threadNodes)) {
+      return [];
+    }
+    const threads: GitHubRemotePrReviewThread[] = [];
+    for (const threadRaw of threadNodes) {
+      if (typeof threadRaw !== 'object' || threadRaw === null || Array.isArray(threadRaw)) {
+        continue;
+      }
+      const thread = threadRaw as Record<string, unknown>;
+      const threadId = thread['id'];
+      const isResolved = thread['isResolved'];
+      const isOutdated = thread['isOutdated'];
+      const resolvedBy =
+        typeof thread['resolvedBy'] === 'object' &&
+        thread['resolvedBy'] !== null &&
+        !Array.isArray(thread['resolvedBy'])
+          ? (thread['resolvedBy'] as Record<string, unknown>)
+          : null;
+      const resolvedByLogin =
+        resolvedBy !== null && typeof resolvedBy['login'] === 'string' ? resolvedBy['login'] : null;
+      const commentsRecord =
+        typeof thread['comments'] === 'object' &&
+        thread['comments'] !== null &&
+        !Array.isArray(thread['comments'])
+          ? (thread['comments'] as Record<string, unknown>)
+          : null;
+      const commentsNodes = commentsRecord?.['nodes'];
+      if (
+        typeof threadId !== 'string' ||
+        typeof isResolved !== 'boolean' ||
+        typeof isOutdated !== 'boolean' ||
+        !Array.isArray(commentsNodes)
+      ) {
+        continue;
+      }
+      const comments: GitHubRemotePrReviewComment[] = [];
+      for (const commentRaw of commentsNodes) {
+        if (typeof commentRaw !== 'object' || commentRaw === null || Array.isArray(commentRaw)) {
+          continue;
+        }
+        const comment = commentRaw as Record<string, unknown>;
+        const commentId = comment['id'];
+        const bodyText = comment['bodyText'];
+        const body = comment['body'];
+        const url = comment['url'];
+        const createdAt = comment['createdAt'];
+        const updatedAt = comment['updatedAt'];
+        const author =
+          typeof comment['author'] === 'object' &&
+          comment['author'] !== null &&
+          !Array.isArray(comment['author'])
+            ? (comment['author'] as Record<string, unknown>)
+            : null;
+        const authorLogin =
+          author !== null && typeof author['login'] === 'string' ? author['login'] : null;
+        const normalizedBody =
+          typeof bodyText === 'string' ? bodyText : typeof body === 'string' ? body : null;
+        if (
+          typeof commentId !== 'string' ||
+          normalizedBody === null ||
+          (url !== null && url !== undefined && typeof url !== 'string') ||
+          typeof createdAt !== 'string' ||
+          typeof updatedAt !== 'string'
+        ) {
+          continue;
+        }
+        comments.push({
+          commentId,
+          authorLogin,
+          body: normalizedBody,
+          url: typeof url === 'string' ? url : null,
+          createdAt,
+          updatedAt,
+        });
+      }
+      threads.push({
+        threadId,
+        isResolved,
+        isOutdated,
+        resolvedByLogin,
+        comments,
+      });
+    }
+    return threads;
   }
 
   private async createGitHubPullRequest(input: {

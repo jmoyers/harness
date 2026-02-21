@@ -31,6 +31,7 @@ import {
   TASKS_PANE_REORDER_UP_BUTTON_LABEL,
   buildProjectPaneRows,
   buildProjectPaneSnapshot,
+  buildProjectPaneSnapshotWithOptions,
   buildTaskPaneRows,
   buildTaskPaneSnapshot,
   projectPaneActionAtRow,
@@ -373,6 +374,7 @@ void test('project pane row helpers handle empty snapshots', () => {
     directoryId: 'dir-empty',
     path: '/tmp/empty',
     lines: [],
+    actionBySourceLineIndex: {},
     actionLineIndexByKind: {
       conversationNew: 3,
       projectClose: 4,
@@ -386,6 +388,108 @@ void test('project pane row helpers handle empty snapshots', () => {
 void test('buildProjectPaneSnapshot falls back to full path when basename is empty', () => {
   const snapshot = buildProjectPaneSnapshot('root', '/');
   assert.equal(snapshot.lines[0], 'project /');
+});
+
+void test('buildProjectPaneSnapshotWithOptions returns base snapshot when github review is absent', () => {
+  const workspace = mkdtempSync(join(tmpdir(), 'harness-core-ui-project-base-'));
+  try {
+    writeFileSync(join(workspace, 'README.md'), '# readme\n', 'utf8');
+    const base = buildProjectPaneSnapshot('dir-base', workspace);
+    const withUndefined = buildProjectPaneSnapshotWithOptions('dir-base', workspace);
+    const withNull = buildProjectPaneSnapshotWithOptions('dir-base', workspace, {
+      githubReview: null,
+    });
+    assert.deepEqual(withUndefined, base);
+    assert.deepEqual(withNull, base);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('projectPaneActionAtRow falls back to legacy action line indexes when no action map exists', () => {
+  const fallbackSnapshot: ProjectPaneSnapshot = {
+    directoryId: 'dir-fallback',
+    path: '/tmp/fallback',
+    lines: ['new line', 'close line', 'other line'],
+    actionBySourceLineIndex: {},
+    actionLineIndexByKind: {
+      conversationNew: 0,
+      projectClose: 1,
+    },
+  };
+  assert.equal(projectPaneActionAtRow(fallbackSnapshot, 80, 5, 0, 0), 'conversation.new');
+  assert.equal(projectPaneActionAtRow(fallbackSnapshot, 80, 5, 0, 1), 'project.close');
+  assert.equal(projectPaneActionAtRow(fallbackSnapshot, 80, 5, 0, 2), null);
+});
+
+void test('buildProjectPaneSnapshotWithOptions injects github review block and maps toggle actions', () => {
+  const workspace = mkdtempSync(join(tmpdir(), 'harness-core-ui-project-review-'));
+  try {
+    mkdirSync(join(workspace, 'src'));
+    writeFileSync(join(workspace, 'README.md'), '# readme\n', 'utf8');
+
+    const snapshot = buildProjectPaneSnapshotWithOptions('dir-1', workspace, {
+      githubReview: {
+        status: 'ready',
+        branchName: 'feature/review-tree',
+        branchSource: 'current',
+        pr: {
+          number: 42,
+          title: 'Review tree',
+          url: 'https://github.com/acme/harness/pull/42',
+          authorLogin: 'jmoyers',
+          headBranch: 'feature/review-tree',
+          baseBranch: 'main',
+          state: 'open',
+          isDraft: false,
+          mergedAt: null,
+          closedAt: null,
+          updatedAt: '2026-02-20T00:00:00.000Z',
+          createdAt: '2026-02-19T00:00:00.000Z',
+        },
+        openThreads: [
+          {
+            threadId: 'thread-open',
+            isResolved: false,
+            isOutdated: false,
+            resolvedByLogin: null,
+            comments: [
+              {
+                commentId: 'comment-open-1',
+                authorLogin: 'alice',
+                body: 'looks good',
+                url: null,
+                createdAt: '2026-02-20T00:00:00.000Z',
+                updatedAt: '2026-02-20T00:00:00.000Z',
+              },
+            ],
+          },
+        ],
+        resolvedThreads: [],
+        errorMessage: null,
+      },
+      expandedNodeIds: new Set<string>(['github/open-threads']),
+    });
+
+    const openGroupRow = snapshot.lines.indexOf('▼ open comments (1 threads, 1 comments)');
+    assert.equal(openGroupRow >= 0, true);
+    assert.equal(
+      projectPaneActionAtRow(snapshot, 200, 200, 0, openGroupRow),
+      'project.github.toggle:github/open-threads',
+    );
+
+    const openThreadRow = snapshot.lines.indexOf('  ▶ @alice (1 comments)');
+    assert.equal(openThreadRow >= 0, true);
+    assert.equal(
+      projectPaneActionAtRow(snapshot, 200, 200, 0, openThreadRow),
+      'project.github.toggle:github/thread:thread-open',
+    );
+
+    assert.equal(projectPaneActionAtRow(snapshot, 200, 200, 0, 3), 'conversation.new');
+    assert.equal(projectPaneActionAtRow(snapshot, 200, 200, 0, 4), 'project.close');
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
 });
 
 void test('buildTaskPaneSnapshot renders sectioned repositories/tasks with status-priority ordering', () => {

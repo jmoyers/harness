@@ -389,10 +389,46 @@ interface ExecuteCommandContext {
       baseBranch: string;
       state: 'open' | 'closed';
       isDraft: boolean;
+      mergedAt: string | null;
       updatedAt: string;
       createdAt: string;
       closedAt: string | null;
     } | null>;
+    findPullRequestForBranch(input: { owner: string; repo: string; headBranch: string }): Promise<{
+      number: number;
+      title: string;
+      url: string;
+      authorLogin: string | null;
+      headBranch: string;
+      headSha: string;
+      baseBranch: string;
+      state: 'open' | 'closed';
+      isDraft: boolean;
+      mergedAt: string | null;
+      updatedAt: string;
+      createdAt: string;
+      closedAt: string | null;
+    } | null>;
+    listPullRequestReviewThreads(input: {
+      owner: string;
+      repo: string;
+      pullNumber: number;
+    }): Promise<
+      readonly {
+        threadId: string;
+        isResolved: boolean;
+        isOutdated: boolean;
+        resolvedByLogin: string | null;
+        comments: readonly {
+          commentId: string;
+          authorLogin: string | null;
+          body: string;
+          url: string | null;
+          createdAt: string;
+          updatedAt: string;
+        }[];
+      }[]
+    >;
     createPullRequest(input: {
       owner: string;
       repo: string;
@@ -411,6 +447,7 @@ interface ExecuteCommandContext {
       baseBranch: string;
       state: 'open' | 'closed';
       isDraft: boolean;
+      mergedAt: string | null;
       updatedAt: string;
       createdAt: string;
       closedAt: string | null;
@@ -692,11 +729,29 @@ function ciRollupFromJobs(
   return 'neutral';
 }
 
+function githubLifecycleStateFromPullRequest(input: {
+  state: 'open' | 'closed';
+  isDraft: boolean;
+  mergedAt: string | null;
+}): 'draft' | 'open' | 'merged' | 'closed' {
+  if (input.state === 'open' && input.isDraft) {
+    return 'draft';
+  }
+  if (input.state === 'open') {
+    return 'open';
+  }
+  if (input.mergedAt !== null) {
+    return 'merged';
+  }
+  return 'closed';
+}
+
 export const streamServerCommandTestInternals = {
   parseGitHubOwnerRepo,
   parseLinearIssueIdentifierFromUrl,
   resolveTrackedBranch,
   ciRollupFromJobs,
+  githubLifecycleStateFromPullRequest,
 };
 
 export async function executeStreamServerCommand(
@@ -1204,6 +1259,139 @@ export async function executeStreamServerCommand(
       branchSource: resolved.trackedBranchSource,
       repository: resolved.repository === null ? null : ctx.repositoryRecord(resolved.repository),
       pr,
+    };
+  }
+
+  if (command.type === 'github.project-review') {
+    const resolved = resolveProjectGitHubContext(command.directoryId);
+    const storedPr =
+      resolved.repository === null || resolved.trackedBranch === null
+        ? null
+        : (ctx.stateStore.listGitHubPullRequests({
+            repositoryId: resolved.repository.repositoryId,
+            headBranch: resolved.trackedBranch,
+            limit: 1,
+          })[0] ?? null);
+    const storedPrView =
+      storedPr === null
+        ? null
+        : {
+            prRecordId: storedPr.prRecordId,
+            number: storedPr.number,
+            title: storedPr.title,
+            url: storedPr.url,
+            authorLogin: storedPr.authorLogin,
+            headBranch: storedPr.headBranch,
+            headSha: storedPr.headSha,
+            baseBranch: storedPr.baseBranch,
+            state: githubLifecycleStateFromPullRequest({
+              state: storedPr.state,
+              isDraft: storedPr.isDraft,
+              mergedAt: null,
+            }),
+            isDraft: storedPr.isDraft,
+            mergedAt: null,
+            closedAt: storedPr.closedAt,
+            updatedAt: storedPr.updatedAt,
+            createdAt: storedPr.createdAt,
+            observedAt: storedPr.observedAt,
+          };
+    if (
+      resolved.repository === null ||
+      resolved.trackedBranch === null ||
+      resolved.ownerRepo === null ||
+      !ctx.github.enabled
+    ) {
+      return {
+        directoryId: resolved.directory.directoryId,
+        repositoryId: resolved.repository?.repositoryId ?? null,
+        branchName: resolved.trackedBranch,
+        branchSource: resolved.trackedBranchSource,
+        pr: storedPrView,
+        openThreads: [],
+        resolvedThreads: [],
+      };
+    }
+    const remotePr = await ctx.githubApi.findPullRequestForBranch({
+      owner: resolved.ownerRepo.owner,
+      repo: resolved.ownerRepo.repo,
+      headBranch: resolved.trackedBranch,
+    });
+    if (remotePr === null) {
+      return {
+        directoryId: resolved.directory.directoryId,
+        repositoryId: resolved.repository.repositoryId,
+        branchName: resolved.trackedBranch,
+        branchSource: resolved.trackedBranchSource,
+        pr: storedPrView,
+        openThreads: [],
+        resolvedThreads: [],
+      };
+    }
+    const remotePrView = {
+      number: remotePr.number,
+      title: remotePr.title,
+      url: remotePr.url,
+      authorLogin: remotePr.authorLogin,
+      headBranch: remotePr.headBranch,
+      headSha: remotePr.headSha,
+      baseBranch: remotePr.baseBranch,
+      state: githubLifecycleStateFromPullRequest({
+        state: remotePr.state,
+        isDraft: remotePr.isDraft,
+        mergedAt: remotePr.mergedAt,
+      }),
+      isDraft: remotePr.isDraft,
+      mergedAt: remotePr.mergedAt,
+      closedAt: remotePr.closedAt,
+      updatedAt: remotePr.updatedAt,
+      createdAt: remotePr.createdAt,
+    };
+    const reviewThreads = await ctx.githubApi.listPullRequestReviewThreads({
+      owner: resolved.ownerRepo.owner,
+      repo: resolved.ownerRepo.repo,
+      pullNumber: remotePr.number,
+    });
+    const openThreads = reviewThreads
+      .filter((thread) => !thread.isResolved)
+      .map((thread) => ({
+        threadId: thread.threadId,
+        isResolved: thread.isResolved,
+        isOutdated: thread.isOutdated,
+        resolvedByLogin: thread.resolvedByLogin,
+        comments: thread.comments.map((comment) => ({
+          commentId: comment.commentId,
+          authorLogin: comment.authorLogin,
+          body: comment.body,
+          url: comment.url,
+          createdAt: comment.createdAt,
+          updatedAt: comment.updatedAt,
+        })),
+      }));
+    const resolvedThreads = reviewThreads
+      .filter((thread) => thread.isResolved)
+      .map((thread) => ({
+        threadId: thread.threadId,
+        isResolved: thread.isResolved,
+        isOutdated: thread.isOutdated,
+        resolvedByLogin: thread.resolvedByLogin,
+        comments: thread.comments.map((comment) => ({
+          commentId: comment.commentId,
+          authorLogin: comment.authorLogin,
+          body: comment.body,
+          url: comment.url,
+          createdAt: comment.createdAt,
+          updatedAt: comment.updatedAt,
+        })),
+      }));
+    return {
+      directoryId: resolved.directory.directoryId,
+      repositoryId: resolved.repository.repositoryId,
+      branchName: resolved.trackedBranch,
+      branchSource: resolved.trackedBranchSource,
+      pr: remotePrView,
+      openThreads,
+      resolvedThreads,
     };
   }
 

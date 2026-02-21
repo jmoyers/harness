@@ -57,11 +57,17 @@ import {
   type ResolvedCommandMenuOpenInTarget,
 } from '../../mux/live-mux/command-menu-open-in.ts';
 import {
-  buildProjectPaneSnapshot,
+  buildProjectPaneSnapshotWithOptions,
   projectPaneActionAtRow,
   sortedRepositoryList,
   sortTasksByOrder,
 } from '../../mux/harness-core-ui.ts';
+import type {
+  ProjectPaneGitHubPullRequestSummary,
+  ProjectPaneGitHubReviewComment,
+  ProjectPaneGitHubReviewSummary,
+  ProjectPaneGitHubReviewThread,
+} from '../../mux/project-pane-github-review.ts';
 import {
   taskFocusedPaneActionAtCell,
   taskFocusedPaneActionAtRow,
@@ -448,6 +454,159 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     return null;
   }
   return value as Record<string, unknown>;
+}
+
+function asStringOrNull(value: unknown): string | null {
+  if (typeof value === 'string') {
+    return value;
+  }
+  return null;
+}
+
+function parseGitHubReviewComment(value: unknown): ProjectPaneGitHubReviewComment | null {
+  const record = asRecord(value);
+  if (record === null) {
+    return null;
+  }
+  const commentId = asStringOrNull(record['commentId']);
+  const body = asStringOrNull(record['body']);
+  const createdAt = asStringOrNull(record['createdAt']);
+  const updatedAt = asStringOrNull(record['updatedAt']);
+  if (commentId === null || body === null || createdAt === null || updatedAt === null) {
+    return null;
+  }
+  return {
+    commentId,
+    authorLogin: asStringOrNull(record['authorLogin']),
+    body,
+    url: asStringOrNull(record['url']),
+    createdAt,
+    updatedAt,
+  };
+}
+
+function parseGitHubReviewThread(value: unknown): ProjectPaneGitHubReviewThread | null {
+  const record = asRecord(value);
+  if (record === null) {
+    return null;
+  }
+  const threadId = asStringOrNull(record['threadId']);
+  const isResolved = record['isResolved'];
+  const isOutdated = record['isOutdated'];
+  const commentsRaw = record['comments'];
+  if (
+    threadId === null ||
+    typeof isResolved !== 'boolean' ||
+    typeof isOutdated !== 'boolean' ||
+    !Array.isArray(commentsRaw)
+  ) {
+    return null;
+  }
+  const comments: ProjectPaneGitHubReviewComment[] = [];
+  for (const value of commentsRaw) {
+    const parsed = parseGitHubReviewComment(value);
+    if (parsed === null) {
+      continue;
+    }
+    comments.push(parsed);
+  }
+  return {
+    threadId,
+    isResolved,
+    isOutdated,
+    resolvedByLogin: asStringOrNull(record['resolvedByLogin']),
+    comments,
+  };
+}
+
+function parseGitHubReviewPrState(
+  value: unknown,
+): ProjectPaneGitHubPullRequestSummary['state'] | null {
+  if (value === 'draft' || value === 'open' || value === 'merged' || value === 'closed') {
+    return value;
+  }
+  return null;
+}
+
+function parseGitHubReviewPullRequest(value: unknown): ProjectPaneGitHubPullRequestSummary | null {
+  const record = asRecord(value);
+  if (record === null) {
+    return null;
+  }
+  const number = record['number'];
+  const title = asStringOrNull(record['title']);
+  const url = asStringOrNull(record['url']);
+  const headBranch = asStringOrNull(record['headBranch']);
+  const baseBranch = asStringOrNull(record['baseBranch']);
+  const state = parseGitHubReviewPrState(record['state']);
+  const isDraft = record['isDraft'];
+  const updatedAt = asStringOrNull(record['updatedAt']);
+  const createdAt = asStringOrNull(record['createdAt']);
+  if (
+    typeof number !== 'number' ||
+    title === null ||
+    url === null ||
+    headBranch === null ||
+    baseBranch === null ||
+    state === null ||
+    typeof isDraft !== 'boolean' ||
+    updatedAt === null ||
+    createdAt === null
+  ) {
+    return null;
+  }
+  return {
+    number,
+    title,
+    url,
+    authorLogin: asStringOrNull(record['authorLogin']),
+    headBranch,
+    baseBranch,
+    state,
+    isDraft,
+    mergedAt: asStringOrNull(record['mergedAt']),
+    closedAt: asStringOrNull(record['closedAt']),
+    updatedAt,
+    createdAt,
+  };
+}
+
+function parseGitHubProjectReviewState(
+  result: Record<string, unknown>,
+): ProjectPaneGitHubReviewSummary | null {
+  const branchName = asStringOrNull(result['branchName']);
+  const branchSourceRaw = result['branchSource'];
+  const branchSource =
+    branchSourceRaw === 'pinned' || branchSourceRaw === 'current' ? branchSourceRaw : null;
+  const pr = parseGitHubReviewPullRequest(result['pr']);
+  const openThreadsRaw = result['openThreads'];
+  const resolvedThreadsRaw = result['resolvedThreads'];
+  if (!Array.isArray(openThreadsRaw) || !Array.isArray(resolvedThreadsRaw)) {
+    return null;
+  }
+  const openThreads: ProjectPaneGitHubReviewThread[] = [];
+  for (const value of openThreadsRaw) {
+    const parsed = parseGitHubReviewThread(value);
+    if (parsed !== null) {
+      openThreads.push(parsed);
+    }
+  }
+  const resolvedThreads: ProjectPaneGitHubReviewThread[] = [];
+  for (const value of resolvedThreadsRaw) {
+    const parsed = parseGitHubReviewThread(value);
+    if (parsed !== null) {
+      resolvedThreads.push(parsed);
+    }
+  }
+  return {
+    status: 'ready',
+    branchName,
+    branchSource,
+    pr,
+    openThreads,
+    resolvedThreads,
+    errorMessage: null,
+  };
 }
 
 function parseGitHubProjectPrState(
@@ -1664,6 +1823,8 @@ class CodexLiveMuxRuntimeApplication {
     });
     const commandMenuRegistry = new CommandMenuRegistry<RuntimeCommandMenuContext>();
     let commandMenuGitHubProjectPrState: CommandMenuGitHubProjectPrState | null = null;
+    const projectPaneGitHubReviewByDirectoryId = new Map<string, ProjectPaneGitHubReviewSummary>();
+    const projectPaneGitHubExpandedNodeIdsByDirectoryId = new Map<string, Set<string>>();
     let commandMenuScopedDirectoryId: string | null = null;
     let themePickerSession: ThemePickerSessionState | null = null;
     const isThreadScopedCommandActionId = (actionId: string): boolean =>
@@ -2475,10 +2636,78 @@ class CodexLiveMuxRuntimeApplication {
         workspace.projectPaneSnapshot = null;
         return;
       }
-      workspace.projectPaneSnapshot = buildProjectPaneSnapshot(
+      workspace.projectPaneSnapshot = buildProjectPaneSnapshotWithOptions(
         directory.directoryId,
         directory.path,
+        {
+          githubReview: projectPaneGitHubReviewByDirectoryId.get(directory.directoryId) ?? null,
+          expandedNodeIds:
+            projectPaneGitHubExpandedNodeIdsByDirectoryId.get(directory.directoryId) ?? new Set(),
+        },
       );
+    };
+
+    const refreshProjectPaneGitHubReviewState = (directoryId: string): void => {
+      const previous = projectPaneGitHubReviewByDirectoryId.get(directoryId) ?? null;
+      projectPaneGitHubReviewByDirectoryId.set(directoryId, {
+        status: 'loading',
+        branchName: previous?.branchName ?? null,
+        branchSource: previous?.branchSource ?? null,
+        pr: previous?.pr ?? null,
+        openThreads: previous?.openThreads ?? [],
+        resolvedThreads: previous?.resolvedThreads ?? [],
+        errorMessage: null,
+      });
+      refreshProjectPaneSnapshot(directoryId);
+      markDirty();
+      queueControlPlaneOp(async () => {
+        try {
+          const result = await streamClient.sendCommand({
+            type: 'github.project-review',
+            directoryId,
+          });
+          const parsedResult = asRecord(result);
+          if (parsedResult === null) {
+            throw new Error('github.project-review returned malformed response');
+          }
+          const parsedReview = parseGitHubProjectReviewState(parsedResult);
+          if (parsedReview === null) {
+            throw new Error('github.project-review returned malformed review state');
+          }
+          projectPaneGitHubReviewByDirectoryId.set(directoryId, parsedReview);
+        } catch (error: unknown) {
+          const message = formatErrorMessage(error);
+          projectPaneGitHubReviewByDirectoryId.set(directoryId, {
+            status: 'error',
+            branchName: previous?.branchName ?? null,
+            branchSource: previous?.branchSource ?? null,
+            pr: previous?.pr ?? null,
+            openThreads: previous?.openThreads ?? [],
+            resolvedThreads: previous?.resolvedThreads ?? [],
+            errorMessage: message,
+          });
+        }
+        if (workspace.mainPaneMode === 'project' && workspace.activeDirectoryId === directoryId) {
+          refreshProjectPaneSnapshot(directoryId);
+          markDirty();
+        }
+      }, 'project-pane-github-review');
+    };
+
+    const toggleProjectPaneGitHubNode = (directoryId: string, nodeId: string): boolean => {
+      if (!directoryManager.hasDirectory(directoryId)) {
+        return false;
+      }
+      const expanded =
+        projectPaneGitHubExpandedNodeIdsByDirectoryId.get(directoryId) ?? new Set<string>();
+      if (expanded.has(nodeId)) {
+        expanded.delete(nodeId);
+      } else {
+        expanded.add(nodeId);
+      }
+      projectPaneGitHubExpandedNodeIdsByDirectoryId.set(directoryId, expanded);
+      refreshProjectPaneSnapshot(directoryId);
+      return true;
     };
 
     const enterProjectPane = (directoryId: string): void => {
@@ -2488,6 +2717,7 @@ class CodexLiveMuxRuntimeApplication {
       workspace.enterProjectPane(directoryId, repositoryGroupIdForDirectory(directoryId));
       noteGitActivity(directoryId);
       refreshProjectPaneSnapshot(directoryId);
+      refreshProjectPaneGitHubReviewState(directoryId);
       screen.resetFrameCache();
     };
 
@@ -4768,7 +4998,21 @@ class CodexLiveMuxRuntimeApplication {
         markDirty,
       },
       {
-        handleProjectPaneActionClick,
+        handleProjectPaneActionClick: (input) =>
+          handleProjectPaneActionClick({
+            ...input,
+            handleProjectPaneAction: (action, directoryId) => {
+              const togglePrefix = 'project.github.toggle:';
+              if (!action.startsWith(togglePrefix)) {
+                return false;
+              }
+              const nodeId = action.slice(togglePrefix.length).trim();
+              if (nodeId.length === 0) {
+                return false;
+              }
+              return toggleProjectPaneGitHubNode(directoryId, nodeId);
+            },
+          }),
         handleHomePanePointerClick,
       },
     );

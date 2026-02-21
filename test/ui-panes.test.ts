@@ -241,6 +241,7 @@ void test('project pane renders blank fallback and snapshot rows', () => {
     directoryId: 'dir-1',
     path: '/tmp/project',
     lines: ['project test', 'path /tmp/project'],
+    actionBySourceLineIndex: {},
     actionLineIndexByKind: {
       conversationNew: 0,
       projectClose: 1,
