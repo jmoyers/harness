@@ -290,6 +290,31 @@ interface GitHubRemotePrReviewThread {
   readonly comments: readonly GitHubRemotePrReviewComment[];
 }
 
+interface GitHubProjectReviewCachePullRequest {
+  readonly number: number;
+  readonly title: string;
+  readonly url: string;
+  readonly authorLogin: string | null;
+  readonly headBranch: string;
+  readonly headSha: string;
+  readonly baseBranch: string;
+  readonly state: 'draft' | 'open' | 'merged' | 'closed';
+  readonly isDraft: boolean;
+  readonly mergedAt: string | null;
+  readonly closedAt: string | null;
+  readonly updatedAt: string;
+  readonly createdAt: string;
+}
+
+interface GitHubProjectReviewCacheEntry {
+  readonly repositoryId: string;
+  readonly branchName: string;
+  readonly pr: GitHubProjectReviewCachePullRequest | null;
+  readonly openThreads: readonly GitHubRemotePrReviewThread[];
+  readonly resolvedThreads: readonly GitHubRemotePrReviewThread[];
+  readonly fetchedAtMs: number;
+}
+
 type GitDirectorySnapshot = Awaited<ReturnType<typeof readGitDirectorySnapshot>>;
 type GitDirectorySnapshotReader = (cwd: string) => Promise<GitDirectorySnapshot>;
 type GitHubTokenResolver = () => Promise<string | null>;
@@ -468,6 +493,7 @@ const DEFAULT_SESSION_EXIT_TOMBSTONE_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_MAX_STREAM_JOURNAL_ENTRIES = 10000;
 const DEFAULT_GIT_STATUS_POLL_MS = 1200;
 const DEFAULT_GITHUB_POLL_MS = 15_000;
+const DEFAULT_GITHUB_PROJECT_REVIEW_PREWARM_INTERVAL_MS = 5 * 60 * 1000;
 const DEFAULT_LINEAR_API_BASE_URL = 'https://api.linear.app/graphql';
 const GITHUB_OAUTH_ACCESS_TOKEN_ENV_VAR = 'HARNESS_GITHUB_OAUTH_ACCESS_TOKEN';
 const LINEAR_OAUTH_ACCESS_TOKEN_ENV_VAR = 'HARNESS_LINEAR_OAUTH_ACCESS_TOKEN';
@@ -525,6 +551,23 @@ function compareIsoDesc(left: string | null, right: string | null): number {
     return -1;
   }
   return right.localeCompare(left);
+}
+
+function githubReviewLifecycleStateFromPullRequest(input: {
+  state: 'open' | 'closed';
+  isDraft: boolean;
+  mergedAt: string | null;
+}): 'draft' | 'open' | 'merged' | 'closed' {
+  if (input.state === 'open' && input.isDraft) {
+    return 'draft';
+  }
+  if (input.state === 'open') {
+    return 'open';
+  }
+  if (input.mergedAt !== null) {
+    return 'merged';
+  }
+  return 'closed';
 }
 
 function createSessionRollingCounter(nowMs = Date.now()): SessionRollingCounter {
@@ -1232,6 +1275,11 @@ export class ControlPlaneStreamServer {
   private readonly gitStatusRefreshInFlightDirectoryIds = new Set<string>();
   private readonly gitStatusByDirectoryId = new Map<string, DirectoryGitStatusCacheEntry>();
   private readonly gitStatusDirectoriesById = new Map<string, ControlPlaneDirectoryRecord>();
+  private readonly githubProjectReviewCacheByKey = new Map<string, GitHubProjectReviewCacheEntry>();
+  private readonly githubProjectReviewRefreshInFlightByKey = new Map<
+    string,
+    Promise<GitHubProjectReviewCacheEntry>
+  >();
   private readonly connections = new Map<string, ConnectionState>();
   private readonly sessions = new Map<string, SessionState>();
   private readonly launchCommandBySessionId = new Map<string, string>();
@@ -2479,6 +2527,197 @@ export class ControlPlaneStreamServer {
     }
   }
 
+  private githubProjectReviewCacheKey(input: { repositoryId: string; branchName: string }): string {
+    return `${input.repositoryId}:${input.branchName}`;
+  }
+
+  private getGitHubProjectReviewCache(input: { repositoryId: string; branchName: string }): {
+    repositoryId: string;
+    branchName: string;
+    pr: {
+      number: number;
+      title: string;
+      url: string;
+      authorLogin: string | null;
+      headBranch: string;
+      headSha: string;
+      baseBranch: string;
+      state: 'draft' | 'open' | 'merged' | 'closed';
+      isDraft: boolean;
+      mergedAt: string | null;
+      closedAt: string | null;
+      updatedAt: string;
+      createdAt: string;
+    } | null;
+    openThreads: readonly {
+      threadId: string;
+      isResolved: boolean;
+      isOutdated: boolean;
+      resolvedByLogin: string | null;
+      comments: readonly {
+        commentId: string;
+        authorLogin: string | null;
+        body: string;
+        url: string | null;
+        createdAt: string;
+        updatedAt: string;
+      }[];
+    }[];
+    resolvedThreads: readonly {
+      threadId: string;
+      isResolved: boolean;
+      isOutdated: boolean;
+      resolvedByLogin: string | null;
+      comments: readonly {
+        commentId: string;
+        authorLogin: string | null;
+        body: string;
+        url: string | null;
+        createdAt: string;
+        updatedAt: string;
+      }[];
+    }[];
+    fetchedAtMs: number;
+  } | null {
+    const key = this.githubProjectReviewCacheKey(input);
+    const cached = this.githubProjectReviewCacheByKey.get(key);
+    return cached ?? null;
+  }
+
+  private async refreshGitHubProjectReviewCache(input: {
+    repositoryId: string;
+    owner: string;
+    repo: string;
+    branchName: string;
+    forceRefresh?: boolean;
+    remotePr?: GitHubRemotePullRequest | null;
+  }): Promise<{
+    repositoryId: string;
+    branchName: string;
+    pr: {
+      number: number;
+      title: string;
+      url: string;
+      authorLogin: string | null;
+      headBranch: string;
+      headSha: string;
+      baseBranch: string;
+      state: 'draft' | 'open' | 'merged' | 'closed';
+      isDraft: boolean;
+      mergedAt: string | null;
+      closedAt: string | null;
+      updatedAt: string;
+      createdAt: string;
+    } | null;
+    openThreads: readonly {
+      threadId: string;
+      isResolved: boolean;
+      isOutdated: boolean;
+      resolvedByLogin: string | null;
+      comments: readonly {
+        commentId: string;
+        authorLogin: string | null;
+        body: string;
+        url: string | null;
+        createdAt: string;
+        updatedAt: string;
+      }[];
+    }[];
+    resolvedThreads: readonly {
+      threadId: string;
+      isResolved: boolean;
+      isOutdated: boolean;
+      resolvedByLogin: string | null;
+      comments: readonly {
+        commentId: string;
+        authorLogin: string | null;
+        body: string;
+        url: string | null;
+        createdAt: string;
+        updatedAt: string;
+      }[];
+    }[];
+    fetchedAtMs: number;
+  }> {
+    const key = this.githubProjectReviewCacheKey(input);
+    const forceRefresh = input.forceRefresh === true;
+    const cached = this.githubProjectReviewCacheByKey.get(key);
+    if (
+      !forceRefresh &&
+      cached !== undefined &&
+      Date.now() - cached.fetchedAtMs < DEFAULT_GITHUB_PROJECT_REVIEW_PREWARM_INTERVAL_MS
+    ) {
+      return cached;
+    }
+    const inFlight = this.githubProjectReviewRefreshInFlightByKey.get(key);
+    if (inFlight !== undefined) {
+      return await inFlight;
+    }
+    const refreshPromise: Promise<GitHubProjectReviewCacheEntry> = (async () => {
+      const remotePr =
+        input.remotePr !== undefined
+          ? input.remotePr
+          : await this.openGitHubPullRequestForBranch({
+              owner: input.owner,
+              repo: input.repo,
+              headBranch: input.branchName,
+            });
+      if (remotePr === null) {
+        const next: GitHubProjectReviewCacheEntry = {
+          repositoryId: input.repositoryId,
+          branchName: input.branchName,
+          pr: null,
+          openThreads: [],
+          resolvedThreads: [],
+          fetchedAtMs: Date.now(),
+        };
+        this.githubProjectReviewCacheByKey.set(key, next);
+        return next;
+      }
+      const reviewThreads = await this.listGitHubPullRequestReviewThreads({
+        owner: input.owner,
+        repo: input.repo,
+        pullNumber: remotePr.number,
+      });
+      const next: GitHubProjectReviewCacheEntry = {
+        repositoryId: input.repositoryId,
+        branchName: input.branchName,
+        pr: {
+          number: remotePr.number,
+          title: remotePr.title,
+          url: remotePr.url,
+          authorLogin: remotePr.authorLogin,
+          headBranch: remotePr.headBranch,
+          headSha: remotePr.headSha,
+          baseBranch: remotePr.baseBranch,
+          state: githubReviewLifecycleStateFromPullRequest({
+            state: remotePr.state,
+            isDraft: remotePr.isDraft,
+            mergedAt: remotePr.mergedAt,
+          }),
+          isDraft: remotePr.isDraft,
+          mergedAt: remotePr.mergedAt,
+          closedAt: remotePr.closedAt,
+          updatedAt: remotePr.updatedAt,
+          createdAt: remotePr.createdAt,
+        },
+        openThreads: reviewThreads.filter((thread) => !thread.isResolved),
+        resolvedThreads: reviewThreads.filter((thread) => thread.isResolved),
+        fetchedAtMs: Date.now(),
+      };
+      this.githubProjectReviewCacheByKey.set(key, next);
+      return next;
+    })();
+    this.githubProjectReviewRefreshInFlightByKey.set(key, refreshPromise);
+    try {
+      return await refreshPromise;
+    } finally {
+      if (this.githubProjectReviewRefreshInFlightByKey.get(key) === refreshPromise) {
+        this.githubProjectReviewRefreshInFlightByKey.delete(key);
+      }
+    }
+  }
+
   private async syncGitHubBranch(input: {
     directory: ControlPlaneDirectoryRecord;
     repository: ControlPlaneRepositoryRecord;
@@ -2501,6 +2740,20 @@ export class ControlPlaneStreamServer {
         return;
       }
       if (remotePr === null) {
+        this.githubProjectReviewCacheByKey.set(
+          this.githubProjectReviewCacheKey({
+            repositoryId: input.repository.repositoryId,
+            branchName: input.branchName,
+          }),
+          {
+            repositoryId: input.repository.repositoryId,
+            branchName: input.branchName,
+            pr: null,
+            openThreads: [],
+            resolvedThreads: [],
+            fetchedAtMs: Date.now(),
+          },
+        );
         const staleOpen = this.stateStore.listGitHubPullRequests({
           repositoryId: input.repository.repositoryId,
           headBranch: input.branchName,
@@ -2581,6 +2834,13 @@ export class ControlPlaneStreamServer {
         isDraft: remotePr.isDraft,
         observedAt: remotePr.updatedAt || now,
       });
+      void this.refreshGitHubProjectReviewCache({
+        repositoryId: input.repository.repositoryId,
+        owner: input.owner,
+        repo: input.repo,
+        branchName: input.branchName,
+        remotePr,
+      }).catch(() => {});
       const jobs = await this.listGitHubPrJobsForCommit({
         owner: input.owner,
         repo: input.repo,

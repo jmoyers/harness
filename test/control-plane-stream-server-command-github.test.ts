@@ -612,6 +612,45 @@ void test('stream server executes github command set and error branches', async 
       branchStrategy: 'pinned-then-current' | 'current-only' | 'pinned-only';
       viewerLogin: string | null;
     };
+    openGitHubPullRequestForBranch: (input: {
+      owner: string;
+      repo: string;
+      headBranch: string;
+    }) => Promise<{
+      number: number;
+      title: string;
+      url: string;
+      authorLogin: string | null;
+      headBranch: string;
+      headSha: string;
+      baseBranch: string;
+      state: 'open' | 'closed';
+      isDraft: boolean;
+      mergedAt: string | null;
+      updatedAt: string;
+      createdAt: string;
+      closedAt: string | null;
+    } | null>;
+    listGitHubPullRequestReviewThreads: (input: {
+      owner: string;
+      repo: string;
+      pullNumber: number;
+    }) => Promise<
+      readonly {
+        threadId: string;
+        isResolved: boolean;
+        isOutdated: boolean;
+        resolvedByLogin: string | null;
+        comments: readonly {
+          commentId: string;
+          authorLogin: string | null;
+          body: string;
+          url: string | null;
+          createdAt: string;
+          updatedAt: string;
+        }[];
+      }[]
+    >;
     githubApi: {
       openPullRequestForBranch: (input: {
         owner: string;
@@ -747,56 +786,8 @@ void test('stream server executes github command set and error branches', async 
     assert.equal(projectPr['repositoryId'], repository.repositoryId);
     assert.equal(projectPr['branchName'], 'feature/github-command');
     assert.equal(projectPr['pr'], null);
-    internals.githubApi.findPullRequestForBranch = async () => ({
-      number: 999,
-      title: 'Review PR',
-      url: 'https://github.com/acme/harness/pull/999',
-      authorLogin: 'jmoyers',
-      headBranch: 'feature/github-command',
-      headSha: 'deadbeef999',
-      baseBranch: 'main',
-      state: 'closed',
-      isDraft: false,
-      mergedAt: FIXED_TS,
-      updatedAt: FIXED_TS,
-      createdAt: FIXED_TS,
-      closedAt: FIXED_TS,
-    });
-    internals.githubApi.listPullRequestReviewThreads = async () => [
-      {
-        threadId: 'thread-open',
-        isResolved: false,
-        isOutdated: false,
-        resolvedByLogin: null,
-        comments: [
-          {
-            commentId: 'comment-open-1',
-            authorLogin: 'reviewer-a',
-            body: 'please rename this variable',
-            url: 'https://github.com/acme/harness/pull/999#discussion_r1',
-            createdAt: FIXED_TS,
-            updatedAt: FIXED_TS,
-          },
-        ],
-      },
-      {
-        threadId: 'thread-resolved',
-        isResolved: true,
-        isOutdated: false,
-        resolvedByLogin: 'jmoyers',
-        comments: [
-          {
-            commentId: 'comment-resolved-1',
-            authorLogin: 'reviewer-b',
-            body: 'looks good now',
-            url: 'https://github.com/acme/harness/pull/999#discussion_r2',
-            createdAt: FIXED_TS,
-            updatedAt: FIXED_TS,
-          },
-        ],
-      },
-    ];
-    const projectReview = await internals.executeCommand(
+    internals.github.enabled = false;
+    const projectReviewWhileDisabled = await internals.executeCommand(
       {
         id: 'connection-github-command',
       },
@@ -805,11 +796,117 @@ void test('stream server executes github command set and error branches', async 
         directoryId: directory.directoryId,
       },
     );
+    assert.equal(projectReviewWhileDisabled['branchName'], 'feature/github-command');
+    assert.equal(projectReviewWhileDisabled['pr'], null);
+    assert.equal((projectReviewWhileDisabled['openThreads'] as unknown[]).length, 0);
+    assert.equal((projectReviewWhileDisabled['resolvedThreads'] as unknown[]).length, 0);
+    internals.github.enabled = true;
+    let openPullRequestCalls = 0;
+    let reviewThreadCalls = 0;
+    internals.openGitHubPullRequestForBranch = async () => {
+      openPullRequestCalls += 1;
+      return {
+        number: 999,
+        title: 'Review PR',
+        url: 'https://github.com/acme/harness/pull/999',
+        authorLogin: 'jmoyers',
+        headBranch: 'feature/github-command',
+        headSha: 'deadbeef999',
+        baseBranch: 'main',
+        state: 'closed',
+        isDraft: false,
+        mergedAt: FIXED_TS,
+        updatedAt: FIXED_TS,
+        createdAt: FIXED_TS,
+        closedAt: FIXED_TS,
+      };
+    };
+    internals.listGitHubPullRequestReviewThreads = async () => {
+      reviewThreadCalls += 1;
+      return [
+        {
+          threadId: 'thread-open',
+          isResolved: false,
+          isOutdated: false,
+          resolvedByLogin: null,
+          comments: [
+            {
+              commentId: 'comment-open-1',
+              authorLogin: 'reviewer-a',
+              body: 'please rename this variable',
+              url: 'https://github.com/acme/harness/pull/999#discussion_r1',
+              createdAt: FIXED_TS,
+              updatedAt: FIXED_TS,
+            },
+          ],
+        },
+        {
+          threadId: 'thread-resolved',
+          isResolved: true,
+          isOutdated: false,
+          resolvedByLogin: 'jmoyers',
+          comments: [
+            {
+              commentId: 'comment-resolved-1',
+              authorLogin: 'reviewer-b',
+              body: 'looks good now',
+              url: 'https://github.com/acme/harness/pull/999#discussion_r2',
+              createdAt: FIXED_TS,
+              updatedAt: FIXED_TS,
+            },
+          ],
+        },
+      ];
+    };
+    const projectReviewBeforeRefresh = await internals.executeCommand(
+      {
+        id: 'connection-github-command',
+      },
+      {
+        type: 'github.project-review',
+        directoryId: directory.directoryId,
+      },
+    );
+    assert.equal(projectReviewBeforeRefresh['branchName'], 'feature/github-command');
+    assert.equal(projectReviewBeforeRefresh['pr'], null);
+    assert.equal((projectReviewBeforeRefresh['openThreads'] as unknown[]).length, 0);
+    assert.equal((projectReviewBeforeRefresh['resolvedThreads'] as unknown[]).length, 0);
+    assert.equal(openPullRequestCalls, 0);
+    assert.equal(reviewThreadCalls, 0);
+
+    const projectReview = await internals.executeCommand(
+      {
+        id: 'connection-github-command',
+      },
+      {
+        type: 'github.project-review',
+        directoryId: directory.directoryId,
+        forceRefresh: true,
+      },
+    );
     assert.equal(projectReview['branchName'], 'feature/github-command');
     const projectReviewPr = projectReview['pr'] as Record<string, unknown>;
     assert.equal(projectReviewPr['state'], 'merged');
     assert.equal((projectReview['openThreads'] as unknown[]).length, 1);
     assert.equal((projectReview['resolvedThreads'] as unknown[]).length, 1);
+    assert.equal(openPullRequestCalls, 1);
+    assert.equal(reviewThreadCalls, 1);
+    internals.openGitHubPullRequestForBranch = async () => {
+      throw new Error('unexpected refresh call');
+    };
+    const projectReviewCached = await internals.executeCommand(
+      {
+        id: 'connection-github-command',
+      },
+      {
+        type: 'github.project-review',
+        directoryId: directory.directoryId,
+      },
+    );
+    const projectReviewCachedPr = projectReviewCached['pr'] as Record<string, unknown>;
+    assert.equal(projectReviewCachedPr['state'], 'merged');
+    assert.equal((projectReviewCached['openThreads'] as unknown[]).length, 1);
+    assert.equal((projectReviewCached['resolvedThreads'] as unknown[]).length, 1);
     await assert.rejects(
       internals.executeCommand(
         {
@@ -835,6 +932,16 @@ void test('stream server executes github command set and error branches', async 
       /directory not found/,
     );
 
+    const currentGitStatus = internals.gitStatusByDirectoryId.get(directory.directoryId);
+    assert.notEqual(currentGitStatus, undefined);
+    internals.gitStatusByDirectoryId.set(directory.directoryId, {
+      ...currentGitStatus!,
+      summary: {
+        ...currentGitStatus!.summary,
+        branch: 'feature/github-stored',
+      },
+    });
+
     const existingPr = internals.stateStore.upsertGitHubPullRequest({
       prRecordId: 'pr-existing',
       tenantId: directory.tenantId,
@@ -848,7 +955,7 @@ void test('stream server executes github command set and error branches', async 
       title: 'Existing PR',
       url: 'https://github.com/acme/harness/pull/901',
       authorLogin: 'jmoyers',
-      headBranch: 'feature/github-command',
+      headBranch: 'feature/github-stored',
       headSha: 'deadbeef901',
       baseBranch: 'main',
       state: 'open',
@@ -856,7 +963,6 @@ void test('stream server executes github command set and error branches', async 
       ciRollup: 'none',
       observedAt: FIXED_TS,
     });
-    internals.githubApi.findPullRequestForBranch = async () => null;
     const projectReviewStored = await internals.executeCommand(
       {
         id: 'connection-github-command',
@@ -866,11 +972,33 @@ void test('stream server executes github command set and error branches', async 
         directoryId: directory.directoryId,
       },
     );
+    assert.equal(projectReviewStored['branchName'], 'feature/github-stored');
     const projectReviewStoredPr = projectReviewStored['pr'] as Record<string, unknown>;
     assert.equal(projectReviewStoredPr['number'], 901);
     assert.equal(projectReviewStoredPr['state'], 'open');
     assert.equal((projectReviewStored['openThreads'] as unknown[]).length, 0);
     assert.equal((projectReviewStored['resolvedThreads'] as unknown[]).length, 0);
+    internals.stateStore.upsertGitHubPullRequest({
+      prRecordId: 'pr-existing-current-branch',
+      tenantId: directory.tenantId,
+      userId: directory.userId,
+      workspaceId: directory.workspaceId,
+      repositoryId: repository.repositoryId,
+      directoryId: directory.directoryId,
+      owner: 'acme',
+      repo: 'harness',
+      number: 902,
+      title: 'Existing Current Branch PR',
+      url: 'https://github.com/acme/harness/pull/902',
+      authorLogin: 'jmoyers',
+      headBranch: 'feature/github-command',
+      headSha: 'deadbeef902',
+      baseBranch: 'main',
+      state: 'open',
+      isDraft: false,
+      ciRollup: 'none',
+      observedAt: FIXED_TS,
+    });
 
     const listed = await internals.executeCommand(
       {

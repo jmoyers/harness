@@ -12,7 +12,10 @@ interface RuntimeProjectPaneGitHubReviewCacheOptions {
   readonly ttlMs: number;
   readonly refreshIntervalMs: number;
   readonly queueLatestControlPlaneOp: QueueLatestControlPlaneOp;
-  readonly loadReview: (directoryId: string) => Promise<ProjectPaneGitHubReviewSummary>;
+  readonly loadReview: (
+    directoryId: string,
+    options: RuntimeProjectPaneGitHubReviewCacheRequestOptions,
+  ) => Promise<ProjectPaneGitHubReviewSummary>;
   readonly onUpdate: (directoryId: string, review: ProjectPaneGitHubReviewSummary) => void;
   readonly formatErrorMessage: (error: unknown) => string;
   readonly nowMs?: () => number;
@@ -102,7 +105,9 @@ export class RuntimeProjectPaneGitHubReviewCache {
           return;
         }
         try {
-          const loaded = await this.options.loadReview(directoryId);
+          const loaded = await this.options.loadReview(directoryId, {
+            forceRefresh,
+          });
           if (signal.aborted) {
             return;
           }

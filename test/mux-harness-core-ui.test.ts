@@ -359,8 +359,10 @@ void test('buildProjectPaneSnapshot and row helpers expose action rows and clamp
 
     const createAction = projectPaneActionAtRow(snapshot, 120, 8, 0, 3);
     const closeAction = projectPaneActionAtRow(snapshot, 120, 8, 0, 4);
+    const refreshAction = projectPaneActionAtRow(snapshot, 120, 8, 0, 5);
     assert.equal(createAction, 'conversation.new');
     assert.equal(closeAction, 'project.close');
+    assert.equal(refreshAction, 'project.github.refresh');
 
     const noneAction = projectPaneActionAtRow(snapshot, 120, 8, 0, 1);
     assert.equal(noneAction, null);
@@ -487,6 +489,7 @@ void test('buildProjectPaneSnapshotWithOptions injects github review block and m
 
     assert.equal(projectPaneActionAtRow(snapshot, 200, 200, 0, 3), 'conversation.new');
     assert.equal(projectPaneActionAtRow(snapshot, 200, 200, 0, 4), 'project.close');
+    assert.equal(projectPaneActionAtRow(snapshot, 200, 200, 0, 5), 'project.github.refresh');
   } finally {
     rmSync(workspace, { recursive: true, force: true });
   }

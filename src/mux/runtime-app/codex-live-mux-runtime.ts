@@ -407,8 +407,8 @@ const HOME_PANE_BACKGROUND_INTERVAL_MS = 80;
 const UI_STATE_PERSIST_DEBOUNCE_MS = 200;
 const REPOSITORY_TOGGLE_CHORD_TIMEOUT_MS = 1250;
 const REPOSITORY_COLLAPSE_ALL_CHORD_PREFIX = Buffer.from([0x0b]);
-const PROJECT_PANE_GITHUB_REVIEW_TTL_MS = 10_000;
-const PROJECT_PANE_GITHUB_REVIEW_REFRESH_INTERVAL_MS = 5_000;
+const PROJECT_PANE_GITHUB_REVIEW_TTL_MS = 600_000;
+const PROJECT_PANE_GITHUB_REVIEW_REFRESH_INTERVAL_MS = 300_000;
 const UNTRACKED_REPOSITORY_GROUP_ID = 'untracked';
 const THEME_PICKER_SCOPE = 'theme-select';
 const SHORTCUTS_SCOPE = 'shortcuts';
@@ -2668,10 +2668,15 @@ class CodexLiveMuxRuntimeApplication {
       ttlMs: PROJECT_PANE_GITHUB_REVIEW_TTL_MS,
       refreshIntervalMs: PROJECT_PANE_GITHUB_REVIEW_REFRESH_INTERVAL_MS,
       queueLatestControlPlaneOp: queueLatestBackgroundControlPlaneOp,
-      loadReview: async (directoryId) => {
+      loadReview: async (directoryId, requestOptions) => {
         const result = await streamClient.sendCommand({
           type: 'github.project-review',
           directoryId,
+          ...(requestOptions.forceRefresh === undefined
+            ? {}
+            : {
+                forceRefresh: requestOptions.forceRefresh,
+              }),
         });
         const parsedResult = asRecord(result);
         if (parsedResult === null) {
@@ -2731,7 +2736,6 @@ class CodexLiveMuxRuntimeApplication {
       workspace.enterProjectPane(directoryId, repositoryGroupIdForDirectory(directoryId));
       noteGitActivity(directoryId);
       refreshProjectPaneSnapshot(directoryId);
-      refreshProjectPaneGitHubReviewState(directoryId);
       screen.resetFrameCache();
     };
 
@@ -5038,6 +5042,12 @@ class CodexLiveMuxRuntimeApplication {
           handleProjectPaneActionClick({
             ...input,
             handleProjectPaneAction: (action, directoryId) => {
+              if (action === 'project.github.refresh') {
+                refreshProjectPaneGitHubReviewState(directoryId, {
+                  forceRefresh: true,
+                });
+                return true;
+              }
               const togglePrefix = 'project.github.toggle:';
               if (!action.startsWith(togglePrefix)) {
                 return false;

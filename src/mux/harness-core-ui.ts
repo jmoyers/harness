@@ -14,6 +14,7 @@ const UI_KIT = new UiKit();
 export type ProjectPaneAction =
   | 'conversation.new'
   | 'project.close'
+  | 'project.github.refresh'
   | ProjectPaneGitHubToggleAction;
 export type TaskStatus = 'draft' | 'ready' | 'in-progress' | 'completed';
 export type TaskPaneAction =
@@ -99,6 +100,10 @@ export const PROJECT_PANE_NEW_CONVERSATION_BUTTON_LABEL = UI_KIT.formatButton({
 export const PROJECT_PANE_CLOSE_PROJECT_BUTTON_LABEL = UI_KIT.formatButton({
   label: 'close project',
   prefixIcon: '<',
+});
+const PROJECT_PANE_REFRESH_GITHUB_BUTTON_LABEL = UI_KIT.formatButton({
+  label: 'refresh review',
+  prefixIcon: 'R',
 });
 export const TASKS_PANE_ADD_TASK_BUTTON_LABEL = UI_KIT.formatButton({
   label: 'add task',
@@ -490,6 +495,7 @@ export function buildProjectPaneSnapshot(directoryId: string, path: string): Pro
     'conversation.new',
   );
   const projectCloseLineIndex = pushLine(PROJECT_PANE_CLOSE_PROJECT_BUTTON_LABEL, 'project.close');
+  pushLine(PROJECT_PANE_REFRESH_GITHUB_BUTTON_LABEL, 'project.github.refresh');
   pushLine('');
   for (const line of buildProjectTreeLines(path)) {
     pushLine(line);

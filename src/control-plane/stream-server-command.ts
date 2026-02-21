@@ -453,6 +453,108 @@ interface ExecuteCommandContext {
       closedAt: string | null;
     }>;
   };
+  getGitHubProjectReviewCache(input: { repositoryId: string; branchName: string }): {
+    repositoryId: string;
+    branchName: string;
+    pr: {
+      number: number;
+      title: string;
+      url: string;
+      authorLogin: string | null;
+      headBranch: string;
+      headSha: string;
+      baseBranch: string;
+      state: 'draft' | 'open' | 'merged' | 'closed';
+      isDraft: boolean;
+      mergedAt: string | null;
+      closedAt: string | null;
+      updatedAt: string;
+      createdAt: string;
+    } | null;
+    openThreads: readonly {
+      threadId: string;
+      isResolved: boolean;
+      isOutdated: boolean;
+      resolvedByLogin: string | null;
+      comments: readonly {
+        commentId: string;
+        authorLogin: string | null;
+        body: string;
+        url: string | null;
+        createdAt: string;
+        updatedAt: string;
+      }[];
+    }[];
+    resolvedThreads: readonly {
+      threadId: string;
+      isResolved: boolean;
+      isOutdated: boolean;
+      resolvedByLogin: string | null;
+      comments: readonly {
+        commentId: string;
+        authorLogin: string | null;
+        body: string;
+        url: string | null;
+        createdAt: string;
+        updatedAt: string;
+      }[];
+    }[];
+    fetchedAtMs: number;
+  } | null;
+  refreshGitHubProjectReviewCache(input: {
+    repositoryId: string;
+    owner: string;
+    repo: string;
+    branchName: string;
+    forceRefresh?: boolean;
+  }): Promise<{
+    repositoryId: string;
+    branchName: string;
+    pr: {
+      number: number;
+      title: string;
+      url: string;
+      authorLogin: string | null;
+      headBranch: string;
+      headSha: string;
+      baseBranch: string;
+      state: 'draft' | 'open' | 'merged' | 'closed';
+      isDraft: boolean;
+      mergedAt: string | null;
+      closedAt: string | null;
+      updatedAt: string;
+      createdAt: string;
+    } | null;
+    openThreads: readonly {
+      threadId: string;
+      isResolved: boolean;
+      isOutdated: boolean;
+      resolvedByLogin: string | null;
+      comments: readonly {
+        commentId: string;
+        authorLogin: string | null;
+        body: string;
+        url: string | null;
+        createdAt: string;
+        updatedAt: string;
+      }[];
+    }[];
+    resolvedThreads: readonly {
+      threadId: string;
+      isResolved: boolean;
+      isOutdated: boolean;
+      resolvedByLogin: string | null;
+      comments: readonly {
+        commentId: string;
+        authorLogin: string | null;
+        body: string;
+        url: string | null;
+        createdAt: string;
+        updatedAt: string;
+      }[];
+    }[];
+    fetchedAtMs: number;
+  }>;
   readonly linear: {
     enabled: boolean;
   };
@@ -1312,12 +1414,20 @@ export async function executeStreamServerCommand(
         resolvedThreads: [],
       };
     }
-    const remotePr = await ctx.githubApi.findPullRequestForBranch({
-      owner: resolved.ownerRepo.owner,
-      repo: resolved.ownerRepo.repo,
-      headBranch: resolved.trackedBranch,
-    });
-    if (remotePr === null) {
+    const reviewCache =
+      command.forceRefresh === true
+        ? await ctx.refreshGitHubProjectReviewCache({
+            repositoryId: resolved.repository.repositoryId,
+            owner: resolved.ownerRepo.owner,
+            repo: resolved.ownerRepo.repo,
+            branchName: resolved.trackedBranch,
+            forceRefresh: true,
+          })
+        : ctx.getGitHubProjectReviewCache({
+            repositoryId: resolved.repository.repositoryId,
+            branchName: resolved.trackedBranch,
+          });
+    if (reviewCache === null) {
       return {
         directoryId: resolved.directory.directoryId,
         repositoryId: resolved.repository.repositoryId,
@@ -1328,70 +1438,14 @@ export async function executeStreamServerCommand(
         resolvedThreads: [],
       };
     }
-    const remotePrView = {
-      number: remotePr.number,
-      title: remotePr.title,
-      url: remotePr.url,
-      authorLogin: remotePr.authorLogin,
-      headBranch: remotePr.headBranch,
-      headSha: remotePr.headSha,
-      baseBranch: remotePr.baseBranch,
-      state: githubLifecycleStateFromPullRequest({
-        state: remotePr.state,
-        isDraft: remotePr.isDraft,
-        mergedAt: remotePr.mergedAt,
-      }),
-      isDraft: remotePr.isDraft,
-      mergedAt: remotePr.mergedAt,
-      closedAt: remotePr.closedAt,
-      updatedAt: remotePr.updatedAt,
-      createdAt: remotePr.createdAt,
-    };
-    const reviewThreads = await ctx.githubApi.listPullRequestReviewThreads({
-      owner: resolved.ownerRepo.owner,
-      repo: resolved.ownerRepo.repo,
-      pullNumber: remotePr.number,
-    });
-    const openThreads = reviewThreads
-      .filter((thread) => !thread.isResolved)
-      .map((thread) => ({
-        threadId: thread.threadId,
-        isResolved: thread.isResolved,
-        isOutdated: thread.isOutdated,
-        resolvedByLogin: thread.resolvedByLogin,
-        comments: thread.comments.map((comment) => ({
-          commentId: comment.commentId,
-          authorLogin: comment.authorLogin,
-          body: comment.body,
-          url: comment.url,
-          createdAt: comment.createdAt,
-          updatedAt: comment.updatedAt,
-        })),
-      }));
-    const resolvedThreads = reviewThreads
-      .filter((thread) => thread.isResolved)
-      .map((thread) => ({
-        threadId: thread.threadId,
-        isResolved: thread.isResolved,
-        isOutdated: thread.isOutdated,
-        resolvedByLogin: thread.resolvedByLogin,
-        comments: thread.comments.map((comment) => ({
-          commentId: comment.commentId,
-          authorLogin: comment.authorLogin,
-          body: comment.body,
-          url: comment.url,
-          createdAt: comment.createdAt,
-          updatedAt: comment.updatedAt,
-        })),
-      }));
     return {
       directoryId: resolved.directory.directoryId,
       repositoryId: resolved.repository.repositoryId,
       branchName: resolved.trackedBranch,
       branchSource: resolved.trackedBranchSource,
-      pr: remotePrView,
-      openThreads,
-      resolvedThreads,
+      pr: reviewCache.pr ?? storedPrView,
+      openThreads: reviewCache.openThreads,
+      resolvedThreads: reviewCache.resolvedThreads,
     };
   }
 

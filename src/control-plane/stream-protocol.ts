@@ -313,6 +313,7 @@ interface GitHubProjectPrCommand {
 interface GitHubProjectReviewCommand {
   type: 'github.project-review';
   directoryId: string;
+  forceRefresh?: boolean;
 }
 
 interface GitHubPrListCommand {

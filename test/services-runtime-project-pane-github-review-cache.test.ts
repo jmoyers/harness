@@ -25,7 +25,7 @@ void test('runtime project pane GitHub review cache serves loading then ready an
   let nowMs = 1_000;
   const queued: QueuedLatestOp[] = [];
   const updates: Array<{ directoryId: string; review: ProjectPaneGitHubReviewSummary }> = [];
-  const loadCalls: string[] = [];
+  const loadCalls: Array<{ directoryId: string; forceRefresh: boolean | undefined }> = [];
 
   const cache = new RuntimeProjectPaneGitHubReviewCache({
     ttlMs: 1_000,
@@ -33,8 +33,11 @@ void test('runtime project pane GitHub review cache serves loading then ready an
     queueLatestControlPlaneOp: (key, task, label) => {
       queued.push({ key, task, label });
     },
-    loadReview: async (directoryId) => {
-      loadCalls.push(directoryId);
+    loadReview: async (directoryId, options) => {
+      loadCalls.push({
+        directoryId,
+        forceRefresh: options.forceRefresh,
+      });
       return readySummary(`branch-${String(loadCalls.length)}`);
     },
     onUpdate: (directoryId, review) => {
@@ -56,7 +59,12 @@ void test('runtime project pane GitHub review cache serves loading then ready an
   await queued[0]!.task({
     signal: new AbortController().signal,
   });
-  assert.deepEqual(loadCalls, ['dir-a']);
+  assert.deepEqual(loadCalls, [
+    {
+      directoryId: 'dir-a',
+      forceRefresh: false,
+    },
+  ]);
   assert.deepEqual(
     updates.map((entry) => entry.review.status),
     ['loading', 'ready'],
@@ -66,7 +74,12 @@ void test('runtime project pane GitHub review cache serves loading then ready an
   nowMs += 200;
   cache.request('dir-a');
   assert.equal(queued.length, 1);
-  assert.deepEqual(loadCalls, ['dir-a']);
+  assert.deepEqual(loadCalls, [
+    {
+      directoryId: 'dir-a',
+      forceRefresh: false,
+    },
+  ]);
 });
 
 void test('runtime project pane GitHub review cache deduplicates in-flight requests and refreshes after TTL expiry', async () => {
@@ -82,7 +95,7 @@ void test('runtime project pane GitHub review cache deduplicates in-flight reque
     queueLatestControlPlaneOp: (key, task, label) => {
       queued.push({ key, task, label });
     },
-    loadReview: async () =>
+    loadReview: async (_directoryId, _options) =>
       await new Promise<ProjectPaneGitHubReviewSummary>((resolve) => {
         loadCount += 1;
         resolveLoad = (value) => {
@@ -119,6 +132,7 @@ void test('runtime project pane GitHub review cache deduplicates in-flight reque
 void test('runtime project pane GitHub review cache emits error state and preserves previous branch context', async () => {
   const queued: QueuedLatestOp[] = [];
   const updates: Array<{ directoryId: string; review: ProjectPaneGitHubReviewSummary }> = [];
+  const forceRefreshFlags: Array<boolean | undefined> = [];
   let shouldThrow = false;
 
   const cache = new RuntimeProjectPaneGitHubReviewCache({
@@ -127,7 +141,8 @@ void test('runtime project pane GitHub review cache emits error state and preser
     queueLatestControlPlaneOp: (key, task, label) => {
       queued.push({ key, task, label });
     },
-    loadReview: async () => {
+    loadReview: async (_directoryId, options) => {
+      forceRefreshFlags.push(options.forceRefresh);
       if (shouldThrow) {
         throw new Error('api failed');
       }
@@ -156,6 +171,7 @@ void test('runtime project pane GitHub review cache emits error state and preser
   assert.equal(last.status, 'error');
   assert.equal(last.branchName, 'main');
   assert.equal(last.errorMessage, 'api failed');
+  assert.deepEqual(forceRefreshFlags, [false, true]);
 });
 
 void test('runtime project pane GitHub review cache auto-refreshes active directory and clears timer on stop', () => {
@@ -172,7 +188,7 @@ void test('runtime project pane GitHub review cache auto-refreshes active direct
     queueLatestControlPlaneOp: (key, task, label) => {
       queued.push({ key, task, label });
     },
-    loadReview: async () => readySummary('main'),
+    loadReview: async (_directoryId, _options) => readySummary('main'),
     onUpdate: (directoryId, review) => {
       updates.push({ directoryId, review });
     },

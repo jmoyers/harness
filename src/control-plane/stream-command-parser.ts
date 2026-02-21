@@ -989,13 +989,21 @@ function parseGitHubProjectPr(record: CommandRecord): StreamCommand | null {
 
 function parseGitHubProjectReview(record: CommandRecord): StreamCommand | null {
   const directoryId = readString(record['directoryId']);
+  const forceRefresh = readOptionalBoolean(record, 'forceRefresh');
   if (directoryId === null) {
     return null;
   }
-  return {
+  if (forceRefresh === undefined) {
+    return null;
+  }
+  const command: StreamCommand = {
     type: 'github.project-review',
     directoryId,
   };
+  if (forceRefresh !== null) {
+    command.forceRefresh = forceRefresh;
+  }
+  return command;
 }
 
 function parseGitHubPrList(record: CommandRecord): StreamCommand | null {
