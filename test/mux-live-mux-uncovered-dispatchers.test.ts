@@ -731,6 +731,60 @@ void test('left-nav activation routes targets and cycle helper handles empty/nor
   );
 });
 
+void test('left-nav activation latest queue supports project fallback and aborts stale activation', async () => {
+  const calls: string[] = [];
+  const latestTasks: Array<(options: { readonly signal: AbortSignal }) => Promise<void>> = [];
+
+  activateLeftNavTarget({
+    target: { kind: 'project', directoryId: 'dir-missing' },
+    direction: 'next',
+    enterHomePane: () => {},
+    firstDirectoryForRepositoryGroup: () => null,
+    enterProjectPane: () => {
+      calls.push('enterProjectPane');
+    },
+    setMainPaneProjectMode: () => {},
+    selectLeftNavRepository: () => {},
+    selectLeftNavConversation: (sessionId) => {
+      calls.push(`selectLeftNavConversation:${sessionId}`);
+    },
+    markDirty: () => {
+      calls.push('markDirty');
+    },
+    directoriesHas: () => false,
+    visibleTargetsForState: () =>
+      [
+        { kind: 'conversation', sessionId: 'session-fallback' },
+      ] as const satisfies readonly LeftNavSelection[],
+    conversationDirectoryId: () => 'dir-missing',
+    queueControlPlaneOp: (_task, label) => {
+      calls.push(`queueControlPlaneOp:${label}`);
+    },
+    queueLatestControlPlaneOp: (_key, task, label) => {
+      calls.push(`queueLatestControlPlaneOp:${label}`);
+      latestTasks.push(task);
+    },
+    activateConversation: async (sessionId) => {
+      calls.push(`activateConversation:${sessionId}`);
+    },
+    conversationsHas: () => true,
+  });
+
+  assert.deepEqual(calls.slice(0, 3), [
+    'selectLeftNavConversation:session-fallback',
+    'markDirty',
+    'queueLatestControlPlaneOp:shortcut-activate-next-directory-fallback',
+  ]);
+  assert.equal(latestTasks.length, 1);
+
+  const controller = new AbortController();
+  controller.abort();
+  await latestTasks[0]?.({
+    signal: controller.signal,
+  });
+  assert.equal(calls.includes('activateConversation:session-fallback'), false);
+});
+
 void test('left-rail action click routes all supported actions and default false', () => {
   const calls: string[] = [];
   const base = {

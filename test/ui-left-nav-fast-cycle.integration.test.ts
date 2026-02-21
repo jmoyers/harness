@@ -3,7 +3,10 @@ import { test } from 'bun:test';
 import { detectMuxGlobalShortcut, resolveMuxShortcutBindings } from '../src/mux/input-shortcuts.ts';
 import { ControlPlaneOpQueue } from '../src/mux/control-plane-op-queue.ts';
 import { handleGlobalShortcut } from '../src/mux/live-mux/global-shortcut-handlers.ts';
-import { activateLeftNavTarget, cycleLeftNavSelection } from '../src/mux/live-mux/left-nav-activation.ts';
+import {
+  activateLeftNavTarget,
+  cycleLeftNavSelection,
+} from '../src/mux/live-mux/left-nav-activation.ts';
 import {
   GlobalShortcutInput,
   type GlobalShortcutActions,
@@ -144,15 +147,10 @@ function createFastCycleHarness(sessionIds: readonly string[]): FastCycleHarness
     },
   };
 
-  const shortcutInput = new GlobalShortcutInput(
-    shortcutBindings,
-    shortcutState,
-    shortcutActions,
-    {
-      detectShortcut: detectMuxGlobalShortcut,
-      handleShortcut: handleGlobalShortcut,
-    },
-  );
+  const shortcutInput = new GlobalShortcutInput(shortcutBindings, shortcutState, shortcutActions, {
+    detectShortcut: detectMuxGlobalShortcut,
+    handleShortcut: handleGlobalShortcut,
+  });
 
   const runSequence = async (
     sequence: readonly ('next' | 'previous')[],
@@ -182,347 +180,334 @@ function createFastCycleHarness(sessionIds: readonly string[]): FastCycleHarness
   };
 }
 
-void test(
-  'fast ctrl+j/k cycling converges on expected conversation with immediate or deferred activation drain',
-  async () => {
-    const sessionIds = ['session-a', 'session-b', 'session-c', 'session-d'] as const;
-    const sequence: Array<'next' | 'previous'> = [
-      ...Array.from({ length: 60 }, () => 'next' as const),
-      ...Array.from({ length: 17 }, () => 'previous' as const),
-      ...Array.from({ length: 9 }, () => 'next' as const),
-    ];
+void test('fast ctrl+j/k cycling converges on expected conversation with immediate or deferred activation drain', async () => {
+  const sessionIds = ['session-a', 'session-b', 'session-c', 'session-d'] as const;
+  const sequence: Array<'next' | 'previous'> = [
+    ...Array.from({ length: 60 }, () => 'next' as const),
+    ...Array.from({ length: 17 }, () => 'previous' as const),
+    ...Array.from({ length: 9 }, () => 'next' as const),
+  ];
 
-    let expectedIndex = 0;
-    for (const step of sequence) {
-      expectedIndex += step === 'next' ? 1 : -1;
-      expectedIndex = (expectedIndex + sessionIds.length) % sessionIds.length;
-    }
-    const expectedFinalSession = sessionIds[expectedIndex]!;
+  let expectedIndex = 0;
+  for (const step of sequence) {
+    expectedIndex += step === 'next' ? 1 : -1;
+    expectedIndex = (expectedIndex + sessionIds.length) % sessionIds.length;
+  }
+  const expectedFinalSession = sessionIds[expectedIndex]!;
 
-    const deferred = createFastCycleHarness(sessionIds);
-    await deferred.runSequence(sequence, 'deferred');
-    assert.equal(deferred.selectedConversationId(), expectedFinalSession);
-    assert.equal(deferred.activeConversationId(), sessionIds[0]);
-    assert.equal(deferred.queuedCount() > 0, true);
-    assert.equal(
-      deferred
-        .queuedLabels()
-        .every((label) => label.startsWith('shortcut-activate-next') || label.startsWith('shortcut-activate-previous')),
-      true,
-    );
-    await deferred.drain();
-    assert.equal(deferred.activeConversationId(), expectedFinalSession);
+  const deferred = createFastCycleHarness(sessionIds);
+  await deferred.runSequence(sequence, 'deferred');
+  assert.equal(deferred.selectedConversationId(), expectedFinalSession);
+  assert.equal(deferred.activeConversationId(), sessionIds[0]);
+  assert.equal(deferred.queuedCount() > 0, true);
+  assert.equal(
+    deferred
+      .queuedLabels()
+      .every(
+        (label) =>
+          label.startsWith('shortcut-activate-next') ||
+          label.startsWith('shortcut-activate-previous'),
+      ),
+    true,
+  );
+  await deferred.drain();
+  assert.equal(deferred.activeConversationId(), expectedFinalSession);
 
-    const immediate = createFastCycleHarness(sessionIds);
-    await immediate.runSequence(sequence, 'immediate');
-    assert.equal(immediate.selectedConversationId(), expectedFinalSession);
-    assert.equal(immediate.activeConversationId(), expectedFinalSession);
-    assert.equal(immediate.queuedCount(), 0);
-  },
-);
+  const immediate = createFastCycleHarness(sessionIds);
+  await immediate.runSequence(sequence, 'immediate');
+  assert.equal(immediate.selectedConversationId(), expectedFinalSession);
+  assert.equal(immediate.activeConversationId(), expectedFinalSession);
+  assert.equal(immediate.queuedCount(), 0);
+});
 
-void test(
-  'fast ctrl+j under project-review contention reproduces stale activation lag seen in session telemetry',
-  async () => {
-    const shortcutBindings = resolveMuxShortcutBindings();
-    const queued: QueuedOp[] = [];
-    const activationHistory: string[] = [];
-    const targets: readonly LeftNavSelection[] = [
-      { kind: 'project', directoryId: 'dir-a' },
-      { kind: 'conversation', sessionId: 'session-a' },
-      { kind: 'project', directoryId: 'dir-b' },
-      { kind: 'conversation', sessionId: 'session-b' },
-    ];
+void test('fast ctrl+j under project-review contention reproduces stale activation lag seen in session telemetry', async () => {
+  const shortcutBindings = resolveMuxShortcutBindings();
+  const queued: QueuedOp[] = [];
+  const activationHistory: string[] = [];
+  const targets: readonly LeftNavSelection[] = [
+    { kind: 'project', directoryId: 'dir-a' },
+    { kind: 'conversation', sessionId: 'session-a' },
+    { kind: 'project', directoryId: 'dir-b' },
+    { kind: 'conversation', sessionId: 'session-b' },
+  ];
 
-    let leftNavSelection: LeftNavSelection = {
-      kind: 'conversation',
-      sessionId: 'session-a',
-    };
-    let activeConversationId = 'session-a';
-    let mainPaneMode: 'conversation' | 'project' | 'home' = 'conversation';
-    const queueControlPlaneOp = (task: () => Promise<void>, label: string): void => {
-      queued.push({ label, task });
-    };
+  let leftNavSelection: LeftNavSelection = {
+    kind: 'conversation',
+    sessionId: 'session-a',
+  };
+  let activeConversationId = 'session-a';
+  let mainPaneMode: 'conversation' | 'project' | 'home' = 'conversation';
+  const queueControlPlaneOp = (task: () => Promise<void>, label: string): void => {
+    queued.push({ label, task });
+  };
 
-    const leftNavInput = new LeftNavInput(
-      {
-        latestRailRows: () => [] as never,
-        currentSelection: () => leftNavSelection,
+  const leftNavInput = new LeftNavInput(
+    {
+      latestRailRows: () => [] as never,
+      currentSelection: () => leftNavSelection,
+    },
+    {
+      enterHomePane: () => {
+        mainPaneMode = 'home';
+        leftNavSelection = {
+          kind: 'home',
+        };
       },
-      {
-        enterHomePane: () => {
-          mainPaneMode = 'home';
-          leftNavSelection = {
-            kind: 'home',
-          };
-        },
-        firstDirectoryForRepositoryGroup: () => null,
-        enterProjectPane: (directoryId) => {
-          mainPaneMode = 'project';
-          leftNavSelection = {
-            kind: 'project',
-            directoryId,
-          };
-          // Session telemetry shows project review refresh contends in the same interactive queue.
-          queueControlPlaneOp(async () => {}, 'project-pane-github-review');
-        },
-        setMainPaneProjectMode: () => {
-          mainPaneMode = 'project';
-        },
-        selectLeftNavRepository: (_repositoryGroupId) => {},
-        selectLeftNavConversation: (sessionId) => {
-          leftNavSelection = {
-            kind: 'conversation',
-            sessionId,
-          };
-        },
-        markDirty: () => {},
-        directoriesHas: () => true,
-        conversationDirectoryId: (sessionId) =>
-          sessionId === 'session-a'
-            ? 'dir-a'
-            : sessionId === 'session-b'
-              ? 'dir-b'
-              : null,
-        queueControlPlaneOp,
-        activateConversation: async (sessionId) => {
-          activeConversationId = sessionId;
-          mainPaneMode = 'conversation';
-          activationHistory.push(sessionId);
-        },
-        conversationsHas: (sessionId) => sessionId === 'session-a' || sessionId === 'session-b',
+      firstDirectoryForRepositoryGroup: () => null,
+      enterProjectPane: (directoryId) => {
+        mainPaneMode = 'project';
+        leftNavSelection = {
+          kind: 'project',
+          directoryId,
+        };
+        // Session telemetry shows project review refresh contends in the same interactive queue.
+        queueControlPlaneOp(async () => {}, 'project-pane-github-review');
       },
-      {
-        visibleTargets: () => targets,
-        activateTarget: activateLeftNavTarget,
-        cycleSelection: cycleLeftNavSelection,
+      setMainPaneProjectMode: () => {
+        mainPaneMode = 'project';
       },
-    );
-
-    const globalShortcutInput = new GlobalShortcutInput(
-      shortcutBindings,
-      {
-        mainPaneMode: () => mainPaneMode,
-        activeConversationId: () => activeConversationId,
-        conversationsHas: (sessionId) => sessionId === 'session-a' || sessionId === 'session-b',
-        activeDirectoryId: () => null,
-        directoryExists: () => false,
+      selectLeftNavRepository: (_repositoryGroupId) => {},
+      selectLeftNavConversation: (sessionId) => {
+        leftNavSelection = {
+          kind: 'conversation',
+          sessionId,
+        };
       },
-      {
-        requestStop: () => {},
-        resolveDirectoryForAction: () => null,
-        openNewThreadPrompt: (_directoryId) => {},
-        toggleCommandMenu: () => {},
-        openOrCreateCritiqueConversationInDirectory: async (_directoryId) => {},
-        toggleGatewayProfile: async () => {},
-        toggleGatewayStatusTimeline: async () => {},
-        toggleGatewayRenderTrace: async (_conversationId) => {},
-        queueControlPlaneOp,
-        archiveConversation: async (_sessionId) => {},
-        refreshAllConversationTitles: async () => {},
-        interruptConversation: async (_sessionId) => {},
-        takeoverConversation: async (_sessionId) => {},
-        openAddDirectoryPrompt: () => {},
-        closeDirectory: async (_directoryId) => {},
-        cycleLeftNavSelection: (direction) => {
-          leftNavInput.cycleSelection(direction);
-        },
+      markDirty: () => {},
+      directoriesHas: () => true,
+      conversationDirectoryId: (sessionId) =>
+        sessionId === 'session-a' ? 'dir-a' : sessionId === 'session-b' ? 'dir-b' : null,
+      queueControlPlaneOp,
+      activateConversation: async (sessionId) => {
+        activeConversationId = sessionId;
+        mainPaneMode = 'conversation';
+        activationHistory.push(sessionId);
       },
-      {
-        detectShortcut: detectMuxGlobalShortcut,
-        handleShortcut: handleGlobalShortcut,
+      conversationsHas: (sessionId) => sessionId === 'session-a' || sessionId === 'session-b',
+    },
+    {
+      visibleTargets: () => targets,
+      activateTarget: activateLeftNavTarget,
+      cycleSelection: cycleLeftNavSelection,
+    },
+  );
+
+  const globalShortcutInput = new GlobalShortcutInput(
+    shortcutBindings,
+    {
+      mainPaneMode: () => mainPaneMode,
+      activeConversationId: () => activeConversationId,
+      conversationsHas: (sessionId) => sessionId === 'session-a' || sessionId === 'session-b',
+      activeDirectoryId: () => null,
+      directoryExists: () => false,
+    },
+    {
+      requestStop: () => {},
+      resolveDirectoryForAction: () => null,
+      openNewThreadPrompt: (_directoryId) => {},
+      toggleCommandMenu: () => {},
+      openOrCreateCritiqueConversationInDirectory: async (_directoryId) => {},
+      toggleGatewayProfile: async () => {},
+      toggleGatewayStatusTimeline: async () => {},
+      toggleGatewayRenderTrace: async (_conversationId) => {},
+      queueControlPlaneOp,
+      archiveConversation: async (_sessionId) => {},
+      refreshAllConversationTitles: async () => {},
+      interruptConversation: async (_sessionId) => {},
+      takeoverConversation: async (_sessionId) => {},
+      openAddDirectoryPrompt: () => {},
+      closeDirectory: async (_directoryId) => {},
+      cycleLeftNavSelection: (direction) => {
+        leftNavInput.cycleSelection(direction);
       },
-    );
+    },
+    {
+      detectShortcut: detectMuxGlobalShortcut,
+      handleShortcut: handleGlobalShortcut,
+    },
+  );
 
-    for (let index = 0; index < 40; index += 1) {
-      assert.equal(globalShortcutInput.handleInput(Buffer.from([0x0a])), true);
-    }
+  for (let index = 0; index < 40; index += 1) {
+    assert.equal(globalShortcutInput.handleInput(Buffer.from([0x0a])), true);
+  }
 
-    const shortcutCount = queued.filter((entry) => entry.label === 'shortcut-activate-next').length;
-    const reviewCount = queued.filter((entry) => entry.label === 'project-pane-github-review').length;
-    assert.equal(shortcutCount, 20);
-    assert.equal(reviewCount, 20);
-    assert.equal(leftNavSelection.kind, 'conversation');
-    assert.equal(leftNavSelection.sessionId, 'session-a');
+  const shortcutCount = queued.filter((entry) => entry.label === 'shortcut-activate-next').length;
+  const reviewCount = queued.filter((entry) => entry.label === 'project-pane-github-review').length;
+  assert.equal(shortcutCount, 20);
+  assert.equal(reviewCount, 20);
+  assert.equal(leftNavSelection.kind, 'conversation');
+  assert.equal(leftNavSelection.sessionId, 'session-a');
 
-    // Drain a prefix to model in-flight backlog; active conversation still trails selected.
-    for (let index = 0; index < 10; index += 1) {
-      const next = queued.shift();
-      await next?.task();
-    }
-    assert.equal(activeConversationId, 'session-b');
-    assert.equal(leftNavSelection.kind, 'conversation');
-    assert.equal(leftNavSelection.sessionId, 'session-a');
+  // Drain a prefix to model in-flight backlog; active conversation still trails selected.
+  for (let index = 0; index < 10; index += 1) {
+    const next = queued.shift();
+    await next?.task();
+  }
+  assert.equal(activeConversationId, 'session-b');
+  assert.equal(leftNavSelection.kind, 'conversation');
+  assert.equal(leftNavSelection.sessionId, 'session-a');
 
-    while (queued.length > 0) {
-      const next = queued.shift();
-      await next?.task();
-    }
-    assert.equal(activeConversationId, 'session-a');
-    assert.equal(activationHistory.length, 20);
-  },
-);
+  while (queued.length > 0) {
+    const next = queued.shift();
+    await next?.task();
+  }
+  assert.equal(activeConversationId, 'session-a');
+  assert.equal(activationHistory.length, 20);
+});
 
-void test(
-  'fast ctrl+j under project-review contention with latest keyed queue keeps backlog bounded and converges',
-  async () => {
-    const shortcutBindings = resolveMuxShortcutBindings();
-    const activationHistory: string[] = [];
-    const targets: readonly LeftNavSelection[] = [
-      { kind: 'project', directoryId: 'dir-a' },
-      { kind: 'conversation', sessionId: 'session-a' },
-      { kind: 'project', directoryId: 'dir-b' },
-      { kind: 'conversation', sessionId: 'session-b' },
-    ];
-    const scheduled: Array<() => void> = [];
-    const opQueue = new ControlPlaneOpQueue({
-      schedule: (callback) => {
-        scheduled.push(callback);
-      },
+void test('fast ctrl+j under project-review contention with latest keyed queue keeps backlog bounded and converges', async () => {
+  const shortcutBindings = resolveMuxShortcutBindings();
+  const activationHistory: string[] = [];
+  const targets: readonly LeftNavSelection[] = [
+    { kind: 'project', directoryId: 'dir-a' },
+    { kind: 'conversation', sessionId: 'session-a' },
+    { kind: 'project', directoryId: 'dir-b' },
+    { kind: 'conversation', sessionId: 'session-b' },
+  ];
+  const scheduled: Array<() => void> = [];
+  const opQueue = new ControlPlaneOpQueue({
+    schedule: (callback) => {
+      scheduled.push(callback);
+    },
+  });
+
+  let leftNavSelection: LeftNavSelection = {
+    kind: 'conversation',
+    sessionId: 'session-a',
+  };
+  let activeConversationId = 'session-a';
+  let mainPaneMode: 'conversation' | 'project' | 'home' = 'conversation';
+  const queueControlPlaneOp = (task: () => Promise<void>, label: string): void => {
+    opQueue.enqueueInteractive(async () => {
+      await task();
+    }, label);
+  };
+  const queueLatestControlPlaneOp = (
+    key: string,
+    task: (options: { readonly signal: AbortSignal }) => Promise<void>,
+    label: string,
+  ): void => {
+    opQueue.enqueueInteractive(task, label, {
+      key,
+      supersede: 'pending-and-running',
     });
+  };
 
-    let leftNavSelection: LeftNavSelection = {
-      kind: 'conversation',
-      sessionId: 'session-a',
-    };
-    let activeConversationId = 'session-a';
-    let mainPaneMode: 'conversation' | 'project' | 'home' = 'conversation';
-    const queueControlPlaneOp = (task: () => Promise<void>, label: string): void => {
-      opQueue.enqueueInteractive(async () => {
-        await task();
-      }, label);
-    };
-    const queueLatestControlPlaneOp = (
-      key: string,
-      task: (options: { readonly signal: AbortSignal }) => Promise<void>,
-      label: string,
-    ): void => {
-      opQueue.enqueueInteractive(task, label, {
-        key,
-        supersede: 'pending-and-running',
-      });
-    };
-
-    const leftNavInput = new LeftNavInput(
-      {
-        latestRailRows: () => [] as never,
-        currentSelection: () => leftNavSelection,
+  const leftNavInput = new LeftNavInput(
+    {
+      latestRailRows: () => [] as never,
+      currentSelection: () => leftNavSelection,
+    },
+    {
+      enterHomePane: () => {
+        mainPaneMode = 'home';
+        leftNavSelection = {
+          kind: 'home',
+        };
       },
-      {
-        enterHomePane: () => {
-          mainPaneMode = 'home';
-          leftNavSelection = {
-            kind: 'home',
-          };
-        },
-        firstDirectoryForRepositoryGroup: () => null,
-        enterProjectPane: (directoryId) => {
-          mainPaneMode = 'project';
-          leftNavSelection = {
-            kind: 'project',
-            directoryId,
-          };
-          queueLatestControlPlaneOp(
-            `project-pane-github-review:${directoryId}`,
-            async ({ signal }) => {
-              await new Promise<void>((resolve) => {
-                setImmediate(resolve);
-              });
-              if (signal.aborted) {
-                return;
-              }
-            },
-            'project-pane-github-review',
-          );
-        },
-        setMainPaneProjectMode: () => {
-          mainPaneMode = 'project';
-        },
-        selectLeftNavRepository: (_repositoryGroupId) => {},
-        selectLeftNavConversation: (sessionId) => {
-          leftNavSelection = {
-            kind: 'conversation',
-            sessionId,
-          };
-        },
-        markDirty: () => {},
-        directoriesHas: () => true,
-        conversationDirectoryId: (sessionId) =>
-          sessionId === 'session-a'
-            ? 'dir-a'
-            : sessionId === 'session-b'
-              ? 'dir-b'
-              : null,
-        queueControlPlaneOp,
-        queueLatestControlPlaneOp,
-        activateConversation: async (sessionId, options) => {
-          await new Promise<void>((resolve) => {
-            setImmediate(resolve);
-          });
-          if (options?.signal?.aborted === true) {
-            return;
-          }
-          activeConversationId = sessionId;
-          mainPaneMode = 'conversation';
-          activationHistory.push(sessionId);
-        },
-        conversationsHas: (sessionId) => sessionId === 'session-a' || sessionId === 'session-b',
+      firstDirectoryForRepositoryGroup: () => null,
+      enterProjectPane: (directoryId) => {
+        mainPaneMode = 'project';
+        leftNavSelection = {
+          kind: 'project',
+          directoryId,
+        };
+        queueLatestControlPlaneOp(
+          `project-pane-github-review:${directoryId}`,
+          async ({ signal }) => {
+            await new Promise<void>((resolve) => {
+              setImmediate(resolve);
+            });
+            if (signal.aborted) {
+              return;
+            }
+          },
+          'project-pane-github-review',
+        );
       },
-      {
-        visibleTargets: () => targets,
-        activateTarget: activateLeftNavTarget,
-        cycleSelection: cycleLeftNavSelection,
+      setMainPaneProjectMode: () => {
+        mainPaneMode = 'project';
       },
-    );
-
-    const globalShortcutInput = new GlobalShortcutInput(
-      shortcutBindings,
-      {
-        mainPaneMode: () => mainPaneMode,
-        activeConversationId: () => activeConversationId,
-        conversationsHas: (sessionId) => sessionId === 'session-a' || sessionId === 'session-b',
-        activeDirectoryId: () => null,
-        directoryExists: () => false,
+      selectLeftNavRepository: (_repositoryGroupId) => {},
+      selectLeftNavConversation: (sessionId) => {
+        leftNavSelection = {
+          kind: 'conversation',
+          sessionId,
+        };
       },
-      {
-        requestStop: () => {},
-        resolveDirectoryForAction: () => null,
-        openNewThreadPrompt: (_directoryId) => {},
-        toggleCommandMenu: () => {},
-        openOrCreateCritiqueConversationInDirectory: async (_directoryId) => {},
-        toggleGatewayProfile: async () => {},
-        toggleGatewayStatusTimeline: async () => {},
-        toggleGatewayRenderTrace: async (_conversationId) => {},
-        queueControlPlaneOp,
-        archiveConversation: async (_sessionId) => {},
-        refreshAllConversationTitles: async () => {},
-        interruptConversation: async (_sessionId) => {},
-        takeoverConversation: async (_sessionId) => {},
-        openAddDirectoryPrompt: () => {},
-        closeDirectory: async (_directoryId) => {},
-        cycleLeftNavSelection: (direction) => {
-          leftNavInput.cycleSelection(direction);
-        },
+      markDirty: () => {},
+      directoriesHas: () => true,
+      conversationDirectoryId: (sessionId) =>
+        sessionId === 'session-a' ? 'dir-a' : sessionId === 'session-b' ? 'dir-b' : null,
+      queueControlPlaneOp,
+      queueLatestControlPlaneOp,
+      activateConversation: async (sessionId, options) => {
+        await new Promise<void>((resolve) => {
+          setImmediate(resolve);
+        });
+        if (options?.signal?.aborted === true) {
+          return;
+        }
+        activeConversationId = sessionId;
+        mainPaneMode = 'conversation';
+        activationHistory.push(sessionId);
       },
-      {
-        detectShortcut: detectMuxGlobalShortcut,
-        handleShortcut: handleGlobalShortcut,
+      conversationsHas: (sessionId) => sessionId === 'session-a' || sessionId === 'session-b',
+    },
+    {
+      visibleTargets: () => targets,
+      activateTarget: activateLeftNavTarget,
+      cycleSelection: cycleLeftNavSelection,
+    },
+  );
+
+  const globalShortcutInput = new GlobalShortcutInput(
+    shortcutBindings,
+    {
+      mainPaneMode: () => mainPaneMode,
+      activeConversationId: () => activeConversationId,
+      conversationsHas: (sessionId) => sessionId === 'session-a' || sessionId === 'session-b',
+      activeDirectoryId: () => null,
+      directoryExists: () => false,
+    },
+    {
+      requestStop: () => {},
+      resolveDirectoryForAction: () => null,
+      openNewThreadPrompt: (_directoryId) => {},
+      toggleCommandMenu: () => {},
+      openOrCreateCritiqueConversationInDirectory: async (_directoryId) => {},
+      toggleGatewayProfile: async () => {},
+      toggleGatewayStatusTimeline: async () => {},
+      toggleGatewayRenderTrace: async (_conversationId) => {},
+      queueControlPlaneOp,
+      archiveConversation: async (_sessionId) => {},
+      refreshAllConversationTitles: async () => {},
+      interruptConversation: async (_sessionId) => {},
+      takeoverConversation: async (_sessionId) => {},
+      openAddDirectoryPrompt: () => {},
+      closeDirectory: async (_directoryId) => {},
+      cycleLeftNavSelection: (direction) => {
+        leftNavInput.cycleSelection(direction);
       },
-    );
+    },
+    {
+      detectShortcut: detectMuxGlobalShortcut,
+      handleShortcut: handleGlobalShortcut,
+    },
+  );
 
-    for (let index = 0; index < 40; index += 1) {
-      assert.equal(globalShortcutInput.handleInput(Buffer.from([0x0a])), true);
-    }
+  for (let index = 0; index < 40; index += 1) {
+    assert.equal(globalShortcutInput.handleInput(Buffer.from([0x0a])), true);
+  }
 
-    assert.equal(leftNavSelection.kind, 'conversation');
-    assert.equal(leftNavSelection.sessionId, 'session-a');
-    assert.equal(opQueue.metrics().interactiveQueued <= 3, true);
+  assert.equal(leftNavSelection.kind, 'conversation');
+  assert.equal(leftNavSelection.sessionId, 'session-a');
+  assert.equal(opQueue.metrics().interactiveQueued <= 3, true);
 
-    await flushManualSchedule(scheduled);
-    await opQueue.waitForDrain();
-    await flushManualSchedule(scheduled);
+  await flushManualSchedule(scheduled);
+  await opQueue.waitForDrain();
+  await flushManualSchedule(scheduled);
 
-    assert.equal(activeConversationId, 'session-a');
-    assert.equal(activationHistory.length, 1);
-  },
-);
+  assert.equal(activeConversationId, 'session-a');
+  assert.equal(activationHistory.length, 1);
+});

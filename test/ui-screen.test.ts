@@ -243,3 +243,30 @@ void test('process screen writer writes to process stdio streams', () => {
   assert.deepEqual(stdoutWrites, ['out']);
   assert.deepEqual(stderrWrites, ['err']);
 });
+
+void test('screen supports explicit writer/validator constructor wiring', () => {
+  const stdoutWrites: string[] = [];
+  const stderrWrites: string[] = [];
+  const originalStdoutWrite = process.stdout.write;
+  const originalStderrWrite = process.stderr.write;
+
+  (process.stdout.write as unknown as (value: string) => boolean) = ((value: string) => {
+    stdoutWrites.push(value);
+    return true;
+  }) as unknown as typeof process.stdout.write;
+  (process.stderr.write as unknown as (value: string) => boolean) = ((value: string) => {
+    stderrWrites.push(value);
+    return true;
+  }) as unknown as typeof process.stderr.write;
+
+  try {
+    const screen = new Screen(new ProcessScreenWriter(), new DefaultScreenAnsiValidator());
+    screen.flush(createInput({ validateAnsi: true }));
+  } finally {
+    process.stdout.write = originalStdoutWrite;
+    process.stderr.write = originalStderrWrite;
+  }
+
+  assert.equal(stdoutWrites.length > 0, true);
+  assert.deepEqual(stderrWrites, []);
+});

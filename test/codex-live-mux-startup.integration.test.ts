@@ -961,20 +961,12 @@ void test(
       await waitForSnapshotLineContaining(interactive.oracle, '🏠 home', 12000);
       await openCommandMenuWithShortcut(interactive.session, interactive.oracle, 12000);
       interactive.session.write('log in to github');
-      await waitForSnapshotLineContaining(
-        interactive.oracle,
-        'Log In to GitHub (OAuth)',
-        12000,
-      );
+      await waitForSnapshotLineContaining(interactive.oracle, 'Log In to GitHub (OAuth)', 12000);
 
       await closeCommandMenuWithEscape(interactive.session, interactive.oracle, 12000);
       await openCommandMenuWithShortcut(interactive.session, interactive.oracle, 12000);
       interactive.session.write('log in to linear');
-      await waitForSnapshotLineContaining(
-        interactive.oracle,
-        'Log In to Linear (OAuth)',
-        12000,
-      );
+      await waitForSnapshotLineContaining(interactive.oracle, 'Log In to Linear (OAuth)', 12000);
     } finally {
       try {
         await requestMuxShutdown(interactive.session);

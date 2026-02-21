@@ -1,6 +1,6 @@
 export type ControlPlaneOpPriority = 'interactive' | 'background';
 
-export type ControlPlaneOpSupersedeMode = 'none' | 'pending' | 'pending-and-running';
+type ControlPlaneOpSupersedeMode = 'none' | 'pending' | 'pending-and-running';
 
 interface ControlPlaneOpTaskOptions {
   readonly signal: AbortSignal;
@@ -8,7 +8,7 @@ interface ControlPlaneOpTaskOptions {
 
 type ControlPlaneOpTask = (options: ControlPlaneOpTaskOptions) => Promise<void>;
 
-export interface ControlPlaneOpEnqueueOptions {
+interface ControlPlaneOpEnqueueOptions {
   readonly key?: string;
   readonly supersede?: ControlPlaneOpSupersedeMode;
 }

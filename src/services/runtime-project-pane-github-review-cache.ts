@@ -30,7 +30,9 @@ interface CacheEntry {
   inFlight: boolean;
 }
 
-function loadingState(previous: ProjectPaneGitHubReviewSummary | null): ProjectPaneGitHubReviewSummary {
+function loadingState(
+  previous: ProjectPaneGitHubReviewSummary | null,
+): ProjectPaneGitHubReviewSummary {
   return {
     status: 'loading',
     branchName: previous?.branchName ?? null,
@@ -70,7 +72,10 @@ export class RuntimeProjectPaneGitHubReviewCache {
     this.clearIntervalFn = options.clearInterval ?? clearInterval;
   }
 
-  request(directoryId: string, requestOptions: RuntimeProjectPaneGitHubReviewCacheRequestOptions = {}): void {
+  request(
+    directoryId: string,
+    requestOptions: RuntimeProjectPaneGitHubReviewCacheRequestOptions = {},
+  ): void {
     const entry = this.entries.get(directoryId) ?? {
       review: null,
       fetchedAtMs: null,

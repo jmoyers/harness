@@ -46,7 +46,10 @@ void test('runtime project pane GitHub review cache serves loading then ready an
 
   cache.request('dir-a');
   assert.equal(queued.length, 1);
-  assert.deepEqual(updates.map((entry) => entry.review.status), ['loading']);
+  assert.deepEqual(
+    updates.map((entry) => entry.review.status),
+    ['loading'],
+  );
   assert.equal(queued[0]?.key, 'project-pane-github-review:dir-a');
   assert.equal(queued[0]?.label, 'project-pane-github-review');
 
@@ -54,7 +57,10 @@ void test('runtime project pane GitHub review cache serves loading then ready an
     signal: new AbortController().signal,
   });
   assert.deepEqual(loadCalls, ['dir-a']);
-  assert.deepEqual(updates.map((entry) => entry.review.status), ['loading', 'ready']);
+  assert.deepEqual(
+    updates.map((entry) => entry.review.status),
+    ['loading', 'ready'],
+  );
   assert.equal(updates[1]?.review.branchName, 'branch-1');
 
   nowMs += 200;

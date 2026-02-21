@@ -62,10 +62,26 @@ void test('text layout engine truncates with ellipsis and exposes measure/wrap h
   assert.equal(layout.measure('abc'), 3);
   assert.deepEqual(layout.wrap('abcd', 2), ['ab', 'cd']);
   assert.equal(layout.truncate('abcd', 1), '…');
+  assert.equal(layout.truncate('abcdef', 4), 'abc…');
+  assert.equal(layout.truncate('ab', 4), 'ab');
 });
 
 void test('text layout exported helpers cover control and zero-column branches', () => {
   assert.equal(measureDisplayWidth('\u0000a'), 1);
   assert.equal(measureDisplayWidth('🙂'), 2);
   assert.deepEqual(wrapTextForColumns('abc', 0), ['']);
+});
+
+void test('wrapping input renderer supports injected layout engine', () => {
+  const renderer = new WrappingInputRenderer(new TextLayoutEngine());
+  const lines = renderer.renderLines({
+    buffer: {
+      text: 'xy',
+      cursor: 1,
+    },
+    width: 8,
+    cursorVisible: true,
+    cursorToken: '|',
+  });
+  assert.deepEqual(lines, ['x|']);
 });

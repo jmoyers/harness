@@ -241,7 +241,7 @@ void test('add-directory and repository prompt handlers cover quit dismiss edit 
   );
   assert.equal(
     handleAddDirectoryPromptInput({
-      input: Buffer.from('x', 'utf8'),
+      input: Buffer.from('\u001b[<0;1;1M', 'utf8'),
       prompt: { value: '', error: null },
       ...commonAdd,
       dismissOnOutsideClick: (_input, dismiss) => {
@@ -333,7 +333,7 @@ void test('add-directory and repository prompt handlers cover quit dismiss edit 
   );
   assert.equal(
     handleRepositoryPromptInput({
-      input: Buffer.from('x', 'utf8'),
+      input: Buffer.from('\u001b[<0;1;1M', 'utf8'),
       prompt: { mode: 'add', repositoryId: null, value: '', error: null },
       ...commonRepo,
       dismissOnOutsideClick: (_input, dismiss) => {
