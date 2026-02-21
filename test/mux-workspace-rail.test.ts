@@ -369,7 +369,7 @@ void test('workspace rail renders no-title conversations without dash separator'
   );
 });
 
-void test('workspace rail keeps shortcut actions pinned to bottom rows when vertical list is truncated', () => {
+void test('workspace rail keeps navigation and project action rows when vertical list is truncated', () => {
   const rows = renderWorkspaceRailAnsiRows(
     {
       directories: [
@@ -396,10 +396,11 @@ void test('workspace rail keeps shortcut actions pinned to bottom rows when vert
   );
 
   assert.equal(rows.length, 6);
-  assert.equal(rows[0]?.includes('ctrl+j/k switch nav'), true);
-  assert.equal(rows[1]?.includes('expand repo'), true);
-  assert.equal(rows[4]?.includes('collapse all repos'), true);
-  assert.equal(rows[5]?.includes('ctrl+c quit mux'), true);
+  assert.equal(rows[0]?.includes('home'), true);
+  assert.equal(rows[1]?.includes('tasks'), true);
+  assert.equal(rows[2]?.includes('untracked'), true);
+  assert.equal(rows[3]?.includes('add project'), true);
+  assert.equal(rows[4]?.includes('harness'), true);
 });
 
 void test('workspace rail renders icon colors for needs-action exited starting and idle states', () => {
@@ -531,7 +532,7 @@ void test('workspace rail renders icon colors for needs-action exited starting a
   );
 });
 
-void test('workspace rail handles tiny row counts by showing shortcut tail', () => {
+void test('workspace rail handles tiny row counts by preserving add-project action row', () => {
   const rows = renderWorkspaceRailAnsiRows(
     {
       directories: [],
@@ -545,10 +546,10 @@ void test('workspace rail handles tiny row counts by showing shortcut tail', () 
     1,
   );
   assert.equal(rows.length, 1);
-  assert.equal(rows[0]?.includes('ctrl+c quit mux'), true);
+  assert.equal(rows[0]?.includes('add project'), true);
 });
 
-void test('workspace rail keeps full height when shortcut hint text is provided', () => {
+void test('workspace rail keeps full height and does not render shortcut hint section', () => {
   const rows = renderWorkspaceRailAnsiRows(
     {
       directories: [],
@@ -556,7 +557,6 @@ void test('workspace rail keeps full height when shortcut hint text is provided'
       processes: [],
       activeProjectId: null,
       activeConversationId: null,
-      shortcutHint: 'ctrl+t new  ctrl+n/p switch  ctrl+c quit',
       nowMs: Date.parse('2026-01-01T00:00:00.000Z'),
     },
     40,
@@ -565,12 +565,20 @@ void test('workspace rail keeps full height when shortcut hint text is provided'
 
   assert.equal(rows.length, 8);
   assert.equal(
-    rows.some((row) => row.includes('ctrl+n/p switch')),
+    rows.some((row) => row.includes('home')),
+    true,
+  );
+  assert.equal(
+    rows.some((row) => row.includes('tasks')),
     true,
   );
   assert.equal(
     rows.some((row) => row.includes('add project')),
     true,
+  );
+  assert.equal(
+    rows.some((row) => row.includes('shortcuts')),
+    false,
   );
 });
 
@@ -596,7 +604,7 @@ void test('workspace rail renders no-project header without inline thread action
   assert.equal(noProjectsRow.includes('\u001b[0;38;5;230;48;5;237m[+ thread]'), false);
 });
 
-void test('workspace rail collapses shortcut descriptions while retaining toggle header and actions', () => {
+void test('workspace rail omits shortcut section while retaining add-project action row', () => {
   const rows = renderWorkspaceRailAnsiRows(
     {
       directories: [],
@@ -604,7 +612,6 @@ void test('workspace rail collapses shortcut descriptions while retaining toggle
       processes: [],
       activeProjectId: null,
       activeConversationId: null,
-      shortcutsCollapsed: true,
       nowMs: Date.parse('2026-01-01T00:00:00.000Z'),
     },
     40,
@@ -614,11 +621,7 @@ void test('workspace rail collapses shortcut descriptions while retaining toggle
   const plainRows = rows.map((row) => stripAnsi(row));
   assert.equal(rows.length, 8);
   assert.equal(
-    plainRows.some((row) => row.includes('shortcuts [+]')),
-    true,
-  );
-  assert.equal(
-    plainRows.some((row) => row.includes('ctrl+t new thread')),
+    plainRows.some((row) => row.includes('shortcuts')),
     false,
   );
   assert.equal(
@@ -765,20 +768,20 @@ void test('workspace rail row renderer covers header rows without collapse butto
     true,
   );
 
-  const shortcutsHeaderNoButtonAnsi = renderWorkspaceRailRowAnsiForTest(
+  const homeHeaderNoButtonAnsi = renderWorkspaceRailRowAnsiForTest(
     {
-      kind: 'shortcut-header',
-      text: '├─ shortcuts',
+      kind: 'dir-header',
+      text: '├─ 🏠 home',
       active: false,
       conversationSessionId: null,
       directoryKey: null,
       repositoryId: null,
-      railAction: 'shortcuts.toggle',
+      railAction: 'home.open',
       conversationStatus: null,
     },
     32,
   );
-  assert.equal(stripAnsi(shortcutsHeaderNoButtonAnsi).includes('shortcuts'), true);
+  assert.equal(stripAnsi(homeHeaderNoButtonAnsi).includes('home'), true);
 });
 
 void test('workspace rail row renderer covers active project rows muted rows and zero-width clamp', () => {

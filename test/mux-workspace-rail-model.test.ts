@@ -215,24 +215,16 @@ void test('workspace rail model builds rows with conversation spacing and proces
     true,
   );
   assert.equal(
-    rows.some(
-      (row) =>
-        row.kind === 'shortcut-header' &&
-        row.text.includes('shortcuts') &&
-        row.railAction === 'shortcuts.toggle',
-    ),
+    rows.some((row) => row.kind === 'action' && row.text.includes('add project')),
     true,
   );
-  assert.equal(
-    rows.some((row) => row.kind === 'shortcut-body' && row.text.includes('ctrl+t')),
-    true,
-  );
-  assert.equal(rows[rows.length - 1]?.kind, 'shortcut-body');
   assert.equal(rows[0]?.railAction, 'home.open');
   const addProjectRowIndex = rows.findIndex((row) => row.railAction === 'project.add');
-  const shortcutHeaderRowIndex = rows.findIndex((row) => row.kind === 'shortcut-header');
   assert.equal(addProjectRowIndex >= 0, true);
-  assert.equal(shortcutHeaderRowIndex - addProjectRowIndex >= 2, true);
+  assert.equal(
+    rows.some((row) => row.text.includes('shortcuts')),
+    false,
+  );
 });
 
 void test('workspace rail model handles empty projects and blank workspace name', () => {
@@ -255,11 +247,11 @@ void test('workspace rail model handles empty projects and blank workspace name'
   const noDirectoryAddProjectRowIndex = noDirectoryRows.findIndex(
     (row) => row.railAction === 'project.add',
   );
-  const noDirectoryShortcutHeaderIndex = noDirectoryRows.findIndex(
-    (row) => row.kind === 'shortcut-header',
-  );
   assert.equal(noDirectoryAddProjectRowIndex >= 0, true);
-  assert.equal(noDirectoryShortcutHeaderIndex - noDirectoryAddProjectRowIndex >= 2, true);
+  assert.equal(
+    noDirectoryRows.some((row) => row.text.includes('shortcuts')),
+    false,
+  );
 
   const blankNameRows = buildWorkspaceRailViewRows(
     {
@@ -484,7 +476,7 @@ void test('workspace rail model makes project header thread action clickable', (
   assert.equal(actionAtWorkspaceRailCell(rows, emptyStateActionRowIndex, 0), null);
 });
 
-void test('workspace rail model truncates content before pinned shortcuts and supports two-row limit', () => {
+void test('workspace rail model keeps key navigation rows when constrained to tiny heights', () => {
   const twoRows = buildWorkspaceRailViewRows(
     {
       directories: [],
@@ -496,10 +488,8 @@ void test('workspace rail model truncates content before pinned shortcuts and su
     2,
   );
   assert.equal(twoRows.length, 2);
-  assert.equal(twoRows[0]?.kind, 'shortcut-body');
-  assert.equal(twoRows[1]?.kind, 'shortcut-body');
-  assert.equal(twoRows[0]?.text.includes('repos'), true);
-  assert.equal(twoRows[1]?.text.includes('quit mux'), true);
+  assert.equal(twoRows[0]?.railAction, 'project.add');
+  assert.equal(twoRows[1]?.railAction, 'home.open');
 
   const truncated = buildWorkspaceRailViewRows(
     {
@@ -539,9 +529,9 @@ void test('workspace rail model truncates content before pinned shortcuts and su
     3,
   );
   assert.equal(truncated.length, 3);
-  assert.equal(truncated[0]?.text.includes('expand all repos'), true);
-  assert.equal(truncated[1]?.text.includes('collapse all repos'), true);
-  assert.equal(truncated[2]?.text.includes('quit mux'), true);
+  assert.equal(truncated[0]?.railAction, 'project.add');
+  assert.equal(truncated[1]?.railAction, 'home.open');
+  assert.equal(truncated[2]?.railAction, 'tasks.open');
 });
 
 void test('workspace rail model supports starting normalization custom shortcuts and row hit-testing', () => {
@@ -578,7 +568,6 @@ void test('workspace rail model supports starting normalization custom shortcuts
       processes: [],
       activeProjectId: null,
       activeConversationId: 'conversation-a',
-      shortcutHint: '   ',
       nowMs: Date.parse('2026-01-01T00:00:20.000Z'),
     },
     20,
@@ -593,14 +582,6 @@ void test('workspace rail model supports starting normalization custom shortcuts
     true,
   );
   assert.equal(
-    rows.some((row) => row.text.includes('ctrl+j/k switch')),
-    true,
-  );
-  assert.equal(
-    rows.some((row) => row.text.includes('x archive thread')),
-    true,
-  );
-  assert.equal(
     rows.some((row) => row.text.includes('🗑 archive thread')),
     false,
   );
@@ -608,18 +589,16 @@ void test('workspace rail model supports starting normalization custom shortcuts
     rows.some((row) => row.text.includes('add project')),
     true,
   );
-  const shortcutHeaderRowIndex = rows.findIndex((row) => row.kind === 'shortcut-header');
-  assert.equal(shortcutHeaderRowIndex >= 0, true);
   const conversationRowIndex = rows.findIndex(
     (row) => row.kind === 'conversation-title' && row.conversationSessionId === 'conversation-a',
   );
   assert.equal(conversationRowIndex >= 0, true);
-  assert.equal(actionAtWorkspaceRailRow(rows, shortcutHeaderRowIndex), 'shortcuts.toggle');
   assert.equal(actionAtWorkspaceRailRow(rows, -1), null);
   assert.equal(actionAtWorkspaceRailRow(rows, 100), null);
   assert.equal(rows[0]?.railAction, 'home.open');
   const projectAddRowIndex = rows.findIndex((row) => row.railAction === 'project.add');
   assert.equal(projectAddRowIndex >= 0, true);
+  assert.equal(actionAtWorkspaceRailRow(rows, projectAddRowIndex), 'project.add');
   assert.equal(actionAtWorkspaceRailCell(rows, projectAddRowIndex, 0), 'project.add');
   assert.equal(conversationIdAtWorkspaceRailRow(rows, conversationRowIndex), 'conversation-a');
   assert.equal(projectIdAtWorkspaceRailRow(rows, conversationRowIndex), 'dir');
@@ -931,53 +910,6 @@ void test('workspace rail model does not mark conversation active while tasks se
   );
 });
 
-void test('workspace rail model overrides default shortcut text when custom hint is set', () => {
-  const rows = buildWorkspaceRailViewRows(
-    {
-      directories: [],
-      conversations: [],
-      processes: [],
-      activeProjectId: null,
-      activeConversationId: null,
-      shortcutHint: 'ctrl+t new  ctrl+n/p switch  ctrl+] quit',
-    },
-    8,
-  );
-
-  assert.equal(rows.length, 8);
-  assert.equal(
-    rows.some((row) => row.text.includes('ctrl+n/p switch')),
-    true,
-  );
-  assert.equal(
-    rows.some((row) => row.text.includes('close project')),
-    false,
-  );
-});
-
-void test('workspace rail model supports newline-delimited shortcut hint rows', () => {
-  const rows = buildWorkspaceRailViewRows(
-    {
-      directories: [],
-      conversations: [],
-      processes: [],
-      activeProjectId: null,
-      activeConversationId: null,
-      shortcutHint: 'ctrl+t new\nctrl+n/p switch\nctrl+c quit',
-    },
-    10,
-  );
-
-  assert.equal(
-    rows.some((row) => row.text.includes('ctrl+n/p switch')),
-    true,
-  );
-  assert.equal(
-    rows.some((row) => row.text.includes('ctrl+c quit')),
-    true,
-  );
-});
-
 void test('workspace rail model treats running sessions with missing last event as starting', () => {
   const rows = buildWorkspaceRailViewRows(
     {
@@ -1019,35 +951,6 @@ void test('workspace rail model treats running sessions with missing last event 
 
   assert.equal(
     rows.some((row) => row.text.includes('◔ codex - task')),
-    true,
-  );
-});
-
-void test('workspace rail model supports collapsed shortcut descriptions with clickable toggle row', () => {
-  const rows = buildWorkspaceRailViewRows(
-    {
-      directories: [],
-      conversations: [],
-      processes: [],
-      activeProjectId: null,
-      activeConversationId: null,
-      shortcutsCollapsed: true,
-    },
-    10,
-  );
-
-  assert.equal(
-    rows.some((row) => row.kind === 'shortcut-header' && row.text.includes('[+]')),
-    true,
-  );
-  assert.equal(
-    rows.some((row) => row.kind === 'shortcut-body'),
-    false,
-  );
-  const shortcutHeaderRowIndex = rows.findIndex((row) => row.kind === 'shortcut-header');
-  assert.equal(actionAtWorkspaceRailRow(rows, shortcutHeaderRowIndex), 'shortcuts.toggle');
-  assert.equal(
-    rows.some((row) => row.kind === 'action' && row.text.includes('add project')),
     true,
   );
 });

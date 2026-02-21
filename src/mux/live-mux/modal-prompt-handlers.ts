@@ -1,4 +1,8 @@
-import { reduceLinePromptInput } from './modal-input-reducers.ts';
+import {
+  createLinePromptInputState,
+  reduceLinePromptInput,
+  type LinePromptInputState,
+} from './modal-input-reducers.ts';
 
 interface AddDirectoryPromptState {
   value: string;
@@ -18,6 +22,7 @@ interface ApiKeyPromptState {
   readonly value: string;
   readonly error: string | null;
   readonly hasExistingValue: boolean;
+  readonly lineInputState?: LinePromptInputState;
 }
 
 interface HandleAddDirectoryPromptInputOptions {
@@ -234,13 +239,19 @@ export function handleApiKeyPromptInput(options: HandleApiKeyPromptInputOptions)
     return true;
   }
 
-  const reduced = reduceLinePromptInput(prompt.value, input);
+  const reduced = reduceLinePromptInput(
+    prompt.value,
+    input,
+    prompt.lineInputState ?? createLinePromptInputState(),
+  );
   const value = reduced.value;
+  const lineInputState = reduced.lineInputState;
   if (!reduced.submit) {
     setPrompt({
       ...prompt,
       value,
       error: null,
+      lineInputState,
     });
     markDirty();
     return true;
@@ -252,6 +263,7 @@ export function handleApiKeyPromptInput(options: HandleApiKeyPromptInputOptions)
       ...prompt,
       value,
       error: `${prompt.displayName.toLowerCase()} required`,
+      lineInputState,
     });
     markDirty();
     return true;
@@ -265,6 +277,7 @@ export function handleApiKeyPromptInput(options: HandleApiKeyPromptInputOptions)
       ...prompt,
       value,
       error: message,
+      lineInputState,
     });
   }
   markDirty();

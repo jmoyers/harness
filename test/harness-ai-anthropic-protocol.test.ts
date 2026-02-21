@@ -445,3 +445,156 @@ void test('returns null for malformed anthropic chunk sub-shapes', () => {
     null,
   );
 });
+
+void test('covers anthropic parser edge branches for malformed nested content', () => {
+  assert.deepEqual(
+    parseAnthropicStreamChunk({
+      type: 'message_delta',
+      usage: 'bad',
+    }),
+    {
+      type: 'message_delta',
+    },
+  );
+
+  assert.equal(
+    parseAnthropicStreamChunk({
+      type: 'content_block_start',
+      index: 0,
+      content_block: {},
+    }),
+    null,
+  );
+
+  assert.deepEqual(
+    parseAnthropicStreamChunk({
+      type: 'content_block_start',
+      index: 0,
+      content_block: {
+        type: 'web_search_tool_result',
+        tool_use_id: 'tool',
+        content: ['bad-item'],
+      },
+    }),
+    {
+      type: 'content_block_start',
+      index: 0,
+      content_block: {
+        type: 'web_search_tool_result',
+        tool_use_id: 'tool',
+        content: [],
+      },
+    },
+  );
+
+  assert.equal(
+    parseAnthropicStreamChunk({
+      type: 'content_block_start',
+      index: 0,
+      content_block: {
+        type: 'web_search_tool_result',
+        tool_use_id: 'tool',
+        content: 'bad-content',
+      },
+    }),
+    null,
+  );
+
+  assert.equal(
+    parseAnthropicStreamChunk({
+      type: 'content_block_start',
+      index: 0,
+      content_block: {
+        type: 'web_fetch_tool_result',
+        content: {
+          type: 'web_fetch_result',
+          url: 'https://example.com',
+          content: {
+            type: 'document',
+            source: {
+              type: 'base64',
+              media_type: 'text/plain',
+              data: 'aGVsbG8=',
+            },
+          },
+        },
+      },
+    }),
+    null,
+  );
+
+  assert.equal(
+    parseAnthropicStreamChunk({
+      type: 'content_block_start',
+      index: 0,
+      content_block: {
+        type: 'web_fetch_tool_result',
+        tool_use_id: 'tool',
+        content: {},
+      },
+    }),
+    null,
+  );
+
+  assert.equal(
+    parseAnthropicStreamChunk({
+      type: 'content_block_start',
+      index: 0,
+      content_block: {
+        type: 'web_fetch_tool_result',
+        tool_use_id: 'tool',
+        content: {
+          type: 'web_fetch_result',
+          url: 'https://example.com',
+          content: {
+            type: 'document',
+            source: {
+              type: 'base64',
+              media_type: 'text/plain',
+            },
+          },
+        },
+      },
+    }),
+    null,
+  );
+
+  assert.deepEqual(
+    parseAnthropicStreamChunk({
+      type: 'content_block_start',
+      index: 0,
+      content_block: {
+        type: 'web_fetch_tool_result',
+        tool_use_id: 'tool',
+        content: {
+          type: 'web_fetch_error',
+          error_code: 'fetch_failed',
+        },
+      },
+    }),
+    {
+      type: 'content_block_start',
+      index: 0,
+      content_block: {
+        type: 'web_fetch_tool_result',
+        tool_use_id: 'tool',
+        content: {
+          type: 'web_fetch_error',
+          error_code: 'fetch_failed',
+        },
+      },
+    },
+  );
+
+  assert.equal(
+    parseAnthropicStreamChunk({
+      type: 'content_block_delta',
+      index: null,
+      delta: {
+        type: 'text_delta',
+        text: 'x',
+      },
+    }),
+    null,
+  );
+});

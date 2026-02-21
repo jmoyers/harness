@@ -109,3 +109,8 @@ test('frame primitives ansi integrity scanner reports malformed sequences', () =
   assert.equal(issues[2]?.includes('invalid CSI byte'), true);
   assert.equal(issues[3]?.includes('unterminated OSC sequence'), true);
 });
+
+test('frame primitives ansi integrity scanner accepts OSC BEL and unknown ESC followers', () => {
+  const issues = findAnsiIntegrityIssues(['\u001b]0;title\u0007', '\u001bPpayload']);
+  assert.deepEqual(issues, []);
+});

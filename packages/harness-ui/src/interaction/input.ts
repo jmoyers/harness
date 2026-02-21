@@ -1,6 +1,6 @@
 export type ThreadAgentType = 'codex' | 'claude' | 'cursor' | 'terminal' | 'critique';
 
-type CommandMenuScope = 'all' | 'thread-start' | 'theme-select';
+type CommandMenuScope = 'all' | 'thread-start' | 'theme-select' | 'shortcuts';
 
 export interface CommandMenuState {
   readonly scope: CommandMenuScope;

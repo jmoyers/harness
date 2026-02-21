@@ -4,7 +4,6 @@ import { resolve } from 'node:path';
 import { test } from 'bun:test';
 import { TerminalSnapshotOracle } from '../src/terminal/snapshot-oracle.ts';
 import { createTaskComposerBuffer } from '../src/mux/task-composer.ts';
-import { resolveMuxShortcutBindings } from '../src/mux/input-shortcuts.ts';
 import { ConversationPane } from '../src/ui/panes/conversation.ts';
 import { HomePane } from '../src/ui/panes/home.ts';
 import { ProjectPane } from '../src/ui/panes/project.ts';
@@ -277,10 +276,8 @@ void test('left rail pane delegates row rendering through rail-layout model', ()
     homeSelectionEnabled: true,
     repositoriesCollapsed: false,
     collapsedRepositoryGroupIds: new Set(),
-    shortcutsCollapsed: false,
     gitSummaryByDirectoryId: new Map(),
     processUsageBySessionId: new Map(),
-    shortcutBindings: resolveMuxShortcutBindings(),
     loadingGitSummary: {
       branch: 'loading',
       changedFiles: 0,

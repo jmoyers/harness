@@ -3,6 +3,7 @@ import { test } from 'bun:test';
 import { createCommandMenuState } from '../src/mux/live-mux/command-menu.ts';
 import { createNewThreadPromptState } from '../src/mux/new-thread-prompt.ts';
 import {
+  createLinePromptInputState,
   reduceLinePromptInput,
   reduceTaskEditorPromptInput,
 } from '../src/mux/live-mux/modal-input-reducers.ts';
@@ -42,6 +43,70 @@ void test('modal input reducers normalize line and task-editor input branches', 
     {
       value: 'token=abc123',
       submit: false,
+    },
+  );
+  const splitPasteStart = reduceLinePromptInput(
+    '',
+    Buffer.from('\u001b[200~new-key', 'utf8'),
+    createLinePromptInputState(),
+  );
+  assert.deepEqual(
+    {
+      value: splitPasteStart.value,
+      submit: splitPasteStart.submit,
+    },
+    {
+      value: 'new-key',
+      submit: false,
+    },
+  );
+  const splitPasteEnd = reduceLinePromptInput(
+    splitPasteStart.value,
+    Buffer.from('\u001b[201~\n', 'utf8'),
+    splitPasteStart.lineInputState,
+  );
+  assert.deepEqual(
+    {
+      value: splitPasteEnd.value,
+      submit: splitPasteEnd.submit,
+    },
+    {
+      value: 'new-key',
+      submit: true,
+    },
+  );
+  const truncatedPastePrefix = reduceLinePromptInput(
+    '',
+    Buffer.from('\u001b[200', 'utf8'),
+    createLinePromptInputState(),
+  );
+  assert.deepEqual(
+    {
+      value: truncatedPastePrefix.value,
+      submit: truncatedPastePrefix.submit,
+      pending: truncatedPastePrefix.lineInputState.pendingSequence.toString('utf8'),
+    },
+    {
+      value: '',
+      submit: false,
+      pending: '\u001b[200',
+    },
+  );
+  const completedAfterTruncatedPrefix = reduceLinePromptInput(
+    truncatedPastePrefix.value,
+    Buffer.from('~next\u001b[201~', 'utf8'),
+    truncatedPastePrefix.lineInputState,
+  );
+  assert.deepEqual(
+    {
+      value: completedAfterTruncatedPrefix.value,
+      submit: completedAfterTruncatedPrefix.submit,
+      pending: completedAfterTruncatedPrefix.lineInputState.pendingSequence.toString('utf8'),
+    },
+    {
+      value: 'next',
+      submit: false,
+      pending: '',
     },
   );
 
@@ -1289,6 +1354,47 @@ void test('modal overlay builders return null for missing state and build overla
   assert.equal(
     pagedRows.some((row) => row.includes('results 9-12 of 12')),
     false,
+  );
+  const shortcutsCommandMenuOverlay = buildCommandMenuModalOverlay(
+    84,
+    24,
+    createCommandMenuState({
+      scope: 'shortcuts',
+    }),
+    [
+      {
+        id: 'mux.command-menu.toggle',
+        title: 'Toggle command palette with an intentionally long label',
+        screenLabel: 'Global Navigation',
+        bindingHint: 'ctrl+p, cmd+p, alt+shift+p',
+      },
+      {
+        id: 'mux.directory.add',
+        title: 'Add project',
+        screenLabel: 'Projects',
+        sectionLabel: 'Projects',
+        detail: 'Open add-project prompt',
+      },
+    ],
+    theme,
+  );
+  assert.notEqual(shortcutsCommandMenuOverlay, null);
+  const shortcutsRows = shortcutsCommandMenuOverlay?.rows ?? [];
+  assert.equal(
+    shortcutsRows.some((row) => row.includes('Shortcuts')),
+    true,
+  );
+  assert.equal(
+    shortcutsRows.some((row) => row.includes('screen')),
+    true,
+  );
+  assert.equal(
+    shortcutsRows.some((row) => row.includes('bindings')),
+    true,
+  );
+  assert.equal(
+    shortcutsRows.some((row) => row.includes('type to filter keybindings')),
+    true,
   );
 
   assert.equal(buildNewThreadModalOverlay(80, 24, null, theme), null);

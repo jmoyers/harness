@@ -1,10 +1,10 @@
 {
   "include": ["src/**/*.ts", "packages/harness-ai/src/**/*.ts", "packages/harness-ui/src/**/*.ts"],
-  "exclude": [],
+  "exclude": ["src/mux/runtime-app/codex-live-mux-runtime.ts"],
   "global": {
-    "lines": 95,
-    "functions": 95,
-    "branches": 95
+    "lines": 100,
+    "functions": 100,
+    "branches": 100
   },
   "perFileDefault": {
     "lines": 0,

@@ -985,6 +985,7 @@ class CodexLiveMuxRuntimeApplication {
       taskDraftComposer: createTaskComposerBuffer(''),
       repositoriesCollapsed: configuredMuxUi.repositoriesCollapsed,
       shortcutsCollapsed: configuredMuxUi.shortcutsCollapsed,
+      showDebugBar: configuredMuxUi.showDebugBar,
     });
     workspace.repositoryToggleChordPrefixAtMs = null;
     workspace.projectPaneSnapshot = null;
@@ -2214,6 +2215,7 @@ class CodexLiveMuxRuntimeApplication {
         paneWidthPercent: paneWidthPercentFromLayout(layout),
         repositoriesCollapsed: configuredMuxUi.repositoriesCollapsed,
         shortcutsCollapsed: configuredMuxUi.shortcutsCollapsed,
+        showDebugBar: configuredMuxUi.showDebugBar,
       },
       debounceMs: UI_STATE_PERSIST_DEBOUNCE_MS,
       persistState: (pending) => {
@@ -2227,11 +2229,13 @@ class CodexLiveMuxRuntimeApplication {
               : updated.mux.ui.paneWidthPercent,
           repositoriesCollapsed: updated.mux.ui.repositoriesCollapsed,
           shortcutsCollapsed: updated.mux.ui.shortcutsCollapsed,
+          showDebugBar: updated.mux.ui.showDebugBar,
         };
       },
       applyState: (state) => {
         workspace.repositoriesCollapsed = state.repositoriesCollapsed;
         workspace.shortcutsCollapsed = state.shortcutsCollapsed;
+        workspace.showDebugBar = state.showDebugBar;
       },
       writeStderr: (text) => process.stderr.write(text),
     });
@@ -2243,6 +2247,7 @@ class CodexLiveMuxRuntimeApplication {
         paneWidthPercent: paneWidthPercentFromLayout(layout),
         repositoriesCollapsed: workspace.repositoriesCollapsed,
         shortcutsCollapsed: workspace.shortcutsCollapsed,
+        showDebugBar: workspace.showDebugBar,
       });
     };
 
@@ -3837,7 +3842,6 @@ class CodexLiveMuxRuntimeApplication {
       GitRepositorySnapshot,
       GitSummary,
       ProcessUsageSample,
-      ReturnType<typeof resolveMuxShortcutBindings>,
       ReturnType<typeof buildWorkspaceRailViewRows>,
       NonNullable<ReturnType<typeof buildCurrentModalOverlay>>,
       ReturnType<OutputLoadSampler['currentStatusRow']>
@@ -3957,7 +3961,6 @@ class CodexLiveMuxRuntimeApplication {
         conversations: conversationRecords,
         gitSummaryByDirectoryId: gitSummaryByDirectoryId,
         processUsageBySessionId: () => processUsageRefreshService.readonlyUsage(),
-        shortcutBindings,
         loadingGitSummary: GIT_SUMMARY_LOADING,
         showTasksEntry,
         activeConversationId: () => conversationManager.activeConversationId,

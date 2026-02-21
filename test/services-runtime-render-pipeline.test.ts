@@ -30,7 +30,6 @@ interface TestProcessUsage {
   readonly cpuPercent: number;
 }
 
-type TestShortcutBindings = Record<string, readonly string[]>;
 type TestRailRows = readonly string[];
 type TestStatusRow = { readonly eventLoopLagMs: number };
 
@@ -54,7 +53,6 @@ function createWorkspace(): WorkspaceModel {
       cursor: 0,
     },
     repositoriesCollapsed: false,
-    shortcutsCollapsed: false,
   });
 }
 
@@ -77,7 +75,6 @@ void test('runtime render pipeline composes underlying render services and deleg
       TestRepositorySnapshot,
       TestGitSummary,
       TestProcessUsage,
-      TestShortcutBindings,
       TestRailRows
     >
   >[0];
@@ -90,7 +87,6 @@ void test('runtime render pipeline composes underlying render services and deleg
     TestRepositorySnapshot,
     TestGitSummary,
     TestProcessUsage,
-    TestShortcutBindings,
     TestRailRows,
     null,
     TestStatusRow
@@ -155,7 +151,6 @@ void test('runtime render pipeline composes underlying render services and deleg
       conversations: new Map<string, TestConversation>(),
       gitSummaryByDirectoryId: new Map<string, TestGitSummary>(),
       processUsageBySessionId: () => new Map<string, TestProcessUsage>(),
-      shortcutBindings: {},
       loadingGitSummary: { branch: 'loading' },
       activeConversationId: () => null,
       orderedConversationIds: () => [],
@@ -209,7 +204,6 @@ void test('runtime render pipeline renders right pane and flushes when render st
       TestRepositorySnapshot,
       TestGitSummary,
       TestProcessUsage,
-      TestShortcutBindings,
       TestRailRows
     >
   >[0];
@@ -222,7 +216,6 @@ void test('runtime render pipeline renders right pane and flushes when render st
     TestRepositorySnapshot,
     TestGitSummary,
     TestProcessUsage,
-    TestShortcutBindings,
     TestRailRows,
     null,
     TestStatusRow
@@ -298,7 +291,6 @@ void test('runtime render pipeline renders right pane and flushes when render st
       conversations: new Map<string, TestConversation>(),
       gitSummaryByDirectoryId: new Map<string, TestGitSummary>(),
       processUsageBySessionId: () => new Map<string, TestProcessUsage>(),
-      shortcutBindings: {},
       loadingGitSummary: { branch: 'loading' },
       activeConversationId: () => null,
       orderedConversationIds: () => [],

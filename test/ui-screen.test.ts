@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import {
+  DefaultScreenAnsiValidator,
   Screen,
   type ScreenFlushInput,
   type ScreenWriter,
@@ -205,4 +206,11 @@ void test('screen wraps frame writes in synchronized terminal update mode', () =
   const first = outputs[0] ?? '';
   assert.equal(first.startsWith('\u001b[?2026h'), true);
   assert.equal(first.endsWith('\u001b[?2026l'), true);
+});
+
+void test('default ansi validator delegates to frame primitive scanner', () => {
+  const validator = new DefaultScreenAnsiValidator();
+  const issues = validator.findIssues(['\u001b]broken']);
+  assert.equal(issues.length, 1);
+  assert.equal(issues[0]?.includes('unterminated OSC sequence'), true);
 });

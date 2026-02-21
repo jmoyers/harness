@@ -74,8 +74,6 @@ interface WorkspaceRailModel {
   readonly tasksSelectionEnabled?: boolean;
   readonly repositoriesCollapsed?: boolean;
   readonly collapsedRepositoryGroupIds?: readonly string[];
-  readonly shortcutHint?: string;
-  readonly shortcutsCollapsed?: boolean;
   readonly nowMs?: number;
 }
 
@@ -89,8 +87,6 @@ interface WorkspaceRailViewRow {
     | 'process-meta'
     | 'repository-header'
     | 'repository-row'
-    | 'shortcut-header'
-    | 'shortcut-body'
     | 'action'
     | 'muted';
   readonly text: string;
@@ -116,7 +112,6 @@ type WorkspaceRailAction =
   | 'home.open'
   | 'tasks.open'
   | 'project.close'
-  | 'shortcuts.toggle'
   | 'repository.toggle'
   | 'repository.add'
   | 'repository.edit'
@@ -522,70 +517,6 @@ function buildContentRows(
   return rows;
 }
 
-function shortcutDescriptionRows(shortcutHint: string | undefined): readonly string[] {
-  const normalized = shortcutHint?.trim();
-  if (normalized === undefined || normalized.length === 0) {
-    return [
-      'ctrl+t new thread',
-      'ctrl+g critique thread',
-      'ctrl+x archive thread',
-      'ctrl+l take over thread',
-      'ctrl+o add project',
-      'ctrl+w close project',
-      'ctrl+j/k switch nav',
-      '→ expand repo',
-      '← collapse repo',
-      'ctrl+k ctrl+j expand all repos',
-      'ctrl+k ctrl+0 collapse all repos',
-      'ctrl+c quit mux',
-    ];
-  }
-  if (normalized.includes('\n')) {
-    return normalized
-      .split('\n')
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
-  }
-  return normalized
-    .split(/\s{2,}/u)
-    .map((segment) => segment.trim())
-    .filter((segment) => segment.length > 0);
-}
-
-function shortcutRows(
-  shortcutHint: string | undefined,
-  shortcutsCollapsed: boolean,
-): readonly WorkspaceRailViewRow[] {
-  const rows: WorkspaceRailViewRow[] = [
-    {
-      kind: 'shortcut-header',
-      text: `├─ shortcuts ${shortcutsCollapsed ? '[+]' : '[-]'}`,
-      active: false,
-      conversationSessionId: null,
-      directoryKey: null,
-      repositoryId: null,
-      railAction: 'shortcuts.toggle',
-      conversationStatus: null,
-    },
-  ];
-  if (!shortcutsCollapsed) {
-    const descriptions = shortcutDescriptionRows(shortcutHint);
-    for (const description of descriptions) {
-      rows.push({
-        kind: 'shortcut-body',
-        text: `│  ${description}`,
-        active: false,
-        conversationSessionId: null,
-        directoryKey: null,
-        repositoryId: null,
-        railAction: null,
-        conversationStatus: null,
-      });
-    }
-  }
-  return rows;
-}
-
 export function buildWorkspaceRailViewRows(
   model: WorkspaceRailModel,
   maxRows: number,
@@ -593,15 +524,8 @@ export function buildWorkspaceRailViewRows(
   const safeRows = Math.max(1, maxRows);
   const nowMs = model.nowMs ?? Date.now();
   const contentRows = buildContentRows(model, nowMs);
-  const renderedShortcuts = shortcutRows(model.shortcutHint, model.shortcutsCollapsed ?? false);
-
-  if (safeRows <= renderedShortcuts.length) {
-    return renderedShortcuts.slice(renderedShortcuts.length - safeRows);
-  }
-
-  const contentCapacity = safeRows - renderedShortcuts.length;
-  const rows: WorkspaceRailViewRow[] = [...contentRows.slice(0, Math.max(0, contentCapacity - 1))];
-  while (rows.length < contentCapacity) {
+  const rows: WorkspaceRailViewRow[] = [...contentRows.slice(0, Math.max(0, safeRows - 1))];
+  while (rows.length < safeRows) {
     rows.push({
       kind: 'muted',
       text: '│',
@@ -623,12 +547,11 @@ export function buildWorkspaceRailViewRows(
     railAction: 'project.add',
     conversationStatus: null,
   };
-  const projectActionRowIndex = Math.max(0, contentCapacity - 3);
+  const projectActionRowIndex = Math.max(0, safeRows - 3);
   rows.splice(projectActionRowIndex, 0, projectActionRow);
-  if (rows.length > contentCapacity) {
-    rows.length = contentCapacity;
+  if (rows.length > safeRows) {
+    rows.length = safeRows;
   }
-  rows.push(...renderedShortcuts);
   return rows;
 }
 

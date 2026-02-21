@@ -27,7 +27,6 @@ interface LeftRailPaneLike<
   TConversationRecord,
   TGitSummary,
   TProcessUsage,
-  TShortcutBindings,
   TRailViewRows,
 > {
   render(input: {
@@ -48,10 +47,8 @@ interface LeftRailPaneLike<
     showTasksEntry: boolean;
     repositoriesCollapsed: boolean;
     collapsedRepositoryGroupIds: ReadonlySet<string>;
-    shortcutsCollapsed: boolean;
     gitSummaryByDirectoryId: ReadonlyMap<string, TGitSummary>;
     processUsageBySessionId: ReadonlyMap<string, TProcessUsage>;
-    shortcutBindings: TShortcutBindings;
     loadingGitSummary: TGitSummary;
   }): {
     readonly ansiRows: readonly string[];
@@ -66,7 +63,6 @@ interface RuntimeLeftRailRenderOptions<
   TRepositorySnapshot,
   TGitSummary,
   TProcessUsage,
-  TShortcutBindings,
   TRailViewRows,
 > {
   readonly leftRailPane: LeftRailPaneLike<
@@ -77,7 +73,6 @@ interface RuntimeLeftRailRenderOptions<
     TConversationRecord,
     TGitSummary,
     TProcessUsage,
-    TShortcutBindings,
     TRailViewRows
   >;
   readonly sessionProjectionInstrumentation: SessionProjectionInstrumentationLike<
@@ -93,7 +88,6 @@ interface RuntimeLeftRailRenderOptions<
   readonly conversations: ReadonlyMap<string, TConversationRecord>;
   readonly gitSummaryByDirectoryId: ReadonlyMap<string, TGitSummary>;
   readonly processUsageBySessionId: () => ReadonlyMap<string, TProcessUsage>;
-  readonly shortcutBindings: TShortcutBindings;
   readonly loadingGitSummary: TGitSummary;
   readonly showTasksEntry?: boolean;
   readonly activeConversationId: () => string | null;
@@ -107,7 +101,6 @@ export class RuntimeLeftRailRender<
   TRepositorySnapshot,
   TGitSummary,
   TProcessUsage,
-  TShortcutBindings,
   TRailViewRows,
 > {
   constructor(
@@ -118,7 +111,6 @@ export class RuntimeLeftRailRender<
       TRepositorySnapshot,
       TGitSummary,
       TProcessUsage,
-      TShortcutBindings,
       TRailViewRows
     >,
   ) {}
@@ -154,10 +146,8 @@ export class RuntimeLeftRailRender<
       repositoriesCollapsed: this.options.workspace.repositoriesCollapsed,
       collapsedRepositoryGroupIds:
         this.options.repositoryManager.readonlyCollapsedRepositoryGroupIds(),
-      shortcutsCollapsed: this.options.workspace.shortcutsCollapsed,
       gitSummaryByDirectoryId: this.options.gitSummaryByDirectoryId,
       processUsageBySessionId: this.options.processUsageBySessionId(),
-      shortcutBindings: this.options.shortcutBindings,
       loadingGitSummary: this.options.loadingGitSummary,
     });
   }

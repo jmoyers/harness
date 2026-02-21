@@ -171,6 +171,90 @@ void test('runDiffUiCli can use default stdin reader path for rpc mode', async (
   assert.equal(stderr, '');
 });
 
+void test('runDiffUiCli default rpc stdin reader does not block on tty stdin', async () => {
+  let stdout = '';
+  let stderr = '';
+  const originalIsStdinTty = process.stdin.isTTY;
+
+  Object.defineProperty(process.stdin, 'isTTY', {
+    value: true,
+    configurable: true,
+  });
+
+  try {
+    const result = await runDiffUiCli({
+      argv: ['--json-events', '--rpc-stdio', '--width', '100', '--height', '12'],
+      cwd: '/repo',
+      env: {},
+      writeStdout: (text) => {
+        stdout += text;
+      },
+      writeStderr: (text) => {
+        stderr += text;
+      },
+      createBuilder,
+      isStdoutTty: false,
+      stdoutCols: 100,
+      stdoutRows: 12,
+    });
+
+    assert.equal(result.exitCode, 0);
+    assert.equal(
+      result.events.some((event) => event.type === 'diff.loaded'),
+      true,
+    );
+    assert.equal(
+      result.events.some((event) => event.type === 'session.quit'),
+      false,
+    );
+    assert.equal(stdout.includes('diff.loaded'), true);
+    assert.equal(stderr, '');
+  } finally {
+    Object.defineProperty(process.stdin, 'isTTY', {
+      value: originalIsStdinTty,
+      configurable: true,
+    });
+  }
+});
+
+void test('runDiffUiCli default rpc stdin reader consumes fd0 when stdin is non-tty', async () => {
+  let stdout = '';
+  let stderr = '';
+  const originalIsStdinTty = process.stdin.isTTY;
+
+  Object.defineProperty(process.stdin, 'isTTY', {
+    value: false,
+    configurable: true,
+  });
+
+  try {
+    const result = await runDiffUiCli({
+      argv: ['--json-events', '--rpc-stdio', '--width', '100', '--height', '12'],
+      cwd: '/repo',
+      env: {},
+      writeStdout: (text) => {
+        stdout += text;
+      },
+      writeStderr: (text) => {
+        stderr += text;
+      },
+      createBuilder,
+      isStdoutTty: false,
+      stdoutCols: 100,
+      stdoutRows: 12,
+    });
+
+    assert.equal(result.exitCode, 0);
+    assert.equal(stdout.includes('diff.loaded'), true);
+    assert.equal(stderr, '');
+  } finally {
+    Object.defineProperty(process.stdin, 'isTTY', {
+      value: originalIsStdinTty,
+      configurable: true,
+    });
+  }
+});
+
 void test('runDiffUiCli surfaces parse/build failures', async () => {
   let stderrParse = '';
   const badArgs = await runDiffUiCli({

@@ -34,7 +34,6 @@ function createWorkspace(): WorkspaceModel {
       cursor: 0,
     },
     repositoriesCollapsed: false,
-    shortcutsCollapsed: false,
   });
 }
 

@@ -178,6 +178,76 @@ function handleLeftRailConversationClick(options: HandleLeftRailConversationClic
   });
 }
 
+void test('left-rail pointer handler resolveHit and title-edit retention checks are stable', () => {
+  const handler = new LeftRailPointerHandler(
+    {
+      latestRailRows: () => [] as never,
+      conversationTitleEditConversationId: () => 'conv-1',
+      activeConversationId: () => null,
+      repositoriesCollapsed: () => false,
+      resolveDirectoryForAction: () => null,
+      previousConversationClickState: () => null,
+      nowMs: () => 0,
+      isConversationPaneActive: () => true,
+      directoriesHas: () => false,
+    },
+    {
+      clearConversationTitleEditClickState: () => {},
+      openNewThreadPrompt: () => {},
+      queueArchiveConversation: () => {},
+      openAddDirectoryPrompt: () => {},
+      openRepositoryPromptForCreate: () => {},
+      repositoryExists: () => false,
+      openRepositoryPromptForEdit: () => {},
+      queueArchiveRepository: () => {},
+      toggleRepositoryGroup: () => {},
+      selectLeftNavRepository: () => {},
+      expandAllRepositoryGroups: () => {},
+      collapseAllRepositoryGroups: () => {},
+      enterHomePane: () => {},
+      queueCloseDirectory: () => {},
+      toggleShortcutsCollapsed: () => {},
+      setConversationClickState: () => {},
+      ensureConversationPaneActive: () => {},
+      beginConversationTitleEdit: () => {},
+      queueActivateConversation: () => {},
+      queueActivateConversationAndEdit: () => {},
+      enterProjectPane: () => {},
+      markDirty: () => {},
+    },
+    {
+      conversationTitleEditDoubleClickWindowMs: 250,
+    },
+  );
+
+  const resolved = handler.resolveHit(0, 0, 40);
+  assert.equal(resolved.selectedConversationId, null);
+  assert.equal(resolved.selectedProjectId, null);
+  assert.equal(resolved.selectedRepositoryId, null);
+  assert.equal(resolved.supportsConversationTitleEditClick, false);
+
+  assert.equal(
+    handler.shouldKeepConversationTitleEditActive({
+      selectedConversationId: 'conv-1',
+      selectedProjectId: null,
+      selectedRepositoryId: null,
+      selectedAction: null,
+      supportsConversationTitleEditClick: true,
+    }),
+    true,
+  );
+  assert.equal(
+    handler.shouldKeepConversationTitleEditActive({
+      selectedConversationId: 'conv-2',
+      selectedProjectId: null,
+      selectedRepositoryId: null,
+      selectedAction: null,
+      supportsConversationTitleEditClick: true,
+    }),
+    false,
+  );
+});
+
 void test('git-state helpers delete directory state and apply observed updates', () => {
   const summaryMap = new Map([
     [
@@ -729,7 +799,6 @@ void test('left-rail action click routes all supported actions and default false
     'home.open',
     'tasks.open',
     'project.close',
-    'shortcuts.toggle',
   ] as const;
   for (const action of actions) {
     assert.equal(handleLeftRailActionClick({ ...base, action }), true);
@@ -747,7 +816,6 @@ void test('left-rail action click routes all supported actions and default false
   assert.equal(calls.includes('collapseAllRepositoryGroups'), true);
   assert.equal(calls.includes('enterHomePane'), true);
   assert.equal(calls.includes('queueCloseDirectory:dir-a'), true);
-  assert.equal(calls.includes('toggleShortcutsCollapsed'), true);
   calls.length = 0;
   assert.equal(
     handleLeftRailActionClick({

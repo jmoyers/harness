@@ -33,7 +33,6 @@ function createWorkspace(): WorkspaceModel {
       cursor: 0,
     },
     repositoriesCollapsed: false,
-    shortcutsCollapsed: false,
   });
 }
 
@@ -335,6 +334,87 @@ void test('runtime task pane actions runTaskPaneAction default task reorder flow
     'reorderTasks:task-2,task-1',
     'setTask:task-2:ready',
     'setTask:task-1:ready',
+    'syncTaskPaneSelection',
+    'markDirty',
+  ]);
+});
+
+void test('runtime task pane actions repository archive requires selected repository', () => {
+  const harness = createHarness();
+  harness.workspace.taskPaneSelectedRepositoryId = null;
+
+  harness.service.runTaskPaneAction('repository.archive');
+
+  assert.equal(harness.workspace.taskPaneNotice, 'select a repository first');
+  assert.deepEqual(harness.calls, ['markDirty']);
+});
+
+void test('runtime task pane actions repository archive queues archive and sync', async () => {
+  const harness = createHarness();
+  harness.workspace.taskPaneSelectedRepositoryId = 'repo-1';
+
+  harness.service.runTaskPaneAction('repository.archive');
+  await harness.flushQueued();
+
+  assert.equal(harness.workspace.taskPaneSelectionFocus, 'repository');
+  assert.deepEqual(harness.calls, [
+    'queueControlPlaneOp:tasks-archive-repository',
+    'archiveRepositoryById:repo-1',
+    'syncTaskPaneRepositorySelection',
+  ]);
+});
+
+void test('runtime task pane actions delete task clears task editor target and local task state', async () => {
+  const harness = createHarness({
+    selectedTask: () => ({
+      taskId: 'task-1',
+      repositoryId: 'repo-1',
+      status: 'ready',
+    }),
+  });
+  harness.workspace.taskEditorTarget = { kind: 'task', taskId: 'task-1' };
+
+  harness.service.runTaskPaneAction('task.delete');
+  await harness.flushQueued();
+
+  assert.deepEqual(harness.workspace.taskEditorTarget, { kind: 'draft' });
+  assert.deepEqual(harness.calls, [
+    'queueControlPlaneOp:tasks-delete',
+    'clearTaskAutosaveTimer:task-1',
+    'serviceDeleteTask:task-1',
+    'deleteTask:task-1',
+    'deleteTaskComposer:task-1',
+    'syncTaskPaneSelection',
+    'markDirty',
+  ]);
+});
+
+void test('runtime task pane actions status updates queue correct control-plane operations', async () => {
+  const harness = createHarness({
+    selectedTask: () => ({
+      taskId: 'task-1',
+      repositoryId: 'repo-1',
+      status: 'ready',
+    }),
+  });
+
+  harness.service.runTaskPaneAction('task.ready');
+  harness.service.runTaskPaneAction('task.draft');
+  harness.service.runTaskPaneAction('task.complete');
+  await harness.flushQueued();
+
+  assert.equal(harness.workspace.taskPaneSelectionFocus, 'task');
+  assert.deepEqual(harness.calls, [
+    'queueControlPlaneOp:tasks-ready',
+    'queueControlPlaneOp:tasks-draft',
+    'queueControlPlaneOp:tasks-complete',
+    'setTask:task-1:ready',
+    'syncTaskPaneSelection',
+    'markDirty',
+    'setTask:task-1:draft',
+    'syncTaskPaneSelection',
+    'markDirty',
+    'setTask:task-1:completed',
     'syncTaskPaneSelection',
     'markDirty',
   ]);

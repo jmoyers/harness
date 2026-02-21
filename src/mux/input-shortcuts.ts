@@ -1,21 +1,8 @@
-type MuxGlobalShortcutAction =
-  | 'mux.app.quit'
-  | 'mux.app.interrupt-all'
-  | 'mux.command-menu.toggle'
-  | 'mux.gateway.profile.toggle'
-  | 'mux.gateway.status-timeline.toggle'
-  | 'mux.gateway.render-trace.toggle'
-  | 'mux.conversation.new'
-  | 'mux.conversation.critique.open-or-create'
-  | 'mux.conversation.next'
-  | 'mux.conversation.previous'
-  | 'mux.conversation.titles.refresh-all'
-  | 'mux.conversation.interrupt'
-  | 'mux.conversation.archive'
-  | 'mux.conversation.takeover'
-  | 'mux.conversation.delete'
-  | 'mux.directory.add'
-  | 'mux.directory.close';
+import {
+  DEFAULT_MUX_SHORTCUT_BINDINGS_RAW,
+  MUX_GLOBAL_SHORTCUT_ACTION_ORDER,
+  type MuxGlobalShortcutAction,
+} from './keybinding-registry.ts';
 
 interface KeyStroke {
   readonly key: string;
@@ -37,47 +24,7 @@ interface ResolvedMuxShortcutBindings {
   >;
 }
 
-const ACTION_ORDER: readonly MuxGlobalShortcutAction[] = [
-  'mux.app.quit',
-  'mux.app.interrupt-all',
-  'mux.command-menu.toggle',
-  'mux.gateway.profile.toggle',
-  'mux.gateway.status-timeline.toggle',
-  'mux.gateway.render-trace.toggle',
-  'mux.conversation.new',
-  'mux.conversation.critique.open-or-create',
-  'mux.conversation.next',
-  'mux.conversation.previous',
-  'mux.conversation.titles.refresh-all',
-  'mux.conversation.interrupt',
-  'mux.conversation.archive',
-  'mux.conversation.takeover',
-  'mux.conversation.delete',
-  'mux.directory.add',
-  'mux.directory.close',
-];
-
-const DEFAULT_MUX_SHORTCUT_BINDINGS_RAW: Readonly<
-  Record<MuxGlobalShortcutAction, readonly string[]>
-> = {
-  'mux.app.quit': [],
-  'mux.app.interrupt-all': ['ctrl+c'],
-  'mux.command-menu.toggle': ['ctrl+p', 'cmd+p'],
-  'mux.gateway.profile.toggle': ['ctrl+shift+p'],
-  'mux.gateway.status-timeline.toggle': ['alt+r'],
-  'mux.gateway.render-trace.toggle': ['ctrl+]'],
-  'mux.conversation.new': ['ctrl+t'],
-  'mux.conversation.critique.open-or-create': ['ctrl+g'],
-  'mux.conversation.next': ['ctrl+j'],
-  'mux.conversation.previous': ['ctrl+k'],
-  'mux.conversation.titles.refresh-all': ['ctrl+r'],
-  'mux.conversation.interrupt': [],
-  'mux.conversation.archive': [],
-  'mux.conversation.takeover': ['ctrl+l'],
-  'mux.conversation.delete': ['ctrl+x'],
-  'mux.directory.add': ['ctrl+o'],
-  'mux.directory.close': ['ctrl+w'],
-};
+const ACTION_ORDER = MUX_GLOBAL_SHORTCUT_ACTION_ORDER;
 
 const KEY_TOKEN_ALIASES = new Map<string, string>([
   ['cmd', 'meta'],
@@ -561,57 +508,11 @@ function parseBindingsForAction(rawBindings: readonly string[]): readonly Parsed
 function withDefaultBindings(
   overrides: Readonly<Record<string, readonly string[]> | undefined>,
 ): Readonly<Record<MuxGlobalShortcutAction, readonly string[]>> {
-  return {
-    'mux.app.quit':
-      overrides?.['mux.app.quit'] ?? DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.app.quit'],
-    'mux.app.interrupt-all':
-      overrides?.['mux.app.interrupt-all'] ??
-      DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.app.interrupt-all'],
-    'mux.command-menu.toggle':
-      overrides?.['mux.command-menu.toggle'] ??
-      DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.command-menu.toggle'],
-    'mux.gateway.profile.toggle':
-      overrides?.['mux.gateway.profile.toggle'] ??
-      DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.gateway.profile.toggle'],
-    'mux.gateway.status-timeline.toggle':
-      overrides?.['mux.gateway.status-timeline.toggle'] ??
-      DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.gateway.status-timeline.toggle'],
-    'mux.gateway.render-trace.toggle':
-      overrides?.['mux.gateway.render-trace.toggle'] ??
-      DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.gateway.render-trace.toggle'],
-    'mux.conversation.new':
-      overrides?.['mux.conversation.new'] ??
-      DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.new'],
-    'mux.conversation.critique.open-or-create':
-      overrides?.['mux.conversation.critique.open-or-create'] ??
-      DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.critique.open-or-create'],
-    'mux.conversation.next':
-      overrides?.['mux.conversation.next'] ??
-      DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.next'],
-    'mux.conversation.previous':
-      overrides?.['mux.conversation.previous'] ??
-      DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.previous'],
-    'mux.conversation.titles.refresh-all':
-      overrides?.['mux.conversation.titles.refresh-all'] ??
-      DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.titles.refresh-all'],
-    'mux.conversation.interrupt':
-      overrides?.['mux.conversation.interrupt'] ??
-      DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.interrupt'],
-    'mux.conversation.archive':
-      overrides?.['mux.conversation.archive'] ??
-      DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.archive'],
-    'mux.conversation.takeover':
-      overrides?.['mux.conversation.takeover'] ??
-      DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.takeover'],
-    'mux.conversation.delete':
-      overrides?.['mux.conversation.delete'] ??
-      DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.conversation.delete'],
-    'mux.directory.add':
-      overrides?.['mux.directory.add'] ?? DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.directory.add'],
-    'mux.directory.close':
-      overrides?.['mux.directory.close'] ??
-      DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.directory.close'],
-  };
+  const rawByAction = {} as Record<MuxGlobalShortcutAction, readonly string[]>;
+  for (const action of ACTION_ORDER) {
+    rawByAction[action] = overrides?.[action] ?? DEFAULT_MUX_SHORTCUT_BINDINGS_RAW[action];
+  }
+  return rawByAction;
 }
 
 export function resolveMuxShortcutBindings(
@@ -624,6 +525,7 @@ export function resolveMuxShortcutBindings(
       'mux.app.quit': parseBindingsForAction(rawByAction['mux.app.quit']),
       'mux.app.interrupt-all': parseBindingsForAction(rawByAction['mux.app.interrupt-all']),
       'mux.command-menu.toggle': parseBindingsForAction(rawByAction['mux.command-menu.toggle']),
+      'mux.debug-bar.toggle': parseBindingsForAction(rawByAction['mux.debug-bar.toggle']),
       'mux.gateway.profile.toggle': parseBindingsForAction(
         rawByAction['mux.gateway.profile.toggle'],
       ),

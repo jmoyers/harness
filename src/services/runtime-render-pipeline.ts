@@ -36,7 +36,6 @@ type RuntimeLeftRailRenderOptions<
   TRepositorySnapshot,
   TGitSummary,
   TProcessUsage,
-  TShortcutBindings,
   TRailViewRows,
 > = ConstructorParameters<
   typeof RuntimeLeftRailRender<
@@ -46,7 +45,6 @@ type RuntimeLeftRailRenderOptions<
     TRepositorySnapshot,
     TGitSummary,
     TProcessUsage,
-    TShortcutBindings,
     TRailViewRows
   >
 >[0];
@@ -63,7 +61,6 @@ interface RuntimeRenderPipelineOptions<
   TRepositorySnapshot,
   TGitSummary,
   TProcessUsage,
-  TShortcutBindings,
   TRailViewRows,
   TModalOverlay,
   TStatusRow,
@@ -77,7 +74,6 @@ interface RuntimeRenderPipelineOptions<
     TRepositorySnapshot,
     TGitSummary,
     TProcessUsage,
-    TShortcutBindings,
     TRailViewRows
   >;
   readonly renderState: RuntimeRenderStateOptions<TConversation>;
@@ -106,7 +102,6 @@ export class RuntimeRenderPipeline<
   TRepositorySnapshot,
   TGitSummary,
   TProcessUsage,
-  TShortcutBindings,
   TRailViewRows,
   TModalOverlay,
   TStatusRow,
@@ -129,7 +124,6 @@ export class RuntimeRenderPipeline<
       TRepositorySnapshot,
       TGitSummary,
       TProcessUsage,
-      TShortcutBindings,
       TRailViewRows,
       TModalOverlay,
       TStatusRow

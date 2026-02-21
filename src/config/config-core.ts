@@ -86,6 +86,7 @@ interface HarnessMuxUiConfig {
   readonly repositoriesCollapsed: boolean;
   readonly shortcutsCollapsed: boolean;
   readonly showTasks: boolean;
+  readonly showDebugBar: boolean;
   readonly theme: HarnessMuxThemeConfig | null;
 }
 
@@ -283,6 +284,7 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
       repositoriesCollapsed: false,
       shortcutsCollapsed: false,
       showTasks: false,
+      showDebugBar: false,
       theme: null,
     },
     git: {
@@ -625,23 +627,28 @@ function normalizeMuxUiConfig(input: unknown): HarnessMuxUiConfig {
     record['paneWidthPercent'],
     DEFAULT_HARNESS_CONFIG.mux.ui.paneWidthPercent,
   );
-  const shortcutsCollapsed =
-    typeof record['shortcutsCollapsed'] === 'boolean'
-      ? record['shortcutsCollapsed']
-      : DEFAULT_HARNESS_CONFIG.mux.ui.shortcutsCollapsed;
   const repositoriesCollapsed =
     typeof record['repositoriesCollapsed'] === 'boolean'
       ? record['repositoriesCollapsed']
       : DEFAULT_HARNESS_CONFIG.mux.ui.repositoriesCollapsed;
+  const shortcutsCollapsed =
+    typeof record['shortcutsCollapsed'] === 'boolean'
+      ? record['shortcutsCollapsed']
+      : DEFAULT_HARNESS_CONFIG.mux.ui.shortcutsCollapsed;
   const showTasks =
     typeof record['showTasks'] === 'boolean'
       ? record['showTasks']
       : DEFAULT_HARNESS_CONFIG.mux.ui.showTasks;
+  const showDebugBar =
+    typeof record['showDebugBar'] === 'boolean'
+      ? record['showDebugBar']
+      : DEFAULT_HARNESS_CONFIG.mux.ui.showDebugBar;
   return {
     paneWidthPercent,
     repositoriesCollapsed,
     shortcutsCollapsed,
     showTasks,
+    showDebugBar,
     theme: normalizeMuxThemeConfig(record['theme']),
   };
 }
@@ -1724,6 +1731,7 @@ export function updateHarnessMuxUiConfig(
     repositoriesCollapsed: boolean;
     shortcutsCollapsed: boolean;
     showTasks: boolean;
+    showDebugBar: boolean;
   }>,
   options?: {
     cwd?: string;
@@ -1742,16 +1750,18 @@ export function updateHarnessMuxUiConfig(
         update.paneWidthPercent === undefined
           ? current.mux.ui.paneWidthPercent
           : normalizePaneWidthPercent(update.paneWidthPercent, null);
-      const nextShortcutsCollapsed =
-        update.shortcutsCollapsed === undefined
-          ? current.mux.ui.shortcutsCollapsed
-          : update.shortcutsCollapsed;
       const nextRepositoriesCollapsed =
         update.repositoriesCollapsed === undefined
           ? current.mux.ui.repositoriesCollapsed
           : update.repositoriesCollapsed;
+      const nextShortcutsCollapsed =
+        update.shortcutsCollapsed === undefined
+          ? current.mux.ui.shortcutsCollapsed
+          : update.shortcutsCollapsed;
       const nextShowTasks =
         update.showTasks === undefined ? current.mux.ui.showTasks : update.showTasks;
+      const nextShowDebugBar =
+        update.showDebugBar === undefined ? current.mux.ui.showDebugBar : update.showDebugBar;
       return {
         ...current,
         mux: {
@@ -1762,6 +1772,7 @@ export function updateHarnessMuxUiConfig(
             repositoriesCollapsed: nextRepositoriesCollapsed,
             shortcutsCollapsed: nextShortcutsCollapsed,
             showTasks: nextShowTasks,
+            showDebugBar: nextShowDebugBar,
             theme: current.mux.ui.theme,
           },
         },

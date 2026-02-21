@@ -885,3 +885,82 @@ void test('collectFullStream helper collects emitted parts', async () => {
     true,
   );
 });
+
+void test('streamText extracts leading system message when system option is omitted', async () => {
+  const { model, requestBodies } = createQueuedModel([
+    createAnthropicResponse([
+      {
+        type: 'message_start',
+        message: {
+          id: 'system-extract',
+          model: 'claude-sonnet',
+          usage: { input_tokens: 1, output_tokens: 0 },
+        },
+      },
+      {
+        type: 'message_delta',
+        delta: { stop_reason: 'end_turn' },
+        usage: { input_tokens: 1, output_tokens: 1 },
+      },
+      { type: 'message_stop' },
+    ]),
+  ]);
+
+  const result = streamText({
+    model,
+    messages: [
+      { role: 'system', content: 'system prompt' },
+      { role: 'user', content: 'hello' },
+    ],
+  });
+
+  await result.finishReason;
+
+  const firstBody = requestBodies[0] as { system?: unknown; messages?: unknown[] };
+  assert.equal(firstBody.system, 'system prompt');
+  assert.equal(Array.isArray(firstBody.messages), true);
+  assert.equal(firstBody.messages?.length, 1);
+});
+
+void test('streamText handles provider web fetch error payload and completes on message_stop', async () => {
+  const { model } = createQueuedModel([
+    createAnthropicResponse([
+      {
+        type: 'message_start',
+        message: {
+          id: 'web-fetch-error',
+          model: 'claude-sonnet',
+          usage: { input_tokens: 2, output_tokens: 0 },
+        },
+      },
+      {
+        type: 'content_block_start',
+        index: 0,
+        content_block: {
+          type: 'web_fetch_tool_result',
+          tool_use_id: 'fetch-1',
+          content: {
+            type: 'web_fetch_error',
+            error_code: 'blocked',
+          },
+        },
+      },
+      {
+        type: 'message_delta',
+        delta: { stop_reason: 'end_turn' },
+        usage: { input_tokens: 2, output_tokens: 1 },
+      },
+      { type: 'message_stop' },
+    ]),
+  ]);
+
+  const result = streamText({ model, prompt: 'fetch' });
+  const parts = await collectFullParts(result);
+  const finishReason = await result.finishReason;
+
+  assert.equal(
+    parts.some((part) => part.type === 'tool-error' && part.toolCallId === 'fetch-1'),
+    true,
+  );
+  assert.equal(finishReason, 'stop');
+});

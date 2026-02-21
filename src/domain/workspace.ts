@@ -1,6 +1,7 @@
 import type { ProjectPaneSnapshot } from '../mux/harness-core-ui.ts';
 import type { CommandMenuState } from '../mux/live-mux/command-menu.ts';
 import type { LeftNavSelection } from '../mux/live-mux/left-nav.ts';
+import type { LinePromptInputState } from '../mux/live-mux/modal-input-reducers.ts';
 import type { PaneSelection, PaneSelectionDrag } from '../mux/live-mux/selection.ts';
 import type { createNewThreadPromptState } from '../mux/new-thread-prompt.ts';
 import type { TaskComposerBuffer } from '../mux/task-composer.ts';
@@ -31,6 +32,7 @@ interface ApiKeyPromptState {
   readonly value: string;
   readonly error: string | null;
   readonly hasExistingValue: boolean;
+  readonly lineInputState?: LinePromptInputState;
 }
 
 export interface TaskEditorPromptState {
@@ -60,7 +62,8 @@ interface WorkspaceModelInit {
   latestTaskPaneView: TaskFocusedPaneView;
   taskDraftComposer: TaskComposerBuffer;
   repositoriesCollapsed: boolean;
-  shortcutsCollapsed: boolean;
+  shortcutsCollapsed?: boolean;
+  showDebugBar?: boolean;
 }
 
 export class WorkspaceModel {
@@ -101,6 +104,7 @@ export class WorkspaceModel {
 
   repositoriesCollapsed: boolean;
   shortcutsCollapsed: boolean;
+  showDebugBar: boolean;
 
   constructor(init: WorkspaceModelInit) {
     this.activeDirectoryId = init.activeDirectoryId;
@@ -108,7 +112,8 @@ export class WorkspaceModel {
     this.latestTaskPaneView = init.latestTaskPaneView;
     this.taskDraftComposer = init.taskDraftComposer;
     this.repositoriesCollapsed = init.repositoriesCollapsed;
-    this.shortcutsCollapsed = init.shortcutsCollapsed;
+    this.shortcutsCollapsed = init.shortcutsCollapsed ?? false;
+    this.showDebugBar = init.showDebugBar ?? false;
   }
 
   selectLeftNavHome(): void {

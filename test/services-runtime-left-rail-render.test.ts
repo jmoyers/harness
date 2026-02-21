@@ -28,10 +28,6 @@ interface ProcessUsageRecord {
   readonly pid: number;
 }
 
-interface ShortcutBindingsRecord {
-  readonly byAction: ReadonlyMap<string, string>;
-}
-
 const emptyTaskPaneView = () => ({
   rows: [],
   taskIds: [],
@@ -55,7 +51,6 @@ void test('runtime left-rail renderer refreshes selector snapshot and delegates 
       cursor: 0,
     },
     repositoriesCollapsed: false,
-    shortcutsCollapsed: true,
   });
   workspace.activeRepositorySelectionId = 'repo-1';
 
@@ -77,9 +72,6 @@ void test('runtime left-rail renderer refreshes selector snapshot and delegates 
   const processUsageBySessionId = new Map<string, ProcessUsageRecord>([
     ['session-1', { pid: 123 }],
   ]);
-  const shortcutBindings: ShortcutBindingsRecord = {
-    byAction: new Map([['mux.app.quit', 'ctrl+c']]),
-  };
   const orderedConversationIds = ['session-1'];
 
   const refreshCalls: Array<{
@@ -95,7 +87,6 @@ void test('runtime left-rail renderer refreshes selector snapshot and delegates 
           RepositorySnapshot,
           GitSummaryRecord,
           ProcessUsageRecord,
-          ShortcutBindingsRecord,
           readonly string[]
         >['render']
       >[0]
@@ -108,7 +99,6 @@ void test('runtime left-rail renderer refreshes selector snapshot and delegates 
     RepositorySnapshot,
     GitSummaryRecord,
     ProcessUsageRecord,
-    ShortcutBindingsRecord,
     readonly string[]
   >({
     leftRailPane: {
@@ -137,7 +127,6 @@ void test('runtime left-rail renderer refreshes selector snapshot and delegates 
     conversations,
     gitSummaryByDirectoryId,
     processUsageBySessionId: () => processUsageBySessionId,
-    shortcutBindings,
     loadingGitSummary: {
       branch: '(loading)',
     },
