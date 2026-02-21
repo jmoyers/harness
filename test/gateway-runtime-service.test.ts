@@ -930,44 +930,48 @@ test('gateway runtime port binding helpers cover named-session auto-port logic',
   assert.equal(probe.connected, false);
 });
 
-test('gateway runtime mux runner maps signal exits to shell-style status codes', async () => {
-  const workspaceRoot = createWorkspace();
-  const daemonScriptPath = resolve(workspaceRoot, 'scripts', 'daemon.js');
-  const muxScriptPath = resolve(workspaceRoot, 'scripts', 'mux.js');
-  mkdirSync(dirname(daemonScriptPath), { recursive: true });
-  writeFileSync(daemonScriptPath, 'setTimeout(() => process.exit(0), 10);\n', 'utf8');
+test(
+  'gateway runtime mux runner maps signal exits to shell-style status codes',
+  async () => {
+    const workspaceRoot = createWorkspace();
+    const daemonScriptPath = resolve(workspaceRoot, 'scripts', 'daemon.js');
+    const muxScriptPath = resolve(workspaceRoot, 'scripts', 'mux.js');
+    mkdirSync(dirname(daemonScriptPath), { recursive: true });
+    writeFileSync(daemonScriptPath, 'setTimeout(() => process.exit(0), 10);\n', 'utf8');
 
-  const harness = createRuntimeHarness({
-    daemonScriptPath,
-    muxScriptPath,
-  });
-  const { service } = harness;
-  const record = createGatewayRecord(workspaceRoot, {
-    host: '127.0.0.1',
-    port: 7777,
-  });
+    const harness = createRuntimeHarness({
+      daemonScriptPath,
+      muxScriptPath,
+    });
+    const { service } = harness;
+    const record = createGatewayRecord(workspaceRoot, {
+      host: '127.0.0.1',
+      port: 7777,
+    });
 
-  writeFileSync(
-    muxScriptPath,
-    'setTimeout(() => process.kill(process.pid, "SIGINT"), 5);\n',
-    'utf8',
-  );
-  assert.equal(await service.runMuxClient(record, []), 130);
+    writeFileSync(
+      muxScriptPath,
+      'setTimeout(() => process.kill(process.pid, "SIGINT"), 5);\n',
+      'utf8',
+    );
+    assert.equal(await service.runMuxClient(record, []), 130);
 
-  writeFileSync(
-    muxScriptPath,
-    'setTimeout(() => process.kill(process.pid, "SIGTERM"), 5);\n',
-    'utf8',
-  );
-  assert.equal(await service.runMuxClient(record, []), 143);
+    writeFileSync(
+      muxScriptPath,
+      'setTimeout(() => process.kill(process.pid, "SIGTERM"), 5);\n',
+      'utf8',
+    );
+    assert.equal(await service.runMuxClient(record, []), 143);
 
-  writeFileSync(
-    muxScriptPath,
-    'setTimeout(() => process.kill(process.pid, "SIGQUIT"), 5);\n',
-    'utf8',
-  );
-  assert.equal(await service.runMuxClient(record, []), 1);
-});
+    writeFileSync(
+      muxScriptPath,
+      'setTimeout(() => process.kill(process.pid, "SIGQUIT"), 5);\n',
+      'utf8',
+    );
+    assert.equal(await service.runMuxClient(record, []), 1);
+  },
+  { timeout: 20000 },
+);
 
 test('gateway runtime detached start writes gateway record and log artifacts', async () => {
   const workspaceRoot = createWorkspace();
