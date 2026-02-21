@@ -79,6 +79,8 @@ void test('readGitDirectorySnapshot handles detached/unknown metadata branches',
       'diff --shortstat': 'no changes',
       'diff --cached --shortstat': 'no changes',
       'remote get-url origin': 'https://example.com/not-github',
+      remote: 'origin\n',
+      'rev-parse --show-toplevel': '/tmp/local-repo',
       'rev-list --count HEAD': 'not-a-number',
       'log -1 --format=%ct %h': '',
     }),
@@ -92,13 +94,39 @@ void test('readGitDirectorySnapshot handles detached/unknown metadata branches',
       deletions: 0,
     },
     repository: {
-      normalizedRemoteUrl: null,
+      normalizedRemoteUrl: 'file:///tmp/local-repo',
       commitCount: null,
       lastCommitAt: null,
       shortCommitHash: null,
-      inferredName: null,
+      inferredName: 'local-repo',
       defaultBranch: null,
     },
+  });
+});
+
+void test('readGitDirectorySnapshot falls back to local repository locator when github remotes are unavailable', async () => {
+  const snapshot = await readGitDirectorySnapshot(
+    '/tmp',
+    runnerFromMap({
+      'rev-parse --is-inside-work-tree': 'true',
+      'status --porcelain=1 --branch': '## main\n',
+      'diff --shortstat': '',
+      'diff --cached --shortstat': '',
+      'remote get-url origin': 'https://example.com/not-github',
+      remote: 'origin\n',
+      'rev-parse --show-toplevel': '/tmp/local-only-repo',
+      'rev-list --count HEAD': '3',
+      'log -1 --format=%ct %h': 'abc123\t2026-01-01T00:00:00.000Z',
+    }),
+  );
+
+  assert.deepEqual(snapshot.repository, {
+    normalizedRemoteUrl: 'file:///tmp/local-only-repo',
+    commitCount: 3,
+    lastCommitAt: '2026-01-01T00:00:00.000Z',
+    shortCommitHash: 'abc123',
+    inferredName: 'local-only-repo',
+    defaultBranch: 'main',
   });
 });
 

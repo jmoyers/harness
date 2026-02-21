@@ -1,4 +1,6 @@
 import { execFile } from 'node:child_process';
+import { basename } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import {
   normalizeGitHubRemoteUrl,
@@ -120,6 +122,24 @@ export async function runGitCommand(
   }
 }
 
+function normalizeLocalRepositoryLocator(pathValue: string): string | null {
+  const trimmed = pathValue.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+  return pathToFileURL(trimmed).toString();
+}
+
+function repositoryNameFromRepositoryLocator(locator: string): string | null {
+  const normalizedGitHub = normalizeGitHubRemoteUrl(locator);
+  if (normalizedGitHub !== null) {
+    return repositoryNameFromGitHubRemoteUrl(normalizedGitHub);
+  }
+  const resolvedPath = fileURLToPath(locator);
+  const inferred = basename(resolvedPath.trim());
+  return inferred.length > 0 ? inferred : null;
+}
+
 async function readNormalizedGitHubRemoteUrl(
   cwd: string,
   runCommand: GitCommandRunner,
@@ -146,6 +166,17 @@ async function readNormalizedGitHubRemoteUrl(
   return null;
 }
 
+async function readRepositoryLocator(
+  cwd: string,
+  runCommand: GitCommandRunner,
+): Promise<string | null> {
+  const normalizedGitHubRemoteUrl = await readNormalizedGitHubRemoteUrl(cwd, runCommand);
+  if (normalizedGitHubRemoteUrl !== null) {
+    return normalizedGitHubRemoteUrl;
+  }
+  return normalizeLocalRepositoryLocator(await runCommand(cwd, ['rev-parse', '--show-toplevel']));
+}
+
 export async function readGitDirectorySnapshot(
   cwd: string,
   runCommand: GitCommandRunner = runGitCommand,
@@ -162,7 +193,7 @@ export async function readGitDirectorySnapshot(
   const statusOutputPromise = runCommand(cwd, ['status', '--porcelain=1', '--branch']);
   const unstagedShortstatPromise = runCommand(cwd, ['diff', '--shortstat']);
   const stagedShortstatPromise = runCommand(cwd, ['diff', '--cached', '--shortstat']);
-  const remoteUrlPromise = readNormalizedGitHubRemoteUrl(cwd, runCommand);
+  const remoteUrlPromise = readRepositoryLocator(cwd, runCommand);
   const lastCommitPromise = runCommand(cwd, ['log', '-1', '--format=%ct %h']);
   const commitCountPromise =
     options.includeCommitCount === false
@@ -209,7 +240,7 @@ export async function readGitDirectorySnapshot(
       inferredName:
         normalizedRemoteUrl === null
           ? null
-          : repositoryNameFromGitHubRemoteUrl(normalizedRemoteUrl),
+          : repositoryNameFromRepositoryLocator(normalizedRemoteUrl),
       defaultBranch: branch === '(detached)' ? null : branch,
     },
   };

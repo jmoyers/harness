@@ -97,6 +97,7 @@ Behavior fragments:
 - Left/right pane layout and divider semantics.
 - Home/project/task pane render branching.
 - Navigation transitions and selection synchronization.
+- Local Git repositories without GitHub remotes still hydrate into repository groups (not `untracked`).
 
 Owners:
 

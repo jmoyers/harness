@@ -1685,6 +1685,9 @@ class CodexLiveMuxRuntimeApplication {
         activeDirectoryId === null
           ? null
           : (directoryRepositorySnapshotByDirectoryId.get(activeDirectoryId) ?? null);
+      const snapshotRemoteUrl = activeDirectoryRepositorySnapshot?.normalizedRemoteUrl ?? null;
+      let githubRepositoryUrl =
+        snapshotRemoteUrl === null ? null : normalizeGitHubRemoteUrl(snapshotRemoteUrl);
       let githubRepositoryId =
         activeDirectoryId === null
           ? null
@@ -1693,12 +1696,21 @@ class CodexLiveMuxRuntimeApplication {
         const associatedRepository = repositories.get(githubRepositoryId);
         if (associatedRepository === undefined || associatedRepository.archivedAt !== null) {
           githubRepositoryId = null;
+        } else {
+          const normalizedAssociatedRemote = normalizeGitHubRemoteUrl(
+            associatedRepository.remoteUrl,
+          );
+          if (normalizedAssociatedRemote === null) {
+            githubRepositoryId = null;
+          } else if (githubRepositoryUrl === null) {
+            githubRepositoryUrl = normalizedAssociatedRemote;
+          }
         }
       }
-      const snapshotRemoteUrl = activeDirectoryRepositorySnapshot?.normalizedRemoteUrl ?? null;
       if (githubRepositoryId === null && snapshotRemoteUrl !== null) {
         const snapshotRemote = normalizeGitHubRemoteUrl(snapshotRemoteUrl);
         if (snapshotRemote !== null) {
+          githubRepositoryUrl = snapshotRemote;
           for (const repository of repositories.values()) {
             if (repository.archivedAt !== null) {
               continue;
@@ -1758,7 +1770,7 @@ class CodexLiveMuxRuntimeApplication {
           resolveStatusTimelineStatePath(options.invocationDirectory, muxSessionName),
         ),
         githubRepositoryId,
-        githubRepositoryUrl: activeDirectoryRepositorySnapshot?.normalizedRemoteUrl ?? null,
+        githubRepositoryUrl,
         githubDefaultBranch: resolveGitHubDefaultBranchForActions({
           repositoryDefaultBranch: githubRepositoryRecord?.defaultBranch ?? null,
           snapshotDefaultBranch: activeDirectoryRepositorySnapshot?.defaultBranch ?? null,
@@ -3694,7 +3706,12 @@ class CodexLiveMuxRuntimeApplication {
 
     commandMenuRegistry.registerProvider('github.project-pr', (context) => {
       const directoryId = context.activeDirectoryId;
-      if (directoryId === null || context.githubProjectPrLoading) {
+      if (
+        directoryId === null ||
+        context.githubProjectPrLoading ||
+        context.githubRepositoryId === null ||
+        context.githubRepositoryUrl === null
+      ) {
         return [];
       }
       const showPrActions = shouldShowGitHubPrActions({

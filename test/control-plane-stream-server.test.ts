@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
+import { execFileSync } from 'node:child_process';
 import { connect, type Socket } from 'node:net';
 import { createServer } from 'node:http';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -22,6 +23,13 @@ import {
   makeTempStateStorePath,
   writeRaw,
 } from './control-plane-stream-server-test-helpers.ts';
+
+function runGit(cwd: string, args: readonly string[]): void {
+  execFileSync('git', [...args], {
+    cwd,
+    stdio: 'ignore',
+  });
+}
 
 void test('stream server executeCommand guards unsupported command types', async () => {
   const server = await startControlPlaneStreamServer({
@@ -46,6 +54,69 @@ void test('stream server executeCommand guards unsupported command types', async
     );
   } finally {
     await server.close();
+  }
+});
+
+void test('stream server tracks local git repositories without github remotes', async () => {
+  const workspace = mkdtempSync(join(tmpdir(), 'harness-git-local-'));
+  runGit(workspace, ['init']);
+
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input),
+    gitStatus: {
+      enabled: true,
+      pollMs: 25,
+      maxConcurrency: 1,
+      minDirectoryRefreshMs: 25,
+    },
+  });
+  const address = server.address();
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port,
+  });
+
+  try {
+    await client.sendCommand({
+      type: 'directory.upsert',
+      directoryId: 'directory-git-local',
+      tenantId: 'tenant-git-local',
+      userId: 'user-git-local',
+      workspaceId: 'workspace-git-local',
+      path: workspace,
+    });
+
+    let rowsRaw: unknown = null;
+    for (let attempt = 0; attempt < 15; attempt += 1) {
+      const listed = await client.sendCommand({
+        type: 'directory.git-status',
+        tenantId: 'tenant-git-local',
+        userId: 'user-git-local',
+        workspaceId: 'workspace-git-local',
+      });
+      rowsRaw = listed['gitStatuses'];
+      if (Array.isArray(rowsRaw) && rowsRaw.length > 0) {
+        break;
+      }
+      await delay(40);
+    }
+    assert.equal(Array.isArray(rowsRaw), true);
+    if (!Array.isArray(rowsRaw) || rowsRaw.length === 0) {
+      throw new Error('expected at least one git status row');
+    }
+
+    const row = rowsRaw[0] as Record<string, unknown>;
+    const repositorySnapshot = row['repositorySnapshot'] as Record<string, unknown>;
+    assert.equal(typeof row['repositoryId'], 'string');
+    assert.equal(typeof repositorySnapshot['normalizedRemoteUrl'], 'string');
+    assert.equal(String(repositorySnapshot['normalizedRemoteUrl']).startsWith('file://'), true);
+    const repositoryRecord = row['repository'] as Record<string, unknown>;
+    assert.equal(typeof repositoryRecord['repositoryId'], 'string');
+    assert.equal(String(repositoryRecord['remoteUrl']).startsWith('file://'), true);
+  } finally {
+    client.close();
+    await server.close();
+    rmSync(workspace, { recursive: true, force: true });
   }
 });
 
