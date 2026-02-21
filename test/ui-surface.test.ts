@@ -1,13 +1,37 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import { measureDisplayWidth } from '../src/terminal/snapshot-oracle.ts';
-import {
-  createUiSurface,
-  DEFAULT_UI_STYLE,
-  drawUiText,
-  fillUiRow,
-  renderUiSurfaceAnsiRows,
-} from '../src/ui/surface.ts';
+import { DEFAULT_UI_STYLE, SurfaceBuffer } from '../packages/harness-ui/src/surface.ts';
+
+function createUiSurface(
+  cols: number,
+  rows: number,
+  baseStyle: ConstructorParameters<typeof SurfaceBuffer>[2] = DEFAULT_UI_STYLE,
+): SurfaceBuffer {
+  return new SurfaceBuffer(cols, rows, baseStyle);
+}
+
+function fillUiRow(
+  surface: SurfaceBuffer,
+  row: number,
+  style: Parameters<SurfaceBuffer['fillRow']>[1],
+): void {
+  surface.fillRow(row, style);
+}
+
+function drawUiText(
+  surface: SurfaceBuffer,
+  colStart: number,
+  row: number,
+  text: string,
+  style: Parameters<SurfaceBuffer['drawText']>[3] = surface.baseStyle,
+): void {
+  surface.drawText(colStart, row, text, style);
+}
+
+function renderUiSurfaceAnsiRows(surface: SurfaceBuffer): readonly string[] {
+  return surface.renderAnsiRows();
+}
 
 function stripAnsi(value: string): string {
   let output = '';

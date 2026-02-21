@@ -14,10 +14,16 @@ import {
 } from './command-menu.ts';
 import type { createNewThreadPromptState } from '../new-thread-prompt.ts';
 import { newThreadPromptBodyLines } from '../new-thread-prompt.ts';
-import { buildUiModalOverlay } from '../../ui/kit.ts';
+import {
+  UiKit,
+  type UiModalOverlay,
+  type UiModalTheme,
+} from '../../../packages/harness-ui/src/kit.ts';
 
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
-type UiModalThemeInput = NonNullable<Parameters<typeof buildUiModalOverlay>[0]['theme']>;
+type UiModalThemeInput = Partial<UiModalTheme>;
+
+const UI_KIT = new UiKit();
 
 interface TaskEditorPromptOverlayState {
   mode: 'create' | 'edit';
@@ -74,7 +80,7 @@ export function buildNewThreadModalOverlay(
   viewportRows: number,
   prompt: NewThreadPromptState | null,
   theme: UiModalThemeInput,
-): ReturnType<typeof buildUiModalOverlay> | null {
+): UiModalOverlay | null {
   if (prompt === null) {
     return null;
   }
@@ -83,7 +89,7 @@ export function buildNewThreadModalOverlay(
     minWidth: 22,
     maxWidth: 36,
   });
-  return buildUiModalOverlay({
+  return UI_KIT.buildModalOverlay({
     viewportCols: layoutCols,
     viewportRows,
     width: modalSize.width,
@@ -109,7 +115,7 @@ export function buildCommandMenuModalOverlay(
   menu: CommandMenuState | null,
   actions: readonly CommandMenuActionDescriptor[],
   theme: UiModalThemeInput,
-): ReturnType<typeof buildUiModalOverlay> | null {
+): UiModalOverlay | null {
   if (menu === null) {
     return null;
   }
@@ -136,7 +142,7 @@ export function buildCommandMenuModalOverlay(
   }
   bodyLines.push('', isThemePicker ? 'type to filter themes' : 'type to filter');
   const title = isThemePicker ? 'Choose Theme' : 'Command Menu';
-  return buildUiModalOverlay({
+  return UI_KIT.buildModalOverlay({
     viewportCols: layoutCols,
     viewportRows,
     width: modalSize.width,
@@ -155,7 +161,7 @@ export function buildAddDirectoryModalOverlay(
   viewportRows: number,
   prompt: { value: string; error: string | null } | null,
   theme: UiModalThemeInput,
-): ReturnType<typeof buildUiModalOverlay> | null {
+): UiModalOverlay | null {
   if (prompt === null) {
     return null;
   }
@@ -171,7 +177,7 @@ export function buildAddDirectoryModalOverlay(
   } else {
     addDirectoryBody.push('add a workspace project for new threads');
   }
-  return buildUiModalOverlay({
+  return UI_KIT.buildModalOverlay({
     viewportCols: layoutCols,
     viewportRows,
     width: modalSize.width,
@@ -191,7 +197,7 @@ export function buildTaskEditorModalOverlay(
   prompt: TaskEditorPromptOverlayState | null,
   resolveRepositoryName: (repositoryId: string) => string | null,
   theme: UiModalThemeInput,
-): ReturnType<typeof buildUiModalOverlay> | null {
+): UiModalOverlay | null {
   if (prompt === null) {
     return null;
   }
@@ -218,7 +224,7 @@ export function buildTaskEditorModalOverlay(
   if (prompt.error !== null && prompt.error.length > 0) {
     taskBody.push(`error: ${prompt.error}`);
   }
-  return buildUiModalOverlay({
+  return UI_KIT.buildModalOverlay({
     viewportCols: layoutCols,
     viewportRows,
     width: modalSize.width,
@@ -237,7 +243,7 @@ export function buildRepositoryModalOverlay(
   viewportRows: number,
   prompt: RepositoryPromptOverlayState | null,
   theme: UiModalThemeInput,
-): ReturnType<typeof buildUiModalOverlay> | null {
+): UiModalOverlay | null {
   if (prompt === null) {
     return null;
   }
@@ -255,7 +261,7 @@ export function buildRepositoryModalOverlay(
   } else {
     bodyLines.push('update repository github url');
   }
-  return buildUiModalOverlay({
+  return UI_KIT.buildModalOverlay({
     viewportCols: layoutCols,
     viewportRows,
     width: modalSize.width,
@@ -274,7 +280,7 @@ export function buildApiKeyModalOverlay(
   viewportRows: number,
   prompt: ApiKeyPromptOverlayState | null,
   theme: UiModalThemeInput,
-): ReturnType<typeof buildUiModalOverlay> | null {
+): UiModalOverlay | null {
   if (prompt === null) {
     return null;
   }
@@ -292,7 +298,7 @@ export function buildApiKeyModalOverlay(
   } else {
     bodyLines.push('value is saved to user-global secrets.env');
   }
-  return buildUiModalOverlay({
+  return UI_KIT.buildModalOverlay({
     viewportCols: layoutCols,
     viewportRows,
     width: modalSize.width,
@@ -311,7 +317,7 @@ export function buildConversationTitleModalOverlay(
   viewportRows: number,
   edit: ConversationTitleOverlayState | null,
   theme: UiModalThemeInput,
-): ReturnType<typeof buildUiModalOverlay> | null {
+): UiModalOverlay | null {
   if (edit === null) {
     return null;
   }
@@ -334,7 +340,7 @@ export function buildConversationTitleModalOverlay(
   if (edit.error !== null && edit.error.length > 0) {
     editBody.push(`error: ${edit.error}`);
   }
-  return buildUiModalOverlay({
+  return UI_KIT.buildModalOverlay({
     viewportCols: layoutCols,
     viewportRows,
     width: modalSize.width,
@@ -353,7 +359,7 @@ export function buildReleaseNotesModalOverlay(
   viewportRows: number,
   prompt: ReleaseNotesOverlayState | null,
   theme: UiModalThemeInput,
-): ReturnType<typeof buildUiModalOverlay> | null {
+): UiModalOverlay | null {
   if (prompt === null) {
     return null;
   }
@@ -390,7 +396,7 @@ export function buildReleaseNotesModalOverlay(
     }
   }
   bodyLines.push(`all releases: ${prompt.releasesPageUrl}`);
-  return buildUiModalOverlay({
+  return UI_KIT.buildModalOverlay({
     viewportCols: layoutCols,
     viewportRows,
     width: modalSize.width,

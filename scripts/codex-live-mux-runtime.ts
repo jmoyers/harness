@@ -218,7 +218,11 @@ import {
   RenderTraceRecorder,
   type RenderTraceLabels,
 } from '../src/services/render-trace-recorder.ts';
-import { Screen, type ScreenCursorStyle } from '../src/ui/screen.ts';
+import {
+  ProcessScreenWriter,
+  Screen,
+  type ScreenCursorStyle,
+} from '../packages/harness-ui/src/screen.ts';
 import { ConversationPane } from '../src/ui/panes/conversation.ts';
 import { DebugFooterNotice } from '../src/ui/debug-footer-notice.ts';
 import { HomePane } from '../src/ui/panes/home.ts';
@@ -1522,9 +1526,9 @@ async function main(): Promise<number> {
 
   const idFactory = (): string => `event-${randomUUID()}`;
   let exit: PtyExit | null = null;
-  const screen = new Screen({
-    writeError: (output) => {
-      process.stderr.write(output);
+  class MuxScreenWriter extends ProcessScreenWriter {
+    override writeError(output: string): void {
+      super.writeError(output);
       const prefix = '[mux] ansi-integrity-failed ';
       const prefixIndex = output.indexOf(prefix);
       if (prefixIndex < 0) {
@@ -1553,8 +1557,9 @@ async function main(): Promise<number> {
         dedupeKey: 'ansi-integrity-failed',
         dedupeValue: issueText,
       });
-    },
-  });
+    }
+  }
+  const screen = new Screen(new MuxScreenWriter());
   const conversationPane = new ConversationPane();
   const homePane = new HomePane();
   const projectPane = new ProjectPane();

@@ -1,18 +1,14 @@
 import { parseMuxInputChunk } from '../dual-pane-core.ts';
-import { type buildUiModalOverlay } from '../../ui/kit.ts';
+import type { UiModalOverlay } from '../../../packages/harness-ui/src/kit.ts';
 import { isMotionMouseCode, isWheelMouseCode } from './selection.ts';
 
 interface DismissModalOnOutsideClickOptions {
   input: Buffer;
   inputRemainder: string;
   dismiss: () => void;
-  buildCurrentModalOverlay: () => ReturnType<typeof buildUiModalOverlay> | null;
+  buildCurrentModalOverlay: () => UiModalOverlay | null;
   onInsidePointerPress?: (col: number, row: number) => boolean;
-  isOverlayHit: (
-    overlay: ReturnType<typeof buildUiModalOverlay>,
-    col: number,
-    row: number,
-  ) => boolean;
+  isOverlayHit: (overlay: UiModalOverlay, col: number, row: number) => boolean;
 }
 
 interface DismissModalOnOutsideClickResult {

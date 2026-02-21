@@ -143,3 +143,71 @@ void test('throws when response body is null', async () => {
     /anthropic response body was empty/,
   );
 });
+
+void test('filters [DONE] sentinel events from anthropic streams', async () => {
+  const model: HarnessAnthropicModel = {
+    provider: 'harness.anthropic',
+    modelId: 'claude-model',
+    apiKey: 'key-1',
+    baseUrl: 'https://example.com/v1',
+    headers: {},
+    fetch: async () =>
+      new Response(
+        createByteStream([
+          'data: {"type":"ping"}\n\n',
+          'data: [DONE]\n\n',
+          'data: {"type":"message_stop"}\n\n',
+        ]),
+        {
+          status: 200,
+          headers: { 'content-type': 'text/event-stream' },
+        },
+      ),
+  };
+
+  const response = await postAnthropicMessagesStream(
+    model,
+    {
+      model: 'claude-model',
+      stream: true,
+      messages: [],
+    },
+    undefined,
+  );
+
+  const events = await collectStream(response.stream);
+  assert.equal(events.length, 2);
+  assert.equal(events[0]?.chunk?.type, 'ping');
+  assert.equal(events[1]?.chunk?.type, 'message_stop');
+});
+
+void test('handles unreadable http error body responses', async () => {
+  const model: HarnessAnthropicModel = {
+    provider: 'harness.anthropic',
+    modelId: 'claude-model',
+    apiKey: 'key-1',
+    baseUrl: 'https://example.com/v1',
+    headers: {},
+    fetch: async () =>
+      ({
+        ok: false,
+        status: 503,
+        text: async () => {
+          throw new Error('unreadable');
+        },
+      }) as unknown as Response,
+  };
+
+  await assert.rejects(
+    postAnthropicMessagesStream(
+      model,
+      {
+        model: 'claude-model',
+        stream: true,
+        messages: [],
+      },
+      undefined,
+    ),
+    /anthropic request failed \(503\):/u,
+  );
+});

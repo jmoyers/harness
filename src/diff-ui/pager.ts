@@ -1,4 +1,4 @@
-import type { Screen } from '../ui/screen.ts';
+import type { Screen, ScreenWriter } from '../../packages/harness-ui/src/screen.ts';
 import { renderDiffUiViewport, resolveDiffUiTheme } from './render.ts';
 import { reduceDiffUiState } from './state.ts';
 import type {
@@ -54,10 +54,7 @@ interface RunDiffUiPagerSessionInput {
   readonly eventSource: DiffUiPagerEventSource;
   readonly writeStdout: (text: string) => void;
   readonly writeStderr: (text: string) => void;
-  readonly createScreen: (deps: {
-    readonly writeOutput: (output: string) => void;
-    readonly writeError: (output: string) => void;
-  }) => Pick<Screen, 'markDirty' | 'flush'>;
+  readonly createScreen: (writer: ScreenWriter) => Pick<Screen, 'markDirty' | 'flush'>;
 }
 
 interface DiffUiPagerSessionResult {
@@ -151,8 +148,12 @@ export async function runDiffUiPagerSession(
 ): Promise<DiffUiPagerSessionResult> {
   const theme = resolveDiffUiTheme(input.options.theme);
   const screen = input.createScreen({
-    writeOutput: input.writeStdout,
-    writeError: input.writeStderr,
+    writeOutput(output: string): void {
+      input.writeStdout(output);
+    },
+    writeError(output: string): void {
+      input.writeStderr(output);
+    },
   });
   const events: DiffUiEvent[] = [];
   let width = clampWidth(input.initialWidth);

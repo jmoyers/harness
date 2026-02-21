@@ -1,8 +1,11 @@
 import { padOrTrimDisplay } from './dual-pane-core.ts';
 import type { TaskStatus } from './harness-core-ui.ts';
-import { formatUiButton } from '../ui/kit.ts';
-import { renderWrappingInputLines } from '../ui/wrapping-input.ts';
+import { UiKit } from '../../packages/harness-ui/src/kit.ts';
+import { WrappingInputRenderer } from '../../packages/harness-ui/src/text-layout.ts';
 import { taskComposerTextFromTaskFields, type TaskComposerBuffer } from './task-composer.ts';
+
+const UI_KIT = new UiKit();
+const WRAPPING_INPUT_RENDERER = new WrappingInputRenderer();
 
 export type TaskFocusedPaneAction =
   | 'repository.dropdown.toggle'
@@ -233,7 +236,7 @@ export function buildTaskFocusedPaneView(
       ? 'select repository'
       : (repositories.find((entry) => entry.repositoryId === selectedRepositoryId)?.name ??
         '(missing)');
-  const repositoryButton = formatUiButton({
+  const repositoryButton = UI_KIT.formatButton({
     label: truncate(selectedRepositoryName, Math.max(8, safeCols - 16)),
     suffixIcon: 'v',
   });
@@ -296,7 +299,7 @@ export function buildTaskFocusedPaneView(
         const editBuffer = taskBufferFromRecord(task, options.taskBufferById);
         const editorInnerWidth = Math.max(1, safeCols - 4);
         const editorPrefix = `${statusGlyph(task.status)} `;
-        const linesWithCursor = renderWrappingInputLines({
+        const linesWithCursor = WRAPPING_INPUT_RENDERER.renderLines({
           buffer: editBuffer,
           width: editorInnerWidth,
           linePrefix: editorPrefix,
@@ -322,7 +325,7 @@ export function buildTaskFocusedPaneView(
   push(` draft ${draftFocused ? '(editing)' : '(saved)'}`);
   const draftInnerWidth = Math.max(1, safeCols - 4);
   push(` ┌${'─'.repeat(draftInnerWidth)}┐`);
-  const draftLines = renderWrappingInputLines({
+  const draftLines = WRAPPING_INPUT_RENDERER.renderLines({
     buffer: options.draftBuffer,
     width: draftInnerWidth,
     cursorToken: '█',

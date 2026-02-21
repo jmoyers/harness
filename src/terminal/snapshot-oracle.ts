@@ -1,5 +1,9 @@
 import { createHash } from 'node:crypto';
 import { StringDecoder } from 'node:string_decoder';
+import {
+  measureDisplayWidth as measureHarnessUiDisplayWidth,
+  wrapTextForColumns as wrapHarnessUiTextForColumns,
+} from '../../packages/harness-ui/src/text-layout.ts';
 
 type ParserMode =
   | 'normal'
@@ -891,76 +895,12 @@ function parseOscRgbColor(value: string): { r: number; g: number; b: number } | 
   return null;
 }
 
-function isWideCodePoint(codePoint: number): boolean {
-  const ranges: ReadonlyArray<readonly [number, number]> = [
-    [0x1100, 0x115f],
-    [0x2329, 0x232a],
-    [0x2e80, 0xa4cf],
-    [0xac00, 0xd7a3],
-    [0xf900, 0xfaff],
-    [0xfe10, 0xfe19],
-    [0xfe30, 0xfe6f],
-    [0xff00, 0xff60],
-    [0xffe0, 0xffe6],
-    [0x1f300, 0x1faff],
-  ];
-
-  for (const [start, end] of ranges) {
-    if (codePoint >= start && codePoint <= end) {
-      return true;
-    }
-  }
-  return false;
-}
-
 export function measureDisplayWidth(text: string): number {
-  let width = 0;
-  for (const char of text) {
-    const codePoint = char.codePointAt(0)!;
-
-    if (codePoint < 0x20 || (codePoint >= 0x7f && codePoint < 0xa0)) {
-      continue;
-    }
-
-    if (/\p{Mark}/u.test(char)) {
-      continue;
-    }
-
-    width += isWideCodePoint(codePoint) ? 2 : 1;
-  }
-  return width;
+  return measureHarnessUiDisplayWidth(text);
 }
 
 export function wrapTextForColumns(text: string, cols: number): string[] {
-  if (cols <= 0) {
-    return [''];
-  }
-
-  const lines: string[] = [];
-  let current = '';
-  let currentWidth = 0;
-
-  for (const char of text) {
-    if (char === '\n') {
-      lines.push(current);
-      current = '';
-      currentWidth = 0;
-      continue;
-    }
-
-    const charWidth = Math.max(1, measureDisplayWidth(char));
-    if (currentWidth + charWidth > cols) {
-      lines.push(current);
-      current = '';
-      currentWidth = 0;
-    }
-
-    current += char;
-    currentWidth += charWidth;
-  }
-
-  lines.push(current);
-  return lines;
+  return [...wrapHarnessUiTextForColumns(text, cols)];
 }
 
 function resolveIndexedColor(

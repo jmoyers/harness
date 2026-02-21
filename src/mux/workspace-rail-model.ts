@@ -1,9 +1,11 @@
 import type { ConversationRailSessionSummary } from './conversation-rail.ts';
-import { formatUiButton } from '../ui/kit.ts';
+import { UiKit } from '../../packages/harness-ui/src/kit.ts';
 import type {
   StreamSessionController,
   StreamSessionDisplayPhase,
 } from '../control-plane/stream-protocol.ts';
+
+const UI_KIT = new UiKit();
 
 interface WorkspaceRailGitSummary {
   readonly branch: string;
@@ -102,7 +104,7 @@ interface WorkspaceRailViewRow {
 
 const NEW_THREAD_INLINE_LABEL = '[+ thread]';
 const UNTRACKED_REPOSITORY_GROUP_ID = 'untracked';
-const ADD_PROJECT_BUTTON_LABEL = formatUiButton({
+const ADD_PROJECT_BUTTON_LABEL = UI_KIT.formatButton({
   label: 'add project',
   prefixIcon: '>',
 });

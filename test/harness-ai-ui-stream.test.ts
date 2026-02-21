@@ -172,6 +172,134 @@ void test('maps source, error, and invalid tool call branches', async () => {
   ]);
 });
 
+void test('maps reasoning and metadata branches and uses default error text fallback', async () => {
+  const input = new ReadableStream<StreamTextPart<{}>>({
+    start(controller) {
+      controller.enqueue({
+        type: 'text-start',
+        id: 'txt-1',
+        providerMetadata: { provider: { id: 'test' } },
+      });
+      controller.enqueue({
+        type: 'reasoning-start',
+        id: 'r-1',
+        providerMetadata: { provider: { id: 'test' } },
+      });
+      controller.enqueue({
+        type: 'reasoning-delta',
+        id: 'r-1',
+        text: 'thinking',
+        providerMetadata: { provider: { id: 'test' } },
+      });
+      controller.enqueue({
+        type: 'reasoning-end',
+        id: 'r-1',
+        providerMetadata: { provider: { id: 'test' } },
+      });
+      controller.enqueue({
+        type: 'tool-input-start',
+        id: 'call-meta',
+        toolName: 'search',
+        providerExecuted: true,
+        providerMetadata: { provider: { id: 'test' } },
+        dynamic: true,
+        title: 'Search',
+      });
+      controller.enqueue({
+        type: 'tool-call',
+        toolCallId: 'call-meta',
+        toolName: 'search',
+        input: { q: 'hello' },
+        invalid: true,
+      });
+      controller.enqueue({
+        type: 'tool-error',
+        toolCallId: 'call-meta',
+        toolName: 'search',
+        error: 'plain-error',
+      });
+      controller.enqueue({
+        type: 'source',
+        id: 'src-meta',
+        sourceType: 'url',
+        url: 'https://example.com/meta',
+        title: 'Meta',
+        providerMetadata: { provider: { id: 'test' } },
+      });
+      controller.enqueue({
+        type: 'text-end',
+        id: 'txt-1',
+        providerMetadata: { provider: { id: 'test' } },
+      });
+      controller.close();
+    },
+  });
+
+  const output = await collectStream(createUIMessageStream(input));
+  assert.deepEqual(output, [
+    {
+      type: 'text-start',
+      id: 'txt-1',
+      providerMetadata: { provider: { id: 'test' } },
+    },
+    {
+      type: 'reasoning-start',
+      id: 'r-1',
+      providerMetadata: { provider: { id: 'test' } },
+    },
+    {
+      type: 'reasoning-delta',
+      id: 'r-1',
+      delta: 'thinking',
+      providerMetadata: { provider: { id: 'test' } },
+    },
+    {
+      type: 'reasoning-end',
+      id: 'r-1',
+      providerMetadata: { provider: { id: 'test' } },
+    },
+    {
+      type: 'tool-input-start',
+      toolCallId: 'call-meta',
+      toolName: 'search',
+      providerExecuted: true,
+      providerMetadata: { provider: { id: 'test' } },
+      dynamic: true,
+      title: 'Search',
+    },
+    {
+      type: 'tool-input-error',
+      toolCallId: 'call-meta',
+      toolName: 'search',
+      input: { q: 'hello' },
+      providerExecuted: undefined,
+      providerMetadata: undefined,
+      dynamic: undefined,
+      title: undefined,
+      errorText: 'Invalid tool call',
+    },
+    {
+      type: 'tool-output-error',
+      toolCallId: 'call-meta',
+      providerExecuted: undefined,
+      dynamic: undefined,
+      errorText: 'plain-error',
+    },
+    {
+      type: 'source-url',
+      sourceId: 'src-meta',
+      url: 'https://example.com/meta',
+      title: 'Meta',
+      providerMetadata: { provider: { id: 'test' } },
+    },
+    {
+      type: 'text-end',
+      id: 'txt-1',
+      providerMetadata: { provider: { id: 'test' } },
+    },
+  ]);
+});
+
 void test('JsonToSseTransformStream and response helper emit SSE protocol', async () => {
   const sse = new ReadableStream({
     start(controller) {
@@ -204,4 +332,61 @@ void test('JsonToSseTransformStream and response helper emit SSE protocol', asyn
   const bodyChunks = await collectTextStream(response.body as ReadableStream<Uint8Array>);
   assert.match(bodyChunks.join(''), /data: \{"type":"start"\}/);
   assert.match(bodyChunks.join(''), /data: \[DONE\]/);
+});
+
+void test('response helper preserves explicit headers while filling missing defaults', async () => {
+  const response = createUIMessageStreamResponse(
+    new ReadableStream({
+      start(controller) {
+        controller.enqueue({ type: 'finish', finishReason: 'stop' });
+        controller.close();
+      },
+    }),
+    {
+      headers: {
+        'content-type': 'application/custom',
+      },
+    },
+  );
+
+  assert.equal(response.headers.get('content-type'), 'application/custom');
+  assert.equal(response.headers.get('cache-control'), UI_MESSAGE_STREAM_HEADERS['cache-control']);
+  const bodyChunks = await collectTextStream(response.body as ReadableStream<Uint8Array>);
+  assert.match(bodyChunks.join(''), /data: \{"type":"finish","finishReason":"stop"\}/);
+});
+
+void test('default error formatter uses Error.message values', async () => {
+  const input = new ReadableStream<StreamTextPart<{}>>({
+    start(controller) {
+      controller.enqueue({
+        type: 'tool-error',
+        toolCallId: 'call-error',
+        toolName: 'tool',
+        error: new Error('tool failed'),
+      });
+      controller.close();
+    },
+  });
+
+  const output = await collectStream(createUIMessageStream(input));
+  assert.deepEqual(output, [
+    {
+      type: 'tool-output-error',
+      toolCallId: 'call-error',
+      providerExecuted: undefined,
+      dynamic: undefined,
+      errorText: 'tool failed',
+    },
+  ]);
+});
+
+void test('ui stream transform throws for unknown stream part tags', async () => {
+  const input = new ReadableStream<StreamTextPart<{}>>({
+    start(controller) {
+      controller.enqueue({ type: 'unknown-part' } as unknown as StreamTextPart<{}>);
+      controller.close();
+    },
+  });
+
+  await assert.rejects(collectStream(createUIMessageStream(input)), /unhandled stream part/u);
 });

@@ -1,14 +1,14 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { loadHarnessConfig } from '../src/config/config-core.ts';
+import { loadHarnessConfig } from '../../config/config-core.ts';
 
 export const DEFAULT_PROFILE_INSPECT_TIMEOUT_MS = 5000;
 const PROFILE_RUNTIME_STATE_KEY = '__HARNESS_GATEWAY_CPU_PROFILE_STATE__';
 
 interface InspectorPendingCommand {
-  method: string;
-  resolve: (result: Record<string, unknown>) => void;
-  reject: (error: Error) => void;
-  timeoutHandle: ReturnType<typeof setTimeout>;
+  readonly method: string;
+  readonly resolve: (result: Record<string, unknown>) => void;
+  readonly reject: (error: Error) => void;
+  readonly timeoutHandle: ReturnType<typeof setTimeout>;
 }
 
 export class InspectorWebSocketClient {
@@ -59,7 +59,10 @@ export class InspectorWebSocketClient {
     });
   }
 
-  static async connect(endpoint: string, timeoutMs: number): Promise<InspectorWebSocketClient> {
+  public static async connect(
+    endpoint: string,
+    timeoutMs: number,
+  ): Promise<InspectorWebSocketClient> {
     return await new Promise<InspectorWebSocketClient>((resolveClient, rejectClient) => {
       let settled = false;
       const socket = new WebSocket(endpoint);
@@ -99,7 +102,7 @@ export class InspectorWebSocketClient {
     });
   }
 
-  async sendCommand(
+  public async sendCommand(
     method: string,
     params: Record<string, unknown> = {},
     timeoutMs = DEFAULT_PROFILE_INSPECT_TIMEOUT_MS,
@@ -132,7 +135,7 @@ export class InspectorWebSocketClient {
     });
   }
 
-  close(): void {
+  public close(): void {
     if (this.closed) {
       return;
     }
@@ -172,9 +175,9 @@ export class InspectorWebSocketClient {
 }
 
 export interface InspectorProfileState {
-  status: string;
-  error: string | null;
-  written: boolean;
+  readonly status: string;
+  readonly error: string | null;
+  readonly written: boolean;
 }
 
 export function buildInspectorProfileStartExpression(): string {

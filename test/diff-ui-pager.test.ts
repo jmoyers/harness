@@ -174,6 +174,7 @@ void test('runDiffUiPagerSession handles input commands, resize, and quit', asyn
   ] as const;
   let cursor = 0;
   let flushCount = 0;
+  let stderrOutput = '';
 
   const result = await runDiffUiPagerSession({
     model,
@@ -190,21 +191,27 @@ void test('runDiffUiPagerSession handles input commands, resize, and quit', asyn
       close: () => {},
     },
     writeStdout: () => {},
-    writeStderr: () => {},
-    createScreen: () => ({
-      markDirty: () => {},
-      flush: () => {
-        flushCount += 1;
-        return {
-          wroteOutput: true,
-          changedRowCount: 1,
-          shouldShowCursor: false,
-        };
-      },
-    }),
+    writeStderr: (text) => {
+      stderrOutput += text;
+    },
+    createScreen: (writer) => {
+      writer.writeError('[pager-test] createScreen init\n');
+      return {
+        markDirty: () => {},
+        flush: () => {
+          flushCount += 1;
+          return {
+            wroteOutput: true,
+            changedRowCount: 1,
+            shouldShowCursor: false,
+          };
+        },
+      };
+    },
   });
 
   assert.equal(flushCount >= 3, true);
+  assert.equal(stderrOutput.includes('[pager-test] createScreen init'), true);
   assert.equal(result.renderedLines.length > 0, true);
   assert.equal(
     result.events.some((event) => event.type === 'session.quit'),

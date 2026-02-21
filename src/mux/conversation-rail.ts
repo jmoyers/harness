@@ -4,15 +4,11 @@ import type {
   StreamSessionStatusModel,
 } from '../control-plane/stream-protocol.ts';
 import { padOrTrimDisplay } from './dual-pane-core.ts';
-import {
-  createUiSurface,
-  DEFAULT_UI_STYLE,
-  drawUiText,
-  fillUiRow,
-  renderUiSurfaceAnsiRows,
-} from '../ui/surface.ts';
-import { paintUiRow } from '../ui/kit.ts';
+import { UiKit } from '../../packages/harness-ui/src/kit.ts';
+import { DEFAULT_UI_STYLE, SurfaceBuffer } from '../../packages/harness-ui/src/surface.ts';
 import { getActiveMuxTheme } from '../ui/mux-theme.ts';
+
+const UI_KIT = new UiKit();
 
 export interface ConversationRailSessionSummary {
   readonly sessionId: string;
@@ -227,33 +223,31 @@ export function renderConversationRailAnsiRows(
 ): readonly string[] {
   const safeWidth = Math.max(1, width);
   const rows = buildConversationRailRows(sessions, activeSessionId, maxRows, order);
-  const surface = createUiSurface(safeWidth, rows.length, DEFAULT_UI_STYLE);
+  const surface = new SurfaceBuffer(safeWidth, rows.length, DEFAULT_UI_STYLE);
   const theme = getActiveMuxTheme().conversationRail;
 
   for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
     const row = rows[rowIndex]!;
     if (row.kind === 'header') {
-      paintUiRow(surface, rowIndex, row.text, theme.headerStyle, theme.headerStyle, 1);
+      UI_KIT.paintRow(surface, rowIndex, row.text, theme.headerStyle, theme.headerStyle, 1);
       continue;
     }
 
     if (row.kind === 'empty') {
-      paintUiRow(surface, rowIndex, '', theme.normalRowStyle, theme.normalRowStyle);
+      UI_KIT.paintRow(surface, rowIndex, '', theme.normalRowStyle, theme.normalRowStyle);
       continue;
     }
 
     const session = row.session!;
     const active = row.active === true;
-    fillUiRow(surface, rowIndex, active ? theme.activeRowStyle : theme.normalRowStyle);
-    drawUiText(
-      surface,
+    surface.fillRow(rowIndex, active ? theme.activeRowStyle : theme.normalRowStyle);
+    surface.drawText(
       0,
       rowIndex,
       active ? '>' : ' ',
       active ? theme.activeIndicatorStyle : theme.normalTextStyle,
     );
-    drawUiText(
-      surface,
+    surface.drawText(
       2,
       rowIndex,
       badgeLabel(session.status),
@@ -265,8 +259,7 @@ export function renderConversationRailAnsiRows(
             ? theme.statusBadgeStyles.completed
             : theme.statusBadgeStyles.exited,
     );
-    drawUiText(
-      surface,
+    surface.drawText(
       7,
       rowIndex,
       rowBodyText(session),
@@ -274,11 +267,11 @@ export function renderConversationRailAnsiRows(
     );
 
     if (!session.live && session.attentionReason === null) {
-      drawUiText(surface, 7, rowIndex, rowBodyText(session), theme.deadTextStyle);
+      surface.drawText(7, rowIndex, rowBodyText(session), theme.deadTextStyle);
     }
   }
 
-  return renderUiSurfaceAnsiRows(surface);
+  return surface.renderAnsiRows();
 }
 
 export function cycleConversationId(

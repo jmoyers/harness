@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { Screen, type ScreenFlushInput } from '../src/ui/screen.ts';
+import {
+  Screen,
+  type ScreenFlushInput,
+  type ScreenWriter,
+} from '../packages/harness-ui/src/screen.ts';
 
 function createInput(overrides?: Partial<ScreenFlushInput>): ScreenFlushInput {
   return {
@@ -20,11 +24,13 @@ function createInput(overrides?: Partial<ScreenFlushInput>): ScreenFlushInput {
 
 void test('screen tracks dirty state and clears it after flush', () => {
   const outputs: string[] = [];
-  const screen = new Screen({
-    writeOutput: (value) => {
+  const writer: ScreenWriter = {
+    writeOutput(value: string): void {
       outputs.push(value);
     },
-  });
+    writeError(): void {},
+  };
+  const screen = new Screen(writer);
 
   assert.equal(screen.isDirty(), true);
   const first = screen.flush(createInput());
@@ -46,9 +52,10 @@ void test('screen tracks dirty state and clears it after flush', () => {
 void test('screen flushes frame diff, selection overlay cleanup, and cursor visibility', () => {
   const outputs: string[] = [];
   const screen = new Screen({
-    writeOutput: (value) => {
+    writeOutput(value: string): void {
       outputs.push(value);
     },
+    writeError(): void {},
   });
 
   const first = screen.flush(
@@ -114,13 +121,17 @@ void test('screen flushes frame diff, selection overlay cleanup, and cursor visi
 
 void test('screen ansi validation reports at most once', () => {
   const errors: string[] = [];
-  const screen = new Screen({
-    writeOutput: () => {},
-    writeError: (value) => {
-      errors.push(value);
+  const screen = new Screen(
+    {
+      writeOutput(): void {},
+      writeError(value: string): void {
+        errors.push(value);
+      },
     },
-    findAnsiIssues: () => ['bad ansi'],
-  });
+    {
+      findIssues: () => ['bad ansi'],
+    },
+  );
 
   screen.flush(createInput({ validateAnsi: true }));
   screen.markDirty();
@@ -131,7 +142,8 @@ void test('screen ansi validation reports at most once', () => {
 
 void test('screen merges previous and current selection row sets when both are non-empty', () => {
   const screen = new Screen({
-    writeOutput: () => {},
+    writeOutput(): void {},
+    writeError(): void {},
   });
 
   screen.flush(
@@ -167,8 +179,8 @@ void test('screen default io dependency fallbacks are exercised', () => {
     const screenWithAllDefaults = new Screen();
     screenWithAllDefaults.flush(createInput());
 
-    const screenWithDefaultWriters = new Screen({
-      findAnsiIssues: () => ['bad ansi'],
+    const screenWithDefaultWriters = new Screen(undefined, {
+      findIssues: () => ['bad ansi'],
     });
     screenWithDefaultWriters.flush(createInput({ validateAnsi: true }));
   } finally {
@@ -183,9 +195,10 @@ void test('screen default io dependency fallbacks are exercised', () => {
 void test('screen wraps frame writes in synchronized terminal update mode', () => {
   const outputs: string[] = [];
   const screen = new Screen({
-    writeOutput: (value) => {
+    writeOutput(value: string): void {
       outputs.push(value);
     },
+    writeError(): void {},
   });
 
   screen.flush(createInput());

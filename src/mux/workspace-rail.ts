@@ -1,12 +1,9 @@
+import { UiKit } from '../../packages/harness-ui/src/kit.ts';
 import {
-  createUiSurface,
   DEFAULT_UI_STYLE,
-  drawUiText,
-  fillUiRow,
-  renderUiSurfaceAnsiRows,
+  SurfaceBuffer,
   type UiStyle,
-} from '../ui/surface.ts';
-import { paintUiRow } from '../ui/kit.ts';
+} from '../../packages/harness-ui/src/surface.ts';
 import { measureDisplayWidth } from '../terminal/snapshot-oracle.ts';
 import { buildWorkspaceRailViewRows } from './workspace-rail-model.ts';
 import { getActiveMuxTheme, type MuxWorkspaceRailTheme } from '../ui/mux-theme.ts';
@@ -15,6 +12,7 @@ type WorkspaceRailModel = Parameters<typeof buildWorkspaceRailViewRows>[0];
 type WorkspaceRailViewRow = ReturnType<typeof buildWorkspaceRailViewRows>[number];
 
 const INLINE_THREAD_BUTTON_LABEL = '[+ thread]';
+const UI_KIT = new UiKit();
 
 function conversationStatusIconStyle(
   status: WorkspaceRailViewRow['conversationStatus'],
@@ -51,7 +49,7 @@ function treeTextStartColumn(text: string): number {
 }
 
 function drawTreeRow(
-  surface: ReturnType<typeof createUiSurface>,
+  surface: SurfaceBuffer,
   rowIndex: number,
   row: WorkspaceRailViewRow,
   theme: MuxWorkspaceRailTheme,
@@ -63,7 +61,7 @@ function drawTreeRow(
     alignButtonRight?: boolean;
   } = {},
 ): void {
-  fillUiRow(surface, rowIndex, theme.normalStyle);
+  surface.fillRow(rowIndex, theme.normalStyle);
   const buttonLabel = options.buttonLabel;
   const buttonStyle = options.buttonStyle;
   const alignButtonRight = options.alignButtonRight ?? false;
@@ -75,9 +73,8 @@ function drawTreeRow(
   const contentStart = treeTextStartColumn(baseRowText);
   const treePrefix = baseRowText.slice(0, contentStart);
   const content = baseRowText.slice(contentStart);
-  drawUiText(surface, 0, rowIndex, treePrefix, theme.mutedStyle);
-  drawUiText(
-    surface,
+  surface.drawText(0, rowIndex, treePrefix, theme.mutedStyle);
+  surface.drawText(
     contentStart,
     rowIndex,
     content,
@@ -91,28 +88,27 @@ function drawTreeRow(
   }
   const buttonWidth = Math.max(1, measureDisplayWidth(buttonLabel));
   const buttonStart = alignButtonRight ? Math.max(0, surface.cols - buttonWidth) : buttonTextStart;
-  drawUiText(surface, buttonStart, rowIndex, buttonLabel, buttonStyle);
+  surface.drawText(buttonStart, rowIndex, buttonLabel, buttonStyle);
 }
 
 function drawActionRow(
-  surface: ReturnType<typeof createUiSurface>,
+  surface: SurfaceBuffer,
   rowIndex: number,
   row: WorkspaceRailViewRow,
   theme: MuxWorkspaceRailTheme,
 ): void {
-  fillUiRow(surface, rowIndex, theme.normalStyle);
+  surface.fillRow(rowIndex, theme.normalStyle);
   if (row.railAction === 'project.add') {
-    drawUiText(surface, 0, rowIndex, '│', theme.mutedStyle);
+    surface.drawText(0, rowIndex, '│', theme.mutedStyle);
     const buttonStart = Math.max(0, Math.floor((surface.cols - row.text.length) / 2));
-    drawUiText(surface, buttonStart, rowIndex, row.text, theme.actionStyle);
+    surface.drawText(buttonStart, rowIndex, row.text, theme.actionStyle);
     return;
   }
-  drawUiText(surface, 0, rowIndex, row.text, theme.mutedStyle);
+  surface.drawText(0, rowIndex, row.text, theme.mutedStyle);
   const buttonStart = row.text.indexOf('[');
   const buttonEnd = row.text.lastIndexOf(']');
   const safeButtonStart = Math.max(0, buttonStart);
-  drawUiText(
-    surface,
+  surface.drawText(
     safeButtonStart,
     rowIndex,
     row.text.slice(safeButtonStart, Math.max(safeButtonStart, buttonEnd + 1)),
@@ -121,7 +117,7 @@ function drawActionRow(
 }
 
 function drawDirectoryHeaderRow(
-  surface: ReturnType<typeof createUiSurface>,
+  surface: SurfaceBuffer,
   rowIndex: number,
   row: WorkspaceRailViewRow,
   theme: MuxWorkspaceRailTheme,
@@ -134,7 +130,7 @@ function drawDirectoryHeaderRow(
 }
 
 function drawConversationRow(
-  surface: ReturnType<typeof createUiSurface>,
+  surface: SurfaceBuffer,
   rowIndex: number,
   row: WorkspaceRailViewRow,
   theme: MuxWorkspaceRailTheme,
@@ -150,11 +146,11 @@ function drawConversationRow(
   if (statusMatch === null || statusMatch.index === undefined) {
     return;
   }
-  drawUiText(surface, statusMatch.index, rowIndex, statusMatch[0], statusStyle);
+  surface.drawText(statusMatch.index, rowIndex, statusMatch[0], statusStyle);
 }
 
 function paintWorkspaceRailRow(
-  surface: ReturnType<typeof createUiSurface>,
+  surface: SurfaceBuffer,
   rowIndex: number,
   row: WorkspaceRailViewRow,
   theme: MuxWorkspaceRailTheme,
@@ -172,7 +168,7 @@ function paintWorkspaceRailRow(
     return;
   }
   if (row.kind === 'process-title' || row.kind === 'process-meta') {
-    paintUiRow(surface, rowIndex, row.text, theme.processStyle, theme.normalStyle);
+    UI_KIT.paintRow(surface, rowIndex, row.text, theme.processStyle, theme.normalStyle);
     return;
   }
   if (row.kind === 'repository-header') {
@@ -188,7 +184,7 @@ function paintWorkspaceRailRow(
     return;
   }
   if (row.kind === 'repository-row') {
-    paintUiRow(surface, rowIndex, row.text, theme.repositoryRowStyle, theme.normalStyle);
+    UI_KIT.paintRow(surface, rowIndex, row.text, theme.repositoryRowStyle, theme.normalStyle);
     return;
   }
   if (row.kind === 'shortcut-header') {
@@ -204,7 +200,7 @@ function paintWorkspaceRailRow(
     return;
   }
   if (row.kind === 'shortcut-body') {
-    paintUiRow(surface, rowIndex, row.text, theme.shortcutStyle);
+    UI_KIT.paintRow(surface, rowIndex, row.text, theme.shortcutStyle);
     return;
   }
   if (row.kind === 'action') {
@@ -212,7 +208,7 @@ function paintWorkspaceRailRow(
     return;
   }
   if (row.kind === 'muted') {
-    paintUiRow(surface, rowIndex, row.text, theme.mutedStyle, theme.normalStyle);
+    UI_KIT.paintRow(surface, rowIndex, row.text, theme.mutedStyle, theme.normalStyle);
   }
 }
 
@@ -222,9 +218,9 @@ export function renderWorkspaceRailRowAnsiForTest(
 ): string {
   const safeWidth = Math.max(1, width);
   const theme = getActiveMuxTheme().workspaceRail;
-  const surface = createUiSurface(safeWidth, 1, DEFAULT_UI_STYLE);
+  const surface = new SurfaceBuffer(safeWidth, 1, DEFAULT_UI_STYLE);
   paintWorkspaceRailRow(surface, 0, row, theme);
-  return renderUiSurfaceAnsiRows(surface)[0]!;
+  return surface.renderAnsiRows()[0]!;
 }
 
 export function renderWorkspaceRailAnsiRows(
@@ -236,12 +232,12 @@ export function renderWorkspaceRailAnsiRows(
   const safeRows = Math.max(1, maxRows);
   const theme = getActiveMuxTheme().workspaceRail;
   const rows = buildWorkspaceRailViewRows(model, safeRows);
-  const surface = createUiSurface(safeWidth, safeRows, DEFAULT_UI_STYLE);
+  const surface = new SurfaceBuffer(safeWidth, safeRows, DEFAULT_UI_STYLE);
 
   for (let rowIndex = 0; rowIndex < safeRows; rowIndex += 1) {
     const row = rows[rowIndex]!;
     paintWorkspaceRailRow(surface, rowIndex, row, theme);
   }
 
-  return renderUiSurfaceAnsiRows(surface);
+  return surface.renderAnsiRows();
 }

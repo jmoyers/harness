@@ -145,6 +145,61 @@ Ownership rules:
 
 This boundary model keeps behavior equivalent while making the system testable, replaceable, and automation-safe.
 
+## Anti-Glue Architecture Rules
+
+Refactor slices must reduce architectural glue, not relocate it.
+
+Entrypoint and composition-root rules:
+
+- `scripts/*` are bootstrap adapters only:
+  - parse the minimal global envelope
+  - create one composition root from `src/*`
+  - delegate typed command execution
+  - map final result to process exit output
+- Business parsing, command routing, orchestration, and state mutation are prohibited in `scripts/*`.
+- Each executable entrypoint has one owning composition root in `src/*` (for example `src/cli/runtime-app/*`).
+
+Dependency-shape rules:
+
+- No callback/property bags for primary runtime collaboration.
+- No `Record<string, unknown>` contracts for orchestration interfaces.
+- No "mirror facades" that re-expose most of a concrete class; split by capabilities instead.
+- Options objects are allowed only when they represent a named domain/config model, not ad-hoc wiring.
+
+Context rules:
+
+- Runtime contexts use explicit, owned fields; avoid nested catch-all bags.
+- Shared base context stays minimal.
+- Feature-specific fields belong to feature-specific context types rather than global context growth.
+
+Service decomposition rules:
+
+- Parsers, orchestration, and state-file IO are separate responsibilities.
+- If a class has multiple unrelated change drivers, split it by vertical capability.
+- Class-based modules are required for runtime orchestration surfaces; helper functions support classes but do not replace them as the boundary.
+
+Quality rules for architectural seams:
+
+- New seams must be strongly typed and unit-testable in isolation.
+- Refactors must delete replaced glue paths in the same milestone slice.
+- Temporary compatibility shims are allowed only when they have a named removal milestone.
+
+## Harness UI Package Architecture
+
+Reusable terminal UI foundation lives in `packages/harness-ui` and is class-owned:
+
+- `SurfaceBuffer` owns terminal cell/style state and ANSI row rendering.
+- `TextLayoutEngine` owns display width, wrapping, and truncation behavior.
+- `UiKit` owns modal/box/row composition primitives over `SurfaceBuffer`.
+- `Screen` owns frame diff/flush, cursor/bracketed-paste state, and ANSI validation.
+
+Boundary rules:
+
+- `packages/harness-ui` must not import mux/workspace/domain logic.
+- Runtime-facing classes use explicit collaborator interfaces (`ScreenWriter`, `ScreenAnsiValidator`) instead of callback/property bags.
+- Runtime and test call paths consume `packages/harness-ui` classes directly; legacy `src/ui/{surface,kit,wrapping-input,screen}.ts` compatibility wrappers are removed.
+- `src/ui/*` and `src/mux/*` keep app-specific behavior in adapters/features over package-owned primitives.
+
 ## First-Party AI Library Package
 
 Harness ships a first-party AI package at `packages/harness-ai` to keep latency-sensitive model orchestration and provider bugfixes under direct control.

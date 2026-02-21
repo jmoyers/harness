@@ -1,11 +1,12 @@
-import { diffRenderedRows } from '../mux/dual-pane-core.ts';
-import { cursorStyleEqual, cursorStyleToDecscusr } from '../mux/render-frame.ts';
-import { findAnsiIntegrityIssues } from '../mux/ansi-integrity.ts';
+import {
+  cursorStyleEqual,
+  cursorStyleToDecscusr,
+  diffRenderedRows,
+  findAnsiIntegrityIssues,
+  type RenderCursorStyle,
+} from './frame-primitives.ts';
 
-export interface ScreenCursorStyle {
-  readonly shape: 'block' | 'underline' | 'bar';
-  readonly blinking: boolean;
-}
+export type ScreenCursorStyle = RenderCursorStyle;
 
 interface ScreenLayout {
   readonly paneRows: number;
@@ -43,10 +44,29 @@ interface ScreenFlushResult {
   readonly shouldShowCursor: boolean;
 }
 
-interface ScreenDependencies {
-  readonly writeOutput: (output: string) => void;
-  readonly writeError: (output: string) => void;
-  readonly findAnsiIssues: (rows: readonly string[]) => readonly string[];
+export interface ScreenWriter {
+  writeOutput(output: string): void;
+  writeError(output: string): void;
+}
+
+export class ProcessScreenWriter implements ScreenWriter {
+  writeOutput(output: string): void {
+    process.stdout.write(output);
+  }
+
+  writeError(output: string): void {
+    process.stderr.write(output);
+  }
+}
+
+export interface ScreenAnsiValidator {
+  findIssues(rows: readonly string[]): readonly string[];
+}
+
+export class DefaultScreenAnsiValidator implements ScreenAnsiValidator {
+  findIssues(rows: readonly string[]): readonly string[] {
+    return findAnsiIntegrityIssues(rows);
+  }
 }
 
 const TERMINAL_SYNC_UPDATE_BEGIN = '\u001b[?2026h';
@@ -79,15 +99,10 @@ export class Screen {
   private renderedBracketedPaste: boolean | null = null;
   private ansiValidationReported = false;
 
-  private readonly deps: ScreenDependencies;
-
-  constructor(deps?: Partial<ScreenDependencies>) {
-    this.deps = {
-      writeOutput: deps?.writeOutput ?? ((output) => process.stdout.write(output)),
-      writeError: deps?.writeError ?? ((output) => process.stderr.write(output)),
-      findAnsiIssues: deps?.findAnsiIssues ?? findAnsiIntegrityIssues,
-    };
-  }
+  constructor(
+    private readonly writer: ScreenWriter = new ProcessScreenWriter(),
+    private readonly ansiValidator: ScreenAnsiValidator = new DefaultScreenAnsiValidator(),
+  ) {}
 
   isDirty(): boolean {
     return this.dirty;
@@ -116,10 +131,10 @@ export class Screen {
     }
 
     if (input.validateAnsi) {
-      const issues = this.deps.findAnsiIssues(input.rows);
+      const issues = this.ansiValidator.findIssues(input.rows);
       if (issues.length > 0 && !this.ansiValidationReported) {
         this.ansiValidationReported = true;
-        this.deps.writeError(`[mux] ansi-integrity-failed ${issues.join(' | ')}\n`);
+        this.writer.writeError(`[mux] ansi-integrity-failed ${issues.join(' | ')}\n`);
       }
     }
 
@@ -163,7 +178,6 @@ export class Screen {
       }
 
       output += input.selectionOverlay;
-
       shouldShowCursor =
         input.rightFrame.viewport.followOutput &&
         input.rightFrame.cursor.visible &&
@@ -194,13 +208,12 @@ export class Screen {
     }
 
     if (output.length > 0) {
-      this.deps.writeOutput(`${TERMINAL_SYNC_UPDATE_BEGIN}${output}${TERMINAL_SYNC_UPDATE_END}`);
+      this.writer.writeOutput(`${TERMINAL_SYNC_UPDATE_BEGIN}${output}${TERMINAL_SYNC_UPDATE_END}`);
     }
 
     this.previousRows = diff.nextRows;
     this.previousSelectionRows = input.selectionRows;
     this.dirty = false;
-
     return {
       wroteOutput: output.length > 0,
       changedRowCount: diff.changedRows.length,

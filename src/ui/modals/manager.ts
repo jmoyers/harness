@@ -18,7 +18,7 @@ import type {
   RepositoryPromptState,
   TaskEditorPromptState,
 } from '../../domain/workspace.ts';
-import { isUiModalOverlayHit } from '../kit.ts';
+import { UiKit } from '../../../packages/harness-ui/src/kit.ts';
 
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
 type AddDirectoryPromptState = { value: string; error: string | null };
@@ -32,6 +32,9 @@ type ApiKeyPromptState = {
 type ModalOverlay = Exclude<ReturnType<typeof buildNewThreadModalOverlayFrame>, null>;
 type ModalTheme = Parameters<typeof buildNewThreadModalOverlayFrame>[3];
 type DismissModalOnOutsideClickInput = Parameters<typeof dismissModalOnOutsideClickFrame>[0];
+type IsOverlayHit = (overlay: ModalOverlay, col: number, row: number) => boolean;
+
+const UI_KIT = new UiKit();
 
 interface ModalManagerOptions {
   readonly theme: ModalTheme;
@@ -55,7 +58,7 @@ interface ModalManagerDependencies {
   readonly buildRepositoryModalOverlay?: typeof buildRepositoryModalOverlayFrame;
   readonly buildConversationTitleModalOverlay?: typeof buildConversationTitleModalOverlayFrame;
   readonly dismissModalOnOutsideClick?: typeof dismissModalOnOutsideClickFrame;
-  readonly isOverlayHit?: typeof isUiModalOverlayHit;
+  readonly isOverlayHit?: IsOverlayHit;
 }
 
 interface ModalDismissInput {
@@ -81,7 +84,7 @@ export class ModalManager {
   private readonly buildRepositoryModalOverlay: typeof buildRepositoryModalOverlayFrame;
   private readonly buildConversationTitleModalOverlay: typeof buildConversationTitleModalOverlayFrame;
   private readonly dismissModalOnOutsideClick: typeof dismissModalOnOutsideClickFrame;
-  private readonly isOverlayHit: typeof isUiModalOverlayHit;
+  private readonly isOverlayHit: IsOverlayHit;
 
   constructor(
     private readonly options: ModalManagerOptions,
@@ -103,7 +106,9 @@ export class ModalManager {
       dependencies.buildConversationTitleModalOverlay ?? buildConversationTitleModalOverlayFrame;
     this.dismissModalOnOutsideClick =
       dependencies.dismissModalOnOutsideClick ?? dismissModalOnOutsideClickFrame;
-    this.isOverlayHit = dependencies.isOverlayHit ?? isUiModalOverlayHit;
+    this.isOverlayHit =
+      dependencies.isOverlayHit ??
+      ((overlay, col, row) => UI_KIT.isModalOverlayHit(overlay, col, row));
   }
 
   buildCommandMenuOverlay(layoutCols: number, viewportRows: number): ModalOverlay | null {
