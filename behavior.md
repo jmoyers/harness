@@ -101,6 +101,7 @@ Behavior fragments:
 - Home/project/task pane render branching.
 - Project pane GitHub review tree for tracked branch state (PR lifecycle + open/resolved review threads).
 - Project pane GitHub review loads via centralized runtime cache with TTL freshness, in-flight dedupe, and active-pane timed refresh.
+- GitHub review refresh work runs in latest-wins background control-plane slots so rapid interactive left-nav cycling is not starved by review refresh backlog.
 - Navigation transitions and selection synchronization.
 - Local Git repositories without GitHub remotes still hydrate into repository groups (not `untracked`).
 

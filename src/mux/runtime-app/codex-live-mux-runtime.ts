@@ -2127,6 +2127,13 @@ class CodexLiveMuxRuntimeApplication {
     ): void => {
       controlPlaneOps.enqueueInteractiveLatest(key, task, label);
     };
+    const queueLatestBackgroundControlPlaneOp = (
+      key: string,
+      task: (options: { readonly signal: AbortSignal }) => Promise<void>,
+      label = 'background-op',
+    ): void => {
+      controlPlaneOps.enqueueBackgroundLatest(key, task, label);
+    };
     const queueBackgroundControlPlaneOp = (
       task: () => Promise<void>,
       label = 'background-op',
@@ -2660,7 +2667,7 @@ class CodexLiveMuxRuntimeApplication {
     const projectPaneGitHubReviewCache = new RuntimeProjectPaneGitHubReviewCache({
       ttlMs: PROJECT_PANE_GITHUB_REVIEW_TTL_MS,
       refreshIntervalMs: PROJECT_PANE_GITHUB_REVIEW_REFRESH_INTERVAL_MS,
-      queueLatestControlPlaneOp,
+      queueLatestControlPlaneOp: queueLatestBackgroundControlPlaneOp,
       loadReview: async (directoryId) => {
         const result = await streamClient.sendCommand({
           type: 'github.project-review',

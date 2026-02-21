@@ -105,6 +105,17 @@ export class RuntimeControlPlaneOps {
     });
   }
 
+  enqueueBackgroundLatest(
+    key: string,
+    task: (options: { readonly signal: AbortSignal }) => Promise<void>,
+    label = 'background-op',
+  ): void {
+    this.queue.enqueueBackground(task, label, {
+      key,
+      supersede: 'pending-and-running',
+    });
+  }
+
   enqueueBackground(task: () => Promise<void>, label = 'background-op'): void {
     this.queue.enqueueBackground(async () => {
       await task();

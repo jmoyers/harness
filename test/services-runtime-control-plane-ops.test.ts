@@ -224,3 +224,73 @@ void test('runtime control-plane ops marks superseded latest interactive operati
     ['canceled', 'ok'],
   );
 });
+
+void test('runtime control-plane ops lets interactive latest run ahead of queued background latest backlog', async () => {
+  const scheduled: Array<() => void> = [];
+  const runOrder: string[] = [];
+  let releaseFirstBackground: (() => void) | undefined;
+  const firstBackgroundDone = new Promise<void>((resolve) => {
+    releaseFirstBackground = () => {
+      resolve();
+    };
+  });
+
+  const service = new RuntimeControlPlaneOps({
+    onFatal: (error) => {
+      throw error;
+    },
+    startPerfSpan: () => ({
+      end: () => {},
+    }),
+    recordPerfEvent: () => {},
+    writeStderr: () => {},
+    schedule: (callback) => {
+      scheduled.push(callback);
+    },
+  });
+
+  service.enqueueBackgroundLatest(
+    'project-pane-github-review:dir-0',
+    async () => {
+      runOrder.push('bg-0:start');
+      await firstBackgroundDone;
+      runOrder.push('bg-0:end');
+    },
+    'project-pane-github-review',
+  );
+  for (let index = 1; index <= 8; index += 1) {
+    service.enqueueBackgroundLatest(
+      `project-pane-github-review:dir-${String(index)}`,
+      async () => {
+        runOrder.push(`bg-${String(index)}`);
+      },
+      'project-pane-github-review',
+    );
+  }
+
+  await flushManualSchedule(scheduled);
+  service.enqueueInteractiveLatest(
+    'left-nav:activate-conversation',
+    async () => {
+      runOrder.push('interactive');
+    },
+    'shortcut-activate-next',
+  );
+
+  assert.equal(service.metrics().running, true);
+  assert.equal(service.metrics().interactiveQueued, 1);
+  assert.equal(service.metrics().backgroundQueued >= 1, true);
+
+  if (releaseFirstBackground === undefined) {
+    throw new Error('expected first background release callback');
+  }
+  releaseFirstBackground();
+  await flushManualSchedule(scheduled);
+  await service.waitForDrain();
+
+  const interactiveIndex = runOrder.indexOf('interactive');
+  const firstQueuedBackgroundIndex = runOrder.indexOf('bg-1');
+  assert.equal(interactiveIndex > -1, true);
+  assert.equal(firstQueuedBackgroundIndex > -1, true);
+  assert.equal(interactiveIndex < firstQueuedBackgroundIndex, true);
+});
