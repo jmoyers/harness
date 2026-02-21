@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { fstatSync, readFileSync } from 'node:fs';
 import { createDiffBuilder } from '../diff/build.ts';
 import type { DiffBuildResult, DiffBuilder } from '../diff/types.ts';
 import { Screen, type ScreenWriter } from '../../packages/harness-ui/src/screen.ts';
@@ -25,10 +25,14 @@ interface RunDiffUiCliDeps {
   readonly readStdinText?: () => string;
   readonly createBuilder?: () => DiffBuilder;
   readonly isStdoutTty?: boolean;
+  readonly readRpcStdinFromFd0?: () => string;
+  readonly resolveStdinFdKind?: () => StdinFdKind;
   readonly pagerStdin?: DiffUiPagerInputStream;
   readonly pagerStdout?: DiffUiPagerOutputStream;
   readonly createScreen?: (writer: ScreenWriter) => Pick<Screen, 'markDirty' | 'flush'>;
 }
+
+type StdinFdKind = 'tty' | 'pipe' | 'file' | 'other';
 
 function viewportFromOptions(
   options: DiffUiCliOptions,
@@ -58,15 +62,44 @@ function emitRenderedLines(lines: readonly string[], writeStdout: (text: string)
   writeStdout(`${lines.join('\n')}\n`);
 }
 
-function readRpcStdinText(readStdinText: (() => string) | undefined): string {
+function resolveProcessStdinFdKind(): StdinFdKind {
+  try {
+    const stats = fstatSync(0);
+    if (stats.isCharacterDevice()) {
+      return 'tty';
+    }
+    if (stats.isFIFO()) {
+      return 'pipe';
+    }
+    if (stats.isFile()) {
+      return 'file';
+    }
+  } catch {
+    // Fall through.
+  }
+  return 'other';
+}
+
+function shouldReadRpcStdinFromFd0(isStdinTty: boolean, stdinFdKind: StdinFdKind): boolean {
+  if (isStdinTty) {
+    return false;
+  }
+  return stdinFdKind === 'pipe' || stdinFdKind === 'file';
+}
+
+function readRpcStdinText(
+  readStdinText: (() => string) | undefined,
+  readRpcStdinFromFd0: (() => string) | undefined,
+  resolveStdinFdKind: (() => StdinFdKind) | undefined,
+): string {
   if (readStdinText !== undefined) {
     return readStdinText();
   }
-  // Avoid blocking forever when rpc mode is started from an interactive terminal.
-  if (process.stdin.isTTY === true) {
+  const stdinFdKind = (resolveStdinFdKind ?? resolveProcessStdinFdKind)();
+  if (!shouldReadRpcStdinFromFd0(process.stdin.isTTY === true, stdinFdKind)) {
     return '';
   }
-  return readFileSync(0, 'utf8');
+  return (readRpcStdinFromFd0 ?? (() => readFileSync(0, 'utf8')))();
 }
 
 function renderCurrentViewport(input: {
@@ -212,7 +245,11 @@ export async function runDiffUiCli(deps: RunDiffUiCliDeps = {}): Promise<DiffUiR
         view: state.effectiveViewMode,
       });
 
-      const stdinText = readRpcStdinText(deps.readStdinText);
+      const stdinText = readRpcStdinText(
+        deps.readStdinText,
+        deps.readRpcStdinFromFd0,
+        deps.resolveStdinFdKind,
+      );
       for (const rawLine of stdinText.split('\n')) {
         const line = rawLine.trim();
         if (line.length === 0) {
@@ -315,3 +352,8 @@ export async function runDiffUiCli(deps: RunDiffUiCliDeps = {}): Promise<DiffUiR
     };
   }
 }
+
+export const __diffUiRuntimeInternals = {
+  shouldReadRpcStdinFromFd0,
+  resolveProcessStdinFdKind,
+};

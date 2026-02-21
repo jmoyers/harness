@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { test } from 'bun:test';
 import type { DiffBuilder } from '../src/diff/types.ts';
-import { runDiffUiCli } from '../src/diff-ui/runtime.ts';
+import { __diffUiRuntimeInternals, runDiffUiCli } from '../src/diff-ui/runtime.ts';
 import { createSampleDiff } from './support/diff-ui-fixture.ts';
 
 function createBuilder(): DiffBuilder {
@@ -253,6 +253,59 @@ void test('runDiffUiCli default rpc stdin reader consumes fd0 when stdin is non-
       configurable: true,
     });
   }
+});
+
+void test('runDiffUiCli default rpc stdin reader skips fd0 reads when fd0 is terminal-like', async () => {
+  let stdout = '';
+  let stderr = '';
+  let fd0ReadCalls = 0;
+  const originalIsStdinTty = process.stdin.isTTY;
+
+  Object.defineProperty(process.stdin, 'isTTY', {
+    value: false,
+    configurable: true,
+  });
+
+  try {
+    const result = await runDiffUiCli({
+      argv: ['--json-events', '--rpc-stdio', '--width', '100', '--height', '12'],
+      cwd: '/repo',
+      env: {},
+      writeStdout: (text) => {
+        stdout += text;
+      },
+      writeStderr: (text) => {
+        stderr += text;
+      },
+      createBuilder,
+      isStdoutTty: false,
+      stdoutCols: 100,
+      stdoutRows: 12,
+      resolveStdinFdKind: () => 'tty',
+      readRpcStdinFromFd0: () => {
+        fd0ReadCalls += 1;
+        return '{"type":"session.quit"}';
+      },
+    });
+
+    assert.equal(result.exitCode, 0);
+    assert.equal(fd0ReadCalls, 0);
+    assert.equal(stdout.includes('diff.loaded'), true);
+    assert.equal(stderr, '');
+  } finally {
+    Object.defineProperty(process.stdin, 'isTTY', {
+      value: originalIsStdinTty,
+      configurable: true,
+    });
+  }
+});
+
+void test('diff-ui runtime fd0 read guard allows only non-tty file/pipe stdin', () => {
+  assert.equal(__diffUiRuntimeInternals.shouldReadRpcStdinFromFd0(true, 'pipe'), false);
+  assert.equal(__diffUiRuntimeInternals.shouldReadRpcStdinFromFd0(false, 'pipe'), true);
+  assert.equal(__diffUiRuntimeInternals.shouldReadRpcStdinFromFd0(false, 'file'), true);
+  assert.equal(__diffUiRuntimeInternals.shouldReadRpcStdinFromFd0(false, 'tty'), false);
+  assert.equal(__diffUiRuntimeInternals.shouldReadRpcStdinFromFd0(false, 'other'), false);
 });
 
 void test('runDiffUiCli surfaces parse/build failures', async () => {
