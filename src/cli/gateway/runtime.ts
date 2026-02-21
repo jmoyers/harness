@@ -13,7 +13,7 @@ import {
 } from 'node:fs';
 import { createServer as createNetServer } from 'node:net';
 import type { AddressInfo } from 'node:net';
-import { basename, dirname, resolve } from 'node:path';
+import { basename, dirname, relative, resolve } from 'node:path';
 import { connectControlPlaneStreamClient } from '../../control-plane/stream-client.ts';
 import { parseStreamCommand } from '../../control-plane/stream-command-parser.ts';
 import type { StreamCommand } from '../../control-plane/stream-protocol.ts';
@@ -61,7 +61,7 @@ export interface GatewayGcOptions {
 }
 
 interface ParsedGatewayCommand {
-  type: 'start' | 'stop' | 'status' | 'restart' | 'run' | 'call' | 'gc';
+  type: 'start' | 'stop' | 'status' | 'list' | 'restart' | 'run' | 'call' | 'gc';
   startOptions?: GatewayStartOptions;
   stopOptions?: GatewayStopOptions;
   callJson?: string;
@@ -128,6 +128,42 @@ interface GatewayGcResult {
   errors: readonly string[];
 }
 
+type GatewayListScope = 'default' | 'named' | 'unscoped';
+
+interface GatewaySessionSummary {
+  sessionId: string;
+  live: boolean;
+  status: string | null;
+  phase: string | null;
+  detail: string | null;
+  processId: number | null;
+  controller: string | null;
+}
+
+interface GatewaySessionListResult {
+  connected: boolean;
+  totalSessions: number;
+  liveSessions: number;
+  sessions: readonly GatewaySessionSummary[];
+  error: string | null;
+}
+
+interface GatewayListTarget {
+  scope: GatewayListScope;
+  sessionName: string | null;
+  source: 'record' | 'daemon';
+  pid: number;
+  host: string;
+  port: number;
+  authToken: string | null;
+  stateDbPath: string;
+  startedAt: string | null;
+  gatewayRunId: string | null;
+  recordPath: string | null;
+  logPath: string | null;
+  lockPath: string | null;
+}
+
 function tsRuntimeArgs(
   scriptPath: string,
   args: readonly string[] = [],
@@ -187,6 +223,12 @@ class GatewayCommandParser {
         throw new Error(`unknown gateway option: ${rest[0]}`);
       }
       return { type: 'status' };
+    }
+    if (subcommand === 'list') {
+      if (rest.length > 0) {
+        throw new Error(`unknown gateway option: ${rest[0]}`);
+      }
+      return { type: 'list' };
     }
     if (subcommand === 'call') {
       return {
@@ -459,11 +501,65 @@ export class GatewayRuntimeService {
     };
   }
 
-  public async probeGatewayEndpoint(
+  private toRecord(value: unknown): Record<string, unknown> | null {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+      return null;
+    }
+    return value as Record<string, unknown>;
+  }
+
+  private readOptionalString(value: unknown): string | null {
+    if (typeof value !== 'string') {
+      return null;
+    }
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  private readOptionalNumber(value: unknown): number | null {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      return null;
+    }
+    return value;
+  }
+
+  private readOptionalBoolean(value: unknown, fallback = false): boolean {
+    return typeof value === 'boolean' ? value : fallback;
+  }
+
+  private parseGatewaySessionSummary(value: unknown): GatewaySessionSummary | null {
+    const record = this.toRecord(value);
+    if (record === null) {
+      return null;
+    }
+    const sessionId = this.readOptionalString(record['sessionId']);
+    if (sessionId === null) {
+      return null;
+    }
+    const statusModel = this.toRecord(record['statusModel']);
+    const controller = this.toRecord(record['controller']);
+    const controllerLabel =
+      controller === null ? null : this.readOptionalString(controller['controllerLabel']);
+    const controllerType =
+      controller === null ? null : this.readOptionalString(controller['controllerType']);
+    const controllerId =
+      controller === null ? null : this.readOptionalString(controller['controllerId']);
+    return {
+      sessionId,
+      live: this.readOptionalBoolean(record['live']),
+      status: this.readOptionalString(record['status']),
+      phase: statusModel === null ? null : this.readOptionalString(statusModel['phase']),
+      detail: statusModel === null ? null : this.readOptionalString(statusModel['detailText']),
+      processId: this.readOptionalNumber(record['processId']),
+      controller: controllerLabel ?? controllerType ?? controllerId,
+    };
+  }
+
+  private async listGatewaySessionsForEndpoint(
     host: string,
     port: number,
     authToken: string | null,
-  ): Promise<GatewayProbeResult> {
+  ): Promise<GatewaySessionListResult> {
     try {
       const client = await connectControlPlaneStreamClient({
         host,
@@ -478,25 +574,32 @@ export class GatewayRuntimeService {
         if (!Array.isArray(sessionsRaw)) {
           return {
             connected: true,
-            sessionCount: 0,
-            liveSessionCount: 0,
+            totalSessions: 0,
+            liveSessions: 0,
+            sessions: [],
             error: null,
           };
         }
-        let liveCount = 0;
-        for (const session of sessionsRaw) {
+        let liveSessions = 0;
+        const sessions: GatewaySessionSummary[] = [];
+        for (const sessionRaw of sessionsRaw) {
           if (
-            typeof session === 'object' &&
-            session !== null &&
-            (session as Record<string, unknown>)['live'] === true
+            typeof sessionRaw === 'object' &&
+            sessionRaw !== null &&
+            (sessionRaw as Record<string, unknown>)['live'] === true
           ) {
-            liveCount += 1;
+            liveSessions += 1;
+          }
+          const parsed = this.parseGatewaySessionSummary(sessionRaw);
+          if (parsed !== null) {
+            sessions.push(parsed);
           }
         }
         return {
           connected: true,
-          sessionCount: sessionsRaw.length,
-          liveSessionCount: liveCount,
+          totalSessions: sessionsRaw.length,
+          liveSessions,
+          sessions,
           error: null,
         };
       } finally {
@@ -505,11 +608,34 @@ export class GatewayRuntimeService {
     } catch (error: unknown) {
       return {
         connected: false,
-        sessionCount: 0,
-        liveSessionCount: 0,
+        totalSessions: 0,
+        liveSessions: 0,
+        sessions: [],
         error: error instanceof Error ? error.message : String(error),
       };
     }
+  }
+
+  public async probeGatewayEndpoint(
+    host: string,
+    port: number,
+    authToken: string | null,
+  ): Promise<GatewayProbeResult> {
+    const listed = await this.listGatewaySessionsForEndpoint(host, port, authToken);
+    if (!listed.connected) {
+      return {
+        connected: false,
+        sessionCount: 0,
+        liveSessionCount: 0,
+        error: listed.error,
+      };
+    }
+    return {
+      connected: true,
+      sessionCount: listed.totalSessions,
+      liveSessionCount: listed.liveSessions,
+      error: null,
+    };
   }
 
   public async probeGateway(record: GatewayRecord): Promise<GatewayProbeResult> {
@@ -1053,6 +1179,274 @@ export class GatewayRuntimeService {
     };
   }
 
+  private resolveGatewayListScope(
+    workspaceDirectory: string,
+    stateDbPath: string,
+  ): { scope: GatewayListScope; sessionName: string | null } {
+    const workspaceRoot = resolve(workspaceDirectory);
+    const normalizedStateDbPath = resolve(stateDbPath);
+    const dbRelativePath = relative(workspaceRoot, normalizedStateDbPath);
+    if (dbRelativePath === 'control-plane.sqlite') {
+      return {
+        scope: 'default',
+        sessionName: null,
+      };
+    }
+    if (dbRelativePath.length === 0 || dbRelativePath.startsWith('..')) {
+      return {
+        scope: 'unscoped',
+        sessionName: null,
+      };
+    }
+    const segments = dbRelativePath.split(/[\\/]/u);
+    if (
+      segments.length === 3 &&
+      segments[0] === 'sessions' &&
+      (segments[1] ?? '').length > 0 &&
+      segments[2] === 'control-plane.sqlite'
+    ) {
+      return {
+        scope: 'named',
+        sessionName: segments[1]!,
+      };
+    }
+    return {
+      scope: 'unscoped',
+      sessionName: null,
+    };
+  }
+
+  private formatGatewayScopeLabel(scope: GatewayListScope, sessionName: string | null): string {
+    if (scope === 'default') {
+      return 'default';
+    }
+    if (scope === 'named' && sessionName !== null) {
+      return `session:${sessionName}`;
+    }
+    return 'unscoped';
+  }
+
+  private stopCommandForGatewayTarget(target: GatewayListTarget): string {
+    if (target.scope === 'default') {
+      return 'harness gateway stop --force';
+    }
+    if (target.scope === 'named' && target.sessionName !== null) {
+      return `harness --session ${target.sessionName} gateway stop --force`;
+    }
+    return `kill -TERM -${String(target.pid)} && kill -TERM ${String(target.pid)}`;
+  }
+
+  private discoverGatewayListTargets(): readonly GatewayListTarget[] {
+    const workspaceDirectory = resolveHarnessWorkspaceDirectory(
+      this.runtime.invocationDirectory,
+      this.env(),
+    );
+    const targets: GatewayListTarget[] = [];
+    const matchedDaemonPids = new Set<number>();
+    const daemonCandidates = this.infra
+      .listGatewayDaemonProcesses()
+      .filter((candidate) =>
+        this.infra.isPathWithinWorkspaceRuntimeScope(
+          candidate.stateDbPath,
+          this.runtime.invocationDirectory,
+        ),
+      );
+
+    const addRecordTarget = (
+      scope: GatewayListScope,
+      sessionName: string | null,
+      recordPath: string,
+      logPath: string,
+      lockPath: string,
+    ): void => {
+      const record = this.infra.readGatewayRecord(recordPath);
+      if (record === null) {
+        return;
+      }
+      targets.push({
+        scope,
+        sessionName,
+        source: 'record',
+        pid: record.pid,
+        host: record.host,
+        port: record.port,
+        authToken: record.authToken,
+        stateDbPath: record.stateDbPath,
+        startedAt: record.startedAt,
+        gatewayRunId:
+          typeof record.gatewayRunId === 'string' && record.gatewayRunId.length > 0
+            ? record.gatewayRunId
+            : null,
+        recordPath,
+        logPath,
+        lockPath,
+      });
+      matchedDaemonPids.add(record.pid);
+    };
+
+    addRecordTarget(
+      'default',
+      null,
+      resolve(workspaceDirectory, 'gateway.json'),
+      resolve(workspaceDirectory, 'gateway.log'),
+      resolve(workspaceDirectory, 'gateway.lock'),
+    );
+    for (const sessionName of this.listNamedSessionNames()) {
+      const sessionRoot = resolve(workspaceDirectory, DEFAULT_SESSION_ROOT_PATH, sessionName);
+      addRecordTarget(
+        'named',
+        sessionName,
+        resolve(sessionRoot, 'gateway.json'),
+        resolve(sessionRoot, 'gateway.log'),
+        resolve(sessionRoot, 'gateway.lock'),
+      );
+    }
+
+    for (const daemon of daemonCandidates) {
+      if (matchedDaemonPids.has(daemon.pid)) {
+        continue;
+      }
+      const scope = this.resolveGatewayListScope(workspaceDirectory, daemon.stateDbPath);
+      const sessionRoot =
+        scope.scope === 'named' && scope.sessionName !== null
+          ? resolve(workspaceDirectory, DEFAULT_SESSION_ROOT_PATH, scope.sessionName)
+          : null;
+      targets.push({
+        scope: scope.scope,
+        sessionName: scope.sessionName,
+        source: 'daemon',
+        pid: daemon.pid,
+        host: daemon.host,
+        port: daemon.port,
+        authToken: daemon.authToken,
+        stateDbPath: daemon.stateDbPath,
+        startedAt: null,
+        gatewayRunId: null,
+        recordPath:
+          scope.scope === 'default'
+            ? resolve(workspaceDirectory, 'gateway.json')
+            : sessionRoot === null
+              ? null
+              : resolve(sessionRoot, 'gateway.json'),
+        logPath:
+          scope.scope === 'default'
+            ? resolve(workspaceDirectory, 'gateway.log')
+            : sessionRoot === null
+              ? null
+              : resolve(sessionRoot, 'gateway.log'),
+        lockPath:
+          scope.scope === 'default'
+            ? resolve(workspaceDirectory, 'gateway.lock')
+            : sessionRoot === null
+              ? null
+              : resolve(sessionRoot, 'gateway.lock'),
+      });
+    }
+
+    const scopeOrder: Record<GatewayListScope, number> = {
+      default: 0,
+      named: 1,
+      unscoped: 2,
+    };
+    targets.sort((left, right) => {
+      const byScope = scopeOrder[left.scope] - scopeOrder[right.scope];
+      if (byScope !== 0) {
+        return byScope;
+      }
+      const bySessionName = (left.sessionName ?? '').localeCompare(right.sessionName ?? '');
+      if (bySessionName !== 0) {
+        return bySessionName;
+      }
+      if (left.source !== right.source) {
+        return left.source === 'record' ? -1 : 1;
+      }
+      return left.pid - right.pid;
+    });
+    return targets;
+  }
+
+  private formatGatewaySessionSummary(session: GatewaySessionSummary): string {
+    const parts: string[] = [`id=${session.sessionId}`, `live=${session.live ? 'yes' : 'no'}`];
+    if (session.status !== null) {
+      parts.push(`status=${session.status}`);
+    }
+    if (session.phase !== null) {
+      parts.push(`phase=${session.phase}`);
+    }
+    if (session.processId !== null) {
+      parts.push(`pid=${String(session.processId)}`);
+    }
+    if (session.controller !== null) {
+      parts.push(`controller=${session.controller}`);
+    }
+    if (session.detail !== null) {
+      parts.push(`detail=${JSON.stringify(session.detail)}`);
+    }
+    return parts.join(' ');
+  }
+
+  public async runGatewayList(): Promise<number> {
+    const targets = this.discoverGatewayListTargets();
+    if (targets.length === 0) {
+      this.writeStdout('gateway list: none\n');
+      this.writeStdout('tip: start a gateway with `harness gateway start`\n');
+      return 0;
+    }
+    this.writeStdout(`gateway list: ${String(targets.length)} target(s)\n`);
+    let unhealthy = 0;
+    for (const [index, target] of targets.entries()) {
+      const pidRunning = this.infra.isPidRunning(target.pid);
+      const sessionState = await this.listGatewaySessionsForEndpoint(
+        target.host,
+        target.port,
+        target.authToken,
+      );
+      const statusLabel = sessionState.connected
+        ? 'running'
+        : pidRunning
+          ? 'unreachable'
+          : 'not-running';
+      if (!sessionState.connected) {
+        unhealthy += 1;
+      }
+      this.writeStdout(
+        `gateway[${String(index + 1)}] scope=${this.formatGatewayScopeLabel(target.scope, target.sessionName)} source=${target.source} status=${statusLabel}\n`,
+      );
+      this.writeStdout(`  endpoint: ${target.host}:${String(target.port)}\n`);
+      this.writeStdout(
+        `  pid: ${String(target.pid)} (${pidRunning ? 'running' : 'not-running'})\n`,
+      );
+      this.writeStdout(`  auth: ${target.authToken === null ? 'off' : 'on'}\n`);
+      this.writeStdout(`  db: ${target.stateDbPath}\n`);
+      if (target.recordPath !== null) {
+        this.writeStdout(`  record: ${target.recordPath}\n`);
+      }
+      if (target.logPath !== null) {
+        this.writeStdout(`  log: ${target.logPath}\n`);
+      }
+      if (target.lockPath !== null) {
+        this.writeStdout(`  lock: ${target.lockPath}\n`);
+      }
+      if (target.startedAt !== null) {
+        this.writeStdout(`  startedAt: ${target.startedAt}\n`);
+      }
+      if (target.gatewayRunId !== null) {
+        this.writeStdout(`  runId: ${target.gatewayRunId}\n`);
+      }
+      this.writeStdout(`  stop: ${this.stopCommandForGatewayTarget(target)}\n`);
+      this.writeStdout(
+        `  sessions: total=${String(sessionState.totalSessions)} live=${String(sessionState.liveSessions)} described=${String(sessionState.sessions.length)}\n`,
+      );
+      for (const session of sessionState.sessions) {
+        this.writeStdout(`    session: ${this.formatGatewaySessionSummary(session)}\n`);
+      }
+      if (!sessionState.connected) {
+        this.writeStdout(`  lastError: ${sessionState.error ?? 'unknown'}\n`);
+      }
+    }
+    return unhealthy === 0 ? 0 : 1;
+  }
+
   public async runMuxClient(
     gateway: GatewayRecord,
     passthroughArgs: readonly string[],
@@ -1221,6 +1615,10 @@ export class GatewayRuntimeService {
         }
         return 0;
       });
+    }
+
+    if (command.type === 'list') {
+      return await this.withLock(async () => await this.runGatewayList());
     }
 
     if (command.type === 'stop') {

@@ -201,6 +201,7 @@ test('runtime app help paths short-circuit without creating runtime scope', asyn
   assert.deepEqual(scopeFactory.createCalls, []);
   assert.equal(stdout.join('').includes('usage:'), true);
   assert.equal(stdout.join('').includes('harness [--session <name>] gateway start'), true);
+  assert.equal(stdout.join('').includes('harness gateway list'), true);
 });
 
 test('runtime scope factory creates typed runtime services from context factory output', () => {

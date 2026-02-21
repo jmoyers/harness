@@ -66,6 +66,7 @@ function harnessRuntimeUsageText(): string {
     '  harness [--session <name>] gateway run [--host <host>] [--port <port>] [--auth-token <token>] [--state-db-path <path>]',
     '  harness [--session <name>] gateway stop [--force] [--timeout-ms <ms>] [--cleanup-orphans|--no-cleanup-orphans]',
     '  harness [--session <name>] gateway status',
+    '  harness gateway list',
     '  harness [--session <name>] gateway restart [--host <host>] [--port <port>] [--auth-token <token>] [--state-db-path <path>]',
     '  harness [--session <name>] gateway call --json \'{"type":"session.list"}\'',
     '  harness [--session <name>] gateway gc [--older-than-days <days>]',

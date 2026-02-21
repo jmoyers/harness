@@ -412,6 +412,17 @@ void test('harness gateway status reports stopped when no record exists', async 
   }
 });
 
+void test('harness gateway list reports no targets when no gateway records or daemons are present', async () => {
+  const workspace = createWorkspace();
+  try {
+    const result = await runHarness(workspace, ['gateway', 'list']);
+    assert.equal(result.code, 0);
+    assert.equal(result.stdout.includes('gateway list: none'), true);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 void test('harness auto-migrates legacy local .harness record path to global runtime root on first run', async () => {
   const workspace = createWorkspace();
   const legacyRoot = join(workspace, '.harness');

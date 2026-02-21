@@ -72,6 +72,41 @@ interface RuntimeServiceInternals {
   resolveNewestSessionArtifactMtimeMs: (sessionRoot: string) => number;
   listNamedSessionNames: () => readonly string[];
   resolveNamedSessionsRoot: () => string;
+  listGatewaySessionsForEndpoint: (
+    host: string,
+    port: number,
+    authToken: string | null,
+  ) => Promise<{
+    connected: boolean;
+    totalSessions: number;
+    liveSessions: number;
+    sessions: readonly {
+      sessionId: string;
+      live: boolean;
+      status: string | null;
+      phase: string | null;
+      detail: string | null;
+      processId: number | null;
+      controller: string | null;
+    }[];
+    error: string | null;
+  }>;
+  discoverGatewayListTargets: () => readonly {
+    scope: 'default' | 'named' | 'unscoped';
+    sessionName: string | null;
+    source: 'record' | 'daemon';
+    pid: number;
+    host: string;
+    port: number;
+    authToken: string | null;
+    stateDbPath: string;
+    startedAt: string | null;
+    gatewayRunId: string | null;
+    recordPath: string | null;
+    logPath: string | null;
+    lockPath: string | null;
+  }[];
+  runGatewayList: () => Promise<number>;
 }
 
 interface RuntimeHarness {
@@ -275,6 +310,7 @@ test('gateway runtime parser handles command variants and argument validation', 
   assert.deepEqual(service.parseCommand(['run']).type, 'run');
   assert.deepEqual(service.parseCommand(['restart']).type, 'restart');
   assert.deepEqual(service.parseCommand(['stop', '--force']).type, 'stop');
+  assert.deepEqual(service.parseCommand(['list']).type, 'list');
   assert.deepEqual(service.parseCommand(['gc', '--older-than-days', '3']).type, 'gc');
   assert.deepEqual(
     service.parseCommand(['call', '--json', '{"type":"session.list"}']).type,
@@ -287,6 +323,7 @@ test('gateway runtime parser handles command variants and argument validation', 
     () => service.parseCommand(['stop', '--timeout-ms', '0']),
     /invalid --timeout-ms value/u,
   );
+  assert.throws(() => service.parseCommand(['list', '--bad']), /unknown gateway option/u);
   assert.throws(() => service.parseCommand(['gc', '--older-than-days', '0']), /invalid/u);
 });
 
@@ -324,7 +361,7 @@ test('gateway runtime probe and call command paths work with a stream-compatible
   );
 });
 
-test('gateway runtime run dispatcher covers status/start/stop/restart/run/call/gc flows', async () => {
+test('gateway runtime run dispatcher covers status/list/start/stop/restart/run/call/gc flows', async () => {
   const harness = createRuntimeHarness();
   const { service, stdout, stderr } = harness;
   const internal = internals(service);
@@ -382,6 +419,9 @@ test('gateway runtime run dispatcher covers status/start/stop/restart/run/call/g
   assert.match(stderr.join(''), /gateway gc error: bad/u);
   stderr.length = 0;
 
+  internal.runGatewayList = async () => 29;
+  assert.equal(await service.run({ type: 'list' } as ParsedCommandInput), 29);
+
   internal.resolveGatewaySettings = () => ({
     host: '127.0.0.1',
     port: 7777,
@@ -406,6 +446,170 @@ test('gateway runtime run dispatcher covers status/start/stop/restart/run/call/g
       } as ParsedCommandInput),
     /gateway not running/u,
   );
+});
+
+test('gateway runtime list discovery includes record-backed and daemon-only targets', () => {
+  const harness = createRuntimeHarness();
+  const { service, workspaceRoot } = harness;
+  const internal = internals(service);
+  const runtimeRoot = resolveHarnessWorkspaceDirectory(workspaceRoot, {
+    ...process.env,
+    XDG_CONFIG_HOME: resolve(workspaceRoot, '.xdg-config'),
+  });
+  const defaultRecordPath = resolve(runtimeRoot, 'gateway.json');
+  const namedRecordPath = resolve(runtimeRoot, 'sessions', 'alpha', 'gateway.json');
+  const defaultStateDbPath = resolve(runtimeRoot, 'control-plane.sqlite');
+  const namedStateDbPath = resolve(runtimeRoot, 'sessions', 'alpha', 'control-plane.sqlite');
+
+  internal.listNamedSessionNames = () => ['alpha'];
+  harness.infra.readGatewayRecord = (recordPath: unknown) => {
+    if (recordPath === defaultRecordPath) {
+      return createGatewayRecord(workspaceRoot, {
+        pid: 111,
+        stateDbPath: defaultStateDbPath,
+      });
+    }
+    if (recordPath === namedRecordPath) {
+      return createGatewayRecord(workspaceRoot, {
+        pid: 222,
+        stateDbPath: namedStateDbPath,
+      });
+    }
+    return null;
+  };
+  harness.infra.listGatewayDaemonProcesses = () => [
+    {
+      pid: 111,
+      host: '127.0.0.1',
+      port: 7777,
+      authToken: null,
+      stateDbPath: defaultStateDbPath,
+    },
+    {
+      pid: 333,
+      host: '127.0.0.1',
+      port: 7788,
+      authToken: null,
+      stateDbPath: namedStateDbPath,
+    },
+    {
+      pid: 444,
+      host: '127.0.0.1',
+      port: 7789,
+      authToken: null,
+      stateDbPath: resolve(runtimeRoot, 'custom', 'other.sqlite'),
+    },
+  ];
+  harness.infra.isPathWithinWorkspaceRuntimeScope = () => true;
+
+  const discovered = internal.discoverGatewayListTargets();
+  assert.equal(discovered.length, 4);
+  assert.equal(
+    discovered.some((target) => target.source === 'record' && target.scope === 'default'),
+    true,
+  );
+  assert.equal(
+    discovered.some(
+      (target) =>
+        target.source === 'record' && target.scope === 'named' && target.sessionName === 'alpha',
+    ),
+    true,
+  );
+  assert.equal(
+    discovered.some(
+      (target) =>
+        target.source === 'daemon' &&
+        target.scope === 'named' &&
+        target.sessionName === 'alpha' &&
+        target.pid === 333,
+    ),
+    true,
+  );
+  assert.equal(
+    discovered.some(
+      (target) => target.source === 'daemon' && target.scope === 'unscoped' && target.pid === 444,
+    ),
+    true,
+  );
+});
+
+test('gateway runtime list renderer prints session detail and stop hints', async () => {
+  const harness = createRuntimeHarness();
+  const { service, stdout } = harness;
+  const internal = internals(service);
+
+  internal.discoverGatewayListTargets = () => [
+    {
+      scope: 'default',
+      sessionName: null,
+      source: 'record',
+      pid: 101,
+      host: '127.0.0.1',
+      port: 7777,
+      authToken: null,
+      stateDbPath: '/tmp/default.sqlite',
+      startedAt: '2026-01-01T00:00:00.000Z',
+      gatewayRunId: 'run-default',
+      recordPath: '/tmp/gateway.json',
+      logPath: '/tmp/gateway.log',
+      lockPath: '/tmp/gateway.lock',
+    },
+    {
+      scope: 'named',
+      sessionName: 'alpha',
+      source: 'daemon',
+      pid: 202,
+      host: '127.0.0.1',
+      port: 7788,
+      authToken: 'token',
+      stateDbPath: '/tmp/sessions/alpha/control-plane.sqlite',
+      startedAt: null,
+      gatewayRunId: null,
+      recordPath: '/tmp/sessions/alpha/gateway.json',
+      logPath: '/tmp/sessions/alpha/gateway.log',
+      lockPath: '/tmp/sessions/alpha/gateway.lock',
+    },
+  ];
+  harness.infra.isPidRunning = (pid: unknown) => pid === 101 || pid === 202;
+  internal.listGatewaySessionsForEndpoint = async (_host, port) => {
+    if (port === 7777) {
+      return {
+        connected: true,
+        totalSessions: 1,
+        liveSessions: 1,
+        sessions: [
+          {
+            sessionId: 'session-a',
+            live: true,
+            status: 'running',
+            phase: 'working',
+            detail: 'streaming',
+            processId: 909,
+            controller: 'human',
+          },
+        ],
+        error: null,
+      };
+    }
+    return {
+      connected: false,
+      totalSessions: 0,
+      liveSessions: 0,
+      sessions: [],
+      error: 'offline',
+    };
+  };
+
+  const exitCode = await internal.runGatewayList();
+  assert.equal(exitCode, 1);
+  const rendered = stdout.join('');
+  assert.match(rendered, /gateway list: 2 target\(s\)/u);
+  assert.match(rendered, /scope=default/u);
+  assert.match(rendered, /scope=session:alpha/u);
+  assert.match(rendered, /session: id=session-a/u);
+  assert.match(rendered, /stop: harness gateway stop --force/u);
+  assert.match(rendered, /stop: harness --session alpha gateway stop --force/u);
+  assert.match(rendered, /lastError: offline/u);
 });
 
 test('gateway runtime ensureGatewayRunning and stopGateway cover adoption/start/cleanup branches', async () => {
