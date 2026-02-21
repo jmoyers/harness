@@ -525,6 +525,7 @@ export function resolveMuxShortcutBindings(
       'mux.app.quit': parseBindingsForAction(rawByAction['mux.app.quit']),
       'mux.app.interrupt-all': parseBindingsForAction(rawByAction['mux.app.interrupt-all']),
       'mux.command-menu.toggle': parseBindingsForAction(rawByAction['mux.command-menu.toggle']),
+      'mux.debug-bar.toggle': parseBindingsForAction(rawByAction['mux.debug-bar.toggle']),
       'mux.gateway.profile.toggle': parseBindingsForAction(
         rawByAction['mux.gateway.profile.toggle'],
       ),

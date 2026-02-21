@@ -7,7 +7,8 @@ Programmable, agent-agnostic, threaded, ergonomic, and fast.
 ## What matters most
 
 - Parallel threads across `codex`, `claude`, `cursor`, `terminal`, and `critique`.
-- One command palette (`ctrl+p` / `cmd+p`) to jump threads, run actions, and control workflow quickly.
+- One command palette (`ctrl+p`) to jump threads, run actions, and control workflow quickly.
+- Toggle the bottom debug bar with `cmd+p` when you need runtime launch/auth context.
 - Codex, Claude Code, and Cursor together in one workspace.
 - Diff with Critique, with integrated terminals (`harness diff` + critique actions).
 - Detached gateway sessions keep long-running work alive through reconnects.

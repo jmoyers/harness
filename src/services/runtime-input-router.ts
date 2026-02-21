@@ -46,6 +46,7 @@ interface RuntimeInputRouterOptions {
   readonly requestStop: RuntimeRailInputOptions['requestStop'];
   readonly resolveDirectoryForAction: RuntimeRailInputOptions['resolveDirectoryForAction'];
   readonly toggleCommandMenu: RuntimeRailInputOptions['toggleCommandMenu'];
+  readonly toggleDebugBar: RuntimeRailInputOptions['toggleDebugBar'];
   readonly openNewThreadPrompt: RuntimeRailInputOptions['openNewThreadPrompt'];
   readonly firstDirectoryForRepositoryGroup: RuntimeRailInputOptions['firstDirectoryForRepositoryGroup'];
   readonly enterHomePane: RuntimeRailInputOptions['enterHomePane'];
@@ -130,6 +131,7 @@ export class RuntimeInputRouter {
       resolveDirectoryForAction: options.resolveDirectoryForAction,
       openNewThreadPrompt: options.openNewThreadPrompt,
       toggleCommandMenu: options.toggleCommandMenu,
+      toggleDebugBar: options.toggleDebugBar,
       firstDirectoryForRepositoryGroup: options.firstDirectoryForRepositoryGroup,
       enterHomePane: options.enterHomePane,
       enterProjectPane: options.enterProjectPane,

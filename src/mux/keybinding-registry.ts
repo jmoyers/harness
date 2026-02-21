@@ -13,6 +13,7 @@ export const MUX_GLOBAL_SHORTCUT_ACTION_ORDER = [
   'mux.app.quit',
   'mux.app.interrupt-all',
   'mux.command-menu.toggle',
+  'mux.debug-bar.toggle',
   'mux.gateway.profile.toggle',
   'mux.gateway.status-timeline.toggle',
   'mux.gateway.render-trace.toggle',
@@ -36,7 +37,8 @@ export const DEFAULT_MUX_SHORTCUT_BINDINGS_RAW: Readonly<
 > = {
   'mux.app.quit': [],
   'mux.app.interrupt-all': ['ctrl+c'],
-  'mux.command-menu.toggle': ['ctrl+p', 'cmd+p'],
+  'mux.command-menu.toggle': ['ctrl+p'],
+  'mux.debug-bar.toggle': ['cmd+p'],
   'mux.gateway.profile.toggle': ['ctrl+shift+p'],
   'mux.gateway.status-timeline.toggle': ['alt+r'],
   'mux.gateway.render-trace.toggle': ['ctrl+]'],
@@ -135,6 +137,14 @@ const GLOBAL_KEYBINDING_ENTRIES: readonly KeybindingRegistryEntry[] = [
     title: 'Modal dismiss',
     description: 'Dismiss active modal overlays.',
     defaultBindings: DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.app.quit'],
+  },
+  {
+    actionId: 'mux.debug-bar.toggle',
+    screen: 'global',
+    header: 'Global',
+    title: 'Toggle debug bar',
+    description: 'Show or hide the bottom debug bar.',
+    defaultBindings: DEFAULT_MUX_SHORTCUT_BINDINGS_RAW['mux.debug-bar.toggle'],
   },
   {
     actionId: 'mux.conversation.new',

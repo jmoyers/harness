@@ -282,7 +282,8 @@ Pass-through stream invariants:
 - Named sessions prefer configured/default ports but auto-fallback to an available local port when the preferred port is already occupied and no explicit `--port` override is provided.
 - Named-session gateway stop prunes session-scoped gateway artifacts (`gateway.log`) after confirmed shutdown to avoid stale per-session runtime clutter.
 - `harness gateway gc` prunes named-session runtime directories older than 7 days by default (configurable via `--older-than-days`), while skipping live sessions.
-- `ctrl+p` and `cmd+p` open the command menu; command search is live-filtered and executes context-aware actions.
+- `ctrl+p` opens the command menu; command search is live-filtered and executes context-aware actions.
+- `cmd+p` toggles the bottom debug bar visibility (`mux.debug-bar.toggle`) without changing command-menu state.
 - Empty-query command-menu results are grouped by type with visible delimiters; agent thread types are surfaced first, with default selection on `codex`, and typed input returns to normal score+alpha ordering.
 - On startup, mux may asynchronously check GitHub releases and open a `What's New` modal when newer stable versions exist than the installed local version.
 - The `What's New` modal renders only the first `N` non-empty lines per release note entry, includes `cmd+click` release URLs for full notes, and supports `dismiss` (latest-tag scoped) plus `never show again` persistence.
@@ -852,6 +853,9 @@ Design constraints:
 - Mux task-rail visibility is config-governed under `mux.ui.showTasks`:
   - default is hidden (`false`)
   - when disabled, the left rail keeps `Home` visible but omits the `Tasks` entry and task-planning pane activation
+- Mux debug-footer visibility is config-governed under `mux.ui.showDebugBar`:
+  - default is hidden (`false`)
+  - when disabled, the status row omits `[gh:*]` and `[dbg]` launch/auth footer tokens while retaining perf + transient notices
 - Config lifecycle:
   - on first run, bootstrap config by copying the checked-in template (`src/config/harness.config.template.jsonc`)
   - when upgrading from legacy local workspace state (`<workspace>/.harness`), copy runtime artifacts into the user-global workspace-scoped runtime path on first run; migrate legacy local `harness.config.jsonc` when the global config is uninitialized (missing, empty, or bootstrapped default), and never overwrite user-customized global config
@@ -882,7 +886,9 @@ Design constraints:
   - steer active turn
   - queue turn
   - interrupt
-  - toggle gateway profiler capture (`mux.gateway.profile.toggle`, default `ctrl+p`)
+  - toggle command menu (`mux.command-menu.toggle`, default `ctrl+p`)
+  - toggle debug bar footer visibility (`mux.debug-bar.toggle`, default `cmd+p`)
+  - toggle gateway profiler capture (`mux.gateway.profile.toggle`, default `ctrl+shift+p`)
   - toggle interleaved status timeline capture (`mux.gateway.status-timeline.toggle`, default `alt+r`)
   - toggle focused render diagnostics capture (`mux.gateway.render-trace.toggle`, default `ctrl+]`)
   - open file/project

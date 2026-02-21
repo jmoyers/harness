@@ -85,6 +85,7 @@ interface HarnessMuxUiConfig {
   readonly paneWidthPercent: number | null;
   readonly repositoriesCollapsed: boolean;
   readonly showTasks: boolean;
+  readonly showDebugBar: boolean;
   readonly theme: HarnessMuxThemeConfig | null;
 }
 
@@ -281,6 +282,7 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
       paneWidthPercent: null,
       repositoriesCollapsed: false,
       showTasks: false,
+      showDebugBar: false,
       theme: null,
     },
     git: {
@@ -631,10 +633,15 @@ function normalizeMuxUiConfig(input: unknown): HarnessMuxUiConfig {
     typeof record['showTasks'] === 'boolean'
       ? record['showTasks']
       : DEFAULT_HARNESS_CONFIG.mux.ui.showTasks;
+  const showDebugBar =
+    typeof record['showDebugBar'] === 'boolean'
+      ? record['showDebugBar']
+      : DEFAULT_HARNESS_CONFIG.mux.ui.showDebugBar;
   return {
     paneWidthPercent,
     repositoriesCollapsed,
     showTasks,
+    showDebugBar,
     theme: normalizeMuxThemeConfig(record['theme']),
   };
 }
@@ -1716,6 +1723,7 @@ export function updateHarnessMuxUiConfig(
     paneWidthPercent: number | null;
     repositoriesCollapsed: boolean;
     showTasks: boolean;
+    showDebugBar: boolean;
   }>,
   options?: {
     cwd?: string;
@@ -1740,6 +1748,8 @@ export function updateHarnessMuxUiConfig(
           : update.repositoriesCollapsed;
       const nextShowTasks =
         update.showTasks === undefined ? current.mux.ui.showTasks : update.showTasks;
+      const nextShowDebugBar =
+        update.showDebugBar === undefined ? current.mux.ui.showDebugBar : update.showDebugBar;
       return {
         ...current,
         mux: {
@@ -1749,6 +1759,7 @@ export function updateHarnessMuxUiConfig(
               nextPaneWidthPercent === null ? null : roundUiPercent(nextPaneWidthPercent),
             repositoriesCollapsed: nextRepositoriesCollapsed,
             showTasks: nextShowTasks,
+            showDebugBar: nextShowDebugBar,
             theme: current.mux.ui.theme,
           },
         },

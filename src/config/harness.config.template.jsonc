@@ -6,6 +6,7 @@
       "paneWidthPercent": null,
       "repositoriesCollapsed": false,
       "showTasks": false,
+      "showDebugBar": false,
       "theme": null,
     },
     "git": {

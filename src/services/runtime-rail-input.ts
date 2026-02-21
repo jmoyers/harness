@@ -33,6 +33,7 @@ interface RuntimeRailInputOptions {
   readonly resolveDirectoryForAction: () => string | null;
   readonly openNewThreadPrompt: (directoryId: string) => void;
   readonly toggleCommandMenu: () => void;
+  readonly toggleDebugBar: () => void;
   readonly firstDirectoryForRepositoryGroup: (repositoryGroupId: string) => string | null;
   readonly enterHomePane: () => void;
   readonly enterTasksPane?: () => void;
@@ -102,6 +103,7 @@ export class RuntimeRailInput {
       resolveDirectoryForAction: options.resolveDirectoryForAction,
       openNewThreadPrompt: options.openNewThreadPrompt,
       toggleCommandMenu: options.toggleCommandMenu,
+      toggleDebugBar: options.toggleDebugBar,
       openAddDirectoryPrompt: () => {
         this.openAddDirectoryPrompt();
         options.markDirty();

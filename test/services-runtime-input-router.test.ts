@@ -96,6 +96,7 @@ void test('runtime input router composes modal rail and main-pane routing surfac
     resolveDirectoryForAction: () => 'dir-1',
     openNewThreadPrompt: () => {},
     toggleCommandMenu: () => {},
+    toggleDebugBar: () => {},
     firstDirectoryForRepositoryGroup: () => 'dir-1',
     enterHomePane: () => {},
     enterProjectPane: () => {},

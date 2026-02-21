@@ -70,6 +70,10 @@ void test('detectMuxGlobalShortcut parses kitty and modifyOtherKeys control comb
     'mux.command-menu.toggle',
   );
   assert.equal(
+    detectMuxGlobalShortcut(Buffer.from('\u001b[112;9u', 'utf8'), bindings),
+    'mux.debug-bar.toggle',
+  );
+  assert.equal(
     detectMuxGlobalShortcut(Buffer.from('\u001b[112;6u', 'utf8'), bindings),
     'mux.gateway.profile.toggle',
   );
@@ -109,6 +113,10 @@ void test('detectMuxGlobalShortcut parses kitty and modifyOtherKeys control comb
   assert.equal(
     detectMuxGlobalShortcut(Buffer.from('\u001b[27;5;112~', 'utf8'), bindings),
     'mux.command-menu.toggle',
+  );
+  assert.equal(
+    detectMuxGlobalShortcut(Buffer.from('\u001b[27;9;112~', 'utf8'), bindings),
+    'mux.debug-bar.toggle',
   );
   assert.equal(
     detectMuxGlobalShortcut(Buffer.from('\u001b[27;6;112~', 'utf8'), bindings),

@@ -67,6 +67,7 @@ interface GlobalShortcutInputOptions {
   readonly resolveDirectoryForAction: () => string | null;
   readonly openNewThreadPrompt: (directoryId: string) => void;
   readonly toggleCommandMenu: () => void;
+  readonly toggleDebugBar: () => void;
   readonly openOrCreateCritiqueConversationInDirectory: (directoryId: string) => Promise<void>;
   readonly toggleGatewayProfile: () => Promise<void>;
   readonly toggleGatewayStatusTimeline: () => Promise<void>;
@@ -126,6 +127,7 @@ export class GlobalShortcutInput {
       resolveDirectoryForAction: this.options.resolveDirectoryForAction,
       openNewThreadPrompt: this.options.openNewThreadPrompt,
       toggleCommandMenu: this.options.toggleCommandMenu,
+      toggleDebugBar: this.options.toggleDebugBar,
       openOrCreateCritiqueConversationInDirectory:
         this.options.openOrCreateCritiqueConversationInDirectory,
       toggleGatewayProfile: this.options.toggleGatewayProfile,

@@ -24,6 +24,7 @@ interface CapturedGlobalShortcutOptions {
   cycleLeftNavSelection(direction: 'next' | 'previous'): void;
   getActiveConversationAgentType(): string | null;
   toggleCommandMenu(): void;
+  toggleDebugBar(): void;
   openOrCreateCritiqueConversationInDirectory(directoryId: string): Promise<void>;
   toggleGatewayProfile(): Promise<void>;
   toggleGatewayStatusTimeline(): Promise<void>;
@@ -82,6 +83,9 @@ function createNavigationOptions(
     },
     toggleCommandMenu: () => {
       calls.push('toggleCommandMenu');
+    },
+    toggleDebugBar: () => {
+      calls.push('toggleDebugBar');
     },
     openAddDirectoryPrompt: () => {
       calls.push('openAddDirectoryPrompt');
@@ -250,6 +254,7 @@ void test('runtime navigation input composes left-nav, fold, and global shortcut
 
   globalShortcutOptions.cycleLeftNavSelection('previous');
   globalShortcutOptions.toggleCommandMenu();
+  globalShortcutOptions.toggleDebugBar();
   assert.equal(leftNavCycleCalls, 2);
 });
 
@@ -365,6 +370,7 @@ void test('runtime navigation input preserves workspace action method context', 
   await leftNavOptions.activateConversation('session-ctx');
   await globalShortcutOptions.openOrCreateCritiqueConversationInDirectory('dir-ctx');
   globalShortcutOptions.toggleCommandMenu();
+  globalShortcutOptions.toggleDebugBar();
   await globalShortcutOptions.toggleGatewayProfile();
   await globalShortcutOptions.toggleGatewayStatusTimeline();
   await globalShortcutOptions.toggleGatewayRenderTrace('session-ctx');
@@ -378,6 +384,7 @@ void test('runtime navigation input preserves workspace action method context', 
     'activateConversation:session-ctx',
     'openOrCreateCritiqueConversationInDirectory:dir-ctx',
     'toggleCommandMenu',
+    'toggleDebugBar',
     'toggleGatewayProfiler',
     'toggleGatewayStatusTimeline',
     'toggleGatewayRenderTrace:session-ctx',

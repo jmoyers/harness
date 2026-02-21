@@ -607,8 +607,11 @@ async function main(): Promise<number> {
   const modalDismissShortcutBindings = resolveMuxShortcutBindings({
     'mux.app.quit': ['escape'],
     'mux.app.interrupt-all': [],
+    'mux.command-menu.toggle': [],
+    'mux.debug-bar.toggle': [],
     'mux.gateway.profile.toggle': [],
     'mux.gateway.status-timeline.toggle': [],
+    'mux.gateway.render-trace.toggle': [],
     'mux.conversation.new': [],
     'mux.conversation.critique.open-or-create': [],
     'mux.conversation.next': [],
@@ -629,6 +632,7 @@ async function main(): Promise<number> {
   });
   const configuredMuxUi = loadedConfig.config.mux.ui;
   const showTasksEntry = configuredMuxUi.showTasks;
+  let showDebugBar = configuredMuxUi.showDebugBar;
   const commandMenuOpenInTargets = resolveCommandMenuOpenInTargets({
     platform: process.platform,
     overrides: loadedConfig.config.mux.openIn.targets,
@@ -2173,6 +2177,7 @@ async function main(): Promise<number> {
     initialState: {
       paneWidthPercent: paneWidthPercentFromLayout(layout),
       repositoriesCollapsed: configuredMuxUi.repositoriesCollapsed,
+      showDebugBar,
     },
     debounceMs: UI_STATE_PERSIST_DEBOUNCE_MS,
     persistState: (pending) => {
@@ -2185,10 +2190,12 @@ async function main(): Promise<number> {
             ? paneWidthPercentFromLayout(layout)
             : updated.mux.ui.paneWidthPercent,
         repositoriesCollapsed: updated.mux.ui.repositoriesCollapsed,
+        showDebugBar: updated.mux.ui.showDebugBar,
       };
     },
     applyState: (state) => {
       workspace.repositoriesCollapsed = state.repositoriesCollapsed;
+      showDebugBar = state.showDebugBar;
     },
     writeStderr: (text) => process.stderr.write(text),
   });
@@ -2199,7 +2206,13 @@ async function main(): Promise<number> {
     muxUiStatePersistence.queue({
       paneWidthPercent: paneWidthPercentFromLayout(layout),
       repositoriesCollapsed: workspace.repositoriesCollapsed,
+      showDebugBar,
     });
+  };
+  const toggleDebugBar = (): void => {
+    showDebugBar = !showDebugBar;
+    queuePersistMuxUiState();
+    markDirty();
   };
 
   if (configuredMuxGit.enabled) {
@@ -3800,7 +3813,9 @@ async function main(): Promise<number> {
     renderFlush: {
       perfNowNs,
       statusFooterForConversation: (conversation) =>
-        `${formatGitHubDebugTokens(githubDebugAuthState)} ${debugFooterForConversation(conversation)}`,
+        showDebugBar
+          ? `${formatGitHubDebugTokens(githubDebugAuthState)} ${debugFooterForConversation(conversation)}`
+          : '',
       currentStatusNotice: () => debugFooterNotice.current(),
       currentStatusRow: () => outputLoadSampler.currentStatusRow(),
       onStatusLineComposed: (input) => {
@@ -4156,6 +4171,7 @@ async function main(): Promise<number> {
     resolveDirectoryForAction,
     openNewThreadPrompt,
     toggleCommandMenu,
+    toggleDebugBar,
     firstDirectoryForRepositoryGroup,
     enterHomePane,
     ...(showTasksEntry

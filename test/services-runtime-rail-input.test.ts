@@ -7,6 +7,7 @@ import { RuntimeRailInput } from '../src/services/runtime-rail-input.ts';
 interface CapturedNavigationOptions {
   openAddDirectoryPrompt(): void;
   toggleCommandMenu(): void;
+  toggleDebugBar(): void;
   workspaceActions: {
     activateConversation(sessionId: string): Promise<void>;
     openOrCreateCritiqueConversationInDirectory(directoryId: string): Promise<void>;
@@ -133,6 +134,9 @@ function createOptions(
     toggleCommandMenu: () => {
       calls.push('toggleCommandMenu');
     },
+    toggleDebugBar: () => {
+      calls.push('toggleDebugBar');
+    },
     firstDirectoryForRepositoryGroup: () => 'dir-1',
     enterHomePane: () => {
       calls.push('enterHomePane');
@@ -226,6 +230,7 @@ void test('runtime rail input composes navigation and pointer input with workspa
         const navigation = navigationOptions as CapturedNavigationOptions;
         navigation.openAddDirectoryPrompt();
         navigation.toggleCommandMenu();
+        navigation.toggleDebugBar();
         return {
           cycleLeftNavSelection: (direction) => {
             calls.push(`cycleLeftNavSelection:${direction}`);
