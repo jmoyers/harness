@@ -82,7 +82,7 @@ function harnessRuntimeUsageText(): string {
     '  harness update',
     '  harness upgrade',
     '  harness auth status',
-    '  harness auth login <github|linear> [--no-browser] [--timeout-ms <ms>] [--scopes <list>]',
+    '  harness auth login <github|linear> [--no-browser] [--timeout-ms <ms>] [--scopes <list>] [--callback-port <port>]',
     '  harness auth refresh [github|linear|all]',
     '  harness auth logout [github|linear|all]',
     '  harness cursor-hooks install [--hooks-file <path>]',
