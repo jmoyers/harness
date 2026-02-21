@@ -731,6 +731,63 @@ void test('left-nav activation routes targets and cycle helper handles empty/nor
   );
 });
 
+void test('left-nav activation skips stale queued conversation activation', async () => {
+  const calls: string[] = [];
+  const queued: Array<() => Promise<void>> = [];
+  let allowActivation = false;
+  const common = {
+    direction: 'next' as const,
+    enterHomePane: () => {},
+    enterTasksPane: () => {},
+    firstDirectoryForRepositoryGroup: () => null,
+    enterProjectPane: () => {},
+    setMainPaneProjectMode: () => {},
+    selectLeftNavRepository: () => {},
+    selectLeftNavConversation: (_sessionId: string) => {},
+    markDirty: () => {},
+    directoriesHas: () => false,
+    visibleTargetsForState: () =>
+      [
+        { kind: 'conversation', sessionId: 'session-fallback' },
+      ] as const satisfies readonly LeftNavSelection[],
+    conversationDirectoryId: () => 'dir-missing',
+    queueControlPlaneOp: (task: () => Promise<void>, _label: string) => {
+      queued.push(task);
+    },
+    activateConversation: async (sessionId: string) => {
+      calls.push(`activateConversation:${sessionId}`);
+    },
+    shouldActivateConversation: (_sessionId: string) => allowActivation,
+    conversationsHas: (sessionId: string) => sessionId === 'session-live',
+  };
+
+  activateLeftNavTarget({ ...common, target: { kind: 'conversation', sessionId: 'session-live' } });
+  while (queued.length > 0) {
+    await queued.shift()?.();
+  }
+  assert.deepEqual(calls, []);
+
+  activateLeftNavTarget({ ...common, target: { kind: 'project', directoryId: 'dir-missing' } });
+  while (queued.length > 0) {
+    await queued.shift()?.();
+  }
+  assert.deepEqual(calls, []);
+
+  allowActivation = true;
+  activateLeftNavTarget({ ...common, target: { kind: 'conversation', sessionId: 'session-live' } });
+  while (queued.length > 0) {
+    await queued.shift()?.();
+  }
+  activateLeftNavTarget({ ...common, target: { kind: 'project', directoryId: 'dir-missing' } });
+  while (queued.length > 0) {
+    await queued.shift()?.();
+  }
+  assert.deepEqual(calls, [
+    'activateConversation:session-live',
+    'activateConversation:session-fallback',
+  ]);
+});
+
 void test('left-rail action click routes all supported actions and default false', () => {
   const calls: string[] = [];
   const base = {

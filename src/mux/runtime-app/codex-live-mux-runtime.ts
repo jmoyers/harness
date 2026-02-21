@@ -4661,6 +4661,10 @@ class CodexLiveMuxRuntimeApplication {
         activateConversation: async (sessionId) => {
           await conversationLifecycle.activateConversation(sessionId);
         },
+        shouldActivateConversation: (sessionId) => {
+          const selection = workspace.leftNavSelection;
+          return selection.kind === 'conversation' && selection.sessionId === sessionId;
+        },
         conversationsHas: (sessionId) => conversationManager.has(sessionId),
         ...(showTasksEntry
           ? {
