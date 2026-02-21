@@ -21,7 +21,7 @@ Date: 2026-02-21
 - [x] Create directory structure aligned to `src/*` plus test type (`unit`, `integration`).
 - [x] Move files into domain directories without behavior change.
 - [x] Split hotspot mega-files (`harness-cli`, `codex-live-mux-startup.integration`) by feature areas.
-- [ ] Keep shared fixtures in `test/helpers` and remove duplication.
+- [x] Keep shared fixtures in `test/helpers` and remove duplication.
 - [x] Run `bun test` and `bun test --concurrent` to verify.
 
 ## Notes
@@ -35,4 +35,10 @@ Date: 2026-02-21
   - `harness-cli` -> 4 files
   - `codex-live-mux-startup.integration` -> 3 files
 - Completed: set `bun run test` and `bun run test:coverage` to use stable `--concurrent` mode.
-- Remaining: reduce helper duplication across split files by extracting shared fixtures from `harness-cli*` and `codex-live-mux-startup*`.
+- Completed: extracted shared helpers for split `harness-cli*` tests into `test/helpers/harness-cli-test-helpers.ts`.
+- Completed: extracted shared helpers for split `codex-live-mux-startup*` tests into `test/helpers/codex-live-mux-startup-test-helpers.ts`.
+- Completed: added non-locking `createConcurrentCliTest()` and migrated `harness-cli-bootstrap-auth-help` to run safely without per-file serialization lock.
+- Latest verification:
+  - `bun run lint` -> pass
+  - `bun run typecheck` -> pass
+  - `bun run test` -> pass (`1690 pass`, ~45s wall clock)
