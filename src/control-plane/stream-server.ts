@@ -1354,13 +1354,9 @@ export class ControlPlaneStreamServer {
         webhooks: [],
       },
     );
-    this.server = createServer((socket) => {
-      this.handleConnection(socket);
-    });
+    this.server = createServer(this.handleConnection.bind(this));
     this.telemetryServer = this.codexTelemetry.enabled
-      ? createHttpServer((request, response) => {
-          this.handleTelemetryHttpRequest(request, response);
-        })
+      ? createHttpServer(this.handleTelemetryHttpRequest.bind(this))
       : null;
   }
 

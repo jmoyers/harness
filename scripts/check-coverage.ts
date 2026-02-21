@@ -24,6 +24,8 @@ interface CoverageRecord {
   linesHit: number;
   functionsFound: number;
   functionsHit: number;
+  functionDetailFound: number;
+  functionDetailHit: number;
   branchesFound: number;
   branchesHit: number;
   uncoveredLines: Set<number>;
@@ -271,6 +273,8 @@ function createEmptyCoverageRecord(filePath: string): CoverageRecord {
     linesHit: 0,
     functionsFound: 0,
     functionsHit: 0,
+    functionDetailFound: 0,
+    functionDetailHit: 0,
     branchesFound: 0,
     branchesHit: 0,
     uncoveredLines: new Set<number>(),
@@ -287,6 +291,8 @@ function parseLcov(lcovPath: string): Map<string, CoverageRecord> {
   const text = readFileSync(resolved, 'utf8');
   const records = new Map<string, CoverageRecord>();
   let current: CoverageRecord | null = null;
+  let functionDetailNames: Set<string> = new Set<string>();
+  let functionDetailHitNames: Set<string> = new Set<string>();
   for (const rawLine of text.split(/\r?\n/u)) {
     const line = rawLine.trim();
     if (line.length === 0) {
@@ -297,13 +303,25 @@ function parseLcov(lcovPath: string): Map<string, CoverageRecord> {
       const absolutePath = isAbsolute(sfPath) ? resolve(sfPath) : resolve(cwd, sfPath);
       const relativePath = normalizeRelativePath(relative(cwd, absolutePath));
       current = createEmptyCoverageRecord(relativePath);
+      functionDetailNames = new Set<string>();
+      functionDetailHitNames = new Set<string>();
       continue;
     }
     if (line === 'end_of_record') {
       if (current !== null) {
+        current.functionDetailFound = functionDetailNames.size;
+        let functionDetailHit = 0;
+        for (const functionName of functionDetailHitNames) {
+          if (functionDetailNames.has(functionName)) {
+            functionDetailHit += 1;
+          }
+        }
+        current.functionDetailHit = functionDetailHit;
         records.set(current.filePath, current);
       }
       current = null;
+      functionDetailNames = new Set<string>();
+      functionDetailHitNames = new Set<string>();
       continue;
     }
     if (current === null) {
@@ -323,6 +341,23 @@ function parseLcov(lcovPath: string): Map<string, CoverageRecord> {
     }
     if (line.startsWith('FNH:')) {
       current.functionsHit = Number.parseInt(line.slice(4), 10);
+      continue;
+    }
+    if (line.startsWith('FN:')) {
+      const rawName = line.slice(3).split(',')[1] ?? '';
+      const functionName = rawName.trim();
+      if (functionName.length > 0) {
+        functionDetailNames.add(functionName);
+      }
+      continue;
+    }
+    if (line.startsWith('FNDA:')) {
+      const [countText, rawName] = line.slice(5).split(',');
+      const hits = Number.parseInt(countText ?? '', 10);
+      const functionName = (rawName ?? '').trim();
+      if (Number.isInteger(hits) && hits > 0 && functionName.length > 0) {
+        functionDetailHitNames.add(functionName);
+      }
       continue;
     }
     if (line.startsWith('BRF:')) {
@@ -378,6 +413,19 @@ function formatMetric(value: number): string {
   return value.toFixed(2);
 }
 
+function functionMetricForRecord(record: CoverageRecord): { found: number; hit: number } {
+  if (record.functionDetailFound > 0) {
+    return {
+      found: record.functionDetailFound,
+      hit: Math.min(record.functionDetailHit, record.functionDetailFound),
+    };
+  }
+  return {
+    found: 0,
+    hit: 0,
+  };
+}
+
 function main(): number {
   let args: ParsedArgs;
   try {
@@ -411,14 +459,15 @@ function main(): number {
     }
     globalLinesFound += record.linesFound;
     globalLinesHit += record.linesHit;
-    globalFunctionsFound += record.functionsFound;
-    globalFunctionsHit += record.functionsHit;
+    const functionMetric = functionMetricForRecord(record);
+    globalFunctionsFound += functionMetric.found;
+    globalFunctionsHit += functionMetric.hit;
     globalBranchesFound += record.branchesFound;
     globalBranchesHit += record.branchesHit;
 
     const thresholds = thresholdsForFile(filePath, config);
     const linesPct = percent(record.linesHit, record.linesFound);
-    const functionsPct = percent(record.functionsHit, record.functionsFound);
+    const functionsPct = percent(functionMetric.hit, functionMetric.found);
     const branchesPct = percent(record.branchesHit, record.branchesFound);
 
     const deficits: string[] = [];
