@@ -922,6 +922,81 @@ void test('streamText extracts leading system message when system option is omit
   assert.equal(firstBody.messages?.length, 1);
 });
 
+void test('streamText keeps leading user message when no system message is present', async () => {
+  const { model, requestBodies } = createQueuedModel([
+    createAnthropicResponse([
+      {
+        type: 'message_start',
+        message: {
+          id: 'user-leading',
+          model: 'claude-sonnet',
+          usage: { input_tokens: 1, output_tokens: 0 },
+        },
+      },
+      {
+        type: 'message_delta',
+        delta: { stop_reason: 'end_turn' },
+        usage: { input_tokens: 1, output_tokens: 1 },
+      },
+      { type: 'message_stop' },
+    ]),
+  ]);
+
+  const result = streamText({
+    model,
+    messages: [{ role: 'user', content: 'hello from user' }],
+  });
+
+  await result.finishReason;
+
+  const firstBody = requestBodies[0] as { system?: unknown; messages?: unknown[] };
+  assert.equal(firstBody.system, undefined);
+  assert.equal(Array.isArray(firstBody.messages), true);
+  assert.equal(firstBody.messages?.length, 1);
+  assert.equal((firstBody.messages as Array<{ role?: unknown }>)[0]?.role, 'user');
+});
+
+void test('streamText stops processing step content after message_stop', async () => {
+  const { model } = createQueuedModel([
+    createAnthropicResponse([
+      {
+        type: 'message_start',
+        message: {
+          id: 'stop-immediately',
+          model: 'claude-sonnet',
+          usage: { input_tokens: 1, output_tokens: 0 },
+        },
+      },
+      { type: 'message_stop' },
+      {
+        type: 'content_block_start',
+        index: 0,
+        content_block: { type: 'text' },
+      },
+      {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'text_delta', text: 'ignored text' },
+      },
+      { type: 'content_block_stop', index: 0 },
+    ]),
+  ]);
+
+  const result = streamText({ model, prompt: 'stop-now' });
+  const [parts, text, finishReason] = await Promise.all([
+    collectFullParts(result),
+    result.text,
+    result.finishReason,
+  ]);
+
+  assert.equal(text, '');
+  assert.equal(finishReason, 'other');
+  assert.equal(
+    parts.some((part) => part.type === 'text-delta'),
+    false,
+  );
+});
+
 void test('streamText handles provider web fetch error payload and completes on message_stop', async () => {
   const { model } = createQueuedModel([
     createAnthropicResponse([

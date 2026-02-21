@@ -86,7 +86,17 @@ function mergeUniqueRows(left: readonly number[], right: readonly number[]): rea
   for (const row of right) {
     merged.add(row);
   }
-  return [...merged].sort((a, b) => a - b);
+  const output = [...merged];
+  for (let index = 1; index < output.length; index += 1) {
+    const value = output[index]!;
+    let insertIndex = index - 1;
+    while (insertIndex >= 0 && output[insertIndex]! > value) {
+      output[insertIndex + 1] = output[insertIndex]!;
+      insertIndex -= 1;
+    }
+    output[insertIndex + 1] = value;
+  }
+  return output;
 }
 
 export class Screen {

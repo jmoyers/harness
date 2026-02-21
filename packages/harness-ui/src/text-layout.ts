@@ -82,6 +82,14 @@ function normalizedCursor(buffer: WrappingInputBuffer): number {
   return Math.max(0, Math.min(buffer.text.length, Math.floor(buffer.cursor)));
 }
 
+function consumedGlyphsText(consumed: ReadonlyArray<{ glyph: string; width: number }>): string {
+  let output = '';
+  for (const entry of consumed) {
+    output += entry.glyph;
+  }
+  return output;
+}
+
 export class TextLayoutEngine {
   public measure(text: string): number {
     return measureDisplayWidth(text);
@@ -111,7 +119,7 @@ export class TextLayoutEngine {
     }
 
     if (!truncated) {
-      return consumed.map((entry) => entry.glyph).join('');
+      return consumedGlyphsText(consumed);
     }
     if (safeWidth === 1) {
       return '…';
@@ -120,7 +128,7 @@ export class TextLayoutEngine {
       const removed = consumed.pop()!;
       consumedWidth -= removed.width;
     }
-    return `${consumed.map((entry) => entry.glyph).join('')}…`;
+    return `${consumedGlyphsText(consumed)}…`;
   }
 }
 

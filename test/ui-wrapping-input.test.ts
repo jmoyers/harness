@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { TextLayoutEngine, WrappingInputRenderer } from '../packages/harness-ui/src/text-layout.ts';
+import {
+  TextLayoutEngine,
+  WrappingInputRenderer,
+  measureDisplayWidth,
+  wrapTextForColumns,
+} from '../packages/harness-ui/src/text-layout.ts';
 
 const WRAPPING_INPUT_RENDERER = new WrappingInputRenderer();
 
@@ -57,4 +62,10 @@ void test('text layout engine truncates with ellipsis and exposes measure/wrap h
   assert.equal(layout.measure('abc'), 3);
   assert.deepEqual(layout.wrap('abcd', 2), ['ab', 'cd']);
   assert.equal(layout.truncate('abcd', 1), '…');
+});
+
+void test('text layout exported helpers cover control and zero-column branches', () => {
+  assert.equal(measureDisplayWidth('\u0000a'), 1);
+  assert.equal(measureDisplayWidth('🙂'), 2);
+  assert.deepEqual(wrapTextForColumns('abc', 0), ['']);
 });

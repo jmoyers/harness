@@ -308,79 +308,79 @@ function parseContentBlock(value: unknown): AnthropicContentBlock | null {
     };
   }
 
-  if (type === 'web_fetch_tool_result') {
-    const toolUseId = asString(record['tool_use_id']);
-    const contentRecord = asRecord(record['content']);
-    if (toolUseId === null || contentRecord === null) {
+  if (type !== 'web_fetch_tool_result') {
+    return null;
+  }
+
+  const toolUseId = asString(record['tool_use_id']);
+  const contentRecord = asRecord(record['content']);
+  if (toolUseId === null || contentRecord === null) {
+    return null;
+  }
+
+  const contentType = asString(contentRecord['type']);
+  if (contentType === null) {
+    return null;
+  }
+
+  if (contentType === 'web_fetch_result') {
+    const innerContent = asRecord(contentRecord['content']);
+    const source = innerContent === null ? null : asRecord(innerContent['source']);
+    if (innerContent === null || source === null) {
       return null;
     }
 
-    const contentType = asString(contentRecord['type']);
-    if (contentType === null) {
+    const url = asString(contentRecord['url']);
+    const sourceType = asString(source['type']);
+    const sourceMediaType = asString(source['media_type']);
+    const sourceData = asString(source['data']);
+    const contentBlockType = asString(innerContent['type']);
+    if (
+      url === null ||
+      sourceType === null ||
+      sourceMediaType === null ||
+      sourceData === null ||
+      contentBlockType === null
+    ) {
       return null;
     }
 
-    if (contentType === 'web_fetch_result') {
-      const innerContent = asRecord(contentRecord['content']);
-      const source = innerContent === null ? null : asRecord(innerContent['source']);
-      if (innerContent === null || source === null) {
-        return null;
-      }
+    const retrievedAt = asString(contentRecord['retrieved_at']);
+    const title = asString(innerContent['title']);
+    const citations = Array.isArray(innerContent['citations'])
+      ? (innerContent['citations'] as unknown[])
+      : null;
 
-      const url = asString(contentRecord['url']);
-      const sourceType = asString(source['type']);
-      const sourceMediaType = asString(source['media_type']);
-      const sourceData = asString(source['data']);
-      const contentBlockType = asString(innerContent['type']);
-      if (
-        url === null ||
-        sourceType === null ||
-        sourceMediaType === null ||
-        sourceData === null ||
-        contentBlockType === null
-      ) {
-        return null;
-      }
-
-      const retrievedAt = asString(contentRecord['retrieved_at']);
-      const title = asString(innerContent['title']);
-      const citations = Array.isArray(innerContent['citations'])
-        ? (innerContent['citations'] as unknown[])
-        : null;
-
-      return {
-        type,
-        tool_use_id: toolUseId,
-        content: {
-          type: 'web_fetch_result',
-          url,
-          ...(retrievedAt !== null ? { retrieved_at: retrievedAt } : {}),
-          content: {
-            type: contentBlockType,
-            ...(title !== null ? { title } : {}),
-            source: {
-              type: sourceType,
-              media_type: sourceMediaType,
-              data: sourceData,
-            },
-            ...(citations !== null ? { citations } : {}),
-          },
-        },
-      };
-    }
-
-    const errorCode = asString(contentRecord['error_code']);
     return {
       type,
       tool_use_id: toolUseId,
       content: {
-        type: contentType,
-        ...(errorCode !== null ? { error_code: errorCode } : {}),
+        type: 'web_fetch_result',
+        url,
+        ...(retrievedAt !== null ? { retrieved_at: retrievedAt } : {}),
+        content: {
+          type: contentBlockType,
+          ...(title !== null ? { title } : {}),
+          source: {
+            type: sourceType,
+            media_type: sourceMediaType,
+            data: sourceData,
+          },
+          ...(citations !== null ? { citations } : {}),
+        },
       },
     };
   }
 
-  return null;
+  const errorCode = asString(contentRecord['error_code']);
+  return {
+    type,
+    tool_use_id: toolUseId,
+    content: {
+      type: contentType,
+      ...(errorCode !== null ? { error_code: errorCode } : {}),
+    },
+  };
 }
 
 export function parseAnthropicStreamChunk(value: unknown): AnthropicStreamChunk | null {
@@ -550,18 +550,18 @@ export function parseAnthropicStreamChunk(value: unknown): AnthropicStreamChunk 
     };
   }
 
-  if (type === 'error') {
-    const errorRecord = asRecord(record['error']);
-    if (errorRecord === null) {
-      return null;
-    }
-    return {
-      type,
-      error: errorRecord,
-    };
+  if (type !== 'error') {
+    return null;
   }
 
-  return null;
+  const errorRecord = asRecord(record['error']);
+  if (errorRecord === null) {
+    return null;
+  }
+  return {
+    type,
+    error: errorRecord,
+  };
 }
 
 export function mapAnthropicStopReason(reason: string | null | undefined): FinishReason {

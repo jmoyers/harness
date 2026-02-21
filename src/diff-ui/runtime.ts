@@ -34,6 +34,12 @@ interface RunDiffUiCliDeps {
 
 type StdinFdKind = 'tty' | 'pipe' | 'file' | 'other';
 
+interface StdinFdStatLike {
+  isCharacterDevice(): boolean;
+  isFIFO(): boolean;
+  isFile(): boolean;
+}
+
 function viewportFromOptions(
   options: DiffUiCliOptions,
   deps: RunDiffUiCliDeps,
@@ -62,22 +68,33 @@ function emitRenderedLines(lines: readonly string[], writeStdout: (text: string)
   writeStdout(`${lines.join('\n')}\n`);
 }
 
-function resolveProcessStdinFdKind(): StdinFdKind {
-  try {
-    const stats = fstatSync(0);
-    if (stats.isCharacterDevice()) {
-      return 'tty';
-    }
-    if (stats.isFIFO()) {
-      return 'pipe';
-    }
-    if (stats.isFile()) {
-      return 'file';
-    }
-  } catch {
-    // Fall through.
+function stdinFdKindFromStat(stats: StdinFdStatLike): StdinFdKind {
+  if (stats.isCharacterDevice()) {
+    return 'tty';
+  }
+  if (stats.isFIFO()) {
+    return 'pipe';
+  }
+  if (stats.isFile()) {
+    return 'file';
   }
   return 'other';
+}
+
+function readProcessStdinTextFromFd0(
+  readFdText: (fd: number, encoding: BufferEncoding) => string = readFileSync,
+): string {
+  return readFdText(0, 'utf8');
+}
+
+function resolveProcessStdinFdKind(
+  readStat: (fd: number) => StdinFdStatLike = (fd) => fstatSync(fd),
+): StdinFdKind {
+  try {
+    return stdinFdKindFromStat(readStat(0));
+  } catch {
+    return 'other';
+  }
 }
 
 function shouldReadRpcStdinFromFd0(isStdinTty: boolean, stdinFdKind: StdinFdKind): boolean {
@@ -99,7 +116,8 @@ function readRpcStdinText(
   if (!shouldReadRpcStdinFromFd0(process.stdin.isTTY === true, stdinFdKind)) {
     return '';
   }
-  return (readRpcStdinFromFd0 ?? (() => readFileSync(0, 'utf8')))();
+  const readFromFd0 = readRpcStdinFromFd0 ?? readProcessStdinTextFromFd0;
+  return readFromFd0();
 }
 
 function renderCurrentViewport(input: {
@@ -354,6 +372,8 @@ export async function runDiffUiCli(deps: RunDiffUiCliDeps = {}): Promise<DiffUiR
 }
 
 export const __diffUiRuntimeInternals = {
+  stdinFdKindFromStat,
+  readProcessStdinTextFromFd0,
   shouldReadRpcStdinFromFd0,
   resolveProcessStdinFdKind,
 };

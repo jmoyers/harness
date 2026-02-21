@@ -308,6 +308,96 @@ void test('diff-ui runtime fd0 read guard allows only non-tty file/pipe stdin', 
   assert.equal(__diffUiRuntimeInternals.shouldReadRpcStdinFromFd0(false, 'other'), false);
 });
 
+void test('diff-ui runtime stdin fd classification internals cover all stat variants', () => {
+  assert.equal(
+    __diffUiRuntimeInternals.stdinFdKindFromStat({
+      isCharacterDevice: () => true,
+      isFIFO: () => false,
+      isFile: () => false,
+    }),
+    'tty',
+  );
+  assert.equal(
+    __diffUiRuntimeInternals.stdinFdKindFromStat({
+      isCharacterDevice: () => false,
+      isFIFO: () => true,
+      isFile: () => false,
+    }),
+    'pipe',
+  );
+  assert.equal(
+    __diffUiRuntimeInternals.stdinFdKindFromStat({
+      isCharacterDevice: () => false,
+      isFIFO: () => false,
+      isFile: () => true,
+    }),
+    'file',
+  );
+  assert.equal(
+    __diffUiRuntimeInternals.stdinFdKindFromStat({
+      isCharacterDevice: () => false,
+      isFIFO: () => false,
+      isFile: () => false,
+    }),
+    'other',
+  );
+  assert.equal(
+    __diffUiRuntimeInternals.resolveProcessStdinFdKind(() => {
+      throw new Error('stat failed');
+    }),
+    'other',
+  );
+  assert.equal(
+    __diffUiRuntimeInternals.readProcessStdinTextFromFd0(() => '{"type":"session.quit"}'),
+    '{"type":"session.quit"}',
+  );
+});
+
+void test('runDiffUiCli rpc stdin reader uses fd0 path for pipe/file kinds', async () => {
+  let stdout = '';
+  let fd0ReadCalls = 0;
+  const originalIsStdinTty = process.stdin.isTTY;
+
+  Object.defineProperty(process.stdin, 'isTTY', {
+    value: false,
+    configurable: true,
+  });
+
+  try {
+    const result = await runDiffUiCli({
+      argv: ['--json-events', '--rpc-stdio', '--width', '100', '--height', '12'],
+      cwd: '/repo',
+      env: {},
+      writeStdout: (text) => {
+        stdout += text;
+      },
+      writeStderr: () => {},
+      createBuilder,
+      isStdoutTty: false,
+      stdoutCols: 100,
+      stdoutRows: 12,
+      resolveStdinFdKind: () => 'pipe',
+      readRpcStdinFromFd0: () => {
+        fd0ReadCalls += 1;
+        return '{"type":"session.quit"}';
+      },
+    });
+
+    assert.equal(result.exitCode, 0);
+    assert.equal(fd0ReadCalls, 1);
+    assert.equal(
+      result.events.some((event) => event.type === 'session.quit'),
+      true,
+    );
+    assert.equal(stdout.includes('session.quit'), true);
+  } finally {
+    Object.defineProperty(process.stdin, 'isTTY', {
+      value: originalIsStdinTty,
+      configurable: true,
+    });
+  }
+});
+
 void test('runDiffUiCli surfaces parse/build failures', async () => {
   let stderrParse = '';
   const badArgs = await runDiffUiCli({

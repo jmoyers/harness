@@ -290,13 +290,6 @@ interface StepRunResult<TOOLS extends ToolSet> {
   readonly assistantText: string;
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    return null;
-  }
-  return value as Record<string, unknown>;
-}
-
 function mapWebSearchResult(
   result: Extract<AnthropicContentBlock, { type: 'web_search_tool_result' }>,
 ):
@@ -677,7 +670,6 @@ async function runSingleStep<TOOLS extends ToolSet>(
             providerResults.push(error);
             options.emit({ type: 'tool-error', ...error });
           }
-          continue;
         }
       }
 
@@ -755,8 +747,7 @@ async function runSingleStep<TOOLS extends ToolSet>(
       }
 
       if (chunk.type === 'error') {
-        const errorRecord = asRecord(chunk.error);
-        const message = errorRecord?.['message'];
+        const message = chunk.error['message'];
         options.emit({
           type: 'error',
           error:
@@ -766,9 +757,7 @@ async function runSingleStep<TOOLS extends ToolSet>(
         continue;
       }
 
-      if (chunk.type === 'message_stop') {
-        break;
-      }
+      if (chunk.type === 'message_stop') break;
     }
   } finally {
     reader.releaseLock();

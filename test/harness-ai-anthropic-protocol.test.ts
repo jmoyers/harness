@@ -269,6 +269,17 @@ void test('returns null on invalid payload shapes', () => {
   assert.equal(parseAnthropicStreamChunk(null), null);
   assert.equal(parseAnthropicStreamChunk({}), null);
   assert.equal(parseAnthropicStreamChunk({ type: 'content_block_start', index: 'nope' }), null);
+  assert.equal(parseAnthropicStreamChunk({ type: 'unknown_event' }), null);
+  assert.equal(
+    parseAnthropicStreamChunk({
+      type: 'content_block_start',
+      index: 0,
+      content_block: {
+        type: 'unknown_block_type',
+      },
+    }),
+    null,
+  );
 });
 
 void test('maps anthropic stop reasons', () => {

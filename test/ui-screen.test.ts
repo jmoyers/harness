@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import {
   DefaultScreenAnsiValidator,
+  ProcessScreenWriter,
   Screen,
   type ScreenFlushInput,
   type ScreenWriter,
@@ -213,4 +214,32 @@ void test('default ansi validator delegates to frame primitive scanner', () => {
   const issues = validator.findIssues(['\u001b]broken']);
   assert.equal(issues.length, 1);
   assert.equal(issues[0]?.includes('unterminated OSC sequence'), true);
+});
+
+void test('process screen writer writes to process stdio streams', () => {
+  const stdoutWrites: string[] = [];
+  const stderrWrites: string[] = [];
+  const originalStdoutWrite = process.stdout.write;
+  const originalStderrWrite = process.stderr.write;
+
+  (process.stdout.write as unknown as (value: string) => boolean) = ((value: string) => {
+    stdoutWrites.push(value);
+    return true;
+  }) as unknown as typeof process.stdout.write;
+  (process.stderr.write as unknown as (value: string) => boolean) = ((value: string) => {
+    stderrWrites.push(value);
+    return true;
+  }) as unknown as typeof process.stderr.write;
+
+  try {
+    const writer = new ProcessScreenWriter();
+    writer.writeOutput('out');
+    writer.writeError('err');
+  } finally {
+    process.stdout.write = originalStdoutWrite;
+    process.stderr.write = originalStderrWrite;
+  }
+
+  assert.deepEqual(stdoutWrites, ['out']);
+  assert.deepEqual(stderrWrites, ['err']);
 });
