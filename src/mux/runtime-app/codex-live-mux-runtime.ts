@@ -1296,6 +1296,7 @@ class CodexLiveMuxRuntimeApplication {
     let queuePersistedConversationsForStartupOrchestrator = (
       _activeSessionId: string | null,
     ): number => 0;
+    let queuePersistMuxUiState = (): void => {};
     let activateConversationForStartupOrchestrator = async (
       _sessionId: string,
     ): Promise<void> => {};
@@ -1594,11 +1595,13 @@ class CodexLiveMuxRuntimeApplication {
         enterConversationPaneForActiveSession: (sessionId) => {
           workspace.mainPaneMode = 'conversation';
           workspace.selectLeftNavConversation(sessionId);
+          queuePersistMuxUiState();
           screen.resetFrameCache();
         },
         enterConversationPaneForSessionSwitch: (sessionId) => {
           workspace.mainPaneMode = 'conversation';
           workspace.selectLeftNavConversation(sessionId);
+          queuePersistMuxUiState();
           workspace.homePaneDragState = null;
           workspace.taskPaneTaskEditClickState = null;
           workspace.taskPaneRepositoryEditClickState = null;
@@ -1742,7 +1745,11 @@ class CodexLiveMuxRuntimeApplication {
       selectLeftNavConversation: (sessionId) => {
         workspace.selectLeftNavConversation(sessionId);
       },
-      enterHomePane: () => {
+      enterStartupPane: () => {
+        if (configuredMuxUi.startupPane === 'nim') {
+          workspace.enterNimPane();
+          return;
+        }
         workspace.enterHomePane();
       },
     });
@@ -2431,6 +2438,7 @@ class CodexLiveMuxRuntimeApplication {
         paneWidthPercent: paneWidthPercentFromLayout(layout),
         repositoriesCollapsed: configuredMuxUi.repositoriesCollapsed,
         shortcutsCollapsed: configuredMuxUi.shortcutsCollapsed,
+        startupPane: configuredMuxUi.startupPane,
         showDebugBar: configuredMuxUi.showDebugBar,
       },
       debounceMs: UI_STATE_PERSIST_DEBOUNCE_MS,
@@ -2445,6 +2453,7 @@ class CodexLiveMuxRuntimeApplication {
               : updated.mux.ui.paneWidthPercent,
           repositoriesCollapsed: updated.mux.ui.repositoriesCollapsed,
           shortcutsCollapsed: updated.mux.ui.shortcutsCollapsed,
+          startupPane: updated.mux.ui.startupPane,
           showDebugBar: updated.mux.ui.showDebugBar,
         };
       },
@@ -2458,11 +2467,12 @@ class CodexLiveMuxRuntimeApplication {
     const persistMuxUiStateNow = (): void => {
       muxUiStatePersistence.persistNow();
     };
-    const queuePersistMuxUiState = (): void => {
+    queuePersistMuxUiState = (): void => {
       muxUiStatePersistence.queue({
         paneWidthPercent: paneWidthPercentFromLayout(layout),
         repositoriesCollapsed: workspace.repositoriesCollapsed,
         shortcutsCollapsed: workspace.shortcutsCollapsed,
+        startupPane: workspace.mainPaneMode === 'nim' ? 'nim' : 'home',
         showDebugBar: workspace.showDebugBar,
       });
     };
@@ -2736,6 +2746,7 @@ class CodexLiveMuxRuntimeApplication {
         return;
       }
       workspace.enterProjectPane(directoryId, repositoryGroupIdForDirectory(directoryId));
+      queuePersistMuxUiState();
       noteGitActivity(directoryId);
       refreshProjectPaneSnapshot(directoryId);
       screen.resetFrameCache();
@@ -2875,6 +2886,7 @@ class CodexLiveMuxRuntimeApplication {
 
     const enterHomePane = (): void => {
       workspace.enterHomePane();
+      queuePersistMuxUiState();
       workspace.selection = null;
       workspace.selectionDrag = null;
       releaseViewportPinForSelection();
@@ -2886,6 +2898,7 @@ class CodexLiveMuxRuntimeApplication {
 
     const enterNimPane = (): void => {
       workspace.enterNimPane();
+      queuePersistMuxUiState();
       workspace.selection = null;
       workspace.selectionDrag = null;
       releaseViewportPinForSelection();
@@ -2895,6 +2908,7 @@ class CodexLiveMuxRuntimeApplication {
 
     const enterTasksPane = (): void => {
       workspace.enterTasksPane();
+      queuePersistMuxUiState();
       workspace.selection = null;
       workspace.selectionDrag = null;
       releaseViewportPinForSelection();
@@ -4682,6 +4696,7 @@ class CodexLiveMuxRuntimeApplication {
         enterProjectPane,
         setMainPaneProjectMode: () => {
           workspace.mainPaneMode = 'project';
+          queuePersistMuxUiState();
         },
         selectLeftNavRepository,
         selectLeftNavConversation,
@@ -4866,6 +4881,7 @@ class CodexLiveMuxRuntimeApplication {
         },
         ensureConversationPaneActive: (conversationId) => {
           workspace.mainPaneMode = 'conversation';
+          queuePersistMuxUiState();
           workspace.selectLeftNavConversation(conversationId);
           workspace.projectPaneSnapshot = null;
           workspace.projectPaneScrollTop = 0;

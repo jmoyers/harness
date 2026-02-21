@@ -14,7 +14,7 @@ interface DirectoryGitStatusRecord {
   readonly repository: RepositoryRecord | null;
 }
 
-void test('startup state hydration service hydrates startup state and enters home pane even when active conversation exists', async () => {
+void test('startup state hydration service hydrates startup state and enters startup pane even when active conversation exists', async () => {
   const calls: string[] = [];
   const repositories = new Map<string, RepositoryRecord>();
   const gitSummaries = new Map<string, string>();
@@ -91,8 +91,8 @@ void test('startup state hydration service hydrates startup state and enters hom
     selectLeftNavConversation: (sessionId) => {
       calls.push(`selectLeftNavConversation:${sessionId}`);
     },
-    enterHomePane: () => {
-      calls.push('enterHomePane');
+    enterStartupPane: () => {
+      calls.push('enterStartupPane');
     },
   });
 
@@ -122,12 +122,12 @@ void test('startup state hydration service hydrates startup state and enters hom
     'syncRepositoryAssociations',
     'subscribeTaskPlanningEvents:42',
     'ensureActiveConversationId',
-    'enterHomePane',
+    'enterStartupPane',
   ]);
   assert.equal(calls.includes('selectLeftNavConversation:session-active'), false);
 });
 
-void test('startup state hydration service falls back to home pane when no active conversation exists', async () => {
+void test('startup state hydration service falls back to startup pane when no active conversation exists', async () => {
   const calls: string[] = [];
   let activeConversationId: string | null = null;
   const service = new StartupStateHydrationService<
@@ -165,8 +165,8 @@ void test('startup state hydration service falls back to home pane when no activ
     selectLeftNavConversation: () => {
       calls.push('selectLeftNavConversation');
     },
-    enterHomePane: () => {
-      calls.push('enterHomePane');
+    enterStartupPane: () => {
+      calls.push('enterStartupPane');
     },
   });
 
@@ -177,11 +177,11 @@ void test('startup state hydration service falls back to home pane when no activ
     'hydrateTaskPlanningState',
     'subscribeTaskPlanningEvents',
     'ensureActiveConversationId',
-    'enterHomePane',
+    'enterStartupPane',
   ]);
 });
 
-void test('startup state hydration service supports no active conversation and enters home pane', async () => {
+void test('startup state hydration service supports no active conversation and enters startup pane', async () => {
   const calls: string[] = [];
   const service = new StartupStateHydrationService<
     RepositoryRecord,
@@ -208,12 +208,12 @@ void test('startup state hydration service supports no active conversation and e
     selectLeftNavConversation: () => {
       calls.push('selectLeftNavConversation');
     },
-    enterHomePane: () => {
-      calls.push('enterHomePane');
+    enterStartupPane: () => {
+      calls.push('enterStartupPane');
     },
   });
 
   await service.hydrateStartupState(7);
 
-  assert.deepEqual(calls, ['subscribeTaskPlanningEvents', 'enterHomePane']);
+  assert.deepEqual(calls, ['subscribeTaskPlanningEvents', 'enterStartupPane']);
 });

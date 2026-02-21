@@ -74,6 +74,7 @@ interface HarnessMuxConfig {
 }
 
 type HarnessMuxThemeMode = 'dark' | 'light';
+type HarnessMuxStartupPane = 'home' | 'nim';
 
 export interface HarnessMuxThemeConfig {
   readonly preset: string;
@@ -85,6 +86,7 @@ interface HarnessMuxUiConfig {
   readonly paneWidthPercent: number | null;
   readonly repositoriesCollapsed: boolean;
   readonly shortcutsCollapsed: boolean;
+  readonly startupPane: HarnessMuxStartupPane;
   readonly showTasks: boolean;
   readonly showDebugBar: boolean;
   readonly theme: HarnessMuxThemeConfig | null;
@@ -283,6 +285,7 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
       paneWidthPercent: null,
       repositoriesCollapsed: false,
       shortcutsCollapsed: false,
+      startupPane: 'home',
       showTasks: false,
       showDebugBar: false,
       theme: null,
@@ -592,6 +595,16 @@ function normalizeMuxThemeMode(value: unknown, fallback: HarnessMuxThemeMode): H
   return fallback;
 }
 
+function normalizeMuxStartupPane(
+  value: unknown,
+  fallback: HarnessMuxStartupPane,
+): HarnessMuxStartupPane {
+  if (value === 'home' || value === 'nim') {
+    return value;
+  }
+  return fallback;
+}
+
 function normalizeMuxThemeConfig(input: unknown): HarnessMuxThemeConfig | null {
   if (input === null || input === false) {
     return null;
@@ -635,6 +648,10 @@ function normalizeMuxUiConfig(input: unknown): HarnessMuxUiConfig {
     typeof record['shortcutsCollapsed'] === 'boolean'
       ? record['shortcutsCollapsed']
       : DEFAULT_HARNESS_CONFIG.mux.ui.shortcutsCollapsed;
+  const startupPane = normalizeMuxStartupPane(
+    record['startupPane'],
+    DEFAULT_HARNESS_CONFIG.mux.ui.startupPane,
+  );
   const showTasks =
     typeof record['showTasks'] === 'boolean'
       ? record['showTasks']
@@ -647,6 +664,7 @@ function normalizeMuxUiConfig(input: unknown): HarnessMuxUiConfig {
     paneWidthPercent,
     repositoriesCollapsed,
     shortcutsCollapsed,
+    startupPane,
     showTasks,
     showDebugBar,
     theme: normalizeMuxThemeConfig(record['theme']),
@@ -1730,6 +1748,7 @@ export function updateHarnessMuxUiConfig(
     paneWidthPercent: number | null;
     repositoriesCollapsed: boolean;
     shortcutsCollapsed: boolean;
+    startupPane: HarnessMuxStartupPane;
     showTasks: boolean;
     showDebugBar: boolean;
   }>,
@@ -1758,6 +1777,8 @@ export function updateHarnessMuxUiConfig(
         update.shortcutsCollapsed === undefined
           ? current.mux.ui.shortcutsCollapsed
           : update.shortcutsCollapsed;
+      const nextStartupPane =
+        update.startupPane === undefined ? current.mux.ui.startupPane : update.startupPane;
       const nextShowTasks =
         update.showTasks === undefined ? current.mux.ui.showTasks : update.showTasks;
       const nextShowDebugBar =
@@ -1771,6 +1792,7 @@ export function updateHarnessMuxUiConfig(
               nextPaneWidthPercent === null ? null : roundUiPercent(nextPaneWidthPercent),
             repositoriesCollapsed: nextRepositoriesCollapsed,
             shortcutsCollapsed: nextShortcutsCollapsed,
+            startupPane: nextStartupPane,
             showTasks: nextShowTasks,
             showDebugBar: nextShowDebugBar,
             theme: current.mux.ui.theme,

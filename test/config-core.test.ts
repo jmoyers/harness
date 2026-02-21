@@ -29,6 +29,7 @@ const DEFAULT_UI = {
   paneWidthPercent: null,
   repositoriesCollapsed: false,
   shortcutsCollapsed: false,
+  startupPane: 'home',
   showTasks: false,
   showDebugBar: false,
   theme: null,
@@ -157,6 +158,7 @@ void test('parseHarnessConfigText normalizes mux ui and falls back for invalid v
         "ui": {
           "paneWidthPercent": 37.375,
           "repositoriesCollapsed": true,
+          "startupPane": "nim",
           "showTasks": true,
           "showDebugBar": true
         }
@@ -167,6 +169,7 @@ void test('parseHarnessConfigText normalizes mux ui and falls back for invalid v
     paneWidthPercent: 37.375,
     repositoriesCollapsed: true,
     shortcutsCollapsed: false,
+    startupPane: 'nim',
     showTasks: true,
     showDebugBar: true,
     theme: null,
@@ -466,6 +469,7 @@ void test('loadHarnessConfig reads valid config file', () => {
       paneWidthPercent: 41,
       repositoriesCollapsed: false,
       shortcutsCollapsed: false,
+      startupPane: 'home',
       showTasks: false,
       showDebugBar: false,
       theme: null,
@@ -497,6 +501,7 @@ void test('loadHarnessConfig falls back atomically on parse errors', () => {
           paneWidthPercent: 30,
           repositoriesCollapsed: false,
           shortcutsCollapsed: false,
+          startupPane: 'home',
           showTasks: false,
           showDebugBar: false,
           theme: null,
@@ -520,6 +525,7 @@ void test('loadHarnessConfig falls back atomically on parse errors', () => {
         paneWidthPercent: 30,
         repositoriesCollapsed: false,
         shortcutsCollapsed: false,
+        startupPane: 'home',
         showTasks: false,
         showDebugBar: false,
         theme: null,
@@ -1571,6 +1577,7 @@ void test('updateHarnessMuxUiConfig persists mux ui state and rounds percentage'
     paneWidthPercent: 33.33,
     repositoriesCollapsed: false,
     shortcutsCollapsed: false,
+    startupPane: 'home',
     showTasks: false,
     showDebugBar: true,
     theme: null,
@@ -1584,6 +1591,7 @@ void test('updateHarnessMuxUiConfig persists mux ui state and rounds percentage'
     paneWidthPercent: 33.33,
     repositoriesCollapsed: false,
     shortcutsCollapsed: false,
+    startupPane: 'home',
     showTasks: false,
     showDebugBar: true,
     theme: null,
@@ -1616,6 +1624,7 @@ void test('updateHarnessMuxUiConfig rejects invalid percent and preserves existi
   );
   assert.equal(updatedInvalid.mux.ui.paneWidthPercent, null);
   assert.equal(updatedInvalid.mux.ui.repositoriesCollapsed, false);
+  assert.equal(updatedInvalid.mux.ui.startupPane, 'home');
   assert.equal(updatedInvalid.mux.ui.showTasks, false);
   assert.equal(updatedInvalid.mux.ui.showDebugBar, false);
 
@@ -1627,6 +1636,7 @@ void test('updateHarnessMuxUiConfig rejects invalid percent and preserves existi
   );
   assert.equal(updatedPartial.mux.ui.paneWidthPercent, null);
   assert.equal(updatedPartial.mux.ui.repositoriesCollapsed, false);
+  assert.equal(updatedPartial.mux.ui.startupPane, 'home');
   assert.equal(updatedPartial.mux.ui.showTasks, false);
   assert.equal(updatedPartial.mux.ui.showDebugBar, false);
 });
@@ -1642,6 +1652,7 @@ void test('updateHarnessMuxUiConfig preserves existing theme configuration', () 
           paneWidthPercent: 44,
           repositoriesCollapsed: false,
           shortcutsCollapsed: false,
+          startupPane: 'nim',
           showTasks: true,
           showDebugBar: true,
           theme: {
@@ -1668,6 +1679,7 @@ void test('updateHarnessMuxUiConfig preserves existing theme configuration', () 
   });
   assert.equal(updated.mux.ui.showTasks, true);
   assert.equal(updated.mux.ui.showDebugBar, true);
+  assert.equal(updated.mux.ui.startupPane, 'nim');
 });
 
 void test('updateHarnessConfig writes new config file when absent', () => {
@@ -1686,6 +1698,7 @@ void test('updateHarnessConfig writes new config file when absent', () => {
           paneWidthPercent: 25,
           repositoriesCollapsed: false,
           shortcutsCollapsed: false,
+          startupPane: 'home',
           showTasks: false,
           showDebugBar: false,
           theme: null,
@@ -1701,6 +1714,7 @@ void test('updateHarnessConfig writes new config file when absent', () => {
       paneWidthPercent: 25,
       repositoriesCollapsed: false,
       shortcutsCollapsed: false,
+      startupPane: 'home',
       showTasks: false,
       showDebugBar: false,
       theme: null,
@@ -1779,6 +1793,7 @@ void test('updateHarnessMuxUiConfig supports cwd-only config path resolution', (
           paneWidthPercent: 35,
           repositoriesCollapsed: false,
           shortcutsCollapsed: false,
+          startupPane: 'home',
           showTasks: false,
           showDebugBar: false,
           theme: null,
@@ -1798,6 +1813,7 @@ void test('updateHarnessMuxUiConfig supports cwd-only config path resolution', (
     paneWidthPercent: 35,
     repositoriesCollapsed: false,
     shortcutsCollapsed: false,
+    startupPane: 'home',
     showTasks: false,
     showDebugBar: false,
     theme: null,

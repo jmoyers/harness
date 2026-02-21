@@ -9,6 +9,7 @@ import {
   startControlPlaneStreamServer,
   type StartControlPlaneSessionInput,
 } from '../src/control-plane/stream-server.ts';
+import { HARNESS_CONFIG_FILE_NAME } from '../src/config/config-core.ts';
 import { resolveHarnessWorkspaceDirectory } from '../src/config/harness-paths.ts';
 import type { CodexLiveEvent } from '../src/codex/live-session.ts';
 import { startPtySession, type PtyExit } from '../src/pty/pty_host.ts';
@@ -565,6 +566,41 @@ void test(
       } finally {
         store.close();
       }
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  },
+  { timeout: 20000 },
+);
+
+void test(
+  'codex-live-mux startup restores nim pane when mux.ui.startupPane is nim',
+  async () => {
+    const workspace = createWorkspace();
+
+    try {
+      const configPath = join(
+        workspaceXdgConfigHome(workspace),
+        'harness',
+        HARNESS_CONFIG_FILE_NAME,
+      );
+      mkdirSync(join(workspaceXdgConfigHome(workspace), 'harness'), { recursive: true });
+      writeFileSync(
+        configPath,
+        JSON.stringify({
+          mux: {
+            ui: {
+              startupPane: 'nim',
+            },
+          },
+        }),
+        'utf8',
+      );
+
+      const result = await captureMuxBootOutput(workspace, 1800);
+      assertExpectedBootTeardownExit(result.exit);
+      assert.equal(result.output.includes('NIM'), true);
+      assert.equal(result.output.includes('nim>'), true);
     } finally {
       rmSync(workspace, { recursive: true, force: true });
     }

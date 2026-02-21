@@ -2,6 +2,7 @@ export interface MuxUiStateSnapshot {
   paneWidthPercent: number;
   repositoriesCollapsed: boolean;
   shortcutsCollapsed: boolean;
+  startupPane: 'home' | 'nim';
   showDebugBar: boolean;
 }
 
@@ -78,6 +79,7 @@ export class MuxUiStatePersistence {
       left.paneWidthPercent === right.paneWidthPercent &&
       left.repositoriesCollapsed === right.repositoriesCollapsed &&
       left.shortcutsCollapsed === right.shortcutsCollapsed &&
+      left.startupPane === right.startupPane &&
       left.showDebugBar === right.showDebugBar
     );
   }

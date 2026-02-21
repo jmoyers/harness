@@ -1,7 +1,7 @@
 # NIM Experiential Parity Design + Roadmap (Temporary)
 
 Date: 2026-02-21  
-Branch: `jm/nim`  
+Branch: `jm/nim-next`  
 Status: planning document for execution; does not override `design.md`, `behavior.md`, or `agents.md`.
 
 ## 1. Intent
@@ -120,9 +120,9 @@ flowchart LR
 
 ### Phase 1: Pinned NIM Shell in Mux
 
-- [ ] Add NIM left-rail item and selection behavior.
-- [ ] Add empty/skeleton NIM right pane with pinned composer/footer.
-- [ ] Persist/restore NIM pane selection state.
+- [x] Add NIM left-rail item and selection behavior.
+- [x] Add empty/skeleton NIM right pane with pinned composer/footer.
+- [x] Persist/restore NIM pane selection state.
 - Exit criteria:
 - NIM is reachable via pointer + keyboard cycle and survives app restart.
 
