@@ -339,66 +339,83 @@ void test('runtime task pane actions runTaskPaneAction default task reorder flow
   ]);
 });
 
-void test('runtime task pane actions runTaskPaneAction wires callback actions through service-owned transitions', async () => {
+void test('runtime task pane actions repository archive requires selected repository', () => {
+  const harness = createHarness();
+  harness.workspace.taskPaneSelectedRepositoryId = null;
+
+  harness.service.runTaskPaneAction('repository.archive');
+
+  assert.equal(harness.workspace.taskPaneNotice, 'select a repository first');
+  assert.deepEqual(harness.calls, ['markDirty']);
+});
+
+void test('runtime task pane actions repository archive queues archive and sync', async () => {
+  const harness = createHarness();
+  harness.workspace.taskPaneSelectedRepositoryId = 'repo-1';
+
+  harness.service.runTaskPaneAction('repository.archive');
+  await harness.flushQueued();
+
+  assert.equal(harness.workspace.taskPaneSelectionFocus, 'repository');
+  assert.deepEqual(harness.calls, [
+    'queueControlPlaneOp:tasks-archive-repository',
+    'archiveRepositoryById:repo-1',
+    'syncTaskPaneRepositorySelection',
+  ]);
+});
+
+void test('runtime task pane actions delete task clears task editor target and local task state', async () => {
   const harness = createHarness({
     selectedTask: () => ({
       taskId: 'task-1',
       repositoryId: 'repo-1',
       status: 'ready',
     }),
-    runTaskPaneAction: (options) => {
-      options.openTaskCreatePrompt();
-      options.openRepositoryPromptForCreate();
-      options.setTaskPaneNotice('notice');
-      options.setTaskPaneSelectionFocus('repository');
-      options.openRepositoryPromptForEdit('repo-1');
-      options.queueArchiveRepository('repo-1');
-      options.openTaskEditPrompt('task-1');
-      options.queueDeleteTask('task-1');
-      options.queueTaskReady('task-1');
-      options.queueTaskDraft('task-1');
-      options.queueTaskComplete('task-1');
-      options.queueTaskReorderByIds(['task-1', 'task-2'], 'tasks-reorder-up');
-      options.markDirty();
-    },
   });
-  harness.workspace.taskPaneSelectedRepositoryId = 'repo-1';
-  harness.workspace.taskEditorTarget = {
-    kind: 'task',
-    taskId: 'task-1',
-  };
-  harness.tasksById.set('task-1', {
-    taskId: 'task-1',
-    repositoryId: 'repo-1',
-    status: 'ready',
-  });
+  harness.workspace.taskEditorTarget = { kind: 'task', taskId: 'task-1' };
 
-  harness.service.runTaskPaneAction('task.edit');
+  harness.service.runTaskPaneAction('task.delete');
   await harness.flushQueued();
 
-  assert.equal(harness.workspace.taskPaneNotice, null);
-  assert.equal(harness.workspace.taskPaneSelectionFocus, 'task');
   assert.deepEqual(harness.workspace.taskEditorTarget, { kind: 'draft' });
-  const callSet = new Set(harness.calls);
-  assert.equal(callSet.has('focusDraftComposer'), true);
-  assert.equal(callSet.has('openRepositoryPromptForCreate'), true);
-  assert.equal(callSet.has('openRepositoryPromptForEdit:repo-1'), true);
-  assert.equal(callSet.has('queueControlPlaneOp:tasks-archive-repository'), true);
-  assert.equal(callSet.has('archiveRepositoryById:repo-1'), true);
-  assert.equal(callSet.has('queueControlPlaneOp:tasks-delete'), true);
-  assert.equal(callSet.has('clearTaskAutosaveTimer:task-1'), true);
-  assert.equal(callSet.has('serviceDeleteTask:task-1'), true);
-  assert.equal(callSet.has('deleteTask:task-1'), true);
-  assert.equal(callSet.has('deleteTaskComposer:task-1'), true);
-  assert.equal(callSet.has('queueControlPlaneOp:tasks-ready'), true);
-  assert.equal(callSet.has('queueControlPlaneOp:tasks-draft'), true);
-  assert.equal(callSet.has('queueControlPlaneOp:tasks-complete'), true);
-  assert.equal(callSet.has('queueControlPlaneOp:tasks-reorder-up'), true);
-  assert.equal(callSet.has('reorderTasks:task-1,task-2'), true);
-  assert.equal(callSet.has('setTask:task-1:ready'), true);
-  assert.equal(callSet.has('setTask:task-1:draft'), true);
-  assert.equal(callSet.has('setTask:task-1:completed'), true);
-  assert.equal(callSet.has('setTask:task-2:ready'), true);
-  assert.equal(callSet.has('syncTaskPaneSelection'), true);
-  assert.equal(callSet.has('syncTaskPaneRepositorySelection'), true);
+  assert.deepEqual(harness.calls, [
+    'queueControlPlaneOp:tasks-delete',
+    'clearTaskAutosaveTimer:task-1',
+    'serviceDeleteTask:task-1',
+    'deleteTask:task-1',
+    'deleteTaskComposer:task-1',
+    'syncTaskPaneSelection',
+    'markDirty',
+  ]);
+});
+
+void test('runtime task pane actions status updates queue correct control-plane operations', async () => {
+  const harness = createHarness({
+    selectedTask: () => ({
+      taskId: 'task-1',
+      repositoryId: 'repo-1',
+      status: 'ready',
+    }),
+  });
+
+  harness.service.runTaskPaneAction('task.ready');
+  harness.service.runTaskPaneAction('task.draft');
+  harness.service.runTaskPaneAction('task.complete');
+  await harness.flushQueued();
+
+  assert.equal(harness.workspace.taskPaneSelectionFocus, 'task');
+  assert.deepEqual(harness.calls, [
+    'queueControlPlaneOp:tasks-ready',
+    'queueControlPlaneOp:tasks-draft',
+    'queueControlPlaneOp:tasks-complete',
+    'setTask:task-1:ready',
+    'syncTaskPaneSelection',
+    'markDirty',
+    'setTask:task-1:draft',
+    'syncTaskPaneSelection',
+    'markDirty',
+    'setTask:task-1:completed',
+    'syncTaskPaneSelection',
+    'markDirty',
+  ]);
 });

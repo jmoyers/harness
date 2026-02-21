@@ -8,11 +8,100 @@ import { refreshProcessUsageSnapshots } from '../src/mux/live-mux/process-usage.
 import { handleHomePaneActionClick } from '../src/mux/live-mux/home-pane-actions.ts';
 import { routeInputTokensForConversation } from '../src/mux/live-mux/input-forwarding.ts';
 import { dismissModalOnOutsideClick } from '../src/mux/live-mux/modal-pointer.ts';
-import { handleLeftRailPointerClick } from '../src/mux/live-mux/left-rail-pointer.ts';
+import { RailPointerInput } from '../packages/harness-ui/src/interaction/rail-pointer-input.ts';
 import { leftNavTargetKey, visibleLeftNavTargets } from '../src/mux/live-mux/left-nav.ts';
-import type { buildWorkspaceRailViewRows } from '../src/mux/workspace-rail-model.ts';
+import {
+  actionAtWorkspaceRailCell,
+  conversationIdAtWorkspaceRailRow,
+  kindAtWorkspaceRailRow,
+  projectIdAtWorkspaceRailRow,
+  repositoryIdAtWorkspaceRailRow,
+  type buildWorkspaceRailViewRows,
+} from '../src/mux/workspace-rail-model.ts';
 
 type RailRows = ReturnType<typeof buildWorkspaceRailViewRows>;
+
+interface HandleLeftRailPointerClickOptions {
+  clickEligible: boolean;
+  rows: RailRows;
+  paneRows: number;
+  leftCols: number;
+  pointerRow: number;
+  pointerCol: number;
+  hasConversationTitleEdit: boolean;
+  conversationTitleEditConversationId: string | null;
+  stopConversationTitleEdit: () => void;
+  hasSelection: boolean;
+  clearSelection: () => void;
+  handleAction: (context: {
+    selectedConversationId: string | null;
+    selectedProjectId: string | null;
+    selectedRepositoryId: string | null;
+    selectedAction: string | null;
+    supportsConversationTitleEditClick: boolean;
+  }) => boolean;
+  handleConversation: (context: {
+    selectedConversationId: string | null;
+    selectedProjectId: string | null;
+    selectedRepositoryId: string | null;
+    selectedAction: string | null;
+    supportsConversationTitleEditClick: boolean;
+  }) => void;
+}
+
+function handleLeftRailPointerClick(options: HandleLeftRailPointerClickOptions): boolean {
+  const pointerInput = new RailPointerInput(
+    {
+      resolveHit: (rowIndex, colIndex, railCols) => {
+        const selectedConversationId = conversationIdAtWorkspaceRailRow(options.rows, rowIndex);
+        const selectedProjectId = projectIdAtWorkspaceRailRow(options.rows, rowIndex);
+        const selectedRepositoryId = repositoryIdAtWorkspaceRailRow(options.rows, rowIndex);
+        const selectedAction = actionAtWorkspaceRailCell(
+          options.rows,
+          rowIndex,
+          colIndex,
+          railCols,
+        );
+        const selectedRowKind = kindAtWorkspaceRailRow(options.rows, rowIndex);
+        return {
+          selectedConversationId,
+          selectedProjectId,
+          selectedRepositoryId,
+          selectedAction,
+          supportsConversationTitleEditClick:
+            selectedRowKind === 'conversation-title' || selectedRowKind === 'conversation-body',
+        };
+      },
+    },
+    {
+      dispatchHit: (context) => {
+        if (options.handleAction(context)) {
+          return true;
+        }
+        options.handleConversation(context);
+        return true;
+      },
+    },
+    {
+      hasActiveEdit: () => options.hasConversationTitleEdit,
+      shouldKeepActiveEdit: (context) =>
+        context.selectedConversationId === options.conversationTitleEditConversationId &&
+        context.supportsConversationTitleEditClick,
+      stopActiveEdit: options.stopConversationTitleEdit,
+    },
+    {
+      hasSelection: () => options.hasSelection,
+      clearSelection: options.clearSelection,
+    },
+  );
+  return pointerInput.handlePointerClick({
+    clickEligible: options.clickEligible,
+    paneRows: options.paneRows,
+    leftCols: options.leftCols,
+    pointerRow: options.pointerRow,
+    pointerCol: options.pointerCol,
+  });
+}
 
 void test('resolveDirectoryForAction honors project mode, conversation mapping, and fallback directory', () => {
   const conversations = new Map([

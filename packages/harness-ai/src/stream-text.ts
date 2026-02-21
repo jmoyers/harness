@@ -37,31 +37,6 @@ import type {
   TypedToolResult,
 } from './types.ts';
 
-interface Deferred<T> {
-  readonly promise: Promise<T>;
-  resolve(value: T): void;
-  reject(error: unknown): void;
-}
-
-function createDeferred<T>(): Deferred<T> {
-  let resolveFn: ((value: T) => void) | null = null;
-  let rejectFn: ((error: unknown) => void) | null = null;
-  const promise = new Promise<T>((resolve, reject) => {
-    resolveFn = resolve;
-    rejectFn = reject;
-  });
-
-  return {
-    promise,
-    resolve(value) {
-      resolveFn?.(value);
-    },
-    reject(error) {
-      rejectFn?.(error);
-    },
-  };
-}
-
 interface ContentBlockTextState {
   readonly kind: 'text' | 'reasoning';
   readonly id: string;
@@ -144,10 +119,6 @@ function normalizeMessages(
 }
 
 function toAnthropicMessageContent(message: ModelMessage): Array<Record<string, unknown>> {
-  if (message.role === 'system') {
-    return [{ type: 'text', text: message.content }];
-  }
-
   if (typeof message.content === 'string') {
     return [{ type: 'text', text: message.content }];
   }
@@ -326,20 +297,15 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
-function mapWebSearchResult(result: AnthropicContentBlock):
+function mapWebSearchResult(
+  result: Extract<AnthropicContentBlock, { type: 'web_search_tool_result' }>,
+):
   | {
       readonly ok: true;
       readonly output: unknown[];
       readonly sources: Array<{ url: string; title?: string; pageAge?: string }>;
     }
   | { readonly ok: false; readonly error: unknown } {
-  if (result.type !== 'web_search_tool_result') {
-    return {
-      ok: false,
-      error: { message: 'invalid web search result payload' },
-    };
-  }
-
   if (Array.isArray(result.content)) {
     const mapped = result.content.map((entry) => ({
       type: entry.type,
@@ -371,17 +337,10 @@ function mapWebSearchResult(result: AnthropicContentBlock):
 }
 
 function mapWebFetchResult(
-  result: AnthropicContentBlock,
+  result: Extract<AnthropicContentBlock, { type: 'web_fetch_tool_result' }>,
 ):
   | { readonly ok: true; readonly output: unknown }
   | { readonly ok: false; readonly error: unknown } {
-  if (result.type !== 'web_fetch_tool_result') {
-    return {
-      ok: false,
-      error: { message: 'invalid web fetch result payload' },
-    };
-  }
-
   if ('url' in result.content && 'content' in result.content) {
     const content = result.content.content;
     return {
@@ -720,8 +679,6 @@ async function runSingleStep<TOOLS extends ToolSet>(
           }
           continue;
         }
-
-        continue;
       }
 
       if (chunk.type === 'content_block_delta') {
@@ -1262,41 +1219,17 @@ export function streamText<TOOLS extends ToolSet>(
   const uiMessageStream = createUIMessageStream(uiBranchA);
   const uiResponseStream = createUIMessageStream(uiBranchB);
 
-  const textDeferred = createDeferred<string>();
-  const toolCallsDeferred = createDeferred<TypedToolCall<TOOLS>[]>();
-  const toolResultsDeferred =
-    createDeferred<Array<TypedToolResult<TOOLS> | TypedToolError<TOOLS>>>();
-  const finishReasonDeferred = createDeferred<FinishReason>();
-  const usageDeferred = createDeferred<LanguageModelUsage>();
-  const responseDeferred = createDeferred<LanguageModelResponseMetadata>();
-
-  collectResultFromStream(collectorBranch)
-    .then((collected) => {
-      textDeferred.resolve(collected.text);
-      toolCallsDeferred.resolve(collected.toolCalls);
-      toolResultsDeferred.resolve(collected.toolResults);
-      finishReasonDeferred.resolve(collected.finishReason);
-      usageDeferred.resolve(collected.usage);
-      responseDeferred.resolve(collected.response);
-    })
-    .catch((error) => {
-      textDeferred.reject(error);
-      toolCallsDeferred.reject(error);
-      toolResultsDeferred.reject(error);
-      finishReasonDeferred.reject(error);
-      usageDeferred.reject(error);
-      responseDeferred.reject(error);
-    });
+  const collectedPromise = collectResultFromStream(collectorBranch);
 
   return {
     fullStream,
     textStream,
-    text: textDeferred.promise,
-    toolCalls: toolCallsDeferred.promise,
-    toolResults: toolResultsDeferred.promise,
-    finishReason: finishReasonDeferred.promise,
-    usage: usageDeferred.promise,
-    response: responseDeferred.promise,
+    text: collectedPromise.then((collected) => collected.text),
+    toolCalls: collectedPromise.then((collected) => collected.toolCalls),
+    toolResults: collectedPromise.then((collected) => collected.toolResults),
+    finishReason: collectedPromise.then((collected) => collected.finishReason),
+    usage: collectedPromise.then((collected) => collected.usage),
+    response: collectedPromise.then((collected) => collected.response),
     toUIMessageStream() {
       return uiMessageStream;
     },

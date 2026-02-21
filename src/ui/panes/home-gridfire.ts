@@ -1,5 +1,5 @@
 import { measureDisplayWidth } from '../../terminal/snapshot-oracle.ts';
-import { createUiSurface, renderUiSurfaceAnsiRows, type UiStyle } from '../surface.ts';
+import { SurfaceBuffer, type UiStyle } from '../../../packages/harness-ui/src/surface.ts';
 
 interface HomeGridfireOptions {
   readonly cols: number;
@@ -91,7 +91,7 @@ function styleFromColors(fg: RgbTriplet, bg: RgbTriplet, bold = false): UiStyle 
 }
 
 function writeGlyph(
-  surface: ReturnType<typeof createUiSurface>,
+  surface: SurfaceBuffer,
   row: number,
   col: number,
   glyph: string,
@@ -199,7 +199,7 @@ function pickGridGlyph(
         : GRID_CHARS.empty;
 }
 
-function paintBackground(surface: ReturnType<typeof createUiSurface>, phase: number): void {
+function paintBackground(surface: SurfaceBuffer, phase: number): void {
   for (let row = 0; row < surface.rows; row += 1) {
     for (let col = 0; col < surface.cols; col += 1) {
       const energy = gridEnergy(col, row, surface.cols, surface.rows, phase);
@@ -212,7 +212,7 @@ function paintBackground(surface: ReturnType<typeof createUiSurface>, phase: num
 }
 
 function paintOverlayTextRow(
-  surface: ReturnType<typeof createUiSurface>,
+  surface: SurfaceBuffer,
   row: number,
   text: string,
   phase: number,
@@ -243,7 +243,7 @@ function paintOverlayTextRow(
 }
 
 function paintCenteredLabel(
-  surface: ReturnType<typeof createUiSurface>,
+  surface: SurfaceBuffer,
   row: number,
   text: string | null,
   phase: number,
@@ -280,7 +280,7 @@ function paintCenteredLabel(
 export function renderHomeGridfireAnsiRows(options: HomeGridfireOptions): readonly string[] {
   const safeCols = Math.max(1, options.cols);
   const safeRows = Math.max(1, options.rows);
-  const surface = createUiSurface(safeCols, safeRows);
+  const surface = new SurfaceBuffer(safeCols, safeRows);
   const phase = options.timeMs / 1000;
 
   paintBackground(surface, phase);
@@ -307,5 +307,5 @@ export function renderHomeGridfireAnsiRows(options: HomeGridfireOptions): readon
     );
   }
 
-  return renderUiSurfaceAnsiRows(surface);
+  return surface.renderAnsiRows();
 }

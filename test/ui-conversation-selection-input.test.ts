@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { ConversationSelectionInput } from '../src/ui/conversation-selection-input.ts';
+import { ConversationSelectionInput } from '../packages/harness-ui/src/interaction/conversation-selection-input.ts';
+import {
+  pointFromMouseEvent,
+  reduceConversationMouseSelection,
+  selectionText,
+} from '../src/mux/live-mux/selection.ts';
 
 void test('conversation selection input clears selection and routes mouse reduction', () => {
   const calls: string[] = [];
@@ -135,19 +140,26 @@ void test('conversation selection input default dependencies no-op when no selec
     focus: { rowAbs: number; col: number };
     hasDragged: boolean;
   } | null = null;
-  const input = new ConversationSelectionInput({
-    getSelection: () => selection,
-    setSelection: (next) => {
-      selection = next;
+  const input = new ConversationSelectionInput(
+    {
+      getSelection: () => selection,
+      setSelection: (next) => {
+        selection = next;
+      },
+      getSelectionDrag: () => selectionDrag,
+      setSelectionDrag: (next) => {
+        selectionDrag = next;
+      },
+      pinViewportForSelection: () => {},
+      releaseViewportPinForSelection: () => {},
+      markDirty: () => {},
     },
-    getSelectionDrag: () => selectionDrag,
-    setSelectionDrag: (next) => {
-      selectionDrag = next;
+    {
+      pointFromMouseEvent,
+      reduceConversationMouseSelection,
+      selectionText,
     },
-    pinViewportForSelection: () => {},
-    releaseViewportPinForSelection: () => {},
-    markDirty: () => {},
-  });
+  );
 
   assert.equal(input.clearSelectionOnTextToken(0), false);
   assert.equal(

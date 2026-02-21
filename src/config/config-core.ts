@@ -84,6 +84,7 @@ export interface HarnessMuxThemeConfig {
 interface HarnessMuxUiConfig {
   readonly paneWidthPercent: number | null;
   readonly repositoriesCollapsed: boolean;
+  readonly shortcutsCollapsed: boolean;
   readonly showTasks: boolean;
   readonly showDebugBar: boolean;
   readonly theme: HarnessMuxThemeConfig | null;
@@ -281,6 +282,7 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
     ui: {
       paneWidthPercent: null,
       repositoriesCollapsed: false,
+      shortcutsCollapsed: false,
       showTasks: false,
       showDebugBar: false,
       theme: null,
@@ -629,6 +631,10 @@ function normalizeMuxUiConfig(input: unknown): HarnessMuxUiConfig {
     typeof record['repositoriesCollapsed'] === 'boolean'
       ? record['repositoriesCollapsed']
       : DEFAULT_HARNESS_CONFIG.mux.ui.repositoriesCollapsed;
+  const shortcutsCollapsed =
+    typeof record['shortcutsCollapsed'] === 'boolean'
+      ? record['shortcutsCollapsed']
+      : DEFAULT_HARNESS_CONFIG.mux.ui.shortcutsCollapsed;
   const showTasks =
     typeof record['showTasks'] === 'boolean'
       ? record['showTasks']
@@ -640,6 +646,7 @@ function normalizeMuxUiConfig(input: unknown): HarnessMuxUiConfig {
   return {
     paneWidthPercent,
     repositoriesCollapsed,
+    shortcutsCollapsed,
     showTasks,
     showDebugBar,
     theme: normalizeMuxThemeConfig(record['theme']),
@@ -1722,6 +1729,7 @@ export function updateHarnessMuxUiConfig(
   update: Partial<{
     paneWidthPercent: number | null;
     repositoriesCollapsed: boolean;
+    shortcutsCollapsed: boolean;
     showTasks: boolean;
     showDebugBar: boolean;
   }>,
@@ -1746,6 +1754,10 @@ export function updateHarnessMuxUiConfig(
         update.repositoriesCollapsed === undefined
           ? current.mux.ui.repositoriesCollapsed
           : update.repositoriesCollapsed;
+      const nextShortcutsCollapsed =
+        update.shortcutsCollapsed === undefined
+          ? current.mux.ui.shortcutsCollapsed
+          : update.shortcutsCollapsed;
       const nextShowTasks =
         update.showTasks === undefined ? current.mux.ui.showTasks : update.showTasks;
       const nextShowDebugBar =
@@ -1758,6 +1770,7 @@ export function updateHarnessMuxUiConfig(
             paneWidthPercent:
               nextPaneWidthPercent === null ? null : roundUiPercent(nextPaneWidthPercent),
             repositoriesCollapsed: nextRepositoriesCollapsed,
+            shortcutsCollapsed: nextShortcutsCollapsed,
             showTasks: nextShowTasks,
             showDebugBar: nextShowDebugBar,
             theme: current.mux.ui.theme,

@@ -1,20 +1,51 @@
 import {
-  createUiSurface,
+  SurfaceBuffer,
   DEFAULT_UI_STYLE,
-  drawUiText,
-  fillUiRow,
-  renderUiSurfaceAnsiRows,
   type UiStyle,
-} from '../ui/surface.ts';
-import { paintUiRow } from '../ui/kit.ts';
+} from '../../packages/harness-ui/src/surface.ts';
+import { UiKit } from '../../packages/harness-ui/src/kit.ts';
 import { measureDisplayWidth } from '../terminal/snapshot-oracle.ts';
 import { buildWorkspaceRailViewRows } from './workspace-rail-model.ts';
 import { getActiveMuxTheme, type MuxWorkspaceRailTheme } from '../ui/mux-theme.ts';
 
 type WorkspaceRailModel = Parameters<typeof buildWorkspaceRailViewRows>[0];
 type WorkspaceRailViewRow = ReturnType<typeof buildWorkspaceRailViewRows>[number];
+type UiSurface = SurfaceBuffer;
 
 const INLINE_THREAD_BUTTON_LABEL = '[+ thread]';
+const uiKit = new UiKit();
+
+function createUiSurface(cols: number, rows: number, style: UiStyle): UiSurface {
+  return new SurfaceBuffer(cols, rows, style);
+}
+
+function drawUiText(
+  surface: UiSurface,
+  col: number,
+  row: number,
+  text: string,
+  style: UiStyle,
+): void {
+  surface.drawText(col, row, text, style);
+}
+
+function fillUiRow(surface: UiSurface, row: number, style: UiStyle): void {
+  surface.fillRow(row, style);
+}
+
+function paintUiRow(
+  surface: UiSurface,
+  row: number,
+  text: string,
+  textStyle: UiStyle,
+  fillStyle: UiStyle,
+): void {
+  uiKit.paintRow(surface, row, text, textStyle, fillStyle);
+}
+
+function renderUiSurfaceAnsiRows(surface: UiSurface): readonly string[] {
+  return surface.renderAnsiRows();
+}
 
 function conversationStatusIconStyle(
   status: WorkspaceRailViewRow['conversationStatus'],

@@ -1,15 +1,66 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { resolveMuxShortcutBindings } from '../src/mux/input-shortcuts.ts';
-import { GlobalShortcutInput } from '../src/ui/global-shortcut-input.ts';
+import { detectMuxGlobalShortcut, resolveMuxShortcutBindings } from '../src/mux/input-shortcuts.ts';
+import { handleGlobalShortcut } from '../src/mux/live-mux/global-shortcut-handlers.ts';
+import {
+  GlobalShortcutInput,
+  type GlobalShortcutActions,
+  type GlobalShortcutState,
+} from '../packages/harness-ui/src/interaction/global-shortcut-input.ts';
+
+function createState(overrides: Partial<GlobalShortcutState> = {}): GlobalShortcutState {
+  return {
+    mainPaneMode: () => 'conversation',
+    activeConversationId: () => 'session-a',
+    conversationsHas: () => true,
+    activeDirectoryId: () => null,
+    directoryExists: () => false,
+    ...overrides,
+  };
+}
+
+function createActions(overrides: Partial<GlobalShortcutActions> = {}): GlobalShortcutActions {
+  return {
+    requestStop: () => {},
+    resolveDirectoryForAction: () => null,
+    openNewThreadPrompt: () => {},
+    toggleCommandMenu: () => {},
+    openOrCreateCritiqueConversationInDirectory: async () => {},
+    toggleGatewayProfile: async () => {},
+    toggleGatewayStatusTimeline: async () => {},
+    toggleGatewayRenderTrace: async () => {},
+    queueControlPlaneOp: () => {},
+    archiveConversation: async () => {},
+    refreshAllConversationTitles: async () => {},
+    interruptConversation: async () => {},
+    takeoverConversation: async () => {},
+    openAddDirectoryPrompt: () => {},
+    closeDirectory: async () => {},
+    cycleLeftNavSelection: () => {},
+    ...overrides,
+  };
+}
 
 void test('global shortcut input delegates detection and handler wiring', () => {
   const calls: string[] = [];
   let mode: 'conversation' | 'project' | 'home' = 'project';
   let activeDirectoryId: string | null = 'dir-a';
   const input = new GlobalShortcutInput(
-    {
-      shortcutBindings: resolveMuxShortcutBindings(),
+    resolveMuxShortcutBindings(),
+    createState({
+      mainPaneMode: () => mode,
+      activeConversationId: () => 'session-a',
+      conversationsHas: (sessionId) => {
+        calls.push(`has-conversation:${sessionId}`);
+        return true;
+      },
+      activeDirectoryId: () => activeDirectoryId,
+      directoryExists: (directoryId) => {
+        calls.push(`directory-exists:${directoryId}`);
+        return true;
+      },
+    }),
+    createActions({
       requestStop: () => {
         calls.push('request-stop');
       },
@@ -20,7 +71,6 @@ void test('global shortcut input delegates detection and handler wiring', () => 
       toggleCommandMenu: () => {
         calls.push('toggle-command-menu');
       },
-      toggleDebugBar: () => {},
       openOrCreateCritiqueConversationInDirectory: async (directoryId) => {
         calls.push(`critique:${directoryId}`);
       },
@@ -32,12 +82,6 @@ void test('global shortcut input delegates detection and handler wiring', () => 
       },
       toggleGatewayRenderTrace: async (conversationId) => {
         calls.push(`toggle-gateway-render-trace:${conversationId ?? 'none'}`);
-      },
-      getMainPaneMode: () => mode,
-      getActiveConversationId: () => 'session-a',
-      conversationsHas: (sessionId) => {
-        calls.push(`has-conversation:${sessionId}`);
-        return true;
       },
       queueControlPlaneOp: async (task, label) => {
         calls.push(`queue:${label}`);
@@ -58,21 +102,16 @@ void test('global shortcut input delegates detection and handler wiring', () => 
       openAddDirectoryPrompt: () => {
         calls.push('open-add-directory');
       },
-      getActiveDirectoryId: () => activeDirectoryId,
-      directoryExists: (directoryId) => {
-        calls.push(`directory-exists:${directoryId}`);
-        return true;
-      },
       closeDirectory: async (directoryId) => {
         calls.push(`close-directory:${directoryId}`);
       },
       cycleLeftNavSelection: (direction) => {
         calls.push(`cycle:${direction}`);
       },
-    },
+    }),
     {
-      detectMuxGlobalShortcut: () => 'mux.directory.close',
-      handleGlobalShortcut: (options) => {
+      detectShortcut: () => 'mux.directory.close',
+      handleShortcut: (options) => {
         calls.push(`shortcut:${options.shortcut}`);
         calls.push(`conversation:${options.resolveConversationForAction() ?? 'none'}`);
         calls.push(`closable:${options.resolveClosableDirectoryId() ?? 'none'}`);
@@ -101,31 +140,19 @@ void test('global shortcut input delegates detection and handler wiring', () => 
 });
 
 void test('global shortcut input default dependencies return false when no shortcut matches', () => {
-  const input = new GlobalShortcutInput({
-    shortcutBindings: resolveMuxShortcutBindings(),
-    requestStop: () => {},
-    resolveDirectoryForAction: () => null,
-    openNewThreadPrompt: () => {},
-    toggleCommandMenu: () => {},
-    toggleDebugBar: () => {},
-    openOrCreateCritiqueConversationInDirectory: async () => {},
-    toggleGatewayProfile: async () => {},
-    toggleGatewayStatusTimeline: async () => {},
-    toggleGatewayRenderTrace: async () => {},
-    getMainPaneMode: () => 'home',
-    getActiveConversationId: () => null,
-    conversationsHas: () => false,
-    queueControlPlaneOp: () => {},
-    archiveConversation: async () => {},
-    refreshAllConversationTitles: async () => {},
-    interruptConversation: async () => {},
-    takeoverConversation: async () => {},
-    openAddDirectoryPrompt: () => {},
-    getActiveDirectoryId: () => null,
-    directoryExists: () => false,
-    closeDirectory: async () => {},
-    cycleLeftNavSelection: () => {},
-  });
+  const input = new GlobalShortcutInput(
+    resolveMuxShortcutBindings(),
+    createState({
+      mainPaneMode: () => 'home',
+      activeConversationId: () => null,
+      conversationsHas: () => false,
+    }),
+    createActions(),
+    {
+      detectShortcut: detectMuxGlobalShortcut,
+      handleShortcut: handleGlobalShortcut,
+    },
+  );
 
   assert.equal(input.handleInput(Buffer.from('z')), false);
 });
@@ -133,36 +160,16 @@ void test('global shortcut input default dependencies return false when no short
 void test('global shortcut input routes each interrupt-all shortcut through the shared handler', () => {
   const calls: string[] = [];
   const input = new GlobalShortcutInput(
-    {
-      shortcutBindings: resolveMuxShortcutBindings(),
+    resolveMuxShortcutBindings(),
+    createState(),
+    createActions({
       requestStop: () => {
         calls.push('request-stop');
       },
-      resolveDirectoryForAction: () => null,
-      openNewThreadPrompt: () => {},
-      toggleCommandMenu: () => {},
-      toggleDebugBar: () => {},
-      openOrCreateCritiqueConversationInDirectory: async () => {},
-      toggleGatewayProfile: async () => {},
-      toggleGatewayStatusTimeline: async () => {},
-      toggleGatewayRenderTrace: async () => {},
-      getMainPaneMode: () => 'conversation',
-      getActiveConversationId: () => 'session-a',
-      conversationsHas: () => true,
-      queueControlPlaneOp: () => {},
-      archiveConversation: async () => {},
-      refreshAllConversationTitles: async () => {},
-      interruptConversation: async () => {},
-      takeoverConversation: async () => {},
-      openAddDirectoryPrompt: () => {},
-      getActiveDirectoryId: () => null,
-      directoryExists: () => false,
-      closeDirectory: async () => {},
-      cycleLeftNavSelection: () => {},
-    },
+    }),
     {
-      detectMuxGlobalShortcut: () => 'mux.app.interrupt-all',
-      handleGlobalShortcut: (options) => {
+      detectShortcut: () => 'mux.app.interrupt-all',
+      handleShortcut: (options) => {
         calls.push(`handler:${options.shortcut}`);
         options.requestStop();
         return true;
@@ -182,34 +189,12 @@ void test('global shortcut input routes each interrupt-all shortcut through the 
 
 void test('global shortcut input preserves interrupt-all handler return value', () => {
   const input = new GlobalShortcutInput(
+    resolveMuxShortcutBindings(),
+    createState(),
+    createActions(),
     {
-      shortcutBindings: resolveMuxShortcutBindings(),
-      requestStop: () => {},
-      resolveDirectoryForAction: () => null,
-      openNewThreadPrompt: () => {},
-      toggleCommandMenu: () => {},
-      toggleDebugBar: () => {},
-      openOrCreateCritiqueConversationInDirectory: async () => {},
-      toggleGatewayProfile: async () => {},
-      toggleGatewayStatusTimeline: async () => {},
-      toggleGatewayRenderTrace: async () => {},
-      getMainPaneMode: () => 'conversation',
-      getActiveConversationId: () => 'session-a',
-      conversationsHas: () => true,
-      queueControlPlaneOp: () => {},
-      archiveConversation: async () => {},
-      refreshAllConversationTitles: async () => {},
-      interruptConversation: async () => {},
-      takeoverConversation: async () => {},
-      openAddDirectoryPrompt: () => {},
-      getActiveDirectoryId: () => null,
-      directoryExists: () => false,
-      closeDirectory: async () => {},
-      cycleLeftNavSelection: () => {},
-    },
-    {
-      detectMuxGlobalShortcut: () => 'mux.app.interrupt-all',
-      handleGlobalShortcut: () => false,
+      detectShortcut: () => 'mux.app.interrupt-all',
+      handleShortcut: () => false,
     },
   );
 
@@ -219,35 +204,16 @@ void test('global shortcut input preserves interrupt-all handler return value', 
 void test('global shortcut input bypasses ctrl-only shortcuts for terminal conversations', () => {
   const calls: string[] = [];
   const input = new GlobalShortcutInput(
+    resolveMuxShortcutBindings(),
+    createState({
+      mainPaneMode: () => 'conversation',
+      activeConversationId: () => 'session-terminal',
+      activeConversationAgentType: () => 'terminal',
+    }),
+    createActions(),
     {
-      shortcutBindings: resolveMuxShortcutBindings(),
-      requestStop: () => {},
-      resolveDirectoryForAction: () => null,
-      openNewThreadPrompt: () => {},
-      toggleCommandMenu: () => {},
-      toggleDebugBar: () => {},
-      openOrCreateCritiqueConversationInDirectory: async () => {},
-      toggleGatewayProfile: async () => {},
-      toggleGatewayStatusTimeline: async () => {},
-      toggleGatewayRenderTrace: async () => {},
-      getMainPaneMode: () => 'conversation',
-      getActiveConversationId: () => 'session-terminal',
-      getActiveConversationAgentType: () => 'terminal',
-      conversationsHas: () => true,
-      queueControlPlaneOp: () => {},
-      archiveConversation: async () => {},
-      refreshAllConversationTitles: async () => {},
-      interruptConversation: async () => {},
-      takeoverConversation: async () => {},
-      openAddDirectoryPrompt: () => {},
-      getActiveDirectoryId: () => null,
-      directoryExists: () => false,
-      closeDirectory: async () => {},
-      cycleLeftNavSelection: () => {},
-    },
-    {
-      detectMuxGlobalShortcut: () => 'mux.conversation.titles.refresh-all',
-      handleGlobalShortcut: (options) => {
+      detectShortcut: () => 'mux.conversation.titles.refresh-all',
+      handleShortcut: (options) => {
         calls.push(`handled:${options.shortcut}`);
         return true;
       },
@@ -267,35 +233,16 @@ void test('global shortcut input still handles archive/delete ctrl-only shortcut
     'mux.conversation.delete',
   ];
   const input = new GlobalShortcutInput(
+    resolveMuxShortcutBindings(),
+    createState({
+      mainPaneMode: () => 'conversation',
+      activeConversationId: () => 'session-terminal',
+      activeConversationAgentType: () => 'terminal',
+    }),
+    createActions(),
     {
-      shortcutBindings: resolveMuxShortcutBindings(),
-      requestStop: () => {},
-      resolveDirectoryForAction: () => null,
-      openNewThreadPrompt: () => {},
-      toggleCommandMenu: () => {},
-      toggleDebugBar: () => {},
-      openOrCreateCritiqueConversationInDirectory: async () => {},
-      toggleGatewayProfile: async () => {},
-      toggleGatewayStatusTimeline: async () => {},
-      toggleGatewayRenderTrace: async () => {},
-      getMainPaneMode: () => 'conversation',
-      getActiveConversationId: () => 'session-terminal',
-      getActiveConversationAgentType: () => 'terminal',
-      conversationsHas: () => true,
-      queueControlPlaneOp: () => {},
-      archiveConversation: async () => {},
-      refreshAllConversationTitles: async () => {},
-      interruptConversation: async () => {},
-      takeoverConversation: async () => {},
-      openAddDirectoryPrompt: () => {},
-      getActiveDirectoryId: () => null,
-      directoryExists: () => false,
-      closeDirectory: async () => {},
-      cycleLeftNavSelection: () => {},
-    },
-    {
-      detectMuxGlobalShortcut: () => shortcuts.shift() ?? 'mux.conversation.delete',
-      handleGlobalShortcut: (options) => {
+      detectShortcut: () => shortcuts.shift() ?? 'mux.conversation.delete',
+      handleShortcut: (options) => {
         calls.push(`handled:${options.shortcut}`);
         return true;
       },
@@ -314,35 +261,16 @@ void test('global shortcut input still handles thread navigation ctrl-only short
     'mux.conversation.previous',
   ];
   const input = new GlobalShortcutInput(
+    resolveMuxShortcutBindings(),
+    createState({
+      mainPaneMode: () => 'conversation',
+      activeConversationId: () => 'session-terminal',
+      activeConversationAgentType: () => 'terminal',
+    }),
+    createActions(),
     {
-      shortcutBindings: resolveMuxShortcutBindings(),
-      requestStop: () => {},
-      resolveDirectoryForAction: () => null,
-      openNewThreadPrompt: () => {},
-      toggleCommandMenu: () => {},
-      toggleDebugBar: () => {},
-      openOrCreateCritiqueConversationInDirectory: async () => {},
-      toggleGatewayProfile: async () => {},
-      toggleGatewayStatusTimeline: async () => {},
-      toggleGatewayRenderTrace: async () => {},
-      getMainPaneMode: () => 'conversation',
-      getActiveConversationId: () => 'session-terminal',
-      getActiveConversationAgentType: () => 'terminal',
-      conversationsHas: () => true,
-      queueControlPlaneOp: () => {},
-      archiveConversation: async () => {},
-      refreshAllConversationTitles: async () => {},
-      interruptConversation: async () => {},
-      takeoverConversation: async () => {},
-      openAddDirectoryPrompt: () => {},
-      getActiveDirectoryId: () => null,
-      directoryExists: () => false,
-      closeDirectory: async () => {},
-      cycleLeftNavSelection: () => {},
-    },
-    {
-      detectMuxGlobalShortcut: () => shortcuts.shift() ?? 'mux.conversation.previous',
-      handleGlobalShortcut: (options) => {
+      detectShortcut: () => shortcuts.shift() ?? 'mux.conversation.previous',
+      handleShortcut: (options) => {
         calls.push(`handled:${options.shortcut}`);
         return true;
       },
@@ -357,35 +285,16 @@ void test('global shortcut input still handles thread navigation ctrl-only short
 void test('global shortcut input still handles non-ctrl shortcuts for terminal conversations', () => {
   const calls: string[] = [];
   const input = new GlobalShortcutInput(
+    resolveMuxShortcutBindings(),
+    createState({
+      mainPaneMode: () => 'conversation',
+      activeConversationId: () => 'session-terminal',
+      activeConversationAgentType: () => 'terminal',
+    }),
+    createActions(),
     {
-      shortcutBindings: resolveMuxShortcutBindings(),
-      requestStop: () => {},
-      resolveDirectoryForAction: () => null,
-      openNewThreadPrompt: () => {},
-      toggleCommandMenu: () => {},
-      toggleDebugBar: () => {},
-      openOrCreateCritiqueConversationInDirectory: async () => {},
-      toggleGatewayProfile: async () => {},
-      toggleGatewayStatusTimeline: async () => {},
-      toggleGatewayRenderTrace: async () => {},
-      getMainPaneMode: () => 'conversation',
-      getActiveConversationId: () => 'session-terminal',
-      getActiveConversationAgentType: () => 'terminal',
-      conversationsHas: () => true,
-      queueControlPlaneOp: () => {},
-      archiveConversation: async () => {},
-      refreshAllConversationTitles: async () => {},
-      interruptConversation: async () => {},
-      takeoverConversation: async () => {},
-      openAddDirectoryPrompt: () => {},
-      getActiveDirectoryId: () => null,
-      directoryExists: () => false,
-      closeDirectory: async () => {},
-      cycleLeftNavSelection: () => {},
-    },
-    {
-      detectMuxGlobalShortcut: () => 'mux.command-menu.toggle',
-      handleGlobalShortcut: (options) => {
+      detectShortcut: () => 'mux.command-menu.toggle',
+      handleShortcut: (options) => {
         calls.push(`handled:${options.shortcut}`);
         return true;
       },

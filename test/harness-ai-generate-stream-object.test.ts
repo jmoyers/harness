@@ -174,3 +174,105 @@ void test('streamObject validate callback failure rejects final object', async (
 
   await assert.rejects(result.object, /did not pass validator/);
 });
+
+void test('streamObject supports messages/system mode and deduplicates repeated partial JSON snapshots', async () => {
+  let capturedBody: Record<string, unknown> | null = null;
+  const model: HarnessAnthropicModel = {
+    provider: 'harness.anthropic',
+    modelId: 'claude-sonnet',
+    apiKey: 'test-key',
+    baseUrl: 'https://mock.anthropic.local/v1',
+    headers: {},
+    fetch: async (_url, init) => {
+      const bodyText =
+        typeof init?.body === 'string'
+          ? init.body
+          : Buffer.from(init?.body as ArrayBuffer).toString('utf8');
+      capturedBody = JSON.parse(bodyText) as Record<string, unknown>;
+      return createAnthropicResponse([
+        {
+          type: 'message_start',
+          message: {
+            id: 'json-msg-messages',
+            model: 'claude-sonnet',
+            usage: { input_tokens: 1, output_tokens: 0 },
+          },
+        },
+        { type: 'content_block_start', index: 0, content_block: { type: 'text' } },
+        {
+          type: 'content_block_delta',
+          index: 0,
+          delta: { type: 'text_delta', text: '{"count":1}' },
+        },
+        {
+          type: 'content_block_delta',
+          index: 0,
+          delta: { type: 'text_delta', text: '{"count":1}' },
+        },
+        { type: 'content_block_stop', index: 0 },
+        {
+          type: 'message_delta',
+          delta: { stop_reason: 'end_turn' },
+          usage: { input_tokens: 1, output_tokens: 2 },
+        },
+        { type: 'message_stop' },
+      ]);
+    },
+  };
+
+  const result = streamObject<{ count: number }, {}>({
+    model,
+    messages: [{ role: 'user', content: 'provide json' }],
+    system: 'System policy',
+    schema: { type: 'object' },
+  });
+
+  const partials = await collectStream(result.partialObjectStream);
+  const object = await result.object;
+  assert.deepEqual(partials, [{ count: 1 }]);
+  assert.deepEqual(object, { count: 1 });
+  assert.equal(Array.isArray(capturedBody?.['messages']), true);
+  const systemText = capturedBody?.['system'];
+  assert.equal(
+    typeof systemText === 'string' && String(systemText).includes('Respond with strict JSON only.'),
+    true,
+  );
+});
+
+void test('streamObject partial stream skips non-object json snapshots', async () => {
+  const model = createSingleResponseModel(
+    createAnthropicResponse([
+      {
+        type: 'message_start',
+        message: {
+          id: 'json-null',
+          model: 'claude-sonnet',
+          usage: { input_tokens: 1, output_tokens: 0 },
+        },
+      },
+      { type: 'content_block_start', index: 0, content_block: { type: 'text' } },
+      {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'text_delta', text: 'null' },
+      },
+      { type: 'content_block_stop', index: 0 },
+      {
+        type: 'message_delta',
+        delta: { stop_reason: 'end_turn' },
+        usage: { input_tokens: 1, output_tokens: 2 },
+      },
+      { type: 'message_stop' },
+    ]),
+  );
+
+  const result = streamObject<{ ok: true }, {}>({
+    model,
+    prompt: 'return null',
+    schema: { type: 'object' },
+  });
+
+  const partials = await collectStream(result.partialObjectStream);
+  assert.deepEqual(partials, []);
+  await assert.rejects(result.object, /no JSON object found/u);
+});

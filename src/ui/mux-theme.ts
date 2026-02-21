@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { HarnessMuxThemeConfig } from '../config/config-core.ts';
-import type { UiColor, UiStyle } from './surface.ts';
-import type { UiModalTheme } from './kit.ts';
+import type { UiModalTheme } from '../../packages/harness-ui/src/kit.ts';
+import type { UiColor, UiStyle } from '../../packages/harness-ui/src/surface.ts';
 import { BUILTIN_MUX_THEME_PRESETS } from './mux-theme-presets.ts';
 
 type OpenCodeThemeMode = 'dark' | 'light';

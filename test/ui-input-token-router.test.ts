@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { computeDualPaneLayout } from '../src/mux/dual-pane-core.ts';
+import { classifyPaneAt, computeDualPaneLayout } from '../src/mux/dual-pane-core.ts';
+import {
+  hasAltModifier,
+  isLeftButtonPress,
+  isMotionMouseCode,
+} from '../src/mux/live-mux/selection.ts';
 import type { TerminalSnapshotFrameCore } from '../src/terminal/snapshot-oracle.ts';
-import { InputTokenRouter } from '../src/ui/input-token-router.ts';
+import { InputTokenRouter } from '../packages/harness-ui/src/interaction/input-token-router.ts';
 
 function createFrame(label: string): TerminalSnapshotFrameCore {
   return {
@@ -62,6 +67,17 @@ function mouseTokenWithFinal(code: number, col: number, row: number, final: 'M' 
   };
 }
 
+function defaultStrategies(): ConstructorParameters<typeof InputTokenRouter>[1] {
+  return {
+    classifyPaneAt: (layout, col, row) =>
+      classifyPaneAt(layout as Parameters<typeof classifyPaneAt>[0], col, row),
+    isLeftButtonPress,
+    hasAltModifier,
+    hasShiftModifier: (code) => (code & 0b0000_0100) !== 0,
+    isMotionMouseCode,
+  };
+}
+
 void test('input token router delegates staged mouse routing and preserves passthrough tokens', () => {
   const layout = computeDualPaneLayout(100, 24);
   const rightCol = layout.rightStartCol;
@@ -85,93 +101,96 @@ void test('input token router delegates staged mouse routing and preserves passt
   let selectionFrameLabel = '';
   let resolvedSelectionText = '';
 
-  const router = new InputTokenRouter({
-    getMainPaneMode: () => 'conversation',
-    pointerRoutingInput: {
-      handlePaneDividerDrag: ({ code }) => {
-        if (code === 11) {
-          consumed.divider = true;
-          return true;
-        }
-        return false;
+  const router = new InputTokenRouter(
+    {
+      getMainPaneMode: () => 'conversation',
+      pointerRoutingInput: {
+        handlePaneDividerDrag: ({ code }) => {
+          if (code === 11) {
+            consumed.divider = true;
+            return true;
+          }
+          return false;
+        },
+        handleHomePaneDragRelease: ({ rowIndex }) => {
+          if (rowIndex === 1) {
+            consumed.release = true;
+            return true;
+          }
+          return false;
+        },
+        handleSeparatorPointerPress: ({ code }) => {
+          if (code === 13) {
+            consumed.separator = true;
+            return true;
+          }
+          return false;
+        },
+        handleMainPaneWheel: ({ code }, onConversationWheel) => {
+          if (code === 64) {
+            consumed.wheel = true;
+            onConversationWheel(3);
+            return true;
+          }
+          return false;
+        },
+        handleHomePaneDragMove: ({ code }) => {
+          if (code === 14) {
+            consumed.move = true;
+            return true;
+          }
+          return false;
+        },
       },
-      handleHomePaneDragRelease: ({ rowIndex }) => {
-        if (rowIndex === 1) {
-          consumed.release = true;
-          return true;
-        }
-        return false;
+      mainPanePointerInput: {
+        handleProjectPanePointerClick: ({ code }) => {
+          if (code === 15) {
+            consumed.project = true;
+            return true;
+          }
+          return false;
+        },
+        handleHomePanePointerClick: ({ code }) => {
+          if (code === 16) {
+            consumed.home = true;
+            return true;
+          }
+          return false;
+        },
       },
-      handleSeparatorPointerPress: ({ code }) => {
-        if (code === 13) {
-          consumed.separator = true;
-          return true;
-        }
-        return false;
+      leftRailPointerInput: {
+        handlePointerClick: ({ clickEligible, pointerRow }) => {
+          if (pointerRow === 8) {
+            consumed.leftRail = clickEligible;
+            return true;
+          }
+          return false;
+        },
       },
-      handleMainPaneWheel: ({ code }, onConversationWheel) => {
-        if (code === 64) {
-          consumed.wheel = true;
-          onConversationWheel(3);
-          return true;
-        }
-        return false;
-      },
-      handleHomePaneDragMove: ({ code }) => {
-        if (code === 14) {
-          consumed.move = true;
-          return true;
-        }
-        return false;
+      conversationSelectionInput: {
+        clearSelectionOnTextToken: (textLength) => {
+          clearSelectionLength += textLength;
+          return false;
+        },
+        handleMouseSelection: ({ event, frame, resolveSelectionText }) => {
+          selectionFrameLabel = frame.lines[0] ?? '';
+          resolvedSelectionText =
+            resolveSelectionText?.({
+              anchor: { rowAbs: 0, col: 1 },
+              focus: { rowAbs: 5, col: 3 },
+              text: '',
+            }) ?? '';
+          if (event.code === 17) {
+            consumed.selectionTrue = true;
+            return true;
+          }
+          consumed.selectionFalse = true;
+          return false;
+        },
       },
     },
-    mainPanePointerInput: {
-      handleProjectPanePointerClick: ({ code }) => {
-        if (code === 15) {
-          consumed.project = true;
-          return true;
-        }
-        return false;
-      },
-      handleHomePanePointerClick: ({ code }) => {
-        if (code === 16) {
-          consumed.home = true;
-          return true;
-        }
-        return false;
-      },
-    },
-    leftRailPointerInput: {
-      handlePointerClick: ({ clickEligible, pointerRow }) => {
-        if (pointerRow === 8) {
-          consumed.leftRail = clickEligible;
-          return true;
-        }
-        return false;
-      },
-    },
-    conversationSelectionInput: {
-      clearSelectionOnTextToken: (textLength) => {
-        clearSelectionLength += textLength;
-        return false;
-      },
-      handleMouseSelection: ({ event, frame, resolveSelectionText }) => {
-        selectionFrameLabel = frame.lines[0] ?? '';
-        resolvedSelectionText =
-          resolveSelectionText?.({
-            anchor: { rowAbs: 0, col: 1 },
-            focus: { rowAbs: 5, col: 3 },
-            text: '',
-          }) ?? '';
-        if (event.code === 17) {
-          consumed.selectionTrue = true;
-          return true;
-        }
-        consumed.selectionFalse = true;
-        return false;
-      },
-    },
-  });
+    defaultStrategies(),
+  );
 
   const conversation = {
     oracle: {
@@ -243,33 +262,36 @@ void test('input token router bypasses local right-pane handlers when app mouse 
   frame.viewport.followOutput = true;
   const calls: string[] = [];
 
-  const router = new InputTokenRouter({
-    getMainPaneMode: () => 'conversation',
-    pointerRoutingInput: {
-      handlePaneDividerDrag: () => false,
-      handleHomePaneDragRelease: () => false,
-      handleSeparatorPointerPress: () => false,
-      handleMainPaneWheel: () => {
-        calls.push('wheel-consumed');
-        return true;
+  const router = new InputTokenRouter(
+    {
+      getMainPaneMode: () => 'conversation',
+      pointerRoutingInput: {
+        handlePaneDividerDrag: () => false,
+        handleHomePaneDragRelease: () => false,
+        handleSeparatorPointerPress: () => false,
+        handleMainPaneWheel: () => {
+          calls.push('wheel-consumed');
+          return true;
+        },
+        handleHomePaneDragMove: () => false,
       },
-      handleHomePaneDragMove: () => false,
-    },
-    mainPanePointerInput: {
-      handleProjectPanePointerClick: () => false,
-      handleHomePanePointerClick: () => false,
-    },
-    leftRailPointerInput: {
-      handlePointerClick: () => false,
-    },
-    conversationSelectionInput: {
-      clearSelectionOnTextToken: () => false,
-      handleMouseSelection: () => {
-        calls.push('selection-consumed');
-        return true;
+      mainPanePointerInput: {
+        handleProjectPanePointerClick: () => false,
+        handleHomePanePointerClick: () => false,
+      },
+      leftRailPointerInput: {
+        handlePointerClick: () => false,
+      },
+      conversationSelectionInput: {
+        clearSelectionOnTextToken: () => false,
+        handleMouseSelection: () => {
+          calls.push('selection-consumed');
+          return true;
+        },
       },
     },
-  });
+    defaultStrategies(),
+  );
 
   const wheelToken = mouseToken(64, rightCol, 2);
   const clickToken = mouseToken(0, rightCol, 3);
@@ -339,6 +361,7 @@ void test('input token router supports dependency overrides and null-conversatio
       classifyPaneAt: () => 'left',
       isLeftButtonPress: () => true,
       hasAltModifier: () => true,
+      hasShiftModifier: () => false,
       isMotionMouseCode: () => false,
     },
   );
@@ -362,45 +385,48 @@ void test('input token router routes home-pane mouse selection through shared se
   const rightCol = layout.rightStartCol + 4;
   const calls: string[] = [];
   let capturedText = '';
-  const router = new InputTokenRouter({
-    getMainPaneMode: () => 'home',
-    getHomePaneSelectionContext: () => ({
-      viewportTop: 3,
-      totalRows: 12,
-      resolveSelectionText: (selection) => {
-        capturedText = `rows:${selection.anchor.rowAbs}-${selection.focus.rowAbs}`;
-        return capturedText;
+  const router = new InputTokenRouter(
+    {
+      getMainPaneMode: () => 'home',
+      getHomePaneSelectionContext: () => ({
+        viewportTop: 3,
+        totalRows: 12,
+        resolveSelectionText: (selection) => {
+          capturedText = `rows:${selection.anchor.rowAbs}-${selection.focus.rowAbs}`;
+          return capturedText;
+        },
+      }),
+      pointerRoutingInput: {
+        handlePaneDividerDrag: () => false,
+        handleHomePaneDragRelease: () => false,
+        handleSeparatorPointerPress: () => false,
+        handleMainPaneWheel: () => false,
+        handleHomePaneDragMove: () => false,
       },
-    }),
-    pointerRoutingInput: {
-      handlePaneDividerDrag: () => false,
-      handleHomePaneDragRelease: () => false,
-      handleSeparatorPointerPress: () => false,
-      handleMainPaneWheel: () => false,
-      handleHomePaneDragMove: () => false,
-    },
-    mainPanePointerInput: {
-      handleProjectPanePointerClick: () => false,
-      handleHomePanePointerClick: () => false,
-    },
-    leftRailPointerInput: {
-      handlePointerClick: () => false,
-    },
-    conversationSelectionInput: {
-      clearSelectionOnTextToken: () => false,
-      handleMouseSelection: ({ frame, event, resolveSelectionText }) => {
-        calls.push(`selection:${event.code}:${event.final}:${frame.viewport.top}`);
-        const text =
-          resolveSelectionText?.({
-            anchor: { rowAbs: 3, col: 0 },
-            focus: { rowAbs: 4, col: 5 },
-            text: '',
-          }) ?? '';
-        calls.push(`text:${text}`);
-        return true;
+      mainPanePointerInput: {
+        handleProjectPanePointerClick: () => false,
+        handleHomePanePointerClick: () => false,
+      },
+      leftRailPointerInput: {
+        handlePointerClick: () => false,
+      },
+      conversationSelectionInput: {
+        clearSelectionOnTextToken: () => false,
+        handleMouseSelection: ({ frame, event, resolveSelectionText }) => {
+          calls.push(`selection:${event.code}:${event.final}:${frame.viewport.top}`);
+          const text =
+            resolveSelectionText?.({
+              anchor: { rowAbs: 3, col: 0 },
+              focus: { rowAbs: 4, col: 5 },
+              text: '',
+            }) ?? '';
+          calls.push(`text:${text}`);
+          return true;
+        },
       },
     },
-  });
+    defaultStrategies(),
+  );
 
   const result = router.routeTokens({
     tokens: [mouseToken(0, rightCol, 2), mouseTokenWithFinal(0, rightCol, 2, 'm')],

@@ -14,9 +14,15 @@ import {
 } from './command-menu.ts';
 import type { createNewThreadPromptState } from '../new-thread-prompt.ts';
 import { newThreadPromptBodyLines } from '../new-thread-prompt.ts';
-import { buildUiModalOverlay } from '../../ui/kit.ts';
+import { UiKit, type UiModalOverlayOptions } from '../../../packages/harness-ui/src/kit.ts';
 
 type NewThreadPromptState = ReturnType<typeof createNewThreadPromptState>;
+const uiKit = new UiKit();
+
+function buildUiModalOverlay(options: UiModalOverlayOptions) {
+  return uiKit.buildModalOverlay(options);
+}
+
 type UiModalThemeInput = NonNullable<Parameters<typeof buildUiModalOverlay>[0]['theme']>;
 
 interface TaskEditorPromptOverlayState {

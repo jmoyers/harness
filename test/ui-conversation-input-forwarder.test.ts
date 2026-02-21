@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import { computeDualPaneLayout } from '../src/mux/dual-pane-core.ts';
 import type { ConversationState } from '../src/mux/live-mux/conversation-state.ts';
-import { ConversationInputForwarder } from '../src/ui/conversation-input-forwarder.ts';
+import { ConversationInputForwarder } from '../packages/harness-ui/src/interaction/conversation-input-forwarder.ts';
 
 function createConversation(controller: string | null): ConversationState {
   let viewportScroll = 0;
@@ -103,70 +103,67 @@ void test('conversation input forwarder routes tokens scrolls and forwards sessi
   let inputRemainder = 'previous';
   const calls: string[] = [];
   const conversation = createConversation(null);
-  const forwarder = new ConversationInputForwarder(
-    {
-      getInputRemainder: () => inputRemainder,
-      setInputRemainder: (next) => {
-        inputRemainder = next;
-      },
-      getMainPaneMode: () => 'conversation',
-      getLayout: () => computeDualPaneLayout(80, 24),
-      inputTokenRouter: {
-        routeTokens: (input) => {
-          calls.push(`token-count:${input.tokens.length}`);
-          calls.push(`snapshot-lines:${input.snapshotForInput?.lines.length ?? 0}`);
-          return {
-            routedTokens: [
-              {
-                kind: 'passthrough',
-                text: 'abc',
-              },
-            ],
-            snapshotForInput: input.snapshotForInput,
-          };
-        },
-      },
-      getActiveConversation: () => conversation,
-      markDirty: () => {
-        calls.push('mark-dirty');
-      },
-      isControlledByLocalHuman: () => true,
-      controllerId: 'mux',
-      sendInputToSession: (sessionId, chunk) => {
-        calls.push(`send:${sessionId}:${chunk.toString('utf8')}`);
-      },
-      noteGitActivity: (directoryId) => {
-        calls.push(`git:${directoryId ?? 'null'}`);
-      },
+  const forwarder = new ConversationInputForwarder({
+    getInputRemainder: () => inputRemainder,
+    setInputRemainder: (next) => {
+      inputRemainder = next;
     },
-    {
-      parseMuxInputChunk: (previous, input) => {
-        calls.push(`parse:${previous}:${input.toString('utf8')}`);
+    getMainPaneMode: () => 'conversation',
+    getLayout: () => computeDualPaneLayout(80, 24),
+    inputTokenRouter: {
+      routeTokens: (input) => {
+        calls.push(`token-count:${input.tokens.length}`);
+        calls.push(`snapshot-lines:${input.snapshotForInput?.lines.length ?? 0}`);
         return {
-          tokens: [
+          routedTokens: [
             {
               kind: 'passthrough',
-              text: 'token',
+              text: 'abc',
             },
           ],
-          remainder: 'next',
+          snapshotForInput: input.snapshotForInput,
         };
-      },
-      routeInputTokensForConversation: (input) => {
-        calls.push(`route:${input.mainPaneMode}`);
-        calls.push(`classified:${input.classifyPaneAt(1, 1)}`);
-        calls.push(`wheel:${input.wheelDeltaRowsFromCode(64)}`);
-        return {
-          mainPaneScrollRows: 2,
-          forwardToSession: [Buffer.from('payload')],
-        };
-      },
-      classifyPaneAt: () => 'left',
-      normalizeMuxKeyboardInputForPty: () => {
-        throw new Error('unused');
       },
     },
-  );
+    getActiveConversation: () => conversation,
+    markDirty: () => {
+      calls.push('mark-dirty');
+    },
+    isControlledByLocalHuman: () => true,
+    controllerId: 'mux',
+    sendInputToSession: (sessionId, chunk) => {
+      calls.push(`send:${sessionId}:${chunk.toString('utf8')}`);
+    },
+    noteGitActivity: (directoryId) => {
+      calls.push(`git:${directoryId ?? 'null'}`);
+    },
+    parseMuxInputChunk: (previous, input) => {
+      calls.push(`parse:${previous}:${input.toString('utf8')}`);
+      return {
+        tokens: [
+          {
+            kind: 'passthrough',
+            text: 'token',
+          },
+        ],
+        remainder: 'next',
+      };
+    },
+    routeInputTokensForConversation: (input) => {
+      calls.push(`route:${input.mainPaneMode}`);
+      calls.push(`classified:${input.classifyPaneAt(1, 1)}`);
+      calls.push(`wheel:${input.wheelDeltaRowsFromCode(64)}`);
+      calls.push(`shift:${input.hasShiftModifier(0b0000_0100)}`);
+      return {
+        mainPaneScrollRows: 2,
+        forwardToSession: [Buffer.from('payload')],
+      };
+    },
+    classifyPaneAt: () => 'left',
+    normalizeMuxKeyboardInputForPty: () => {
+      throw new Error('unused');
+    },
+  });
 
   forwarder.handleInput(Buffer.from('input'));
 
@@ -178,6 +175,7 @@ void test('conversation input forwarder routes tokens scrolls and forwards sessi
     'route:conversation',
     'classified:left',
     'wheel:-1',
+    'shift:true',
     'mark-dirty',
     'send:session-a:payload',
     'git:dir-a',
@@ -187,47 +185,45 @@ void test('conversation input forwarder routes tokens scrolls and forwards sessi
 void test('conversation input forwarder blocks forwarding when controller is non-local', () => {
   let inputRemainder = '';
   const calls: string[] = [];
-  const forwarder = new ConversationInputForwarder(
-    {
-      getInputRemainder: () => inputRemainder,
-      setInputRemainder: (next) => {
-        inputRemainder = next;
-      },
-      getMainPaneMode: () => 'conversation',
-      getLayout: () => computeDualPaneLayout(80, 24),
-      inputTokenRouter: {
-        routeTokens: (input) => ({
-          routedTokens: [...input.tokens],
-          snapshotForInput: input.snapshotForInput,
-        }),
-      },
-      getActiveConversation: () => createConversation('other'),
-      markDirty: () => {
-        calls.push('mark-dirty');
-      },
-      isControlledByLocalHuman: ({ controllerId }) => {
-        calls.push(`controlled:${controllerId}`);
-        return false;
-      },
-      controllerId: 'mux',
-      sendInputToSession: () => {
-        calls.push('send');
-      },
-      noteGitActivity: () => {
-        calls.push('git');
-      },
+  const forwarder = new ConversationInputForwarder({
+    getInputRemainder: () => inputRemainder,
+    setInputRemainder: (next) => {
+      inputRemainder = next;
     },
-    {
-      parseMuxInputChunk: () => ({
-        tokens: [],
-        remainder: '',
-      }),
-      routeInputTokensForConversation: () => ({
-        mainPaneScrollRows: 0,
-        forwardToSession: [Buffer.from('payload')],
+    getMainPaneMode: () => 'conversation',
+    getLayout: () => computeDualPaneLayout(80, 24),
+    inputTokenRouter: {
+      routeTokens: (input) => ({
+        routedTokens: [...input.tokens],
+        snapshotForInput: input.snapshotForInput,
       }),
     },
-  );
+    getActiveConversation: () => createConversation('other'),
+    markDirty: () => {
+      calls.push('mark-dirty');
+    },
+    isControlledByLocalHuman: ({ controllerId }) => {
+      calls.push(`controlled:${controllerId}`);
+      return false;
+    },
+    controllerId: 'mux',
+    sendInputToSession: () => {
+      calls.push('send');
+    },
+    noteGitActivity: () => {
+      calls.push('git');
+    },
+    parseMuxInputChunk: () => ({
+      tokens: [],
+      remainder: '',
+    }),
+    routeInputTokensForConversation: () => ({
+      mainPaneScrollRows: 0,
+      forwardToSession: [Buffer.from('payload')],
+    }),
+    classifyPaneAt: () => 'left',
+    normalizeMuxKeyboardInputForPty: (input) => input,
+  });
 
   forwarder.handleInput(Buffer.from('x'));
 
@@ -236,50 +232,48 @@ void test('conversation input forwarder blocks forwarding when controller is non
 
 void test('conversation input forwarder can forward controlled session and skip git activity with no chunks', () => {
   const calls: string[] = [];
-  const forwarder = new ConversationInputForwarder(
-    {
-      getInputRemainder: () => '',
-      setInputRemainder: () => {},
-      getMainPaneMode: () => 'conversation',
-      getLayout: () => computeDualPaneLayout(80, 24),
-      inputTokenRouter: {
-        routeTokens: (input) => ({
-          routedTokens: [...input.tokens],
-          snapshotForInput: input.snapshotForInput,
-        }),
-      },
-      getActiveConversation: () => createConversation('mux'),
-      markDirty: () => {},
-      isControlledByLocalHuman: ({ controllerId }) => {
-        calls.push(`controlled:${controllerId}`);
-        return true;
-      },
-      controllerId: 'mux',
-      sendInputToSession: () => {
-        calls.push('send');
-      },
-      noteGitActivity: () => {
-        calls.push('git');
-      },
-    },
-    {
-      parseMuxInputChunk: () => ({
-        tokens: [],
-        remainder: '',
-      }),
-      routeInputTokensForConversation: () => ({
-        mainPaneScrollRows: 0,
-        forwardToSession: [],
+  const forwarder = new ConversationInputForwarder({
+    getInputRemainder: () => '',
+    setInputRemainder: () => {},
+    getMainPaneMode: () => 'conversation',
+    getLayout: () => computeDualPaneLayout(80, 24),
+    inputTokenRouter: {
+      routeTokens: (input) => ({
+        routedTokens: [...input.tokens],
+        snapshotForInput: input.snapshotForInput,
       }),
     },
-  );
+    getActiveConversation: () => createConversation('mux'),
+    markDirty: () => {},
+    isControlledByLocalHuman: ({ controllerId }) => {
+      calls.push(`controlled:${controllerId}`);
+      return true;
+    },
+    controllerId: 'mux',
+    sendInputToSession: () => {
+      calls.push('send');
+    },
+    noteGitActivity: () => {
+      calls.push('git');
+    },
+    parseMuxInputChunk: () => ({
+      tokens: [],
+      remainder: '',
+    }),
+    routeInputTokensForConversation: () => ({
+      mainPaneScrollRows: 0,
+      forwardToSession: [],
+    }),
+    classifyPaneAt: () => 'left',
+    normalizeMuxKeyboardInputForPty: (input) => input,
+  });
 
   forwarder.handleInput(Buffer.from('x'));
 
   assert.deepEqual(calls, ['controlled:mux']);
 });
 
-void test('conversation input forwarder default dependencies are usable with null conversation', () => {
+void test('conversation input forwarder supports null conversation with explicit strategies', () => {
   let remainder = '';
   const forwarder = new ConversationInputForwarder({
     getInputRemainder: () => remainder,
@@ -300,6 +294,16 @@ void test('conversation input forwarder default dependencies are usable with nul
     controllerId: 'mux',
     sendInputToSession: () => {},
     noteGitActivity: () => {},
+    parseMuxInputChunk: () => ({
+      tokens: [],
+      remainder: '',
+    }),
+    routeInputTokensForConversation: () => ({
+      mainPaneScrollRows: 0,
+      forwardToSession: [],
+    }),
+    classifyPaneAt: () => 'left',
+    normalizeMuxKeyboardInputForPty: (input) => input,
   });
 
   forwarder.handleInput(Buffer.from('z'));

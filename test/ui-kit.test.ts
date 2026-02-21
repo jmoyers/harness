@@ -1,21 +1,131 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import {
-  buildUiModalOverlay,
   DEFAULT_UI_MODAL_THEME,
-  drawUiAlignedText,
-  drawUiModal,
-  fillUiRect,
-  formatUiButton,
-  isUiModalOverlayHit,
-  layoutUiModalRect,
-  paintUiRow,
-  paintUiRowWithTrailingLabel,
   SINGLE_LINE_UI_BOX_GLYPHS,
-  strokeUiRect,
-  truncateUiText,
-} from '../src/ui/kit.ts';
-import { createUiSurface, DEFAULT_UI_STYLE, renderUiSurfaceAnsiRows } from '../src/ui/surface.ts';
+  UiKit,
+} from '../packages/harness-ui/src/kit.ts';
+import { DEFAULT_UI_STYLE, SurfaceBuffer } from '../packages/harness-ui/src/surface.ts';
+
+const UI_KIT = new UiKit();
+
+function createUiSurface(
+  cols: number,
+  rows: number,
+  baseStyle: ConstructorParameters<typeof SurfaceBuffer>[2] = DEFAULT_UI_STYLE,
+): SurfaceBuffer {
+  return new SurfaceBuffer(cols, rows, baseStyle);
+}
+
+function renderUiSurfaceAnsiRows(surface: SurfaceBuffer): readonly string[] {
+  return surface.renderAnsiRows();
+}
+
+function truncateUiText(text: string, width: number): string {
+  return UI_KIT.truncateText(text, width);
+}
+
+function formatUiButton(
+  content: Parameters<UiKit['formatButton']>[0],
+): ReturnType<UiKit['formatButton']> {
+  return UI_KIT.formatButton(content);
+}
+
+function drawUiAlignedText(
+  surface: SurfaceBuffer,
+  col: number,
+  row: number,
+  width: number,
+  text: string,
+  style: Parameters<UiKit['drawAlignedText']>[5],
+  align: Parameters<UiKit['drawAlignedText']>[6] = 'left',
+): void {
+  UI_KIT.drawAlignedText(surface, col, row, width, text, style, align);
+}
+
+function paintUiRow(
+  surface: SurfaceBuffer,
+  row: number,
+  text: string,
+  textStyle: Parameters<UiKit['paintRow']>[3],
+  fillStyle: Parameters<UiKit['paintRow']>[4] = textStyle,
+  col = 0,
+): void {
+  UI_KIT.paintRow(surface, row, text, textStyle, fillStyle, col);
+}
+
+function paintUiRowWithTrailingLabel(
+  surface: SurfaceBuffer,
+  row: number,
+  leftText: string,
+  trailingLabel: string,
+  leftStyle: Parameters<UiKit['paintRowWithTrailingLabel']>[4],
+  trailingStyle: Parameters<UiKit['paintRowWithTrailingLabel']>[5],
+  fillStyle: Parameters<UiKit['paintRowWithTrailingLabel']>[6] = leftStyle,
+  options: Parameters<UiKit['paintRowWithTrailingLabel']>[7] = {},
+): void {
+  UI_KIT.paintRowWithTrailingLabel(
+    surface,
+    row,
+    leftText,
+    trailingLabel,
+    leftStyle,
+    trailingStyle,
+    fillStyle,
+    options,
+  );
+}
+
+function fillUiRect(
+  surface: SurfaceBuffer,
+  rect: Parameters<UiKit['fillRect']>[1],
+  style: Parameters<UiKit['fillRect']>[2],
+): void {
+  UI_KIT.fillRect(surface, rect, style);
+}
+
+function strokeUiRect(
+  surface: SurfaceBuffer,
+  rect: Parameters<UiKit['strokeRect']>[1],
+  style: Parameters<UiKit['strokeRect']>[2],
+  glyphs: Parameters<UiKit['strokeRect']>[3] = SINGLE_LINE_UI_BOX_GLYPHS,
+): void {
+  UI_KIT.strokeRect(surface, rect, style, glyphs);
+}
+
+function layoutUiModalRect(
+  viewportCols: number,
+  viewportRows: number,
+  width: number,
+  height: number,
+  anchor: Parameters<UiKit['layoutModalRect']>[4] = 'center',
+  marginRows = 1,
+): ReturnType<UiKit['layoutModalRect']> {
+  return UI_KIT.layoutModalRect(viewportCols, viewportRows, width, height, anchor, marginRows);
+}
+
+function drawUiModal(
+  surface: SurfaceBuffer,
+  rect: Parameters<UiKit['drawModal']>[1],
+  content: Parameters<UiKit['drawModal']>[2],
+  theme: Parameters<UiKit['drawModal']>[3] = undefined,
+): ReturnType<UiKit['drawModal']> {
+  return UI_KIT.drawModal(surface, rect, content, theme);
+}
+
+function buildUiModalOverlay(
+  options: Parameters<UiKit['buildModalOverlay']>[0],
+): ReturnType<UiKit['buildModalOverlay']> {
+  return UI_KIT.buildModalOverlay(options);
+}
+
+function isUiModalOverlayHit(
+  overlay: Parameters<UiKit['isModalOverlayHit']>[0],
+  col: number,
+  row: number,
+): boolean {
+  return UI_KIT.isModalOverlayHit(overlay, col, row);
+}
 
 function stripAnsi(value: string): string {
   let output = '';

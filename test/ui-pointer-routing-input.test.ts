@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { PointerRoutingInput } from '../src/ui/pointer-routing-input.ts';
+import { PointerRoutingInput } from '../packages/harness-ui/src/interaction/pointer-routing-input.ts';
+import { handleHomePaneDragRelease } from '../src/mux/live-mux/home-pane-drop.ts';
+import {
+  handleHomePaneDragMove,
+  handleMainPaneWheelInput,
+  handlePaneDividerDragInput,
+  handleSeparatorPointerPress,
+} from '../src/mux/live-mux/pointer-routing.ts';
 
 void test('pointer routing input delegates drag, separator, wheel, and move handlers', () => {
   const calls: string[] = [];
@@ -166,21 +173,30 @@ void test('pointer routing input delegates drag, separator, wheel, and move hand
 });
 
 void test('pointer routing input default dependencies return false for ineligible events', () => {
-  const input = new PointerRoutingInput({
-    getPaneDividerDragActive: () => false,
-    setPaneDividerDragActive: () => {},
-    applyPaneDividerAtCol: () => {},
-    getHomePaneDragState: () => null,
-    setHomePaneDragState: () => {},
-    getMainPaneMode: () => 'conversation',
-    taskIdAtRow: () => null,
-    repositoryIdAtRow: () => null,
-    reorderTaskByDrop: () => {},
-    reorderRepositoryByDrop: () => {},
-    onProjectWheel: () => {},
-    onHomeWheel: () => {},
-    markDirty: () => {},
-  });
+  const input = new PointerRoutingInput(
+    {
+      getPaneDividerDragActive: () => false,
+      setPaneDividerDragActive: () => {},
+      applyPaneDividerAtCol: () => {},
+      getHomePaneDragState: () => null,
+      setHomePaneDragState: () => {},
+      getMainPaneMode: () => 'conversation',
+      taskIdAtRow: () => null,
+      repositoryIdAtRow: () => null,
+      reorderTaskByDrop: () => {},
+      reorderRepositoryByDrop: () => {},
+      onProjectWheel: () => {},
+      onHomeWheel: () => {},
+      markDirty: () => {},
+    },
+    {
+      handlePaneDividerDragInput,
+      handleHomePaneDragRelease,
+      handleSeparatorPointerPress,
+      handleMainPaneWheelInput,
+      handleHomePaneDragMove,
+    },
+  );
 
   assert.equal(input.handlePaneDividerDrag({ code: 0, final: 'M', col: 1 }), false);
   assert.equal(

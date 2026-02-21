@@ -194,17 +194,12 @@ void test('runtime task pane shortcuts updateHomeEditorBuffer persists per-task 
 });
 
 void test('runtime task pane shortcuts updateHomeEditorBuffer normalizes draft buffers', () => {
-  const harness = createHarness({
-    normalizeTaskComposerBuffer: (buffer) => ({
-      text: buffer.text.trim(),
-      cursor: Math.min(buffer.cursor, buffer.text.trim().length),
-    }),
-  });
+  const harness = createHarness();
   harness.workspace.taskEditorTarget = { kind: 'draft' };
 
   harness.service.updateHomeEditorBuffer({
-    text: '  draft  ',
-    cursor: 8,
+    text: 'draft',
+    cursor: 99,
   });
 
   assert.deepEqual(harness.workspace.taskDraftComposer, {
@@ -420,58 +415,93 @@ void test('runtime task pane shortcuts moveTaskEditorFocusDown follows view orde
   assert.deepEqual(harness.calls, ['focusDraftComposer']);
 });
 
-void test('runtime task pane shortcuts handleInput delegates through injected shortcuts handler callbacks', async () => {
-  const callbackCalls: string[] = [];
+void test('runtime task pane shortcuts handleInput ignores non-home and hidden task pane states', () => {
+  const nonHome = createHarness({
+    taskScreenKeybindings: resolveTaskScreenKeybindings({
+      'mux.home.task.status.ready': ['r'],
+    }),
+  });
+  nonHome.workspace.mainPaneMode = 'conversation';
+  const handledNonHome = nonHome.service.handleInput(Buffer.from('r', 'utf8'));
+  assert.equal(handledNonHome, false);
+
+  const hidden = createHarness({
+    taskScreenKeybindings: resolveTaskScreenKeybindings({
+      'mux.home.task.status.ready': ['r'],
+    }),
+  });
+  hidden.workspace.mainPaneMode = 'home';
+  hidden.workspace.leftNavSelection = { kind: 'home' };
+  const handledHidden = hidden.service.handleInput(Buffer.from('r', 'utf8'));
+  assert.equal(handledHidden, false);
+});
+
+void test('runtime task pane shortcuts handleInput routes keybinding actions', () => {
   const harness = createHarness({
-    createTaskComposerBuffer: () => ({
-      text: 'created',
-      cursor: 7,
+    taskScreenKeybindings: resolveTaskScreenKeybindings({
+      'mux.home.task.status.ready': ['r'],
+      'mux.home.repo.dropdown.toggle': ['g'],
+      'mux.home.repo.next': ['n'],
     }),
-    taskFieldsFromComposerText: () => ({
-      title: '',
-      body: '',
-    }),
-    handleTaskPaneShortcutInput: (options) => {
-      callbackCalls.push('handler');
-      options.homeEditorBuffer();
-      options.updateHomeEditorBuffer({
-        text: 'new text',
-        cursor: 8,
-      });
-      options.moveTaskEditorFocusUp();
-      options.moveTaskEditorFocusDown();
-      options.focusDraftComposer();
-      options.submitDraftTaskFromComposer('queue');
-      options.runTaskPaneAction('task.ready');
-      options.selectRepositoryByDirection(1);
-      options.getTaskRepositoryDropdownOpen();
-      options.setTaskRepositoryDropdownOpen(true);
-      options.markDirty();
-      return true;
-    },
   });
   harness.workspace.mainPaneMode = 'home';
-  harness.workspace.taskPaneSelectedRepositoryId = null;
-  harness.workspace.taskEditorTarget = {
-    kind: 'task',
-    taskId: 'task-missing',
+  harness.workspace.leftNavSelection = { kind: 'tasks' };
+
+  const readyHandled = harness.service.handleInput(Buffer.from('r', 'utf8'));
+  const toggleHandled = harness.service.handleInput(Buffer.from('g', 'utf8'));
+  const nextHandled = harness.service.handleInput(Buffer.from('n', 'utf8'));
+
+  assert.equal(readyHandled, true);
+  assert.equal(toggleHandled, true);
+  assert.equal(nextHandled, true);
+  assert.equal(harness.workspace.taskRepositoryDropdownOpen, true);
+  assert.equal(harness.calls.includes('runTaskPaneAction:task.ready'), true);
+  assert.equal(harness.calls.includes('selectRepositoryById:repo-2'), true);
+  assert.equal(harness.calls.includes('markDirty'), true);
+});
+
+void test('runtime task pane shortcuts handleInput inserts printable and bracketed-paste text', () => {
+  const harness = createHarness({
+    taskScreenKeybindings: resolveTaskScreenKeybindings({
+      'mux.home.task.status.ready': ['r'],
+    }),
+  });
+  harness.workspace.mainPaneMode = 'home';
+  harness.workspace.leftNavSelection = { kind: 'tasks' };
+  harness.workspace.taskEditorTarget = { kind: 'draft' };
+  harness.workspace.taskDraftComposer = {
+    text: 'seed ',
+    cursor: 5,
   };
 
-  const handled = harness.service.handleInput(Buffer.from('x'));
-  await harness.flushQueued();
+  const printableHandled = harness.service.handleInput(Buffer.from('abc', 'utf8'));
+  const pasteHandled = harness.service.handleInput(
+    Buffer.from('\u001b[200~line 1\nline 2\u001b[201~', 'utf8'),
+  );
 
-  assert.equal(handled, true);
-  assert.equal(harness.workspace.taskRepositoryDropdownOpen, true);
-  assert.deepEqual(callbackCalls, ['handler']);
-  assert.deepEqual(harness.calls, [
-    'setTaskComposerForTask:task-missing',
-    'scheduleTaskComposerPersist:task-missing',
-    'markDirty',
-    'focusDraftComposer',
-    'focusDraftComposer',
-    'markDirty',
-    'runTaskPaneAction:task.ready',
-    'selectRepositoryById:repo-2',
-    'markDirty',
-  ]);
+  assert.equal(printableHandled, true);
+  assert.equal(pasteHandled, true);
+  assert.equal(harness.workspace.taskDraftComposer.text, 'seed abcline 1\nline 2');
+});
+
+void test('runtime task pane shortcuts handleInput ignores unsupported escape sequences', () => {
+  const harness = createHarness({
+    taskScreenKeybindings: resolveTaskScreenKeybindings({
+      'mux.home.task.status.ready': ['r'],
+    }),
+  });
+  harness.workspace.mainPaneMode = 'home';
+  harness.workspace.leftNavSelection = { kind: 'tasks' };
+  harness.workspace.taskEditorTarget = { kind: 'draft' };
+  harness.workspace.taskDraftComposer = {
+    text: 'seed',
+    cursor: 4,
+  };
+
+  const handled = harness.service.handleInput(Buffer.from('\u001b[999~', 'utf8'));
+  assert.equal(handled, false);
+  assert.deepEqual(harness.workspace.taskDraftComposer, {
+    text: 'seed',
+    cursor: 4,
+  });
 });

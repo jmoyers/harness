@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import type { LeftNavSelection } from '../src/mux/live-mux/left-nav.ts';
-import { LeftNavInput } from '../src/ui/left-nav-input.ts';
+import {
+  LeftNavInput,
+  type LeftNavSelection,
+} from '../packages/harness-ui/src/interaction/left-nav-input.ts';
+import {
+  activateLeftNavTarget,
+  cycleLeftNavSelection,
+} from '../src/mux/live-mux/left-nav-activation.ts';
+import { visibleLeftNavTargets } from '../src/mux/live-mux/left-nav.ts';
 
 interface Harness {
   readonly input: LeftNavInput;
@@ -16,8 +23,10 @@ function createInjectedHarness(): Harness {
   const calls: string[] = [];
   const input = new LeftNavInput(
     {
-      getLatestRailRows: () => [] as never,
-      getCurrentSelection: () => selection,
+      latestRailRows: () => [] as never,
+      currentSelection: () => selection,
+    },
+    {
       enterHomePane: () => {
         calls.push('enter-home');
       },
@@ -43,12 +52,12 @@ function createInjectedHarness(): Harness {
       conversationsHas: () => true,
     },
     {
-      visibleLeftNavTargets: () => rows,
-      activateLeftNavTarget: (options) => {
+      visibleTargets: () => rows,
+      activateTarget: (options) => {
         calls.push(`visible:${options.visibleTargetsForState().length}`);
         calls.push(`activate:${options.target.kind}:${options.direction}`);
       },
-      cycleLeftNavSelection: (options) => {
+      cycleSelection: (options) => {
         calls.push(`cycle:${options.direction}`);
         const target = options.visibleTargets[0];
         if (target === undefined) {
@@ -99,23 +108,32 @@ void test('left-nav input uses injected dependencies for activation and cycling'
 void test('left-nav input default dependencies cover activation and empty cycle path', () => {
   let selection: LeftNavSelection = { kind: 'home' };
   let enteredHome = 0;
-  const input = new LeftNavInput({
-    getLatestRailRows: () => [] as never,
-    getCurrentSelection: () => selection,
-    enterHomePane: () => {
-      enteredHome += 1;
+  const input = new LeftNavInput(
+    {
+      latestRailRows: () => [] as never,
+      currentSelection: () => selection,
     },
-    firstDirectoryForRepositoryGroup: () => null,
-    enterProjectPane: () => {},
-    setMainPaneProjectMode: () => {},
-    selectLeftNavRepository: () => {},
-    markDirty: () => {},
-    directoriesHas: () => false,
-    conversationDirectoryId: () => null,
-    queueControlPlaneOp: () => {},
-    activateConversation: async () => {},
-    conversationsHas: () => false,
-  });
+    {
+      enterHomePane: () => {
+        enteredHome += 1;
+      },
+      firstDirectoryForRepositoryGroup: () => null,
+      enterProjectPane: () => {},
+      setMainPaneProjectMode: () => {},
+      selectLeftNavRepository: () => {},
+      markDirty: () => {},
+      directoriesHas: () => false,
+      conversationDirectoryId: () => null,
+      queueControlPlaneOp: () => {},
+      activateConversation: async () => {},
+      conversationsHas: () => false,
+    },
+    {
+      visibleTargets: visibleLeftNavTargets,
+      activateTarget: activateLeftNavTarget,
+      cycleSelection: cycleLeftNavSelection,
+    },
+  );
 
   assert.deepEqual(input.visibleTargets(), []);
   input.activateTarget({ kind: 'home' }, 'next');

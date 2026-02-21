@@ -45,3 +45,14 @@ void test('createSseEventStream emits trailing event without final boundary', as
     },
   ]);
 });
+
+void test('createSseEventStream forwards reader errors', async () => {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('data: {"type":"head"}\n\n'));
+      controller.error(new Error('sse-stream-failure'));
+    },
+  });
+
+  await assert.rejects(collectStream(createSseEventStream(stream)), /sse-stream-failure/u);
+});

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { createDiffBuilder } from '../diff/build.ts';
 import type { DiffBuildResult, DiffBuilder } from '../diff/types.ts';
-import { Screen } from '../ui/screen.ts';
+import { Screen, type ScreenWriter } from '../../packages/harness-ui/src/screen.ts';
 import { parseDiffUiArgs } from './args.ts';
 import { diffUiCommandToStateAction, parseDiffUiCommand } from './commands.ts';
 import { buildDiffUiModel } from './model.ts';
@@ -27,10 +27,7 @@ interface RunDiffUiCliDeps {
   readonly isStdoutTty?: boolean;
   readonly pagerStdin?: DiffUiPagerInputStream;
   readonly pagerStdout?: DiffUiPagerOutputStream;
-  readonly createScreen?: (deps: {
-    readonly writeOutput: (output: string) => void;
-    readonly writeError: (output: string) => void;
-  }) => Pick<Screen, 'markDirty' | 'flush'>;
+  readonly createScreen?: (writer: ScreenWriter) => Pick<Screen, 'markDirty' | 'flush'>;
 }
 
 function viewportFromOptions(
@@ -181,8 +178,8 @@ export async function runDiffUiCli(deps: RunDiffUiCliDeps = {}): Promise<DiffUiR
         stdout: deps.pagerStdout ?? (process.stdout as unknown as DiffUiPagerOutputStream),
         createScreen:
           deps.createScreen ??
-          ((screenDeps) => {
-            return new Screen(screenDeps);
+          ((writer) => {
+            return new Screen(writer);
           }),
       });
       state = pagerResult.state;

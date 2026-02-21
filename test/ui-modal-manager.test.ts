@@ -1,9 +1,19 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
+import { UiKit } from '../packages/harness-ui/src/kit.ts';
 import { createCommandMenuState } from '../src/mux/live-mux/command-menu.ts';
 import { createNewThreadPromptState } from '../src/mux/new-thread-prompt.ts';
-import { ModalManager } from '../src/ui/modals/manager.ts';
-import type { buildNewThreadModalOverlay } from '../src/mux/live-mux/modal-overlays.ts';
+import { ModalManager } from '../packages/harness-ui/src/modal-manager.ts';
+import {
+  buildAddDirectoryModalOverlay,
+  buildApiKeyModalOverlay,
+  buildCommandMenuModalOverlay,
+  buildConversationTitleModalOverlay,
+  buildNewThreadModalOverlay,
+  buildRepositoryModalOverlay,
+  buildTaskEditorModalOverlay,
+} from '../src/mux/live-mux/modal-overlays.ts';
+import { dismissModalOnOutsideClick } from '../src/mux/live-mux/modal-pointer.ts';
 import type {
   ConversationTitleEditState,
   RepositoryPromptState,
@@ -11,6 +21,7 @@ import type {
 } from '../src/domain/workspace.ts';
 
 const modalTheme = {} as Parameters<typeof buildNewThreadModalOverlay>[3];
+const uiKit = new UiKit();
 
 void test('modal manager builds overlay priority order and dismisses pointer events', () => {
   const state: {
@@ -49,17 +60,30 @@ void test('modal manager builds overlay priority order and dismisses pointer eve
       debounceTimer: null,
     },
   };
-  const manager = new ModalManager({
-    theme: modalTheme,
-    resolveRepositoryName: () => 'Harness',
-    getCommandMenu: () => state.commandMenu,
-    resolveCommandMenuActions: () => [],
-    getNewThreadPrompt: () => state.newThread,
-    getAddDirectoryPrompt: () => state.addDirectory,
-    getTaskEditorPrompt: () => state.taskEditor,
-    getRepositoryPrompt: () => state.repository,
-    getConversationTitleEdit: () => state.titleEdit,
-  });
+  const manager = new ModalManager(
+    {
+      theme: modalTheme,
+      resolveRepositoryName: () => 'Harness',
+      getCommandMenu: () => state.commandMenu,
+      resolveCommandMenuActions: () => [],
+      getNewThreadPrompt: () => state.newThread,
+      getAddDirectoryPrompt: () => state.addDirectory,
+      getTaskEditorPrompt: () => state.taskEditor,
+      getRepositoryPrompt: () => state.repository,
+      getConversationTitleEdit: () => state.titleEdit,
+    },
+    {
+      buildCommandMenuModalOverlay,
+      buildNewThreadModalOverlay,
+      buildAddDirectoryModalOverlay,
+      buildTaskEditorModalOverlay,
+      buildApiKeyModalOverlay,
+      buildRepositoryModalOverlay,
+      buildConversationTitleModalOverlay,
+      dismissModalOnOutsideClick,
+      isOverlayHit: (overlay, col, row) => uiKit.isModalOverlayHit(overlay, col, row),
+    },
+  );
 
   const newThreadOverlay = manager.buildNewThreadOverlay(80, 24);
   assert.notEqual(newThreadOverlay, null);
@@ -200,6 +224,10 @@ void test('modal manager uses injected dependencies when provided', () => {
       },
       buildTaskEditorModalOverlay: () => {
         calls.push('task-editor');
+        return overlay;
+      },
+      buildApiKeyModalOverlay: () => {
+        calls.push('api-key');
         return overlay;
       },
       buildRepositoryModalOverlay: () => {

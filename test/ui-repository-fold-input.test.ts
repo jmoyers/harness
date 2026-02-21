@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import type { LeftNavSelection } from '../src/mux/live-mux/left-nav.ts';
-import { RepositoryFoldInput } from '../src/ui/repository-fold-input.ts';
+import {
+  reduceRepositoryFoldChordInput,
+  repositoryTreeArrowAction,
+} from '../src/mux/live-mux/repository-folding.ts';
+import { RepositoryFoldInput } from '../packages/harness-ui/src/interaction/repository-fold-input.ts';
+import type { LeftNavSelection } from '../packages/harness-ui/src/interaction/left-nav-input.ts';
 
 interface Harness {
   readonly router: RepositoryFoldInput;
@@ -22,39 +26,50 @@ function createHarness(): Harness {
   let nowMs = 1000;
   let dirtyCount = 0;
   const calls: string[] = [];
-  const router = new RepositoryFoldInput({
-    getLeftNavSelection: () => leftNavSelection,
-    getRepositoryToggleChordPrefixAtMs: () => prefixAtMs,
-    setRepositoryToggleChordPrefixAtMs: (value) => {
-      prefixAtMs = value;
+  const router = new RepositoryFoldInput(
+    {
+      leftNavSelection: () => leftNavSelection,
+      repositoryToggleChordPrefixAtMs: () => prefixAtMs,
+      setRepositoryToggleChordPrefixAtMs: (value) => {
+        prefixAtMs = value;
+      },
+      conversations: () =>
+        new Map([
+          ['session-a', { directoryId: 'dir-a' }],
+          ['session-b', { directoryId: null }],
+        ]),
+      repositoryGroupIdForDirectory: (directoryId) => `repo:${directoryId}`,
+      nowMs: () => nowMs,
     },
-    conversations: new Map([
-      ['session-a', { directoryId: 'dir-a' }],
-      ['session-b', { directoryId: null }],
-    ]),
-    repositoryGroupIdForDirectory: (directoryId) => `repo:${directoryId}`,
-    collapseRepositoryGroup: (repositoryGroupId) => {
-      calls.push(`collapse:${repositoryGroupId}`);
+    {
+      collapseRepositoryGroup: (repositoryGroupId) => {
+        calls.push(`collapse:${repositoryGroupId}`);
+      },
+      expandRepositoryGroup: (repositoryGroupId) => {
+        calls.push(`expand:${repositoryGroupId}`);
+      },
+      collapseAllRepositoryGroups: () => {
+        calls.push('collapse-all');
+      },
+      expandAllRepositoryGroups: () => {
+        calls.push('expand-all');
+      },
+      selectLeftNavRepository: (repositoryGroupId) => {
+        calls.push(`select:${repositoryGroupId}`);
+      },
+      markDirty: () => {
+        dirtyCount += 1;
+      },
     },
-    expandRepositoryGroup: (repositoryGroupId) => {
-      calls.push(`expand:${repositoryGroupId}`);
+    {
+      chordTimeoutMs: 1250,
+      collapseAllChordPrefix: Buffer.from([0x0b]),
     },
-    collapseAllRepositoryGroups: () => {
-      calls.push('collapse-all');
+    {
+      reduceRepositoryFoldChordInput,
+      repositoryTreeArrowAction,
     },
-    expandAllRepositoryGroups: () => {
-      calls.push('expand-all');
-    },
-    selectLeftNavRepository: (repositoryGroupId) => {
-      calls.push(`select:${repositoryGroupId}`);
-    },
-    markDirty: () => {
-      dirtyCount += 1;
-    },
-    chordTimeoutMs: 1250,
-    collapseAllChordPrefix: Buffer.from([0x0b]),
-    nowMs: () => nowMs,
-  });
+  );
   return {
     router,
     calls,

@@ -12,7 +12,7 @@ import {
 import {
   __terminalGifInternals,
   renderTerminalRecordingToGif,
-} from '../scripts/terminal-recording-gif-lib.ts';
+} from '../src/recording/terminal-recording-gif-lib.ts';
 
 function defaultColorLookup() {
   return {

@@ -5,6 +5,7 @@
     "ui": {
       "paneWidthPercent": null,
       "repositoriesCollapsed": false,
+      "shortcutsCollapsed": false,
       "showTasks": false,
       "showDebugBar": false,
       "theme": null,

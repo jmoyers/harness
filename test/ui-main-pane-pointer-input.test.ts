@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { MainPanePointerInput } from '../src/ui/main-pane-pointer-input.ts';
+import { MainPanePointerInput } from '../packages/harness-ui/src/interaction/main-pane-pointer-input.ts';
+import { handleHomePanePointerClick } from '../src/mux/live-mux/home-pane-pointer.ts';
+import { handleProjectPaneActionClick } from '../src/mux/live-mux/project-pane-pointer.ts';
 
 type MainPaneMode = 'conversation' | 'project' | 'home';
 
@@ -153,37 +155,43 @@ void test('main-pane pointer input delegates project and home pointer handlers',
 });
 
 void test('main-pane pointer input default dependencies return false on ineligible pointer events', () => {
-  const input = new MainPanePointerInput({
-    getMainPaneMode: () => 'conversation',
-    getProjectPaneSnapshot: () => null,
-    getProjectPaneScrollTop: () => 0,
-    projectPaneActionAtRow: () => null,
-    openNewThreadPrompt: () => {},
-    queueCloseDirectory: () => {},
-    actionAtCell: () => null,
-    actionAtRow: () => null,
-    clearTaskEditClickState: () => {},
-    clearRepositoryEditClickState: () => {},
-    clearHomePaneDragState: () => {},
-    getTaskRepositoryDropdownOpen: () => false,
-    setTaskRepositoryDropdownOpen: () => {},
-    taskIdAtRow: () => null,
-    repositoryIdAtRow: () => null,
-    selectTaskById: () => {},
-    selectRepositoryById: () => {},
-    runTaskPaneAction: () => {},
-    nowMs: () => 0,
-    homePaneEditDoubleClickWindowMs: 250,
-    getTaskEditClickState: () => null,
-    getRepositoryEditClickState: () => null,
-    clearTaskPaneNotice: () => {},
-    setTaskEditClickState: () => {},
-    setRepositoryEditClickState: () => {},
-    setHomePaneDragState: () => {},
-    openTaskEditPrompt: () => {},
-    openRepositoryPromptForEdit: () => {},
-    markDirty: () => {},
-  });
+  const input = new MainPanePointerInput(
+    {
+      getMainPaneMode: () => 'conversation',
+      getProjectPaneSnapshot: () => null,
+      getProjectPaneScrollTop: () => 0,
+      projectPaneActionAtRow: () => null,
+      openNewThreadPrompt: () => {},
+      queueCloseDirectory: () => {},
+      actionAtCell: () => null,
+      actionAtRow: () => null,
+      clearTaskEditClickState: () => {},
+      clearRepositoryEditClickState: () => {},
+      clearHomePaneDragState: () => {},
+      getTaskRepositoryDropdownOpen: () => false,
+      setTaskRepositoryDropdownOpen: () => {},
+      taskIdAtRow: () => null,
+      repositoryIdAtRow: () => null,
+      selectTaskById: () => {},
+      selectRepositoryById: () => {},
+      runTaskPaneAction: () => {},
+      nowMs: () => 0,
+      homePaneEditDoubleClickWindowMs: 250,
+      getTaskEditClickState: () => null,
+      getRepositoryEditClickState: () => null,
+      clearTaskPaneNotice: () => {},
+      setTaskEditClickState: () => {},
+      setRepositoryEditClickState: () => {},
+      setHomePaneDragState: () => {},
+      openTaskEditPrompt: () => {},
+      openRepositoryPromptForEdit: () => {},
+      markDirty: () => {},
+    },
+    {
+      handleProjectPaneActionClick,
+      handleHomePanePointerClick,
+    },
+  );
 
   assert.equal(
     input.handleProjectPanePointerClick({

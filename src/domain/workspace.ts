@@ -26,7 +26,7 @@ export interface RepositoryPromptState {
   readonly error: string | null;
 }
 
-export interface ApiKeyPromptState {
+interface ApiKeyPromptState {
   readonly keyName: string;
   readonly displayName: string;
   readonly value: string;
@@ -62,6 +62,8 @@ interface WorkspaceModelInit {
   latestTaskPaneView: TaskFocusedPaneView;
   taskDraftComposer: TaskComposerBuffer;
   repositoriesCollapsed: boolean;
+  shortcutsCollapsed?: boolean;
+  showDebugBar?: boolean;
 }
 
 export class WorkspaceModel {
@@ -101,6 +103,8 @@ export class WorkspaceModel {
   latestRailViewRows: ReturnType<typeof buildWorkspaceRailViewRows> = [];
 
   repositoriesCollapsed: boolean;
+  shortcutsCollapsed: boolean;
+  showDebugBar: boolean;
 
   constructor(init: WorkspaceModelInit) {
     this.activeDirectoryId = init.activeDirectoryId;
@@ -108,6 +112,8 @@ export class WorkspaceModel {
     this.latestTaskPaneView = init.latestTaskPaneView;
     this.taskDraftComposer = init.taskDraftComposer;
     this.repositoriesCollapsed = init.repositoriesCollapsed;
+    this.shortcutsCollapsed = init.shortcutsCollapsed ?? false;
+    this.showDebugBar = init.showDebugBar ?? false;
   }
 
   selectLeftNavHome(): void {

@@ -2,7 +2,9 @@ import { basename } from 'node:path';
 import { padOrTrimDisplay } from './dual-pane-core.ts';
 import { buildProjectTreeLines } from './project-tree.ts';
 import { wrapTextForColumns } from '../terminal/snapshot-oracle.ts';
-import { formatUiButton } from '../ui/kit.ts';
+import { UiKit } from '../../packages/harness-ui/src/kit.ts';
+
+const UI_KIT = new UiKit();
 
 export type ProjectPaneAction = 'conversation.new' | 'project.close';
 export type TaskStatus = 'draft' | 'ready' | 'in-progress' | 'completed';
@@ -81,103 +83,103 @@ export interface TaskPaneView {
   readonly top: number;
 }
 
-export const PROJECT_PANE_NEW_CONVERSATION_BUTTON_LABEL = formatUiButton({
+export const PROJECT_PANE_NEW_CONVERSATION_BUTTON_LABEL = UI_KIT.formatButton({
   label: 'new thread',
   prefixIcon: '+',
 });
-export const PROJECT_PANE_CLOSE_PROJECT_BUTTON_LABEL = formatUiButton({
+export const PROJECT_PANE_CLOSE_PROJECT_BUTTON_LABEL = UI_KIT.formatButton({
   label: 'close project',
   prefixIcon: '<',
 });
-export const TASKS_PANE_ADD_TASK_BUTTON_LABEL = formatUiButton({
+export const TASKS_PANE_ADD_TASK_BUTTON_LABEL = UI_KIT.formatButton({
   label: 'add task',
   prefixIcon: '+',
 });
-export const TASKS_PANE_ADD_REPOSITORY_BUTTON_LABEL = formatUiButton({
+export const TASKS_PANE_ADD_REPOSITORY_BUTTON_LABEL = UI_KIT.formatButton({
   label: 'add repository',
   prefixIcon: '+',
 });
-export const TASKS_PANE_EDIT_REPOSITORY_BUTTON_LABEL = formatUiButton({
+export const TASKS_PANE_EDIT_REPOSITORY_BUTTON_LABEL = UI_KIT.formatButton({
   label: 'edit repository',
   prefixIcon: 'e',
 });
-export const TASKS_PANE_ARCHIVE_REPOSITORY_BUTTON_LABEL = formatUiButton({
+export const TASKS_PANE_ARCHIVE_REPOSITORY_BUTTON_LABEL = UI_KIT.formatButton({
   label: 'archive repository',
   prefixIcon: 'x',
 });
-export const TASKS_PANE_EDIT_TASK_BUTTON_LABEL = formatUiButton({
+export const TASKS_PANE_EDIT_TASK_BUTTON_LABEL = UI_KIT.formatButton({
   label: 'edit task',
   prefixIcon: 'e',
 });
-export const TASKS_PANE_DELETE_TASK_BUTTON_LABEL = formatUiButton({
+export const TASKS_PANE_DELETE_TASK_BUTTON_LABEL = UI_KIT.formatButton({
   label: 'delete task',
   prefixIcon: 'x',
 });
-export const TASKS_PANE_READY_TASK_BUTTON_LABEL = formatUiButton({
+export const TASKS_PANE_READY_TASK_BUTTON_LABEL = UI_KIT.formatButton({
   label: 'mark ready',
   prefixIcon: 'r',
 });
-export const TASKS_PANE_DRAFT_TASK_BUTTON_LABEL = formatUiButton({
+export const TASKS_PANE_DRAFT_TASK_BUTTON_LABEL = UI_KIT.formatButton({
   label: 'mark draft',
   prefixIcon: 'd',
 });
-export const TASKS_PANE_COMPLETE_TASK_BUTTON_LABEL = formatUiButton({
+export const TASKS_PANE_COMPLETE_TASK_BUTTON_LABEL = UI_KIT.formatButton({
   label: 'mark complete',
   prefixIcon: 'c',
 });
-export const TASKS_PANE_REORDER_UP_BUTTON_LABEL = formatUiButton({
+export const TASKS_PANE_REORDER_UP_BUTTON_LABEL = UI_KIT.formatButton({
   label: 'move up',
   prefixIcon: '^',
 });
-export const TASKS_PANE_REORDER_DOWN_BUTTON_LABEL = formatUiButton({
+export const TASKS_PANE_REORDER_DOWN_BUTTON_LABEL = UI_KIT.formatButton({
   label: 'move down',
   prefixIcon: 'v',
 });
-export const TASKS_PANE_FOOTER_EDIT_BUTTON_LABEL = formatUiButton({
+export const TASKS_PANE_FOOTER_EDIT_BUTTON_LABEL = UI_KIT.formatButton({
   label: 'edit ^E',
   prefixIcon: '✎',
 });
-export const TASKS_PANE_FOOTER_DELETE_BUTTON_LABEL = formatUiButton({
+export const TASKS_PANE_FOOTER_DELETE_BUTTON_LABEL = UI_KIT.formatButton({
   label: 'delete ^?',
   prefixIcon: '⌫',
 });
-export const TASKS_PANE_FOOTER_COMPLETE_BUTTON_LABEL = formatUiButton({
+export const TASKS_PANE_FOOTER_COMPLETE_BUTTON_LABEL = UI_KIT.formatButton({
   label: 'complete ^S',
   prefixIcon: '✓',
 });
-export const TASKS_PANE_FOOTER_DRAFT_BUTTON_LABEL = formatUiButton({
+export const TASKS_PANE_FOOTER_DRAFT_BUTTON_LABEL = UI_KIT.formatButton({
   label: 'draft ^R',
   prefixIcon: '◇',
 });
-export const TASKS_PANE_FOOTER_REPOSITORY_EDIT_BUTTON_LABEL = formatUiButton({
+export const TASKS_PANE_FOOTER_REPOSITORY_EDIT_BUTTON_LABEL = UI_KIT.formatButton({
   label: 'repo edit E',
   prefixIcon: '✎',
 });
-export const TASKS_PANE_FOOTER_REPOSITORY_ARCHIVE_BUTTON_LABEL = formatUiButton({
+export const TASKS_PANE_FOOTER_REPOSITORY_ARCHIVE_BUTTON_LABEL = UI_KIT.formatButton({
   label: 'repo archive X',
   prefixIcon: '⌫',
 });
-export const CONVERSATION_EDIT_ARCHIVE_BUTTON_LABEL = formatUiButton({
+export const CONVERSATION_EDIT_ARCHIVE_BUTTON_LABEL = UI_KIT.formatButton({
   label: 'archive thread',
   prefixIcon: 'x',
 });
-export const NEW_THREAD_MODAL_CODEX_BUTTON = formatUiButton({
+export const NEW_THREAD_MODAL_CODEX_BUTTON = UI_KIT.formatButton({
   label: 'codex',
   prefixIcon: '◆',
 });
-export const NEW_THREAD_MODAL_CLAUDE_BUTTON = formatUiButton({
+export const NEW_THREAD_MODAL_CLAUDE_BUTTON = UI_KIT.formatButton({
   label: 'claude',
   prefixIcon: '◇',
 });
-export const NEW_THREAD_MODAL_CURSOR_BUTTON = formatUiButton({
+export const NEW_THREAD_MODAL_CURSOR_BUTTON = UI_KIT.formatButton({
   label: 'cursor',
   prefixIcon: '◈',
 });
-export const NEW_THREAD_MODAL_TERMINAL_BUTTON = formatUiButton({
+export const NEW_THREAD_MODAL_TERMINAL_BUTTON = UI_KIT.formatButton({
   label: 'terminal',
   prefixIcon: '▣',
 });
-export const NEW_THREAD_MODAL_CRITIQUE_BUTTON = formatUiButton({
+export const NEW_THREAD_MODAL_CRITIQUE_BUTTON = UI_KIT.formatButton({
   label: 'critique',
   prefixIcon: '▤',
 });

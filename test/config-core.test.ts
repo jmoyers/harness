@@ -28,6 +28,7 @@ import {
 const DEFAULT_UI = {
   paneWidthPercent: null,
   repositoriesCollapsed: false,
+  shortcutsCollapsed: false,
   showTasks: false,
   showDebugBar: false,
   theme: null,
@@ -165,6 +166,7 @@ void test('parseHarnessConfigText normalizes mux ui and falls back for invalid v
   assert.deepEqual(parsed.mux.ui, {
     paneWidthPercent: 37.375,
     repositoriesCollapsed: true,
+    shortcutsCollapsed: false,
     showTasks: true,
     showDebugBar: true,
     theme: null,
@@ -463,6 +465,7 @@ void test('loadHarnessConfig reads valid config file', () => {
     ui: {
       paneWidthPercent: 41,
       repositoriesCollapsed: false,
+      shortcutsCollapsed: false,
       showTasks: false,
       showDebugBar: false,
       theme: null,
@@ -493,6 +496,7 @@ void test('loadHarnessConfig falls back atomically on parse errors', () => {
         ui: {
           paneWidthPercent: 30,
           repositoriesCollapsed: false,
+          shortcutsCollapsed: false,
           showTasks: false,
           showDebugBar: false,
           theme: null,
@@ -515,6 +519,7 @@ void test('loadHarnessConfig falls back atomically on parse errors', () => {
       ui: {
         paneWidthPercent: 30,
         repositoriesCollapsed: false,
+        shortcutsCollapsed: false,
         showTasks: false,
         showDebugBar: false,
         theme: null,
@@ -1565,6 +1570,7 @@ void test('updateHarnessMuxUiConfig persists mux ui state and rounds percentage'
   assert.deepEqual(updated.mux.ui, {
     paneWidthPercent: 33.33,
     repositoriesCollapsed: false,
+    shortcutsCollapsed: false,
     showTasks: false,
     showDebugBar: true,
     theme: null,
@@ -1577,6 +1583,7 @@ void test('updateHarnessMuxUiConfig persists mux ui state and rounds percentage'
   assert.deepEqual(reloaded.config.mux.ui, {
     paneWidthPercent: 33.33,
     repositoriesCollapsed: false,
+    shortcutsCollapsed: false,
     showTasks: false,
     showDebugBar: true,
     theme: null,
@@ -1634,6 +1641,7 @@ void test('updateHarnessMuxUiConfig preserves existing theme configuration', () 
         ui: {
           paneWidthPercent: 44,
           repositoriesCollapsed: false,
+          shortcutsCollapsed: false,
           showTasks: true,
           showDebugBar: true,
           theme: {
@@ -1677,6 +1685,7 @@ void test('updateHarnessConfig writes new config file when absent', () => {
         ui: {
           paneWidthPercent: 25,
           repositoriesCollapsed: false,
+          shortcutsCollapsed: false,
           showTasks: false,
           showDebugBar: false,
           theme: null,
@@ -1691,6 +1700,7 @@ void test('updateHarnessConfig writes new config file when absent', () => {
     ui: {
       paneWidthPercent: 25,
       repositoriesCollapsed: false,
+      shortcutsCollapsed: false,
       showTasks: false,
       showDebugBar: false,
       theme: null,
@@ -1768,6 +1778,7 @@ void test('updateHarnessMuxUiConfig supports cwd-only config path resolution', (
         ui: {
           paneWidthPercent: 35,
           repositoriesCollapsed: false,
+          shortcutsCollapsed: false,
           showTasks: false,
           showDebugBar: false,
           theme: null,
@@ -1786,6 +1797,7 @@ void test('updateHarnessMuxUiConfig supports cwd-only config path resolution', (
   assert.deepEqual(updated.mux.ui, {
     paneWidthPercent: 35,
     repositoriesCollapsed: false,
+    shortcutsCollapsed: false,
     showTasks: false,
     showDebugBar: false,
     theme: null,
