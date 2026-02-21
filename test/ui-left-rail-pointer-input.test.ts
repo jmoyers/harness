@@ -1,267 +1,243 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import {
-  LeftRailPointerInput,
-  type ConversationTitleClickState,
-} from '../src/ui/left-rail-pointer-input.ts';
+import { RailPointerInput } from '../packages/harness-ui/src/interaction/rail-pointer-input.ts';
+import { LeftRailPointerHandler } from '../src/services/left-rail-pointer-handler.ts';
+import type { buildWorkspaceRailViewRows } from '../src/mux/workspace-rail-model.ts';
 
-void test('left-rail pointer input delegates action and conversation routing', () => {
+type RailRows = ReturnType<typeof buildWorkspaceRailViewRows>;
+
+void test('rail pointer input clamps coordinates and applies edit/selection guards', () => {
   const calls: string[] = [];
-  let clickState: ConversationTitleClickState | null = { conversationId: 'prev', atMs: 5 };
-  const input = new LeftRailPointerInput(
+  const pointerInput = new RailPointerInput(
     {
-      getLatestRailRows: () => [] as never,
-      hasConversationTitleEdit: () => true,
-      conversationTitleEditConversationId: () => 'session-a',
-      stopConversationTitleEdit: () => {
-        calls.push('stop-title-edit');
+      resolveHit: (rowIndex, colIndex, railCols) => {
+        calls.push(`resolve:${rowIndex}:${colIndex}:${railCols}`);
+        return {
+          keepEdit: false,
+        };
       },
+    },
+    {
+      dispatchHit: () => {
+        calls.push('dispatch');
+        return true;
+      },
+    },
+    {
+      hasActiveEdit: () => true,
+      shouldKeepActiveEdit: (hit) => hit.keepEdit,
+      stopActiveEdit: () => {
+        calls.push('stop-edit');
+      },
+    },
+    {
       hasSelection: () => true,
       clearSelection: () => {
         calls.push('clear-selection');
       },
-      activeConversationId: () => 'session-active',
-      repositoriesCollapsed: () => true,
+    },
+  );
+
+  assert.equal(
+    pointerInput.handlePointerClick({
+      clickEligible: true,
+      paneRows: 3,
+      leftCols: 4,
+      pointerRow: 999,
+      pointerCol: 999,
+    }),
+    true,
+  );
+  assert.deepEqual(calls, ['resolve:2:3:4', 'stop-edit', 'clear-selection', 'dispatch']);
+});
+
+void test('left rail pointer handler resolves hit and dispatches action flow', () => {
+  const calls: string[] = [];
+  const rows = [
+    {
+      kind: 'action',
+      text: 'add project',
+      active: false,
+      conversationSessionId: null,
+      directoryKey: 'dir-a',
+      repositoryId: null,
+      railAction: 'project.add',
+      conversationStatus: null,
+    },
+  ] as unknown as RailRows;
+  const handler = new LeftRailPointerHandler(
+    {
+      latestRailRows: () => rows,
+      conversationTitleEditConversationId: () => null,
+      activeConversationId: () => null,
+      repositoriesCollapsed: () => false,
+      resolveDirectoryForAction: () => null,
+      previousConversationClickState: () => null,
+      nowMs: () => 0,
+      isConversationPaneActive: () => true,
+      directoriesHas: () => false,
+    },
+    {
       clearConversationTitleEditClickState: () => {
-        calls.push('clear-click-state');
+        calls.push('clearConversationTitleEditClickState');
       },
-      resolveDirectoryForAction: () => 'dir-a',
-      openNewThreadPrompt: (directoryId) => {
-        calls.push(`new-thread:${directoryId}`);
+      openNewThreadPrompt: () => {
+        calls.push('openNewThreadPrompt');
       },
-      queueArchiveConversation: (conversationId) => {
-        calls.push(`archive-conversation:${conversationId}`);
+      queueArchiveConversation: () => {
+        calls.push('queueArchiveConversation');
       },
       openAddDirectoryPrompt: () => {
-        calls.push('open-add-directory');
+        calls.push('openAddDirectoryPrompt');
       },
       openRepositoryPromptForCreate: () => {
-        calls.push('open-repository-create');
+        calls.push('openRepositoryPromptForCreate');
       },
-      repositoryExists: (repositoryId) => {
-        calls.push(`repository-exists:${repositoryId}`);
-        return true;
+      repositoryExists: () => false,
+      openRepositoryPromptForEdit: () => {
+        calls.push('openRepositoryPromptForEdit');
       },
-      openRepositoryPromptForEdit: (repositoryId) => {
-        calls.push(`open-repository-edit:${repositoryId}`);
+      queueArchiveRepository: () => {
+        calls.push('queueArchiveRepository');
       },
-      queueArchiveRepository: (repositoryId) => {
-        calls.push(`archive-repository:${repositoryId}`);
+      toggleRepositoryGroup: () => {
+        calls.push('toggleRepositoryGroup');
       },
-      toggleRepositoryGroup: (repositoryId) => {
-        calls.push(`toggle-repository:${repositoryId}`);
-      },
-      selectLeftNavRepository: (repositoryId) => {
-        calls.push(`select-repository:${repositoryId}`);
+      selectLeftNavRepository: () => {
+        calls.push('selectLeftNavRepository');
       },
       expandAllRepositoryGroups: () => {
-        calls.push('expand-all-repositories');
+        calls.push('expandAllRepositoryGroups');
       },
       collapseAllRepositoryGroups: () => {
-        calls.push('collapse-all-repositories');
+        calls.push('collapseAllRepositoryGroups');
       },
       enterHomePane: () => {
-        calls.push('enter-home');
+        calls.push('enterHomePane');
       },
-      queueCloseDirectory: (directoryId) => {
-        calls.push(`close-directory:${directoryId}`);
+      queueCloseDirectory: () => {
+        calls.push('queueCloseDirectory');
       },
       toggleShortcutsCollapsed: () => {
-        calls.push('toggle-shortcuts');
+        calls.push('toggleShortcutsCollapsed');
       },
-      previousConversationClickState: () => clickState,
-      setConversationClickState: (next) => {
-        clickState = next;
-        calls.push(`set-click-state:${next?.conversationId ?? 'null'}`);
+      setConversationClickState: () => {
+        calls.push('setConversationClickState');
       },
-      nowMs: () => 42,
-      conversationTitleEditDoubleClickWindowMs: 250,
-      isConversationPaneActive: () => false,
-      ensureConversationPaneActive: (conversationId) => {
-        calls.push(`ensure-conversation-pane:${conversationId}`);
+      ensureConversationPaneActive: () => {
+        calls.push('ensureConversationPaneActive');
       },
-      beginConversationTitleEdit: (conversationId) => {
-        calls.push(`begin-title-edit:${conversationId}`);
+      beginConversationTitleEdit: () => {
+        calls.push('beginConversationTitleEdit');
       },
-      queueActivateConversation: (conversationId) => {
-        calls.push(`activate-conversation:${conversationId}`);
+      queueActivateConversation: () => {
+        calls.push('queueActivateConversation');
       },
-      queueActivateConversationAndEdit: (conversationId) => {
-        calls.push(`activate-and-edit:${conversationId}`);
+      queueActivateConversationAndEdit: () => {
+        calls.push('queueActivateConversationAndEdit');
       },
-      directoriesHas: (directoryId) => {
-        calls.push(`directory-exists:${directoryId}`);
-        return true;
-      },
-      enterProjectPane: (directoryId) => {
-        calls.push(`enter-project:${directoryId}`);
+      enterProjectPane: () => {
+        calls.push('enterProjectPane');
       },
       markDirty: () => {
-        calls.push('mark-dirty');
+        calls.push('markDirty');
       },
     },
     {
-      handleLeftRailPointerClick: (options) => {
-        calls.push(
-          `pointer:${options.clickEligible}:${options.paneRows}:${options.leftCols}:${options.pointerRow}:${options.pointerCol}`,
-        );
-        options.stopConversationTitleEdit();
-        options.clearSelection();
-        const context = {
-          selectedConversationId: 'session-a',
-          selectedProjectId: 'dir-a',
-          selectedRepositoryId: 'repo-a',
-          selectedAction: 'conversation.new',
-          supportsConversationTitleEditClick: true,
-        } as const;
-        options.handleAction(context);
-        options.handleConversation(context);
-        return true;
-      },
-      handleLeftRailActionClick: (options) => {
-        calls.push(`action:${options.action}`);
-        options.clearConversationTitleEditClickState();
-        options.openNewThreadPrompt(
-          options.selectedProjectId ?? options.resolveDirectoryForAction() ?? 'none',
-        );
-        options.queueArchiveConversation(options.activeConversationId ?? 'none');
-        options.openAddDirectoryPrompt();
-        options.openRepositoryPromptForCreate();
-        if (
-          options.selectedRepositoryId !== null &&
-          options.repositoryExists(options.selectedRepositoryId)
-        ) {
-          options.openRepositoryPromptForEdit(options.selectedRepositoryId);
-          options.queueArchiveRepository(options.selectedRepositoryId);
-          options.toggleRepositoryGroup(options.selectedRepositoryId);
-          options.selectLeftNavRepository(options.selectedRepositoryId);
-        }
-        if (options.repositoriesCollapsed) {
-          options.expandAllRepositoryGroups();
-        } else {
-          options.collapseAllRepositoryGroups();
-        }
-        options.enterHomePane();
-        options.queueCloseDirectory(
-          options.selectedProjectId ?? options.resolveDirectoryForAction() ?? 'none',
-        );
-        options.toggleShortcutsCollapsed();
-        options.markDirty();
-        return true;
-      },
-      handleLeftRailConversationClick: (options) => {
-        calls.push(`conversation:${options.selectedConversationId ?? 'none'}`);
-        calls.push(`previous-click:${options.previousClickState?.conversationId ?? 'none'}`);
-        options.setConversationClickState({ conversationId: 'session-next', atMs: options.nowMs });
-        if (!options.isConversationPaneActive && options.selectedConversationId !== null) {
-          options.ensureConversationPaneActive(options.selectedConversationId);
-          options.beginConversationTitleEdit(options.selectedConversationId);
-          options.queueActivateConversation(options.selectedConversationId);
-          options.queueActivateConversationAndEdit(options.selectedConversationId);
-        }
-        if (
-          options.selectedProjectId !== null &&
-          options.directoriesHas(options.selectedProjectId)
-        ) {
-          options.enterProjectPane(options.selectedProjectId);
-        }
-        options.markDirty();
-        return true;
-      },
+      conversationTitleEditDoubleClickWindowMs: 250,
     },
   );
 
-  const handled = input.handlePointerClick({
-    clickEligible: true,
-    paneRows: 22,
-    leftCols: 40,
-    pointerRow: 7,
-    pointerCol: 3,
-  });
-
-  assert.equal(handled, true);
-  assert.equal(clickState?.conversationId, 'session-next');
+  const hit = handler.resolveHit(0, 0, 40);
+  assert.equal(hit.selectedAction, 'project.add');
+  assert.equal(handler.dispatchHit(hit), true);
   assert.deepEqual(calls, [
-    'pointer:true:22:40:7:3',
-    'stop-title-edit',
-    'clear-selection',
-    'action:conversation.new',
-    'clear-click-state',
-    'new-thread:dir-a',
-    'archive-conversation:session-active',
-    'open-add-directory',
-    'open-repository-create',
-    'repository-exists:repo-a',
-    'open-repository-edit:repo-a',
-    'archive-repository:repo-a',
-    'toggle-repository:repo-a',
-    'select-repository:repo-a',
-    'expand-all-repositories',
-    'enter-home',
-    'close-directory:dir-a',
-    'toggle-shortcuts',
-    'mark-dirty',
-    'conversation:session-a',
-    'previous-click:prev',
-    'set-click-state:session-next',
-    'ensure-conversation-pane:session-a',
-    'begin-title-edit:session-a',
-    'activate-conversation:session-a',
-    'activate-and-edit:session-a',
-    'directory-exists:dir-a',
-    'enter-project:dir-a',
-    'mark-dirty',
+    'clearConversationTitleEditClickState',
+    'openAddDirectoryPrompt',
+    'markDirty',
   ]);
 });
 
-void test('left-rail pointer input default dependencies handle ineligible clicks', () => {
-  const input = new LeftRailPointerInput({
-    getLatestRailRows: () => [] as never,
-    hasConversationTitleEdit: () => false,
-    conversationTitleEditConversationId: () => null,
-    stopConversationTitleEdit: () => {},
-    hasSelection: () => false,
-    clearSelection: () => {},
-    activeConversationId: () => null,
-    repositoriesCollapsed: () => false,
-    clearConversationTitleEditClickState: () => {},
-    resolveDirectoryForAction: () => null,
-    openNewThreadPrompt: () => {},
-    queueArchiveConversation: () => {},
-    openAddDirectoryPrompt: () => {},
-    openRepositoryPromptForCreate: () => {},
-    repositoryExists: () => false,
-    openRepositoryPromptForEdit: () => {},
-    queueArchiveRepository: () => {},
-    toggleRepositoryGroup: () => {},
-    selectLeftNavRepository: () => {},
-    expandAllRepositoryGroups: () => {},
-    collapseAllRepositoryGroups: () => {},
-    enterHomePane: () => {},
-    queueCloseDirectory: () => {},
-    toggleShortcutsCollapsed: () => {},
-    previousConversationClickState: () => null,
-    setConversationClickState: () => {},
-    nowMs: () => 0,
-    conversationTitleEditDoubleClickWindowMs: 250,
-    isConversationPaneActive: () => false,
-    ensureConversationPaneActive: () => {},
-    beginConversationTitleEdit: () => {},
-    queueActivateConversation: () => {},
-    queueActivateConversationAndEdit: () => {},
-    directoriesHas: () => false,
-    enterProjectPane: () => {},
-    markDirty: () => {},
-  });
-
-  assert.equal(
-    input.handlePointerClick({
-      clickEligible: false,
-      paneRows: 10,
-      leftCols: 30,
-      pointerRow: 1,
-      pointerCol: 1,
-    }),
-    false,
+void test('left rail pointer handler dispatches conversation flow and keep-edit check', () => {
+  const calls: string[] = [];
+  const rows = [
+    {
+      kind: 'conversation-title',
+      text: 'thread',
+      active: false,
+      conversationSessionId: 'session-a',
+      directoryKey: 'dir-a',
+      repositoryId: null,
+      railAction: null,
+      conversationStatus: null,
+    },
+  ] as unknown as RailRows;
+  const handler = new LeftRailPointerHandler(
+    {
+      latestRailRows: () => rows,
+      conversationTitleEditConversationId: () => 'session-a',
+      activeConversationId: () => 'session-a',
+      repositoriesCollapsed: () => false,
+      resolveDirectoryForAction: () => null,
+      previousConversationClickState: () => ({
+        conversationId: 'session-a',
+        atMs: 900,
+      }),
+      nowMs: () => 1000,
+      isConversationPaneActive: () => true,
+      directoriesHas: () => true,
+    },
+    {
+      clearConversationTitleEditClickState: () => {
+        calls.push('clearConversationTitleEditClickState');
+      },
+      openNewThreadPrompt: () => {},
+      queueArchiveConversation: () => {},
+      openAddDirectoryPrompt: () => {},
+      openRepositoryPromptForCreate: () => {},
+      repositoryExists: () => false,
+      openRepositoryPromptForEdit: () => {},
+      queueArchiveRepository: () => {},
+      toggleRepositoryGroup: () => {},
+      selectLeftNavRepository: () => {},
+      expandAllRepositoryGroups: () => {},
+      collapseAllRepositoryGroups: () => {},
+      enterHomePane: () => {},
+      queueCloseDirectory: () => {},
+      toggleShortcutsCollapsed: () => {},
+      setConversationClickState: (next) => {
+        calls.push(`setConversationClickState:${next?.conversationId ?? 'null'}`);
+      },
+      ensureConversationPaneActive: () => {
+        calls.push('ensureConversationPaneActive');
+      },
+      beginConversationTitleEdit: (conversationId) => {
+        calls.push(`beginConversationTitleEdit:${conversationId}`);
+      },
+      queueActivateConversation: (conversationId) => {
+        calls.push(`queueActivateConversation:${conversationId}`);
+      },
+      queueActivateConversationAndEdit: (conversationId) => {
+        calls.push(`queueActivateConversationAndEdit:${conversationId}`);
+      },
+      enterProjectPane: (directoryId) => {
+        calls.push(`enterProjectPane:${directoryId}`);
+      },
+      markDirty: () => {
+        calls.push('markDirty');
+      },
+    },
+    {
+      conversationTitleEditDoubleClickWindowMs: 200,
+    },
   );
+
+  const hit = handler.resolveHit(0, 0, 40);
+  assert.equal(handler.shouldKeepConversationTitleEditActive(hit), true);
+  assert.equal(handler.dispatchHit(hit), true);
+  assert.deepEqual(calls, [
+    'setConversationClickState:null',
+    'beginConversationTitleEdit:session-a',
+    'markDirty',
+  ]);
 });

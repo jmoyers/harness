@@ -89,10 +89,6 @@ export function hasAltModifier(code: number): boolean {
   return (code & 0b0000_1000) !== 0;
 }
 
-export function hasShiftModifier(code: number): boolean {
-  return (code & 0b0000_0100) !== 0;
-}
-
 export function isLeftButtonPress(code: number, final: 'M' | 'm'): boolean {
   if (final !== 'M') {
     return false;

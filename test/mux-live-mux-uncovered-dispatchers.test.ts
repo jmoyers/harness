@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { runTaskPaneAction } from '../src/mux/live-mux/actions-task.ts';
 import {
   applyObservedGitStatusEvent,
   deleteDirectoryGitState,
@@ -11,8 +10,6 @@ import {
   activateLeftNavTarget,
   cycleLeftNavSelection,
 } from '../src/mux/live-mux/left-nav-activation.ts';
-import { handleLeftRailActionClick } from '../src/mux/live-mux/left-rail-actions.ts';
-import { handleLeftRailConversationClick } from '../src/mux/live-mux/left-rail-conversation-click.ts';
 import {
   readObservedStreamCursorBaseline,
   subscribeObservedStream,
@@ -26,117 +23,160 @@ import {
 } from '../src/mux/live-mux/pointer-routing.ts';
 import type { LeftNavSelection } from '../src/mux/live-mux/left-nav.ts';
 import type { StreamCommand, StreamObservedEvent } from '../src/control-plane/stream-protocol.ts';
+import { LeftRailPointerHandler } from '../src/services/left-rail-pointer-handler.ts';
 
-void test('runTaskPaneAction covers repository/task action routing and reorder branches', () => {
-  const calls: string[] = [];
-  const base = {
-    openTaskCreatePrompt: () => {
-      calls.push('openTaskCreatePrompt');
-    },
-    openRepositoryPromptForCreate: () => {
-      calls.push('openRepositoryPromptForCreate');
-    },
-    selectedRepositoryId: 'repo-a' as string | null,
-    repositoryExists: (repositoryId: string) => repositoryId === 'repo-a',
-    setTaskPaneNotice: (notice: string | null) => {
-      calls.push(`setTaskPaneNotice:${String(notice)}`);
-    },
-    markDirty: () => {
-      calls.push('markDirty');
-    },
-    setTaskPaneSelectionFocus: (focus: 'task' | 'repository') => {
-      calls.push(`setTaskPaneSelectionFocus:${focus}`);
-    },
-    openRepositoryPromptForEdit: (repositoryId: string) => {
-      calls.push(`openRepositoryPromptForEdit:${repositoryId}`);
-    },
-    queueArchiveRepository: (repositoryId: string) => {
-      calls.push(`queueArchiveRepository:${repositoryId}`);
-    },
-    selectedTask: { taskId: 'task-a', status: 'ready' } as {
-      taskId: string;
-      status: string;
-    } | null,
-    openTaskEditPrompt: (taskId: string) => {
-      calls.push(`openTaskEditPrompt:${taskId}`);
-    },
-    queueDeleteTask: (taskId: string) => {
-      calls.push(`queueDeleteTask:${taskId}`);
-    },
-    queueTaskReady: (taskId: string) => {
-      calls.push(`queueTaskReady:${taskId}`);
-    },
-    queueTaskDraft: (taskId: string) => {
-      calls.push(`queueTaskDraft:${taskId}`);
-    },
-    queueTaskComplete: (taskId: string) => {
-      calls.push(`queueTaskComplete:${taskId}`);
-    },
-    orderedTaskRecords: () =>
-      [
-        { taskId: 'task-a', status: 'ready' },
-        { taskId: 'task-b', status: 'ready' },
-        { taskId: 'task-c', status: 'completed' },
-      ] as const,
-    queueTaskReorderByIds: (orderedTaskIds: readonly string[], label: string) => {
-      calls.push(`queueTaskReorderByIds:${label}:${orderedTaskIds.join(',')}`);
-    },
-  };
+interface HandleLeftRailActionClickOptions {
+  action: Parameters<LeftRailPointerHandler['dispatchHit']>[0]['selectedAction'];
+  selectedProjectId: string | null;
+  selectedRepositoryId: string | null;
+  activeConversationId: string | null;
+  repositoriesCollapsed: boolean;
+  clearConversationTitleEditClickState: () => void;
+  resolveDirectoryForAction: () => string | null;
+  openNewThreadPrompt: (directoryId: string) => void;
+  queueArchiveConversation: (conversationId: string) => void;
+  openAddDirectoryPrompt: () => void;
+  openRepositoryPromptForCreate: () => void;
+  repositoryExists: (repositoryId: string) => boolean;
+  openRepositoryPromptForEdit: (repositoryId: string) => void;
+  queueArchiveRepository: (repositoryId: string) => void;
+  toggleRepositoryGroup: (repositoryId: string) => void;
+  selectLeftNavRepository: (repositoryId: string) => void;
+  expandAllRepositoryGroups: () => void;
+  collapseAllRepositoryGroups: () => void;
+  enterHomePane: () => void;
+  enterTasksPane?: () => void;
+  queueCloseDirectory: (directoryId: string) => void;
+  toggleShortcutsCollapsed: () => void;
+  markDirty: () => void;
+}
 
-  runTaskPaneAction({ ...base, action: 'task.create' });
-  runTaskPaneAction({ ...base, action: 'repository.create' });
-  runTaskPaneAction({ ...base, action: 'repository.edit' });
-  runTaskPaneAction({ ...base, action: 'repository.archive' });
-  runTaskPaneAction({ ...base, action: 'task.edit' });
-  runTaskPaneAction({ ...base, action: 'task.delete' });
-  runTaskPaneAction({ ...base, action: 'task.ready' });
-  runTaskPaneAction({ ...base, action: 'task.draft' });
-  runTaskPaneAction({ ...base, action: 'task.complete' });
-  runTaskPaneAction({ ...base, action: 'task.reorder-down' });
+interface HandleLeftRailConversationClickOptions {
+  selectedConversationId: string | null;
+  selectedProjectId: string | null;
+  supportsConversationTitleEditClick: boolean;
+  previousClickState: { conversationId: string; atMs: number } | null;
+  nowMs: number;
+  conversationTitleEditDoubleClickWindowMs: number;
+  activeConversationId: string | null;
+  isConversationPaneActive: boolean;
+  setConversationClickState: (next: { conversationId: string; atMs: number } | null) => void;
+  ensureConversationPaneActive: (conversationId: string) => void;
+  beginConversationTitleEdit: (conversationId: string) => void;
+  queueActivateConversation: (conversationId: string) => void;
+  queueActivateConversationAndEdit: (conversationId: string) => void;
+  directoriesHas: (directoryId: string) => boolean;
+  enterProjectPane: (directoryId: string) => void;
+  markDirty: () => void;
+}
 
-  assert.equal(calls.includes('openTaskCreatePrompt'), true);
-  assert.equal(calls.includes('openRepositoryPromptForCreate'), true);
-  assert.equal(calls.includes('openRepositoryPromptForEdit:repo-a'), true);
-  assert.equal(calls.includes('queueArchiveRepository:repo-a'), true);
-  assert.equal(calls.includes('openTaskEditPrompt:task-a'), true);
-  assert.equal(calls.includes('queueDeleteTask:task-a'), true);
-  assert.equal(calls.includes('queueTaskReady:task-a'), true);
-  assert.equal(calls.includes('queueTaskDraft:task-a'), true);
-  assert.equal(calls.includes('queueTaskComplete:task-a'), true);
-  assert.equal(calls.includes('queueTaskReorderByIds:tasks-reorder-down:task-b,task-a'), true);
-
-  calls.length = 0;
-  runTaskPaneAction({
-    ...base,
-    action: 'repository.edit',
-    selectedRepositoryId: 'missing',
-    repositoryExists: () => false,
+function handleLeftRailActionClick(options: HandleLeftRailActionClickOptions): boolean {
+  if (options.action === null) {
+    return false;
+  }
+  const handler = new LeftRailPointerHandler(
+    {
+      latestRailRows: () => [] as never,
+      conversationTitleEditConversationId: () => null,
+      activeConversationId: () => options.activeConversationId,
+      repositoriesCollapsed: () => options.repositoriesCollapsed,
+      resolveDirectoryForAction: options.resolveDirectoryForAction,
+      previousConversationClickState: () => null,
+      nowMs: () => 0,
+      isConversationPaneActive: () => true,
+      directoriesHas: () => false,
+    },
+    {
+      clearConversationTitleEditClickState: options.clearConversationTitleEditClickState,
+      openNewThreadPrompt: options.openNewThreadPrompt,
+      queueArchiveConversation: options.queueArchiveConversation,
+      openAddDirectoryPrompt: options.openAddDirectoryPrompt,
+      openRepositoryPromptForCreate: options.openRepositoryPromptForCreate,
+      repositoryExists: options.repositoryExists,
+      openRepositoryPromptForEdit: options.openRepositoryPromptForEdit,
+      queueArchiveRepository: options.queueArchiveRepository,
+      toggleRepositoryGroup: options.toggleRepositoryGroup,
+      selectLeftNavRepository: options.selectLeftNavRepository,
+      expandAllRepositoryGroups: options.expandAllRepositoryGroups,
+      collapseAllRepositoryGroups: options.collapseAllRepositoryGroups,
+      enterHomePane: options.enterHomePane,
+      ...(options.enterTasksPane === undefined
+        ? {}
+        : {
+            enterTasksPane: options.enterTasksPane,
+          }),
+      queueCloseDirectory: options.queueCloseDirectory,
+      toggleShortcutsCollapsed: options.toggleShortcutsCollapsed,
+      setConversationClickState: () => {},
+      ensureConversationPaneActive: () => {},
+      beginConversationTitleEdit: () => {},
+      queueActivateConversation: () => {},
+      queueActivateConversationAndEdit: () => {},
+      enterProjectPane: () => {},
+      markDirty: options.markDirty,
+    },
+    {
+      conversationTitleEditDoubleClickWindowMs: 250,
+    },
+  );
+  return handler.dispatchHit({
+    selectedConversationId: null,
+    selectedProjectId: options.selectedProjectId,
+    selectedRepositoryId: options.selectedRepositoryId,
+    selectedAction: options.action,
+    supportsConversationTitleEditClick: false,
   });
-  runTaskPaneAction({
-    ...base,
-    action: 'repository.archive',
+}
+
+function handleLeftRailConversationClick(options: HandleLeftRailConversationClickOptions): boolean {
+  const handler = new LeftRailPointerHandler(
+    {
+      latestRailRows: () => [] as never,
+      conversationTitleEditConversationId: () => null,
+      activeConversationId: () => options.activeConversationId,
+      repositoriesCollapsed: () => false,
+      resolveDirectoryForAction: () => null,
+      previousConversationClickState: () => options.previousClickState,
+      nowMs: () => options.nowMs,
+      isConversationPaneActive: () => options.isConversationPaneActive,
+      directoriesHas: options.directoriesHas,
+    },
+    {
+      clearConversationTitleEditClickState: () => {},
+      openNewThreadPrompt: () => {},
+      queueArchiveConversation: () => {},
+      openAddDirectoryPrompt: () => {},
+      openRepositoryPromptForCreate: () => {},
+      repositoryExists: () => false,
+      openRepositoryPromptForEdit: () => {},
+      queueArchiveRepository: () => {},
+      toggleRepositoryGroup: () => {},
+      selectLeftNavRepository: () => {},
+      expandAllRepositoryGroups: () => {},
+      collapseAllRepositoryGroups: () => {},
+      enterHomePane: () => {},
+      queueCloseDirectory: () => {},
+      toggleShortcutsCollapsed: () => {},
+      setConversationClickState: options.setConversationClickState,
+      ensureConversationPaneActive: options.ensureConversationPaneActive,
+      beginConversationTitleEdit: options.beginConversationTitleEdit,
+      queueActivateConversation: options.queueActivateConversation,
+      queueActivateConversationAndEdit: options.queueActivateConversationAndEdit,
+      enterProjectPane: options.enterProjectPane,
+      markDirty: options.markDirty,
+    },
+    {
+      conversationTitleEditDoubleClickWindowMs: options.conversationTitleEditDoubleClickWindowMs,
+    },
+  );
+  return handler.dispatchHit({
+    selectedConversationId: options.selectedConversationId,
+    selectedProjectId: options.selectedProjectId,
     selectedRepositoryId: null,
+    selectedAction: null,
+    supportsConversationTitleEditClick: options.supportsConversationTitleEditClick,
   });
-  runTaskPaneAction({
-    ...base,
-    action: 'task.edit',
-    selectedTask: null,
-  });
-  runTaskPaneAction({
-    ...base,
-    action: 'task.reorder-up',
-    selectedTask: { taskId: 'task-c', status: 'completed' },
-  });
-  runTaskPaneAction({
-    ...base,
-    action: 'task.reorder-up',
-    selectedTask: { taskId: 'task-a', status: 'ready' },
-  });
-  assert.equal(calls.includes('setTaskPaneNotice:select a repository first'), true);
-  assert.equal(calls.includes('setTaskPaneNotice:select a task first'), true);
-  assert.equal(calls.includes('setTaskPaneNotice:cannot reorder completed tasks'), true);
-  assert.equal(calls.includes('markDirty'), true);
-});
+}
 
 void test('git-state helpers delete directory state and apply observed updates', () => {
   const summaryMap = new Map([

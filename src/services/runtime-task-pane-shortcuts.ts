@@ -1,16 +1,37 @@
 import type { WorkspaceModel } from '../domain/workspace.ts';
 import {
-  createTaskComposerBuffer as createTaskComposerBufferFrame,
-  normalizeTaskComposerBuffer as normalizeTaskComposerBufferFrame,
-  taskFieldsFromComposerText as taskFieldsFromComposerTextFrame,
+  createTaskComposerBuffer,
+  insertTaskComposerText,
+  normalizeTaskComposerBuffer,
+  taskComposerBackspace,
+  taskComposerDeleteForward,
+  taskComposerDeleteToLineEnd,
+  taskComposerDeleteToLineStart,
+  taskComposerDeleteWordLeft,
+  taskComposerMoveLeft,
+  taskComposerMoveLineEnd,
+  taskComposerMoveLineStart,
+  taskComposerMoveRight,
+  taskComposerMoveVertical,
+  taskComposerMoveWordLeft,
+  taskComposerMoveWordRight,
+  taskFieldsFromComposerText,
   type TaskComposerBuffer,
 } from '../mux/task-composer.ts';
-import { handleTaskPaneShortcutInput as handleTaskPaneShortcutInputFrame } from '../mux/live-mux/task-pane-shortcuts.ts';
-import type { ResolvedTaskScreenKeybindings } from '../mux/task-screen-keybindings.ts';
+import {
+  detectTaskScreenKeybindingAction,
+  type ResolvedTaskScreenKeybindings,
+} from '../mux/task-screen-keybindings.ts';
+type TaskPaneShortcutAction =
+  | 'task.ready'
+  | 'task.draft'
+  | 'task.complete'
+  | 'task.reorder-up'
+  | 'task.reorder-down';
+type TaskComposerSubmitMode = 'ready' | 'queue';
 
-type TaskPaneShortcutAction = Parameters<
-  Parameters<typeof handleTaskPaneShortcutInputFrame>[0]['runTaskPaneAction']
->[0];
+const BRACKETED_PASTE_START = Buffer.from('\u001b[200~', 'utf8');
+const BRACKETED_PASTE_END = Buffer.from('\u001b[201~', 'utf8');
 
 interface TaskRecordShape {
   readonly taskId: string;
@@ -42,35 +63,16 @@ interface RuntimeTaskPaneShortcutsOptions<TTaskRecord extends TaskRecordShape> {
   readonly applyTaskRecord: (task: TTaskRecord) => void;
   readonly syncTaskPaneSelection: () => void;
   readonly markDirty: () => void;
-  readonly createTaskComposerBuffer?: typeof createTaskComposerBufferFrame;
-  readonly normalizeTaskComposerBuffer?: typeof normalizeTaskComposerBufferFrame;
-  readonly taskFieldsFromComposerText?: typeof taskFieldsFromComposerTextFrame;
-  readonly handleTaskPaneShortcutInput?: typeof handleTaskPaneShortcutInputFrame;
 }
 
 export class RuntimeTaskPaneShortcuts<TTaskRecord extends TaskRecordShape> {
-  private readonly createTaskComposerBuffer: typeof createTaskComposerBufferFrame;
-  private readonly normalizeTaskComposerBuffer: typeof normalizeTaskComposerBufferFrame;
-  private readonly taskFieldsFromComposerText: typeof taskFieldsFromComposerTextFrame;
-  private readonly handleTaskPaneShortcutInput: typeof handleTaskPaneShortcutInputFrame;
-
-  constructor(private readonly options: RuntimeTaskPaneShortcutsOptions<TTaskRecord>) {
-    this.createTaskComposerBuffer =
-      options.createTaskComposerBuffer ?? createTaskComposerBufferFrame;
-    this.normalizeTaskComposerBuffer =
-      options.normalizeTaskComposerBuffer ?? normalizeTaskComposerBufferFrame;
-    this.taskFieldsFromComposerText =
-      options.taskFieldsFromComposerText ?? taskFieldsFromComposerTextFrame;
-    this.handleTaskPaneShortcutInput =
-      options.handleTaskPaneShortcutInput ?? handleTaskPaneShortcutInputFrame;
-  }
+  constructor(private readonly options: RuntimeTaskPaneShortcutsOptions<TTaskRecord>) {}
 
   homeEditorBuffer(): TaskComposerBuffer {
     const taskEditorTarget = this.options.workspace.taskEditorTarget;
     if (taskEditorTarget.kind === 'task') {
       return (
-        this.options.taskComposerForTask(taskEditorTarget.taskId) ??
-        this.createTaskComposerBuffer('')
+        this.options.taskComposerForTask(taskEditorTarget.taskId) ?? createTaskComposerBuffer('')
       );
     }
     return this.options.workspace.taskDraftComposer;
@@ -82,7 +84,7 @@ export class RuntimeTaskPaneShortcuts<TTaskRecord extends TaskRecordShape> {
       this.options.setTaskComposerForTask(taskEditorTarget.taskId, next);
       this.options.scheduleTaskComposerPersist(taskEditorTarget.taskId);
     } else {
-      this.options.workspace.taskDraftComposer = this.normalizeTaskComposerBuffer(next);
+      this.options.workspace.taskDraftComposer = normalizeTaskComposerBuffer(next);
     }
     this.options.markDirty();
   }
@@ -126,14 +128,14 @@ export class RuntimeTaskPaneShortcuts<TTaskRecord extends TaskRecordShape> {
     return ids;
   }
 
-  submitDraftTaskFromComposer(mode: 'ready' | 'queue'): void {
+  submitDraftTaskFromComposer(mode: TaskComposerSubmitMode): void {
     const repositoryId = this.options.workspace.taskPaneSelectedRepositoryId;
     if (repositoryId === null || !this.options.repositoriesHas(repositoryId)) {
       this.options.workspace.taskPaneNotice = 'select a repository first';
       this.options.markDirty();
       return;
     }
-    const fields = this.taskFieldsFromComposerText(this.options.workspace.taskDraftComposer.text);
+    const fields = taskFieldsFromComposerText(this.options.workspace.taskDraftComposer.text);
     if (fields.body.trim().length === 0) {
       this.options.workspace.taskPaneNotice = 'task body is required';
       this.options.markDirty();
@@ -148,7 +150,7 @@ export class RuntimeTaskPaneShortcuts<TTaskRecord extends TaskRecordShape> {
         });
         const task = mode === 'ready' ? await this.options.taskReady(created.taskId) : created;
         this.options.applyTaskRecord(task);
-        this.options.workspace.taskDraftComposer = this.createTaskComposerBuffer('');
+        this.options.workspace.taskDraftComposer = createTaskComposerBuffer('');
         this.options.workspace.taskPaneNotice = null;
         this.options.syncTaskPaneSelection();
         this.options.markDirty();
@@ -199,43 +201,170 @@ export class RuntimeTaskPaneShortcuts<TTaskRecord extends TaskRecordShape> {
     this.options.focusDraftComposer();
   }
 
+  private matchesSequence(input: Buffer, startIndex: number, sequence: Buffer): boolean {
+    if (startIndex < 0 || startIndex + sequence.length > input.length) {
+      return false;
+    }
+    for (let index = 0; index < sequence.length; index += 1) {
+      if (input[startIndex + index] !== sequence[index]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private extractInsertText(input: Buffer): string | null {
+    const chunks: Buffer[] = [];
+    let inBracketedPaste = false;
+    for (let index = 0; index < input.length; index += 1) {
+      if (!inBracketedPaste && this.matchesSequence(input, index, BRACKETED_PASTE_START)) {
+        inBracketedPaste = true;
+        index += BRACKETED_PASTE_START.length - 1;
+        continue;
+      }
+      if (inBracketedPaste && this.matchesSequence(input, index, BRACKETED_PASTE_END)) {
+        inBracketedPaste = false;
+        index += BRACKETED_PASTE_END.length - 1;
+        continue;
+      }
+      const byte = input[index]!;
+      if (inBracketedPaste) {
+        chunks.push(Buffer.from([byte]));
+        continue;
+      }
+      if (byte === 0x1b) {
+        return null;
+      }
+      if (byte >= 32 && byte <= 126) {
+        chunks.push(Buffer.from([byte]));
+      }
+    }
+    if (chunks.length === 0) {
+      return '';
+    }
+    return Buffer.concat(chunks).toString('utf8').replace(/\r\n?/gu, '\n');
+  }
+
+  private handleShortcutAction(action: string): boolean {
+    const workspace = this.options.workspace;
+    switch (action) {
+      case 'mux.home.repo.dropdown.toggle':
+        workspace.taskRepositoryDropdownOpen = !workspace.taskRepositoryDropdownOpen;
+        this.options.markDirty();
+        return true;
+      case 'mux.home.repo.next':
+        workspace.taskRepositoryDropdownOpen = true;
+        this.selectRepositoryByDirection(1);
+        return true;
+      case 'mux.home.repo.previous':
+        workspace.taskRepositoryDropdownOpen = true;
+        this.selectRepositoryByDirection(-1);
+        return true;
+      case 'mux.home.task.status.ready':
+        this.options.runTaskPaneAction('task.ready');
+        return true;
+      case 'mux.home.task.status.draft':
+        this.options.runTaskPaneAction('task.draft');
+        return true;
+      case 'mux.home.task.status.complete':
+        this.options.runTaskPaneAction('task.complete');
+        return true;
+      case 'mux.home.task.reorder.up':
+        this.options.runTaskPaneAction('task.reorder-up');
+        return true;
+      case 'mux.home.task.reorder.down':
+        this.options.runTaskPaneAction('task.reorder-down');
+        return true;
+      case 'mux.home.task.newline':
+        this.updateHomeEditorBuffer(insertTaskComposerText(this.homeEditorBuffer(), '\n'));
+        return true;
+      case 'mux.home.task.queue':
+        if (workspace.taskEditorTarget.kind === 'draft') {
+          this.submitDraftTaskFromComposer('queue');
+        } else {
+          this.options.focusDraftComposer();
+        }
+        return true;
+      case 'mux.home.task.submit':
+        if (workspace.taskEditorTarget.kind === 'draft') {
+          this.submitDraftTaskFromComposer('ready');
+        } else {
+          this.options.focusDraftComposer();
+        }
+        return true;
+      case 'mux.home.editor.cursor.left':
+        this.updateHomeEditorBuffer(taskComposerMoveLeft(this.homeEditorBuffer()));
+        return true;
+      case 'mux.home.editor.cursor.right':
+        this.updateHomeEditorBuffer(taskComposerMoveRight(this.homeEditorBuffer()));
+        return true;
+      case 'mux.home.editor.cursor.up': {
+        const vertical = taskComposerMoveVertical(this.homeEditorBuffer(), -1);
+        if (vertical.hitBoundary) {
+          this.moveTaskEditorFocusUp();
+        } else {
+          this.updateHomeEditorBuffer(vertical.next);
+        }
+        return true;
+      }
+      case 'mux.home.editor.cursor.down':
+        if (workspace.taskEditorTarget.kind === 'task') {
+          const vertical = taskComposerMoveVertical(this.homeEditorBuffer(), 1);
+          if (vertical.hitBoundary) {
+            this.moveTaskEditorFocusDown();
+          } else {
+            this.updateHomeEditorBuffer(vertical.next);
+          }
+        } else {
+          this.updateHomeEditorBuffer(taskComposerMoveVertical(this.homeEditorBuffer(), 1).next);
+        }
+        return true;
+      case 'mux.home.editor.line.start':
+        this.updateHomeEditorBuffer(taskComposerMoveLineStart(this.homeEditorBuffer()));
+        return true;
+      case 'mux.home.editor.line.end':
+        this.updateHomeEditorBuffer(taskComposerMoveLineEnd(this.homeEditorBuffer()));
+        return true;
+      case 'mux.home.editor.word.left':
+        this.updateHomeEditorBuffer(taskComposerMoveWordLeft(this.homeEditorBuffer()));
+        return true;
+      case 'mux.home.editor.word.right':
+        this.updateHomeEditorBuffer(taskComposerMoveWordRight(this.homeEditorBuffer()));
+        return true;
+      case 'mux.home.editor.delete.backward':
+        this.updateHomeEditorBuffer(taskComposerBackspace(this.homeEditorBuffer()));
+        return true;
+      case 'mux.home.editor.delete.forward':
+        this.updateHomeEditorBuffer(taskComposerDeleteForward(this.homeEditorBuffer()));
+        return true;
+      case 'mux.home.editor.delete.word.backward':
+        this.updateHomeEditorBuffer(taskComposerDeleteWordLeft(this.homeEditorBuffer()));
+        return true;
+      case 'mux.home.editor.delete.line.start':
+        this.updateHomeEditorBuffer(taskComposerDeleteToLineStart(this.homeEditorBuffer()));
+        return true;
+      case 'mux.home.editor.delete.line.end':
+        this.updateHomeEditorBuffer(taskComposerDeleteToLineEnd(this.homeEditorBuffer()));
+        return true;
+      default:
+        return false;
+    }
+  }
+
   handleInput(input: Buffer): boolean {
     const workspace = this.options.workspace;
-    return this.handleTaskPaneShortcutInput({
-      input,
-      mainPaneMode: workspace.mainPaneMode,
-      taskPaneVisible: workspace.leftNavSelection.kind === 'tasks',
-      taskScreenKeybindings: this.options.taskScreenKeybindings,
-      taskEditorTarget: workspace.taskEditorTarget,
-      homeEditorBuffer: () => this.homeEditorBuffer(),
-      updateHomeEditorBuffer: (next) => {
-        this.updateHomeEditorBuffer(next);
-      },
-      moveTaskEditorFocusUp: () => {
-        this.moveTaskEditorFocusUp();
-      },
-      moveTaskEditorFocusDown: () => {
-        this.moveTaskEditorFocusDown();
-      },
-      focusDraftComposer: () => {
-        this.options.focusDraftComposer();
-      },
-      submitDraftTaskFromComposer: (mode) => {
-        this.submitDraftTaskFromComposer(mode);
-      },
-      runTaskPaneAction: (action) => {
-        this.options.runTaskPaneAction(action);
-      },
-      selectRepositoryByDirection: (direction) => {
-        this.selectRepositoryByDirection(direction);
-      },
-      getTaskRepositoryDropdownOpen: () => workspace.taskRepositoryDropdownOpen,
-      setTaskRepositoryDropdownOpen: (open) => {
-        workspace.taskRepositoryDropdownOpen = open;
-      },
-      markDirty: () => {
-        this.options.markDirty();
-      },
-    });
+    if (workspace.mainPaneMode !== 'home' || workspace.leftNavSelection.kind !== 'tasks') {
+      return false;
+    }
+    const action = detectTaskScreenKeybindingAction(input, this.options.taskScreenKeybindings);
+    if (action !== null && this.handleShortcutAction(action)) {
+      return true;
+    }
+    const inserted = this.extractInsertText(input);
+    if (inserted === null || inserted.length === 0) {
+      return false;
+    }
+    this.updateHomeEditorBuffer(insertTaskComposerText(this.homeEditorBuffer(), inserted));
+    return true;
   }
 }

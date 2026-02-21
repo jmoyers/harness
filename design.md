@@ -134,7 +134,8 @@ The runtime follows a responsibility-first split:
 - `src/domain/*` owns mutable business state and lifecycle transitions (conversations, repositories, tasks, directories, workspace state).
 - `src/services/*` owns orchestration and IO-facing flows (control-plane calls, startup/hydration, persistence, runtime sequencing).
 - `src/ui/*` owns rendering, modal/input routing, and pane-level interaction reducers.
-- `scripts/codex-live-mux-runtime.ts` is composition and wiring only; behavior should be pushed into domain/service/ui modules.
+- `scripts/codex-live-mux-runtime.ts` is a thin bootstrap wrapper that delegates to `src/mux/runtime-app/codex-live-mux-runtime.ts`.
+- `src/mux/runtime-app/codex-live-mux-runtime.ts` is the owning mux runtime composition root.
 
 Ownership rules:
 
@@ -157,7 +158,7 @@ Entrypoint and composition-root rules:
   - delegate typed command execution
   - map final result to process exit output
 - Business parsing, command routing, orchestration, and state mutation are prohibited in `scripts/*`.
-- Each executable entrypoint has one owning composition root in `src/*` (for example `src/cli/runtime-app/*`).
+- Each executable entrypoint has one owning composition root in `src/*` (for example `src/cli/runtime-app/*`, `src/mux/runtime-app/*`).
 
 Dependency-shape rules:
 
@@ -165,6 +166,9 @@ Dependency-shape rules:
 - No `Record<string, unknown>` contracts for orchestration interfaces.
 - No "mirror facades" that re-expose most of a concrete class; split by capabilities instead.
 - Options objects are allowed only when they represent a named domain/config model, not ad-hoc wiring.
+- No class-shaped frame-function relays:
+  - classes that mostly map `this.options` into imported free-function option bags are prohibited.
+  - if logic is app-specific, keep it in app-layer classes and expose package-level strategy/port contracts.
 
 Context rules:
 
@@ -196,7 +200,14 @@ Reusable terminal UI foundation lives in `packages/harness-ui` and is class-owne
 Boundary rules:
 
 - `packages/harness-ui` must not import mux/workspace/domain logic.
+- Milestone-5 transitional state: extracted interaction modules currently still depend on `src/mux/*` and `src/domain/*` internals; this is tracked as temporary debt and must be removed before Milestone 6 completion.
 - Runtime-facing classes use explicit collaborator interfaces (`ScreenWriter`, `ScreenAnsiValidator`) instead of callback/property bags.
+- Runtime interaction composition must use consumer-owned feature ports and concrete collaborators instead of large flat options/callback bags.
+- Reusable interaction primitives live in `packages/harness-ui`; harness-specific behavior lives in `src/services/*` (policy handlers), wired via typed ports.
+- Package classes must not default-bind to app free functions through `dependencies.foo ?? fooFrame`; that pattern preserves hidden package->app coupling.
+- Orchestrators/routers should accept concrete collaborators (service instances or narrow interfaces), not mega constructor bags.
+- Do not introduce class-shaped glue wrappers that mostly forward 1:1 calls.
+- Orchestration classes must avoid cross-module constructor type plumbing (`ConstructorParameters<typeof X>[0]`) as a boundary contract; use named exported interfaces instead.
 - Runtime and test call paths consume `packages/harness-ui` classes directly; legacy `src/ui/{surface,kit,wrapping-input,screen}.ts` compatibility wrappers are removed.
 - `src/ui/*` and `src/mux/*` keep app-specific behavior in adapters/features over package-owned primitives.
 
@@ -1097,6 +1108,7 @@ Subsystems where mature dependencies are acceptable because they are outside dir
 - Verification is gate-based and continuous: lint, typecheck, dead-code, full tests, and coverage must stay green.
 - Local commit flow uses a repository-managed Git `pre-commit` hook (`core.hooksPath=.githooks`) that runs `bun run verify` and blocks commits on failures.
 - Coverage is non-negotiable: all code paths must remain covered at 100% lines/functions/branches.
+- Runtime refactor exception policy: during a declared milestone extraction window, day-to-day `verify` may omit coverage, but strict `verify:coverage-gate` is still required at each milestone checkpoint and before merge.
 - Terminal parity is regression-tested with deterministic snapshots and parity scenes, not visual guesswork.
 - Latency-sensitive changes require before/after benchmark evidence from the mux hot-path harness.
 - Config, logging, and instrumentation must remain centralized (`config-core`, `log-core`, `perf-core`) with no side channels.

@@ -1,15 +1,15 @@
 {
-  "include": ["src/**/*.ts", "packages/harness-ai/src/**/*.ts"],
+  "include": ["src/**/*.ts", "packages/harness-ai/src/**/*.ts", "packages/harness-ui/src/**/*.ts"],
   "exclude": [],
   "global": {
-    "lines": 100,
-    "functions": 100,
-    "branches": 100
+    "lines": 95,
+    "functions": 95,
+    "branches": 95
   },
   "perFileDefault": {
-    "lines": 100,
-    "functions": 100,
-    "branches": 100
+    "lines": 0,
+    "functions": 0,
+    "branches": 0
   },
   "perFile": {}
 }

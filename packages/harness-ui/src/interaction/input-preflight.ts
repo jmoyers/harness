@@ -1,6 +1,4 @@
-import { extractFocusEvents as extractFocusEventsFrame } from '../mux/live-mux/startup-utils.ts';
-
-interface InputPreflightOptions {
+export interface InputPreflightOptions {
   readonly isShuttingDown: () => boolean;
   readonly routeModalInput: (input: Buffer) => boolean;
   readonly handleEscapeInput: (input: Buffer) => void;
@@ -12,19 +10,19 @@ interface InputPreflightOptions {
   readonly handleCopyShortcutInput: (input: Buffer) => boolean;
 }
 
-interface InputPreflightDependencies {
-  readonly extractFocusEvents?: typeof extractFocusEventsFrame;
+export interface InputPreflightStrategies {
+  extractFocusEvents(input: Buffer): {
+    readonly sanitized: Buffer;
+    readonly focusInCount: number;
+    readonly focusOutCount: number;
+  };
 }
 
 export class InputPreflight {
-  private readonly extractFocusEvents: typeof extractFocusEventsFrame;
-
   constructor(
     private readonly options: InputPreflightOptions,
-    dependencies: InputPreflightDependencies = {},
-  ) {
-    this.extractFocusEvents = dependencies.extractFocusEvents ?? extractFocusEventsFrame;
-  }
+    private readonly strategies: InputPreflightStrategies,
+  ) {}
 
   nextInput(input: Buffer): Buffer | null {
     if (this.options.isShuttingDown()) {
@@ -39,7 +37,7 @@ export class InputPreflight {
       return null;
     }
 
-    const focusExtraction = this.extractFocusEvents(input);
+    const focusExtraction = this.strategies.extractFocusEvents(input);
     if (focusExtraction.focusInCount > 0) {
       this.options.onFocusIn();
     }

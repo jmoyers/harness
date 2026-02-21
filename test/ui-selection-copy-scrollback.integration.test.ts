@@ -1,19 +1,25 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import {
+  classifyPaneAt,
   computeDualPaneLayout,
   parseMuxInputChunk,
   wheelDeltaRowsFromCode,
 } from '../src/mux/dual-pane-core.ts';
 import {
+  hasAltModifier,
+  isLeftButtonPress,
+  isMotionMouseCode,
+  pointFromMouseEvent,
+  reduceConversationMouseSelection,
   selectionText,
   writeTextToClipboard,
   type PaneSelection,
   type PaneSelectionDrag,
 } from '../src/mux/live-mux/selection.ts';
 import { TerminalSnapshotOracle } from '../src/terminal/snapshot-oracle.ts';
-import { ConversationSelectionInput } from '../src/ui/conversation-selection-input.ts';
-import { InputTokenRouter } from '../src/ui/input-token-router.ts';
+import { ConversationSelectionInput } from '../packages/harness-ui/src/interaction/conversation-selection-input.ts';
+import { InputTokenRouter } from '../packages/harness-ui/src/interaction/input-token-router.ts';
 
 function sgrMouse(code: number, col: number, row: number, final: 'M' | 'm'): string {
   return `\u001b[<${String(code)};${String(col)};${String(row)}${final}`;
@@ -47,45 +53,62 @@ void test('selection/copy integration includes offscreen rows after drag + scrol
   let selection: PaneSelection | null = null;
   let selectionDrag: PaneSelectionDrag | null = null;
 
-  const selectionInput = new ConversationSelectionInput({
-    getSelection: () => selection,
-    setSelection: (next) => {
-      selection = next;
-    },
-    getSelectionDrag: () => selectionDrag,
-    setSelectionDrag: (next) => {
-      selectionDrag = next;
-    },
-    pinViewportForSelection: () => {},
-    releaseViewportPinForSelection: () => {},
-    markDirty: () => {},
-  });
-
-  const router = new InputTokenRouter({
-    getMainPaneMode: () => 'conversation',
-    pointerRoutingInput: {
-      handlePaneDividerDrag: () => false,
-      handleHomePaneDragRelease: () => false,
-      handleSeparatorPointerPress: () => false,
-      handleMainPaneWheel: ({ code }, onConversationWheel) => {
-        const delta = wheelDeltaRowsFromCode(code);
-        if (delta === null) {
-          return false;
-        }
-        onConversationWheel(delta);
-        return true;
+  const selectionInput = new ConversationSelectionInput(
+    {
+      getSelection: () => selection,
+      setSelection: (next) => {
+        selection = next;
       },
-      handleHomePaneDragMove: () => false,
+      getSelectionDrag: () => selectionDrag,
+      setSelectionDrag: (next) => {
+        selectionDrag = next;
+      },
+      pinViewportForSelection: () => {},
+      releaseViewportPinForSelection: () => {},
+      markDirty: () => {},
     },
-    mainPanePointerInput: {
-      handleProjectPanePointerClick: () => false,
-      handleHomePanePointerClick: () => false,
+    {
+      pointFromMouseEvent,
+      reduceConversationMouseSelection,
+      selectionText,
     },
-    leftRailPointerInput: {
-      handlePointerClick: () => false,
+  );
+
+  const router = new InputTokenRouter(
+    {
+      getMainPaneMode: () => 'conversation',
+      pointerRoutingInput: {
+        handlePaneDividerDrag: () => false,
+        handleHomePaneDragRelease: () => false,
+        handleSeparatorPointerPress: () => false,
+        handleMainPaneWheel: ({ code }, onConversationWheel) => {
+          const delta = wheelDeltaRowsFromCode(code);
+          if (delta === null) {
+            return false;
+          }
+          onConversationWheel(delta);
+          return true;
+        },
+        handleHomePaneDragMove: () => false,
+      },
+      mainPanePointerInput: {
+        handleProjectPanePointerClick: () => false,
+        handleHomePanePointerClick: () => false,
+      },
+      leftRailPointerInput: {
+        handlePointerClick: () => false,
+      },
+      conversationSelectionInput: selectionInput,
     },
-    conversationSelectionInput: selectionInput,
-  });
+    {
+      classifyPaneAt: (routerLayout, col, row) =>
+        classifyPaneAt(routerLayout as Parameters<typeof classifyPaneAt>[0], col, row),
+      isLeftButtonPress,
+      hasAltModifier,
+      hasShiftModifier: (code) => (code & 0b0000_0100) !== 0,
+      isMotionMouseCode,
+    },
+  );
 
   const conversation = {
     oracle: {

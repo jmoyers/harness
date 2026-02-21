@@ -1,19 +1,3 @@
-import { wheelDeltaRowsFromCode } from '../mux/dual-pane-core.ts';
-import { handleHomePaneDragRelease as handleHomePaneDragReleaseFrame } from '../mux/live-mux/home-pane-drop.ts';
-import {
-  handleHomePaneDragMove as handleHomePaneDragMoveFrame,
-  handleMainPaneWheelInput as handleMainPaneWheelInputFrame,
-  handlePaneDividerDragInput as handlePaneDividerDragInputFrame,
-  handleSeparatorPointerPress as handleSeparatorPointerPressFrame,
-} from '../mux/live-mux/pointer-routing.ts';
-import {
-  hasAltModifier,
-  isLeftButtonPress,
-  isMouseRelease,
-  isSelectionDrag,
-  isWheelMouseCode,
-} from '../mux/live-mux/selection.ts';
-
 type MainPaneMode = 'conversation' | 'project' | 'home';
 type PointerTarget = 'left' | 'right' | 'separator' | 'status' | 'outside';
 
@@ -25,7 +9,44 @@ interface HomePaneDragState {
   readonly hasDragged: boolean;
 }
 
-interface PointerRoutingInputOptions {
+function isWheelMouseCode(code: number): boolean {
+  return (code & 0b0100_0000) !== 0;
+}
+
+function hasAltModifier(code: number): boolean {
+  return (code & 0b0000_1000) !== 0;
+}
+
+function isMotionMouseCode(code: number): boolean {
+  return (code & 0b0010_0000) !== 0;
+}
+
+function isLeftButtonPress(code: number, final: 'M' | 'm'): boolean {
+  if (final !== 'M') {
+    return false;
+  }
+  if (isWheelMouseCode(code) || isMotionMouseCode(code)) {
+    return false;
+  }
+  return (code & 0b0000_0011) === 0;
+}
+
+function isMouseRelease(final: 'M' | 'm'): boolean {
+  return final === 'm';
+}
+
+function isSelectionDrag(code: number, final: 'M' | 'm'): boolean {
+  return final === 'M' && isMotionMouseCode(code);
+}
+
+function wheelDeltaRowsFromCode(code: number): number | null {
+  if (!isWheelMouseCode(code)) {
+    return null;
+  }
+  return (code & 0b0000_0001) === 0 ? -1 : 1;
+}
+
+export interface PointerRoutingInputOptions {
   readonly getPaneDividerDragActive: () => boolean;
   readonly setPaneDividerDragActive: (active: boolean) => void;
   readonly applyPaneDividerAtCol: (col: number) => void;
@@ -44,12 +65,69 @@ interface PointerRoutingInputOptions {
   readonly markDirty: () => void;
 }
 
-interface PointerRoutingInputDependencies {
-  readonly handlePaneDividerDragInput?: typeof handlePaneDividerDragInputFrame;
-  readonly handleHomePaneDragRelease?: typeof handleHomePaneDragReleaseFrame;
-  readonly handleSeparatorPointerPress?: typeof handleSeparatorPointerPressFrame;
-  readonly handleMainPaneWheelInput?: typeof handleMainPaneWheelInputFrame;
-  readonly handleHomePaneDragMove?: typeof handleHomePaneDragMoveFrame;
+export interface HandlePaneDividerDragInput {
+  readonly paneDividerDragActive: boolean;
+  readonly isMouseRelease: boolean;
+  readonly isWheelMouseCode: boolean;
+  readonly mouseCol: number;
+  readonly setPaneDividerDragActive: (active: boolean) => void;
+  readonly applyPaneDividerAtCol: (col: number) => void;
+  readonly markDirty: () => void;
+}
+
+export interface HandleHomePaneDragReleaseInput {
+  readonly homePaneDragState: HomePaneDragState | null;
+  readonly isMouseRelease: boolean;
+  readonly mainPaneMode: MainPaneMode;
+  readonly target: PointerTarget;
+  readonly rowIndex: number;
+  readonly taskIdAtRow: (rowIndex: number) => string | null;
+  readonly repositoryIdAtRow: (rowIndex: number) => string | null;
+  readonly reorderTaskByDrop: (draggedTaskId: string, targetTaskId: string) => void;
+  readonly reorderRepositoryByDrop: (
+    draggedRepositoryId: string,
+    targetRepositoryId: string,
+  ) => void;
+  readonly setHomePaneDragState: (next: HomePaneDragState | null) => void;
+  readonly markDirty: () => void;
+}
+
+export interface HandleSeparatorPointerPressInput {
+  readonly target: PointerTarget;
+  readonly isLeftButtonPress: boolean;
+  readonly hasAltModifier: boolean;
+  readonly mouseCol: number;
+  readonly setPaneDividerDragActive: (active: boolean) => void;
+  readonly applyPaneDividerAtCol: (col: number) => void;
+}
+
+export interface HandleMainPaneWheelInput {
+  readonly target: PointerTarget;
+  readonly wheelDelta: number | null;
+  readonly mainPaneMode: MainPaneMode;
+  readonly onProjectWheel: (delta: number) => void;
+  readonly onHomeWheel: (delta: number) => void;
+  readonly onConversationWheel: (delta: number) => void;
+  readonly markDirty: () => void;
+}
+
+export interface HandleHomePaneDragMoveInput {
+  readonly homePaneDragState: HomePaneDragState | null;
+  readonly mainPaneMode: MainPaneMode;
+  readonly target: PointerTarget;
+  readonly isSelectionDrag: boolean;
+  readonly hasAltModifier: boolean;
+  readonly rowIndex: number;
+  readonly setHomePaneDragState: (next: HomePaneDragState) => void;
+  readonly markDirty: () => void;
+}
+
+export interface PointerRoutingStrategies {
+  handlePaneDividerDragInput(options: HandlePaneDividerDragInput): boolean;
+  handleHomePaneDragRelease(options: HandleHomePaneDragReleaseInput): boolean;
+  handleSeparatorPointerPress(options: HandleSeparatorPointerPressInput): boolean;
+  handleMainPaneWheelInput(options: HandleMainPaneWheelInput): boolean;
+  handleHomePaneDragMove(options: HandleHomePaneDragMoveInput): boolean;
 }
 
 interface PointerEventInput {
@@ -61,30 +139,13 @@ interface PointerEventInput {
 }
 
 export class PointerRoutingInput {
-  private readonly handlePaneDividerDragInput: typeof handlePaneDividerDragInputFrame;
-  private readonly handleHomePaneDragReleaseInput: typeof handleHomePaneDragReleaseFrame;
-  private readonly handleSeparatorPointerPressInput: typeof handleSeparatorPointerPressFrame;
-  private readonly handleMainPaneWheelInput: typeof handleMainPaneWheelInputFrame;
-  private readonly handleHomePaneDragMoveInput: typeof handleHomePaneDragMoveFrame;
-
   constructor(
     private readonly options: PointerRoutingInputOptions,
-    dependencies: PointerRoutingInputDependencies = {},
-  ) {
-    this.handlePaneDividerDragInput =
-      dependencies.handlePaneDividerDragInput ?? handlePaneDividerDragInputFrame;
-    this.handleHomePaneDragReleaseInput =
-      dependencies.handleHomePaneDragRelease ?? handleHomePaneDragReleaseFrame;
-    this.handleSeparatorPointerPressInput =
-      dependencies.handleSeparatorPointerPress ?? handleSeparatorPointerPressFrame;
-    this.handleMainPaneWheelInput =
-      dependencies.handleMainPaneWheelInput ?? handleMainPaneWheelInputFrame;
-    this.handleHomePaneDragMoveInput =
-      dependencies.handleHomePaneDragMove ?? handleHomePaneDragMoveFrame;
-  }
+    private readonly strategies: PointerRoutingStrategies,
+  ) {}
 
   handlePaneDividerDrag(event: Pick<PointerEventInput, 'code' | 'final' | 'col'>): boolean {
-    return this.handlePaneDividerDragInput({
+    return this.strategies.handlePaneDividerDragInput({
       paneDividerDragActive: this.options.getPaneDividerDragActive(),
       isMouseRelease: isMouseRelease(event.final),
       isWheelMouseCode: isWheelMouseCode(event.code),
@@ -98,7 +159,7 @@ export class PointerRoutingInput {
   handleHomePaneDragRelease(
     event: Pick<PointerEventInput, 'final' | 'target' | 'rowIndex'>,
   ): boolean {
-    return this.handleHomePaneDragReleaseInput({
+    return this.strategies.handleHomePaneDragRelease({
       homePaneDragState: this.options.getHomePaneDragState(),
       isMouseRelease: isMouseRelease(event.final),
       mainPaneMode: this.options.getMainPaneMode(),
@@ -116,7 +177,7 @@ export class PointerRoutingInput {
   handleSeparatorPointerPress(
     event: Pick<PointerEventInput, 'target' | 'code' | 'final' | 'col'>,
   ): boolean {
-    return this.handleSeparatorPointerPressInput({
+    return this.strategies.handleSeparatorPointerPress({
       target: event.target,
       isLeftButtonPress: isLeftButtonPress(event.code, event.final),
       hasAltModifier: hasAltModifier(event.code),
@@ -130,7 +191,7 @@ export class PointerRoutingInput {
     event: Pick<PointerEventInput, 'target' | 'code'>,
     onConversationWheel: (delta: number) => void,
   ): boolean {
-    return this.handleMainPaneWheelInput({
+    return this.strategies.handleMainPaneWheelInput({
       target: event.target,
       wheelDelta: wheelDeltaRowsFromCode(event.code),
       mainPaneMode: this.options.getMainPaneMode(),
@@ -144,7 +205,7 @@ export class PointerRoutingInput {
   handleHomePaneDragMove(
     event: Pick<PointerEventInput, 'target' | 'code' | 'final' | 'rowIndex'>,
   ): boolean {
-    return this.handleHomePaneDragMoveInput({
+    return this.strategies.handleHomePaneDragMove({
       homePaneDragState: this.options.getHomePaneDragState(),
       mainPaneMode: this.options.getMainPaneMode(),
       target: event.target,

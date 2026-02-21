@@ -1,7 +1,3 @@
-import { hasAltModifier, isLeftButtonPress, isMotionMouseCode } from '../mux/live-mux/selection.ts';
-import { handleHomePanePointerClick } from '../mux/live-mux/home-pane-pointer.ts';
-import { handleProjectPaneActionClick } from '../mux/live-mux/project-pane-pointer.ts';
-
 interface EntityDoubleClickState {
   readonly entityId: string;
   readonly atMs: number;
@@ -18,7 +14,29 @@ interface HomePaneDragState {
 type MainPaneMode = 'conversation' | 'project' | 'home';
 type PointerTarget = 'left' | 'right' | 'separator' | 'status' | 'outside';
 
-interface MainPanePointerInputOptions<TProjectSnapshot extends { directoryId: string }> {
+function isWheelMouseCode(code: number): boolean {
+  return (code & 0b0100_0000) !== 0;
+}
+
+function hasAltModifier(code: number): boolean {
+  return (code & 0b0000_1000) !== 0;
+}
+
+function isMotionMouseCode(code: number): boolean {
+  return (code & 0b0010_0000) !== 0;
+}
+
+function isLeftButtonPress(code: number, final: 'M' | 'm'): boolean {
+  if (final !== 'M') {
+    return false;
+  }
+  if (isWheelMouseCode(code) || isMotionMouseCode(code)) {
+    return false;
+  }
+  return (code & 0b0000_0011) === 0;
+}
+
+export interface MainPanePointerInputOptions<TProjectSnapshot extends { directoryId: string }> {
   readonly getMainPaneMode: () => MainPaneMode;
   readonly getProjectPaneSnapshot: () => TProjectSnapshot | null;
   readonly getProjectPaneScrollTop: () => number;
@@ -57,11 +75,6 @@ interface MainPanePointerInputOptions<TProjectSnapshot extends { directoryId: st
   readonly markDirty: () => void;
 }
 
-interface MainPanePointerInputDependencies {
-  readonly handleProjectPaneActionClick?: typeof handleProjectPaneActionClick;
-  readonly handleHomePanePointerClick?: typeof handleHomePanePointerClick;
-}
-
 interface PointerEventInput {
   readonly target: PointerTarget;
   readonly code: number;
@@ -73,19 +86,68 @@ interface PointerEventInput {
   readonly rightStartCol: number;
 }
 
-export class MainPanePointerInput<TProjectSnapshot extends { directoryId: string }> {
-  private readonly projectPaneActionClick: typeof handleProjectPaneActionClick<TProjectSnapshot>;
-  private readonly homePanePointerClick: typeof handleHomePanePointerClick;
+export interface HandleProjectPaneActionClickInput<TSnapshot extends { directoryId: string }> {
+  readonly clickEligible: boolean;
+  readonly snapshot: TSnapshot | null;
+  readonly rightCols: number;
+  readonly paneRows: number;
+  readonly projectPaneScrollTop: number;
+  readonly rowIndex: number;
+  readonly projectPaneActionAtRow: (
+    snapshot: TSnapshot,
+    rightCols: number,
+    paneRows: number,
+    projectPaneScrollTop: number,
+    rowIndex: number,
+  ) => string | null;
+  readonly openNewThreadPrompt: (directoryId: string) => void;
+  readonly queueCloseDirectory: (directoryId: string) => void;
+  readonly markDirty: () => void;
+}
 
+export interface HandleHomePanePointerClickInput {
+  readonly clickEligible: boolean;
+  readonly paneRows: number;
+  readonly rightCols: number;
+  readonly rightStartCol: number;
+  readonly pointerRow: number;
+  readonly pointerCol: number;
+  readonly actionAtCell: (rowIndex: number, colIndex: number) => string | null;
+  readonly actionAtRow: (rowIndex: number) => string | null;
+  readonly clearTaskEditClickState: () => void;
+  readonly clearRepositoryEditClickState: () => void;
+  readonly clearHomePaneDragState: () => void;
+  readonly getTaskRepositoryDropdownOpen: () => boolean;
+  readonly setTaskRepositoryDropdownOpen: (open: boolean) => void;
+  readonly taskIdAtRow: (rowIndex: number) => string | null;
+  readonly repositoryIdAtRow: (rowIndex: number) => string | null;
+  readonly rowTextAtRow?: (rowIndex: number) => string | null;
+  readonly selectTaskById: (taskId: string) => void;
+  readonly selectRepositoryById: (repositoryId: string) => void;
+  readonly runTaskPaneAction: (action: 'task.ready' | 'task.draft' | 'task.complete') => void;
+  readonly nowMs: number;
+  readonly homePaneEditDoubleClickWindowMs: number;
+  readonly taskEditClickState: EntityDoubleClickState | null;
+  readonly repositoryEditClickState: EntityDoubleClickState | null;
+  readonly clearTaskPaneNotice: () => void;
+  readonly setTaskEditClickState: (next: EntityDoubleClickState | null) => void;
+  readonly setRepositoryEditClickState: (next: EntityDoubleClickState | null) => void;
+  readonly setHomePaneDragState: (next: HomePaneDragState | null) => void;
+  readonly openTaskEditPrompt: (taskId: string) => void;
+  readonly openRepositoryPromptForEdit: (repositoryId: string) => void;
+  readonly markDirty: () => void;
+}
+
+export interface MainPanePointerStrategies<TProjectSnapshot extends { directoryId: string }> {
+  handleProjectPaneActionClick(input: HandleProjectPaneActionClickInput<TProjectSnapshot>): boolean;
+  handleHomePanePointerClick(input: HandleHomePanePointerClickInput): boolean;
+}
+
+export class MainPanePointerInput<TProjectSnapshot extends { directoryId: string }> {
   constructor(
     private readonly options: MainPanePointerInputOptions<TProjectSnapshot>,
-    dependencies: MainPanePointerInputDependencies = {},
-  ) {
-    this.projectPaneActionClick =
-      dependencies.handleProjectPaneActionClick ?? handleProjectPaneActionClick;
-    this.homePanePointerClick =
-      dependencies.handleHomePanePointerClick ?? handleHomePanePointerClick;
-  }
+    private readonly strategies: MainPanePointerStrategies<TProjectSnapshot>,
+  ) {}
 
   handleProjectPanePointerClick(input: PointerEventInput): boolean {
     const clickEligible =
@@ -95,7 +157,7 @@ export class MainPanePointerInput<TProjectSnapshot extends { directoryId: string
       !hasAltModifier(input.code) &&
       !isMotionMouseCode(input.code);
     const rowIndex = Math.max(0, Math.min(input.paneRows - 1, input.row - 1));
-    return this.projectPaneActionClick({
+    return this.strategies.handleProjectPaneActionClick({
       clickEligible,
       snapshot: this.options.getProjectPaneSnapshot(),
       rightCols: input.rightCols,
@@ -116,7 +178,7 @@ export class MainPanePointerInput<TProjectSnapshot extends { directoryId: string
       isLeftButtonPress(input.code, input.final) &&
       !hasAltModifier(input.code) &&
       !isMotionMouseCode(input.code);
-    const homePointerInput = {
+    return this.strategies.handleHomePanePointerClick({
       clickEligible,
       paneRows: input.paneRows,
       rightCols: input.rightCols,
@@ -151,7 +213,6 @@ export class MainPanePointerInput<TProjectSnapshot extends { directoryId: string
         : {
             rowTextAtRow: this.options.rowTextAtRow,
           }),
-    };
-    return this.homePanePointerClick(homePointerInput);
+    });
   }
 }

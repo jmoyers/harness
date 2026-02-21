@@ -1,41 +1,45 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { InputPreflight } from '../src/ui/input-preflight.ts';
+import { InputPreflight } from '../packages/harness-ui/src/interaction/input-preflight.ts';
+import { extractFocusEvents } from '../src/mux/live-mux/startup-utils.ts';
 
 void test('input preflight returns null while shutting down', () => {
   const calls: string[] = [];
-  const preflight = new InputPreflight({
-    isShuttingDown: () => true,
-    routeModalInput: () => {
-      calls.push('modal');
-      return false;
+  const preflight = new InputPreflight(
+    {
+      isShuttingDown: () => true,
+      routeModalInput: () => {
+        calls.push('modal');
+        return false;
+      },
+      handleEscapeInput: () => {
+        calls.push('escape');
+      },
+      onFocusIn: () => {
+        calls.push('focus-in');
+      },
+      onFocusOut: () => {
+        calls.push('focus-out');
+      },
+      handleRepositoryFoldInput: () => {
+        calls.push('repo');
+        return false;
+      },
+      handleGlobalShortcutInput: () => {
+        calls.push('global');
+        return false;
+      },
+      handleTaskPaneShortcutInput: () => {
+        calls.push('task');
+        return false;
+      },
+      handleCopyShortcutInput: () => {
+        calls.push('copy');
+        return false;
+      },
     },
-    handleEscapeInput: () => {
-      calls.push('escape');
-    },
-    onFocusIn: () => {
-      calls.push('focus-in');
-    },
-    onFocusOut: () => {
-      calls.push('focus-out');
-    },
-    handleRepositoryFoldInput: () => {
-      calls.push('repo');
-      return false;
-    },
-    handleGlobalShortcutInput: () => {
-      calls.push('global');
-      return false;
-    },
-    handleTaskPaneShortcutInput: () => {
-      calls.push('task');
-      return false;
-    },
-    handleCopyShortcutInput: () => {
-      calls.push('copy');
-      return false;
-    },
-  });
+    { extractFocusEvents },
+  );
 
   assert.equal(preflight.nextInput(Buffer.from('a')), null);
   assert.deepEqual(calls, []);
@@ -43,22 +47,25 @@ void test('input preflight returns null while shutting down', () => {
 
 void test('input preflight handles modal and escape short-circuiting', () => {
   const calls: string[] = [];
-  const preflight = new InputPreflight({
-    isShuttingDown: () => false,
-    routeModalInput: (input) => {
-      calls.push(`modal:${input.toString('utf8')}`);
-      return input.toString('utf8') === 'm';
+  const preflight = new InputPreflight(
+    {
+      isShuttingDown: () => false,
+      routeModalInput: (input) => {
+        calls.push(`modal:${input.toString('utf8')}`);
+        return input.toString('utf8') === 'm';
+      },
+      handleEscapeInput: () => {
+        calls.push('escape');
+      },
+      onFocusIn: () => {},
+      onFocusOut: () => {},
+      handleRepositoryFoldInput: () => false,
+      handleGlobalShortcutInput: () => false,
+      handleTaskPaneShortcutInput: () => false,
+      handleCopyShortcutInput: () => false,
     },
-    handleEscapeInput: () => {
-      calls.push('escape');
-    },
-    onFocusIn: () => {},
-    onFocusOut: () => {},
-    handleRepositoryFoldInput: () => false,
-    handleGlobalShortcutInput: () => false,
-    handleTaskPaneShortcutInput: () => false,
-    handleCopyShortcutInput: () => false,
-  });
+    { extractFocusEvents },
+  );
 
   assert.equal(preflight.nextInput(Buffer.from('m')), null);
   assert.equal(preflight.nextInput(Buffer.from([0x1b])), null);
@@ -155,21 +162,24 @@ void test('input preflight routes focus, shortcut handlers, and passthrough sani
 void test('input preflight default focus extraction strips focus markers', () => {
   let focusInCount = 0;
   let focusOutCount = 0;
-  const preflight = new InputPreflight({
-    isShuttingDown: () => false,
-    routeModalInput: () => false,
-    handleEscapeInput: () => {},
-    onFocusIn: () => {
-      focusInCount += 1;
+  const preflight = new InputPreflight(
+    {
+      isShuttingDown: () => false,
+      routeModalInput: () => false,
+      handleEscapeInput: () => {},
+      onFocusIn: () => {
+        focusInCount += 1;
+      },
+      onFocusOut: () => {
+        focusOutCount += 1;
+      },
+      handleRepositoryFoldInput: () => false,
+      handleGlobalShortcutInput: () => false,
+      handleTaskPaneShortcutInput: () => false,
+      handleCopyShortcutInput: () => false,
     },
-    onFocusOut: () => {
-      focusOutCount += 1;
-    },
-    handleRepositoryFoldInput: () => false,
-    handleGlobalShortcutInput: () => false,
-    handleTaskPaneShortcutInput: () => false,
-    handleCopyShortcutInput: () => false,
-  });
+    { extractFocusEvents },
+  );
 
   const sanitized = preflight.nextInput(Buffer.from('\u001b[Ia\u001b[O', 'utf8'));
   assert.equal(sanitized?.toString('utf8'), 'a');

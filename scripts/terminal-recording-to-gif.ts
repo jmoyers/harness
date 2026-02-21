@@ -1,4 +1,4 @@
-import { renderTerminalRecordingToGif } from './terminal-recording-gif-lib.ts';
+import { renderTerminalRecordingToGif } from '../src/recording/terminal-recording-gif-lib.ts';
 
 interface CliOptions {
   inputPath: string;

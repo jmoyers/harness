@@ -1,28 +1,37 @@
-import {
-  classifyPaneAt as classifyPaneAtFrame,
-  type computeDualPaneLayout,
-  type parseMuxInputChunk,
-} from '../mux/dual-pane-core.ts';
-import {
-  hasAltModifier as hasAltModifierFrame,
-  hasShiftModifier as hasShiftModifierFrame,
-  isLeftButtonPress as isLeftButtonPressFrame,
-  isMotionMouseCode as isMotionMouseCodeFrame,
-  type PaneSelection,
-} from '../mux/live-mux/selection.ts';
-import type { TerminalSnapshotFrameCore } from '../terminal/snapshot-oracle.ts';
+import type {
+  ConversationSelectionSnapshotFrame,
+  PaneSelection,
+} from './conversation-selection-input.ts';
 
 type MainPaneMode = 'conversation' | 'project' | 'home';
-type DualPaneLayout = ReturnType<typeof computeDualPaneLayout>;
-type MuxInputToken = ReturnType<typeof parseMuxInputChunk>['tokens'][number];
-type PointerTarget = ReturnType<typeof classifyPaneAtFrame>;
+type PointerTarget = 'left' | 'right' | 'separator' | 'status' | 'outside';
 
 interface MouseSelectionEvent {
+  readonly sequence: string;
   readonly col: number;
   readonly row: number;
   readonly code: number;
   readonly final: 'M' | 'm';
 }
+
+export interface InputTokenRouterLayout {
+  readonly paneRows: number;
+  readonly leftCols: number;
+  readonly rightCols: number;
+  readonly rightStartCol: number;
+}
+
+export interface InputTokenRouterMouseToken {
+  readonly kind: 'mouse';
+  readonly event: MouseSelectionEvent;
+}
+
+export interface InputTokenRouterPassthroughToken {
+  readonly kind: 'passthrough';
+  readonly text: string;
+}
+
+type MuxInputToken = InputTokenRouterMouseToken | InputTokenRouterPassthroughToken;
 
 interface HomePaneSelectionContext {
   readonly viewportTop: number;
@@ -34,7 +43,7 @@ interface ConversationInputLike {
   readonly oracle: {
     isMouseTrackingEnabled: () => boolean;
     scrollViewport: (delta: number) => void;
-    snapshotWithoutHash: () => TerminalSnapshotFrameCore;
+    snapshotWithoutHash: () => ConversationSelectionSnapshotFrame;
     selectionText: (anchor: PaneSelection['anchor'], focus: PaneSelection['focus']) => string;
   };
 }
@@ -100,15 +109,15 @@ interface LeftRailPointerInputLike {
 interface ConversationSelectionInputLike {
   clearSelectionOnTextToken(textLength: number): boolean;
   handleMouseSelection(input: {
-    layout: DualPaneLayout;
-    frame: TerminalSnapshotFrameCore;
+    layout: InputTokenRouterLayout;
+    frame: ConversationSelectionSnapshotFrame;
     isMainPaneTarget: boolean;
     resolveSelectionText?: (selection: PaneSelection) => string;
     event: MouseSelectionEvent;
   }): boolean;
 }
 
-interface InputTokenRouterOptions {
+export interface InputTokenRouterOptions {
   readonly getMainPaneMode: () => MainPaneMode;
   readonly getHomePaneSelectionContext?: () => HomePaneSelectionContext | null;
   readonly pointerRoutingInput: PointerRoutingInputLike;
@@ -117,48 +126,36 @@ interface InputTokenRouterOptions {
   readonly conversationSelectionInput: ConversationSelectionInputLike;
 }
 
-interface InputTokenRouterDependencies {
-  readonly classifyPaneAt?: typeof classifyPaneAtFrame;
-  readonly isLeftButtonPress?: typeof isLeftButtonPressFrame;
-  readonly hasAltModifier?: typeof hasAltModifierFrame;
-  readonly hasShiftModifier?: typeof hasShiftModifierFrame;
-  readonly isMotionMouseCode?: typeof isMotionMouseCodeFrame;
+export interface InputTokenRouterStrategies {
+  classifyPaneAt(layout: InputTokenRouterLayout, col: number, row: number): PointerTarget;
+  isLeftButtonPress(code: number, final: 'M' | 'm'): boolean;
+  hasAltModifier(code: number): boolean;
+  hasShiftModifier(code: number): boolean;
+  isMotionMouseCode(code: number): boolean;
 }
 
 interface RouteTokensInput {
   readonly tokens: readonly MuxInputToken[];
-  readonly layout: DualPaneLayout;
+  readonly layout: InputTokenRouterLayout;
   readonly conversation: ConversationInputLike | null;
-  readonly snapshotForInput: TerminalSnapshotFrameCore | null;
+  readonly snapshotForInput: ConversationSelectionSnapshotFrame | null;
 }
 
 interface RouteTokensResult {
   readonly routedTokens: MuxInputToken[];
-  readonly snapshotForInput: TerminalSnapshotFrameCore | null;
+  readonly snapshotForInput: ConversationSelectionSnapshotFrame | null;
 }
 
 export class InputTokenRouter {
-  private readonly classifyPaneAt: typeof classifyPaneAtFrame;
-  private readonly isLeftButtonPress: typeof isLeftButtonPressFrame;
-  private readonly hasAltModifier: typeof hasAltModifierFrame;
-  private readonly hasShiftModifier: typeof hasShiftModifierFrame;
-  private readonly isMotionMouseCode: typeof isMotionMouseCodeFrame;
-
   constructor(
     private readonly options: InputTokenRouterOptions,
-    dependencies: InputTokenRouterDependencies = {},
-  ) {
-    this.classifyPaneAt = dependencies.classifyPaneAt ?? classifyPaneAtFrame;
-    this.isLeftButtonPress = dependencies.isLeftButtonPress ?? isLeftButtonPressFrame;
-    this.hasAltModifier = dependencies.hasAltModifier ?? hasAltModifierFrame;
-    this.hasShiftModifier = dependencies.hasShiftModifier ?? hasShiftModifierFrame;
-    this.isMotionMouseCode = dependencies.isMotionMouseCode ?? isMotionMouseCodeFrame;
-  }
+    private readonly strategies: InputTokenRouterStrategies,
+  ) {}
 
   private buildHomeSelectionFrame(
-    layout: DualPaneLayout,
+    layout: InputTokenRouterLayout,
     context: HomePaneSelectionContext | null,
-  ): TerminalSnapshotFrameCore | null {
+  ): ConversationSelectionSnapshotFrame | null {
     if (context === null) {
       return null;
     }
@@ -219,7 +216,7 @@ export class InputTokenRouter {
         continue;
       }
 
-      const target = this.classifyPaneAt(input.layout, token.event.col, token.event.row);
+      const target = this.strategies.classifyPaneAt(input.layout, token.event.col, token.event.row);
       const rowIndex = Math.max(0, Math.min(input.layout.paneRows - 1, token.event.row - 1));
       const passThroughConversationMouse =
         input.conversation !== null &&
@@ -229,7 +226,7 @@ export class InputTokenRouter {
         snapshotForInput.activeScreen === 'alternate' &&
         snapshotForInput.viewport.followOutput &&
         input.conversation.oracle.isMouseTrackingEnabled() &&
-        !this.hasShiftModifier(token.event.code);
+        !this.strategies.hasShiftModifier(token.event.code);
       if (
         this.options.pointerRoutingInput.handleHomePaneDragRelease({
           final: token.event.final,
@@ -310,9 +307,9 @@ export class InputTokenRouter {
       }
       const leftPaneConversationSelect =
         target === 'left' &&
-        this.isLeftButtonPress(token.event.code, token.event.final) &&
-        !this.hasAltModifier(token.event.code) &&
-        !this.isMotionMouseCode(token.event.code);
+        this.strategies.isLeftButtonPress(token.event.code, token.event.final) &&
+        !this.strategies.hasAltModifier(token.event.code) &&
+        !this.strategies.isMotionMouseCode(token.event.code);
       if (
         this.options.leftRailPointerInput.handlePointerClick({
           clickEligible: leftPaneConversationSelect,

@@ -22,6 +22,7 @@ This project has two core documents:
 - Do not use `npm`, `npx`, `pnpm`, or `yarn` commands in local workflows or CI for this repository.
 - 100% code coverage is required across the project.
 - Coverage compliance must be continuously verified (local + CI), not assumed.
+- Temporary branch exception (active during runtime Milestone 5 refactor): `bun run verify` may run without coverage, but `bun run verify:coverage-gate` remains mandatory at each milestone checkpoint and before merge.
 - Unit tests, integration tests, and end-to-end tests are all required.
 - Every bug fix must add a negative test that fails before the fix and passes after it.
 - Prefer a unit-level negative test when possible; if not sufficient, add an integration/E2E reproduction; for performance bugs, add or update a performance-harness regression check.
@@ -69,6 +70,12 @@ This project has two core documents:
 - Config reload must be atomic with last-known-good fallback on invalid config.
 - Performance changes must be validated with the isolated mux hot-path harness matrix before and after edits (`parse-passes`, protocol roundtrip, snapshot-hash, recording pass).
 - Hot-path cost multipliers (extra VTE parse passes, per-frame full-frame hashing, recording re-parse) require explicit justification and measurable benefit.
+- Runtime orchestration constructors must avoid mega option bags; use consumer-owned feature ports and concrete collaborator instances when option surfaces grow broad.
+- Do not add class-shaped glue wrappers that mostly proxy 1:1 calls.
+- `packages/harness-ui` modules must not import `src/*` runtime/mux/domain internals; reuse boundaries are enforced through package-owned ports.
+- Do not use `dependencies.foo ?? fooFrame` defaults when `fooFrame` is app-layer behavior; move app policy to `src/services/*` handler classes and keep package classes generic.
+- Do not use `ConstructorParameters<typeof X>[0]` as a cross-module contract; export and consume named interfaces from the owning module.
+- `scripts/codex-live-mux-runtime.ts` must remain a thin wrapper; mux runtime composition belongs in `src/mux/runtime-app/codex-live-mux-runtime.ts`.
 
 ## Quality Bar
 

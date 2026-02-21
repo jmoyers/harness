@@ -1,8 +1,8 @@
 import { writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { createCanvas, type SKRSContext2D } from '@napi-rs/canvas';
-import type { TerminalSnapshotFrame } from '../src/terminal/snapshot-oracle.ts';
-import { readTerminalRecording } from '../src/recording/terminal-recording.ts';
+import type { TerminalSnapshotFrame } from '../terminal/snapshot-oracle.ts';
+import { readTerminalRecording } from './terminal-recording.ts';
 
 type GifEncPalette = number[][];
 type TerminalRecording = ReturnType<typeof readTerminalRecording>;

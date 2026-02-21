@@ -25,7 +25,7 @@ export interface RepositoryPromptState {
   readonly error: string | null;
 }
 
-export interface ApiKeyPromptState {
+interface ApiKeyPromptState {
   readonly keyName: string;
   readonly displayName: string;
   readonly value: string;
