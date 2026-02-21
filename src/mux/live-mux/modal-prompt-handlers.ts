@@ -59,6 +59,8 @@ interface HandleApiKeyPromptInputOptions {
   persistApiKey: (keyName: string, value: string) => void;
 }
 
+const MOUSE_EVENT_PREFIX = Buffer.from('\u001b[<', 'utf8');
+
 export function handleAddDirectoryPromptInput(
   options: HandleAddDirectoryPromptInputOptions,
 ): boolean {
@@ -83,7 +85,9 @@ export function handleAddDirectoryPromptInput(
     markDirty();
     return true;
   }
+  const maybeMouseSequence = input.includes(MOUSE_EVENT_PREFIX);
   if (
+    maybeMouseSequence &&
     dismissOnOutsideClick(input, () => {
       setPrompt(null);
       markDirty();
@@ -146,7 +150,9 @@ export function handleRepositoryPromptInput(options: HandleRepositoryPromptInput
     markDirty();
     return true;
   }
+  const maybeMouseSequence = input.includes(MOUSE_EVENT_PREFIX);
   if (
+    maybeMouseSequence &&
     dismissOnOutsideClick(input, () => {
       setPrompt(null);
       markDirty();
@@ -230,7 +236,9 @@ export function handleApiKeyPromptInput(options: HandleApiKeyPromptInputOptions)
     markDirty();
     return true;
   }
+  const maybeMouseSequence = input.includes(MOUSE_EVENT_PREFIX);
   if (
+    maybeMouseSequence &&
     dismissOnOutsideClick(input, () => {
       setPrompt(null);
       markDirty();

@@ -33,6 +33,8 @@ interface HandleTaskEditorPromptInputOptions {
   dismissOnOutsideClick: (input: Buffer, dismiss: () => void) => boolean;
 }
 
+const MOUSE_EVENT_PREFIX = Buffer.from('\u001b[<', 'utf8');
+
 export function handleTaskEditorPromptInput(
   options: HandleTaskEditorPromptInputOptions,
 ): HandleTaskEditorPromptInputResult {
@@ -58,7 +60,9 @@ export function handleTaskEditorPromptInput(
   }
 
   let dismissed = false;
+  const maybeMouseSequence = input.includes(MOUSE_EVENT_PREFIX);
   if (
+    maybeMouseSequence &&
     dismissOnOutsideClick(input, () => {
       dismissed = true;
     })

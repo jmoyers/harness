@@ -501,6 +501,35 @@ void test('add-directory and repository prompt handlers cover quit dismiss edit 
     }),
     true,
   );
+  let dismissCallCount = 0;
+  assert.equal(
+    handleApiKeyPromptInput({
+      input: Buffer.from('\u001b[200~pasted-key\u001b[201~\n', 'utf8'),
+      prompt: {
+        keyName: 'ANTHROPIC_API_KEY',
+        displayName: 'Anthropic API Key',
+        value: '',
+        error: null,
+        hasExistingValue: false,
+      },
+      isQuitShortcut: () => false,
+      dismissOnOutsideClick: () => {
+        dismissCallCount += 1;
+        return true;
+      },
+      setPrompt: (next) => {
+        calls.push(`setApiPrompt:${next?.value ?? 'null'}:${next?.error ?? 'null'}`);
+      },
+      markDirty: () => {
+        calls.push('markDirty');
+      },
+      persistApiKey: (keyName, value) => {
+        persistedKeys.push(`${keyName}:${value}`);
+      },
+    }),
+    true,
+  );
+  assert.equal(dismissCallCount, 0);
   assert.equal(
     handleApiKeyPromptInput({
       input: Buffer.from('updated', 'utf8'),
@@ -642,7 +671,7 @@ void test('task editor handler covers dismiss change and submit validation branc
   );
   assert.deepEqual(
     handleTaskEditorPromptInput({
-      input: Buffer.from('x', 'utf8'),
+      input: Buffer.from('\u001b[<0;10;10M', 'utf8'),
       prompt,
       isQuitShortcut: () => false,
       dismissOnOutsideClick: () => true,
@@ -651,7 +680,7 @@ void test('task editor handler covers dismiss change and submit validation branc
   );
   assert.deepEqual(
     handleTaskEditorPromptInput({
-      input: Buffer.from('x', 'utf8'),
+      input: Buffer.from('\u001b[<0;10;10M', 'utf8'),
       prompt,
       isQuitShortcut: () => false,
       dismissOnOutsideClick: (_input, dismiss) => {
@@ -970,7 +999,7 @@ void test('conversation modal handlers cover archive click/prompt and new-thread
 
   assert.equal(
     handleConversationTitleEditInput({
-      input: Buffer.from('x', 'utf8'),
+      input: Buffer.from('\u001b[<0;10;10M', 'utf8'),
       edit,
       isQuitShortcut: () => false,
       isArchiveShortcut: () => false,
@@ -1532,6 +1561,15 @@ void test('modal overlay builders return null for missing state and build overla
     apiKeyDefaultOverlay?.rows.some((row) => row.includes('value is saved to user-global')),
     true,
   );
+  const commandPaletteOverlay = buildCommandMenuModalOverlay(
+    80,
+    24,
+    createCommandMenuState(),
+    [],
+    theme,
+  );
+  assert.equal(apiKeyDefaultOverlay?.width, commandPaletteOverlay?.width);
+  assert.equal(apiKeyDefaultOverlay?.height, commandPaletteOverlay?.height);
 
   assert.equal(buildConversationTitleModalOverlay(80, 24, null, theme), null);
   const titlePendingOverlay = buildConversationTitleModalOverlay(

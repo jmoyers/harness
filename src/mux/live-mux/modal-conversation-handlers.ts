@@ -56,6 +56,8 @@ interface HandleNewThreadPromptInputOptions {
   setPrompt: (prompt: NewThreadPromptState | null) => void;
 }
 
+const MOUSE_EVENT_PREFIX = Buffer.from('\u001b[<', 'utf8');
+
 export function handleConversationTitleEditInput(
   options: HandleConversationTitleEditInputOptions,
 ): boolean {
@@ -92,7 +94,9 @@ export function handleConversationTitleEditInput(
     markDirty();
     return true;
   }
+  const maybeMouseSequence = input.includes(MOUSE_EVENT_PREFIX);
   if (
+    maybeMouseSequence &&
     dismissOnOutsideClick(
       input,
       () => {
@@ -165,7 +169,7 @@ export function handleNewThreadPromptInput(options: HandleNewThreadPromptInputOp
     markDirty();
     return true;
   }
-  const maybeMouseSequence = input.includes(0x3c);
+  const maybeMouseSequence = input.includes(MOUSE_EVENT_PREFIX);
   if (
     maybeMouseSequence &&
     dismissOnOutsideClick(

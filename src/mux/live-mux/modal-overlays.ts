@@ -74,6 +74,11 @@ const RELEASE_NOTES_BODY_START_ROW_OFFSET = 2;
 export const RELEASE_NOTES_UPDATE_ACTION_ROW_OFFSET =
   RELEASE_NOTES_BODY_START_ROW_OFFSET + RELEASE_NOTES_UPDATE_ACTION_BODY_LINE_INDEX;
 export const RELEASE_NOTES_UPDATE_ACTION_LABEL = '[ click to update now ]';
+const COMMAND_PALETTE_MODAL_SIZE = {
+  preferredHeight: 18,
+  minWidth: 48,
+  maxWidth: 96,
+} as const;
 
 function truncateColumn(value: string, width: number): string {
   const safeWidth = Math.max(1, width);
@@ -161,9 +166,9 @@ export function buildCommandMenuModalOverlay(
   const isThemePicker = menu.scope === 'theme-select';
   const isShortcutsScope = menu.scope === 'shortcuts';
   const modalSize = resolveGoldenModalSize(layoutCols, viewportRows, {
-    preferredHeight: isShortcutsScope ? 24 : 18,
-    minWidth: isShortcutsScope ? 84 : 48,
-    maxWidth: isShortcutsScope ? 132 : 96,
+    preferredHeight: isShortcutsScope ? 24 : COMMAND_PALETTE_MODAL_SIZE.preferredHeight,
+    minWidth: isShortcutsScope ? 84 : COMMAND_PALETTE_MODAL_SIZE.minWidth,
+    maxWidth: isShortcutsScope ? 132 : COMMAND_PALETTE_MODAL_SIZE.maxWidth,
   });
   const page = resolveCommandMenuPage(actions, menu);
   const bodyLines: string[] = [
@@ -343,9 +348,9 @@ export function buildApiKeyModalOverlay(
     return null;
   }
   const modalSize = resolveGoldenModalSize(layoutCols, viewportRows, {
-    preferredHeight: 16,
-    minWidth: 34,
-    maxWidth: 64,
+    preferredHeight: COMMAND_PALETTE_MODAL_SIZE.preferredHeight,
+    minWidth: COMMAND_PALETTE_MODAL_SIZE.minWidth,
+    maxWidth: COMMAND_PALETTE_MODAL_SIZE.maxWidth,
   });
   const promptValue = prompt.value.length > 0 ? prompt.value : '(enter value)';
   const bodyLines = [`${prompt.keyName}: ${promptValue}_`];
