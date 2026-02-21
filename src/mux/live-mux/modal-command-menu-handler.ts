@@ -1,11 +1,13 @@
 import {
   clampCommandMenuState,
+  moveSelectionByDelta,
   reduceCommandMenuInput,
   resolveCommandMenuMatches,
   resolveCommandMenuPage,
   type CommandMenuActionDescriptor,
   type CommandMenuState,
 } from './command-menu.ts';
+import { parseMuxInputChunk, wheelDeltaRowsFromCode } from '../dual-pane-core.ts';
 
 interface HandleCommandMenuInputOptions {
   readonly input: Buffer;
@@ -27,6 +29,24 @@ interface HandleCommandMenuInputOptions {
 const COMMAND_MENU_BODY_ROW_OFFSET = 2;
 const COMMAND_MENU_ACTION_ROW_START = 2;
 const THEME_PICKER_SCOPE = 'theme-select';
+
+function selectionDeltaFromWheelInput(input: Buffer): number {
+  if (!input.includes(0x1b) || !input.includes(0x3c)) {
+    return 0;
+  }
+  const parsed = parseMuxInputChunk('', input);
+  let selectionDelta = 0;
+  for (const token of parsed.tokens) {
+    if (token.kind !== 'mouse') {
+      continue;
+    }
+    const wheelDelta = wheelDeltaRowsFromCode(token.event.code);
+    if (wheelDelta !== null) {
+      selectionDelta += wheelDelta;
+    }
+  }
+  return selectionDelta;
+}
 
 function resolveCommandMenuActionIdByRow(
   menu: CommandMenuState,
@@ -78,6 +98,25 @@ export function handleCommandMenuInput(options: HandleCommandMenuInputOptions): 
   if (isToggleShortcut(input)) {
     setMenu(null);
     markDirty();
+    return true;
+  }
+  const wheelSelectionDelta = selectionDeltaFromWheelInput(input);
+  if (wheelSelectionDelta !== 0) {
+    const currentMatches = resolveCommandMenuMatches(resolveActions(), menu.query, null);
+    const clampedMenu = clampCommandMenuState(menu, currentMatches.length);
+    const nextSelectedIndex = moveSelectionByDelta(
+      clampedMenu.selectedIndex,
+      currentMatches.length,
+      wheelSelectionDelta,
+    );
+    if (nextSelectedIndex !== menu.selectedIndex) {
+      setMenu({
+        scope: menu.scope,
+        query: menu.query,
+        selectedIndex: nextSelectedIndex,
+      });
+      markDirty();
+    }
     return true;
   }
   const maybeMouseSequence = input.includes(0x3c);

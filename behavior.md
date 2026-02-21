@@ -17,6 +17,7 @@ Behavior fragments:
 - Scoped command registry and provider-driven action lists.
 - Query matching/ranking with deterministic ordering.
 - Empty-query grouping with stable default focus behavior.
+- Modal wheel scrolling moves command selection with the same wrap behavior as keyboard navigation.
 - Action execution through runtime-owned handlers.
 
 Owners:

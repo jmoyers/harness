@@ -250,7 +250,11 @@ function clampSelectedIndex(selectedIndex: number, resultCount: number): number 
   return selectedIndex;
 }
 
-function moveSelectionByDelta(selectedIndex: number, resultCount: number, delta: number): number {
+export function moveSelectionByDelta(
+  selectedIndex: number,
+  resultCount: number,
+  delta: number,
+): number {
   if (resultCount <= 0) {
     return 0;
   }

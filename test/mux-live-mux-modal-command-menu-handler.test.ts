@@ -222,6 +222,83 @@ void test('command menu handler down-arrow navigation moves beyond first result 
   assert.deepEqual(executed, ['action.9']);
 });
 
+void test('command menu handler wheel navigation scrolls selection and wraps', () => {
+  let menu: CommandMenuState | null = createCommandMenuState({
+    query: 'action',
+  });
+  const actions = Array.from({ length: 12 }, (_, index) => ({
+    id: `action.${String(index)}`,
+    title: `Action ${String(index).padStart(2, '0')}`,
+  }));
+  const executed: string[] = [];
+  let dismissCalls = 0;
+  const common = {
+    resolveActions: () => actions,
+    executeAction: (actionId: string) => {
+      executed.push(actionId);
+    },
+    setMenu: (next: ReturnType<typeof createCommandMenuState> | null) => {
+      menu = next;
+    },
+    markDirty: () => {},
+    buildCommandMenuModalOverlay: () => ({ top: 1 }),
+  };
+
+  const handledDown = handleCommandMenuInput({
+    input: Buffer.from('\u001b[<65;8;6M', 'utf8'),
+    menu,
+    isQuitShortcut: () => false,
+    isToggleShortcut: () => false,
+    dismissOnOutsideClick: () => {
+      dismissCalls += 1;
+      return false;
+    },
+    ...common,
+  });
+  assert.equal(handledDown, true);
+  assert.equal(menu?.selectedIndex, 1);
+
+  const handledUp = handleCommandMenuInput({
+    input: Buffer.from('\u001b[<64;8;6M', 'utf8'),
+    menu,
+    isQuitShortcut: () => false,
+    isToggleShortcut: () => false,
+    dismissOnOutsideClick: () => {
+      dismissCalls += 1;
+      return false;
+    },
+    ...common,
+  });
+  assert.equal(handledUp, true);
+  assert.equal(menu?.selectedIndex, 0);
+
+  const handledWrapUp = handleCommandMenuInput({
+    input: Buffer.from('\u001b[<64;8;6M', 'utf8'),
+    menu,
+    isQuitShortcut: () => false,
+    isToggleShortcut: () => false,
+    dismissOnOutsideClick: () => {
+      dismissCalls += 1;
+      return false;
+    },
+    ...common,
+  });
+  assert.equal(handledWrapUp, true);
+  assert.equal(menu?.selectedIndex, 11);
+
+  const handledSubmit = handleCommandMenuInput({
+    input: Buffer.from('\n', 'utf8'),
+    menu,
+    isQuitShortcut: () => false,
+    isToggleShortcut: () => false,
+    dismissOnOutsideClick: () => false,
+    ...common,
+  });
+  assert.equal(handledSubmit, true);
+  assert.deepEqual(executed, ['action.11']);
+  assert.equal(dismissCalls, 0);
+});
+
 void test('command menu handler executes theme selection before menu teardown on enter', () => {
   let menu: CommandMenuState | null = createCommandMenuState({
     scope: 'theme-select',
