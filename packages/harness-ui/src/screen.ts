@@ -50,6 +50,8 @@ export interface ScreenWriter {
 }
 
 export class ProcessScreenWriter implements ScreenWriter {
+  constructor() {}
+
   writeOutput(output: string): void {
     process.stdout.write(output);
   }
@@ -64,6 +66,8 @@ export interface ScreenAnsiValidator {
 }
 
 export class DefaultScreenAnsiValidator implements ScreenAnsiValidator {
+  constructor() {}
+
   findIssues(rows: readonly string[]): readonly string[] {
     return findAnsiIntegrityIssues(rows);
   }

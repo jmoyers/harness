@@ -553,23 +553,6 @@ function compareIsoDesc(left: string | null, right: string | null): number {
   return right.localeCompare(left);
 }
 
-function githubReviewLifecycleStateFromPullRequest(input: {
-  state: 'open' | 'closed';
-  isDraft: boolean;
-  mergedAt: string | null;
-}): 'draft' | 'open' | 'merged' | 'closed' {
-  if (input.state === 'open' && input.isDraft) {
-    return 'draft';
-  }
-  if (input.state === 'open') {
-    return 'open';
-  }
-  if (input.mergedAt !== null) {
-    return 'merged';
-  }
-  return 'closed';
-}
-
 function createSessionRollingCounter(nowMs = Date.now()): SessionRollingCounter {
   const roundedStartMs =
     Math.floor(nowMs / SESSION_DIAGNOSTICS_BUCKET_MS) * SESSION_DIAGNOSTICS_BUCKET_MS;
@@ -1326,14 +1309,13 @@ export class ControlPlaneStreamServer {
       options.githubTokenResolver ?? (async () => await this.readGhAuthToken());
     this.githubFetch = options.githubFetch ?? fetch;
     this.githubApi = {
-      openPullRequestForBranch: async (input) => await this.openGitHubPullRequestForBranch(input),
-      findPullRequestForBranch: async (input) => await this.findGitHubPullRequestForBranch(input),
-      listPullRequestReviewThreads: async (input) =>
-        await this.listGitHubPullRequestReviewThreads(input),
-      createPullRequest: async (input) => await this.createGitHubPullRequest(input),
+      openPullRequestForBranch: this.openGitHubPullRequestForBranch.bind(this),
+      findPullRequestForBranch: this.findGitHubPullRequestForBranch.bind(this),
+      listPullRequestReviewThreads: this.listGitHubPullRequestReviewThreads.bind(this),
+      createPullRequest: this.createGitHubPullRequest.bind(this),
     };
     this.linearApi = {
-      issueByIdentifier: async (input) => await this.fetchLinearIssueByIdentifier(input),
+      issueByIdentifier: this.fetchLinearIssueByIdentifier.bind(this),
     };
     this.readGitDirectorySnapshot =
       options.readGitDirectorySnapshot ??
@@ -2690,11 +2672,14 @@ export class ControlPlaneStreamServer {
           headBranch: remotePr.headBranch,
           headSha: remotePr.headSha,
           baseBranch: remotePr.baseBranch,
-          state: githubReviewLifecycleStateFromPullRequest({
-            state: remotePr.state,
-            isDraft: remotePr.isDraft,
-            mergedAt: remotePr.mergedAt,
-          }),
+          state:
+            remotePr.state === 'open' && remotePr.isDraft
+              ? 'draft'
+              : remotePr.state === 'open'
+                ? 'open'
+                : remotePr.mergedAt !== null
+                  ? 'merged'
+                  : 'closed',
           isDraft: remotePr.isDraft,
           mergedAt: remotePr.mergedAt,
           closedAt: remotePr.closedAt,

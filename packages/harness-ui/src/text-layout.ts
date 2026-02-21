@@ -91,6 +91,8 @@ function consumedGlyphsText(consumed: ReadonlyArray<{ glyph: string; width: numb
 }
 
 export class TextLayoutEngine {
+  public constructor() {}
+
   public measure(text: string): number {
     return measureDisplayWidth(text);
   }

@@ -93,13 +93,33 @@ void test('stream server helper internals cover commandExists PATH and PATHEXT n
 void test('stream server default constructor callback fields execute without explicit option overrides', async () => {
   const server = new ControlPlaneStreamServer({
     startSession: (input) => new FakeLiveSession(input),
+    github: {
+      token: 'test-token',
+    },
+    githubFetch: async () =>
+      new Response('forced github wrapper coverage failure', {
+        status: 500,
+      }),
     githubExecFile: (_file, _args, _options, callback) => {
       callback(new Error('gh unavailable for test fallback'), '', '');
+    },
+    linear: {
+      token: '',
     },
   });
   const internals = server as unknown as {
     githubTokenResolver: () => Promise<string | null>;
     readGitDirectorySnapshot: (cwd: string) => Promise<unknown>;
+    githubApi: {
+      findPullRequestForBranch(input: {
+        owner: string;
+        repo: string;
+        headBranch: string;
+      }): Promise<unknown>;
+    };
+    linearApi: {
+      issueByIdentifier(input: { identifier: string }): Promise<unknown>;
+    };
   };
   try {
     const token = await internals.githubTokenResolver();
@@ -108,6 +128,24 @@ void test('stream server default constructor callback fields execute without exp
     const snapshot = await internals.readGitDirectorySnapshot(process.cwd());
     assert.equal(typeof snapshot, 'object');
     assert.notEqual(snapshot, null);
+
+    await assert.rejects(
+      async () =>
+        await internals.githubApi.findPullRequestForBranch({
+          owner: 'acme',
+          repo: 'harness',
+          headBranch: 'main',
+        }),
+      /github api request failed/,
+    );
+
+    await assert.rejects(
+      async () =>
+        await internals.linearApi.issueByIdentifier({
+          identifier: 'ENG-123',
+        }),
+      /linear token not configured/,
+    );
   } finally {
     await server.close();
   }

@@ -1274,3 +1274,96 @@ void test('stream server github sync updates PR state jobs and sync-status error
     await server.close();
   }
 });
+
+void test('stream server github review cache getter returns cached entries and null misses', async () => {
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input),
+    github: {
+      enabled: true,
+      token: 'token-test',
+    },
+    githubFetch: async () => new Response(JSON.stringify([]), { status: 200 }),
+  });
+  const internals = server as unknown as {
+    refreshGitHubProjectReviewCache(input: {
+      repositoryId: string;
+      owner: string;
+      repo: string;
+      branchName: string;
+      forceRefresh?: boolean;
+      remotePr?: {
+        number: number;
+        title: string;
+        url: string;
+        authorLogin: string | null;
+        headBranch: string;
+        headSha: string;
+        baseBranch: string;
+        state: 'open' | 'closed';
+        isDraft: boolean;
+        mergedAt: string | null;
+        closedAt: string | null;
+        updatedAt: string;
+        createdAt: string;
+      } | null;
+    }): Promise<{
+      repositoryId: string;
+      branchName: string;
+      pr: {
+        number: number;
+        title: string;
+        url: string;
+        authorLogin: string | null;
+        headBranch: string;
+        headSha: string;
+        baseBranch: string;
+        state: 'draft' | 'open' | 'merged' | 'closed';
+        isDraft: boolean;
+        mergedAt: string | null;
+        closedAt: string | null;
+        updatedAt: string;
+        createdAt: string;
+      } | null;
+      openThreads: readonly unknown[];
+      resolvedThreads: readonly unknown[];
+      fetchedAtMs: number;
+    }>;
+    getGitHubProjectReviewCache(input: { repositoryId: string; branchName: string }): {
+      repositoryId: string;
+      branchName: string;
+      pr: {
+        number: number;
+      } | null;
+      openThreads: readonly unknown[];
+      resolvedThreads: readonly unknown[];
+      fetchedAtMs: number;
+    } | null;
+  };
+
+  try {
+    const refreshed = await internals.refreshGitHubProjectReviewCache({
+      repositoryId: 'repository-cache',
+      owner: 'acme',
+      repo: 'harness',
+      branchName: 'feature/cache',
+      forceRefresh: true,
+      remotePr: null,
+    });
+    assert.equal(refreshed.pr, null);
+
+    const cached = internals.getGitHubProjectReviewCache({
+      repositoryId: 'repository-cache',
+      branchName: 'feature/cache',
+    });
+    assert.notEqual(cached, null);
+    assert.equal(cached?.pr, null);
+
+    const miss = internals.getGitHubProjectReviewCache({
+      repositoryId: 'repository-cache',
+      branchName: 'feature/missing',
+    });
+    assert.equal(miss, null);
+  } finally {
+    await server.close();
+  }
+});

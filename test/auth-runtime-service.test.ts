@@ -539,6 +539,7 @@ test('auth runtime linear oauth callback helper handles success and callback err
     750,
     true,
   );
+  const mismatchRejected = assert.rejects(mismatchPromise, /state mismatch/u);
   const mismatchAuthorizeUrl = await waitForAuthorizeUrl(stdout, mismatchStart);
   const mismatchRedirectUri = mismatchAuthorizeUrl.searchParams.get('redirect_uri');
   const mismatchCallbackUrl = new URL(mismatchRedirectUri!);
@@ -546,7 +547,7 @@ test('auth runtime linear oauth callback helper handles success and callback err
   mismatchCallbackUrl.searchParams.set('code', 'linear-code');
   const mismatchResponse = await fetch(mismatchCallbackUrl.toString());
   assert.equal(mismatchResponse.status, 400);
-  await assert.rejects(mismatchPromise, /state mismatch/u);
+  await mismatchRejected;
 
   const missingCodeStart = stdout.length;
   const missingCodePromise = waitForLinearOauthCodeViaCallback.call(
@@ -556,6 +557,7 @@ test('auth runtime linear oauth callback helper handles success and callback err
     750,
     true,
   );
+  const missingCodeRejected = assert.rejects(missingCodePromise, /missing code/u);
   const missingCodeAuthorizeUrl = await waitForAuthorizeUrl(stdout, missingCodeStart);
   const missingCodeRedirectUri = missingCodeAuthorizeUrl.searchParams.get('redirect_uri');
   const missingCodeState = missingCodeAuthorizeUrl.searchParams.get('state');
@@ -563,7 +565,7 @@ test('auth runtime linear oauth callback helper handles success and callback err
   missingCodeCallbackUrl.searchParams.set('state', missingCodeState!);
   const missingCodeResponse = await fetch(missingCodeCallbackUrl.toString());
   assert.equal(missingCodeResponse.status, 400);
-  await assert.rejects(missingCodePromise, /missing code/u);
+  await missingCodeRejected;
 });
 
 test('auth runtime browser opener tolerates configured command failures', async () => {
