@@ -5,7 +5,9 @@ import { wrapTextForColumns } from '../terminal/snapshot-oracle.ts';
 import { UiKit } from '../../packages/harness-ui/src/kit.ts';
 import {
   buildProjectPaneGitHubReviewLines,
+  type ProjectPaneGitHubReviewComment,
   type ProjectPaneGitHubReviewSummary,
+  type ProjectPaneGitHubReviewThread,
   type ProjectPaneGitHubToggleAction,
 } from './project-pane-github-review.ts';
 
@@ -450,6 +452,96 @@ function normalizeTaskPaneRow(text: string, cols: number): string {
   return `│${padOrTrimDisplay(text, innerCols)}│`;
 }
 
+function sanitizeInlineText(value: string): string {
+  return value.replace(/\s+/gu, ' ').trim();
+}
+
+function formatGitHubAuthor(login: string | null): string {
+  const normalized = login?.trim() ?? '';
+  return normalized.length > 0 ? `@${normalized}` : '@unknown';
+}
+
+function githubPrStateLabel(review: NonNullable<ProjectPaneGitHubReviewSummary['pr']>): string {
+  if (review.isDraft || review.state === 'draft') {
+    return 'draft';
+  }
+  if (review.state === 'merged') {
+    return 'merged';
+  }
+  if (review.state === 'closed') {
+    return 'closed';
+  }
+  return 'open';
+}
+
+function threadCommentCount(threads: readonly ProjectPaneGitHubReviewThread[]): number {
+  let count = 0;
+  for (const thread of threads) {
+    count += thread.comments.length;
+  }
+  return count;
+}
+
+function appendCommentDetails(
+  pushLine: (line: string, action?: ProjectPaneAction | null) => void,
+  comment: ProjectPaneGitHubReviewComment,
+  index: number,
+): void {
+  pushLine(
+    `  comment ${String(index + 1)} (${comment.commentId}) by ${formatGitHubAuthor(comment.authorLogin)}`,
+  );
+  pushLine(`    created ${comment.createdAt}`);
+  if (comment.updatedAt !== comment.createdAt) {
+    pushLine(`    updated ${comment.updatedAt}`);
+  }
+  if (comment.url !== null) {
+    pushLine(`    url ${comment.url}`);
+  }
+  const bodyLines = comment.body.split(/\r?\n/gu);
+  pushLine('    body');
+  let wroteBodyLine = false;
+  for (const bodyLine of bodyLines) {
+    const trimmedEnd = bodyLine.trimEnd();
+    if (trimmedEnd.length === 0) {
+      continue;
+    }
+    pushLine(`      ${trimmedEnd}`);
+    wroteBodyLine = true;
+  }
+  if (!wroteBodyLine) {
+    pushLine('      (empty)');
+  }
+}
+
+function appendThreadDetails(
+  pushLine: (line: string, action?: ProjectPaneAction | null) => void,
+  label: string,
+  threads: readonly ProjectPaneGitHubReviewThread[],
+): void {
+  pushLine(`${label} (${String(threads.length)})`);
+  if (threads.length === 0) {
+    pushLine('  (none)');
+    return;
+  }
+  for (const thread of threads) {
+    const parts = [
+      thread.isResolved ? 'resolved' : 'open',
+      ...(thread.isOutdated ? ['outdated'] : []),
+      ...(thread.resolvedByLogin === null
+        ? []
+        : [`resolved by ${formatGitHubAuthor(thread.resolvedByLogin)}`]),
+    ];
+    pushLine(`[thread ${thread.threadId}] ${parts.join(', ')}`);
+    if (thread.comments.length === 0) {
+      pushLine('  (no comments)');
+      continue;
+    }
+    for (let commentIndex = 0; commentIndex < thread.comments.length; commentIndex += 1) {
+      appendCommentDetails(pushLine, thread.comments[commentIndex]!, commentIndex);
+    }
+  }
+}
+
 export function resolveGoldenModalSize(
   viewportCols: number,
   viewportRows: number,
@@ -557,6 +649,93 @@ export function buildProjectPaneSnapshotWithOptions(
   for (let index = treeStartIndex; index < base.lines.length; index += 1) {
     pushBaseLine(base.lines[index]!);
   }
+  return {
+    directoryId: base.directoryId,
+    path: base.path,
+    lines,
+    actionBySourceLineIndex,
+    actionLineIndexByKind: {
+      conversationNew: base.actionLineIndexByKind.conversationNew,
+      projectClose: base.actionLineIndexByKind.projectClose,
+    },
+  };
+}
+
+export function buildGitHubReviewPaneSnapshot(
+  directoryId: string,
+  path: string,
+  review: ProjectPaneGitHubReviewSummary | null,
+): ProjectPaneSnapshot {
+  const base = buildProjectPaneSnapshot(directoryId, path);
+  const lines: string[] = [];
+  const actionBySourceLineIndex: Record<number, ProjectPaneAction> = {};
+  const pushLine = (line: string, action: ProjectPaneAction | null = null): void => {
+    const index = lines.length;
+    lines.push(line);
+    if (action !== null) {
+      actionBySourceLineIndex[index] = action;
+    }
+  };
+  const lineCountBeforeTree = Math.min(
+    base.lines.length,
+    base.actionLineIndexByKind.projectClose + 2,
+  );
+  for (let index = 0; index < lineCountBeforeTree; index += 1) {
+    const action = base.actionBySourceLineIndex[index] ?? null;
+    pushLine(base.lines[index]!, action);
+  }
+  pushLine('github pull request');
+  pushLine(PROJECT_PANE_REFRESH_GITHUB_BUTTON_LABEL, 'project.github.refresh');
+  pushLine('');
+
+  if (review === null) {
+    pushLine('status not loaded');
+    pushLine('select refresh review to load latest state');
+  } else if (review.status === 'loading') {
+    pushLine('status loading GitHub review data…');
+  } else if (review.status === 'error') {
+    const message =
+      review.errorMessage === null ? 'unknown error' : sanitizeInlineText(review.errorMessage);
+    pushLine(`status error ${message}`);
+  } else {
+    const branchName = review.branchName?.trim() ?? '';
+    const branchSource = review.branchSource === null ? '' : ` (${review.branchSource})`;
+    pushLine(`branch ${branchName.length > 0 ? branchName : '(none)'}${branchSource}`);
+    if (review.pr === null) {
+      pushLine('pr none for tracked branch');
+    } else {
+      const pr = review.pr;
+      const openCommentCount = threadCommentCount(review.openThreads);
+      const resolvedCommentCount = threadCommentCount(review.resolvedThreads);
+      pushLine(
+        `pr #${String(pr.number)} ${githubPrStateLabel(pr)} ${sanitizeInlineText(pr.title)}`,
+      );
+      pushLine(`url ${pr.url}`);
+      pushLine(`author ${formatGitHubAuthor(pr.authorLogin)}`);
+      pushLine(`branches ${pr.headBranch} -> ${pr.baseBranch}`);
+      pushLine(`created ${pr.createdAt}`);
+      pushLine(`updated ${pr.updatedAt}`);
+      if (pr.mergedAt !== null) {
+        pushLine(`merged ${pr.mergedAt}`);
+      }
+      if (pr.closedAt !== null) {
+        pushLine(`closed ${pr.closedAt}`);
+      }
+      pushLine(
+        `review threads ${String(review.openThreads.length)} open / ${String(review.resolvedThreads.length)} resolved`,
+      );
+      pushLine(
+        `review comments ${String(openCommentCount + resolvedCommentCount)} total (${String(
+          openCommentCount,
+        )} open, ${String(resolvedCommentCount)} resolved)`,
+      );
+      pushLine('');
+      appendThreadDetails(pushLine, 'open threads', review.openThreads);
+      pushLine('');
+      appendThreadDetails(pushLine, 'resolved threads', review.resolvedThreads);
+    }
+  }
+
   return {
     directoryId: base.directoryId,
     path: base.path,

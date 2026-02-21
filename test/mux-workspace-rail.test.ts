@@ -880,6 +880,39 @@ void test('workspace rail row renderer keeps title rows without status glyph unc
   assert.equal(stripAnsi(noGlyphTitleRowAnsi).includes('codex - no glyph'), true);
 });
 
+void test('workspace rail row renderer paints github header/detail rows with active selection support', () => {
+  const githubHeaderRowAnsi = renderWorkspaceRailRowAnsiForTest(
+    {
+      kind: 'github-header',
+      text: '│  ├─ ▶ github pr (loading)',
+      active: false,
+      conversationSessionId: null,
+      directoryKey: 'dir-gh',
+      repositoryId: null,
+      railAction: 'project.github.open',
+      conversationStatus: null,
+    },
+    64,
+  );
+  assert.equal(stripAnsi(githubHeaderRowAnsi).includes('github pr (loading)'), true);
+
+  const activeGithubDetailRowAnsi = renderWorkspaceRailRowAnsiForTest(
+    {
+      kind: 'github-detail',
+      text: '│  │  status loading GitHub review data…',
+      active: true,
+      conversationSessionId: null,
+      directoryKey: 'dir-gh',
+      repositoryId: null,
+      railAction: null,
+      conversationStatus: null,
+    },
+    64,
+  );
+  assert.equal(stripAnsi(activeGithubDetailRowAnsi).includes('status loading GitHub review data…'), true);
+  assert.equal(activeGithubDetailRowAnsi.includes('48;5;237m'), true);
+});
+
 void test('workspace rail row renderer paints working status icon style for thread rows', () => {
   const workingRowAnsi = renderWorkspaceRailRowAnsiForTest(
     {

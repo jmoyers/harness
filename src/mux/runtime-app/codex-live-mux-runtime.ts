@@ -57,6 +57,7 @@ import {
   type ResolvedCommandMenuOpenInTarget,
 } from '../../mux/live-mux/command-menu-open-in.ts';
 import {
+  buildGitHubReviewPaneSnapshot,
   buildProjectPaneSnapshotWithOptions,
   projectPaneActionAtRow,
   sortedRepositoryList,
@@ -1827,7 +1828,6 @@ class CodexLiveMuxRuntimeApplication {
     const commandMenuRegistry = new CommandMenuRegistry<RuntimeCommandMenuContext>();
     let commandMenuGitHubProjectPrState: CommandMenuGitHubProjectPrState | null = null;
     const projectPaneGitHubReviewByDirectoryId = new Map<string, ProjectPaneGitHubReviewSummary>();
-    const projectPaneGitHubExpandedNodeIdsByDirectoryId = new Map<string, Set<string>>();
     let commandMenuScopedDirectoryId: string | null = null;
     let themePickerSession: ThemePickerSessionState | null = null;
     const isThreadScopedCommandActionId = (actionId: string): boolean =>
@@ -2647,7 +2647,7 @@ class CodexLiveMuxRuntimeApplication {
       }
     };
 
-    const refreshProjectPaneSnapshot = (directoryId: string): void => {
+    const refreshProjectTreePaneSnapshot = (directoryId: string): void => {
       const directory = directoryManager.getDirectory(directoryId);
       if (directory === undefined) {
         workspace.projectPaneSnapshot = null;
@@ -2656,12 +2656,31 @@ class CodexLiveMuxRuntimeApplication {
       workspace.projectPaneSnapshot = buildProjectPaneSnapshotWithOptions(
         directory.directoryId,
         directory.path,
-        {
-          githubReview: projectPaneGitHubReviewByDirectoryId.get(directory.directoryId) ?? null,
-          expandedNodeIds:
-            projectPaneGitHubExpandedNodeIdsByDirectoryId.get(directory.directoryId) ?? new Set(),
-        },
       );
+    };
+
+    const refreshGitHubPaneSnapshot = (directoryId: string): void => {
+      const directory = directoryManager.getDirectory(directoryId);
+      if (directory === undefined) {
+        workspace.projectPaneSnapshot = null;
+        return;
+      }
+      workspace.projectPaneSnapshot = buildGitHubReviewPaneSnapshot(
+        directory.directoryId,
+        directory.path,
+        projectPaneGitHubReviewByDirectoryId.get(directory.directoryId) ?? null,
+      );
+    };
+
+    const refreshProjectPaneSnapshot = (directoryId: string): void => {
+      if (
+        workspace.leftNavSelection.kind === 'github' &&
+        workspace.leftNavSelection.directoryId === directoryId
+      ) {
+        refreshGitHubPaneSnapshot(directoryId);
+        return;
+      }
+      refreshProjectTreePaneSnapshot(directoryId);
     };
 
     const projectPaneGitHubReviewCache = new RuntimeProjectPaneGitHubReviewCache({
@@ -2690,10 +2709,14 @@ class CodexLiveMuxRuntimeApplication {
       },
       onUpdate: (directoryId, review) => {
         projectPaneGitHubReviewByDirectoryId.set(directoryId, review);
-        if (workspace.mainPaneMode === 'project' && workspace.activeDirectoryId === directoryId) {
+        if (
+          workspace.mainPaneMode === 'project' &&
+          workspace.leftNavSelection.kind === 'github' &&
+          workspace.activeDirectoryId === directoryId
+        ) {
           refreshProjectPaneSnapshot(directoryId);
-          markDirty();
         }
+        markDirty();
       },
       formatErrorMessage,
     });
@@ -2713,28 +2736,23 @@ class CodexLiveMuxRuntimeApplication {
       projectPaneGitHubReviewCache.request(directoryId, options);
     };
 
-    const toggleProjectPaneGitHubNode = (directoryId: string, nodeId: string): boolean => {
-      if (!directoryManager.hasDirectory(directoryId)) {
-        return false;
-      }
-      const expanded =
-        projectPaneGitHubExpandedNodeIdsByDirectoryId.get(directoryId) ?? new Set<string>();
-      if (expanded.has(nodeId)) {
-        expanded.delete(nodeId);
-      } else {
-        expanded.add(nodeId);
-      }
-      projectPaneGitHubExpandedNodeIdsByDirectoryId.set(directoryId, expanded);
-      refreshProjectPaneSnapshot(directoryId);
-      return true;
-    };
-
     const enterProjectPane = (directoryId: string): void => {
       if (!directoryManager.hasDirectory(directoryId)) {
         return;
       }
       workspace.enterProjectPane(directoryId, repositoryGroupIdForDirectory(directoryId));
       noteGitActivity(directoryId);
+      refreshProjectPaneSnapshot(directoryId);
+      screen.resetFrameCache();
+    };
+
+    const enterGitHubPane = (directoryId: string): void => {
+      if (!directoryManager.hasDirectory(directoryId)) {
+        return;
+      }
+      workspace.enterGitHubPane(directoryId, repositoryGroupIdForDirectory(directoryId));
+      noteGitActivity(directoryId);
+      refreshProjectPaneGitHubReviewState(directoryId);
       refreshProjectPaneSnapshot(directoryId);
       screen.resetFrameCache();
     };
@@ -4333,6 +4351,8 @@ class CodexLiveMuxRuntimeApplication {
         gitSummaryByDirectoryId: gitSummaryByDirectoryId,
         processUsageBySessionId: () => processUsageRefreshService.readonlyUsage(),
         loadingGitSummary: GIT_SUMMARY_LOADING,
+        showGitHubIntegration: loadedConfig.config.github.enabled,
+        githubReviewByDirectoryId: projectPaneGitHubReviewByDirectoryId,
         showTasksEntry,
         activeConversationId: () => conversationManager.activeConversationId,
         orderedConversationIds: () => conversationManager.orderedIds(),
@@ -4667,6 +4687,7 @@ class CodexLiveMuxRuntimeApplication {
         enterHomePane,
         firstDirectoryForRepositoryGroup,
         enterProjectPane,
+        enterGitHubPane,
         setMainPaneProjectMode: () => {
           workspace.mainPaneMode = 'project';
         },
@@ -4891,6 +4912,7 @@ class CodexLiveMuxRuntimeApplication {
           );
         },
         enterProjectPane,
+        enterGitHubPane,
         markDirty,
       },
       {
@@ -5048,15 +5070,7 @@ class CodexLiveMuxRuntimeApplication {
                 });
                 return true;
               }
-              const togglePrefix = 'project.github.toggle:';
-              if (!action.startsWith(togglePrefix)) {
-                return false;
-              }
-              const nodeId = action.slice(togglePrefix.length).trim();
-              if (nodeId.length === 0) {
-                return false;
-              }
-              return toggleProjectPaneGitHubNode(directoryId, nodeId);
+              return false;
             },
           }),
         handleHomePanePointerClick,

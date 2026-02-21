@@ -21,6 +21,10 @@ interface RuntimeWorkspaceStateLike {
         directoryId: string;
       }
     | {
+        kind: 'github';
+        directoryId: string;
+      }
+    | {
         kind: 'repository';
         repositoryId: string;
       }
@@ -176,7 +180,8 @@ export class RuntimeWorkspaceObservedEvents<TObservedEvent> {
     }
 
     if (
-      this.options.workspace.leftNavSelection.kind === 'project' &&
+      (this.options.workspace.leftNavSelection.kind === 'project' ||
+        this.options.workspace.leftNavSelection.kind === 'github') &&
       !this.options.hasDirectory(this.options.workspace.leftNavSelection.directoryId)
     ) {
       const fallbackDirectoryId = this.options.resolveActiveDirectoryId();

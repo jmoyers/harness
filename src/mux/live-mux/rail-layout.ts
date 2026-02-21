@@ -2,6 +2,7 @@ import { basename } from 'node:path';
 import type { ConversationRailSessionSummary } from '../conversation-rail.ts';
 import { buildWorkspaceRailViewRows } from '../workspace-rail-model.ts';
 import { renderWorkspaceRailAnsiRows } from '../workspace-rail.ts';
+import type { ProjectPaneGitHubReviewSummary } from '../project-pane-github-review.ts';
 import type {
   StreamSessionController,
   StreamSessionStatusModel,
@@ -70,6 +71,10 @@ interface BuildRailModelArgs {
   readonly homeSelectionEnabled: boolean;
   readonly tasksSelectionEnabled?: boolean;
   readonly showTasksEntry?: boolean;
+  readonly showGitHubIntegration?: boolean;
+  readonly githubReviewByDirectoryId?: ReadonlyMap<string, ProjectPaneGitHubReviewSummary>;
+  readonly githubSelectionEnabled?: boolean;
+  readonly activeGitHubProjectId?: string | null;
   readonly repositoriesCollapsed: boolean;
   readonly collapsedRepositoryGroupIds: ReadonlySet<string>;
   readonly gitSummaryByDirectoryId: ReadonlyMap<string, GitSummary>;
@@ -194,7 +199,15 @@ export function buildRailModel(args: BuildRailModelArgs): WorkspaceRailModel {
     activeConversationId: args.activeConversationId,
     showTaskPlanningUi: true,
     showTasksEntry: args.showTasksEntry ?? true,
+    showGitHubIntegration: args.showGitHubIntegration ?? false,
+    ...(args.githubReviewByDirectoryId === undefined
+      ? {}
+      : {
+          githubReviewByDirectoryKey: args.githubReviewByDirectoryId,
+        }),
     projectSelectionEnabled: args.projectSelectionEnabled,
+    githubSelectionEnabled: args.githubSelectionEnabled ?? false,
+    activeGitHubProjectId: args.activeGitHubProjectId ?? null,
     repositorySelectionEnabled: args.repositorySelectionEnabled,
     homeSelectionEnabled: args.homeSelectionEnabled,
     tasksSelectionEnabled: args.tasksSelectionEnabled ?? false,

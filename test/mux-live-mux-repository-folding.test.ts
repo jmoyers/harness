@@ -55,6 +55,17 @@ void test('repository folding selection and arrow helpers resolve expected targe
   assert.equal(
     selectedRepositoryGroupIdForLeftNav(
       {
+        kind: 'github',
+        directoryId: 'dir-a',
+      },
+      conversations,
+      groupForDirectory,
+    ),
+    'group:dir-a',
+  );
+  assert.equal(
+    selectedRepositoryGroupIdForLeftNav(
+      {
         kind: 'conversation',
         sessionId: 'session-a',
       },

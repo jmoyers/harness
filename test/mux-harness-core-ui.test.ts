@@ -32,6 +32,7 @@ import {
   buildProjectPaneRows,
   buildProjectPaneSnapshot,
   buildProjectPaneSnapshotWithOptions,
+  buildGitHubReviewPaneSnapshot,
   buildTaskPaneRows,
   buildTaskPaneSnapshot,
   projectPaneActionAtRow,
@@ -490,6 +491,265 @@ void test('buildProjectPaneSnapshotWithOptions injects github review block and m
     assert.equal(projectPaneActionAtRow(snapshot, 200, 200, 0, 3), 'conversation.new');
     assert.equal(projectPaneActionAtRow(snapshot, 200, 200, 0, 4), 'project.close');
     assert.equal(projectPaneActionAtRow(snapshot, 200, 200, 0, 5), 'project.github.refresh');
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('buildGitHubReviewPaneSnapshot renders full pull request and thread details', () => {
+  const workspace = mkdtempSync(join(tmpdir(), 'harness-core-ui-project-github-pane-'));
+  try {
+    const snapshot = buildGitHubReviewPaneSnapshot('dir-gh', workspace, {
+      status: 'ready',
+      branchName: 'feature/github-rail',
+      branchSource: 'current',
+      pr: {
+        number: 77,
+        title: 'Move GitHub integration into rail',
+        url: 'https://github.com/acme/harness/pull/77',
+        authorLogin: 'jmoyers',
+        headBranch: 'feature/github-rail',
+        baseBranch: 'main',
+        state: 'open',
+        isDraft: false,
+        mergedAt: null,
+        closedAt: null,
+        updatedAt: '2026-02-21T11:00:00.000Z',
+        createdAt: '2026-02-21T10:00:00.000Z',
+      },
+      openThreads: [
+        {
+          threadId: 'thread-open-1',
+          isResolved: false,
+          isOutdated: false,
+          resolvedByLogin: null,
+          comments: [
+            {
+              commentId: 'comment-1',
+              authorLogin: 'alice',
+              body: 'First line\nSecond line',
+              url: 'https://github.com/acme/harness/pull/77#discussion_r1',
+              createdAt: '2026-02-21T11:10:00.000Z',
+              updatedAt: '2026-02-21T11:12:00.000Z',
+            },
+          ],
+        },
+      ],
+      resolvedThreads: [
+        {
+          threadId: 'thread-resolved-1',
+          isResolved: true,
+          isOutdated: false,
+          resolvedByLogin: 'bob',
+          comments: [
+            {
+              commentId: 'comment-2',
+              authorLogin: 'bob',
+              body: 'Resolved.',
+              url: null,
+              createdAt: '2026-02-21T11:15:00.000Z',
+              updatedAt: '2026-02-21T11:15:00.000Z',
+            },
+          ],
+        },
+      ],
+      errorMessage: null,
+    });
+
+    assert.equal(
+      snapshot.lines.some((line) => line.includes('github pull request')),
+      true,
+    );
+    assert.equal(
+      snapshot.lines.some((line) => line.includes('pr #77 open Move GitHub integration into rail')),
+      true,
+    );
+    assert.equal(
+      snapshot.lines.some((line) => line.includes('branches feature/github-rail -> main')),
+      true,
+    );
+    assert.equal(
+      snapshot.lines.some((line) => line.includes('[thread thread-open-1] open')),
+      true,
+    );
+    assert.equal(
+      snapshot.lines.some((line) => line.includes('comment 1 (comment-1) by @alice')),
+      true,
+    );
+    assert.equal(
+      snapshot.lines.some((line) => line.includes('Second line')),
+      true,
+    );
+    const refreshRow = snapshot.lines.findIndex((line) => line.includes('refresh review'));
+    assert.equal(refreshRow >= 0, true);
+    assert.equal(
+      projectPaneActionAtRow(snapshot, 220, 120, 0, refreshRow),
+      'project.github.refresh',
+    );
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+void test('buildGitHubReviewPaneSnapshot covers status and lifecycle edge branches', () => {
+  const workspace = mkdtempSync(join(tmpdir(), 'harness-core-ui-project-github-pane-edges-'));
+  try {
+    const notLoaded = buildGitHubReviewPaneSnapshot('dir-gh', workspace, null);
+    assert.equal(notLoaded.lines.some((line) => line.includes('status not loaded')), true);
+    assert.equal(
+      notLoaded.lines.some((line) => line.includes('select refresh review to load latest state')),
+      true,
+    );
+
+    const loading = buildGitHubReviewPaneSnapshot('dir-gh', workspace, {
+      status: 'loading',
+      branchName: 'feature/loading',
+      branchSource: 'current',
+      pr: null,
+      openThreads: [],
+      resolvedThreads: [],
+      errorMessage: null,
+    });
+    assert.equal(
+      loading.lines.some((line) => line.includes('status loading GitHub review data…')),
+      true,
+    );
+
+    const errored = buildGitHubReviewPaneSnapshot('dir-gh', workspace, {
+      status: 'error',
+      branchName: null,
+      branchSource: null,
+      pr: null,
+      openThreads: [],
+      resolvedThreads: [],
+      errorMessage: '  bad   gateway  ',
+    });
+    assert.equal(errored.lines.some((line) => line.includes('status error bad gateway')), true);
+
+    const noPr = buildGitHubReviewPaneSnapshot('dir-gh', workspace, {
+      status: 'ready',
+      branchName: 'feature/no-pr',
+      branchSource: 'pinned',
+      pr: null,
+      openThreads: [],
+      resolvedThreads: [],
+      errorMessage: null,
+    });
+    assert.equal(noPr.lines.some((line) => line.includes('pr none for tracked branch')), true);
+
+    const merged = buildGitHubReviewPaneSnapshot('dir-gh', workspace, {
+      status: 'ready',
+      branchName: 'feature/merged',
+      branchSource: 'current',
+      pr: {
+        number: 10,
+        title: 'Merged PR',
+        url: 'https://github.com/acme/harness/pull/10',
+        authorLogin: null,
+        headBranch: 'feature/merged',
+        baseBranch: 'main',
+        state: 'merged',
+        isDraft: false,
+        mergedAt: '2026-02-21T10:30:00.000Z',
+        closedAt: '2026-02-21T10:31:00.000Z',
+        updatedAt: '2026-02-21T10:31:00.000Z',
+        createdAt: '2026-02-21T09:00:00.000Z',
+      },
+      openThreads: [],
+      resolvedThreads: [],
+      errorMessage: null,
+    });
+    assert.equal(merged.lines.some((line) => line.includes('pr #10 merged Merged PR')), true);
+    assert.equal(merged.lines.some((line) => line.includes('merged 2026-02-21T10:30:00.000Z')), true);
+    assert.equal(merged.lines.some((line) => line.includes('closed 2026-02-21T10:31:00.000Z')), true);
+    assert.equal(merged.lines.some((line) => line.includes('open threads (0)')), true);
+    assert.equal(merged.lines.some((line) => line.includes('  (none)')), true);
+
+    const closedWithEmptyComment = buildGitHubReviewPaneSnapshot('dir-gh', workspace, {
+      status: 'ready',
+      branchName: 'feature/closed',
+      branchSource: 'current',
+      pr: {
+        number: 11,
+        title: 'Closed PR',
+        url: 'https://github.com/acme/harness/pull/11',
+        authorLogin: 'zoe',
+        headBranch: 'feature/closed',
+        baseBranch: 'main',
+        state: 'closed',
+        isDraft: false,
+        mergedAt: null,
+        closedAt: '2026-02-21T11:00:00.000Z',
+        updatedAt: '2026-02-21T11:00:00.000Z',
+        createdAt: '2026-02-21T09:00:00.000Z',
+      },
+      openThreads: [
+        {
+          threadId: 'open-no-comments',
+          isResolved: false,
+          isOutdated: true,
+          resolvedByLogin: null,
+          comments: [],
+        },
+      ],
+      resolvedThreads: [
+        {
+          threadId: 'resolved-empty-comment',
+          isResolved: true,
+          isOutdated: false,
+          resolvedByLogin: 'reviewer',
+          comments: [
+            {
+              commentId: 'comment-empty',
+              authorLogin: null,
+              body: '\n   \n',
+              url: null,
+              createdAt: '2026-02-21T11:05:00.000Z',
+              updatedAt: '2026-02-21T11:05:00.000Z',
+            },
+          ],
+        },
+      ],
+      errorMessage: null,
+    });
+    assert.equal(
+      closedWithEmptyComment.lines.some((line) => line.includes('pr #11 closed Closed PR')),
+      true,
+    );
+    assert.equal(
+      closedWithEmptyComment.lines.some((line) => line.includes('[thread open-no-comments] open, outdated')),
+      true,
+    );
+    assert.equal(closedWithEmptyComment.lines.some((line) => line.includes('  (no comments)')), true);
+    assert.equal(
+      closedWithEmptyComment.lines.some((line) => line.includes('resolved by @reviewer')),
+      true,
+    );
+    assert.equal(closedWithEmptyComment.lines.some((line) => line.includes('(empty)')), true);
+
+    const draft = buildGitHubReviewPaneSnapshot('dir-gh', workspace, {
+      status: 'ready',
+      branchName: 'feature/draft',
+      branchSource: 'current',
+      pr: {
+        number: 12,
+        title: 'Draft PR',
+        url: 'https://github.com/acme/harness/pull/12',
+        authorLogin: 'sam',
+        headBranch: 'feature/draft',
+        baseBranch: 'main',
+        state: 'open',
+        isDraft: true,
+        mergedAt: null,
+        closedAt: null,
+        updatedAt: '2026-02-21T12:00:00.000Z',
+        createdAt: '2026-02-21T11:30:00.000Z',
+      },
+      openThreads: [],
+      resolvedThreads: [],
+      errorMessage: null,
+    });
+    assert.equal(draft.lines.some((line) => line.includes('pr #12 draft Draft PR')), true);
   } finally {
     rmSync(workspace, { recursive: true, force: true });
   }

@@ -8,6 +8,7 @@ interface ActivateLeftNavTargetOptions {
   enterTasksPane?: () => void;
   firstDirectoryForRepositoryGroup: (repositoryGroupId: string) => string | null;
   enterProjectPane: (directoryId: string) => void;
+  enterGitHubPane?: (directoryId: string) => void;
   setMainPaneProjectMode: () => void;
   selectLeftNavRepository: (repositoryGroupId: string) => void;
   selectLeftNavConversation?: (sessionId: string) => void;
@@ -67,6 +68,7 @@ export function activateLeftNavTarget(options: ActivateLeftNavTargetOptions): vo
     enterTasksPane,
     firstDirectoryForRepositoryGroup,
     enterProjectPane,
+    enterGitHubPane,
     setMainPaneProjectMode,
     selectLeftNavRepository,
     selectLeftNavConversation,
@@ -127,6 +129,39 @@ export function activateLeftNavTarget(options: ActivateLeftNavTargetOptions): vo
         activateConversation,
         sessionId: fallbackConversation.sessionId,
         label: `shortcut-activate-${direction}-directory-fallback`,
+      });
+    }
+    return;
+  }
+  if (target.kind === 'github') {
+    if (directoriesHas(target.directoryId)) {
+      if (enterGitHubPane !== undefined) {
+        enterGitHubPane(target.directoryId);
+      } else {
+        enterProjectPane(target.directoryId);
+      }
+      markDirty();
+      return;
+    }
+    const visibleTargets = visibleTargetsForState();
+    const fallbackConversation = visibleTargets.find(
+      (entry): entry is Extract<LeftNavSelection, { kind: 'conversation' }> =>
+        entry.kind === 'conversation' &&
+        conversationDirectoryId(entry.sessionId) === target.directoryId,
+    );
+    if (fallbackConversation !== undefined) {
+      selectLeftNavConversation?.(fallbackConversation.sessionId);
+      markDirty();
+      queueLeftNavConversationActivation({
+        queueControlPlaneOp,
+        ...(queueLatestControlPlaneOp === undefined
+          ? {}
+          : {
+              queueLatestControlPlaneOp,
+            }),
+        activateConversation,
+        sessionId: fallbackConversation.sessionId,
+        label: `shortcut-activate-${direction}-github-fallback`,
       });
     }
     return;

@@ -1086,6 +1086,7 @@ void test('left-nav helpers build stable target keys and dedupe visible targets'
     leftNavTargetKey({ kind: 'conversation', sessionId: 'session-a' }),
     'conversation:session-a',
   );
+  assert.equal(leftNavTargetKey({ kind: 'github', directoryId: 'dir-a' }), 'github:dir-a');
 
   const rows = [
     {
@@ -1139,6 +1140,16 @@ void test('left-nav helpers build stable target keys and dedupe visible targets'
       conversationStatus: null,
     },
     {
+      kind: 'github-header',
+      text: 'github',
+      active: false,
+      conversationSessionId: null,
+      directoryKey: 'dir-a',
+      repositoryId: null,
+      railAction: 'project.github.open',
+      conversationStatus: null,
+    },
+    {
       kind: 'conversation-title',
       text: 'thread',
       active: false,
@@ -1169,14 +1180,28 @@ void test('left-nav helpers build stable target keys and dedupe visible targets'
     railAction: null,
     conversationStatus: null,
   };
+  rows[9] = {
+    kind: 'muted',
+    text: 'extra filler',
+    active: false,
+    conversationSessionId: null,
+    directoryKey: null,
+    repositoryId: null,
+    railAction: null,
+    conversationStatus: null,
+  };
 
   assert.deepEqual(visibleLeftNavTargets(rows as unknown as RailRows), [
     { kind: 'home' },
     { kind: 'tasks' },
     { kind: 'repository', repositoryId: 'repo-a' },
     { kind: 'project', directoryId: 'dir-a' },
+    { kind: 'github', directoryId: 'dir-a' },
     { kind: 'conversation', sessionId: 'session-a' },
   ]);
+
+  const sparseRows = new Array(1) as unknown as RailRows;
+  assert.deepEqual(visibleLeftNavTargets(sparseRows), []);
 });
 
 void test('handleLeftRailPointerClick applies title-edit, selection clear, action, and conversation branches', () => {

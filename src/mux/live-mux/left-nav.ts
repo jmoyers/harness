@@ -16,6 +16,10 @@ export type LeftNavSelection =
       readonly directoryId: string;
     }
   | {
+      readonly kind: 'github';
+      readonly directoryId: string;
+    }
+  | {
       readonly kind: 'conversation';
       readonly sessionId: string;
     };
@@ -32,6 +36,9 @@ export function leftNavTargetKey(target: LeftNavSelection): string {
   }
   if (target.kind === 'project') {
     return `directory:${target.directoryId}`;
+  }
+  if (target.kind === 'github') {
+    return `github:${target.directoryId}`;
   }
   return `conversation:${target.sessionId}`;
 }
@@ -63,6 +70,12 @@ function leftNavTargetFromRow(
   if (row.kind === 'dir-header' && row.directoryKey !== null) {
     return {
       kind: 'project',
+      directoryId: row.directoryKey,
+    };
+  }
+  if (row.kind === 'github-header' && row.directoryKey !== null) {
+    return {
+      kind: 'github',
       directoryId: row.directoryKey,
     };
   }

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import { buildRailModel, buildRailRows } from '../src/mux/live-mux/rail-layout.ts';
+import type { ProjectPaneGitHubReviewSummary } from '../src/mux/project-pane-github-review.ts';
 import { statusModelFor } from './support/status-model.ts';
 
 const ESC = String.fromCharCode(27);
@@ -235,4 +236,78 @@ void test('live-mux rail model selects latest repository snapshot metadata and s
   assert.equal(repository?.commitCount, 12);
   assert.equal(repository?.shortCommitHash, 'newhash');
   assert.equal(model.conversations.length, 1);
+});
+
+void test('live-mux rail model forwards github review map only when provided', () => {
+  const reviewByDirectory = new Map<string, ProjectPaneGitHubReviewSummary>([
+    [
+      'dir-1',
+      {
+        status: 'ready',
+        branchName: 'feature/rail',
+        branchSource: 'current',
+        pr: null,
+        openThreads: [],
+        resolvedThreads: [],
+        errorMessage: null,
+      },
+    ],
+  ]);
+
+  const withReview = buildRailModel({
+    repositories: new Map(),
+    repositoryAssociationByDirectoryId: new Map(),
+    directoryRepositorySnapshotByDirectoryId: new Map(),
+    directories: new Map([
+      [
+        'dir-1',
+        {
+          directoryId: 'dir-1',
+          path: '/tmp/dir-1',
+        },
+      ],
+    ]),
+    conversations: new Map(),
+    orderedIds: [],
+    activeProjectId: 'dir-1',
+    activeRepositoryId: null,
+    activeConversationId: null,
+    projectSelectionEnabled: true,
+    repositorySelectionEnabled: false,
+    homeSelectionEnabled: false,
+    showGitHubIntegration: true,
+    githubReviewByDirectoryId: reviewByDirectory,
+    githubSelectionEnabled: true,
+    activeGitHubProjectId: 'dir-1',
+    repositoriesCollapsed: false,
+    collapsedRepositoryGroupIds: new Set<string>(),
+    gitSummaryByDirectoryId: new Map(),
+    processUsageBySessionId: new Map(),
+    loadingGitSummary: LOADING_GIT_SUMMARY,
+  });
+  assert.equal(withReview.showGitHubIntegration, true);
+  assert.equal(withReview.githubReviewByDirectoryKey?.get('dir-1')?.branchName, 'feature/rail');
+  assert.equal(withReview.githubSelectionEnabled, true);
+  assert.equal(withReview.activeGitHubProjectId, 'dir-1');
+
+  const withoutReview = buildRailModel({
+    repositories: new Map(),
+    repositoryAssociationByDirectoryId: new Map(),
+    directoryRepositorySnapshotByDirectoryId: new Map(),
+    directories: new Map(),
+    conversations: new Map(),
+    orderedIds: [],
+    activeProjectId: null,
+    activeRepositoryId: null,
+    activeConversationId: null,
+    projectSelectionEnabled: true,
+    repositorySelectionEnabled: false,
+    homeSelectionEnabled: false,
+    repositoriesCollapsed: false,
+    collapsedRepositoryGroupIds: new Set<string>(),
+    gitSummaryByDirectoryId: new Map(),
+    processUsageBySessionId: new Map(),
+    loadingGitSummary: LOADING_GIT_SUMMARY,
+  });
+  assert.equal('githubReviewByDirectoryKey' in withoutReview, false);
 });

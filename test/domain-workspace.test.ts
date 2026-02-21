@@ -100,6 +100,13 @@ void test('workspace model left-nav transition methods own state updates', () =>
   });
   assert.equal(workspace.activeRepositorySelectionId, 'repo-b');
 
+  workspace.selectLeftNavGitHub('dir-c', 'repo-c');
+  assert.deepEqual(workspace.leftNavSelection, {
+    kind: 'github',
+    directoryId: 'dir-c',
+  });
+  assert.equal(workspace.activeRepositorySelectionId, 'repo-c');
+
   workspace.selectLeftNavConversation('session-a');
   assert.deepEqual(workspace.leftNavSelection, {
     kind: 'conversation',
@@ -167,6 +174,36 @@ void test('workspace model pane transition methods own project/home state update
     directoryId: 'dir-b',
   });
   assert.equal(workspace.activeRepositorySelectionId, 'repo-b');
+  assert.equal(workspace.projectPaneScrollTop, 0);
+  assert.equal(workspace.homePaneDragState, null);
+  assert.equal(workspace.taskPaneTaskEditClickState, null);
+  assert.equal(workspace.taskPaneRepositoryEditClickState, null);
+
+  workspace.homePaneDragState = {
+    kind: 'task',
+    itemId: 'task-gh',
+    startedRowIndex: 4,
+    latestRowIndex: 5,
+    hasDragged: true,
+  };
+  workspace.taskPaneTaskEditClickState = {
+    entityId: 'task-gh',
+    atMs: 5,
+  };
+  workspace.taskPaneRepositoryEditClickState = {
+    entityId: 'repo-gh',
+    atMs: 6,
+  };
+  workspace.projectPaneScrollTop = 13;
+
+  workspace.enterGitHubPane('dir-gh', 'repo-gh');
+  assert.equal(workspace.activeDirectoryId, 'dir-gh');
+  assert.equal(workspace.mainPaneMode, 'project');
+  assert.deepEqual(workspace.leftNavSelection, {
+    kind: 'github',
+    directoryId: 'dir-gh',
+  });
+  assert.equal(workspace.activeRepositorySelectionId, 'repo-gh');
   assert.equal(workspace.projectPaneScrollTop, 0);
   assert.equal(workspace.homePaneDragState, null);
   assert.equal(workspace.taskPaneTaskEditClickState, null);
