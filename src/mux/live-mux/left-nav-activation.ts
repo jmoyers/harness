@@ -16,8 +16,47 @@ interface ActivateLeftNavTargetOptions {
   visibleTargetsForState: () => readonly LeftNavSelection[];
   conversationDirectoryId: (sessionId: string) => string | null;
   queueControlPlaneOp: (task: () => Promise<void>, label: string) => void;
-  activateConversation: (sessionId: string) => Promise<void>;
+  queueLatestControlPlaneOp?: (
+    key: string,
+    task: (options: { readonly signal: AbortSignal }) => Promise<void>,
+    label: string,
+  ) => void;
+  activateConversation: (
+    sessionId: string,
+    options?: { readonly signal?: AbortSignal },
+  ) => Promise<void>;
   conversationsHas: (sessionId: string) => boolean;
+}
+
+const LEFT_NAV_ACTIVATION_KEY = 'left-nav:activate-conversation';
+
+function queueLeftNavConversationActivation(
+  options: Pick<
+    ActivateLeftNavTargetOptions,
+    'queueControlPlaneOp' | 'queueLatestControlPlaneOp' | 'activateConversation'
+  > & {
+    readonly sessionId: string;
+    readonly label: string;
+  },
+): void {
+  if (options.queueLatestControlPlaneOp !== undefined) {
+    options.queueLatestControlPlaneOp(
+      LEFT_NAV_ACTIVATION_KEY,
+      async ({ signal }) => {
+        if (signal.aborted) {
+          return;
+        }
+        await options.activateConversation(options.sessionId, {
+          signal,
+        });
+      },
+      options.label,
+    );
+    return;
+  }
+  options.queueControlPlaneOp(async () => {
+    await options.activateConversation(options.sessionId);
+  }, options.label);
 }
 
 export function activateLeftNavTarget(options: ActivateLeftNavTargetOptions): void {
@@ -36,6 +75,7 @@ export function activateLeftNavTarget(options: ActivateLeftNavTargetOptions): vo
     visibleTargetsForState,
     conversationDirectoryId,
     queueControlPlaneOp,
+    queueLatestControlPlaneOp,
     activateConversation,
     conversationsHas,
   } = options;
@@ -77,9 +117,17 @@ export function activateLeftNavTarget(options: ActivateLeftNavTargetOptions): vo
     if (fallbackConversation !== undefined) {
       selectLeftNavConversation?.(fallbackConversation.sessionId);
       markDirty();
-      queueControlPlaneOp(async () => {
-        await activateConversation(fallbackConversation.sessionId);
-      }, `shortcut-activate-${direction}-directory-fallback`);
+      queueLeftNavConversationActivation({
+        queueControlPlaneOp,
+        ...(queueLatestControlPlaneOp === undefined
+          ? {}
+          : {
+              queueLatestControlPlaneOp,
+            }),
+        activateConversation,
+        sessionId: fallbackConversation.sessionId,
+        label: `shortcut-activate-${direction}-directory-fallback`,
+      });
     }
     return;
   }
@@ -88,9 +136,17 @@ export function activateLeftNavTarget(options: ActivateLeftNavTargetOptions): vo
   }
   selectLeftNavConversation?.(target.sessionId);
   markDirty();
-  queueControlPlaneOp(async () => {
-    await activateConversation(target.sessionId);
-  }, `shortcut-activate-${direction}`);
+  queueLeftNavConversationActivation({
+    queueControlPlaneOp,
+    ...(queueLatestControlPlaneOp === undefined
+      ? {}
+      : {
+          queueLatestControlPlaneOp,
+        }),
+    activateConversation,
+    sessionId: target.sessionId,
+    label: `shortcut-activate-${direction}`,
+  });
 }
 
 interface CycleLeftNavSelectionOptions {

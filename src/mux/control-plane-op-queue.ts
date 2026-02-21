@@ -1,11 +1,27 @@
 export type ControlPlaneOpPriority = 'interactive' | 'background';
 
+export type ControlPlaneOpSupersedeMode = 'none' | 'pending' | 'pending-and-running';
+
+interface ControlPlaneOpTaskOptions {
+  readonly signal: AbortSignal;
+}
+
+type ControlPlaneOpTask = (options: ControlPlaneOpTaskOptions) => Promise<void>;
+
+export interface ControlPlaneOpEnqueueOptions {
+  readonly key?: string;
+  readonly supersede?: ControlPlaneOpSupersedeMode;
+}
+
 interface QueuedControlPlaneOp {
   readonly id: number;
   readonly priority: ControlPlaneOpPriority;
   readonly label: string;
   readonly enqueuedAtMs: number;
-  readonly task: () => Promise<void>;
+  readonly key: string | null;
+  readonly supersede: ControlPlaneOpSupersedeMode;
+  readonly controller: AbortController;
+  readonly task: ControlPlaneOpTask;
 }
 
 interface ControlPlaneOpQueueMetrics {
@@ -45,6 +61,11 @@ interface ControlPlaneOpQueueOptions {
     metrics: ControlPlaneOpQueueMetrics,
     error: unknown,
   ) => void;
+  readonly onCanceled?: (
+    event: ControlPlaneOpQueueStartEvent,
+    metrics: ControlPlaneOpQueueMetrics,
+    reason: 'pre-start-abort' | 'running-abort',
+  ) => void;
   readonly onFatal?: (error: unknown) => void;
 }
 
@@ -59,6 +80,7 @@ export class ControlPlaneOpQueue {
   private readonly onStart: ControlPlaneOpQueueOptions['onStart'];
   private readonly onSuccess: ControlPlaneOpQueueOptions['onSuccess'];
   private readonly onError: ControlPlaneOpQueueOptions['onError'];
+  private readonly onCanceled: ControlPlaneOpQueueOptions['onCanceled'];
   private readonly onFatal: ControlPlaneOpQueueOptions['onFatal'];
 
   private readonly interactiveQueue: QueuedControlPlaneOp[] = [];
@@ -67,6 +89,7 @@ export class ControlPlaneOpQueue {
   private nextId = 1;
   private running = false;
   private pumpScheduled = false;
+  private runningOp: QueuedControlPlaneOp | null = null;
 
   constructor(options: ControlPlaneOpQueueOptions = {}) {
     this.nowMs = options.nowMs ?? Date.now;
@@ -75,15 +98,24 @@ export class ControlPlaneOpQueue {
     this.onStart = options.onStart;
     this.onSuccess = options.onSuccess;
     this.onError = options.onError;
+    this.onCanceled = options.onCanceled;
     this.onFatal = options.onFatal;
   }
 
-  enqueueInteractive(task: () => Promise<void>, label = 'interactive-op'): void {
-    this.enqueue(task, 'interactive', label);
+  enqueueInteractive(
+    task: ControlPlaneOpTask,
+    label = 'interactive-op',
+    options: ControlPlaneOpEnqueueOptions = {},
+  ): void {
+    this.enqueue(task, 'interactive', label, options);
   }
 
-  enqueueBackground(task: () => Promise<void>, label = 'background-op'): void {
-    this.enqueue(task, 'background', label);
+  enqueueBackground(
+    task: ControlPlaneOpTask,
+    label = 'background-op',
+    options: ControlPlaneOpEnqueueOptions = {},
+  ): void {
+    this.enqueue(task, 'background', label, options);
   }
 
   async waitForDrain(): Promise<void> {
@@ -104,15 +136,33 @@ export class ControlPlaneOpQueue {
   }
 
   private enqueue(
-    task: () => Promise<void>,
+    task: ControlPlaneOpTask,
     priority: ControlPlaneOpPriority,
     label: string,
+    options: ControlPlaneOpEnqueueOptions,
   ): void {
+    const key = options.key?.trim() ?? null;
+    const supersede = options.supersede ?? 'none';
+    if (key !== null && (supersede === 'pending' || supersede === 'pending-and-running')) {
+      this.abortPendingByKey(key);
+    }
+    if (
+      key !== null &&
+      supersede === 'pending-and-running' &&
+      this.runningOp !== null &&
+      this.runningOp.key === key
+    ) {
+      this.runningOp.controller.abort();
+    }
+
     const op: QueuedControlPlaneOp = {
       id: this.nextId,
       priority,
       label,
       enqueuedAtMs: this.nowMs(),
+      key,
+      supersede,
+      controller: new AbortController(),
       task,
     };
     this.nextId += 1;
@@ -133,6 +183,26 @@ export class ControlPlaneOpQueue {
       this.metricsSnapshot(),
     );
     this.schedulePump();
+  }
+
+  private abortPendingByKey(key: string): void {
+    const filterPending = (queue: QueuedControlPlaneOp[]): QueuedControlPlaneOp[] => {
+      const kept: QueuedControlPlaneOp[] = [];
+      for (const entry of queue) {
+        if (entry.key === key) {
+          entry.controller.abort();
+          continue;
+        }
+        kept.push(entry);
+      }
+      return kept;
+    };
+    const nextInteractive = filterPending(this.interactiveQueue);
+    const nextBackground = filterPending(this.backgroundQueue);
+    this.interactiveQueue.length = 0;
+    this.backgroundQueue.length = 0;
+    this.interactiveQueue.push(...nextInteractive);
+    this.backgroundQueue.push(...nextBackground);
   }
 
   private metricsSnapshot(): ControlPlaneOpQueueMetrics {
@@ -197,13 +267,29 @@ export class ControlPlaneOpQueue {
 
     try {
       this.onStart?.(startEvent, this.metricsSnapshot());
+      if (next.controller.signal.aborted) {
+        this.onCanceled?.(startEvent, this.metricsSnapshot(), 'pre-start-abort');
+        return;
+      }
+      this.runningOp = next;
       try {
-        await next.task();
+        await next.task({
+          signal: next.controller.signal,
+        });
+        if (next.controller.signal.aborted) {
+          this.onCanceled?.(startEvent, this.metricsSnapshot(), 'running-abort');
+          return;
+        }
         this.onSuccess?.(startEvent, this.metricsSnapshot());
       } catch (error: unknown) {
+        if (next.controller.signal.aborted) {
+          this.onCanceled?.(startEvent, this.metricsSnapshot(), 'running-abort');
+          return;
+        }
         this.onError?.(startEvent, this.metricsSnapshot(), error);
       }
     } finally {
+      this.runningOp = null;
       this.running = false;
       this.resolveDrainIfIdle();
       this.schedulePump();

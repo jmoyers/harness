@@ -35,7 +35,15 @@ export interface LeftNavActions {
   readonly directoriesHas: (directoryId: string) => boolean;
   readonly conversationDirectoryId: (sessionId: string) => string | null;
   readonly queueControlPlaneOp: (task: () => Promise<void>, label: string) => void;
-  readonly activateConversation: (sessionId: string) => Promise<void>;
+  readonly queueLatestControlPlaneOp?: (
+    key: string,
+    task: (options: { readonly signal: AbortSignal }) => Promise<void>,
+    label: string,
+  ) => void;
+  readonly activateConversation: (
+    sessionId: string,
+    options?: { readonly signal?: AbortSignal },
+  ) => Promise<void>;
   readonly conversationsHas: (sessionId: string) => boolean;
 }
 
@@ -54,7 +62,15 @@ export interface ActivateLeftNavTargetInput {
   readonly visibleTargetsForState: () => readonly LeftNavSelection[];
   readonly conversationDirectoryId: (sessionId: string) => string | null;
   readonly queueControlPlaneOp: (task: () => Promise<void>, label: string) => void;
-  readonly activateConversation: (sessionId: string) => Promise<void>;
+  readonly queueLatestControlPlaneOp?: (
+    key: string,
+    task: (options: { readonly signal: AbortSignal }) => Promise<void>,
+    label: string,
+  ) => void;
+  readonly activateConversation: (
+    sessionId: string,
+    options?: { readonly signal?: AbortSignal },
+  ) => Promise<void>;
   readonly conversationsHas: (sessionId: string) => boolean;
 }
 
@@ -101,6 +117,11 @@ export class LeftNavInput {
       visibleTargetsForState: () => this.visibleTargets(),
       conversationDirectoryId: this.actions.conversationDirectoryId,
       queueControlPlaneOp: this.actions.queueControlPlaneOp,
+      ...(this.actions.queueLatestControlPlaneOp === undefined
+        ? {}
+        : {
+            queueLatestControlPlaneOp: this.actions.queueLatestControlPlaneOp,
+          }),
       activateConversation: this.actions.activateConversation,
       conversationsHas: this.actions.conversationsHas,
       ...(this.actions.enterTasksPane === undefined

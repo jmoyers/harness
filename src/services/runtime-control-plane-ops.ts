@@ -82,15 +82,33 @@ export class RuntimeControlPlaneOps {
         this.endSpan(event, 'error', message);
         this.options.writeStderr(`[mux] control-plane error ${message}\n`);
       },
+      onCanceled: (event) => {
+        this.endSpan(event, 'canceled');
+      },
     });
   }
 
   enqueueInteractive(task: () => Promise<void>, label = 'interactive-op'): void {
-    this.queue.enqueueInteractive(task, label);
+    this.queue.enqueueInteractive(async () => {
+      await task();
+    }, label);
+  }
+
+  enqueueInteractiveLatest(
+    key: string,
+    task: (options: { readonly signal: AbortSignal }) => Promise<void>,
+    label = 'interactive-op',
+  ): void {
+    this.queue.enqueueInteractive(task, label, {
+      key,
+      supersede: 'pending-and-running',
+    });
   }
 
   enqueueBackground(task: () => Promise<void>, label = 'background-op'): void {
-    this.queue.enqueueBackground(task, label);
+    this.queue.enqueueBackground(async () => {
+      await task();
+    }, label);
   }
 
   async waitForDrain(): Promise<void> {
@@ -107,7 +125,7 @@ export class RuntimeControlPlaneOps {
 
   private endSpan(
     event: RuntimeControlPlaneOpEvent,
-    status: 'ok' | 'error',
+    status: 'ok' | 'error' | 'canceled',
     message?: string,
   ): void {
     const opSpan = this.opSpans.get(event.id);

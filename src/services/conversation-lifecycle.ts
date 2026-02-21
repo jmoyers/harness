@@ -131,8 +131,11 @@ export class ConversationLifecycle<
     return await this.starter.startConversation(sessionId);
   }
 
-  async activateConversation(sessionId: string): Promise<void> {
-    await this.activation.activateConversation(sessionId);
+  async activateConversation(
+    sessionId: string,
+    options: { readonly signal?: AbortSignal } = {},
+  ): Promise<void> {
+    await this.activation.activateConversation(sessionId, options);
   }
 
   async createAndActivateConversationInDirectory(

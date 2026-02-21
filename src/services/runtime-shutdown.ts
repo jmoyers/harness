@@ -11,6 +11,7 @@ interface RuntimeShutdownServiceOptions {
   readonly clearResizeTimer: () => void;
   readonly clearPtyResizeTimer: () => void;
   readonly clearHomePaneBackgroundTimer: () => void;
+  readonly clearProjectPaneGitHubReviewRefreshTimer: () => void;
   readonly persistMuxUiStateNow: () => void;
   readonly clearConversationTitleEditTimer: () => void;
   readonly flushTaskComposerPersist: () => void;
@@ -51,6 +52,7 @@ export class RuntimeShutdownService {
     this.options.clearResizeTimer();
     this.options.clearPtyResizeTimer();
     this.options.clearHomePaneBackgroundTimer();
+    this.options.clearProjectPaneGitHubReviewRefreshTimer();
     this.options.persistMuxUiStateNow();
     this.options.clearConversationTitleEditTimer();
     this.options.flushTaskComposerPersist();

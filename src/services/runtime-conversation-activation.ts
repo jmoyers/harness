@@ -27,22 +27,33 @@ export interface RuntimeConversationActivationOptions {
 export class RuntimeConversationActivation {
   constructor(private readonly options: RuntimeConversationActivationOptions) {}
 
-  async activateConversation(sessionId: string): Promise<void> {
+  async activateConversation(
+    sessionId: string,
+    input: { readonly signal?: AbortSignal } = {},
+  ): Promise<void> {
+    const signal = input.signal;
+    if (signal?.aborted) {
+      return;
+    }
     if (this.options.getActiveConversationId() === sessionId) {
       if (!this.options.isConversationPaneMode()) {
         const targetConversation = this.options.conversationById(sessionId);
-        this.options.enterConversationPaneForActiveSession(sessionId);
-        this.options.noteGitActivity(targetConversation?.directoryId ?? null);
         if (
           targetConversation !== undefined &&
           !targetConversation.live &&
           targetConversation.status !== 'exited'
         ) {
           await this.options.startConversation(sessionId);
+          if (signal?.aborted) {
+            return;
+          }
         }
         if (targetConversation?.status !== 'exited') {
           try {
             await this.options.attachConversation(sessionId);
+            if (signal?.aborted) {
+              return;
+            }
           } catch (error: unknown) {
             if (
               !this.options.isSessionNotFoundError(error) &&
@@ -52,9 +63,17 @@ export class RuntimeConversationActivation {
             }
             this.options.markSessionUnavailable(sessionId);
             await this.options.startConversation(sessionId);
+            if (signal?.aborted) {
+              return;
+            }
             await this.options.attachConversation(sessionId);
+            if (signal?.aborted) {
+              return;
+            }
           }
         }
+        this.options.enterConversationPaneForActiveSession(sessionId);
+        this.options.noteGitActivity(targetConversation?.directoryId ?? null);
         this.options.schedulePtyResizeImmediate();
         this.options.markDirty();
       }
@@ -66,12 +85,12 @@ export class RuntimeConversationActivation {
     this.options.clearSelectionState();
     if (previousActiveId !== null) {
       await this.options.detachConversation(previousActiveId);
+      if (signal?.aborted) {
+        return;
+      }
     }
-    this.options.setActiveConversationId(sessionId);
-    this.options.enterConversationPaneForSessionSwitch(sessionId);
 
     const targetConversation = this.options.conversationById(sessionId);
-    this.options.noteGitActivity(targetConversation?.directoryId ?? null);
 
     if (
       targetConversation !== undefined &&
@@ -79,11 +98,17 @@ export class RuntimeConversationActivation {
       targetConversation.status !== 'exited'
     ) {
       await this.options.startConversation(sessionId);
+      if (signal?.aborted) {
+        return;
+      }
     }
 
     if (targetConversation?.status !== 'exited') {
       try {
         await this.options.attachConversation(sessionId);
+        if (signal?.aborted) {
+          return;
+        }
       } catch (error: unknown) {
         if (
           !this.options.isSessionNotFoundError(error) &&
@@ -93,10 +118,19 @@ export class RuntimeConversationActivation {
         }
         this.options.markSessionUnavailable(sessionId);
         await this.options.startConversation(sessionId);
+        if (signal?.aborted) {
+          return;
+        }
         await this.options.attachConversation(sessionId);
+        if (signal?.aborted) {
+          return;
+        }
       }
     }
 
+    this.options.setActiveConversationId(sessionId);
+    this.options.enterConversationPaneForSessionSwitch(sessionId);
+    this.options.noteGitActivity(targetConversation?.directoryId ?? null);
     this.options.schedulePtyResizeImmediate();
     this.options.markDirty();
   }

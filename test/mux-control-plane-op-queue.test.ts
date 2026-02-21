@@ -240,3 +240,100 @@ void test('control-plane op queue ignores pump execution while an operation is a
   await queue.waitForDrain();
   assert.deepEqual(ran, ['first-start', 'first-end', 'second']);
 });
+
+void test('control-plane op queue supersedes pending keyed operations', async () => {
+  const scheduled: Array<() => void> = [];
+  const ran: string[] = [];
+
+  const queue = new ControlPlaneOpQueue({
+    schedule: (callback) => {
+      scheduled.push(callback);
+    },
+  });
+
+  queue.enqueueInteractive(
+    () => {
+      ran.push('first');
+      return Promise.resolve();
+    },
+    'first',
+    { key: 'left-nav', supersede: 'none' },
+  );
+  queue.enqueueInteractive(
+    () => {
+      ran.push('second');
+      return Promise.resolve();
+    },
+    'second',
+    { key: 'left-nav', supersede: 'pending' },
+  );
+  queue.enqueueInteractive(
+    () => {
+      ran.push('third');
+      return Promise.resolve();
+    },
+    'third',
+    { key: 'other', supersede: 'pending' },
+  );
+
+  await flushManualSchedule(scheduled);
+  await queue.waitForDrain();
+  assert.deepEqual(ran, ['second', 'third']);
+});
+
+void test('control-plane op queue cancels running keyed operation when supersede mode includes running', async () => {
+  const scheduled: Array<() => void> = [];
+  const ran: string[] = [];
+  const canceled: Array<{ label: string; reason: string }> = [];
+  let firstAborted = false;
+
+  const queue = new ControlPlaneOpQueue({
+    schedule: (callback) => {
+      scheduled.push(callback);
+    },
+    onCanceled: (event, _metrics, reason) => {
+      canceled.push({ label: event.label, reason });
+    },
+  });
+
+  queue.enqueueInteractive(
+    async ({ signal }) => {
+      await new Promise<void>((resolve) => {
+        if (signal.aborted) {
+          firstAborted = true;
+          resolve();
+          return;
+        }
+        signal.addEventListener(
+          'abort',
+          () => {
+            firstAborted = true;
+            resolve();
+          },
+          {
+            once: true,
+          },
+        );
+      });
+      ran.push('first');
+    },
+    'first',
+    { key: 'left-nav', supersede: 'none' },
+  );
+  await flushManualSchedule(scheduled);
+
+  queue.enqueueInteractive(
+    () => {
+      ran.push('second');
+      return Promise.resolve();
+    },
+    'second',
+    { key: 'left-nav', supersede: 'pending-and-running' },
+  );
+  await flushManualSchedule(scheduled);
+  await queue.waitForDrain();
+
+  assert.equal(firstAborted, true);
+  assert.deepEqual(ran, ['first', 'second']);
+  assert.deepEqual(canceled, [{ label: 'first', reason: 'running-abort' }]);
+});

@@ -236,6 +236,7 @@ import { LeftRailPointerHandler } from '../../services/left-rail-pointer-handler
 import { RuntimeTaskComposerPersistenceService } from '../../services/runtime-task-composer-persistence.ts';
 import { RuntimeTaskPaneActions } from '../../services/runtime-task-pane-actions.ts';
 import { RuntimeTaskPaneShortcuts } from '../../services/runtime-task-pane-shortcuts.ts';
+import { RuntimeProjectPaneGitHubReviewCache } from '../../services/runtime-project-pane-github-review-cache.ts';
 import { TaskPaneSelectionActions } from '../../services/task-pane-selection-actions.ts';
 import { TaskPlanningHydrationService } from '../../services/task-planning-hydration.ts';
 import { TaskPlanningObservedEvents } from '../../services/task-planning-observed-events.ts';
@@ -406,6 +407,8 @@ const HOME_PANE_BACKGROUND_INTERVAL_MS = 80;
 const UI_STATE_PERSIST_DEBOUNCE_MS = 200;
 const REPOSITORY_TOGGLE_CHORD_TIMEOUT_MS = 1250;
 const REPOSITORY_COLLAPSE_ALL_CHORD_PREFIX = Buffer.from([0x0b]);
+const PROJECT_PANE_GITHUB_REVIEW_TTL_MS = 10_000;
+const PROJECT_PANE_GITHUB_REVIEW_REFRESH_INTERVAL_MS = 5_000;
 const UNTRACKED_REPOSITORY_GROUP_ID = 'untracked';
 const THEME_PICKER_SCOPE = 'theme-select';
 const SHORTCUTS_SCOPE = 'shortcuts';
@@ -2117,6 +2120,13 @@ class CodexLiveMuxRuntimeApplication {
     const queueControlPlaneOp = (task: () => Promise<void>, label = 'interactive-op'): void => {
       controlPlaneOps.enqueueInteractive(task, label);
     };
+    const queueLatestControlPlaneOp = (
+      key: string,
+      task: (options: { readonly signal: AbortSignal }) => Promise<void>,
+      label = 'interactive-op',
+    ): void => {
+      controlPlaneOps.enqueueInteractiveLatest(key, task, label);
+    };
     const queueBackgroundControlPlaneOp = (
       task: () => Promise<void>,
       label = 'background-op',
@@ -2647,51 +2657,48 @@ class CodexLiveMuxRuntimeApplication {
       );
     };
 
-    const refreshProjectPaneGitHubReviewState = (directoryId: string): void => {
-      const previous = projectPaneGitHubReviewByDirectoryId.get(directoryId) ?? null;
-      projectPaneGitHubReviewByDirectoryId.set(directoryId, {
-        status: 'loading',
-        branchName: previous?.branchName ?? null,
-        branchSource: previous?.branchSource ?? null,
-        pr: previous?.pr ?? null,
-        openThreads: previous?.openThreads ?? [],
-        resolvedThreads: previous?.resolvedThreads ?? [],
-        errorMessage: null,
-      });
-      refreshProjectPaneSnapshot(directoryId);
-      markDirty();
-      queueControlPlaneOp(async () => {
-        try {
-          const result = await streamClient.sendCommand({
-            type: 'github.project-review',
-            directoryId,
-          });
-          const parsedResult = asRecord(result);
-          if (parsedResult === null) {
-            throw new Error('github.project-review returned malformed response');
-          }
-          const parsedReview = parseGitHubProjectReviewState(parsedResult);
-          if (parsedReview === null) {
-            throw new Error('github.project-review returned malformed review state');
-          }
-          projectPaneGitHubReviewByDirectoryId.set(directoryId, parsedReview);
-        } catch (error: unknown) {
-          const message = formatErrorMessage(error);
-          projectPaneGitHubReviewByDirectoryId.set(directoryId, {
-            status: 'error',
-            branchName: previous?.branchName ?? null,
-            branchSource: previous?.branchSource ?? null,
-            pr: previous?.pr ?? null,
-            openThreads: previous?.openThreads ?? [],
-            resolvedThreads: previous?.resolvedThreads ?? [],
-            errorMessage: message,
-          });
+    const projectPaneGitHubReviewCache = new RuntimeProjectPaneGitHubReviewCache({
+      ttlMs: PROJECT_PANE_GITHUB_REVIEW_TTL_MS,
+      refreshIntervalMs: PROJECT_PANE_GITHUB_REVIEW_REFRESH_INTERVAL_MS,
+      queueLatestControlPlaneOp,
+      loadReview: async (directoryId) => {
+        const result = await streamClient.sendCommand({
+          type: 'github.project-review',
+          directoryId,
+        });
+        const parsedResult = asRecord(result);
+        if (parsedResult === null) {
+          throw new Error('github.project-review returned malformed response');
         }
+        const parsedReview = parseGitHubProjectReviewState(parsedResult);
+        if (parsedReview === null) {
+          throw new Error('github.project-review returned malformed review state');
+        }
+        return parsedReview;
+      },
+      onUpdate: (directoryId, review) => {
+        projectPaneGitHubReviewByDirectoryId.set(directoryId, review);
         if (workspace.mainPaneMode === 'project' && workspace.activeDirectoryId === directoryId) {
           refreshProjectPaneSnapshot(directoryId);
           markDirty();
         }
-      }, 'project-pane-github-review');
+      },
+      formatErrorMessage,
+    });
+    projectPaneGitHubReviewCache.startAutoRefresh(() => {
+      if (workspace.mainPaneMode !== 'project') {
+        return null;
+      }
+      return workspace.activeDirectoryId;
+    });
+
+    const refreshProjectPaneGitHubReviewState = (
+      directoryId: string,
+      options: {
+        readonly forceRefresh?: boolean;
+      } = {},
+    ): void => {
+      projectPaneGitHubReviewCache.request(directoryId, options);
     };
 
     const toggleProjectPaneGitHubNode = (directoryId: string, nodeId: string): boolean => {
@@ -4658,8 +4665,9 @@ class CodexLiveMuxRuntimeApplication {
         directoriesHas: (directoryId) => directoryManager.hasDirectory(directoryId),
         conversationDirectoryId: (sessionId) => conversationManager.directoryIdOf(sessionId),
         queueControlPlaneOp,
-        activateConversation: async (sessionId) => {
-          await conversationLifecycle.activateConversation(sessionId);
+        queueLatestControlPlaneOp,
+        activateConversation: async (sessionId, options) => {
+          await conversationLifecycle.activateConversation(sessionId, options);
         },
         conversationsHas: (sessionId) => conversationManager.has(sessionId),
         ...(showTasksEntry
@@ -4840,15 +4848,36 @@ class CodexLiveMuxRuntimeApplication {
         },
         beginConversationTitleEdit,
         queueActivateConversation: (conversationId) => {
-          queueControlPlaneOp(async () => {
-            await conversationLifecycle.activateConversation(conversationId);
-          }, 'mouse-activate-conversation');
+          queueLatestControlPlaneOp(
+            'left-nav:activate-conversation',
+            async ({ signal }) => {
+              if (signal.aborted) {
+                return;
+              }
+              await conversationLifecycle.activateConversation(conversationId, {
+                signal,
+              });
+            },
+            'mouse-activate-conversation',
+          );
         },
         queueActivateConversationAndEdit: (conversationId) => {
-          queueControlPlaneOp(async () => {
-            await conversationLifecycle.activateConversation(conversationId);
-            beginConversationTitleEdit(conversationId);
-          }, 'mouse-activate-edit-conversation');
+          queueLatestControlPlaneOp(
+            'left-nav:activate-conversation',
+            async ({ signal }) => {
+              if (signal.aborted) {
+                return;
+              }
+              await conversationLifecycle.activateConversation(conversationId, {
+                signal,
+              });
+              if (signal.aborted) {
+                return;
+              }
+              beginConversationTitleEdit(conversationId);
+            },
+            'mouse-activate-edit-conversation',
+          );
         },
         enterProjectPane,
         markDirty,
@@ -5243,6 +5272,9 @@ class CodexLiveMuxRuntimeApplication {
           clearInterval(homePaneBackgroundTimer);
           homePaneBackgroundTimer = null;
         }
+      },
+      clearProjectPaneGitHubReviewRefreshTimer: () => {
+        projectPaneGitHubReviewCache.stopAutoRefresh();
       },
       persistMuxUiStateNow,
       clearConversationTitleEditTimer: () => {

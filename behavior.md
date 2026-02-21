@@ -77,6 +77,7 @@ Behavior fragments:
 - Rail row/cell hit testing with clamped coordinates.
 - Action-first then entity routing semantics.
 - Selection/edit guards before dispatch.
+- Rapid left-nav conversation cycling uses latest-wins keyed control-plane activation with abort signal propagation to drop stale switches.
 
 Owners:
 
@@ -89,6 +90,8 @@ Test anchors:
 - `test/ui-left-rail-pointer-input.test.ts`
 - `test/mux-workspace-rail-model.test.ts`
 - `test/mux-live-mux-uncovered-dispatchers.test.ts`
+- `test/ui-left-nav-fast-cycle.integration.test.ts`
+- `test/services-runtime-conversation-activation.test.ts`
 
 ## Pane Rendering and Navigation
 
@@ -97,6 +100,7 @@ Behavior fragments:
 - Left/right pane layout and divider semantics.
 - Home/project/task pane render branching.
 - Project pane GitHub review tree for tracked branch state (PR lifecycle + open/resolved review threads).
+- Project pane GitHub review loads via centralized runtime cache with TTL freshness, in-flight dedupe, and active-pane timed refresh.
 - Navigation transitions and selection synchronization.
 - Local Git repositories without GitHub remotes still hydrate into repository groups (not `untracked`).
 
@@ -104,6 +108,7 @@ Owners:
 
 - `src/services/runtime-right-pane-render.ts`
 - `src/mux/project-pane-github-review.ts`
+- `src/services/runtime-project-pane-github-review-cache.ts`
 - `src/mux/harness-core-ui.ts`
 - `src/mux/live-mux/project-pane-pointer.ts`
 - `src/services/runtime-left-rail-render.ts`
@@ -113,6 +118,7 @@ Test anchors:
 
 - `test/services-runtime-right-pane-render.test.ts`
 - `test/project-pane-github-review.test.ts`
+- `test/services-runtime-project-pane-github-review-cache.test.ts`
 - `test/mux-harness-core-ui.test.ts`
 - `test/mux-live-mux-uncovered-small.test.ts`
 - `test/services-runtime-left-rail-render.test.ts`

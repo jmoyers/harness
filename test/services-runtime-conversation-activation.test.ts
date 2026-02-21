@@ -131,10 +131,10 @@ void test('runtime conversation activation readies already-active session when s
   await activation.activateConversation('session-1');
 
   assert.deepEqual(calls, [
-    'enterActive:session-1',
-    'noteGit:directory-1',
     'start:session-1',
     'attach:session-1',
+    'enterActive:session-1',
+    'noteGit:directory-1',
     'resize',
     'markDirty',
   ]);
@@ -204,16 +204,94 @@ void test('runtime conversation activation switches session and retries attach o
     'stopTitle:session-2',
     'clearSelection',
     'detach:session-1',
-    'setActive:session-2',
-    'enterSwitch:session-2',
-    'noteGit:directory-2',
     'start:session-2',
     'attach:session-2:1',
     'markUnavailable:session-2',
     'start:session-2',
     'attach:session-2:2',
+    'setActive:session-2',
+    'enterSwitch:session-2',
+    'noteGit:directory-2',
     'resize',
     'markDirty',
+  ]);
+});
+
+void test('runtime conversation activation does not commit session switch when aborted mid-flight', async () => {
+  const calls: string[] = [];
+  let activeSessionId: string | null = 'session-1';
+  let releaseAttach = (): void => {};
+  const attachPromise = new Promise<void>((resolve) => {
+    releaseAttach = () => {
+      resolve();
+    };
+  });
+  const controller = new AbortController();
+
+  const activation = new RuntimeConversationActivation({
+    getActiveConversationId: () => activeSessionId,
+    setActiveConversationId: (sessionId) => {
+      activeSessionId = sessionId;
+      calls.push(`setActive:${sessionId}`);
+    },
+    isConversationPaneMode: () => false,
+    enterConversationPaneForActiveSession: () => {},
+    enterConversationPaneForSessionSwitch: (sessionId) => {
+      calls.push(`enterSwitch:${sessionId}`);
+    },
+    stopConversationTitleEditForOtherSession: (sessionId) => {
+      calls.push(`stopTitle:${sessionId}`);
+    },
+    clearSelectionState: () => {
+      calls.push('clearSelection');
+    },
+    detachConversation: async (sessionId) => {
+      calls.push(`detach:${sessionId}`);
+    },
+    conversationById: () => ({
+      directoryId: 'directory-2',
+      live: true,
+      status: 'running',
+    }),
+    noteGitActivity: (directoryId) => {
+      calls.push(`noteGit:${directoryId}`);
+    },
+    startConversation: async (sessionId) => {
+      calls.push(`start:${sessionId}`);
+    },
+    attachConversation: async (sessionId) => {
+      calls.push(`attach:${sessionId}`);
+      await attachPromise;
+    },
+    isSessionNotFoundError: () => false,
+    isSessionNotLiveError: () => false,
+    markSessionUnavailable: () => {
+      calls.push('markUnavailable');
+    },
+    schedulePtyResizeImmediate: () => {
+      calls.push('resize');
+    },
+    markDirty: () => {
+      calls.push('markDirty');
+    },
+  });
+
+  const activationPromise = activation.activateConversation('session-2', {
+    signal: controller.signal,
+  });
+  await new Promise<void>((resolve) => {
+    setImmediate(resolve);
+  });
+  controller.abort();
+  releaseAttach();
+  await activationPromise;
+
+  assert.equal(activeSessionId, 'session-1');
+  assert.deepEqual(calls, [
+    'stopTitle:session-2',
+    'clearSelection',
+    'detach:session-1',
+    'attach:session-2',
   ]);
 });
 

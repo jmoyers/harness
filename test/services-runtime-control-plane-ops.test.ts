@@ -160,3 +160,67 @@ void test('runtime control-plane ops routes fatal callback failures through onFa
   assert.deepEqual(fatalMessages, ['fatal-start']);
   assert.equal(completed, true);
 });
+
+void test('runtime control-plane ops marks superseded latest interactive operations as canceled', async () => {
+  const scheduled: Array<() => void> = [];
+  const endedSpans: Array<Readonly<Record<string, unknown>> | undefined> = [];
+  let firstObservedAbort = false;
+  const ran: string[] = [];
+
+  const service = new RuntimeControlPlaneOps({
+    onFatal: (error) => {
+      throw error;
+    },
+    startPerfSpan: () => ({
+      end: (attrs) => {
+        endedSpans.push(attrs);
+      },
+    }),
+    recordPerfEvent: () => {},
+    writeStderr: () => {},
+    schedule: (callback) => {
+      scheduled.push(callback);
+    },
+  });
+
+  service.enqueueInteractiveLatest(
+    'left-nav:activate',
+    async ({ signal }) => {
+      await new Promise<void>((resolve) => {
+        if (signal.aborted) {
+          firstObservedAbort = true;
+          resolve();
+          return;
+        }
+        signal.addEventListener(
+          'abort',
+          () => {
+            firstObservedAbort = true;
+            resolve();
+          },
+          { once: true },
+        );
+      });
+      ran.push('first');
+    },
+    'first',
+  );
+  await flushManualSchedule(scheduled);
+
+  service.enqueueInteractiveLatest(
+    'left-nav:activate',
+    async () => {
+      ran.push('second');
+    },
+    'second',
+  );
+  await flushManualSchedule(scheduled);
+  await service.waitForDrain();
+
+  assert.equal(firstObservedAbort, true);
+  assert.deepEqual(ran, ['first', 'second']);
+  assert.deepEqual(
+    endedSpans.map((entry) => entry?.['status'] ?? null),
+    ['canceled', 'ok'],
+  );
+});
