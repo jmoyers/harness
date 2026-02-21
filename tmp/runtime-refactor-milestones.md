@@ -8,13 +8,11 @@
 - Runtime orchestration moves to class-based modules with explicit ownership boundaries.
 
 ## Branch Policy (Current)
-- Day-to-day gate: `bun run verify` (format + lint + typecheck + deadcode + tests, no coverage gate).
+- Day-to-day gate: `bun run verify` (strict coverage gate enabled by default).
 - Checkpoint gate: `bun run verify:coverage-gate` at every meaningful vertical extraction.
-- End state target: `verify` returns to strict 100% coverage gating by default.
-- Temporary checkpoint policy (active for extracted gateway/runtime modules):
-  - Keep explicit floor overrides in `harness.coverage.jsonc` for extracted modules while migration is in-flight.
-  - Ratchet those floors upward at each milestone checkpoint.
-  - Remove temporary per-file/global relaxations before final strict cutover.
+- Temporary checkpoint policy: completed.
+  - Temporary per-file/global relaxations in `harness.coverage.jsonc` were removed.
+  - Global + per-file default thresholds are restored to strict 100%.
 - Mainline sync policy:
   - At each milestone midpoint and immediately before each coverage checkpoint, merge latest `main` into the branch.
   - Resolve conflicts by preserving extracted module boundaries (no re-inlining into `scripts/*`).
