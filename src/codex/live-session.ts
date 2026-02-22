@@ -616,7 +616,7 @@ class CodexLiveSession {
         this.emit({
           type: 'terminal-output',
           cursor: event.cursor,
-          chunk: Buffer.from(event.chunk),
+          chunk: event.chunk,
         });
       },
       onExit: (exit: PtyExit) => {

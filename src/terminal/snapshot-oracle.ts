@@ -123,11 +123,32 @@ interface InternalLine {
   snapshotCacheWrapped: boolean;
 }
 
-const DEFAULT_COLOR: TerminalColor = { kind: 'default' };
+const DEFAULT_COLOR: TerminalColor = Object.freeze({ kind: 'default' } as const);
 const DEFAULT_CURSOR_STYLE: TerminalCursorStyle = {
   shape: 'block',
   blinking: true,
 };
+const DEFAULT_CELL_STYLE: Readonly<TerminalCellStyle> = Object.freeze({
+  bold: false,
+  dim: false,
+  italic: false,
+  underline: false,
+  inverse: false,
+  fg: DEFAULT_COLOR,
+  bg: DEFAULT_COLOR,
+});
+const DEFAULT_BLANK_CELL: Readonly<TerminalCell> = Object.freeze({
+  glyph: ' ',
+  width: 1,
+  continued: false,
+  style: DEFAULT_CELL_STYLE,
+});
+const DEFAULT_CONTINUATION_CELL: Readonly<TerminalCell> = Object.freeze({
+  glyph: '',
+  width: 0,
+  continued: true,
+  style: DEFAULT_CELL_STYLE,
+});
 
 function cloneCursorStyle(style: TerminalCursorStyle): TerminalCursorStyle {
   return {
@@ -159,18 +180,25 @@ function cloneColor(color: TerminalColor): TerminalColor {
 }
 
 function defaultCellStyle(): TerminalCellStyle {
-  return {
-    bold: false,
-    dim: false,
-    italic: false,
-    underline: false,
-    inverse: false,
-    fg: DEFAULT_COLOR,
-    bg: DEFAULT_COLOR,
-  };
+  return DEFAULT_CELL_STYLE as TerminalCellStyle;
+}
+
+function isDefaultStyle(style: TerminalCellStyle): boolean {
+  return style === DEFAULT_CELL_STYLE || (
+    !style.bold &&
+    !style.dim &&
+    !style.italic &&
+    !style.underline &&
+    !style.inverse &&
+    style.fg.kind === 'default' &&
+    style.bg.kind === 'default'
+  );
 }
 
 function cloneStyle(style: TerminalCellStyle): TerminalCellStyle {
+  if (isDefaultStyle(style)) {
+    return DEFAULT_CELL_STYLE as TerminalCellStyle;
+  }
   return {
     bold: style.bold,
     dim: style.dim,
@@ -183,6 +211,7 @@ function cloneStyle(style: TerminalCellStyle): TerminalCellStyle {
 }
 
 function styleEqual(left: TerminalCellStyle, right: TerminalCellStyle): boolean {
+  if (left === right) return true;
   return (
     left.bold === right.bold &&
     left.dim === right.dim &&
@@ -212,6 +241,9 @@ function colorEqual(left: TerminalColor, right: TerminalColor): boolean {
 }
 
 function blankCell(style: TerminalCellStyle): TerminalCell {
+  if (isDefaultStyle(style)) {
+    return DEFAULT_BLANK_CELL as TerminalCell;
+  }
   return {
     glyph: ' ',
     width: 1,
@@ -221,6 +253,9 @@ function blankCell(style: TerminalCellStyle): TerminalCell {
 }
 
 function continuationCell(style: TerminalCellStyle): TerminalCell {
+  if (isDefaultStyle(style)) {
+    return DEFAULT_CONTINUATION_CELL as TerminalCell;
+  }
   return {
     glyph: '',
     width: 0,
@@ -445,7 +480,16 @@ class ScreenBuffer {
     if (targetCell === undefined || targetCell.continued) {
       return;
     }
-    targetCell.glyph += combiningChar;
+    if (Object.isFrozen(targetCell)) {
+      line.cells[targetCol] = {
+        glyph: targetCell.glyph + combiningChar,
+        width: targetCell.width,
+        continued: targetCell.continued,
+        style: targetCell.style,
+      };
+    } else {
+      targetCell.glyph += combiningChar;
+    }
     this.touchLine(line);
   }
 
@@ -922,19 +966,31 @@ function resolveIndexedColor(
   };
 }
 
+function mutableCloneStyle(style: TerminalCellStyle): TerminalCellStyle {
+  return {
+    bold: style.bold,
+    dim: style.dim,
+    italic: style.italic,
+    underline: style.underline,
+    inverse: style.inverse,
+    fg: cloneColor(style.fg),
+    bg: cloneColor(style.bg),
+  };
+}
+
 function applySgrParams(
   style: TerminalCellStyle,
   params: number[],
   indexedPaletteOverrides: ReadonlyMap<number, { r: number; g: number; b: number }>,
 ): TerminalCellStyle {
-  let nextStyle = cloneStyle(style);
+  let nextStyle = mutableCloneStyle(style);
   const queue = params.length === 0 ? [0] : [...params];
 
   for (let idx = 0; idx < queue.length; idx += 1) {
     const param = queue[idx]!;
 
     if (param === 0) {
-      nextStyle = defaultCellStyle();
+      nextStyle = mutableCloneStyle(DEFAULT_CELL_STYLE);
       continue;
     }
     if (param === 1) {
@@ -1090,8 +1146,19 @@ export class TerminalSnapshotOracle {
 
   ingest(chunk: string | Uint8Array): void {
     const text = typeof chunk === 'string' ? chunk : this.decoder.write(Buffer.from(chunk));
-    for (const char of text) {
-      this.processChar(char);
+    const len = text.length;
+    let i = 0;
+    while (i < len) {
+      const code = text.charCodeAt(i);
+      if (code < 0xd800 || code > 0xdfff) {
+        this.processChar(text[i]!);
+        i += 1;
+      } else if (code <= 0xdbff && i + 1 < len) {
+        this.processChar(text[i]! + text[i + 1]!);
+        i += 2;
+      } else {
+        i += 1;
+      }
     }
   }
 
@@ -1257,6 +1324,17 @@ export class TerminalSnapshotOracle {
       return;
     }
     if (codePoint < 0x20 || (codePoint >= 0x7f && codePoint < 0xa0)) {
+      return;
+    }
+
+    // ASCII printable: width is always 1, never a combining mark
+    if (codePoint >= 0x20 && codePoint < 0x7f) {
+      if (this.pendingWrap) {
+        this.currentScreen().lineFeed(this.cursor, this.style);
+        this.cursor.col = 0;
+        this.pendingWrap = false;
+      }
+      this.pendingWrap = this.currentScreen().putGlyph(this.cursor, char, 1, this.style);
       return;
     }
 

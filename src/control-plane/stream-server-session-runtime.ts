@@ -530,7 +530,8 @@ export function handleSessionEvent(
 
   const mapped = mapSessionEvent(event);
   if (mapped !== null && event.type !== 'terminal-output') {
-    const observedAt = mapped.type === 'session-exit' ? new Date().toISOString() : mapped.record.ts;
+    const nowIso = new Date().toISOString();
+    const observedAt = mapped.type === 'session-exit' ? nowIso : mapped.record.ts;
     for (const connectionId of sessionState.eventSubscriberConnectionIds) {
       ctx.sendToConnection(
         connectionId,
@@ -546,7 +547,7 @@ export function handleSessionEvent(
       type: 'session-event',
       sessionId,
       event: mapped,
-      ts: new Date().toISOString(),
+      ts: nowIso,
       directoryId: sessionState.directoryId,
       conversationId: sessionState.id,
     });

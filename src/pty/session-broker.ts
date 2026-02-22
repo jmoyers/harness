@@ -124,7 +124,7 @@ class SingleSessionBroker {
     for (const handlers of this.attachments.values()) {
       handlers.onData({
         cursor: entry.cursor,
-        chunk: Buffer.from(fullChunk),
+        chunk: fullChunk,
       });
     }
   }

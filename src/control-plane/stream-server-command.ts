@@ -2800,13 +2800,14 @@ export async function executeStreamServerCommand(
     const attachmentId = state.session.attach(
       {
         onData: (event) => {
+          const chunkBase64 = event.chunk.toString('base64');
           ctx.sendToConnection(
             connection.id,
             {
               kind: 'pty.output',
               sessionId: command.sessionId,
               cursor: event.cursor,
-              chunkBase64: Buffer.from(event.chunk).toString('base64'),
+              chunkBase64,
             },
             command.sessionId,
           );
@@ -2820,7 +2821,7 @@ export async function executeStreamServerCommand(
               type: 'session-output',
               sessionId: command.sessionId,
               outputCursor: event.cursor,
-              chunkBase64: Buffer.from(event.chunk).toString('base64'),
+              chunkBase64,
               ts: new Date().toISOString(),
               directoryId: sessionState.directoryId,
               conversationId: sessionState.id,
