@@ -149,6 +149,11 @@ import {
   mapSessionEventToNormalizedEvent,
   observedAtFromSessionEvent,
 } from '../../mux/live-mux/event-mapping.ts';
+import {
+  addDirectoryByPath as addDirectoryByPathAction,
+  archiveConversation as archiveConversationAction,
+  closeDirectory as closeDirectoryAction,
+} from '../../mux/live-mux/actions-conversation.ts';
 import { parseMuxArgs } from '../../mux/live-mux/args.ts';
 import {
   renderSelectionOverlay,
@@ -195,7 +200,6 @@ import { StartupOrchestrator } from '../../services/startup-orchestrator.ts';
 import { attachRuntimeProcessWiring } from '../../services/runtime-process-wiring.ts';
 import { createRuntimeControlPlaneOps } from '../../services/runtime-control-plane-ops.ts';
 import { createRuntimeControlActions } from '../../services/runtime-control-actions.ts';
-import { createRuntimeDirectoryActions } from '../../services/runtime-directory-actions.ts';
 import {
   handleRuntimeEnvelope,
   type RuntimeEnvelopeHandlerOptions,
@@ -3038,69 +3042,109 @@ class CodexLiveMuxRuntimeApplication {
       markDirty,
     });
 
-    const runtimeDirectoryActions = createRuntimeDirectoryActions({
-      controlPlaneService,
-      conversations: {
-        records: conversationRecords,
-        orderedIds: () => conversationManager.orderedIds(),
-        directoryIdOf: (sessionId) => conversationManager.directoryIdOf(sessionId),
-        isLive: (sessionId) => conversationManager.isLive(sessionId),
-        removeState: removeConversationState,
-        unsubscribeEvents: async (sessionId) => {
-          await conversationLifecycle.unsubscribeConversationEvents(sessionId);
+    const archiveConversationById = async (sessionId: string): Promise<void> => {
+      await archiveConversationAction({
+        sessionId,
+        conversations: conversationRecords,
+        closePtySession: controlPlaneService.closePtySession,
+        removeSession: controlPlaneService.removeSession,
+        isSessionNotFoundError,
+        archiveConversationRecord: controlPlaneService.archiveConversation,
+        isConversationNotFoundError,
+        unsubscribeConversationEvents: async (conversationId) => {
+          await conversationLifecycle.unsubscribeConversationEvents(conversationId);
         },
-        activeId: () => conversationManager.activeConversationId,
-        setActiveId: (sessionId) => {
-          conversationManager.setActiveConversationId(sessionId);
+        removeConversationState,
+        activeConversationId: conversationManager.activeConversationId,
+        setActiveConversationId: (conversationId) => {
+          conversationManager.setActiveConversationId(conversationId);
         },
-        activate: async (sessionId) => {
-          await conversationLifecycle.activateConversation(sessionId);
+        orderedConversationIds: () => conversationManager.orderedIds(),
+        conversationDirectoryId: (conversationId) => conversationManager.directoryIdOf(conversationId),
+        resolveActiveDirectoryId,
+        enterProjectPane,
+        activateConversation: async (conversationId) => {
+          await conversationLifecycle.activateConversation(conversationId);
         },
-        findIdByDirectory: (directoryId) =>
-          conversationManager.findConversationIdByDirectory(
-            directoryId,
-            conversationManager.orderedIds(),
-          ),
-      },
-      directories: {
-        createId: () => `directory-${randomUUID()}`,
-        resolveWorkspacePath: (rawPath) =>
-          resolveWorkspacePathForMux(options.invocationDirectory, rawPath),
-        setRecord: (directory) => {
+        markDirty,
+      });
+    };
+
+    const addDirectoryByPath = async (rawPath: string): Promise<void> => {
+      await addDirectoryByPathAction({
+        rawPath,
+        resolveWorkspacePathForMux: (candidatePath) =>
+          resolveWorkspacePathForMux(options.invocationDirectory, candidatePath),
+        upsertDirectory: async (path) => {
+          return await controlPlaneService.upsertDirectory({
+            directoryId: `directory-${randomUUID()}`,
+            path,
+          });
+        },
+        setDirectory: (directory) => {
           directoryManager.setDirectory(directory.directoryId, directory);
         },
-        idOf: (directory) => directory.directoryId,
-        setActiveId: (directoryId) => {
+        directoryIdOf: (directory) => directory.directoryId,
+        setActiveDirectoryId: (directoryId) => {
           workspace.activeDirectoryId = directoryId;
         },
-        activeId: () => workspace.activeDirectoryId,
-        resolveActiveId: resolveActiveDirectoryId,
-        has: (directoryId) => directoryManager.hasDirectory(directoryId),
-        remove: (directoryId) => {
-          directoryManager.deleteDirectory(directoryId);
+        syncGitStateWithDirectories,
+        noteGitActivity,
+        hydratePersistedConversationsForDirectory: hydratePersistedConversationsForDirectory,
+        findConversationIdByDirectory: (directoryId) =>
+          conversationManager.findConversationIdByDirectory(directoryId, conversationManager.orderedIds()),
+        activateConversation: async (conversationId) => {
+          await conversationLifecycle.activateConversation(conversationId);
         },
-        removeGitState: deleteDirectoryGitState,
-        projectPaneSnapshotDirectoryId: () => workspace.projectPaneSnapshot?.directoryId ?? null,
+        enterProjectPane,
+        markDirty,
+      });
+    };
+
+    const closeDirectoryById = async (directoryId: string): Promise<void> => {
+      await closeDirectoryAction({
+        directoryId,
+        directoriesHas: (candidateDirectoryId) => directoryManager.hasDirectory(candidateDirectoryId),
+        orderedConversationIds: () => conversationManager.orderedIds(),
+        conversationDirectoryId: (conversationId) => conversationManager.directoryIdOf(conversationId),
+        conversationLive: (conversationId) => conversationManager.isLive(conversationId),
+        closePtySession: controlPlaneService.closePtySession,
+        archiveConversationRecord: controlPlaneService.archiveConversation,
+        unsubscribeConversationEvents: async (conversationId) => {
+          await conversationLifecycle.unsubscribeConversationEvents(conversationId);
+        },
+        removeConversationState,
+        activeConversationId: conversationManager.activeConversationId,
+        setActiveConversationId: (conversationId) => {
+          conversationManager.setActiveConversationId(conversationId);
+        },
+        archiveDirectory: controlPlaneService.archiveDirectory,
+        deleteDirectory: (targetDirectoryId) => {
+          directoryManager.deleteDirectory(targetDirectoryId);
+        },
+        deleteDirectoryGitState,
+        projectPaneSnapshotDirectoryId: workspace.projectPaneSnapshot?.directoryId ?? null,
         clearProjectPaneSnapshot: () => {
           workspace.projectPaneSnapshot = null;
           workspace.projectPaneScrollTop = 0;
         },
-        size: () => directoryManager.directoriesSize(),
-        firstId: () => directoryManager.firstDirectoryId(),
-        syncGitStateWithDirectories,
+        directoriesSize: () => directoryManager.directoriesSize(),
+        addDirectoryByPath,
+        invocationDirectory: options.invocationDirectory,
+        activeDirectoryId: workspace.activeDirectoryId,
+        setActiveDirectoryId: (targetDirectoryId) => {
+          workspace.activeDirectoryId = targetDirectoryId;
+        },
+        firstDirectoryId: () => directoryManager.firstDirectoryId(),
         noteGitActivity,
-        hydratePersistedConversations: hydratePersistedConversationsForDirectory,
-      },
-      ui: {
+        resolveActiveDirectoryId,
+        activateConversation: async (conversationId) => {
+          await conversationLifecycle.activateConversation(conversationId);
+        },
         enterProjectPane,
         markDirty,
-      },
-      errors: {
-        isSessionNotFoundError,
-        isConversationNotFoundError,
-      },
-      invocationDirectory: options.invocationDirectory,
-    });
+      });
+    };
     const runtimeControlActions = createRuntimeControlActions({
       conversationById: (sessionId) => conversationManager.get(sessionId),
       interruptSession: async (sessionId) => {
@@ -3640,7 +3684,7 @@ class CodexLiveMuxRuntimeApplication {
           return;
         }
         queueControlPlaneOp(async () => {
-          await runtimeDirectoryActions.archiveConversation(conversationId);
+          await archiveConversationById(conversationId);
         }, 'command-menu-close-thread');
       },
     });
@@ -4511,7 +4555,7 @@ class CodexLiveMuxRuntimeApplication {
           stopConversationTitleEdit,
           queueControlPlaneOp,
           archiveConversation: async (sessionId) => {
-            await runtimeDirectoryActions.archiveConversation(sessionId);
+            await archiveConversationById(sessionId);
           },
           createAndActivateConversationInDirectory: async (directoryId, agentType) => {
             await conversationLifecycle.createAndActivateConversationInDirectory(
@@ -4520,7 +4564,7 @@ class CodexLiveMuxRuntimeApplication {
             );
           },
           addDirectoryByPath: async (rawPath) => {
-            await runtimeDirectoryActions.addDirectoryByPath(rawPath);
+            await addDirectoryByPath(rawPath);
           },
           normalizeGitHubRemoteUrl,
           upsertRepositoryByRemoteUrl: async (remoteUrl, existingRepositoryId) => {
@@ -4599,7 +4643,10 @@ class CodexLiveMuxRuntimeApplication {
           queueLatestControlPlaneOp,
         },
         conversationLifecycle,
-        runtimeDirectoryActions,
+        runtimeDirectoryActions: {
+          archiveConversation: archiveConversationById,
+          closeDirectory: closeDirectoryById,
+        },
         runtimeRepositoryActions,
         runtimeControlActions,
         navigation: {
@@ -4653,7 +4700,7 @@ class CodexLiveMuxRuntimeApplication {
         openNewThreadPrompt,
         queueCloseDirectory: (directoryId) => {
           queueControlPlaneOp(async () => {
-            await runtimeDirectoryActions.closeDirectory(directoryId);
+            await closeDirectoryById(directoryId);
           }, 'project-pane-close-project');
         },
       },
