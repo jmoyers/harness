@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { RuntimeProcessWiring } from '../src/services/runtime-process-wiring.ts';
+import { attachRuntimeProcessWiring } from '../src/services/runtime-process-wiring.ts';
 
 class FakeInputStream {
   private listener: ((chunk: Buffer) => void) | null = null;
@@ -139,7 +139,7 @@ void test('runtime process wiring attaches and detaches listeners', () => {
   let resizeCalls = 0;
   let stopCalls = 0;
   const fatalCalls: string[] = [];
-  const wiring = new RuntimeProcessWiring({
+  const detach = attachRuntimeProcessWiring({
     target,
     onInput: () => {
       inputCalls += 1;
@@ -155,8 +155,6 @@ void test('runtime process wiring attaches and detaches listeners', () => {
     },
   });
 
-  wiring.attach();
-
   inputStream.emitData(Buffer.from('x'));
   outputStream.emitResize();
   target.emitSigint();
@@ -168,7 +166,7 @@ void test('runtime process wiring attaches and detaches listeners', () => {
   assert.equal(stopCalls, 3);
   assert.deepEqual(fatalCalls, []);
 
-  wiring.detach();
+  detach();
   inputStream.emitData(Buffer.from('y'));
   outputStream.emitResize();
   target.emitSigint();
@@ -190,7 +188,7 @@ void test('runtime process wiring reports runtime-fatal origins for protected ha
   const uncaughtError = new Error('uncaught failed');
   const unhandledReason = { reason: 'rejection' };
 
-  const wiring = new RuntimeProcessWiring({
+  const detach = attachRuntimeProcessWiring({
     target,
     onInput: () => {
       throw inputError;
@@ -204,8 +202,6 @@ void test('runtime process wiring reports runtime-fatal origins for protected ha
       fatalPayloads.push(error);
     },
   });
-
-  wiring.attach();
   inputStream.emitData(Buffer.from('z'));
   outputStream.emitResize();
   target.emitUncaught(uncaughtError);
@@ -218,4 +214,5 @@ void test('runtime process wiring reports runtime-fatal origins for protected ha
     'unhandled-rejection',
   ]);
   assert.deepEqual(fatalPayloads, [inputError, resizeError, uncaughtError, unhandledReason]);
+  detach();
 });

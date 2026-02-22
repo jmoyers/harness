@@ -192,7 +192,7 @@ import { ProcessUsageRefreshService } from '../../services/process-usage-refresh
 import { RecordingService } from '../../services/recording.ts';
 import { SessionProjectionInstrumentation } from '../../services/session-projection-instrumentation.ts';
 import { StartupOrchestrator } from '../../services/startup-orchestrator.ts';
-import { RuntimeProcessWiring } from '../../services/runtime-process-wiring.ts';
+import { attachRuntimeProcessWiring } from '../../services/runtime-process-wiring.ts';
 import { RuntimeControlPlaneOps } from '../../services/runtime-control-plane-ops.ts';
 import { RuntimeControlActions } from '../../services/runtime-control-actions.ts';
 import { createRuntimeDirectoryActions } from '../../services/runtime-directory-actions.ts';
@@ -278,8 +278,8 @@ import {
 import { createTuiLeftRailInteractions } from '../../clients/tui/left-rail-interactions.ts';
 import { createTuiMainPaneInteractions } from '../../clients/tui/main-pane-interactions.ts';
 import {
+  createTuiModalInputRemainderState,
   routeTuiModalInput,
-  TuiModalInputRemainderState,
 } from '../../clients/tui/modal-input-routing.ts';
 import { readTuiRenderSnapshot } from '../../clients/tui/render-snapshot-adapter.ts';
 import {
@@ -1739,7 +1739,7 @@ class CodexLiveMuxRuntimeApplication {
     const projectPane = new ProjectPane();
     const leftRailPane = new LeftRailPane();
     let stop = false;
-    const modalInputRemainderState = new TuiModalInputRemainderState();
+    const modalInputRemainderState = createTuiModalInputRemainderState();
     const debugFooterNotice = new DebugFooterNotice({
       ttlMs: DEBUG_FOOTER_NOTICE_TTL_MS,
     });
@@ -4705,7 +4705,7 @@ class CodexLiveMuxRuntimeApplication {
       const nextSize = terminalSize();
       queueResize(nextSize);
     };
-    const runtimeProcessWiring = new RuntimeProcessWiring({
+    const detachRuntimeProcessWiring = attachRuntimeProcessWiring({
       onInput: handleInput,
       onResize,
       requestStop,
@@ -4713,8 +4713,6 @@ class CodexLiveMuxRuntimeApplication {
     });
 
     await startupOrchestrator.hydrateStartupState(startupObservedCursor);
-
-    runtimeProcessWiring.attach();
 
     inputModeManager.enable();
     applyLayout(size, true);
@@ -4757,7 +4755,7 @@ class CodexLiveMuxRuntimeApplication {
         runtimeRenderLifecycle.clearRenderScheduled();
       },
       detachProcessListeners: () => {
-        runtimeProcessWiring.detach();
+        detachRuntimeProcessWiring();
       },
       removeEnvelopeListener,
       stopWorkspaceObservedEvents: () => {

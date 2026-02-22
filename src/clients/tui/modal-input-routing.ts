@@ -23,33 +23,38 @@ export interface DismissModalOnOutsideClickInput {
   readonly onInsidePointerPress?: (col: number, row: number) => boolean;
 }
 
-export class TuiModalInputRemainderState {
-  private inputRemainder = '';
+export interface TuiModalInputRemainderState {
+  getInputRemainder(): string;
+  setInputRemainder(next: string): void;
+  dismissModalOnOutsideClick(input: DismissModalOnOutsideClickInput): boolean;
+}
 
-  getInputRemainder(): string {
-    return this.inputRemainder;
-  }
-
-  setInputRemainder(next: string): void {
-    this.inputRemainder = next;
-  }
-
-  dismissModalOnOutsideClick(input: DismissModalOnOutsideClickInput): boolean {
-    const result = input.modalManager.dismissOnOutsideClick({
-      input: input.input,
-      inputRemainder: this.inputRemainder,
-      layoutCols: input.layoutCols,
-      viewportRows: input.viewportRows,
-      dismiss: input.dismiss,
+export function createTuiModalInputRemainderState(
+  initialInputRemainder = '',
+): TuiModalInputRemainderState {
+  let inputRemainder = initialInputRemainder;
+  return {
+    getInputRemainder: (): string => inputRemainder,
+    setInputRemainder: (next: string): void => {
+      inputRemainder = next;
+    },
+    dismissModalOnOutsideClick: (input: DismissModalOnOutsideClickInput): boolean => {
+      const result = input.modalManager.dismissOnOutsideClick({
+        input: input.input,
+        inputRemainder,
+        layoutCols: input.layoutCols,
+        viewportRows: input.viewportRows,
+        dismiss: input.dismiss,
       ...(input.onInsidePointerPress === undefined
         ? {}
         : {
             onInsidePointerPress: input.onInsidePointerPress,
           }),
-    });
-    this.inputRemainder = result.inputRemainder;
-    return result.handled;
-  }
+      });
+      inputRemainder = result.inputRemainder;
+      return result.handled;
+    },
+  };
 }
 
 export interface RouteTuiModalInputOptions {

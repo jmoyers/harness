@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import {
+  createTuiModalInputRemainderState,
   routeTuiModalInput,
-  TuiModalInputRemainderState,
 } from '../src/clients/tui/modal-input-routing.ts';
 
 void test('modal input remainder state updates remainder from outside-click dismissal', () => {
-  const state = new TuiModalInputRemainderState();
+  const state = createTuiModalInputRemainderState();
   state.setInputRemainder('carry');
 
   let dismissed = 0;

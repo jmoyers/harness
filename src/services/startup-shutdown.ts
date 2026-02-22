@@ -23,31 +23,27 @@ interface StartupSettledGateLike {
   signalSettled(): void;
 }
 
-interface StartupShutdownServiceOptions {
+export interface StartupShutdownServiceOptions {
   readonly startupSequencer: StartupSequencerLike;
   readonly startupSpanTracker: StartupSpanTrackerLike;
   readonly startupSettledGate: StartupSettledGateLike;
 }
 
-export class StartupShutdownService {
-  constructor(private readonly options: StartupShutdownServiceOptions) {}
-
-  finalize(): void {
-    this.options.startupSpanTracker.endStartCommandSpan({
-      observed: false,
-    });
-    const startupSnapshot = this.options.startupSequencer.snapshot();
-    this.options.startupSpanTracker.endFirstOutputSpan({
-      observed: startupSnapshot.firstOutputObserved,
-    });
-    this.options.startupSpanTracker.endFirstPaintSpan({
-      observed: startupSnapshot.firstPaintObserved,
-    });
-    this.options.startupSettledGate.clearTimer();
-    this.options.startupSpanTracker.endSettledSpan({
-      observed: startupSnapshot.settledObserved,
-      gate: startupSnapshot.settleGate ?? 'none',
-    });
-    this.options.startupSettledGate.signalSettled();
-  }
+export function finalizeStartupShutdown(options: StartupShutdownServiceOptions): void {
+  options.startupSpanTracker.endStartCommandSpan({
+    observed: false,
+  });
+  const startupSnapshot = options.startupSequencer.snapshot();
+  options.startupSpanTracker.endFirstOutputSpan({
+    observed: startupSnapshot.firstOutputObserved,
+  });
+  options.startupSpanTracker.endFirstPaintSpan({
+    observed: startupSnapshot.firstPaintObserved,
+  });
+  options.startupSettledGate.clearTimer();
+  options.startupSpanTracker.endSettledSpan({
+    observed: startupSnapshot.settledObserved,
+    gate: startupSnapshot.settleGate ?? 'none',
+  });
+  options.startupSettledGate.signalSettled();
 }
