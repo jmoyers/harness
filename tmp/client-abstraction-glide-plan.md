@@ -48,7 +48,11 @@
   - `RuntimeCommandMenuAgentToolsCache`
 - Rename survivors to reflect state ownership (engine/controller semantics) where useful.
 - Optional hardening pass:
-  - remove duplicated parser paths where one canonical contracts parser can be used.
+  - Consolidated `agent-realtime-api` record parsing through core contracts for:
+    - projects/directories
+    - repositories
+    - directory git statuses
+    - tasks
 
 ## Validation Gates Per Slice
 - `bun run lint`

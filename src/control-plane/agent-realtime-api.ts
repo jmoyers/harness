@@ -1,4 +1,11 @@
 import type { PtyExit } from '../pty/pty_host.ts';
+import {
+  parseDirectoryGitStatusRecord as parseContractDirectoryGitStatusRecord,
+  parseDirectoryRecord as parseContractDirectoryRecord,
+  parseRepositoryRecord as parseContractRepositoryRecord,
+  parseTaskRecord as parseContractTaskRecord,
+  type ControlPlaneRepositoryRecord,
+} from '../core/contracts/records.ts';
 import { connectControlPlaneStreamClient, type ControlPlaneStreamClient } from './stream-client.ts';
 import { parseSessionSummaryList, parseSessionSummaryRecord } from './session-summary.ts';
 import {
@@ -345,10 +352,6 @@ function readString(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
 }
 
-function readNumber(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null;
-}
-
 function readBoolean(value: unknown): boolean | null {
   return typeof value === 'boolean' ? value : null;
 }
@@ -377,33 +380,6 @@ function readNullableNumber(value: unknown): number | null | undefined {
     return value;
   }
   return undefined;
-}
-
-function parseTaskStatus(value: unknown): AgentTaskStatus | null {
-  if (value === 'draft' || value === 'ready' || value === 'in-progress' || value === 'completed') {
-    return value;
-  }
-  return null;
-}
-
-function parseTaskScopeKind(
-  value: unknown,
-  repositoryId: string | null | undefined,
-  projectId: string | null | undefined,
-): 'global' | 'repository' | 'project' | null {
-  if (value === 'global' || value === 'repository' || value === 'project') {
-    return value;
-  }
-  if (projectId !== null) {
-    return 'project';
-  }
-  if (repositoryId !== null) {
-    return 'repository';
-  }
-  if (value === undefined || value === null) {
-    return 'global';
-  }
-  return null;
 }
 
 function parseSignal(value: unknown): NodeJS.Signals | null | undefined {
@@ -445,36 +421,18 @@ function parseExit(value: unknown): PtyExit | null | undefined {
 }
 
 function parseProjectRecord(value: unknown): AgentProject | null {
-  const record = asRecord(value);
-  if (record === null) {
-    return null;
-  }
-  const projectId = readString(record['directoryId']);
-  const tenantId = readString(record['tenantId']);
-  const userId = readString(record['userId']);
-  const workspaceId = readString(record['workspaceId']);
-  const path = readString(record['path']);
-  const createdAt = readString(record['createdAt']);
-  const archivedAt = readNullableString(record['archivedAt']);
-  if (
-    projectId === null ||
-    tenantId === null ||
-    userId === null ||
-    workspaceId === null ||
-    path === null ||
-    createdAt === null ||
-    archivedAt === undefined
-  ) {
+  const parsed = parseContractDirectoryRecord(value);
+  if (parsed === null || parsed.createdAt === null) {
     return null;
   }
   return {
-    projectId,
-    tenantId,
-    userId,
-    workspaceId,
-    path,
-    createdAt,
-    archivedAt,
+    projectId: parsed.directoryId,
+    tenantId: parsed.tenantId,
+    userId: parsed.userId,
+    workspaceId: parsed.workspaceId,
+    path: parsed.path,
+    createdAt: parsed.createdAt,
+    archivedAt: parsed.archivedAt,
   };
 }
 
@@ -625,187 +583,86 @@ function parseThreadRecord(value: unknown): AgentThread | null {
   };
 }
 
-function parseRepositoryRecord(value: unknown): AgentRepository | null {
-  const record = asRecord(value);
-  if (record === null) {
-    return null;
-  }
-  const repositoryId = readString(record['repositoryId']);
-  const tenantId = readString(record['tenantId']);
-  const userId = readString(record['userId']);
-  const workspaceId = readString(record['workspaceId']);
-  const name = readString(record['name']);
-  const remoteUrl = readString(record['remoteUrl']);
-  const defaultBranch = readString(record['defaultBranch']);
-  const metadata = asRecord(record['metadata']);
-  const createdAt = readString(record['createdAt']);
-  const archivedAt = readNullableString(record['archivedAt']);
-  if (
-    repositoryId === null ||
-    tenantId === null ||
-    userId === null ||
-    workspaceId === null ||
-    name === null ||
-    remoteUrl === null ||
-    defaultBranch === null ||
-    metadata === null ||
-    createdAt === null ||
-    archivedAt === undefined
-  ) {
+function toAgentRepository(record: ControlPlaneRepositoryRecord): AgentRepository | null {
+  if (record.createdAt === null) {
     return null;
   }
   return {
-    repositoryId,
-    tenantId,
-    userId,
-    workspaceId,
-    name,
-    remoteUrl,
-    defaultBranch,
-    metadata,
-    createdAt,
-    archivedAt,
+    repositoryId: record.repositoryId,
+    tenantId: record.tenantId,
+    userId: record.userId,
+    workspaceId: record.workspaceId,
+    name: record.name,
+    remoteUrl: record.remoteUrl,
+    defaultBranch: record.defaultBranch,
+    metadata: record.metadata,
+    createdAt: record.createdAt,
+    archivedAt: record.archivedAt,
   };
 }
 
+function parseRepositoryRecord(value: unknown): AgentRepository | null {
+  const parsed = parseContractRepositoryRecord(value);
+  return parsed === null ? null : toAgentRepository(parsed);
+}
+
 function parseProjectGitStatusRecord(value: unknown): AgentProjectGitStatus | null {
-  const record = asRecord(value);
-  if (record === null) {
+  const parsed = parseContractDirectoryGitStatusRecord(value);
+  if (parsed === null) {
     return null;
   }
-  const directoryId = readString(record['directoryId']);
-  const summaryRecord = asRecord(record['summary']);
-  const repositorySnapshotRecord = asRecord(record['repositorySnapshot']);
-  const repositoryId = readNullableString(record['repositoryId']);
-  const observedAt = readString(record['observedAt']);
-  const repositoryRaw = record['repository'];
   const repository =
-    repositoryRaw === null || repositoryRaw === undefined
-      ? null
-      : parseRepositoryRecord(repositoryRaw);
-  if (
-    directoryId === null ||
-    summaryRecord === null ||
-    repositorySnapshotRecord === null ||
-    repositoryId === undefined ||
-    observedAt === null ||
-    (repositoryRaw !== null && repositoryRaw !== undefined && repository === null)
-  ) {
-    return null;
-  }
-  const branch = readString(summaryRecord['branch']);
-  const changedFiles = readNumber(summaryRecord['changedFiles']);
-  const additions = readNumber(summaryRecord['additions']);
-  const deletions = readNumber(summaryRecord['deletions']);
-  const normalizedRemoteUrl = readNullableString(repositorySnapshotRecord['normalizedRemoteUrl']);
-  const commitCount = readNullableNumber(repositorySnapshotRecord['commitCount']);
-  const lastCommitAt = readNullableString(repositorySnapshotRecord['lastCommitAt']);
-  const shortCommitHash = readNullableString(repositorySnapshotRecord['shortCommitHash']);
-  const inferredName = readNullableString(repositorySnapshotRecord['inferredName']);
-  const defaultBranch = readNullableString(repositorySnapshotRecord['defaultBranch']);
-  if (
-    branch === null ||
-    changedFiles === null ||
-    additions === null ||
-    deletions === null ||
-    normalizedRemoteUrl === undefined ||
-    commitCount === undefined ||
-    lastCommitAt === undefined ||
-    shortCommitHash === undefined ||
-    inferredName === undefined ||
-    defaultBranch === undefined
-  ) {
+    parsed.repository === null ? null : toAgentRepository(parsed.repository);
+  if (parsed.repository !== null && repository === null) {
     return null;
   }
   return {
-    directoryId,
+    directoryId: parsed.directoryId,
     summary: {
-      branch,
-      changedFiles,
-      additions,
-      deletions,
+      branch: parsed.summary.branch,
+      changedFiles: parsed.summary.changedFiles,
+      additions: parsed.summary.additions,
+      deletions: parsed.summary.deletions,
     },
     repositorySnapshot: {
-      normalizedRemoteUrl,
-      commitCount,
-      lastCommitAt,
-      shortCommitHash,
-      inferredName,
-      defaultBranch,
+      normalizedRemoteUrl: parsed.repositorySnapshot.normalizedRemoteUrl,
+      commitCount: parsed.repositorySnapshot.commitCount,
+      lastCommitAt: parsed.repositorySnapshot.lastCommitAt,
+      shortCommitHash: parsed.repositorySnapshot.shortCommitHash,
+      inferredName: parsed.repositorySnapshot.inferredName,
+      defaultBranch: parsed.repositorySnapshot.defaultBranch,
     },
-    repositoryId,
+    repositoryId: parsed.repositoryId,
     repository,
-    observedAt,
+    observedAt: parsed.observedAt,
   };
 }
 
 function parseTaskRecord(value: unknown): AgentTask | null {
-  const record = asRecord(value);
-  if (record === null) {
-    return null;
-  }
-  const taskId = readString(record['taskId']);
-  const tenantId = readString(record['tenantId']);
-  const userId = readString(record['userId']);
-  const workspaceId = readString(record['workspaceId']);
-  const repositoryId = readNullableString(record['repositoryId']);
-  const projectId = readNullableString(record['projectId']);
-  const title = readString(record['title']);
-  const body = readString(record['body'] ?? record['description']);
-  const status = parseTaskStatus(record['status']);
-  const scopeKind = parseTaskScopeKind(record['scopeKind'], repositoryId, projectId);
-  const orderIndex = readNumber(record['orderIndex']);
-  const claimedByControllerId = readNullableString(record['claimedByControllerId']);
-  const claimedByProjectId = readNullableString(record['claimedByDirectoryId']);
-  const branchName = readNullableString(record['branchName']);
-  const baseBranch = readNullableString(record['baseBranch']);
-  const claimedAt = readNullableString(record['claimedAt']);
-  const completedAt = readNullableString(record['completedAt']);
-  const createdAt = readString(record['createdAt']);
-  const updatedAt = readString(record['updatedAt']);
-  if (
-    taskId === null ||
-    tenantId === null ||
-    userId === null ||
-    workspaceId === null ||
-    repositoryId === undefined ||
-    projectId === undefined ||
-    scopeKind === null ||
-    title === null ||
-    body === null ||
-    status === null ||
-    orderIndex === null ||
-    claimedByControllerId === undefined ||
-    claimedByProjectId === undefined ||
-    branchName === undefined ||
-    baseBranch === undefined ||
-    claimedAt === undefined ||
-    completedAt === undefined ||
-    createdAt === null ||
-    updatedAt === null
-  ) {
+  const parsed = parseContractTaskRecord(value);
+  if (parsed === null) {
     return null;
   }
   return {
-    taskId,
-    tenantId,
-    userId,
-    workspaceId,
-    repositoryId,
-    scopeKind,
-    projectId,
-    title,
-    body,
-    status,
-    orderIndex,
-    claimedByControllerId,
-    claimedByProjectId,
-    branchName,
-    baseBranch,
-    claimedAt,
-    completedAt,
-    createdAt,
-    updatedAt,
+    taskId: parsed.taskId,
+    tenantId: parsed.tenantId,
+    userId: parsed.userId,
+    workspaceId: parsed.workspaceId,
+    repositoryId: parsed.repositoryId,
+    scopeKind: parsed.scopeKind,
+    projectId: parsed.projectId,
+    title: parsed.title,
+    body: parsed.body,
+    status: parsed.status,
+    orderIndex: parsed.orderIndex,
+    claimedByControllerId: parsed.claimedByControllerId,
+    claimedByProjectId: parsed.claimedByDirectoryId,
+    branchName: parsed.branchName,
+    baseBranch: parsed.baseBranch,
+    claimedAt: parsed.claimedAt,
+    completedAt: parsed.completedAt,
+    createdAt: parsed.createdAt,
+    updatedAt: parsed.updatedAt,
   };
 }
 
