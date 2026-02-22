@@ -5,14 +5,14 @@ import {
   SINGLE_LINE_UI_BOX_GLYPHS,
   UiKit,
 } from '../packages/harness-ui/src/kit.ts';
-import { DEFAULT_UI_STYLE, SurfaceBuffer } from '../packages/harness-ui/src/surface.ts';
+import { DEFAULT_UI_STYLE, SurfaceBuffer, type UiStyle } from '../packages/harness-ui/src/surface.ts';
 
 const UI_KIT = new UiKit();
 
 function createUiSurface(
   cols: number,
   rows: number,
-  baseStyle: ConstructorParameters<typeof SurfaceBuffer>[2] = DEFAULT_UI_STYLE,
+  baseStyle: UiStyle = DEFAULT_UI_STYLE,
 ): SurfaceBuffer {
   return new SurfaceBuffer(cols, rows, baseStyle);
 }

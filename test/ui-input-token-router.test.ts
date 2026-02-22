@@ -7,7 +7,10 @@ import {
   isMotionMouseCode,
 } from '../src/mux/live-mux/selection.ts';
 import type { TerminalSnapshotFrameCore } from '../src/terminal/snapshot-oracle.ts';
-import { InputTokenRouter } from '../packages/harness-ui/src/interaction/input-token-router.ts';
+import {
+  InputTokenRouter,
+  type InputTokenRouterStrategies,
+} from '../packages/harness-ui/src/interaction/input-token-router.ts';
 
 function createFrame(label: string): TerminalSnapshotFrameCore {
   return {
@@ -67,7 +70,7 @@ function mouseTokenWithFinal(code: number, col: number, row: number, final: 'M' 
   };
 }
 
-function defaultStrategies(): ConstructorParameters<typeof InputTokenRouter>[1] {
+function defaultStrategies(): InputTokenRouterStrategies {
   return {
     classifyPaneAt: (layout, col, row) =>
       classifyPaneAt(layout as Parameters<typeof classifyPaneAt>[0], col, row),

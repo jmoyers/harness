@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import { DiffBudgetTracker } from '../src/diff/budget.ts';
+import type { DiffBudget } from '../src/diff/types.ts';
 import { GitDiffPatchParser } from '../src/diff/git-parse.ts';
 
 function createTracker(
-  limitOverrides: Partial<ConstructorParameters<typeof DiffBudgetTracker>[0]> = {},
+  limitOverrides: Partial<DiffBudget> = {},
 ) {
   return new DiffBudgetTracker({
     maxFiles: limitOverrides.maxFiles ?? 100,

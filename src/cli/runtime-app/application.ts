@@ -50,6 +50,10 @@ interface RuntimeServices {
   readonly workflowRuntime: WorkflowRuntimeService;
 }
 
+export interface HarnessRuntimeContextProvider {
+  create(sessionName: string | null): HarnessRuntimeContext;
+}
+
 function resolveScriptPath(envValue: string | undefined, fallback: string, cwd: string): string {
   if (typeof envValue !== 'string' || envValue.trim().length === 0) {
     return fallback;
@@ -129,7 +133,7 @@ class CursorHooksCommandParser {
 
 export class HarnessRuntimeScopeFactory {
   constructor(
-    private readonly contextFactory: HarnessRuntimeContextFactory = new HarnessRuntimeContextFactory(),
+    private readonly contextFactory: HarnessRuntimeContextProvider = new HarnessRuntimeContextFactory(),
     private readonly env: NodeJS.ProcessEnv = process.env,
   ) {}
 

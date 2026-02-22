@@ -211,10 +211,7 @@ test('runtime scope factory creates typed runtime services from context factory 
       sessionName,
     }),
   };
-  const factory = new HarnessRuntimeScopeFactory(
-    contextFactory as unknown as ConstructorParameters<typeof HarnessRuntimeScopeFactory>[0],
-    {},
-  );
+  const factory = new HarnessRuntimeScopeFactory(contextFactory, {});
   const services = factory.create('scope-session');
   assert.equal(services.runtime.sessionName, 'scope-session');
   assert.equal(typeof services.authRuntime.run, 'function');

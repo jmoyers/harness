@@ -158,6 +158,13 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+export interface InMemoryNimRuntimeOptions {
+  providerRouter?: NimProviderRouter;
+  telemetrySinks?: readonly NimTelemetrySink[];
+  eventStore?: NimEventStore;
+  sessionStore?: NimSessionStore;
+}
+
 export class InMemoryNimRuntime implements NimRuntime {
   private sessions = new Map<string, SessionState>();
   private runs = new Map<string, RunState>();
@@ -178,12 +185,7 @@ export class InMemoryNimRuntime implements NimRuntime {
   private globalLane: Promise<void> = Promise.resolve();
   private sessionLanes = new Map<string, Promise<void>>();
 
-  public constructor(input?: {
-    providerRouter?: NimProviderRouter;
-    telemetrySinks?: readonly NimTelemetrySink[];
-    eventStore?: NimEventStore;
-    sessionStore?: NimSessionStore;
-  }) {
+  public constructor(input?: InMemoryNimRuntimeOptions) {
     this.providerRouter = input?.providerRouter ?? new NimProviderRouter();
     if (input?.telemetrySinks !== undefined) {
       this.telemetrySinks = [...input.telemetrySinks];
