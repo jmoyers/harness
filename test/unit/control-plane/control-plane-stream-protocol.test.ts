@@ -1756,6 +1756,25 @@ void test('parseServerEnvelope rejects malformed session-status status model pay
     }),
     null,
   );
+  const legacyStatusModelWithoutActivityHint = {
+    ...baseEnvelope.event.statusModel,
+  } as Record<string, unknown>;
+  delete legacyStatusModelWithoutActivityHint.activityHint;
+  const parsedLegacyStatusModelEnvelope = parseServerEnvelope({
+    ...baseEnvelope,
+    event: {
+      ...baseEnvelope.event,
+      statusModel: legacyStatusModelWithoutActivityHint,
+    },
+  });
+  assert.notEqual(parsedLegacyStatusModelEnvelope, null);
+  assert.equal(
+    parsedLegacyStatusModelEnvelope?.kind === 'stream.event' &&
+      parsedLegacyStatusModelEnvelope.event.type === 'session-status'
+      ? parsedLegacyStatusModelEnvelope.event.statusModel?.activityHint
+      : undefined,
+    null,
+  );
   assert.equal(
     parseServerEnvelope({
       ...baseEnvelope,

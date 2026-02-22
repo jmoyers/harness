@@ -146,7 +146,8 @@ function normalizeRuntimeStatusModel(value: unknown): StreamSessionStatusModel |
   const attentionReason = asStringOrNull(model.attentionReason, 'attentionReason');
   const lastKnownWork = asStringOrNull(model.lastKnownWork, 'lastKnownWork');
   const lastKnownWorkAt = asStringOrNull(model.lastKnownWorkAt, 'lastKnownWorkAt');
-  const activityHintRaw = asStringOrNull(model.activityHint, 'activityHint');
+  const activityHintRaw =
+    model.activityHint === undefined ? null : asStringOrNull(model.activityHint, 'activityHint');
   const observedAt = asString(model.observedAt, 'observedAt');
   if (
     activityHintRaw !== null &&

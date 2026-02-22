@@ -592,6 +592,15 @@ void test('control-plane store normalization helpers validate row shapes and fie
     runtime_status_model_json: null,
   });
   assert.equal(parsedNullStatusModel.runtimeStatusModel, null);
+  const legacyStatusModelWithoutActivityHint = {
+    ...statusModelFor('running'),
+  } as Record<string, unknown>;
+  delete legacyStatusModelWithoutActivityHint.activityHint;
+  const parsedLegacyStatusModel = normalizeStoredConversationRow({
+    ...conversationRowBase,
+    runtime_status_model_json: JSON.stringify(legacyStatusModelWithoutActivityHint),
+  });
+  assert.equal(parsedLegacyStatusModel.runtimeStatusModel?.activityHint, null);
   assert.throws(
     () =>
       normalizeStoredConversationRow({

@@ -1172,8 +1172,11 @@ export function parseStreamSessionStatusModel(
     record['lastKnownWork'] === null ? null : readString(record['lastKnownWork']);
   const lastKnownWorkAt =
     record['lastKnownWorkAt'] === null ? null : readString(record['lastKnownWorkAt']);
+  const activityHintValue = record['activityHint'];
   const activityHint =
-    record['activityHint'] === null ? null : parseSessionActivityHint(record['activityHint']);
+    activityHintValue === undefined || activityHintValue === null
+      ? null
+      : parseSessionActivityHint(activityHintValue);
   const observedAt = readString(record['observedAt']);
   if (
     runtimeStatus === null ||
