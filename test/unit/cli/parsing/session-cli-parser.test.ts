@@ -4,7 +4,7 @@ import {
   parseGlobalCliOptions,
   parseSessionName,
   SessionCliParser,
-} from '../../../src/cli/parsing/session.ts';
+} from '../../../../src/cli/parsing/session.ts';
 
 test('session cli parser normalizes valid session names and rejects invalid values', () => {
   assert.equal(parseSessionName('session-a'), 'session-a');

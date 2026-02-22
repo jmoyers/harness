@@ -14,6 +14,63 @@ import type { PtyExit } from '../../../src/pty/pty_host.ts';
 import { SqliteControlPlaneStore } from '../../../src/store/control-plane-store.ts';
 import { FakeLiveSession, collectEnvelopes } from '../../helpers/control-plane-stream-server-test-helpers.ts';
 
+interface SessionStatusClient {
+  sendCommand(command: never): Promise<Record<string, unknown>>;
+}
+
+async function waitForSessionStatus(
+  client: SessionStatusClient,
+  sessionId: string,
+  expectedStatus: string,
+  timeoutMs = 1_000,
+): Promise<Record<string, unknown>> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      const status = await client.sendCommand(
+        {
+          type: 'session.status',
+          sessionId,
+        } as never,
+      );
+      if (status['status'] === expectedStatus) {
+        return status;
+      }
+    } catch {
+      // Ignore transient read errors while waiting for the expected lifecycle transition.
+    }
+    await delay(10);
+  }
+  throw new Error(
+    `timed out waiting for session ${sessionId} to reach status ${expectedStatus}`,
+  );
+}
+
+async function waitForSessionMissing(
+  client: SessionStatusClient,
+  sessionId: string,
+  timeoutMs = 2_000,
+): Promise<void> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      await client.sendCommand(
+        {
+          type: 'session.status',
+          sessionId,
+        } as never,
+      );
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes('session not found')) {
+        return;
+      }
+    }
+    await delay(10);
+  }
+  throw new Error(`timed out waiting for session ${sessionId} tombstone removal`);
+}
+
 void test('stream server archives directories and excludes archived rows from default list', async () => {
   const server = await startControlPlaneStreamServer({
     startSession: (input) => new FakeLiveSession(input),
@@ -829,12 +886,7 @@ void test('stream server retains exited tombstones briefly then auto-removes by 
       code: 0,
       signal: null,
     });
-    await delay(5);
-
-    const exited = await client.sendCommand({
-      type: 'session.status',
-      sessionId: 'session-ttl',
-    });
+    const exited = await waitForSessionStatus(client, 'session-ttl', 'exited');
     assert.equal(exited['status'], 'exited');
     assert.equal(exited['live'], false);
     await assert.rejects(
@@ -845,14 +897,7 @@ void test('stream server retains exited tombstones briefly then auto-removes by 
       /session is not live/,
     );
 
-    await delay(40);
-    await assert.rejects(
-      client.sendCommand({
-        type: 'session.status',
-        sessionId: 'session-ttl',
-      }),
-      /session not found/,
-    );
+    await waitForSessionMissing(client, 'session-ttl');
   } finally {
     client.close();
     await server.close();

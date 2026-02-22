@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { parsePortFlag, parsePositiveIntFlag, readCliValue } from '../../../src/cli/parsing/flags.ts';
+import { parsePortFlag, parsePositiveIntFlag, readCliValue } from '../../../../src/cli/parsing/flags.ts';
 
 test('readCliValue returns next token and throws when missing', () => {
   assert.equal(readCliValue(['--port', '7777'], 0, '--port'), '7777');

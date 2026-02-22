@@ -20,13 +20,13 @@ import { execFileSync, spawn } from 'node:child_process';
 import { createServer as createHttpServer } from 'node:http';
 import { createServer } from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
-import { parseGatewayRecordText } from '../../../src/cli/gateway-record.ts';
-import { connectControlPlaneStreamClient } from '../../../src/control-plane/stream-client.ts';
+import { parseGatewayRecordText } from '../../../../src/cli/gateway-record.ts';
+import { connectControlPlaneStreamClient } from '../../../../src/control-plane/stream-client.ts';
 import {
   resolveHarnessConfigPath,
   resolveHarnessConfigDirectory,
-} from '../../../src/config/config-core.ts';
-import { resolveHarnessWorkspaceDirectory } from '../../../src/config/harness-paths.ts';
+} from '../../../../src/config/config-core.ts';
+import { resolveHarnessWorkspaceDirectory } from '../../../../src/config/harness-paths.ts';
 
 import {
   createConcurrentCliTest,
@@ -49,7 +49,7 @@ import {
   workspaceRuntimeRoot,
   workspaceXdgConfigHome,
   writeWorkspaceHarnessConfig,
-} from '../../helpers/harness-cli-test-helpers.ts';
+} from '../../../helpers/harness-cli-test-helpers.ts';
 
 const serialCliTest = createConcurrentCliTest();
 
