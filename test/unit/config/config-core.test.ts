@@ -344,6 +344,17 @@ void test('parseHarnessConfigText normalizes mux open-in target overrides', () =
   `);
   assert.deepEqual(invalidTypeFallback.mux.openIn.links, DEFAULT_OPEN_IN.links);
 
+  const nullLinks = parseHarnessConfigText(`
+    {
+      "mux": {
+        "openIn": {
+          "links": null
+        }
+      }
+    }
+  `);
+  assert.deepEqual(nullLinks.mux.openIn.links, DEFAULT_OPEN_IN.links);
+
   const linksOnly = parseHarnessConfigText(`
     {
       "mux": {

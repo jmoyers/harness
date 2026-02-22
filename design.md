@@ -126,6 +126,9 @@ Related entities (repositories, tasks, project settings, runtime/session metadat
 - One shared tenanted SQLite store.
 - `events` table is append-only source of truth for event history.
 - State+event writes are transactional.
+- Write guardrails and rolling-window maintenance are centralized in `storage-lifecycle-core`.
+- Rolling-window maintenance must run online (while sessions are live) with bounded per-tick work.
+- Rolling-window maintenance includes bounded online copy-forward compaction of retained rows after prune churn.
 - Migrations are explicit, transactional, versioned (`PRAGMA user_version`).
 - Unknown newer schema versions fail closed.
 

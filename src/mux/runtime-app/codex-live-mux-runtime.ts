@@ -11,6 +11,7 @@ import {
 import { startControlPlaneStreamServer } from '../../control-plane/stream-server.ts';
 import type { StreamServerEnvelope } from '../../control-plane/stream-protocol.ts';
 import { SqliteEventStore } from '../../store/event-store.ts';
+import { StorageLifecycleCore } from '../../storage/storage-lifecycle-core.ts';
 import { TerminalSnapshotOracle } from '../../terminal/snapshot-oracle.ts';
 import type { PtyExit } from '../../pty/pty_host.ts';
 import { computeDualPaneLayout } from '../../mux/dual-pane-core.ts';
@@ -884,6 +885,20 @@ class CodexLiveMuxRuntimeApplication {
       'mux.directory.close': [],
     });
     const store = new SqliteEventStore(options.storePath);
+    const storageLifecycle = new StorageLifecycleCore({
+      eventStore: {
+        pruneEventsOlderThan: (cutoffTs, limit) => store.pruneEventsOlderThan(cutoffTs, limit),
+        checkpointWalTruncate: () => {
+          store.checkpointWalTruncate();
+        },
+        compactFreelistPages: (maxPages) => {
+          store.compactFreelistPages(maxPages);
+        },
+        runOnlineCopyForwardCompactionStep: (batchSize, finalizeTailRows) =>
+          store.runOnlineCopyForwardCompactionStep(batchSize, finalizeTailRows),
+      },
+      writeStderr: (text) => process.stderr.write(text),
+    });
 
     let size = await readStartupTerminalSize();
     recordPerfEvent('mux.startup.terminal-size', {
@@ -2040,6 +2055,7 @@ class CodexLiveMuxRuntimeApplication {
       );
     let modalManager = createModalManager();
     let homePaneBackgroundTimer: ReturnType<typeof setInterval> | null = null;
+    let storageLifecycleTimer: ReturnType<typeof setInterval> | null = null;
     const ptySizeByConversationId = new Map<string, { cols: number; rows: number }>();
 
     const requestStop = (): void => {
@@ -2494,7 +2510,10 @@ class CodexLiveMuxRuntimeApplication {
     startupOrchestrator.startBackgroundProbe();
 
     const eventPersistence = new EventPersistence({
-      appendEvents: (events) => store.appendEvents(events),
+      appendEvents: (events) => {
+        const prepared = storageLifecycle.prepareEventBatch(events);
+        store.appendEvents(prepared);
+      },
       startPerfSpan,
       writeStderr: (text) => process.stderr.write(text),
     });
@@ -2513,6 +2532,13 @@ class CodexLiveMuxRuntimeApplication {
       markDirty();
     }, HOME_PANE_BACKGROUND_INTERVAL_MS);
     homePaneBackgroundTimer.unref?.();
+    storageLifecycleTimer = setInterval(() => {
+      if (shuttingDown) {
+        return;
+      }
+      storageLifecycle.runMaintenanceTick();
+    }, storageLifecycle.policy().maintenanceIntervalMs);
+    storageLifecycleTimer.unref?.();
 
     const runtimeLayoutResize = new RuntimeLayoutResizeEngine<ConversationState>({
       getSize: () => size,
@@ -4923,6 +4949,12 @@ class CodexLiveMuxRuntimeApplication {
         if (homePaneBackgroundTimer !== null) {
           clearInterval(homePaneBackgroundTimer);
           homePaneBackgroundTimer = null;
+        }
+      },
+      clearStorageLifecycleTimer: () => {
+        if (storageLifecycleTimer !== null) {
+          clearInterval(storageLifecycleTimer);
+          storageLifecycleTimer = null;
         }
       },
       clearProjectPaneGitHubReviewRefreshTimer: () => {

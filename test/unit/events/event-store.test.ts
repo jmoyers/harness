@@ -41,8 +41,38 @@ void test('event store stamps schema version during initialization', () => {
   try {
     const row = db.prepare('PRAGMA user_version;').get() as Record<string, unknown>;
     assert.equal(row['user_version'], 1);
+    const autoVacuum = db.prepare('PRAGMA auto_vacuum;').get() as Record<string, unknown>;
+    assert.equal(autoVacuum['auto_vacuum'], 2);
   } finally {
     db.close();
+    rmSync(dirPath, { recursive: true, force: true });
+  }
+});
+
+void test('event store upgrades legacy sqlite file to incremental auto-vacuum', () => {
+  const dirPath = mkdtempSync(join(tmpdir(), 'harness-event-auto-vacuum-migrate-'));
+  const dbPath = join(dirPath, 'events.sqlite');
+  const bootstrap = new DatabaseSync(dbPath);
+  bootstrap.exec(`
+    CREATE TABLE legacy_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      value TEXT NOT NULL
+    );
+  `);
+  bootstrap.exec(`INSERT INTO legacy_records (value) VALUES ('legacy');`);
+  const before = bootstrap.prepare('PRAGMA auto_vacuum;').get() as Record<string, unknown>;
+  assert.equal(before['auto_vacuum'], 0);
+  bootstrap.close();
+
+  const store = new SqliteEventStore(dbPath);
+  store.close();
+
+  const verification = new DatabaseSync(dbPath);
+  try {
+    const autoVacuum = verification.prepare('PRAGMA auto_vacuum;').get() as Record<string, unknown>;
+    assert.equal(autoVacuum['auto_vacuum'], 2);
+  } finally {
+    verification.close();
     rmSync(dirPath, { recursive: true, force: true });
   }
 });
@@ -189,6 +219,229 @@ void test('event store writes are transactional and rollback on duplicate event 
     assert.equal(after[0]?.event.eventId, 'event-1');
   } finally {
     store.close();
+  }
+});
+
+void test('event store prunes rows older than cutoff in bounded batches', () => {
+  const store = new SqliteEventStore(':memory:');
+  try {
+    store.appendEvents([
+      createNormalizedEvent(
+        'provider',
+        'provider-thread-started',
+        makeScope(),
+        { kind: 'thread', threadId: 'thread-1' },
+        () => new Date('2026-02-14T03:00:00.000Z'),
+        () => 'prune-event-1',
+      ),
+      createNormalizedEvent(
+        'provider',
+        'provider-thread-started',
+        makeScope(),
+        { kind: 'thread', threadId: 'thread-1' },
+        () => new Date('2026-02-14T03:00:01.000Z'),
+        () => 'prune-event-2',
+      ),
+      createNormalizedEvent(
+        'provider',
+        'provider-thread-started',
+        makeScope(),
+        { kind: 'thread', threadId: 'thread-1' },
+        () => new Date('2026-02-14T03:00:02.000Z'),
+        () => 'prune-event-3',
+      ),
+    ]);
+
+    const cutoff = '2026-02-14T03:00:02.000Z';
+    assert.equal(store.countEventsOlderThan(cutoff), 2);
+    assert.equal(store.pruneEventsOlderThan(cutoff, 1), 1);
+    assert.equal(store.countEventsOlderThan(cutoff), 1);
+    assert.equal(store.pruneEventsOlderThan(cutoff, 100), 1);
+    assert.equal(store.countEventsOlderThan(cutoff), 0);
+
+    const remaining = store.listEvents({
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      limit: 10,
+    });
+    assert.equal(remaining.length, 1);
+    assert.equal(remaining[0]?.event.eventId, 'prune-event-3');
+  } finally {
+    store.close();
+  }
+});
+
+void test('event store checkpoint and compact hooks are callable', () => {
+  const dirPath = mkdtempSync(join(tmpdir(), 'harness-sqlite-compact-'));
+  const dbPath = join(dirPath, 'events.sqlite');
+  const store = new SqliteEventStore(dbPath);
+  try {
+    store.checkpointWalTruncate();
+    store.compactFreelistPages(16);
+  } finally {
+    store.close();
+    rmSync(dirPath, { recursive: true, force: true });
+  }
+});
+
+void test('event store copy-forward compaction remains idle until pruning frees rows', () => {
+  const dirPath = mkdtempSync(join(tmpdir(), 'harness-event-copy-forward-idle-'));
+  const dbPath = join(dirPath, 'events.sqlite');
+  const store = new SqliteEventStore(dbPath);
+  try {
+    store.appendEvents([
+      createThreadEvent(makeScope(), 'copy-forward-idle-1'),
+      createThreadEvent(makeScope(), 'copy-forward-idle-2'),
+    ]);
+    const step = store.runOnlineCopyForwardCompactionStep(1, 1);
+    assert.deepEqual(step, {
+      state: 'idle',
+      copiedRows: 0,
+    });
+  } finally {
+    store.close();
+    rmSync(dirPath, { recursive: true, force: true });
+  }
+});
+
+void test('event store copy-forward compaction runs in bounded steps and preserves cursor continuity', () => {
+  const dirPath = mkdtempSync(join(tmpdir(), 'harness-event-copy-forward-live-'));
+  const dbPath = join(dirPath, 'events.sqlite');
+  const store = new SqliteEventStore(dbPath);
+  try {
+    const scope = makeScope();
+    const events = Array.from({ length: 9 }, (_, index) =>
+      createNormalizedEvent(
+        'provider',
+        'provider-thread-started',
+        scope,
+        { kind: 'thread', threadId: 'thread-1' },
+        () => new Date(`2026-02-14T03:00:${String(index).padStart(2, '0')}.000Z`),
+        () => `copy-forward-event-${String(index + 1)}`,
+      ),
+    );
+    store.appendEvents(events);
+    assert.equal(store.pruneEventsOlderThan('2026-02-14T03:00:02.000Z', 10), 2);
+
+    const first = store.runOnlineCopyForwardCompactionStep(2, 2);
+    const second = store.runOnlineCopyForwardCompactionStep(2, 2);
+    const third = store.runOnlineCopyForwardCompactionStep(2, 2);
+
+    assert.deepEqual(first, {
+      state: 'copying',
+      copiedRows: 2,
+    });
+    assert.deepEqual(second, {
+      state: 'copying',
+      copiedRows: 2,
+    });
+    assert.deepEqual(third, {
+      state: 'finalized',
+      copiedRows: 3,
+    });
+
+    const remaining = store.listEvents({
+      tenantId: scope.tenantId,
+      userId: scope.userId,
+      limit: 20,
+    });
+    assert.equal(remaining.length, 7);
+    assert.equal(remaining[0]?.event.eventId, 'copy-forward-event-3');
+    assert.equal(remaining[0]?.rowId, 3);
+
+    store.appendEvents([
+      createNormalizedEvent(
+        'provider',
+        'provider-thread-started',
+        scope,
+        { kind: 'thread', threadId: 'thread-1' },
+        () => new Date('2026-02-14T03:00:10.000Z'),
+        () => 'copy-forward-event-10',
+      ),
+    ]);
+    const appended = store.listEvents({
+      tenantId: scope.tenantId,
+      userId: scope.userId,
+      afterRowId: 9,
+      limit: 10,
+    });
+    assert.equal(appended.length, 1);
+    assert.equal(appended[0]?.event.eventId, 'copy-forward-event-10');
+  } finally {
+    store.close();
+    rmSync(dirPath, { recursive: true, force: true });
+  }
+});
+
+void test('event store copy-forward compaction recovers after forced copy failure', () => {
+  const dirPath = mkdtempSync(join(tmpdir(), 'harness-event-copy-forward-failure-'));
+  const dbPath = join(dirPath, 'events.sqlite');
+  const store = new SqliteEventStore(dbPath);
+  const internals = store as unknown as {
+    db: {
+      prepare: (sql: string) => {
+        run: (...args: unknown[]) => unknown;
+        get: (...args: unknown[]) => unknown;
+        all: (...args: unknown[]) => unknown[];
+      };
+    };
+  };
+  try {
+    const scope = makeScope();
+    store.appendEvents([
+      createNormalizedEvent(
+        'provider',
+        'provider-thread-started',
+        scope,
+        { kind: 'thread', threadId: 'thread-1' },
+        () => new Date('2026-02-14T03:00:00.000Z'),
+        () => 'copy-forward-failure-1',
+      ),
+      createNormalizedEvent(
+        'provider',
+        'provider-thread-started',
+        scope,
+        { kind: 'thread', threadId: 'thread-1' },
+        () => new Date('2026-02-14T03:00:01.000Z'),
+        () => 'copy-forward-failure-2',
+      ),
+      createNormalizedEvent(
+        'provider',
+        'provider-thread-started',
+        scope,
+        { kind: 'thread', threadId: 'thread-1' },
+        () => new Date('2026-02-14T03:00:02.000Z'),
+        () => 'copy-forward-failure-3',
+      ),
+    ]);
+    assert.equal(store.pruneEventsOlderThan('2026-02-14T03:00:01.000Z', 10), 1);
+
+    const originalPrepare = internals.db.prepare.bind(internals.db);
+    internals.db.prepare = ((sql: string) => {
+      if (sql.includes('INSERT INTO events_compaction_shadow')) {
+        return {
+          run: () => {
+            throw new Error('forced-event-copy-failure');
+          },
+          get: () => undefined,
+          all: () => [],
+        };
+      }
+      return originalPrepare(sql);
+    }) as typeof internals.db.prepare;
+
+    assert.throws(
+      () => store.runOnlineCopyForwardCompactionStep(2, 2),
+      /forced-event-copy-failure/,
+    );
+
+    internals.db.prepare = originalPrepare;
+    const recovered = store.runOnlineCopyForwardCompactionStep(10, 10);
+    assert.equal(recovered.state, 'finalized');
+    assert.equal(recovered.copiedRows, 2);
+  } finally {
+    store.close();
+    rmSync(dirPath, { recursive: true, force: true });
   }
 });
 

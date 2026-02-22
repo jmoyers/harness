@@ -277,6 +277,31 @@ Test anchors:
 - `test/control-plane-stream-server*.test.ts`
 - `test/control-plane-agent-realtime-api*.test.ts`
 
+## Storage Lifecycle
+
+Behavior fragments:
+
+- Event/telemetry write guardrails run before persistence.
+- Rolling-window pruning runs online on a maintenance tick while sessions remain live.
+- Rolling-window compaction runs online in bounded copy-forward steps after prune churn.
+- Event and telemetry storage maintenance is coordinated through one module.
+- Existing SQLite files are upgraded on open to incremental auto-vacuum mode (best-effort).
+
+Owners:
+
+- `src/storage/storage-lifecycle-core.ts`
+- `src/store/event-store.ts`
+- `src/store/control-plane-store.ts`
+- `src/control-plane/stream-server.ts`
+- `src/mux/runtime-app/codex-live-mux-runtime.ts`
+
+Test anchors:
+
+- `test/unit/storage/storage-lifecycle-core.test.ts`
+- `test/unit/events/event-store.test.ts`
+- `test/unit/control-plane/control-plane-store.test.ts`
+- `test/unit/control-plane/control-plane-stream-server.test.ts`
+
 ## Maintenance Rule
 
 When behavior changes:

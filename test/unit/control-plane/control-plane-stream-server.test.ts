@@ -428,6 +428,80 @@ void test('stream server marks state store closed and halts background polling o
   }
 });
 
+void test('stream server runs storage lifecycle maintenance ticks while server is live', async () => {
+  const storePath = makeTempStateStorePath();
+  const stateStore = new SqliteControlPlaneStore(storePath);
+  const internals = stateStore as unknown as {
+    pruneTelemetryOlderThan: (cutoffIngestedAt: string, limit: number) => number;
+    checkpointWalTruncate: () => void;
+    compactFreelistPages: (maxPages: number) => void;
+    runOnlineCopyForwardCompactionStep: (
+      batchSize: number,
+      finalizeTailRows: number,
+    ) => {
+      state: 'idle' | 'copying' | 'finalized';
+      copiedRows: number;
+    };
+  };
+  const originalPrune = internals.pruneTelemetryOlderThan.bind(internals);
+  const originalCheckpoint = internals.checkpointWalTruncate.bind(internals);
+  const originalCompact = internals.compactFreelistPages.bind(internals);
+  const originalCopyForward = internals.runOnlineCopyForwardCompactionStep.bind(internals);
+  let pruneCalls = 0;
+  let checkpointCalls = 0;
+  let compactCalls = 0;
+  let copyForwardCalls = 0;
+  internals.pruneTelemetryOlderThan = (cutoffIngestedAt, limit) => {
+    pruneCalls += 1;
+    return originalPrune(cutoffIngestedAt, limit);
+  };
+  internals.checkpointWalTruncate = () => {
+    checkpointCalls += 1;
+    originalCheckpoint();
+  };
+  internals.compactFreelistPages = (maxPages) => {
+    compactCalls += 1;
+    originalCompact(maxPages);
+  };
+  internals.runOnlineCopyForwardCompactionStep = (batchSize, finalizeTailRows) => {
+    copyForwardCalls += 1;
+    return originalCopyForward(batchSize, finalizeTailRows);
+  };
+
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input),
+    stateStore,
+    storageLifecyclePolicy: {
+      maintenanceIntervalMs: 25,
+      telemetryRetentionMs: 1,
+      pruneBatchSize: 10,
+    },
+  });
+
+  try {
+    stateStore.appendTelemetry({
+      source: 'otlp-log',
+      sessionId: 'session-storage-lifecycle-maintenance',
+      providerThreadId: null,
+      eventName: 'maintenance-candidate',
+      severity: null,
+      summary: null,
+      observedAt: '2026-02-21T00:00:00.000Z',
+      payload: {},
+      fingerprint: 'stream-server-maintenance-telemetry',
+    });
+    await delay(120);
+    assert.equal(pruneCalls > 0, true);
+    assert.equal(checkpointCalls > 0, true);
+    assert.equal(compactCalls > 0, true);
+    assert.equal(copyForwardCalls > 0, true);
+  } finally {
+    await server.close();
+    stateStore.close();
+    rmSync(dirname(storePath), { recursive: true, force: true });
+  }
+});
+
 void test('stream server lists cached directory git status snapshots for startup hydration', async () => {
   const workspace = mkdtempSync(join(tmpdir(), 'harness-git-status-list-'));
   const server = await startControlPlaneStreamServer({

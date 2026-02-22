@@ -87,6 +87,11 @@ import { closeOwnedStateStore as closeOwnedStreamServerStateStore } from './stre
 import { SessionStatusEngine } from './status/session-status-engine.ts';
 import { SessionPromptEngine } from './prompt/session-prompt-engine.ts';
 import {
+  StorageLifecycleCore,
+  type StorageLifecyclePolicy,
+  type StorageLifecycleTelemetryStore,
+} from '../storage/storage-lifecycle-core.ts';
+import {
   appendThreadTitlePromptHistory,
   createAnthropicThreadTitleNamer,
   fallbackThreadTitleFromPromptHistory,
@@ -318,6 +323,7 @@ interface StartControlPlaneStreamServerOptions {
   lifecycleHooks?: HarnessLifecycleHooksConfig;
   threadTitle?: Partial<ThreadTitleConfig>;
   threadTitleNamer?: ThreadTitleNamer;
+  storageLifecyclePolicy?: Partial<StorageLifecyclePolicy>;
 }
 
 interface ConnectionState {
@@ -440,6 +446,48 @@ interface DirectoryGitStatusCacheEntry {
 interface OtlpEndpointTarget {
   readonly kind: 'logs' | 'metrics' | 'traces';
   readonly token: string;
+}
+
+function asTelemetryLifecycleStore(value: unknown): StorageLifecycleTelemetryStore | null {
+  if (typeof value !== 'object' || value === null) {
+    return null;
+  }
+  const candidate = value as Record<string, unknown>;
+  const prune = candidate['pruneTelemetryOlderThan'];
+  const checkpoint = candidate['checkpointWalTruncate'];
+  const compact = candidate['compactFreelistPages'];
+  const copyForward = candidate['runOnlineCopyForwardCompactionStep'];
+  if (
+    typeof prune !== 'function' ||
+    typeof checkpoint !== 'function' ||
+    typeof compact !== 'function'
+  ) {
+    return null;
+  }
+  return {
+    pruneTelemetryOlderThan: (cutoffIngestedAt, limit) =>
+      (prune as (cutoffIngestedAt: string, limit: number) => number)(cutoffIngestedAt, limit),
+    checkpointWalTruncate: () => {
+      (checkpoint as () => void)();
+    },
+    compactFreelistPages: (maxPages) => {
+      (compact as (maxPages: number) => void)(maxPages);
+    },
+    ...(typeof copyForward !== 'function'
+      ? {}
+      : {
+          runOnlineCopyForwardCompactionStep: (batchSize: number, finalizeTailRows: number) =>
+            (
+              copyForward as (
+                batchSize: number,
+                finalizeTailRows: number,
+              ) => {
+                readonly state: 'idle' | 'copying' | 'finalized';
+                readonly copiedRows: number;
+              }
+            )(batchSize, finalizeTailRows),
+        }),
+  };
 }
 
 function isTelemetryRequestAbortError(error: unknown): boolean {
@@ -1205,6 +1253,7 @@ export class ControlPlaneStreamServer {
   private telemetryAddress: AddressInfo | null = null;
   private readonly telemetryTokenToSessionId = new Map<string, string>();
   private readonly lifecycleHooks: LifecycleHooksRuntime;
+  private readonly storageLifecycle: StorageLifecycleCore;
   private historyPollTimer: NodeJS.Timeout | null = null;
   private historyPollInFlight = false;
   private historyIdleStreak = 0;
@@ -1218,6 +1267,7 @@ export class ControlPlaneStreamServer {
   private gitStatusPollInFlight = false;
   private githubPollInFlight = false;
   private githubPollPromise: Promise<void> | null = null;
+  private storageLifecycleTimer: NodeJS.Timeout | null = null;
   private readonly gitStatusRefreshInFlightDirectoryIds = new Set<string>();
   private readonly gitStatusByDirectoryId = new Map<string, DirectoryGitStatusCacheEntry>();
   private readonly gitStatusDirectoriesById = new Map<string, ControlPlaneDirectoryRecord>();
@@ -1321,6 +1371,15 @@ export class ControlPlaneStreamServer {
     this.telemetryServer = this.codexTelemetry.enabled
       ? createHttpServer(this.handleTelemetryHttpRequest.bind(this))
       : null;
+    this.storageLifecycle = new StorageLifecycleCore({
+      telemetryStore: asTelemetryLifecycleStore(this.stateStore),
+      ...(options.storageLifecyclePolicy === undefined
+        ? {}
+        : {
+            policy: options.storageLifecyclePolicy,
+          }),
+      writeStderr: (text) => process.stderr.write(text),
+    });
   }
 
   async start(): Promise<void> {
@@ -1351,6 +1410,7 @@ export class ControlPlaneStreamServer {
     this.startHistoryPollingIfEnabled();
     this.startGitStatusPollingIfEnabled();
     this.startGitHubPollingIfEnabled();
+    this.startStorageLifecyclePolling();
   }
 
   address(): AddressInfo {
@@ -1377,6 +1437,7 @@ export class ControlPlaneStreamServer {
     this.stopHistoryPolling();
     this.stopGitStatusPolling();
     this.stopGitHubPolling();
+    this.stopStorageLifecyclePolling();
     await this.waitForGitHubPollingToSettle();
 
     for (const sessionId of [...this.sessions.keys()]) {
@@ -1486,6 +1547,28 @@ export class ControlPlaneStreamServer {
     this.historyPollTimer = null;
     this.historyIdleStreak = 0;
     this.historyNextAllowedPollAtMs = 0;
+  }
+
+  private startStorageLifecyclePolling(): void {
+    if (this.storageLifecycleTimer !== null) {
+      return;
+    }
+    const intervalMs = this.storageLifecycle.policy().maintenanceIntervalMs;
+    this.storageLifecycleTimer = setInterval(() => {
+      if (this.shouldSkipStateStoreWork()) {
+        return;
+      }
+      this.storageLifecycle.runMaintenanceTick();
+    }, intervalMs);
+    this.storageLifecycleTimer.unref();
+  }
+
+  private stopStorageLifecyclePolling(): void {
+    if (this.storageLifecycleTimer === null) {
+      return;
+    }
+    clearInterval(this.storageLifecycleTimer);
+    this.storageLifecycleTimer = null;
   }
 
   private startGitStatusPollingIfEnabled(): void {
@@ -1634,6 +1717,7 @@ export class ControlPlaneStreamServer {
     this.stopGitHubPolling();
     this.stopGitStatusPolling();
     this.stopHistoryPolling();
+    this.stopStorageLifecyclePolling();
     return true;
   }
 
@@ -2217,6 +2301,7 @@ export class ControlPlaneStreamServer {
       observedAt: event.observedAt,
       payload: event.payload,
     });
+    const persistedPayload = this.storageLifecycle.prepareTelemetryPayload(event.payload);
 
     const inserted = this.stateStore.appendTelemetry({
       source: event.source,
@@ -2226,7 +2311,7 @@ export class ControlPlaneStreamServer {
       severity: event.severity,
       summary: event.summary,
       observedAt: event.observedAt,
-      payload: event.payload,
+      payload: persistedPayload,
       fingerprint,
     });
     if (resolvedSessionId !== null) {

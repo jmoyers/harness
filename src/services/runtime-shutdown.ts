@@ -11,6 +11,7 @@ export interface RuntimeShutdownServiceOptions {
   readonly clearResizeTimer: () => void;
   readonly clearPtyResizeTimer: () => void;
   readonly clearHomePaneBackgroundTimer: () => void;
+  readonly clearStorageLifecycleTimer: () => void;
   readonly clearProjectPaneGitHubReviewRefreshTimer: () => void;
   readonly persistMuxUiStateNow: () => void;
   readonly clearConversationTitleEditTimer: () => void;
@@ -52,6 +53,7 @@ export async function finalizeRuntimeShutdown(
   options.clearResizeTimer();
   options.clearPtyResizeTimer();
   options.clearHomePaneBackgroundTimer();
+  options.clearStorageLifecycleTimer();
   options.clearProjectPaneGitHubReviewRefreshTimer();
   options.persistMuxUiStateNow();
   options.clearConversationTitleEditTimer();
@@ -63,7 +65,6 @@ export async function finalizeRuntimeShutdown(
   await options.unsubscribeTaskPlanningEvents();
   await options.closeKeyEventSubscription();
   options.clearRuntimeFatalExitTimer();
-
   try {
     await options.waitForControlPlaneDrain();
     await options.controlPlaneClient.close();

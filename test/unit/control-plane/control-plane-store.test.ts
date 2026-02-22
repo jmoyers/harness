@@ -81,6 +81,56 @@ void test('control-plane store fails closed when sqlite schema version is newer 
   rmSync(dirname(storePath), { recursive: true, force: true });
 });
 
+void test('control-plane store enables incremental auto-vacuum for fresh databases', () => {
+  const storePath = tempStorePath();
+  const store = new SqliteControlPlaneStore(storePath);
+  store.close();
+
+  const verification = new DatabaseSync(storePath);
+  try {
+    const autoVacuumRow = verification.prepare('PRAGMA auto_vacuum;').get() as Record<
+      string,
+      unknown
+    >;
+    assert.equal(autoVacuumRow['auto_vacuum'], 2);
+  } finally {
+    verification.close();
+    rmSync(storePath, { force: true });
+    rmSync(dirname(storePath), { recursive: true, force: true });
+  }
+});
+
+void test('control-plane store upgrades legacy sqlite file to incremental auto-vacuum', () => {
+  const storePath = tempStorePath();
+  const bootstrap = new DatabaseSync(storePath);
+  bootstrap.exec(`
+    CREATE TABLE legacy_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      value TEXT NOT NULL
+    );
+  `);
+  bootstrap.exec(`INSERT INTO legacy_records (value) VALUES ('legacy');`);
+  const before = bootstrap.prepare('PRAGMA auto_vacuum;').get() as Record<string, unknown>;
+  assert.equal(before['auto_vacuum'], 0);
+  bootstrap.close();
+
+  const store = new SqliteControlPlaneStore(storePath);
+  store.close();
+
+  const verification = new DatabaseSync(storePath);
+  try {
+    const autoVacuumRow = verification.prepare('PRAGMA auto_vacuum;').get() as Record<
+      string,
+      unknown
+    >;
+    assert.equal(autoVacuumRow['auto_vacuum'], 2);
+  } finally {
+    verification.close();
+    rmSync(storePath, { force: true });
+    rmSync(dirname(storePath), { recursive: true, force: true });
+  }
+});
+
 void test('control-plane store upserts directories and persists conversations/runtime', () => {
   const storePath = tempStorePath();
   const store = new SqliteControlPlaneStore(storePath);
@@ -480,6 +530,275 @@ void test('control-plane store persists telemetry, deduplicates fingerprints, an
     assert.deepEqual(store.listTelemetryForSession('missing-conversation', 5), []);
   } finally {
     store.close();
+  }
+});
+
+void test('control-plane telemetry prune uses ingested_at cutoff and bounded batches', () => {
+  const store = new SqliteControlPlaneStore(':memory:');
+  const internals = store as unknown as {
+    db: {
+      prepare: (sql: string) => {
+        run: (...args: unknown[]) => unknown;
+      };
+    };
+  };
+  try {
+    store.appendTelemetry({
+      source: 'otlp-log',
+      sessionId: 'conversation-prune',
+      providerThreadId: null,
+      eventName: 'event-1',
+      severity: null,
+      summary: null,
+      observedAt: '2026-02-15T00:00:00.000Z',
+      payload: {},
+      fingerprint: 'fingerprint-prune-1',
+    });
+    store.appendTelemetry({
+      source: 'otlp-log',
+      sessionId: 'conversation-prune',
+      providerThreadId: null,
+      eventName: 'event-2',
+      severity: null,
+      summary: null,
+      observedAt: '2026-02-15T00:00:01.000Z',
+      payload: {},
+      fingerprint: 'fingerprint-prune-2',
+    });
+    store.appendTelemetry({
+      source: 'otlp-log',
+      sessionId: 'conversation-prune',
+      providerThreadId: null,
+      eventName: 'event-3',
+      severity: null,
+      summary: null,
+      observedAt: '2026-02-15T00:00:02.000Z',
+      payload: {},
+      fingerprint: 'fingerprint-prune-3',
+    });
+
+    const updateIngestedAt = internals.db.prepare(
+      'UPDATE session_telemetry SET ingested_at = ? WHERE fingerprint = ?',
+    );
+    updateIngestedAt.run('2026-02-15T00:00:00.000Z', 'fingerprint-prune-1');
+    updateIngestedAt.run('2026-02-15T00:00:01.000Z', 'fingerprint-prune-2');
+    updateIngestedAt.run('2026-02-15T00:00:02.000Z', 'fingerprint-prune-3');
+
+    const cutoff = '2026-02-15T00:00:02.000Z';
+    assert.equal(store.countTelemetryOlderThan(cutoff), 2);
+    assert.equal(store.pruneTelemetryOlderThan(cutoff, 1), 1);
+    assert.equal(store.countTelemetryOlderThan(cutoff), 1);
+    assert.equal(store.pruneTelemetryOlderThan(cutoff, 100), 1);
+    assert.equal(store.countTelemetryOlderThan(cutoff), 0);
+    assert.equal(store.listTelemetryForSession('conversation-prune', 10).length, 1);
+
+    store.checkpointWalTruncate();
+    store.compactFreelistPages(8);
+  } finally {
+    store.close();
+  }
+});
+
+void test('control-plane telemetry copy-forward compaction remains idle until pruning frees rows', () => {
+  const storePath = tempStorePath();
+  const store = new SqliteControlPlaneStore(storePath);
+  try {
+    store.appendTelemetry({
+      source: 'otlp-log',
+      sessionId: 'conversation-copy-forward-idle',
+      providerThreadId: null,
+      eventName: 'event',
+      severity: null,
+      summary: null,
+      observedAt: '2026-02-15T00:00:00.000Z',
+      payload: {},
+      fingerprint: 'telemetry-copy-forward-idle-1',
+    });
+    const step = store.runOnlineCopyForwardCompactionStep(1, 1);
+    assert.deepEqual(step, {
+      state: 'idle',
+      copiedRows: 0,
+    });
+  } finally {
+    store.close();
+    rmSync(storePath, { force: true });
+    rmSync(dirname(storePath), { recursive: true, force: true });
+  }
+});
+
+void test('control-plane telemetry copy-forward compaction runs in bounded steps and preserves cursor continuity', () => {
+  const storePath = tempStorePath();
+  const store = new SqliteControlPlaneStore(storePath);
+  const internals = store as unknown as {
+    db: {
+      prepare: (sql: string) => {
+        run: (...args: unknown[]) => unknown;
+        all: (...args: unknown[]) => unknown[];
+        get: (...args: unknown[]) => unknown;
+      };
+    };
+  };
+  try {
+    for (let index = 0; index < 9; index += 1) {
+      store.appendTelemetry({
+        source: 'otlp-log',
+        sessionId: 'conversation-copy-forward-live',
+        providerThreadId: null,
+        eventName: `event-${String(index + 1)}`,
+        severity: null,
+        summary: null,
+        observedAt: `2026-02-15T00:00:${String(index).padStart(2, '0')}.000Z`,
+        payload: {},
+        fingerprint: `telemetry-copy-forward-live-${String(index + 1)}`,
+      });
+    }
+
+    const updateIngestedAt = internals.db.prepare(
+      'UPDATE session_telemetry SET ingested_at = ? WHERE fingerprint = ?',
+    );
+    for (let index = 0; index < 9; index += 1) {
+      updateIngestedAt.run(
+        `2026-02-15T00:00:${String(index).padStart(2, '0')}.000Z`,
+        `telemetry-copy-forward-live-${String(index + 1)}`,
+      );
+    }
+    assert.equal(store.pruneTelemetryOlderThan('2026-02-15T00:00:02.000Z', 10), 2);
+
+    const first = store.runOnlineCopyForwardCompactionStep(2, 2);
+    const second = store.runOnlineCopyForwardCompactionStep(2, 2);
+    const third = store.runOnlineCopyForwardCompactionStep(2, 2);
+
+    assert.deepEqual(first, {
+      state: 'copying',
+      copiedRows: 2,
+    });
+    assert.deepEqual(second, {
+      state: 'copying',
+      copiedRows: 2,
+    });
+    assert.deepEqual(third, {
+      state: 'finalized',
+      copiedRows: 3,
+    });
+
+    const telemetryRows = internals.db
+      .prepare(
+        `
+        SELECT telemetry_id, fingerprint
+        FROM session_telemetry
+        ORDER BY telemetry_id ASC
+      `,
+      )
+      .all()
+      .map((row) => row as Record<string, unknown>);
+    assert.equal(telemetryRows.length, 7);
+    assert.equal(telemetryRows[0]?.telemetry_id, 3);
+    assert.equal(telemetryRows[0]?.fingerprint, 'telemetry-copy-forward-live-3');
+
+    store.appendTelemetry({
+      source: 'otlp-log',
+      sessionId: 'conversation-copy-forward-live',
+      providerThreadId: null,
+      eventName: 'event-10',
+      severity: null,
+      summary: null,
+      observedAt: '2026-02-15T00:00:10.000Z',
+      payload: {},
+      fingerprint: 'telemetry-copy-forward-live-10',
+    });
+    const lastIdRow = internals.db
+      .prepare('SELECT MAX(telemetry_id) AS telemetry_id FROM session_telemetry')
+      .get() as Record<string, unknown>;
+    assert.equal(lastIdRow['telemetry_id'], 10);
+  } finally {
+    store.close();
+    rmSync(storePath, { force: true });
+    rmSync(dirname(storePath), { recursive: true, force: true });
+  }
+});
+
+void test('control-plane telemetry copy-forward compaction recovers after forced copy failure', () => {
+  const storePath = tempStorePath();
+  const store = new SqliteControlPlaneStore(storePath);
+  const internals = store as unknown as {
+    db: {
+      prepare: (sql: string) => {
+        run: (...args: unknown[]) => unknown;
+        get: (...args: unknown[]) => unknown;
+        all: (...args: unknown[]) => unknown[];
+      };
+    };
+  };
+  try {
+    store.appendTelemetry({
+      source: 'otlp-log',
+      sessionId: 'conversation-copy-forward-failure',
+      providerThreadId: null,
+      eventName: 'event-1',
+      severity: null,
+      summary: null,
+      observedAt: '2026-02-15T00:00:00.000Z',
+      payload: {},
+      fingerprint: 'telemetry-copy-forward-failure-1',
+    });
+    store.appendTelemetry({
+      source: 'otlp-log',
+      sessionId: 'conversation-copy-forward-failure',
+      providerThreadId: null,
+      eventName: 'event-2',
+      severity: null,
+      summary: null,
+      observedAt: '2026-02-15T00:00:01.000Z',
+      payload: {},
+      fingerprint: 'telemetry-copy-forward-failure-2',
+    });
+    store.appendTelemetry({
+      source: 'otlp-log',
+      sessionId: 'conversation-copy-forward-failure',
+      providerThreadId: null,
+      eventName: 'event-3',
+      severity: null,
+      summary: null,
+      observedAt: '2026-02-15T00:00:02.000Z',
+      payload: {},
+      fingerprint: 'telemetry-copy-forward-failure-3',
+    });
+
+    const updateIngestedAt = internals.db.prepare(
+      'UPDATE session_telemetry SET ingested_at = ? WHERE fingerprint = ?',
+    );
+    updateIngestedAt.run('2026-02-15T00:00:00.000Z', 'telemetry-copy-forward-failure-1');
+    updateIngestedAt.run('2026-02-15T00:00:01.000Z', 'telemetry-copy-forward-failure-2');
+    updateIngestedAt.run('2026-02-15T00:00:02.000Z', 'telemetry-copy-forward-failure-3');
+    assert.equal(store.pruneTelemetryOlderThan('2026-02-15T00:00:01.000Z', 10), 1);
+
+    const originalPrepare = internals.db.prepare.bind(internals.db);
+    internals.db.prepare = ((sql: string) => {
+      if (sql.includes('INSERT INTO session_telemetry_compaction_shadow')) {
+        return {
+          run: () => {
+            throw new Error('forced-telemetry-copy-failure');
+          },
+          get: () => undefined,
+          all: () => [],
+        };
+      }
+      return originalPrepare(sql);
+    }) as typeof internals.db.prepare;
+
+    assert.throws(
+      () => store.runOnlineCopyForwardCompactionStep(2, 2),
+      /forced-telemetry-copy-failure/,
+    );
+
+    internals.db.prepare = originalPrepare;
+    const recovered = store.runOnlineCopyForwardCompactionStep(10, 10);
+    assert.equal(recovered.state, 'finalized');
+    assert.equal(recovered.copiedRows, 2);
+  } finally {
+    store.close();
+    rmSync(storePath, { force: true });
+    rmSync(dirname(storePath), { recursive: true, force: true });
   }
 });
 

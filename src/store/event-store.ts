@@ -31,7 +31,22 @@ interface PersistedEvent {
   event: NormalizedEventEnvelope;
 }
 
+interface OnlineCopyForwardCompactionStepResult {
+  readonly state: 'idle' | 'copying' | 'finalized';
+  readonly copiedRows: number;
+}
+
 const EVENT_STORE_SCHEMA_VERSION = 1;
+const EVENT_COMPACTION_SHADOW_TABLE = 'events_compaction_shadow';
+const EVENT_COMPACTION_OLD_TABLE = 'events_compaction_old';
+
+function sqliteStatementChanges(value: unknown): number {
+  if (typeof value !== 'object' || value === null) {
+    return 0;
+  }
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.changes === 'number' ? candidate.changes : 0;
+}
 
 function asObject(value: unknown): Record<string, unknown> {
   if (typeof value !== 'object' || value === null) {
@@ -98,12 +113,18 @@ export function normalizeStoredRow(value: unknown): {
 
 export class SqliteEventStore {
   private readonly db: DatabaseSync;
+  private readonly inMemory: boolean;
+  private copyForwardRequested = false;
+  private copyForwardActive = false;
+  private copyForwardCursorRowId = 0;
 
   constructor(filePath = ':memory:') {
     const dbPath = this.preparePath(filePath);
+    this.inMemory = dbPath === ':memory:';
     this.db = new DatabaseSync(dbPath);
     this.configureConnection();
     this.initializeSchema();
+    this.ensureIncrementalAutoVacuumMode();
   }
 
   close(): void {
@@ -215,6 +236,128 @@ export class SqliteEventStore {
     });
   }
 
+  pruneEventsOlderThan(cutoffTs: string, limit = 1000): number {
+    const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.floor(limit)) : 1000;
+    const result = this.db
+      .prepare(
+        `
+        DELETE FROM events
+        WHERE row_id IN (
+          SELECT row_id
+          FROM events
+          WHERE ts < ?
+          ORDER BY row_id ASC
+          LIMIT ?
+        )
+      `,
+      )
+      .run(cutoffTs, safeLimit);
+    const changes = sqliteStatementChanges(result);
+    if (changes > 0) {
+      this.copyForwardRequested = true;
+    }
+    return changes;
+  }
+
+  countEventsOlderThan(cutoffTs: string): number {
+    const row = this.db
+      .prepare(
+        `
+        SELECT COUNT(*) AS count
+        FROM events
+        WHERE ts < ?
+      `,
+      )
+      .get(cutoffTs);
+    const asRow = asObject(row);
+    return asNumber(asRow.count, 'count');
+  }
+
+  checkpointWalTruncate(): void {
+    this.db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
+  }
+
+  compactFreelistPages(maxPages: number): void {
+    const safeMaxPages = Number.isFinite(maxPages) ? Math.max(1, Math.floor(maxPages)) : 1;
+    this.db.exec(`PRAGMA incremental_vacuum(${String(safeMaxPages)});`);
+  }
+
+  runOnlineCopyForwardCompactionStep(
+    batchSize = 5000,
+    finalizeTailRows = 1200,
+  ): OnlineCopyForwardCompactionStepResult {
+    if (this.inMemory) {
+      return {
+        state: 'idle',
+        copiedRows: 0,
+      };
+    }
+
+    const safeBatchSize = Number.isFinite(batchSize) ? Math.max(1, Math.floor(batchSize)) : 5000;
+    const safeFinalizeTailRows = Number.isFinite(finalizeTailRows)
+      ? Math.max(1, Math.floor(finalizeTailRows))
+      : 1200;
+
+    this.db.exec('BEGIN IMMEDIATE TRANSACTION');
+    try {
+      if (!this.copyForwardActive) {
+        if (!this.copyForwardRequested) {
+          this.db.exec('COMMIT');
+          return {
+            state: 'idle',
+            copiedRows: 0,
+          };
+        }
+        if (this.countTotalEventRows() === 0) {
+          this.copyForwardRequested = false;
+          this.db.exec('COMMIT');
+          return {
+            state: 'idle',
+            copiedRows: 0,
+          };
+        }
+        this.resetCompactionShadowTable();
+        this.copyForwardActive = true;
+        this.copyForwardCursorRowId = 0;
+      }
+
+      const copiedRows = this.copyCompactionBatch(this.copyForwardCursorRowId, safeBatchSize);
+      if (copiedRows > 0) {
+        this.copyForwardCursorRowId = this.readCompactionShadowCursorRowId();
+      }
+
+      const remainingRows = this.countEventsAfterRowId(this.copyForwardCursorRowId);
+      if (remainingRows > safeFinalizeTailRows) {
+        this.db.exec('COMMIT');
+        return {
+          state: 'copying',
+          copiedRows,
+        };
+      }
+
+      const finalizedTailCopiedRows = this.copyCompactionBatch(
+        this.copyForwardCursorRowId,
+        safeFinalizeTailRows,
+      );
+      if (finalizedTailCopiedRows > 0) {
+        this.copyForwardCursorRowId = this.readCompactionShadowCursorRowId();
+      }
+      this.swapInCompactionShadowTable();
+      this.copyForwardRequested = false;
+      this.copyForwardActive = false;
+      this.copyForwardCursorRowId = 0;
+      this.db.exec('COMMIT');
+      return {
+        state: 'finalized',
+        copiedRows: copiedRows + finalizedTailCopiedRows,
+      };
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      this.resetCompactionStateAfterFailure();
+      throw error;
+    }
+  }
+
   private initializeSchema(): void {
     this.db.exec('BEGIN IMMEDIATE TRANSACTION');
     try {
@@ -273,9 +416,139 @@ export class SqliteEventStore {
   }
 
   private configureConnection(): void {
+    this.db.exec('PRAGMA auto_vacuum = INCREMENTAL;');
     this.db.exec('PRAGMA journal_mode = WAL;');
     this.db.exec('PRAGMA synchronous = NORMAL;');
     this.db.exec('PRAGMA busy_timeout = 2000;');
+  }
+
+  private ensureIncrementalAutoVacuumMode(): void {
+    if (this.inMemory) {
+      return;
+    }
+    const modeRow = this.db.prepare('PRAGMA auto_vacuum;').get();
+    const mode = asNumber(asObject(modeRow).auto_vacuum, 'auto_vacuum');
+    if (mode === 2) {
+      return;
+    }
+    try {
+      this.db.exec('PRAGMA auto_vacuum = INCREMENTAL;');
+      this.db.exec('VACUUM;');
+    } catch {
+      // Best-effort migration only; maintenance can still run without mode flip.
+    }
+  }
+
+  private countTotalEventRows(): number {
+    const row = this.db.prepare('SELECT COUNT(*) AS count FROM events;').get();
+    return asNumber(asObject(row).count, 'count');
+  }
+
+  private countEventsAfterRowId(rowId: number): number {
+    const row = this.db
+      .prepare('SELECT COUNT(*) AS count FROM events WHERE row_id > ?;')
+      .get(rowId);
+    return asNumber(asObject(row).count, 'count');
+  }
+
+  private copyCompactionBatch(afterRowId: number, limit: number): number {
+    const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.floor(limit)) : 1;
+    const result = this.db
+      .prepare(
+        `
+        INSERT INTO ${EVENT_COMPACTION_SHADOW_TABLE} (
+          row_id,
+          tenant_id,
+          user_id,
+          workspace_id,
+          worktree_id,
+          conversation_id,
+          turn_id,
+          event_id,
+          source,
+          event_type,
+          ts,
+          payload_json
+        )
+        SELECT
+          row_id,
+          tenant_id,
+          user_id,
+          workspace_id,
+          worktree_id,
+          conversation_id,
+          turn_id,
+          event_id,
+          source,
+          event_type,
+          ts,
+          payload_json
+        FROM events
+        WHERE row_id > ?
+        ORDER BY row_id ASC
+        LIMIT ?
+      `,
+      )
+      .run(afterRowId, safeLimit);
+    return sqliteStatementChanges(result);
+  }
+
+  private readCompactionShadowCursorRowId(): number {
+    const row = this.db
+      .prepare(
+        `
+        SELECT row_id
+        FROM ${EVENT_COMPACTION_SHADOW_TABLE}
+        ORDER BY row_id DESC
+        LIMIT 1
+      `,
+      )
+      .get();
+    if (row === undefined) {
+      return 0;
+    }
+    return asNumber(asObject(row).row_id, 'row_id');
+  }
+
+  private resetCompactionShadowTable(): void {
+    this.db.exec(`DROP TABLE IF EXISTS ${EVENT_COMPACTION_SHADOW_TABLE};`);
+    this.db.exec(`
+      CREATE TABLE ${EVENT_COMPACTION_SHADOW_TABLE} (
+        row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tenant_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        worktree_id TEXT NOT NULL,
+        conversation_id TEXT NOT NULL,
+        turn_id TEXT,
+        event_id TEXT NOT NULL UNIQUE,
+        source TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        ts TEXT NOT NULL,
+        payload_json TEXT NOT NULL
+      );
+    `);
+  }
+
+  private swapInCompactionShadowTable(): void {
+    this.db.exec('DROP INDEX IF EXISTS idx_events_scope_cursor;');
+    this.db.exec(`ALTER TABLE events RENAME TO ${EVENT_COMPACTION_OLD_TABLE};`);
+    this.db.exec(`ALTER TABLE ${EVENT_COMPACTION_SHADOW_TABLE} RENAME TO events;`);
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_events_scope_cursor
+      ON events (tenant_id, user_id, conversation_id, row_id);
+    `);
+    this.db.exec(`DROP TABLE ${EVENT_COMPACTION_OLD_TABLE};`);
+  }
+
+  private resetCompactionStateAfterFailure(): void {
+    this.copyForwardActive = false;
+    this.copyForwardCursorRowId = 0;
+    try {
+      this.db.exec(`DROP TABLE IF EXISTS ${EVENT_COMPACTION_SHADOW_TABLE};`);
+    } catch {
+      // Best-effort cleanup only.
+    }
   }
 
   private preparePath(filePath: string): string {

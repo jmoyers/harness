@@ -365,15 +365,28 @@ interface ListGitHubSyncStateQuery {
 }
 
 const CONTROL_PLANE_SCHEMA_VERSION = 1;
+const TELEMETRY_COMPACTION_SHADOW_TABLE = 'session_telemetry_compaction_shadow';
+const TELEMETRY_COMPACTION_OLD_TABLE = 'session_telemetry_compaction_old';
+
+interface OnlineCopyForwardCompactionStepResult {
+  readonly state: 'idle' | 'copying' | 'finalized';
+  readonly copiedRows: number;
+}
 
 export class SqliteControlPlaneStore {
   private readonly db: DatabaseSync;
+  private readonly inMemory: boolean;
+  private telemetryCopyForwardRequested = false;
+  private telemetryCopyForwardActive = false;
+  private telemetryCopyForwardCursorRowId = 0;
 
   constructor(filePath = ':memory:') {
     const resolvedPath = this.preparePath(filePath);
+    this.inMemory = resolvedPath === ':memory:';
     this.db = new DatabaseSync(resolvedPath);
     this.configureConnection();
     this.initializeSchema();
+    this.ensureIncrementalAutoVacuumMode();
   }
 
   close(): void {
@@ -891,6 +904,135 @@ export class SqliteControlPlaneStore {
         input.fingerprint,
       );
     return sqliteStatementChanges(result) > 0;
+  }
+
+  pruneTelemetryOlderThan(cutoffIngestedAt: string, limit = 1000): number {
+    const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.floor(limit)) : 1000;
+    const result = this.db
+      .prepare(
+        `
+        DELETE FROM session_telemetry
+        WHERE telemetry_id IN (
+          SELECT telemetry_id
+          FROM session_telemetry
+          WHERE ingested_at < ?
+          ORDER BY telemetry_id ASC
+          LIMIT ?
+        )
+      `,
+      )
+      .run(cutoffIngestedAt, safeLimit);
+    const changes = sqliteStatementChanges(result);
+    if (changes > 0) {
+      this.telemetryCopyForwardRequested = true;
+    }
+    return changes;
+  }
+
+  countTelemetryOlderThan(cutoffIngestedAt: string): number {
+    const row = this.db
+      .prepare(
+        `
+        SELECT COUNT(*) AS count
+        FROM session_telemetry
+        WHERE ingested_at < ?
+      `,
+      )
+      .get(cutoffIngestedAt);
+    if (row === undefined) {
+      return 0;
+    }
+    const asRow = asRecord(row);
+    const count = asNumberOrNull(asRow.count, 'count');
+    return count ?? 0;
+  }
+
+  checkpointWalTruncate(): void {
+    this.db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
+  }
+
+  compactFreelistPages(maxPages: number): void {
+    const safeMaxPages = Number.isFinite(maxPages) ? Math.max(1, Math.floor(maxPages)) : 1;
+    this.db.exec(`PRAGMA incremental_vacuum(${String(safeMaxPages)});`);
+  }
+
+  runOnlineCopyForwardCompactionStep(
+    batchSize = 5000,
+    finalizeTailRows = 1200,
+  ): OnlineCopyForwardCompactionStepResult {
+    if (this.inMemory) {
+      return {
+        state: 'idle',
+        copiedRows: 0,
+      };
+    }
+
+    const safeBatchSize = Number.isFinite(batchSize) ? Math.max(1, Math.floor(batchSize)) : 5000;
+    const safeFinalizeTailRows = Number.isFinite(finalizeTailRows)
+      ? Math.max(1, Math.floor(finalizeTailRows))
+      : 1200;
+
+    this.db.exec('BEGIN IMMEDIATE TRANSACTION');
+    try {
+      if (!this.telemetryCopyForwardActive) {
+        if (!this.telemetryCopyForwardRequested) {
+          this.db.exec('COMMIT');
+          return {
+            state: 'idle',
+            copiedRows: 0,
+          };
+        }
+        if (this.countTotalTelemetryRows() === 0) {
+          this.telemetryCopyForwardRequested = false;
+          this.db.exec('COMMIT');
+          return {
+            state: 'idle',
+            copiedRows: 0,
+          };
+        }
+        this.resetTelemetryCompactionShadowTable();
+        this.telemetryCopyForwardActive = true;
+        this.telemetryCopyForwardCursorRowId = 0;
+      }
+
+      const copiedRows = this.copyTelemetryCompactionBatch(
+        this.telemetryCopyForwardCursorRowId,
+        safeBatchSize,
+      );
+      if (copiedRows > 0) {
+        this.telemetryCopyForwardCursorRowId = this.readTelemetryCompactionShadowCursorRowId();
+      }
+
+      const remainingRows = this.countTelemetryRowsAfterId(this.telemetryCopyForwardCursorRowId);
+      if (remainingRows > safeFinalizeTailRows) {
+        this.db.exec('COMMIT');
+        return {
+          state: 'copying',
+          copiedRows,
+        };
+      }
+
+      const finalizedTailCopiedRows = this.copyTelemetryCompactionBatch(
+        this.telemetryCopyForwardCursorRowId,
+        safeFinalizeTailRows,
+      );
+      if (finalizedTailCopiedRows > 0) {
+        this.telemetryCopyForwardCursorRowId = this.readTelemetryCompactionShadowCursorRowId();
+      }
+      this.swapInTelemetryCompactionShadowTable();
+      this.telemetryCopyForwardRequested = false;
+      this.telemetryCopyForwardActive = false;
+      this.telemetryCopyForwardCursorRowId = 0;
+      this.db.exec('COMMIT');
+      return {
+        state: 'finalized',
+        copiedRows: copiedRows + finalizedTailCopiedRows,
+      };
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      this.resetTelemetryCompactionStateAfterFailure();
+      throw error;
+    }
   }
 
   latestTelemetrySummary(sessionId: string): ControlPlaneTelemetrySummary | null {
@@ -2962,9 +3104,150 @@ export class SqliteControlPlaneStore {
   }
 
   private configureConnection(): void {
+    this.db.exec('PRAGMA auto_vacuum = INCREMENTAL;');
     this.db.exec('PRAGMA journal_mode = WAL;');
     this.db.exec('PRAGMA synchronous = NORMAL;');
     this.db.exec('PRAGMA busy_timeout = 2000;');
+  }
+
+  private ensureIncrementalAutoVacuumMode(): void {
+    if (this.inMemory) {
+      return;
+    }
+    const modeRow = this.db.prepare('PRAGMA auto_vacuum;').get();
+    if (modeRow === undefined) {
+      return;
+    }
+    const mode = asNumberOrNull(asRecord(modeRow).auto_vacuum, 'auto_vacuum');
+    if (mode === 2) {
+      return;
+    }
+    try {
+      this.db.exec('PRAGMA auto_vacuum = INCREMENTAL;');
+      this.db.exec('VACUUM;');
+    } catch {
+      // Best-effort migration only; maintenance can still run without mode flip.
+    }
+  }
+
+  private countTotalTelemetryRows(): number {
+    const row = this.db.prepare('SELECT COUNT(*) AS count FROM session_telemetry;').get();
+    if (row === undefined) {
+      return 0;
+    }
+    return asNumberOrNull(asRecord(row).count, 'count') ?? 0;
+  }
+
+  private countTelemetryRowsAfterId(telemetryId: number): number {
+    const row = this.db
+      .prepare('SELECT COUNT(*) AS count FROM session_telemetry WHERE telemetry_id > ?;')
+      .get(telemetryId);
+    if (row === undefined) {
+      return 0;
+    }
+    return asNumberOrNull(asRecord(row).count, 'count') ?? 0;
+  }
+
+  private copyTelemetryCompactionBatch(afterTelemetryId: number, limit: number): number {
+    const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.floor(limit)) : 1;
+    const result = this.db
+      .prepare(
+        `
+        INSERT INTO ${TELEMETRY_COMPACTION_SHADOW_TABLE} (
+          telemetry_id,
+          source,
+          session_id,
+          provider_thread_id,
+          event_name,
+          severity,
+          summary,
+          observed_at,
+          ingested_at,
+          payload_json,
+          fingerprint
+        )
+        SELECT
+          telemetry_id,
+          source,
+          session_id,
+          provider_thread_id,
+          event_name,
+          severity,
+          summary,
+          observed_at,
+          ingested_at,
+          payload_json,
+          fingerprint
+        FROM session_telemetry
+        WHERE telemetry_id > ?
+        ORDER BY telemetry_id ASC
+        LIMIT ?
+      `,
+      )
+      .run(afterTelemetryId, safeLimit);
+    return sqliteStatementChanges(result);
+  }
+
+  private readTelemetryCompactionShadowCursorRowId(): number {
+    const row = this.db
+      .prepare(
+        `
+        SELECT telemetry_id
+        FROM ${TELEMETRY_COMPACTION_SHADOW_TABLE}
+        ORDER BY telemetry_id DESC
+        LIMIT 1
+      `,
+      )
+      .get();
+    if (row === undefined) {
+      return 0;
+    }
+    return asNumberOrNull(asRecord(row).telemetry_id, 'telemetry_id') ?? 0;
+  }
+
+  private resetTelemetryCompactionShadowTable(): void {
+    this.db.exec(`DROP TABLE IF EXISTS ${TELEMETRY_COMPACTION_SHADOW_TABLE};`);
+    this.db.exec(`
+      CREATE TABLE ${TELEMETRY_COMPACTION_SHADOW_TABLE} (
+        telemetry_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source TEXT NOT NULL,
+        session_id TEXT,
+        provider_thread_id TEXT,
+        event_name TEXT,
+        severity TEXT,
+        summary TEXT,
+        observed_at TEXT NOT NULL,
+        ingested_at TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        fingerprint TEXT NOT NULL UNIQUE
+      );
+    `);
+  }
+
+  private swapInTelemetryCompactionShadowTable(): void {
+    this.db.exec('DROP INDEX IF EXISTS idx_session_telemetry_session;');
+    this.db.exec('DROP INDEX IF EXISTS idx_session_telemetry_thread;');
+    this.db.exec(`ALTER TABLE session_telemetry RENAME TO ${TELEMETRY_COMPACTION_OLD_TABLE};`);
+    this.db.exec(`ALTER TABLE ${TELEMETRY_COMPACTION_SHADOW_TABLE} RENAME TO session_telemetry;`);
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_session_telemetry_session
+      ON session_telemetry (session_id, observed_at DESC, telemetry_id DESC);
+    `);
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_session_telemetry_thread
+      ON session_telemetry (provider_thread_id, observed_at DESC, telemetry_id DESC);
+    `);
+    this.db.exec(`DROP TABLE ${TELEMETRY_COMPACTION_OLD_TABLE};`);
+  }
+
+  private resetTelemetryCompactionStateAfterFailure(): void {
+    this.telemetryCopyForwardActive = false;
+    this.telemetryCopyForwardCursorRowId = 0;
+    try {
+      this.db.exec(`DROP TABLE IF EXISTS ${TELEMETRY_COMPACTION_SHADOW_TABLE};`);
+    } catch {
+      // Best-effort cleanup only.
+    }
   }
 
   private columnExists(table: string, column: string): boolean {

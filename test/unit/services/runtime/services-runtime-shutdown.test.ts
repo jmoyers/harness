@@ -42,6 +42,9 @@ function buildService(options?: {
     clearHomePaneBackgroundTimer: () => {
       calls.push('clearHomePaneBackgroundTimer');
     },
+    clearStorageLifecycleTimer: () => {
+      calls.push('clearStorageLifecycleTimer');
+    },
     clearProjectPaneGitHubReviewRefreshTimer: () => {
       calls.push('clearProjectPaneGitHubReviewRefreshTimer');
     },
@@ -147,6 +150,7 @@ void test('runtime shutdown service finalizes dependencies in order and forwards
     'clearResizeTimer',
     'clearPtyResizeTimer',
     'clearHomePaneBackgroundTimer',
+    'clearStorageLifecycleTimer',
     'clearProjectPaneGitHubReviewRefreshTimer',
     'persistMuxUiStateNow',
     'clearConversationTitleEditTimer',
@@ -188,6 +192,7 @@ void test('runtime shutdown service tolerates control-plane close failures and s
     'clearResizeTimer',
     'clearPtyResizeTimer',
     'clearHomePaneBackgroundTimer',
+    'clearStorageLifecycleTimer',
     'clearProjectPaneGitHubReviewRefreshTimer',
     'persistMuxUiStateNow',
     'clearConversationTitleEditTimer',
