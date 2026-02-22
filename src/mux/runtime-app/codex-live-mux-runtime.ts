@@ -219,7 +219,7 @@ import { createRuntimeTaskComposerPersistenceService } from '../../services/runt
 import { createRuntimeTaskPaneActions } from '../../services/runtime-task-pane-actions.ts';
 import { createRuntimeTaskPaneShortcuts } from '../../services/runtime-task-pane-shortcuts.ts';
 import { RuntimeProjectPaneGitHubReviewCacheEngine } from '../../services/runtime-project-pane-github-review-cache.ts';
-import { TaskPaneSelectionActions } from '../../services/task-pane-selection-actions.ts';
+import { createTaskPaneSelectionActions } from '../../services/task-pane-selection-actions.ts';
 import { createTaskPlanningHydrationService } from '../../services/task-planning-hydration.ts';
 import { TaskPlanningSyncedProjection } from '../../services/task-planning-observed-events.ts';
 import {
@@ -2729,7 +2729,7 @@ class CodexLiveMuxRuntimeApplication {
       return orderedActiveRepositoryRecords().map((repository) => repository.repositoryId);
     };
 
-    const taskPaneSelectionActions = new TaskPaneSelectionActions<ControlPlaneTaskRecord>({
+    const taskPaneSelectionActions = createTaskPaneSelectionActions<ControlPlaneTaskRecord>({
       workspace,
       taskRecordById: (taskId) => taskManager.getTask(taskId),
       hasTask: (taskId) => taskManager.hasTask(taskId),

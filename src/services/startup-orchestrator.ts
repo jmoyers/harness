@@ -1,7 +1,10 @@
 import type { ConversationState } from '../mux/live-mux/conversation-state.ts';
 import { StartupSequencer } from '../mux/startup-sequencer.ts';
 import { StartupBackgroundProbeService } from './startup-background-probe.ts';
-import { StartupBackgroundResumeService } from './startup-background-resume.ts';
+import {
+  createStartupBackgroundResumeService,
+  type StartupBackgroundResumeService,
+} from './startup-background-resume.ts';
 import { StartupOutputTracker } from './startup-output-tracker.ts';
 import { StartupPaintTracker } from './startup-paint-tracker.ts';
 import { StartupSettledGate } from './startup-settled-gate.ts';
@@ -10,7 +13,7 @@ import {
   type StartupShutdownServiceOptions,
 } from './startup-shutdown.ts';
 import { StartupSpanTracker } from './startup-span-tracker.ts';
-import { StartupVisibility } from './startup-visibility.ts';
+import { createStartupVisibility } from './startup-visibility.ts';
 
 type PerfAttrs = Record<string, boolean | number | string>;
 
@@ -61,7 +64,7 @@ export class StartupOrchestrator {
       options.startPerfSpan,
       options.startupSettleQuietMs,
     );
-    const startupVisibility = new StartupVisibility();
+    const startupVisibility = createStartupVisibility();
     const startupSettledGate = new StartupSettledGate({
       startupSequencer: this.startupSequencer,
       startupSpanTracker: this.startupSpanTracker,
@@ -91,7 +94,7 @@ export class StartupOrchestrator {
       refreshProcessUsage: options.refreshProcessUsage,
       recordPerfEvent: options.recordPerfEvent,
     });
-    this.startupBackgroundResumeService = new StartupBackgroundResumeService({
+    this.startupBackgroundResumeService = createStartupBackgroundResumeService({
       enabled: options.backgroundResumeEnabled,
       maxWaitMs: options.backgroundWaitMaxMs,
       waitForSettled: () => this.startupSequencer.waitForSettled(),

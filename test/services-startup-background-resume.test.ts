@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { StartupBackgroundResumeService } from '../src/services/startup-background-resume.ts';
+import { createStartupBackgroundResumeService } from '../src/services/startup-background-resume.ts';
 
 type TimeoutHandle = ReturnType<typeof setTimeout>;
 
 void test('startup background resume records wait and skip when disabled', async () => {
   const events: string[] = [];
   let queuedCalls = 0;
-  const service = new StartupBackgroundResumeService({
+  const service = createStartupBackgroundResumeService({
     enabled: false,
     maxWaitMs: 5000,
     waitForSettled: async () => {},
@@ -34,7 +34,7 @@ void test('startup background resume waits for settled and queues persisted conv
   const clearedTimeouts: TimeoutHandle[] = [];
   const queuedSessions: Array<string | null> = [];
   let timeoutHandleIndex = 0;
-  const service = new StartupBackgroundResumeService({
+  const service = createStartupBackgroundResumeService({
     enabled: true,
     maxWaitMs: 5000,
     waitForSettled: async () => {},
@@ -69,7 +69,7 @@ void test('startup background resume waits for settled and queues persisted conv
 
 void test('startup background resume timeout path marks timedOut true', async () => {
   const events: string[] = [];
-  const service = new StartupBackgroundResumeService({
+  const service = createStartupBackgroundResumeService({
     enabled: true,
     maxWaitMs: 5000,
     waitForSettled: () => new Promise<void>(() => {}),

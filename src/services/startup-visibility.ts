@@ -1,9 +1,12 @@
 import type { ConversationState } from '../mux/live-mux/conversation-state.ts';
 
-export class StartupVisibility {
-  constructor() {}
+export interface StartupVisibility {
+  visibleGlyphCellCount(conversation: ConversationState): number;
+  codexHeaderVisible(conversation: ConversationState): boolean;
+}
 
-  visibleGlyphCellCount(conversation: ConversationState): number {
+export function createStartupVisibility(): StartupVisibility {
+  function visibleGlyphCellCount(conversation: ConversationState): number {
     const frame = conversation.oracle.snapshotWithoutHash();
     let count = 0;
     for (const line of frame.richLines) {
@@ -16,7 +19,7 @@ export class StartupVisibility {
     return count;
   }
 
-  codexHeaderVisible(conversation: ConversationState): boolean {
+  function codexHeaderVisible(conversation: ConversationState): boolean {
     const frame = conversation.oracle.snapshotWithoutHash();
     const rows: string[] = [];
     for (const line of frame.richLines) {
@@ -32,4 +35,9 @@ export class StartupVisibility {
     const text = rows.join('\n');
     return text.includes('OpenAI Codex') && text.includes('model:') && text.includes('directory:');
   }
+
+  return {
+    visibleGlyphCellCount,
+    codexHeaderVisible,
+  };
 }

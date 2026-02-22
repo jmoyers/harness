@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { StartupVisibility } from '../src/services/startup-visibility.ts';
+import { createStartupVisibility } from '../src/services/startup-visibility.ts';
 import type { ConversationState } from '../src/mux/live-mux/conversation-state.ts';
 
 function createConversation(
@@ -21,7 +21,7 @@ function createConversation(
 }
 
 void test('startup visibility counts only visible non-empty glyph cells', () => {
-  const startupVisibility = new StartupVisibility();
+  const startupVisibility = createStartupVisibility();
   const conversation = createConversation([
     [{ glyph: 'A' }, { glyph: ' ', continued: false }, { glyph: 'B', continued: true }],
     [{ glyph: '\t' }, { glyph: 'C' }],
@@ -31,7 +31,7 @@ void test('startup visibility counts only visible non-empty glyph cells', () => 
 });
 
 void test('startup visibility detects codex header markers in visible text rows', () => {
-  const startupVisibility = new StartupVisibility();
+  const startupVisibility = createStartupVisibility();
   const conversation = createConversation([
     [{ glyph: 'OpenAI ' }, { glyph: 'Codex' }, { glyph: '!', continued: true }],
     [{ glyph: 'model: gpt-5' }, { glyph: '   ' }],
@@ -42,7 +42,7 @@ void test('startup visibility detects codex header markers in visible text rows'
 });
 
 void test('startup visibility header detection returns false when marker fields are missing', () => {
-  const startupVisibility = new StartupVisibility();
+  const startupVisibility = createStartupVisibility();
   const conversation = createConversation([
     [{ glyph: 'OpenAI Codex' }],
     [{ glyph: 'model: gpt-5' }],

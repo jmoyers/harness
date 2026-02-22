@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import { WorkspaceModel } from '../src/domain/workspace.ts';
-import { TaskPaneSelectionActions } from '../src/services/task-pane-selection-actions.ts';
+import {
+  createTaskPaneSelectionActions,
+  type TaskPaneSelectionActions,
+} from '../src/services/task-pane-selection-actions.ts';
 
 interface TaskRecord {
   readonly taskId: string;
@@ -45,10 +48,10 @@ function createActions(
     readonly onFlush?: (taskId: string) => void;
     readonly onMarkDirty?: () => void;
   },
-): TaskPaneSelectionActions<TaskRecord> {
+): TaskPaneSelectionActions {
   const tasks = options?.tasks ?? new Map<string, TaskRecord>();
   const repositories = options?.repositories ?? new Map<string, RepositoryRecord>();
-  return new TaskPaneSelectionActions<TaskRecord>({
+  return createTaskPaneSelectionActions<TaskRecord>({
     workspace,
     taskRecordById: (taskId) => tasks.get(taskId),
     hasTask: (taskId) => tasks.has(taskId),

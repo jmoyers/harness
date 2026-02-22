@@ -45,6 +45,9 @@
     - `directory-hydration`
     - `task-planning-hydration`
     - `startup-state-hydration`
+    - `startup-background-resume`
+    - `startup-visibility`
+    - `task-pane-selection-actions`
 - Keep only true state engines:
   - `RuntimeLayoutResizeEngine`
   - `RuntimeProjectPaneGitHubReviewCacheEngine`
