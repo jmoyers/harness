@@ -1104,6 +1104,9 @@ class CodexLiveMuxRuntimeApplication {
           ),
           codexTelemetry: loadedConfig.config.codex.telemetry,
           codexHistory: loadedConfig.config.codex.history,
+          codexLaunch: loadedConfig.config.codex.launch,
+          claudeLaunch: loadedConfig.config.claude.launch,
+          cursorLaunch: loadedConfig.config.cursor.launch,
           critique: loadedConfig.config.critique,
           agentInstall: {
             codex: loadedConfig.config.codex.install,

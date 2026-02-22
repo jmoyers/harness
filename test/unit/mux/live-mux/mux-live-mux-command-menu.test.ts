@@ -144,6 +144,27 @@ void test('command menu typed query uses normal score+alpha sorting with no type
   );
 });
 
+void test('command menu typed query ranks thread start actions above open-in actions at equal score', () => {
+  const actions = [
+    {
+      id: 'project.open-in.cursor.dir-1',
+      title: 'Open in Cursor: my-project',
+      aliases: ['cursor', 'cursor ide', 'editor', 'open project in', 'open in cursor'],
+      keywords: ['open', 'project', 'directory', 'path', 'cursor', 'editor', 'ide'],
+    },
+    {
+      id: 'thread.start.cursor',
+      title: 'Start Cursor thread',
+      aliases: ['cursor', 'cur', 'start cursor'],
+      keywords: ['start', 'thread', 'cursor', 'new'],
+    },
+  ] as const;
+
+  const matches = resolveCommandMenuMatches(actions, 'cursor', null);
+  assert.equal(matches[0]?.action.id, 'thread.start.cursor');
+  assert.equal(matches[1]?.action.id, 'project.open-in.cursor.dir-1');
+});
+
 void test('command menu action priority sorts higher-priority actions first', () => {
   const actions = [
     { id: 'thread.start.codex', title: 'Start Codex thread' },

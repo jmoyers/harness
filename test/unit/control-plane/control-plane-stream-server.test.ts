@@ -881,6 +881,13 @@ void test('stream server auto-starts persisted conversations during gateway star
     path: '/tmp/bootstrap-standard',
   });
   seededStore.upsertDirectory({
+    directoryId: 'directory-bootstrap-claude',
+    tenantId: 'tenant-bootstrap',
+    userId: 'user-bootstrap',
+    workspaceId: 'workspace-bootstrap',
+    path: '/tmp/bootstrap-claude',
+  });
+  seededStore.upsertDirectory({
     directoryId: 'directory-bootstrap-archived',
     tenantId: 'tenant-bootstrap',
     userId: 'user-bootstrap',
@@ -903,6 +910,17 @@ void test('stream server auto-starts persisted conversations during gateway star
     directoryId: 'directory-bootstrap-terminal',
     title: 'terminal bootstrap',
     agentType: 'terminal',
+  });
+  seededStore.createConversation({
+    conversationId: 'conversation-bootstrap-claude',
+    directoryId: 'directory-bootstrap-claude',
+    title: 'claude bootstrap',
+    agentType: 'claude',
+    adapterState: {
+      claude: {
+        resumeSessionId: 'session-bootstrap-claude',
+      },
+    },
   });
   seededStore.createConversation({
     conversationId: 'conversation-bootstrap-standard',
@@ -938,6 +956,10 @@ void test('stream server auto-starts persisted conversations during gateway star
         '/tmp/bootstrap-standard': 'standard',
       },
     },
+    claudeLaunch: {
+      defaultMode: 'yolo',
+      directoryModes: {},
+    },
     startSession: (input) => {
       const session = new FakeLiveSession(input);
       sessions.push(session);
@@ -950,7 +972,7 @@ void test('stream server auto-starts persisted conversations during gateway star
     port: address.port,
   });
   try {
-    assert.equal(sessions.length, 3);
+    assert.equal(sessions.length, 4);
     const codex = sessions.find((session) => session.input.cwd === '/tmp/bootstrap-codex');
     if (codex === undefined) {
       throw new Error('expected codex bootstrap session');
@@ -958,6 +980,14 @@ void test('stream server auto-starts persisted conversations during gateway star
     assert.deepEqual(codex.input.args, ['resume', 'thread-bootstrap-codex', '--yolo']);
     assert.equal(codex.input.initialCols, 80);
     assert.equal(codex.input.initialRows, 24);
+
+    const claude = sessions.find((session) => session.input.cwd === '/tmp/bootstrap-claude');
+    if (claude === undefined) {
+      throw new Error('expected claude bootstrap session');
+    }
+    assert.equal(claude.input.args.includes('--resume'), true);
+    assert.equal(claude.input.args.includes('session-bootstrap-claude'), true);
+    assert.equal(claude.input.args.includes('--dangerously-skip-permissions'), true);
 
     const standardCodex = sessions.find(
       (session) => session.input.cwd === '/tmp/bootstrap-standard',
@@ -993,8 +1023,9 @@ void test('stream server auto-starts persisted conversations during gateway star
       sort: 'started-asc',
     });
     const listedRows = listed['sessions'] as Array<Record<string, unknown>>;
-    assert.equal(listedRows.length, 3);
+    assert.equal(listedRows.length, 4);
     assert.deepEqual(listedRows.map((row) => row['sessionId']).sort(), [
+      'conversation-bootstrap-claude',
       'conversation-bootstrap-codex',
       'conversation-bootstrap-standard',
       'conversation-bootstrap-terminal',

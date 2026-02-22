@@ -174,6 +174,11 @@ interface CritiqueConfig {
   readonly launch: CritiqueLaunchConfig;
 }
 
+interface ClaudeLaunchConfig {
+  readonly defaultMode: 'yolo' | 'standard';
+  readonly directoryModes: Readonly<Record<string, 'yolo' | 'standard'>>;
+}
+
 interface CursorLaunchConfig {
   readonly defaultMode: 'yolo' | 'standard';
   readonly directoryModes: Readonly<Record<string, 'yolo' | 'standard'>>;
@@ -313,6 +318,7 @@ interface StartControlPlaneStreamServerOptions {
   codexTelemetry?: CodexTelemetryServerConfig;
   codexHistory?: CodexHistoryIngestConfig;
   codexLaunch?: CodexLaunchConfig;
+  claudeLaunch?: ClaudeLaunchConfig;
   critique?: CritiqueConfig;
   agentInstall?: Partial<Record<AgentToolType, AgentInstallCommandConfig>>;
   cursorLaunch?: CursorLaunchConfig;
@@ -769,6 +775,13 @@ function normalizeAgentInstallConfig(
     claude: normalized('claude'),
     cursor: normalized('cursor'),
     critique: normalized('critique'),
+  };
+}
+
+function normalizeClaudeLaunchConfig(input: ClaudeLaunchConfig | undefined): ClaudeLaunchConfig {
+  return {
+    defaultMode: input?.defaultMode ?? 'standard',
+    directoryModes: input?.directoryModes ?? {},
   };
 }
 
@@ -1234,6 +1247,7 @@ export class ControlPlaneStreamServer {
   private readonly codexTelemetry: CodexTelemetryServerConfig;
   private readonly codexHistory: CodexHistoryIngestConfig;
   private readonly codexLaunch: CodexLaunchConfig;
+  private readonly claudeLaunch: ClaudeLaunchConfig;
   private readonly critique: CritiqueConfig;
   private readonly agentInstall: AgentInstallConfig;
   private readonly cursorLaunch: CursorLaunchConfig;
@@ -1353,6 +1367,7 @@ export class ControlPlaneStreamServer {
     this.codexTelemetry = normalizeCodexTelemetryConfig(options.codexTelemetry);
     this.codexHistory = normalizeCodexHistoryConfig(options.codexHistory);
     this.codexLaunch = normalizeCodexLaunchConfig(options.codexLaunch);
+    this.claudeLaunch = normalizeClaudeLaunchConfig(options.claudeLaunch);
     this.critique = normalizeCritiqueConfig(options.critique);
     this.agentInstall = normalizeAgentInstallConfig(options.agentInstall);
     this.cursorLaunch = normalizeCursorLaunchConfig(options.cursorLaunch);
@@ -2039,6 +2054,8 @@ export class ControlPlaneStreamServer {
         directoryPath: directory?.path ?? null,
         codexLaunchDefaultMode: this.codexLaunch.defaultMode,
         codexLaunchModeByDirectoryPath: this.codexLaunch.directoryModes,
+        claudeLaunchDefaultMode: this.claudeLaunch.defaultMode,
+        claudeLaunchModeByDirectoryPath: this.claudeLaunch.directoryModes,
         cursorLaunchDefaultMode: this.cursorLaunch.defaultMode,
         cursorLaunchModeByDirectoryPath: this.cursorLaunch.directoryModes,
       });

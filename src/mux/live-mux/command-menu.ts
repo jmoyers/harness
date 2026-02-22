@@ -330,6 +330,10 @@ export function resolveCommandMenuMatches<TAction extends CommandMenuActionDescr
       if (left.score !== right.score) {
         return left.score - right.score;
       }
+      const groupCompare = initialGroupRank(left.action) - initialGroupRank(right.action);
+      if (groupCompare !== 0) {
+        return groupCompare;
+      }
       return left.action.title.localeCompare(right.action.title);
     });
   if (limit === null) {
