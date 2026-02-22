@@ -1,11 +1,11 @@
 import type { PtyExit } from '../pty/pty_host.ts';
-import { parseStreamSessionStatusModel } from '../core/contracts/records.ts';
-import type {
-  StreamSessionController,
-  StreamSessionControllerType,
-  StreamSessionRuntimeStatus,
-  StreamSessionStatusModel,
-  StreamTelemetrySummary,
+import {
+  parseStreamSessionStatusModel,
+  type StreamSessionController,
+  type StreamSessionControllerType,
+  type StreamSessionRuntimeStatus,
+  type StreamSessionStatusModel,
+  type StreamTelemetrySummary,
 } from './stream-protocol.ts';
 
 interface StreamSessionSummary {

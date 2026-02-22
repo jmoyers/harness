@@ -1,8 +1,8 @@
 import type { PtyExit } from '../pty/pty_host.ts';
 import { connectControlPlaneStreamClient, type ControlPlaneStreamClient } from './stream-client.ts';
 import { parseSessionSummaryList, parseSessionSummaryRecord } from './session-summary.ts';
-import { parseStreamSessionStatusModel } from '../core/contracts/records.ts';
 import {
+  parseStreamSessionStatusModel,
   type StreamCommand,
   type StreamObservedEvent,
   type StreamSessionController,

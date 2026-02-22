@@ -1,5 +1,5 @@
 import {
-  parseStreamSessionStatusModel as parseProtocolSessionStatusModel,
+  parseStreamSessionStatusModel,
   type StreamSessionController,
   type StreamSessionRuntimeStatus,
   type StreamSessionStatusModel,
@@ -124,12 +124,6 @@ function asObjectRecord(value: unknown): Record<string, unknown> | null {
     return null;
   }
   return value as Record<string, unknown>;
-}
-
-export function parseStreamSessionStatusModel(
-  value: unknown,
-): StreamSessionStatusModel | null | undefined {
-  return parseProtocolSessionStatusModel(value);
 }
 
 export function parseDirectoryRecord(value: unknown): ControlPlaneDirectoryRecord | null {
