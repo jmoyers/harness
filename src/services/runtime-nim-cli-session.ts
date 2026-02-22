@@ -50,6 +50,44 @@ function providerIdFromModel(model: NimModelRef): string {
   return model.slice(0, slash);
 }
 
+interface QueueTurnResultLine {
+  readonly queued: boolean;
+  readonly position?: number;
+  readonly reason?: string;
+}
+
+function parseQueueTurnResultLine(line: string): QueueTurnResultLine | null {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) {
+    return null;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed) as unknown;
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== 'object' || parsed === null) {
+    return null;
+  }
+  const record = parsed as Record<string, unknown>;
+  if (typeof record['queued'] !== 'boolean') {
+    return null;
+  }
+  const positionValue = record['position'];
+  const reasonValue = record['reason'];
+  const position =
+    typeof positionValue === 'number' && Number.isInteger(positionValue) && positionValue >= 0
+      ? positionValue
+      : undefined;
+  const reason = typeof reasonValue === 'string' && reasonValue.trim().length > 0 ? reasonValue : undefined;
+  return {
+    queued: record['queued'],
+    ...(position === undefined ? {} : { position }),
+    ...(reason === undefined ? {} : { reason }),
+  };
+}
+
 function normalizePtyExit(value: unknown): PtyExit | null {
   if (typeof value !== 'object' || value === null) {
     return null;
@@ -83,8 +121,10 @@ export class RuntimeNimCliSession {
   private status: NimSessionStatus = 'idle';
   private uiMode: RuntimeNimViewModel['uiMode'] = 'debug';
   private composerText = '';
+  private queuedCount = 0;
   private transcriptLines: string[] = [];
   private activeRunId: string | null = null;
+  private pendingDirectRunStarts = 0;
 
   constructor(private readonly options: RuntimeNimCliSessionOptions) {
     this.startPtySessionImpl = options.startPtySession ?? startPtySession;
@@ -189,7 +229,7 @@ export class RuntimeNimCliSession {
       status: this.status,
       uiMode: this.uiMode,
       composerText: this.composerText,
-      queuedCount: 0,
+      queuedCount: this.queuedCount,
       activeRunId: this.activeRunId,
       transcriptLines: this.transcriptLines,
       assistantDraftText: '',
@@ -236,6 +276,7 @@ export class RuntimeNimCliSession {
     if (message.length === 0 || this.session === null) {
       return;
     }
+    this.pendingDirectRunStarts += 1;
     this.session.write(`${message}\n`);
   }
 
@@ -305,6 +346,11 @@ export class RuntimeNimCliSession {
       const runId = line.slice('run started '.length).trim();
       this.activeRunId = runId.length > 0 ? runId : null;
       this.status = 'thinking';
+      if (this.pendingDirectRunStarts > 0) {
+        this.pendingDirectRunStarts -= 1;
+      } else if (this.queuedCount > 0) {
+        this.queuedCount = Math.max(0, this.queuedCount - 1);
+      }
       this.pushTranscriptLine(line);
       return;
     }
@@ -337,6 +383,25 @@ export class RuntimeNimCliSession {
     if (line.startsWith('[error]')) {
       this.status = 'idle';
       this.activeRunId = null;
+      this.pendingDirectRunStarts = 0;
+    }
+    const queuedTurnResult = parseQueueTurnResultLine(line);
+    if (queuedTurnResult !== null) {
+      if (queuedTurnResult.queued) {
+        const nextQueuedCount =
+          queuedTurnResult.position === undefined ? this.queuedCount + 1 : queuedTurnResult.position + 1;
+        this.queuedCount = Math.max(this.queuedCount, nextQueuedCount);
+        this.pushTranscriptLine(
+          `[notice] queued turn position=${String(
+            queuedTurnResult.position === undefined ? this.queuedCount - 1 : queuedTurnResult.position,
+          )}`,
+        );
+        return;
+      }
+      this.pushTranscriptLine(
+        `[notice] queue rejected${queuedTurnResult.reason === undefined ? '' : ` reason=${queuedTurnResult.reason}`}`,
+      );
+      return;
     }
     this.pushTranscriptLine(line);
   }

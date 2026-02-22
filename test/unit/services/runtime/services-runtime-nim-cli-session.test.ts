@@ -70,7 +70,7 @@ test('runtime nim cli session starts subprocess, parses output, and updates view
   fake.emit(
     'data',
     Buffer.from(
-      '\u001b[0mnim tui ready session=s-123 model=mock/echo-v1 provider=mock\r\nrun started run-1\r\nrun completed completed\r\n',
+      '\u001b[0mnim tui ready session=s-123 model=mock/echo-v1 provider=mock\r\n{"queued":true,"position":0}\r\nrun started run-queue\r\nrun completed completed\r\n',
       'utf8',
     ),
   );
@@ -79,8 +79,10 @@ test('runtime nim cli session starts subprocess, parses output, and updates view
   assert.equal(view.sessionId, 's-123');
   assert.equal(view.status, 'idle');
   assert.equal(view.activeRunId, null);
+  assert.equal(view.queuedCount, 0);
   assert.equal(view.transcriptLines.some((line) => line.includes('nim subprocess ready')), true);
-  assert.equal(view.transcriptLines.some((line) => line.includes('run started run-1')), true);
+  assert.equal(view.transcriptLines.some((line) => line.includes('queued turn position=0')), true);
+  assert.equal(view.transcriptLines.some((line) => line.includes('run started run-queue')), true);
   assert.equal(view.transcriptLines.some((line) => line.includes('run completed completed')), true);
   assert.equal(dirtyEvents.length > 0, true);
 
@@ -150,5 +152,36 @@ test('runtime nim cli session preserves explicit /queue commands when tab is pre
   session.handleInputChunk('\t');
 
   assert.equal(fake.writes.includes('/queue high fix now\n'), true);
+  await session.dispose();
+});
+
+test('runtime nim cli session keeps queued count when direct send starts while queue is pending', async () => {
+  const fake = new FakePtySession();
+  const fakeStartPtySession = (() => {
+    return fake as unknown as ReturnType<StartPtySessionFn>;
+  }) as unknown as StartPtySessionFn;
+  const session = new RuntimeNimCliSession({
+    invocationDirectory: '/tmp/workspace',
+    tenantId: 'tenant-a',
+    userId: 'user-a',
+    markDirty: () => undefined,
+    sessionName: null,
+    model: 'mock/echo-v1',
+    useMock: true,
+    harnessScriptPath: '/tmp/harness.ts',
+    startPtySession: fakeStartPtySession,
+  });
+
+  await session.start();
+  session.handleInputChunk('run now');
+  session.handleInputChunk('\n');
+  fake.emit('data', Buffer.from('{"queued":true,"position":0}\n', 'utf8'));
+  assert.equal(session.snapshot().queuedCount, 1);
+
+  fake.emit('data', Buffer.from('run started run-direct\n', 'utf8'));
+  assert.equal(session.snapshot().queuedCount, 1);
+
+  fake.emit('data', Buffer.from('run started run-queued\n', 'utf8'));
+  assert.equal(session.snapshot().queuedCount, 0);
   await session.dispose();
 });
