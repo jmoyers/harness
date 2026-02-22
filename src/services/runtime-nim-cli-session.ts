@@ -88,6 +88,18 @@ function parseQueueTurnResultLine(line: string): QueueTurnResultLine | null {
   };
 }
 
+function parseQueueDepthLine(line: string): number | null {
+  const match = /^queue depth (\d+)$/u.exec(line.trim());
+  if (match === null) {
+    return null;
+  }
+  const parsed = Number.parseInt(match[1] ?? '', 10);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    return null;
+  }
+  return parsed;
+}
+
 function normalizePtyExit(value: unknown): PtyExit | null {
   if (typeof value !== 'object' || value === null) {
     return null;
@@ -373,7 +385,14 @@ export class RuntimeNimCliSession {
       if (sessionId.length > 0) {
         this.sessionId = sessionId;
       }
+      this.queuedCount = 0;
+      this.pendingDirectRunStarts = 0;
       this.pushTranscriptLine(`[notice] ${line}`);
+      return;
+    }
+    const queueDepth = parseQueueDepthLine(line);
+    if (queueDepth !== null) {
+      this.queuedCount = queueDepth;
       return;
     }
     if (line === 'frame:') {

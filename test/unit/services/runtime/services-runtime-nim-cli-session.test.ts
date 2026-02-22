@@ -185,3 +185,33 @@ test('runtime nim cli session keeps queued count when direct send starts while q
   assert.equal(session.snapshot().queuedCount, 0);
   await session.dispose();
 });
+
+test('runtime nim cli session applies explicit queue depth updates and resets on session switch', async () => {
+  const fake = new FakePtySession();
+  const fakeStartPtySession = (() => {
+    return fake as unknown as ReturnType<StartPtySessionFn>;
+  }) as unknown as StartPtySessionFn;
+  const session = new RuntimeNimCliSession({
+    invocationDirectory: '/tmp/workspace',
+    tenantId: 'tenant-a',
+    userId: 'user-a',
+    markDirty: () => undefined,
+    sessionName: null,
+    model: 'mock/echo-v1',
+    useMock: true,
+    harnessScriptPath: '/tmp/harness.ts',
+    startPtySession: fakeStartPtySession,
+  });
+
+  await session.start();
+  fake.emit('data', Buffer.from('queue depth 3\n', 'utf8'));
+  assert.equal(session.snapshot().queuedCount, 3);
+
+  fake.emit('data', Buffer.from('new session s-new\n', 'utf8'));
+  assert.equal(session.snapshot().sessionId, 's-new');
+  assert.equal(session.snapshot().queuedCount, 0);
+
+  fake.emit('data', Buffer.from('queue depth 2\n', 'utf8'));
+  assert.equal(session.snapshot().queuedCount, 2);
+  await session.dispose();
+});

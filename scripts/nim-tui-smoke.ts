@@ -11,6 +11,7 @@ import {
 } from '../packages/nim-core/src/index.ts';
 import { NimTestTuiController } from '../packages/nim-test-tui/src/index.ts';
 import type { NimUiMode } from '../packages/nim-ui-core/src/projection.ts';
+import type { NimEventEnvelope } from '../packages/nim-core/src/events.ts';
 
 type ParsedArgs = {
   readonly tenantId: string;
@@ -49,6 +50,25 @@ type Command =
   | { readonly type: 'switch-model'; readonly model: NimModelRef }
   | { readonly type: 'session-new' }
   | { readonly type: 'session-resume'; readonly sessionId: string };
+
+function queuedCountFromReplayEvents(events: readonly NimEventEnvelope[]): number {
+  let queuedCount = 0;
+  for (const event of events) {
+    if (event.type === 'turn.queue.enqueued') {
+      const position = event.queue_position;
+      if (typeof position === 'number' && Number.isInteger(position) && position >= 0) {
+        queuedCount = Math.max(queuedCount, position + 1);
+      } else {
+        queuedCount += 1;
+      }
+      continue;
+    }
+    if (event.type === 'turn.queue.dequeued') {
+      queuedCount = Math.max(0, queuedCount - 1);
+    }
+  }
+  return queuedCount;
+}
 
 function printUsage(): void {
   process.stdout.write(
@@ -483,12 +503,22 @@ async function runNimTuiInteractive(args: ParsedArgs): Promise<void> {
   let currentModel: NimModelRef = args.model;
   let uiMode: NimUiMode = args.uiMode;
   let currentSession: SessionHandle;
+  let queuedCount = 0;
+  let activeRunId: string | undefined;
+  let lastEventId: string | undefined;
   if (args.sessionId !== undefined) {
     currentSession = await runtime.resumeSession({
       tenantId: args.tenantId,
       userId: args.userId,
       sessionId: args.sessionId,
     });
+    const replay = await runtime.replayEvents({
+      tenantId: args.tenantId,
+      sessionId: currentSession.sessionId,
+    });
+    const last = replay.events[replay.events.length - 1];
+    lastEventId = last?.event_id;
+    queuedCount = queuedCountFromReplayEvents(replay.events);
   } else {
     currentSession = await runtime.startSession({
       tenantId: args.tenantId,
@@ -496,12 +526,10 @@ async function runNimTuiInteractive(args: ParsedArgs): Promise<void> {
       model: args.model,
     });
   }
-
-  let activeRunId: string | undefined;
-  let lastEventId: string | undefined;
   process.stdout.write(
     `nim tui ready session=${currentSession.sessionId} model=${currentModel} provider=${providerMode}\n`,
   );
+  process.stdout.write(`queue depth ${String(queuedCount)}\n`);
   if (!args.liveAnthropic) {
     process.stdout.write('nim tui note: running deterministic mock mode via --mock.\n');
   }
@@ -544,6 +572,7 @@ async function runNimTuiInteractive(args: ParsedArgs): Promise<void> {
               model: currentModel,
               uiMode: uiModeLabel(uiMode),
               activeRunId: activeRunId ?? null,
+              queuedCount,
               lastEventId: lastEventId ?? null,
             },
             null,
@@ -575,7 +604,9 @@ async function runNimTuiInteractive(args: ParsedArgs): Promise<void> {
         });
         activeRunId = undefined;
         lastEventId = undefined;
+        queuedCount = 0;
         process.stdout.write(`new session ${currentSession.sessionId}\n`);
+        process.stdout.write(`queue depth ${String(queuedCount)}\n`);
         continue;
       }
       if (command.type === 'session-resume') {
@@ -591,7 +622,9 @@ async function runNimTuiInteractive(args: ParsedArgs): Promise<void> {
         });
         const last = replay.events[replay.events.length - 1];
         lastEventId = last?.event_id;
+        queuedCount = queuedCountFromReplayEvents(replay.events);
         process.stdout.write(`resumed session ${currentSession.sessionId}\n`);
+        process.stdout.write(`queue depth ${String(queuedCount)}\n`);
         continue;
       }
       if (command.type === 'abort') {
@@ -612,7 +645,15 @@ async function runNimTuiInteractive(args: ParsedArgs): Promise<void> {
           text: command.text,
           priority: command.priority,
         });
+        if (queued.queued) {
+          if (typeof queued.position === 'number' && Number.isInteger(queued.position) && queued.position >= 0) {
+            queuedCount = Math.max(queuedCount, queued.position + 1);
+          } else {
+            queuedCount += 1;
+          }
+        }
         process.stdout.write(`${JSON.stringify(queued)}\n`);
+        process.stdout.write(`queue depth ${String(queuedCount)}\n`);
         continue;
       }
       if (command.type === 'steer') {
@@ -665,6 +706,10 @@ async function runNimTuiInteractive(args: ParsedArgs): Promise<void> {
         lastEventId = trace.lastEventId ?? lastEventId;
         activeRunId = undefined;
         process.stdout.write(`run completed ${turnResult.terminalState}\n`);
+        if (queuedCount > 0) {
+          queuedCount = Math.max(0, queuedCount - 1);
+          process.stdout.write(`queue depth ${String(queuedCount)}\n`);
+        }
         if (trace.frameLines.length > 0) {
           process.stdout.write('frame:\n');
           for (const lineItem of trace.frameLines) {
