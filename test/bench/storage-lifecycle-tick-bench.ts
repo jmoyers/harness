@@ -12,11 +12,10 @@ import {
   type NormalizedEventEnvelope,
 } from '../../src/events/normalized-events.ts';
 
-const BACKLOG_EVENT_COUNT = 20_000;
-const BACKLOG_TICK_ROUNDS = 40;
-const STEADY_STATE_ROUNDS = 20;
+const EVENT_COUNT = 20_000;
+const BATCH_INSERT_SIZE = 500;
+const STEADY_STATE_ROUNDS = 30;
 const STEADY_STATE_EVENTS_PER_TICK = 50;
-const BATCH_INSERT_SIZE = 200;
 
 function makeScope() {
   return {
@@ -48,29 +47,32 @@ function makeEvent(
 }
 
 function percentile(sorted: number[], p: number): number {
+  if (sorted.length === 0) return 0;
   const idx = Math.ceil((p / 100) * sorted.length) - 1;
   return sorted[Math.max(0, idx)]!;
 }
 
-function printSummary(label: string, durations: number[]): void {
-  durations.sort((a, b) => a - b);
-  console.log(`\n── ${label} ──`);
-  console.log(`  ticks: ${durations.length}`);
-  if (durations.length > 0) {
-    console.log(`  min:   ${durations[0]!.toFixed(2)} ms`);
-    console.log(`  p50:   ${percentile(durations, 50).toFixed(2)} ms`);
-    console.log(`  p95:   ${percentile(durations, 95).toFixed(2)} ms`);
-    console.log(`  p99:   ${percentile(durations, 99).toFixed(2)} ms`);
-    console.log(`  max:   ${durations[durations.length - 1]!.toFixed(2)} ms`);
-  }
+function fmt(ms: number): string {
+  return ms.toFixed(2).padStart(8);
 }
 
-function run() {
+interface ScenarioResult {
+  backlogTicks: number;
+  backlogDurations: number[];
+  backlogTotalPruned: number;
+  steadyDurations: number[];
+  idleDurations: number[];
+}
+
+function runScenario(
+  copyForwardBatchSize: number,
+  pruneBatchSize: number,
+): ScenarioResult {
   const dir = mkdtempSync(join(tmpdir(), 'harness-bench-lifecycle-'));
   const dbPath = join(dir, 'events.sqlite');
   const store = new SqliteEventStore(dbPath);
-
   const retentionMs = 60_000;
+  const intervalMs = 100;
   let clockMs = Date.now();
 
   const lifecycle = new StorageLifecycleCore({
@@ -89,57 +91,43 @@ function run() {
     policy: {
       ...DEFAULT_STORAGE_LIFECYCLE_POLICY,
       eventRetentionMs: retentionMs,
-      maintenanceIntervalMs: 1,
-      pruneBatchSize: 2000,
-      copyForwardBatchSize: 500,
-      copyForwardFinalizeTailRows: 1200,
+      maintenanceIntervalMs: intervalMs,
+      pruneBatchSize,
+      copyForwardBatchSize,
+      copyForwardFinalizeTailRows: Math.max(100, copyForwardBatchSize * 2),
     },
     nowMs: () => clockMs,
   });
 
-  // ── Phase 1: Backlog catchup ──
-  console.log(`\n═══ Phase 1: Backlog Catchup (${BACKLOG_EVENT_COUNT} expired events) ═══\n`);
+  // Populate expired events
   const scope = makeScope();
-  const populateStart = performance.now();
-  for (let i = 0; i < BACKLOG_EVENT_COUNT; i += BATCH_INSERT_SIZE) {
+  for (let i = 0; i < EVENT_COUNT; i += BATCH_INSERT_SIZE) {
     const batch: NormalizedEventEnvelope[] = [];
-    const batchEnd = Math.min(i + BATCH_INSERT_SIZE, BACKLOG_EVENT_COUNT);
+    const batchEnd = Math.min(i + BATCH_INSERT_SIZE, EVENT_COUNT);
     for (let j = i; j < batchEnd; j++) {
-      const ageMs = retentionMs + 1000 + (BACKLOG_EVENT_COUNT - j) * 10;
+      const ageMs = retentionMs + 1000 + (EVENT_COUNT - j) * 10;
       batch.push(makeEvent(scope, new Date(clockMs - ageMs)));
     }
     store.appendEvents(batch);
   }
-  console.log(`Populated in ${(performance.now() - populateStart).toFixed(1)} ms`);
 
+  // Phase 1: Drain full backlog (advance clock each iteration so tick always fires)
   const backlogDurations: number[] = [];
-  let totalPruned = 0;
-
-  console.log(`\n  tick │ pruned │ duration (ms)`);
-  console.log(`───────┼────────┼──────────────`);
-  for (let i = 0; i < BACKLOG_TICK_ROUNDS; i++) {
+  let backlogPruned = 0;
+  for (let i = 0; i < 500; i++) {
+    clockMs += intervalMs;
     const t0 = performance.now();
     const result = lifecycle.runMaintenanceTick();
     const dt = performance.now() - t0;
     if (!result.ran) continue;
     backlogDurations.push(dt);
-    totalPruned += result.eventsPruned;
-    console.log(
-      `  ${String(i + 1).padStart(5)} │ ${String(result.eventsPruned).padStart(6)} │ ${dt.toFixed(2).padStart(12)}`,
-    );
-    if (result.eventsPruned === 0 && dt < 0.5) break;
+    backlogPruned += result.eventsPruned;
+    if (result.eventsPruned === 0 && dt < 1) break;
   }
-  printSummary(`Backlog Summary (pruned ${totalPruned} total)`, backlogDurations);
 
-  // ── Phase 2: Steady state ──
-  console.log(
-    `\n\n═══ Phase 2: Steady State (${STEADY_STATE_EVENTS_PER_TICK} events arrive between ticks) ═══\n`,
-  );
+  // Phase 2: Steady state — add events between ticks
   const steadyScope = makeScope();
   const steadyDurations: number[] = [];
-
-  console.log(`  tick │ pruned │ duration (ms)`);
-  console.log(`───────┼────────┼──────────────`);
   for (let i = 0; i < STEADY_STATE_ROUNDS; i++) {
     const batch: NormalizedEventEnvelope[] = [];
     for (let j = 0; j < STEADY_STATE_EVENTS_PER_TICK; j++) {
@@ -147,36 +135,105 @@ function run() {
       batch.push(makeEvent(steadyScope, new Date(clockMs - ageMs)));
     }
     store.appendEvents(batch);
-
     clockMs += 5000;
-
     const t0 = performance.now();
     const result = lifecycle.runMaintenanceTick();
     const dt = performance.now() - t0;
-    if (!result.ran) continue;
-    steadyDurations.push(dt);
-    console.log(
-      `  ${String(i + 1).padStart(5)} │ ${String(result.eventsPruned).padStart(6)} │ ${dt.toFixed(2).padStart(12)}`,
-    );
+    if (result.ran) steadyDurations.push(dt);
   }
-  printSummary('Steady State Summary', steadyDurations);
 
-  // ── Phase 3: Idle (nothing to do) ──
-  console.log(`\n\n═══ Phase 3: Idle (no expired events) ═══\n`);
-  clockMs += 5000;
+  // Phase 3: Idle
   const idleDurations: number[] = [];
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < 30; i++) {
     clockMs += 5000;
     const t0 = performance.now();
     const result = lifecycle.runMaintenanceTick();
     const dt = performance.now() - t0;
     if (result.ran) idleDurations.push(dt);
   }
-  printSummary('Idle Summary', idleDurations);
 
-  console.log('\n');
   store.close();
   rmSync(dir, { recursive: true, force: true });
+
+  return {
+    backlogTicks: backlogDurations.length,
+    backlogDurations,
+    backlogTotalPruned: backlogPruned,
+    steadyDurations,
+    idleDurations,
+  };
+}
+
+function run() {
+  const configs = [
+    { copyForward: 500, prune: 2000, label: 'copy=500  prune=2000' },
+    { copyForward: 500, prune: 500,  label: 'copy=500  prune=500 ' },
+    { copyForward: 250, prune: 500,  label: 'copy=250  prune=500 ' },
+    { copyForward: 250, prune: 250,  label: 'copy=250  prune=250 ' },
+    { copyForward: 100, prune: 250,  label: 'copy=100  prune=250 ' },
+    { copyForward: 100, prune: 100,  label: 'copy=100  prune=100 ' },
+  ];
+
+  // Warmup run (discard)
+  process.stderr.write('Warmup…\n');
+  runScenario(500, 2000);
+
+  const results: Array<{
+    label: string;
+    r: ScenarioResult;
+  }> = [];
+
+  for (const config of configs) {
+    process.stderr.write(`Running: ${config.label}…\n`);
+    const r = runScenario(config.copyForward, config.prune);
+    results.push({ label: config.label, r });
+  }
+
+  console.log(`\n${'═'.repeat(105)}`);
+  console.log(`  Maintenance Tick Duration vs Batch Size (${EVENT_COUNT} expired events, ${STEADY_STATE_EVENTS_PER_TICK} events/tick steady state)`);
+  console.log(`${'═'.repeat(105)}\n`);
+
+  console.log(`  ┌─ BACKLOG DRAIN ${'─'.repeat(87)}`);
+  console.log(
+    `  │ ${'config'.padEnd(22)} │ ${'ticks'.padStart(6)} │ ${'p50 ms'.padStart(8)} │ ${'p95 ms'.padStart(8)} │ ${'max ms'.padStart(8)} │ ${'wall ms'.padStart(9)} │ ${'pruned'.padStart(8)} │`,
+  );
+  console.log(
+    `  │${'─'.repeat(23)}┼${'─'.repeat(8)}┼${'─'.repeat(10)}┼${'─'.repeat(10)}┼${'─'.repeat(10)}┼${'─'.repeat(11)}┼${'─'.repeat(10)}│`,
+  );
+  for (const { label, r } of results) {
+    const d = [...r.backlogDurations].sort((a, b) => a - b);
+    const total = d.reduce((s, v) => s + v, 0);
+    console.log(
+      `  │ ${label.padEnd(22)}│ ${String(d.length).padStart(6)} │ ${fmt(percentile(d, 50))} │ ${fmt(percentile(d, 95))} │ ${fmt(d[d.length - 1] ?? 0)} │ ${fmt(total).padStart(9)} │ ${String(r.backlogTotalPruned).padStart(8)} │`,
+    );
+  }
+  console.log(`  └${'─'.repeat(103)}\n`);
+
+  console.log(`  ┌─ STEADY STATE (${STEADY_STATE_EVENTS_PER_TICK} events added between each 5 s tick) ${'─'.repeat(47)}`);
+  console.log(
+    `  │ ${'config'.padEnd(22)} │ ${'p50 ms'.padStart(8)} │ ${'p95 ms'.padStart(8)} │ ${'max ms'.padStart(8)} │`,
+  );
+  console.log(`  │${'─'.repeat(23)}┼${'─'.repeat(10)}┼${'─'.repeat(10)}┼${'─'.repeat(10)}│`);
+  for (const { label, r } of results) {
+    const d = [...r.steadyDurations].sort((a, b) => a - b);
+    console.log(
+      `  │ ${label.padEnd(22)}│ ${fmt(percentile(d, 50))} │ ${fmt(percentile(d, 95))} │ ${fmt(d[d.length - 1] ?? 0)} │`,
+    );
+  }
+  console.log(`  └${'─'.repeat(54)}\n`);
+
+  console.log(`  ┌─ IDLE ${'─'.repeat(45)}`);
+  console.log(
+    `  │ ${'config'.padEnd(22)} │ ${'p50 ms'.padStart(8)} │ ${'max ms'.padStart(8)} │`,
+  );
+  console.log(`  │${'─'.repeat(23)}┼${'─'.repeat(10)}┼${'─'.repeat(10)}│`);
+  for (const { label, r } of results) {
+    const d = [...r.idleDurations].sort((a, b) => a - b);
+    console.log(
+      `  │ ${label.padEnd(22)}│ ${fmt(percentile(d, 50))} │ ${fmt(d[d.length - 1] ?? 0)} │`,
+    );
+  }
+  console.log(`  └${'─'.repeat(44)}\n`);
 }
 
 run();
