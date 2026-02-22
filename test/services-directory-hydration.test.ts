@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { DirectoryHydrationService } from '../src/services/directory-hydration.ts';
+import { createDirectoryHydrationService } from '../src/services/directory-hydration.ts';
 
 interface DirectoryRecord {
   readonly directoryId: string;
@@ -10,7 +10,7 @@ interface DirectoryRecord {
 void test('directory hydration service normalizes paths, repairs records, and ensures persisted directory', async () => {
   const calls: string[] = [];
   const directories = new Map<string, DirectoryRecord>();
-  const service = new DirectoryHydrationService<DirectoryRecord>({
+  const service = createDirectoryHydrationService<DirectoryRecord>({
     controlPlaneService: {
       listDirectories: async () => [
         { directoryId: 'dir-1', path: './repo-one' },
@@ -56,7 +56,7 @@ void test('directory hydration service normalizes paths, repairs records, and en
 });
 
 void test('directory hydration service throws when no active directory resolves', async () => {
-  const service = new DirectoryHydrationService<DirectoryRecord>({
+  const service = createDirectoryHydrationService<DirectoryRecord>({
     controlPlaneService: {
       listDirectories: async () => [],
       upsertDirectory: async (input) => input,

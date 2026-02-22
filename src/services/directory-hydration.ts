@@ -8,7 +8,7 @@ interface DirectoryHydrationControlPlane<TDirectoryRecord extends DirectoryRecor
   upsertDirectory(input: { directoryId: string; path: string }): Promise<TDirectoryRecord>;
 }
 
-interface DirectoryHydrationServiceOptions<TDirectoryRecord extends DirectoryRecordLike> {
+export interface DirectoryHydrationServiceOptions<TDirectoryRecord extends DirectoryRecordLike> {
   readonly controlPlaneService: DirectoryHydrationControlPlane<TDirectoryRecord>;
   readonly resolveWorkspacePathForMux: (rawPath: string) => string;
   readonly clearDirectories: () => void;
@@ -18,32 +18,40 @@ interface DirectoryHydrationServiceOptions<TDirectoryRecord extends DirectoryRec
   readonly resolveActiveDirectoryId: () => string | null;
 }
 
-export class DirectoryHydrationService<TDirectoryRecord extends DirectoryRecordLike> {
-  constructor(private readonly options: DirectoryHydrationServiceOptions<TDirectoryRecord>) {}
+export interface DirectoryHydrationService {
+  hydrate(): Promise<void>;
+}
 
-  async hydrate(): Promise<void> {
-    const rows = await this.options.controlPlaneService.listDirectories();
-    this.options.clearDirectories();
+export function createDirectoryHydrationService<TDirectoryRecord extends DirectoryRecordLike>(
+  options: DirectoryHydrationServiceOptions<TDirectoryRecord>,
+): DirectoryHydrationService {
+  async function hydrate(): Promise<void> {
+    const rows = await options.controlPlaneService.listDirectories();
+    options.clearDirectories();
     for (const row of rows) {
-      const normalizedPath = this.options.resolveWorkspacePathForMux(row.path);
+      const normalizedPath = options.resolveWorkspacePathForMux(row.path);
       if (normalizedPath !== row.path) {
-        const repairedRecord = await this.options.controlPlaneService.upsertDirectory({
+        const repairedRecord = await options.controlPlaneService.upsertDirectory({
           directoryId: row.directoryId,
           path: normalizedPath,
         });
-        this.options.setDirectory(row.directoryId, repairedRecord);
+        options.setDirectory(row.directoryId, repairedRecord);
         continue;
       }
-      this.options.setDirectory(row.directoryId, row);
+      options.setDirectory(row.directoryId, row);
     }
-    if (!this.options.hasDirectory(this.options.persistedDirectory.directoryId)) {
-      this.options.setDirectory(
-        this.options.persistedDirectory.directoryId,
-        this.options.persistedDirectory,
+    if (!options.hasDirectory(options.persistedDirectory.directoryId)) {
+      options.setDirectory(
+        options.persistedDirectory.directoryId,
+        options.persistedDirectory,
       );
     }
-    if (this.options.resolveActiveDirectoryId() === null) {
+    if (options.resolveActiveDirectoryId() === null) {
       throw new Error('no active directory available after hydrate');
     }
   }
+
+  return {
+    hydrate,
+  };
 }

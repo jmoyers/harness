@@ -42,6 +42,9 @@
     - `conversation-startup-hydration`
     - `startup-persisted-conversation-queue`
     - `runtime-task-composer-persistence`
+    - `directory-hydration`
+    - `task-planning-hydration`
+    - `startup-state-hydration`
 - Keep only true state engines:
   - `RuntimeLayoutResizeEngine`
   - `RuntimeProjectPaneGitHubReviewCacheEngine`

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { TaskPlanningHydrationService } from '../src/services/task-planning-hydration.ts';
+import { createTaskPlanningHydrationService } from '../src/services/task-planning-hydration.ts';
 
 interface RepositoryRecord {
   readonly repositoryId: string;
@@ -12,7 +12,7 @@ interface TaskRecord {
 
 void test('task planning hydration service hydrates repositories/tasks and syncs in order', async () => {
   const calls: string[] = [];
-  const service = new TaskPlanningHydrationService<RepositoryRecord, TaskRecord>({
+  const service = createTaskPlanningHydrationService<RepositoryRecord, TaskRecord>({
     controlPlaneService: {
       listRepositories: async () => {
         calls.push('listRepositories');
@@ -65,7 +65,7 @@ void test('task planning hydration service hydrates repositories/tasks and syncs
 
 void test('task planning hydration service handles empty hydration payloads', async () => {
   const calls: string[] = [];
-  const service = new TaskPlanningHydrationService<RepositoryRecord, TaskRecord>({
+  const service = createTaskPlanningHydrationService<RepositoryRecord, TaskRecord>({
     controlPlaneService: {
       listRepositories: async () => [],
       listTasks: async () => [],

@@ -189,7 +189,7 @@ import { DirectoryManager } from '../../domain/directories.ts';
 import { TaskManager } from '../../domain/tasks.ts';
 import { ControlPlaneService } from '../../services/control-plane.ts';
 import { createConversationLifecycle } from '../../services/conversation-lifecycle.ts';
-import { DirectoryHydrationService } from '../../services/directory-hydration.ts';
+import { createDirectoryHydrationService } from '../../services/directory-hydration.ts';
 import { EventPersistence } from '../../services/event-persistence.ts';
 import { MuxUiStatePersistence } from '../../services/mux-ui-state-persistence.ts';
 import { OutputLoadSampler } from '../../services/output-load-sampler.ts';
@@ -220,7 +220,7 @@ import { createRuntimeTaskPaneActions } from '../../services/runtime-task-pane-a
 import { createRuntimeTaskPaneShortcuts } from '../../services/runtime-task-pane-shortcuts.ts';
 import { RuntimeProjectPaneGitHubReviewCacheEngine } from '../../services/runtime-project-pane-github-review-cache.ts';
 import { TaskPaneSelectionActions } from '../../services/task-pane-selection-actions.ts';
-import { TaskPlanningHydrationService } from '../../services/task-planning-hydration.ts';
+import { createTaskPlanningHydrationService } from '../../services/task-planning-hydration.ts';
 import { TaskPlanningSyncedProjection } from '../../services/task-planning-observed-events.ts';
 import {
   RuntimeCommandMenuAgentToolsCache,
@@ -228,7 +228,7 @@ import {
 } from '../../services/runtime-command-menu-agent-tools.ts';
 import { WorkspaceSyncedProjection } from '../../services/workspace-observed-events.ts';
 import { subscribeRuntimeWorkspaceObservedEvents } from '../../services/runtime-workspace-observed-events.ts';
-import { StartupStateHydrationService } from '../../services/startup-state-hydration.ts';
+import { createStartupStateHydrationService } from '../../services/startup-state-hydration.ts';
 import {
   StatusTimelineRecorder,
   type StatusTimelineLabels,
@@ -1350,7 +1350,7 @@ class CodexLiveMuxRuntimeApplication {
       sessionProjectionInstrumentation.recordTransition(event, beforeProjection, updated);
     };
 
-    const directoryHydrationService = new DirectoryHydrationService<ControlPlaneDirectoryRecord>({
+    const directoryHydrationService = createDirectoryHydrationService<ControlPlaneDirectoryRecord>({
       controlPlaneService,
       resolveWorkspacePathForMux: (rawPath) =>
         resolveWorkspacePathForMux(options.invocationDirectory, rawPath),
@@ -1629,7 +1629,7 @@ class CodexLiveMuxRuntimeApplication {
     const hydrateConversationList = async (): Promise<void> => {
       await conversationLifecycle.hydrateConversationList();
     };
-    const startupStateHydrationService = new StartupStateHydrationService<
+    const startupStateHydrationService = createStartupStateHydrationService<
       ControlPlaneRepositoryRecord,
       GitSummary,
       GitRepositorySnapshot,
@@ -2794,7 +2794,7 @@ class CodexLiveMuxRuntimeApplication {
       markDirty();
     };
 
-    const taskPlanningHydrationService = new TaskPlanningHydrationService<
+    const taskPlanningHydrationService = createTaskPlanningHydrationService<
       ControlPlaneRepositoryRecord,
       ControlPlaneTaskRecord
     >({
