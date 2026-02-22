@@ -80,6 +80,9 @@ Boundary constraints:
 - `packages/harness-ui` must not import `src/*` app/domain internals.
 - app-specific policies live in `src/services/*` and are injected via explicit interfaces.
 - composition roots assemble collaborators; business rules remain in owning modules.
+- service shape follows ownership:
+  - non-state orchestration surfaces expose `create*` factories returning named interfaces,
+  - state-owning runtime collaborators use explicit `*Engine`/`*Cache` semantics.
 
 ## Anti-Glue Architecture Laws
 
