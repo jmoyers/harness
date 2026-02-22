@@ -52,3 +52,36 @@ void test(
   },
   { timeout: 60_000 },
 );
+
+void test(
+  'harness-ui v2 e2e keeps command menu usable in constrained viewport and dismisses on outside click',
+  async () => {
+    const workspace = createWorkspace();
+    let driver: HarnessUiE2EDriver | null = null;
+    try {
+      driver = new HarnessUiE2EDriver({
+        workspace,
+        args: ['--session', 'ui-v2-e2e-small', 'client'],
+        cols: 52,
+        rows: 12,
+      });
+
+      await driver.locator('🏠 home').waitFor(12_000);
+      await driver.keyboard.openCommandMenu(12_000);
+      await driver.waitForText('Command Menu', 12_000);
+      driver.mouse.click(1, 1);
+      await driver.waitForTextGone('Command Menu', 12_000);
+    } finally {
+      try {
+        if (driver !== null) {
+          const exit = await driver.close();
+          assert.equal(exit.signal, null);
+          assert.equal(exit.code === 0 || exit.code === 130, true);
+        }
+      } finally {
+        rmSync(workspace, { recursive: true, force: true });
+      }
+    }
+  },
+  { timeout: 60_000 },
+);
