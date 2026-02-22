@@ -2079,6 +2079,39 @@ export class ControlPlaneStreamServer {
   }
 
   private handleTelemetryHttpRequest(request: IncomingMessage, response: ServerResponse): void {
+    const requestWithEvents = request as unknown as {
+      on?: (event: string, listener: (...args: unknown[]) => void) => void;
+      once?: (event: string, listener: (...args: unknown[]) => void) => void;
+      off?: (event: string, listener: (...args: unknown[]) => void) => void;
+    };
+    const responseWithEvents = response as unknown as {
+      on?: (event: string, listener: (...args: unknown[]) => void) => void;
+      once?: (event: string, listener: (...args: unknown[]) => void) => void;
+      off?: (event: string, listener: (...args: unknown[]) => void) => void;
+    };
+    const onStreamError = (error: unknown): void => {
+      if (isTelemetryRequestAbortError(error)) {
+        return;
+      }
+      if (response.writableEnded) {
+        return;
+      }
+      response.statusCode = 500;
+      response.end();
+    };
+    const cleanupStreamErrorListeners = (): void => {
+      requestWithEvents.off?.('error', onStreamError);
+      responseWithEvents.off?.('error', onStreamError);
+      requestWithEvents.off?.('close', cleanupStreamErrorListeners);
+      responseWithEvents.off?.('close', cleanupStreamErrorListeners);
+      responseWithEvents.off?.('finish', cleanupStreamErrorListeners);
+    };
+    requestWithEvents.on?.('error', onStreamError);
+    responseWithEvents.on?.('error', onStreamError);
+    requestWithEvents.once?.('close', cleanupStreamErrorListeners);
+    responseWithEvents.once?.('close', cleanupStreamErrorListeners);
+    responseWithEvents.once?.('finish', cleanupStreamErrorListeners);
+
     void this.handleTelemetryHttpRequestAsync(request, response).catch((error: unknown) => {
       if (isTelemetryRequestAbortError(error)) {
         return;

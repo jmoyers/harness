@@ -602,6 +602,26 @@ void test('stream server telemetry/history private guard branches are stable', a
     assert.equal(responseRecord.statusCode, 404);
     assert.equal(responseRecord.ended, true);
     internals.telemetryTokenToSessionId.set('abort-token', 'missing-session');
+    const abortRequestErrorListeners: Array<(error: unknown) => void> = [];
+    const abortRequestCloseListeners: Array<() => void> = [];
+    const registerAbortRequestErrorListener = (listener: (error: unknown) => void): void => {
+      abortRequestErrorListeners.push(listener);
+    };
+    const unregisterAbortRequestErrorListener = (listener: (error: unknown) => void): void => {
+      const index = abortRequestErrorListeners.indexOf(listener);
+      if (index >= 0) {
+        abortRequestErrorListeners.splice(index, 1);
+      }
+    };
+    const registerAbortRequestCloseListener = (listener: () => void): void => {
+      abortRequestCloseListeners.push(listener);
+    };
+    const unregisterAbortRequestCloseListener = (listener: () => void): void => {
+      const index = abortRequestCloseListeners.indexOf(listener);
+      if (index >= 0) {
+        abortRequestCloseListeners.splice(index, 1);
+      }
+    };
     const abortedResponse = {
       statusCode: 0,
       writableEnded: false,
@@ -611,26 +631,50 @@ void test('stream server telemetry/history private guard branches are stable', a
         this.writableEnded = true;
       },
     };
-    internals.handleTelemetryHttpRequest(
-      {
-        method: 'POST',
-        url: '/v1/logs/abort-token',
-        [Symbol.asyncIterator]() {
-          const iterator: AsyncIterableIterator<Uint8Array> = {
-            next() {
-              const abortedError = Object.assign(new Error('aborted'), { code: 'ECONNRESET' });
-              return Promise.reject(abortedError);
-            },
-            [Symbol.asyncIterator]() {
-              return iterator;
-            },
-          };
-          return iterator;
-        },
+    const abortedRequest = {
+      method: 'POST',
+      url: '/v1/logs/abort-token',
+      on(event: string, listener: (...args: unknown[]) => void) {
+        if (event === 'error') {
+          registerAbortRequestErrorListener(listener as (error: unknown) => void);
+        }
+        return this;
       },
+      off(event: string, listener: (...args: unknown[]) => void) {
+        if (event === 'error') {
+          unregisterAbortRequestErrorListener(listener as (error: unknown) => void);
+        }
+        if (event === 'close') {
+          unregisterAbortRequestCloseListener(listener as () => void);
+        }
+        return this;
+      },
+      once(event: string, listener: (...args: unknown[]) => void) {
+        if (event === 'close') {
+          registerAbortRequestCloseListener(listener as () => void);
+        }
+        return this;
+      },
+      [Symbol.asyncIterator]() {
+        const iterator: AsyncIterableIterator<Uint8Array> = {
+          next() {
+            const abortedError = Object.assign(new Error('aborted'), { code: 'ECONNRESET' });
+            return Promise.reject(abortedError);
+          },
+          [Symbol.asyncIterator]() {
+            return iterator;
+          },
+        };
+        return iterator;
+      },
+    };
+    internals.handleTelemetryHttpRequest(
+      abortedRequest,
       abortedResponse,
     );
     await delay(20);
+    assert.equal(abortRequestErrorListeners.length > 0, true);
+    abortRequestErrorListeners[0]?.(Object.assign(new Error('aborted'), { code: 'ECONNRESET' }));
     assert.equal(abortedResponse.statusCode, 0);
     assert.equal(abortedResponse.ended, false);
 
