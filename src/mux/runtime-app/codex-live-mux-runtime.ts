@@ -195,7 +195,7 @@ import { StartupOrchestrator } from '../../services/startup-orchestrator.ts';
 import { RuntimeProcessWiring } from '../../services/runtime-process-wiring.ts';
 import { RuntimeControlPlaneOps } from '../../services/runtime-control-plane-ops.ts';
 import { RuntimeControlActions } from '../../services/runtime-control-actions.ts';
-import { RuntimeDirectoryActions } from '../../services/runtime-directory-actions.ts';
+import { createRuntimeDirectoryActions } from '../../services/runtime-directory-actions.ts';
 import { RuntimeEnvelopeHandler } from '../../services/runtime-envelope-handler.ts';
 import { createRuntimeObservedEventProjectionPipeline } from '../../services/runtime-observed-event-projection-pipeline.ts';
 import { RuntimeRenderPipeline } from '../../services/runtime-render-pipeline.ts';
@@ -3039,60 +3039,68 @@ class CodexLiveMuxRuntimeApplication {
       markDirty,
     });
 
-    const runtimeDirectoryActions = new RuntimeDirectoryActions({
+    const runtimeDirectoryActions = createRuntimeDirectoryActions({
       controlPlaneService,
-      conversations: () => conversationRecords,
-      orderedConversationIds: () => conversationManager.orderedIds(),
-      conversationDirectoryId: (sessionId) => conversationManager.directoryIdOf(sessionId),
-      conversationLive: (sessionId) => conversationManager.isLive(sessionId),
-      removeConversationState,
-      unsubscribeConversationEvents: async (sessionId) => {
-        await conversationLifecycle.unsubscribeConversationEvents(sessionId);
+      conversations: {
+        records: () => conversationRecords,
+        orderedIds: () => conversationManager.orderedIds(),
+        directoryIdOf: (sessionId) => conversationManager.directoryIdOf(sessionId),
+        isLive: (sessionId) => conversationManager.isLive(sessionId),
+        removeState: removeConversationState,
+        unsubscribeEvents: async (sessionId) => {
+          await conversationLifecycle.unsubscribeConversationEvents(sessionId);
+        },
+        activeId: () => conversationManager.activeConversationId,
+        setActiveId: (sessionId) => {
+          conversationManager.setActiveConversationId(sessionId);
+        },
+        activate: async (sessionId) => {
+          await conversationLifecycle.activateConversation(sessionId);
+        },
+        findIdByDirectory: (directoryId) =>
+          conversationManager.findConversationIdByDirectory(
+            directoryId,
+            conversationManager.orderedIds(),
+          ),
       },
-      activeConversationId: () => conversationManager.activeConversationId,
-      setActiveConversationId: (sessionId) => {
-        conversationManager.setActiveConversationId(sessionId);
+      directories: {
+        createId: () => `directory-${randomUUID()}`,
+        resolveWorkspacePath: (rawPath) =>
+          resolveWorkspacePathForMux(options.invocationDirectory, rawPath),
+        setRecord: (directory) => {
+          directoryManager.setDirectory(directory.directoryId, directory);
+        },
+        idOf: (directory) => directory.directoryId,
+        setActiveId: (directoryId) => {
+          workspace.activeDirectoryId = directoryId;
+        },
+        activeId: () => workspace.activeDirectoryId,
+        resolveActiveId: resolveActiveDirectoryId,
+        has: (directoryId) => directoryManager.hasDirectory(directoryId),
+        remove: (directoryId) => {
+          directoryManager.deleteDirectory(directoryId);
+        },
+        removeGitState: deleteDirectoryGitState,
+        projectPaneSnapshotDirectoryId: () => workspace.projectPaneSnapshot?.directoryId ?? null,
+        clearProjectPaneSnapshot: () => {
+          workspace.projectPaneSnapshot = null;
+          workspace.projectPaneScrollTop = 0;
+        },
+        size: () => directoryManager.directoriesSize(),
+        firstId: () => directoryManager.firstDirectoryId(),
+        syncGitStateWithDirectories,
+        noteGitActivity,
+        hydratePersistedConversations: hydratePersistedConversationsForDirectory,
       },
-      activateConversation: async (sessionId) => {
-        await conversationLifecycle.activateConversation(sessionId);
+      ui: {
+        enterProjectPane,
+        markDirty,
       },
-      resolveActiveDirectoryId,
-      enterProjectPane,
-      markDirty,
-      isSessionNotFoundError,
-      isConversationNotFoundError,
-      createDirectoryId: () => `directory-${randomUUID()}`,
-      resolveWorkspacePathForMux: (rawPath) =>
-        resolveWorkspacePathForMux(options.invocationDirectory, rawPath),
-      setDirectory: (directory) => {
-        directoryManager.setDirectory(directory.directoryId, directory);
+      errors: {
+        isSessionNotFoundError,
+        isConversationNotFoundError,
       },
-      directoryIdOf: (directory) => directory.directoryId,
-      setActiveDirectoryId: (directoryId) => {
-        workspace.activeDirectoryId = directoryId;
-      },
-      syncGitStateWithDirectories,
-      noteGitActivity,
-      hydratePersistedConversationsForDirectory,
-      findConversationIdByDirectory: (directoryId) =>
-        conversationManager.findConversationIdByDirectory(
-          directoryId,
-          conversationManager.orderedIds(),
-        ),
-      directoriesHas: (directoryId) => directoryManager.hasDirectory(directoryId),
-      deleteDirectory: (directoryId) => {
-        directoryManager.deleteDirectory(directoryId);
-      },
-      deleteDirectoryGitState,
-      projectPaneSnapshotDirectoryId: () => workspace.projectPaneSnapshot?.directoryId ?? null,
-      clearProjectPaneSnapshot: () => {
-        workspace.projectPaneSnapshot = null;
-        workspace.projectPaneScrollTop = 0;
-      },
-      directoriesSize: () => directoryManager.directoriesSize(),
       invocationDirectory: options.invocationDirectory,
-      activeDirectoryId: () => workspace.activeDirectoryId,
-      firstDirectoryId: () => directoryManager.firstDirectoryId(),
     });
     const runtimeControlActions = new RuntimeControlActions({
       conversationById: (sessionId) => conversationManager.get(sessionId),

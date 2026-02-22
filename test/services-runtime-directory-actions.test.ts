@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { RuntimeDirectoryActions } from '../src/services/runtime-directory-actions.ts';
+import { createRuntimeDirectoryActions } from '../src/services/runtime-directory-actions.ts';
 
 interface DirectoryRecord {
   readonly directoryId: string;
@@ -19,7 +19,7 @@ void test('runtime directory actions archive conversation routes lifecycle + pro
   ]);
   let activeConversationId: string | null = 'session-1';
 
-  const actions = new RuntimeDirectoryActions<DirectoryRecord, ConversationStateLike>({
+  const actions = createRuntimeDirectoryActions<DirectoryRecord, ConversationStateLike>({
     controlPlaneService: {
       closePtySession: async (sessionId) => {
         calls.push(`closePty:${sessionId}`);
@@ -33,52 +33,60 @@ void test('runtime directory actions archive conversation routes lifecycle + pro
       upsertDirectory: async () => null,
       archiveDirectory: async () => {},
     },
-    conversations: () => conversations,
-    orderedConversationIds: () => [...conversations.keys()],
-    conversationDirectoryId: (sessionId) => conversations.get(sessionId)?.directoryId ?? null,
-    conversationLive: (sessionId) => conversations.get(sessionId)?.live === true,
-    removeConversationState: (sessionId) => {
-      calls.push(`removeState:${sessionId}`);
-      conversations.delete(sessionId);
+    conversations: {
+      records: () => conversations,
+      orderedIds: () => [...conversations.keys()],
+      directoryIdOf: (sessionId) => conversations.get(sessionId)?.directoryId ?? null,
+      isLive: (sessionId) => conversations.get(sessionId)?.live === true,
+      removeState: (sessionId) => {
+        calls.push(`removeState:${sessionId}`);
+        conversations.delete(sessionId);
+      },
+      unsubscribeEvents: async (sessionId) => {
+        calls.push(`unsubscribe:${sessionId}`);
+      },
+      activeId: () => activeConversationId,
+      setActiveId: (sessionId) => {
+        activeConversationId = sessionId;
+        calls.push(`setActive:${sessionId ?? 'null'}`);
+      },
+      activate: async (sessionId) => {
+        calls.push(`activate:${sessionId}`);
+      },
+      findIdByDirectory: () => null,
     },
-    unsubscribeConversationEvents: async (sessionId) => {
-      calls.push(`unsubscribe:${sessionId}`);
+    directories: {
+      createId: () => 'directory-unused',
+      resolveWorkspacePath: (rawPath) => rawPath,
+      setRecord: () => {},
+      idOf: (directory) => directory.directoryId,
+      setActiveId: () => {},
+      activeId: () => null,
+      resolveActiveId: () => 'directory-1',
+      has: () => false,
+      remove: () => {},
+      removeGitState: () => {},
+      projectPaneSnapshotDirectoryId: () => null,
+      clearProjectPaneSnapshot: () => {},
+      size: () => 0,
+      firstId: () => null,
+      syncGitStateWithDirectories: () => {},
+      noteGitActivity: () => {},
+      hydratePersistedConversations: async () => {},
     },
-    activeConversationId: () => activeConversationId,
-    setActiveConversationId: (sessionId) => {
-      activeConversationId = sessionId;
-      calls.push(`setActive:${sessionId ?? 'null'}`);
+    ui: {
+      enterProjectPane: (directoryId) => {
+        calls.push(`enterProject:${directoryId}`);
+      },
+      markDirty: () => {
+        calls.push('markDirty');
+      },
     },
-    activateConversation: async (sessionId) => {
-      calls.push(`activate:${sessionId}`);
+    errors: {
+      isSessionNotFoundError: () => false,
+      isConversationNotFoundError: () => false,
     },
-    resolveActiveDirectoryId: () => 'directory-1',
-    enterProjectPane: (directoryId) => {
-      calls.push(`enterProject:${directoryId}`);
-    },
-    markDirty: () => {
-      calls.push('markDirty');
-    },
-    isSessionNotFoundError: () => false,
-    isConversationNotFoundError: () => false,
-    createDirectoryId: () => 'directory-unused',
-    resolveWorkspacePathForMux: (rawPath) => rawPath,
-    setDirectory: () => {},
-    directoryIdOf: (directory) => directory.directoryId,
-    setActiveDirectoryId: () => {},
-    syncGitStateWithDirectories: () => {},
-    noteGitActivity: () => {},
-    hydratePersistedConversationsForDirectory: async () => {},
-    findConversationIdByDirectory: () => null,
-    directoriesHas: () => false,
-    deleteDirectory: () => {},
-    deleteDirectoryGitState: () => {},
-    projectPaneSnapshotDirectoryId: () => null,
-    clearProjectPaneSnapshot: () => {},
-    directoriesSize: () => 0,
     invocationDirectory: '/unused',
-    activeDirectoryId: () => null,
-    firstDirectoryId: () => null,
   });
 
   await actions.archiveConversation('session-1');
@@ -100,7 +108,7 @@ void test('runtime directory actions add directory hydrates and activates existi
   const calls: string[] = [];
   let activeDirectoryId: string | null = null;
 
-  const actions = new RuntimeDirectoryActions<DirectoryRecord, ConversationStateLike>({
+  const actions = createRuntimeDirectoryActions<DirectoryRecord, ConversationStateLike>({
     controlPlaneService: {
       closePtySession: async () => {},
       removeSession: async () => {},
@@ -114,56 +122,64 @@ void test('runtime directory actions add directory hydrates and activates existi
       },
       archiveDirectory: async () => {},
     },
-    conversations: () => new Map(),
-    orderedConversationIds: () => [],
-    conversationDirectoryId: () => null,
-    conversationLive: () => false,
-    removeConversationState: () => {},
-    unsubscribeConversationEvents: async () => {},
-    activeConversationId: () => null,
-    setActiveConversationId: () => {},
-    activateConversation: async (sessionId) => {
-      calls.push(`activate:${sessionId}`);
+    conversations: {
+      records: () => new Map(),
+      orderedIds: () => [],
+      directoryIdOf: () => null,
+      isLive: () => false,
+      removeState: () => {},
+      unsubscribeEvents: async () => {},
+      activeId: () => null,
+      setActiveId: () => {},
+      activate: async (sessionId) => {
+        calls.push(`activate:${sessionId}`);
+      },
+      findIdByDirectory: (directoryId) =>
+        directoryId === 'directory-new' ? 'session-existing' : null,
     },
-    resolveActiveDirectoryId: () => null,
-    enterProjectPane: (directoryId) => {
-      calls.push(`enterProject:${directoryId}`);
+    directories: {
+      createId: () => 'directory-generated',
+      resolveWorkspacePath: (rawPath) => `resolved:${rawPath}`,
+      setRecord: (directory) => {
+        calls.push(`setDirectory:${directory.directoryId}`);
+      },
+      idOf: (directory) => directory.directoryId,
+      setActiveId: (directoryId) => {
+        activeDirectoryId = directoryId;
+        calls.push(`setActiveDirectory:${directoryId ?? 'null'}`);
+      },
+      activeId: () => activeDirectoryId,
+      resolveActiveId: () => null,
+      has: () => true,
+      remove: () => {},
+      removeGitState: () => {},
+      projectPaneSnapshotDirectoryId: () => null,
+      clearProjectPaneSnapshot: () => {},
+      size: () => 1,
+      firstId: () => 'directory-new',
+      syncGitStateWithDirectories: () => {
+        calls.push('syncGit');
+      },
+      noteGitActivity: (directoryId) => {
+        calls.push(`noteGit:${directoryId}`);
+      },
+      hydratePersistedConversations: async (directoryId) => {
+        calls.push(`hydrate:${directoryId}`);
+      },
     },
-    markDirty: () => {
-      calls.push('markDirty');
+    ui: {
+      enterProjectPane: (directoryId) => {
+        calls.push(`enterProject:${directoryId}`);
+      },
+      markDirty: () => {
+        calls.push('markDirty');
+      },
     },
-    isSessionNotFoundError: () => false,
-    isConversationNotFoundError: () => false,
-    createDirectoryId: () => 'directory-generated',
-    resolveWorkspacePathForMux: (rawPath) => `resolved:${rawPath}`,
-    setDirectory: (directory) => {
-      calls.push(`setDirectory:${directory.directoryId}`);
+    errors: {
+      isSessionNotFoundError: () => false,
+      isConversationNotFoundError: () => false,
     },
-    directoryIdOf: (directory) => directory.directoryId,
-    setActiveDirectoryId: (directoryId) => {
-      activeDirectoryId = directoryId;
-      calls.push(`setActiveDirectory:${directoryId ?? 'null'}`);
-    },
-    syncGitStateWithDirectories: () => {
-      calls.push('syncGit');
-    },
-    noteGitActivity: (directoryId) => {
-      calls.push(`noteGit:${directoryId}`);
-    },
-    hydratePersistedConversationsForDirectory: async (directoryId) => {
-      calls.push(`hydrate:${directoryId}`);
-    },
-    findConversationIdByDirectory: (directoryId) =>
-      directoryId === 'directory-new' ? 'session-existing' : null,
-    directoriesHas: () => true,
-    deleteDirectory: () => {},
-    deleteDirectoryGitState: () => {},
-    projectPaneSnapshotDirectoryId: () => null,
-    clearProjectPaneSnapshot: () => {},
-    directoriesSize: () => 1,
     invocationDirectory: '/unused',
-    activeDirectoryId: () => activeDirectoryId,
-    firstDirectoryId: () => 'directory-new',
   });
 
   await actions.addDirectoryByPath('./repo');
@@ -187,7 +203,7 @@ void test('runtime directory actions close directory seeds invocation directory 
   ]);
   let activeDirectoryId: string | null = 'directory-1';
 
-  const actions = new RuntimeDirectoryActions<DirectoryRecord, ConversationStateLike>({
+  const actions = createRuntimeDirectoryActions<DirectoryRecord, ConversationStateLike>({
     controlPlaneService: {
       closePtySession: async () => {},
       removeSession: async () => {},
@@ -203,61 +219,69 @@ void test('runtime directory actions close directory seeds invocation directory 
         calls.push(`archiveDirectory:${directoryId}`);
       },
     },
-    conversations: () => new Map(),
-    orderedConversationIds: () => [],
-    conversationDirectoryId: () => null,
-    conversationLive: () => false,
-    removeConversationState: () => {},
-    unsubscribeConversationEvents: async () => {},
-    activeConversationId: () => null,
-    setActiveConversationId: () => {},
-    activateConversation: async () => {},
-    resolveActiveDirectoryId: () => activeDirectoryId,
-    enterProjectPane: (directoryId) => {
-      calls.push(`enterProject:${directoryId}`);
+    conversations: {
+      records: () => new Map(),
+      orderedIds: () => [],
+      directoryIdOf: () => null,
+      isLive: () => false,
+      removeState: () => {},
+      unsubscribeEvents: async () => {},
+      activeId: () => null,
+      setActiveId: () => {},
+      activate: async () => {},
+      findIdByDirectory: () => null,
     },
-    markDirty: () => {
-      calls.push('markDirty');
+    directories: {
+      createId: () => 'directory-generated',
+      resolveWorkspacePath: (rawPath) => `resolved:${rawPath}`,
+      setRecord: (directory) => {
+        directories.set(directory.directoryId, directory);
+        calls.push(`setDirectory:${directory.directoryId}`);
+      },
+      idOf: (directory) => directory.directoryId,
+      setActiveId: (directoryId) => {
+        activeDirectoryId = directoryId;
+        calls.push(`setActiveDirectory:${directoryId ?? 'null'}`);
+      },
+      activeId: () => activeDirectoryId,
+      resolveActiveId: () => activeDirectoryId,
+      has: (directoryId) => directories.has(directoryId),
+      remove: (directoryId) => {
+        directories.delete(directoryId);
+        calls.push(`deleteDirectory:${directoryId}`);
+      },
+      removeGitState: (directoryId) => {
+        calls.push(`deleteGitState:${directoryId}`);
+      },
+      projectPaneSnapshotDirectoryId: () => 'directory-1',
+      clearProjectPaneSnapshot: () => {
+        calls.push('clearProjectPaneSnapshot');
+      },
+      size: () => directories.size,
+      firstId: () => [...directories.keys()][0] ?? null,
+      syncGitStateWithDirectories: () => {
+        calls.push('syncGit');
+      },
+      noteGitActivity: (directoryId) => {
+        calls.push(`noteGit:${directoryId}`);
+      },
+      hydratePersistedConversations: async (directoryId) => {
+        calls.push(`hydrate:${directoryId}`);
+      },
     },
-    isSessionNotFoundError: () => false,
-    isConversationNotFoundError: () => false,
-    createDirectoryId: () => 'directory-generated',
-    resolveWorkspacePathForMux: (rawPath) => `resolved:${rawPath}`,
-    setDirectory: (directory) => {
-      directories.set(directory.directoryId, directory);
-      calls.push(`setDirectory:${directory.directoryId}`);
+    ui: {
+      enterProjectPane: (directoryId) => {
+        calls.push(`enterProject:${directoryId}`);
+      },
+      markDirty: () => {
+        calls.push('markDirty');
+      },
     },
-    directoryIdOf: (directory) => directory.directoryId,
-    setActiveDirectoryId: (directoryId) => {
-      activeDirectoryId = directoryId;
-      calls.push(`setActiveDirectory:${directoryId ?? 'null'}`);
+    errors: {
+      isSessionNotFoundError: () => false,
+      isConversationNotFoundError: () => false,
     },
-    syncGitStateWithDirectories: () => {
-      calls.push('syncGit');
-    },
-    noteGitActivity: (directoryId) => {
-      calls.push(`noteGit:${directoryId}`);
-    },
-    hydratePersistedConversationsForDirectory: async (directoryId) => {
-      calls.push(`hydrate:${directoryId}`);
-    },
-    findConversationIdByDirectory: () => null,
-    directoriesHas: (directoryId) => directories.has(directoryId),
-    deleteDirectory: (directoryId) => {
-      directories.delete(directoryId);
-      calls.push(`deleteDirectory:${directoryId}`);
-    },
-    deleteDirectoryGitState: (directoryId) => {
-      calls.push(`deleteGitState:${directoryId}`);
-    },
-    projectPaneSnapshotDirectoryId: () => 'directory-1',
-    clearProjectPaneSnapshot: () => {
-      calls.push('clearProjectPaneSnapshot');
-    },
-    directoriesSize: () => directories.size,
     invocationDirectory: '/invocation',
-    activeDirectoryId: () => activeDirectoryId,
-    firstDirectoryId: () => [...directories.keys()][0] ?? null,
   });
 
   await actions.closeDirectory('directory-1');
@@ -291,7 +315,7 @@ void test('runtime directory actions close directory archives live conversations
   let activeDirectoryId: string | null = 'directory-1';
   let activeConversationId: string | null = 'session-1';
 
-  const actions = new RuntimeDirectoryActions<DirectoryRecord, ConversationStateLike>({
+  const actions = createRuntimeDirectoryActions<DirectoryRecord, ConversationStateLike>({
     controlPlaneService: {
       closePtySession: async (sessionId) => {
         calls.push(`closePty:${sessionId}`);
@@ -305,60 +329,68 @@ void test('runtime directory actions close directory archives live conversations
         calls.push(`archiveDirectory:${directoryId}`);
       },
     },
-    conversations: () => conversations,
-    orderedConversationIds: () => [...conversations.keys()],
-    conversationDirectoryId: (sessionId) => conversations.get(sessionId)?.directoryId ?? null,
-    conversationLive: (sessionId) => conversations.get(sessionId)?.live === true,
-    removeConversationState: (sessionId) => {
-      conversations.delete(sessionId);
-      calls.push(`removeState:${sessionId}`);
+    conversations: {
+      records: () => conversations,
+      orderedIds: () => [...conversations.keys()],
+      directoryIdOf: (sessionId) => conversations.get(sessionId)?.directoryId ?? null,
+      isLive: (sessionId) => conversations.get(sessionId)?.live === true,
+      removeState: (sessionId) => {
+        conversations.delete(sessionId);
+        calls.push(`removeState:${sessionId}`);
+      },
+      unsubscribeEvents: async (sessionId) => {
+        calls.push(`unsubscribe:${sessionId}`);
+      },
+      activeId: () => activeConversationId,
+      setActiveId: (sessionId) => {
+        activeConversationId = sessionId;
+        calls.push(`setActiveConversation:${sessionId ?? 'null'}`);
+      },
+      activate: async () => {},
+      findIdByDirectory: () => null,
     },
-    unsubscribeConversationEvents: async (sessionId) => {
-      calls.push(`unsubscribe:${sessionId}`);
+    directories: {
+      createId: () => 'directory-unused',
+      resolveWorkspacePath: (rawPath) => rawPath,
+      setRecord: () => {},
+      idOf: (directory) => directory.directoryId,
+      setActiveId: (directoryId) => {
+        activeDirectoryId = directoryId;
+        calls.push(`setActiveDirectory:${directoryId ?? 'null'}`);
+      },
+      activeId: () => activeDirectoryId,
+      resolveActiveId: () => activeDirectoryId,
+      has: (directoryId) => directories.has(directoryId),
+      remove: (directoryId) => {
+        directories.delete(directoryId);
+        calls.push(`deleteDirectory:${directoryId}`);
+      },
+      removeGitState: (directoryId) => {
+        calls.push(`deleteGitState:${directoryId}`);
+      },
+      projectPaneSnapshotDirectoryId: () => null,
+      clearProjectPaneSnapshot: () => {},
+      size: () => directories.size,
+      firstId: () => [...directories.keys()][0] ?? null,
+      syncGitStateWithDirectories: () => {},
+      noteGitActivity: (directoryId) => {
+        calls.push(`noteGit:${directoryId}`);
+      },
+      hydratePersistedConversations: async () => {},
     },
-    activeConversationId: () => activeConversationId,
-    setActiveConversationId: (sessionId) => {
-      activeConversationId = sessionId;
-      calls.push(`setActiveConversation:${sessionId ?? 'null'}`);
+    ui: {
+      enterProjectPane: (directoryId) => {
+        calls.push(`enterProject:${directoryId}`);
+      },
+      markDirty: () => {
+        calls.push('markDirty');
+      },
     },
-    activateConversation: async () => {},
-    resolveActiveDirectoryId: () => activeDirectoryId,
-    enterProjectPane: (directoryId) => {
-      calls.push(`enterProject:${directoryId}`);
+    errors: {
+      isSessionNotFoundError: () => false,
+      isConversationNotFoundError: () => false,
     },
-    markDirty: () => {
-      calls.push('markDirty');
-    },
-    isSessionNotFoundError: () => false,
-    isConversationNotFoundError: () => false,
-    createDirectoryId: () => 'directory-unused',
-    resolveWorkspacePathForMux: (rawPath) => rawPath,
-    setDirectory: () => {},
-    directoryIdOf: (directory) => directory.directoryId,
-    setActiveDirectoryId: (directoryId) => {
-      activeDirectoryId = directoryId;
-      calls.push(`setActiveDirectory:${directoryId ?? 'null'}`);
-    },
-    syncGitStateWithDirectories: () => {},
-    noteGitActivity: (directoryId) => {
-      calls.push(`noteGit:${directoryId}`);
-    },
-    hydratePersistedConversationsForDirectory: async () => {},
-    findConversationIdByDirectory: () => null,
-    directoriesHas: (directoryId) => directories.has(directoryId),
-    deleteDirectory: (directoryId) => {
-      directories.delete(directoryId);
-      calls.push(`deleteDirectory:${directoryId}`);
-    },
-    deleteDirectoryGitState: (directoryId) => {
-      calls.push(`deleteGitState:${directoryId}`);
-    },
-    projectPaneSnapshotDirectoryId: () => null,
-    clearProjectPaneSnapshot: () => {},
-    directoriesSize: () => directories.size,
     invocationDirectory: '/unused',
-    activeDirectoryId: () => activeDirectoryId,
-    firstDirectoryId: () => [...directories.keys()][0] ?? null,
   });
 
   await actions.closeDirectory('directory-1');

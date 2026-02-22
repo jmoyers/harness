@@ -1140,7 +1140,9 @@ function parseTelemetrySummary(value: unknown): StreamTelemetrySummary | null | 
   };
 }
 
-function parseSessionStatusModel(value: unknown): StreamSessionStatusModel | null | undefined {
+export function parseStreamSessionStatusModel(
+  value: unknown,
+): StreamSessionStatusModel | null | undefined {
   if (value === undefined) {
     return undefined;
   }
@@ -1605,7 +1607,7 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
     const sessionId = readString(record['sessionId']);
     const status = readString(record['status']);
     const attentionReason = readString(record['attentionReason']);
-    const statusModel = parseSessionStatusModel(record['statusModel']);
+    const statusModel = parseStreamSessionStatusModel(record['statusModel']);
     const live = readBoolean(record['live']);
     const ts = readString(record['ts']);
     const directoryId = readString(record['directoryId']);

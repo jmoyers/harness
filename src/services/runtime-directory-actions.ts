@@ -13,152 +13,167 @@ interface RuntimeDirectoryRecordLike {
   readonly directoryId: string;
 }
 
-interface RuntimeDirectoryActionService<TDirectoryRecord extends RuntimeDirectoryRecordLike> {
-  closePtySession(sessionId: string): Promise<unknown>;
-  removeSession(sessionId: string): Promise<unknown>;
-  archiveConversation(sessionId: string): Promise<unknown>;
+export interface RuntimeDirectoryActionService<TDirectoryRecord extends RuntimeDirectoryRecordLike> {
+  closePtySession(sessionId: string): Promise<void>;
+  removeSession(sessionId: string): Promise<void>;
+  archiveConversation(sessionId: string): Promise<void>;
   upsertDirectory(input: { directoryId: string; path: string }): Promise<TDirectoryRecord | null>;
-  archiveDirectory(directoryId: string): Promise<unknown>;
+  archiveDirectory(directoryId: string): Promise<void>;
 }
 
-interface RuntimeDirectoryActionsOptions<
+export interface RuntimeDirectoryConversations<
+  TConversationState extends RuntimeConversationStateLike,
+> {
+  readonly records: () => ReadonlyMap<string, TConversationState>;
+  readonly orderedIds: () => readonly string[];
+  readonly directoryIdOf: (sessionId: string) => string | null;
+  readonly isLive: (sessionId: string) => boolean;
+  readonly removeState: (sessionId: string) => void;
+  readonly unsubscribeEvents: (sessionId: string) => Promise<void>;
+  readonly activeId: () => string | null;
+  readonly setActiveId: (sessionId: string | null) => void;
+  readonly activate: (sessionId: string) => Promise<unknown>;
+  readonly findIdByDirectory: (directoryId: string) => string | null;
+}
+
+export interface RuntimeDirectoryDomain<TDirectoryRecord extends RuntimeDirectoryRecordLike> {
+  readonly createId: () => string;
+  readonly resolveWorkspacePath: (rawPath: string) => string;
+  readonly setRecord: (directory: TDirectoryRecord) => void;
+  readonly idOf: (directory: TDirectoryRecord) => string;
+  readonly setActiveId: (directoryId: string | null) => void;
+  readonly activeId: () => string | null;
+  readonly resolveActiveId: () => string | null;
+  readonly has: (directoryId: string) => boolean;
+  readonly remove: (directoryId: string) => void;
+  readonly removeGitState: (directoryId: string) => void;
+  readonly projectPaneSnapshotDirectoryId: () => string | null;
+  readonly clearProjectPaneSnapshot: () => void;
+  readonly size: () => number;
+  readonly firstId: () => string | null;
+  readonly syncGitStateWithDirectories: () => void;
+  readonly noteGitActivity: (directoryId: string) => void;
+  readonly hydratePersistedConversations: (directoryId: string) => Promise<unknown>;
+}
+
+export interface RuntimeDirectoryUi {
+  readonly enterProjectPane: (directoryId: string) => void;
+  readonly markDirty: () => void;
+}
+
+export interface RuntimeDirectoryErrors {
+  readonly isSessionNotFoundError: (error: unknown) => boolean;
+  readonly isConversationNotFoundError: (error: unknown) => boolean;
+}
+
+export interface RuntimeDirectoryActionsOptions<
   TDirectoryRecord extends RuntimeDirectoryRecordLike,
   TConversationState extends RuntimeConversationStateLike,
 > {
   readonly controlPlaneService: RuntimeDirectoryActionService<TDirectoryRecord>;
-  readonly conversations: () => ReadonlyMap<string, TConversationState>;
-  readonly orderedConversationIds: () => readonly string[];
-  readonly conversationDirectoryId: (sessionId: string) => string | null;
-  readonly conversationLive: (sessionId: string) => boolean;
-  readonly removeConversationState: (sessionId: string) => void;
-  readonly unsubscribeConversationEvents: (sessionId: string) => Promise<void>;
-  readonly activeConversationId: () => string | null;
-  readonly setActiveConversationId: (sessionId: string | null) => void;
-  readonly activateConversation: (sessionId: string) => Promise<unknown>;
-  readonly resolveActiveDirectoryId: () => string | null;
-  readonly enterProjectPane: (directoryId: string) => void;
-  readonly markDirty: () => void;
-  readonly isSessionNotFoundError: (error: unknown) => boolean;
-  readonly isConversationNotFoundError: (error: unknown) => boolean;
-  readonly createDirectoryId: () => string;
-  readonly resolveWorkspacePathForMux: (rawPath: string) => string;
-  readonly setDirectory: (directory: TDirectoryRecord) => void;
-  readonly directoryIdOf: (directory: TDirectoryRecord) => string;
-  readonly setActiveDirectoryId: (directoryId: string | null) => void;
-  readonly syncGitStateWithDirectories: () => void;
-  readonly noteGitActivity: (directoryId: string) => void;
-  readonly hydratePersistedConversationsForDirectory: (directoryId: string) => Promise<unknown>;
-  readonly findConversationIdByDirectory: (directoryId: string) => string | null;
-  readonly directoriesHas: (directoryId: string) => boolean;
-  readonly deleteDirectory: (directoryId: string) => void;
-  readonly deleteDirectoryGitState: (directoryId: string) => void;
-  readonly projectPaneSnapshotDirectoryId: () => string | null;
-  readonly clearProjectPaneSnapshot: () => void;
-  readonly directoriesSize: () => number;
+  readonly conversations: RuntimeDirectoryConversations<TConversationState>;
+  readonly directories: RuntimeDirectoryDomain<TDirectoryRecord>;
+  readonly ui: RuntimeDirectoryUi;
+  readonly errors: RuntimeDirectoryErrors;
   readonly invocationDirectory: string;
-  readonly activeDirectoryId: () => string | null;
-  readonly firstDirectoryId: () => string | null;
 }
 
-export class RuntimeDirectoryActions<
+export interface RuntimeDirectoryActions {
+  archiveConversation(sessionId: string): Promise<void>;
+  addDirectoryByPath(rawPath: string): Promise<void>;
+  closeDirectory(directoryId: string): Promise<void>;
+}
+
+export function createRuntimeDirectoryActions<
   TDirectoryRecord extends RuntimeDirectoryRecordLike,
   TConversationState extends RuntimeConversationStateLike,
-> {
-  constructor(
-    private readonly options: RuntimeDirectoryActionsOptions<TDirectoryRecord, TConversationState>,
-  ) {}
-
-  async archiveConversation(sessionId: string): Promise<void> {
+>(
+  options: RuntimeDirectoryActionsOptions<TDirectoryRecord, TConversationState>,
+): RuntimeDirectoryActions {
+  const archiveConversation = async (sessionId: string): Promise<void> => {
     await archiveConversationFn({
       sessionId,
-      conversations: this.options.conversations(),
-      closePtySession: async (targetSessionId) => {
-        await this.options.controlPlaneService.closePtySession(targetSessionId);
-      },
-      removeSession: async (targetSessionId) => {
-        await this.options.controlPlaneService.removeSession(targetSessionId);
-      },
-      isSessionNotFoundError: this.options.isSessionNotFoundError,
-      archiveConversationRecord: async (targetSessionId) => {
-        await this.options.controlPlaneService.archiveConversation(targetSessionId);
-      },
-      isConversationNotFoundError: this.options.isConversationNotFoundError,
-      unsubscribeConversationEvents: this.options.unsubscribeConversationEvents,
-      removeConversationState: this.options.removeConversationState,
-      activeConversationId: this.options.activeConversationId(),
-      setActiveConversationId: this.options.setActiveConversationId,
-      orderedConversationIds: this.options.orderedConversationIds,
-      conversationDirectoryId: this.options.conversationDirectoryId,
-      resolveActiveDirectoryId: this.options.resolveActiveDirectoryId,
-      enterProjectPane: this.options.enterProjectPane,
-      activateConversation: this.options.activateConversation,
-      markDirty: this.options.markDirty,
+      conversations: options.conversations.records(),
+      closePtySession: options.controlPlaneService.closePtySession,
+      removeSession: options.controlPlaneService.removeSession,
+      isSessionNotFoundError: options.errors.isSessionNotFoundError,
+      archiveConversationRecord: options.controlPlaneService.archiveConversation,
+      isConversationNotFoundError: options.errors.isConversationNotFoundError,
+      unsubscribeConversationEvents: options.conversations.unsubscribeEvents,
+      removeConversationState: options.conversations.removeState,
+      activeConversationId: options.conversations.activeId(),
+      setActiveConversationId: options.conversations.setActiveId,
+      orderedConversationIds: options.conversations.orderedIds,
+      conversationDirectoryId: options.conversations.directoryIdOf,
+      resolveActiveDirectoryId: options.directories.resolveActiveId,
+      enterProjectPane: options.ui.enterProjectPane,
+      activateConversation: options.conversations.activate,
+      markDirty: options.ui.markDirty,
     });
-  }
+  };
 
-  async addDirectoryByPath(rawPath: string): Promise<void> {
+  const addDirectoryByPath = async (rawPath: string): Promise<void> => {
     await addDirectoryByPathFn({
       rawPath,
-      resolveWorkspacePathForMux: this.options.resolveWorkspacePathForMux,
+      resolveWorkspacePathForMux: options.directories.resolveWorkspacePath,
       upsertDirectory: async (path) => {
-        return await this.options.controlPlaneService.upsertDirectory({
-          directoryId: this.options.createDirectoryId(),
+        return await options.controlPlaneService.upsertDirectory({
+          directoryId: options.directories.createId(),
           path,
         });
       },
-      setDirectory: this.options.setDirectory,
-      directoryIdOf: this.options.directoryIdOf,
+      setDirectory: options.directories.setRecord,
+      directoryIdOf: options.directories.idOf,
       setActiveDirectoryId: (directoryId) => {
-        this.options.setActiveDirectoryId(directoryId);
+        options.directories.setActiveId(directoryId);
       },
-      syncGitStateWithDirectories: this.options.syncGitStateWithDirectories,
-      noteGitActivity: this.options.noteGitActivity,
-      hydratePersistedConversationsForDirectory:
-        this.options.hydratePersistedConversationsForDirectory,
-      findConversationIdByDirectory: this.options.findConversationIdByDirectory,
-      activateConversation: this.options.activateConversation,
-      enterProjectPane: this.options.enterProjectPane,
-      markDirty: this.options.markDirty,
+      syncGitStateWithDirectories: options.directories.syncGitStateWithDirectories,
+      noteGitActivity: options.directories.noteGitActivity,
+      hydratePersistedConversationsForDirectory: options.directories.hydratePersistedConversations,
+      findConversationIdByDirectory: options.conversations.findIdByDirectory,
+      activateConversation: options.conversations.activate,
+      enterProjectPane: options.ui.enterProjectPane,
+      markDirty: options.ui.markDirty,
     });
-  }
+  };
 
-  async closeDirectory(directoryId: string): Promise<void> {
+  const closeDirectory = async (directoryId: string): Promise<void> => {
     await closeDirectoryFn({
       directoryId,
-      directoriesHas: this.options.directoriesHas,
-      orderedConversationIds: this.options.orderedConversationIds,
-      conversationDirectoryId: this.options.conversationDirectoryId,
-      conversationLive: this.options.conversationLive,
-      closePtySession: async (sessionId) => {
-        await this.options.controlPlaneService.closePtySession(sessionId);
-      },
-      archiveConversationRecord: async (sessionId) => {
-        await this.options.controlPlaneService.archiveConversation(sessionId);
-      },
-      unsubscribeConversationEvents: this.options.unsubscribeConversationEvents,
-      removeConversationState: this.options.removeConversationState,
-      activeConversationId: this.options.activeConversationId(),
-      setActiveConversationId: this.options.setActiveConversationId,
-      archiveDirectory: async (targetDirectoryId) => {
-        await this.options.controlPlaneService.archiveDirectory(targetDirectoryId);
-      },
-      deleteDirectory: this.options.deleteDirectory,
-      deleteDirectoryGitState: this.options.deleteDirectoryGitState,
-      projectPaneSnapshotDirectoryId: this.options.projectPaneSnapshotDirectoryId(),
-      clearProjectPaneSnapshot: this.options.clearProjectPaneSnapshot,
-      directoriesSize: this.options.directoriesSize,
+      directoriesHas: options.directories.has,
+      orderedConversationIds: options.conversations.orderedIds,
+      conversationDirectoryId: options.conversations.directoryIdOf,
+      conversationLive: options.conversations.isLive,
+      closePtySession: options.controlPlaneService.closePtySession,
+      archiveConversationRecord: options.controlPlaneService.archiveConversation,
+      unsubscribeConversationEvents: options.conversations.unsubscribeEvents,
+      removeConversationState: options.conversations.removeState,
+      activeConversationId: options.conversations.activeId(),
+      setActiveConversationId: options.conversations.setActiveId,
+      archiveDirectory: options.controlPlaneService.archiveDirectory,
+      deleteDirectory: options.directories.remove,
+      deleteDirectoryGitState: options.directories.removeGitState,
+      projectPaneSnapshotDirectoryId: options.directories.projectPaneSnapshotDirectoryId(),
+      clearProjectPaneSnapshot: options.directories.clearProjectPaneSnapshot,
+      directoriesSize: options.directories.size,
       addDirectoryByPath: async (path) => {
-        await this.addDirectoryByPath(path);
+        await addDirectoryByPath(path);
       },
-      invocationDirectory: this.options.invocationDirectory,
-      activeDirectoryId: this.options.activeDirectoryId(),
-      setActiveDirectoryId: this.options.setActiveDirectoryId,
-      firstDirectoryId: this.options.firstDirectoryId,
-      noteGitActivity: this.options.noteGitActivity,
-      resolveActiveDirectoryId: this.options.resolveActiveDirectoryId,
-      activateConversation: this.options.activateConversation,
-      enterProjectPane: this.options.enterProjectPane,
-      markDirty: this.options.markDirty,
+      invocationDirectory: options.invocationDirectory,
+      activeDirectoryId: options.directories.activeId(),
+      setActiveDirectoryId: options.directories.setActiveId,
+      firstDirectoryId: options.directories.firstId,
+      noteGitActivity: options.directories.noteGitActivity,
+      resolveActiveDirectoryId: options.directories.resolveActiveId,
+      activateConversation: options.conversations.activate,
+      enterProjectPane: options.ui.enterProjectPane,
+      markDirty: options.ui.markDirty,
     });
-  }
+  };
+
+  return {
+    archiveConversation,
+    addDirectoryByPath,
+    closeDirectory,
+  };
 }

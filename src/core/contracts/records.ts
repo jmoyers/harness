@@ -1,7 +1,8 @@
-import type {
-  StreamSessionController,
-  StreamSessionRuntimeStatus,
-  StreamSessionStatusModel,
+import {
+  parseStreamSessionStatusModel as parseProtocolSessionStatusModel,
+  type StreamSessionController,
+  type StreamSessionRuntimeStatus,
+  type StreamSessionStatusModel,
 } from '../../control-plane/stream-protocol.ts';
 
 export interface ControlPlaneDirectoryRecord {
@@ -128,75 +129,7 @@ function asObjectRecord(value: unknown): Record<string, unknown> | null {
 export function parseStreamSessionStatusModel(
   value: unknown,
 ): StreamSessionStatusModel | null | undefined {
-  if (value === null) {
-    return null;
-  }
-  const model = asObjectRecord(value);
-  if (model === null) {
-    return undefined;
-  }
-  const runtimeStatus = model['runtimeStatus'];
-  const phase = model['phase'];
-  const glyph = model['glyph'];
-  const badge = model['badge'];
-  const detailText = asRequiredString(model['detailText']);
-  const attentionReason = asNullableString(model['attentionReason']);
-  const lastKnownWork = asNullableString(model['lastKnownWork']);
-  const lastKnownWorkAt = asNullableString(model['lastKnownWorkAt']);
-  const activityHint = model['activityHint'];
-  const observedAt = asRequiredString(model['observedAt']);
-  if (
-    detailText === null ||
-    attentionReason === undefined ||
-    lastKnownWork === undefined ||
-    lastKnownWorkAt === undefined ||
-    observedAt === null
-  ) {
-    return undefined;
-  }
-  if (
-    runtimeStatus !== 'running' &&
-    runtimeStatus !== 'needs-input' &&
-    runtimeStatus !== 'completed' &&
-    runtimeStatus !== 'exited'
-  ) {
-    return undefined;
-  }
-  if (
-    phase !== 'needs-action' &&
-    phase !== 'starting' &&
-    phase !== 'working' &&
-    phase !== 'idle' &&
-    phase !== 'exited'
-  ) {
-    return undefined;
-  }
-  if (glyph !== '▲' && glyph !== '◔' && glyph !== '◆' && glyph !== '○' && glyph !== '■') {
-    return undefined;
-  }
-  if (badge !== 'NEED' && badge !== 'RUN ' && badge !== 'DONE' && badge !== 'EXIT') {
-    return undefined;
-  }
-  if (
-    activityHint !== null &&
-    activityHint !== 'needs-action' &&
-    activityHint !== 'working' &&
-    activityHint !== 'idle'
-  ) {
-    return undefined;
-  }
-  return {
-    runtimeStatus,
-    phase,
-    glyph,
-    badge,
-    detailText,
-    attentionReason,
-    lastKnownWork,
-    lastKnownWorkAt,
-    activityHint,
-    observedAt,
-  };
+  return parseProtocolSessionStatusModel(value);
 }
 
 export function parseDirectoryRecord(value: unknown): ControlPlaneDirectoryRecord | null {
