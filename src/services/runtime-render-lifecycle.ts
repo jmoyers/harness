@@ -4,7 +4,7 @@ interface ScreenLike {
   markDirty(): void;
 }
 
-interface RuntimeRenderLifecycleOptions {
+export interface RuntimeRenderLifecycleOptions {
   readonly screen: ScreenLike;
   readonly render: () => void;
   readonly isShuttingDown: () => boolean;
@@ -21,84 +21,83 @@ interface RuntimeRenderLifecycleOptions {
 
 const FATAL_EXIT_DELAY_MS = 1200;
 
-export class RuntimeRenderLifecycle {
-  private readonly setImmediateFn: (callback: () => void) => void;
-  private readonly setTimeoutFn: (
-    callback: () => void,
-    delayMs: number,
-  ) => ReturnType<typeof setTimeout>;
-  private readonly clearTimeoutFn: (timer: ReturnType<typeof setTimeout>) => void;
-  private renderScheduled = false;
-  private runtimeFatal: { origin: string; error: unknown } | null = null;
-  private runtimeFatalExitTimer: ReturnType<typeof setTimeout> | null = null;
+export interface RuntimeRenderLifecycle {
+  hasFatal(): boolean;
+  clearRenderScheduled(): void;
+  clearRuntimeFatalExitTimer(): void;
+  markDirty(): void;
+  scheduleRender(): void;
+  handleRuntimeFatal(origin: string, error: unknown): void;
+}
 
-  constructor(private readonly options: RuntimeRenderLifecycleOptions) {
-    this.setImmediateFn = options.setImmediateFn ?? setImmediate;
-    this.setTimeoutFn = options.setTimeoutFn ?? setTimeout;
-    this.clearTimeoutFn = options.clearTimeoutFn ?? clearTimeout;
-  }
+export function createRuntimeRenderLifecycle(
+  options: RuntimeRenderLifecycleOptions,
+): RuntimeRenderLifecycle {
+  const setImmediateFn = options.setImmediateFn ?? setImmediate;
+  const setTimeoutFn = options.setTimeoutFn ?? setTimeout;
+  const clearTimeoutFn = options.clearTimeoutFn ?? clearTimeout;
+  let renderScheduled = false;
+  let runtimeFatal: { origin: string; error: unknown } | null = null;
+  let runtimeFatalExitTimer: ReturnType<typeof setTimeout> | null = null;
 
-  hasFatal(): boolean {
-    return this.runtimeFatal !== null;
-  }
-
-  clearRenderScheduled(): void {
-    this.renderScheduled = false;
-  }
-
-  clearRuntimeFatalExitTimer(): void {
-    if (this.runtimeFatalExitTimer === null) {
+  const scheduleRender = (): void => {
+    if (options.isShuttingDown() || renderScheduled) {
       return;
     }
-    this.clearTimeoutFn(this.runtimeFatalExitTimer);
-    this.runtimeFatalExitTimer = null;
-  }
-
-  markDirty(): void {
-    if (this.options.isShuttingDown()) {
-      return;
-    }
-    this.options.screen.markDirty();
-    this.scheduleRender();
-  }
-
-  scheduleRender(): void {
-    if (this.options.isShuttingDown() || this.renderScheduled) {
-      return;
-    }
-    this.renderScheduled = true;
-    this.setImmediateFn(() => {
-      this.renderScheduled = false;
+    renderScheduled = true;
+    setImmediateFn(() => {
+      renderScheduled = false;
       try {
-        this.options.render();
-        if (this.options.screen.isDirty()) {
-          this.scheduleRender();
+        options.render();
+        if (options.screen.isDirty()) {
+          scheduleRender();
         }
       } catch (error: unknown) {
-        this.handleRuntimeFatal('render', error);
+        handleRuntimeFatal('render', error);
       }
     });
-  }
+  };
 
-  handleRuntimeFatal(origin: string, error: unknown): void {
-    if (this.runtimeFatal !== null) {
+  const handleRuntimeFatal = (origin: string, error: unknown): void => {
+    if (runtimeFatal !== null) {
       return;
     }
-    this.runtimeFatal = {
+    runtimeFatal = {
       origin,
       error,
     };
-    this.options.setShuttingDown(true);
-    this.options.setStop(true);
-    this.options.screen.clearDirty();
-    this.options.writeStderr(
-      `[mux] fatal runtime error (${origin}): ${this.options.formatErrorMessage(error)}\n`,
-    );
-    this.options.restoreTerminalState();
-    this.runtimeFatalExitTimer = this.setTimeoutFn(() => {
-      this.options.writeStderr('[mux] fatal runtime error forced exit\n');
-      this.options.exitProcess(1);
+    options.setShuttingDown(true);
+    options.setStop(true);
+    options.screen.clearDirty();
+    options.writeStderr(`[mux] fatal runtime error (${origin}): ${options.formatErrorMessage(error)}\n`);
+    options.restoreTerminalState();
+    runtimeFatalExitTimer = setTimeoutFn(() => {
+      options.writeStderr('[mux] fatal runtime error forced exit\n');
+      options.exitProcess(1);
     }, FATAL_EXIT_DELAY_MS);
-    this.runtimeFatalExitTimer.unref?.();
-  }
+    runtimeFatalExitTimer.unref?.();
+  };
+
+  return {
+    hasFatal: (): boolean => runtimeFatal !== null,
+    clearRenderScheduled: (): void => {
+      renderScheduled = false;
+    },
+    clearRuntimeFatalExitTimer: (): void => {
+      if (runtimeFatalExitTimer === null) {
+        return;
+      }
+      clearTimeoutFn(runtimeFatalExitTimer);
+      runtimeFatalExitTimer = null;
+    },
+    markDirty: (): void => {
+      if (options.isShuttingDown()) {
+        return;
+      }
+      options.screen.markDirty();
+      scheduleRender();
+    },
+    scheduleRender,
+    handleRuntimeFatal,
+  };
 }

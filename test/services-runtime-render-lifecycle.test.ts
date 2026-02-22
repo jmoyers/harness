@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { RuntimeRenderLifecycle } from '../src/services/runtime-render-lifecycle.ts';
+import { createRuntimeRenderLifecycle } from '../src/services/runtime-render-lifecycle.ts';
 
 void test('runtime render lifecycle marks dirty and schedules render until clean', () => {
   let shuttingDown = false;
@@ -9,7 +9,7 @@ void test('runtime render lifecycle marks dirty and schedules render until clean
   const immediateCallbacks: Array<() => void> = [];
   let dirty = false;
   let renderCount = 0;
-  const lifecycle = new RuntimeRenderLifecycle({
+  const lifecycle = createRuntimeRenderLifecycle({
     screen: {
       clearDirty: () => {
         dirty = false;
@@ -72,7 +72,7 @@ void test('runtime render lifecycle marks dirty and schedules render until clean
 
 void test('runtime render lifecycle clearRenderScheduled resets pending render guard', () => {
   const immediateCallbacks: Array<() => void> = [];
-  const lifecycle = new RuntimeRenderLifecycle({
+  const lifecycle = createRuntimeRenderLifecycle({
     screen: {
       clearDirty: () => {},
       isDirty: () => false,
@@ -105,7 +105,7 @@ void test('runtime render lifecycle fatal path sets shutdown/stop and is idempot
   let clearTimeoutCalls = 0;
   let timerUnrefCalls = 0;
 
-  const lifecycle = new RuntimeRenderLifecycle({
+  const lifecycle = createRuntimeRenderLifecycle({
     screen: {
       clearDirty: () => {
         calls.push('clearDirty');

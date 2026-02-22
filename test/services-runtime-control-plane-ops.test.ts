@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { RuntimeControlPlaneOps } from '../src/services/runtime-control-plane-ops.ts';
+import { createRuntimeControlPlaneOps } from '../src/services/runtime-control-plane-ops.ts';
 
 async function flushManualSchedule(queue: Array<() => void>): Promise<void> {
   while (queue.length > 0) {
@@ -21,7 +21,7 @@ void test('runtime control-plane ops prioritizes interactive tasks and records e
   const stderrLines: string[] = [];
   const nowByCall = [100, 100, 108, 122];
 
-  const service = new RuntimeControlPlaneOps({
+  const service = createRuntimeControlPlaneOps({
     onFatal: (error) => {
       throw error;
     },
@@ -87,7 +87,7 @@ void test('runtime control-plane ops records error spans, reports stderr, and co
   const endedSpans: Array<Readonly<Record<string, unknown>> | undefined> = [];
   const stderrLines: string[] = [];
 
-  const service = new RuntimeControlPlaneOps({
+  const service = createRuntimeControlPlaneOps({
     onFatal: (error) => {
       throw error;
     },
@@ -130,7 +130,7 @@ void test('runtime control-plane ops routes fatal callback failures through onFa
   const fatalMessages: string[] = [];
   let completed = false;
 
-  const service = new RuntimeControlPlaneOps({
+  const service = createRuntimeControlPlaneOps({
     onFatal: (error) => {
       fatalMessages.push(error instanceof Error ? error.message : String(error));
     },
@@ -167,7 +167,7 @@ void test('runtime control-plane ops marks superseded latest interactive operati
   let firstObservedAbort = false;
   const ran: string[] = [];
 
-  const service = new RuntimeControlPlaneOps({
+  const service = createRuntimeControlPlaneOps({
     onFatal: (error) => {
       throw error;
     },
@@ -235,7 +235,7 @@ void test('runtime control-plane ops lets interactive latest run ahead of queued
     };
   });
 
-  const service = new RuntimeControlPlaneOps({
+  const service = createRuntimeControlPlaneOps({
     onFatal: (error) => {
       throw error;
     },

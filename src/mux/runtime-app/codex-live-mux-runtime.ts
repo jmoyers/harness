@@ -193,7 +193,7 @@ import { RecordingService } from '../../services/recording.ts';
 import { SessionProjectionInstrumentation } from '../../services/session-projection-instrumentation.ts';
 import { StartupOrchestrator } from '../../services/startup-orchestrator.ts';
 import { attachRuntimeProcessWiring } from '../../services/runtime-process-wiring.ts';
-import { RuntimeControlPlaneOps } from '../../services/runtime-control-plane-ops.ts';
+import { createRuntimeControlPlaneOps } from '../../services/runtime-control-plane-ops.ts';
 import { RuntimeControlActions } from '../../services/runtime-control-actions.ts';
 import { createRuntimeDirectoryActions } from '../../services/runtime-directory-actions.ts';
 import { RuntimeEnvelopeHandler } from '../../services/runtime-envelope-handler.ts';
@@ -205,7 +205,7 @@ import { createRuntimeRenderPipeline } from '../../services/runtime-render-pipel
 import { RuntimeRepositoryActions } from '../../services/runtime-repository-actions.ts';
 import { RuntimeGitState } from '../../services/runtime-git-state.ts';
 import { RuntimeLayoutResize } from '../../services/runtime-layout-resize.ts';
-import { RuntimeRenderLifecycle } from '../../services/runtime-render-lifecycle.ts';
+import { createRuntimeRenderLifecycle } from '../../services/runtime-render-lifecycle.ts';
 import { finalizeRuntimeShutdown } from '../../services/runtime-shutdown.ts';
 import { RuntimeTaskEditorActions } from '../../services/runtime-task-editor-actions.ts';
 import { RuntimeTaskComposerPersistenceService } from '../../services/runtime-task-composer-persistence.ts';
@@ -1995,7 +1995,7 @@ class CodexLiveMuxRuntimeApplication {
       });
     };
 
-    const runtimeRenderLifecycle = new RuntimeRenderLifecycle({
+    const runtimeRenderLifecycle = createRuntimeRenderLifecycle({
       screen,
       render: () => {
         render();
@@ -2025,7 +2025,7 @@ class CodexLiveMuxRuntimeApplication {
     const markDirty = (): void => {
       runtimeRenderLifecycle.markDirty();
     };
-    const controlPlaneOps = new RuntimeControlPlaneOps({
+    const controlPlaneOps = createRuntimeControlPlaneOps({
       onFatal: (error: unknown) => {
         handleRuntimeFatal('control-plane-pump', error);
       },
