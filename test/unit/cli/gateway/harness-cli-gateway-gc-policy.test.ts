@@ -22,6 +22,7 @@ import { createServer } from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
 import { parseGatewayRecordText } from '../../../../src/cli/gateway-record.ts';
 import { connectControlPlaneStreamClient } from '../../../../src/control-plane/stream-client.ts';
+import { SqliteControlPlaneStore } from '../../../../src/store/control-plane-store.ts';
 import {
   resolveHarnessConfigPath,
   resolveHarnessConfigDirectory,
@@ -139,3 +140,26 @@ void serialCliTest('harness gateway gc rejects unknown options', async () => {
     rmSync(workspace, { recursive: true, force: true });
   }
 });
+
+void serialCliTest(
+  'harness gateway gc runs storage lifecycle maintenance for retained offline session dbs',
+  async () => {
+    const workspace = createWorkspace();
+    const runtimeRoot = workspaceRuntimeRoot(workspace);
+    const sessionsRoot = join(runtimeRoot, 'sessions');
+    const recentSessionRoot = join(sessionsRoot, 'recent-session-maintenance');
+    mkdirSync(recentSessionRoot, { recursive: true });
+    const stateDbPath = join(recentSessionRoot, 'control-plane.sqlite');
+    const stateStore = new SqliteControlPlaneStore(stateDbPath);
+    stateStore.close();
+
+    try {
+      const gcResult = await runHarness(workspace, ['gateway', 'gc']);
+      assert.equal(gcResult.code, 0, gcResult.stderr);
+      assert.equal(gcResult.stdout.includes('storageMaintenanceApplied=1'), true);
+      assert.equal(existsSync(recentSessionRoot), true);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  },
+);

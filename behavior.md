@@ -286,6 +286,7 @@ Behavior fragments:
 - Rolling-window compaction runs online in bounded copy-forward steps after prune churn.
 - Storage lifecycle policy values are configured under `storage.lifecycle` and applied to both mux event storage and control-plane telemetry storage.
 - Control-plane storage lifecycle policy is hot-reloaded from config while the server is live.
+- `harness gateway gc` also runs storage lifecycle maintenance for retained offline session databases.
 - Event and telemetry storage maintenance is coordinated through one module.
 - Existing SQLite files are upgraded on open to incremental auto-vacuum mode (best-effort).
 

@@ -26,12 +26,14 @@ import {
   parseGatewayRecordText,
   type GatewayRecord,
 } from '../gateway-record.ts';
-import { loadHarnessConfig } from '../../config/config-core.ts';
+import { loadHarnessConfig, type HarnessStorageLifecycleConfig } from '../../config/config-core.ts';
 import {
   resolveHarnessRuntimePath,
   resolveHarnessWorkspaceDirectory,
 } from '../../config/harness-paths.ts';
 import { parsePortFlag, parsePositiveIntFlag, readCliValue } from '../parsing/flags.ts';
+import { StorageLifecycleCore } from '../../storage/storage-lifecycle-core.ts';
+import { SqliteControlPlaneStore } from '../../store/control-plane-store.ts';
 import {
   GatewayControlInfra,
   type ParsedGatewayDaemonEntry,
@@ -124,6 +126,9 @@ interface GatewayGcResult {
   skippedRecent: number;
   skippedLive: number;
   skippedCurrent: number;
+  storageMaintenanceApplied?: number;
+  storageMaintenanceSkippedLive?: number;
+  storageMaintenanceErrors?: readonly string[];
   deletedSessions: readonly string[];
   errors: readonly string[];
 }
@@ -1118,16 +1123,89 @@ export class GatewayRuntimeService {
     return this.infra.isPidRunning(record.pid);
   }
 
+  private async isDefaultGatewayLive(): Promise<boolean> {
+    const defaultStateDbPath = this.runtime.gatewayDefaultStateDbPath;
+    const daemonCandidates = this.infra
+      .listGatewayDaemonProcesses()
+      .filter((candidate) => candidate.stateDbPath === defaultStateDbPath);
+    if (daemonCandidates.length > 0) {
+      return true;
+    }
+    const runtimeRoot = resolveHarnessWorkspaceDirectory(
+      this.runtime.invocationDirectory,
+      this.env(),
+    );
+    const defaultRecordPath = resolve(runtimeRoot, 'gateway.json');
+    const record = this.infra.readGatewayRecord(defaultRecordPath);
+    if (record === null) {
+      return false;
+    }
+    const probe = await this.probeGateway(record);
+    if (probe.connected) {
+      return true;
+    }
+    return this.infra.isPidRunning(record.pid);
+  }
+
+  private resolveStorageLifecyclePolicyForGc(): HarnessStorageLifecycleConfig {
+    const loadedConfig = loadHarnessConfig({
+      cwd: this.runtime.invocationDirectory,
+      env: this.env(),
+    });
+    return loadedConfig.config.storage.lifecycle;
+  }
+
+  private runStorageLifecycleMaintenanceForStateDbPath(
+    stateDbPath: string,
+    policy: HarnessStorageLifecycleConfig,
+  ): { status: 'applied' | 'missing' | 'error'; error?: string } {
+    if (!existsSync(stateDbPath)) {
+      return { status: 'missing' };
+    }
+    const stateStore = new SqliteControlPlaneStore(stateDbPath);
+    try {
+      const lifecycle = new StorageLifecycleCore({
+        telemetryStore: {
+          pruneTelemetryOlderThan: (cutoffIngestedAt, limit) =>
+            stateStore.pruneTelemetryOlderThan(cutoffIngestedAt, limit),
+          checkpointWalTruncate: () => {
+            stateStore.checkpointWalTruncate();
+          },
+          compactFreelistPages: (maxPages) => {
+            stateStore.compactFreelistPages(maxPages);
+          },
+          runOnlineCopyForwardCompactionStep: (batchSize, finalizeTailRows) =>
+            stateStore.runOnlineCopyForwardCompactionStep(batchSize, finalizeTailRows),
+        },
+        policy,
+        writeStderr: (text) => this.writeStderr(text),
+      });
+      lifecycle.runMaintenanceTick();
+      return { status: 'applied' };
+    } catch (error: unknown) {
+      return {
+        status: 'error',
+        error: error instanceof Error ? error.message : String(error),
+      };
+    } finally {
+      stateStore.close();
+    }
+  }
+
   public async runGatewaySessionGc(options: GatewayGcOptions): Promise<GatewayGcResult> {
     const maxAgeMs = options.olderThanDays * 24 * 60 * 60 * 1000;
     const nowMs = Date.now();
+    const storageLifecyclePolicy = this.resolveStorageLifecyclePolicyForGc();
     const deletedSessions: string[] = [];
     const errors: string[] = [];
+    const storageMaintenanceErrors: string[] = [];
     let scanned = 0;
     let deleted = 0;
     let skippedRecent = 0;
     let skippedLive = 0;
     let skippedCurrent = 0;
+    let storageMaintenanceApplied = 0;
+    let storageMaintenanceSkippedLive = 0;
 
     for (const candidateSessionName of this.listNamedSessionNames()) {
       if (this.runtime.sessionName !== null && candidateSessionName === this.runtime.sessionName) {
@@ -1149,11 +1227,24 @@ export class GatewayRuntimeService {
         }
         if (await this.isSessionGatewayLive(sessionRoot)) {
           skippedLive += 1;
+          storageMaintenanceSkippedLive += 1;
           continue;
         }
         const newestMtimeMs = this.resolveNewestSessionArtifactMtimeMs(sessionRoot);
         if (newestMtimeMs > 0 && nowMs - newestMtimeMs < maxAgeMs) {
           skippedRecent += 1;
+          const stateDbPath = resolve(sessionRoot, 'control-plane.sqlite');
+          const maintenance = this.runStorageLifecycleMaintenanceForStateDbPath(
+            stateDbPath,
+            storageLifecyclePolicy,
+          );
+          if (maintenance.status === 'applied') {
+            storageMaintenanceApplied += 1;
+          } else if (maintenance.status === 'error') {
+            storageMaintenanceErrors.push(
+              `${candidateSessionName}: ${maintenance.error ?? 'unknown maintenance error'}`,
+            );
+          }
           continue;
         }
         rmSync(sessionRoot, { recursive: true, force: true });
@@ -1168,12 +1259,33 @@ export class GatewayRuntimeService {
       }
     }
 
+    if (this.runtime.sessionName === null) {
+      if (await this.isDefaultGatewayLive()) {
+        storageMaintenanceSkippedLive += 1;
+      } else {
+        const maintenance = this.runStorageLifecycleMaintenanceForStateDbPath(
+          this.runtime.gatewayDefaultStateDbPath,
+          storageLifecyclePolicy,
+        );
+        if (maintenance.status === 'applied') {
+          storageMaintenanceApplied += 1;
+        } else if (maintenance.status === 'error') {
+          storageMaintenanceErrors.push(
+            `default: ${maintenance.error ?? 'unknown maintenance error'}`,
+          );
+        }
+      }
+    }
+
     return {
       scanned,
       deleted,
       skippedRecent,
       skippedLive,
       skippedCurrent,
+      storageMaintenanceApplied,
+      storageMaintenanceSkippedLive,
+      storageMaintenanceErrors,
       deletedSessions,
       errors,
     };
@@ -1656,6 +1768,9 @@ export class GatewayRuntimeService {
         olderThanDays: DEFAULT_GATEWAY_GC_OLDER_THAN_DAYS,
       };
       const gcResult = await this.withLock(async () => await this.runGatewaySessionGc(gcOptions));
+      const storageMaintenanceApplied = gcResult.storageMaintenanceApplied ?? 0;
+      const storageMaintenanceSkippedLive = gcResult.storageMaintenanceSkippedLive ?? 0;
+      const storageMaintenanceErrors = gcResult.storageMaintenanceErrors ?? [];
       this.writeStdout(
         [
           'gateway gc:',
@@ -1665,6 +1780,8 @@ export class GatewayRuntimeService {
           `skippedRecent=${String(gcResult.skippedRecent)}`,
           `skippedLive=${String(gcResult.skippedLive)}`,
           `skippedCurrent=${String(gcResult.skippedCurrent)}`,
+          `storageMaintenanceApplied=${String(storageMaintenanceApplied)}`,
+          `storageMaintenanceSkippedLive=${String(storageMaintenanceSkippedLive)}`,
         ].join(' ') + '\n',
       );
       if (gcResult.deletedSessions.length > 0) {
@@ -1673,7 +1790,10 @@ export class GatewayRuntimeService {
       for (const error of gcResult.errors) {
         this.writeStderr(`gateway gc error: ${error}\n`);
       }
-      return gcResult.errors.length === 0 ? 0 : 1;
+      for (const error of storageMaintenanceErrors) {
+        this.writeStderr(`gateway gc storage maintenance error: ${error}\n`);
+      }
+      return gcResult.errors.length === 0 && storageMaintenanceErrors.length === 0 ? 0 : 1;
     }
 
     if (command.type === 'restart') {

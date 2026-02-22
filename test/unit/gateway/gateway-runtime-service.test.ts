@@ -17,6 +17,7 @@ import {
 } from '../../../src/cli/gateway/runtime.ts';
 import { resolveHarnessWorkspaceDirectory } from '../../../src/config/harness-paths.ts';
 import type { GatewayControlInfra } from '../../../src/cli/runtime-infra/gateway-control.ts';
+import { SqliteControlPlaneStore } from '../../../src/store/control-plane-store.ts';
 
 type ParsedCommandInput = Parameters<GatewayRuntimeService['run']>[0];
 type InfraFunctionMap = Record<string, (...args: unknown[]) => unknown>;
@@ -44,6 +45,9 @@ interface RuntimeServiceInternals {
     skippedRecent: number;
     skippedLive: number;
     skippedCurrent: number;
+    storageMaintenanceApplied?: number;
+    storageMaintenanceSkippedLive?: number;
+    storageMaintenanceErrors?: readonly string[];
     deletedSessions: readonly string[];
     errors: readonly string[];
   }>;
@@ -68,6 +72,12 @@ interface RuntimeServiceInternals {
   ) => Promise<GatewayRecord>;
   cleanupNamedSessionGatewayArtifacts: () => void;
   isSessionGatewayLive: (sessionRoot: string) => Promise<boolean>;
+  isDefaultGatewayLive: () => Promise<boolean>;
+  resolveStorageLifecyclePolicyForGc: () => Record<string, unknown>;
+  runStorageLifecycleMaintenanceForStateDbPath: (
+    stateDbPath: string,
+    policy: Record<string, unknown>,
+  ) => { status: 'applied' | 'missing' | 'error'; error?: string };
   readGatewayRecordForSessionRoot: (sessionRoot: string) => GatewayRecord | null;
   resolveNewestSessionArtifactMtimeMs: (sessionRoot: string) => number;
   listNamedSessionNames: () => readonly string[];
@@ -545,6 +555,25 @@ test('gateway runtime run dispatcher covers status/list/start/stop/restart/run/c
   assert.equal(await service.run({ type: 'gc' } as ParsedCommandInput), 1);
   assert.match(stderr.join(''), /gateway gc error: bad/u);
   stderr.length = 0;
+  stdout.length = 0;
+
+  internal.runGatewaySessionGc = async () => ({
+    scanned: 2,
+    deleted: 0,
+    skippedRecent: 2,
+    skippedLive: 0,
+    skippedCurrent: 0,
+    storageMaintenanceApplied: 1,
+    storageMaintenanceSkippedLive: 0,
+    storageMaintenanceErrors: ['default: locked'],
+    deletedSessions: [],
+    errors: [],
+  });
+  assert.equal(await service.run({ type: 'gc' } as ParsedCommandInput), 1);
+  assert.match(stdout.join(''), /storageMaintenanceApplied=1/u);
+  assert.match(stderr.join(''), /gateway gc storage maintenance error: default: locked/u);
+  stderr.length = 0;
+  stdout.length = 0;
 
   internal.runGatewayList = async () => 29;
   assert.equal(await service.run({ type: 'list' } as ParsedCommandInput), 29);
@@ -868,6 +897,50 @@ test('gateway runtime session gc and root helpers cover session-selection branch
 
   const newest = internal.resolveNewestSessionArtifactMtimeMs(keepSession);
   assert.equal(typeof newest, 'number');
+});
+
+test('gateway runtime session gc applies storage lifecycle maintenance for retained offline sessions', async () => {
+  const harness = createRuntimeHarness();
+  const { service, workspaceRoot } = harness;
+  const internal = internals(service);
+  const runtimeRoot = resolveHarnessWorkspaceDirectory(workspaceRoot, {
+    ...process.env,
+    XDG_CONFIG_HOME: resolve(workspaceRoot, '.xdg-config'),
+  });
+  const sessionsRoot = resolve(runtimeRoot, 'sessions');
+  const alphaSessionRoot = resolve(sessionsRoot, 'alpha');
+  mkdirSync(alphaSessionRoot, { recursive: true });
+  writeFileSync(resolve(alphaSessionRoot, 'control-plane.sqlite'), '', 'utf8');
+  writeFileSync(resolve(runtimeRoot, 'control-plane.sqlite'), '', 'utf8');
+
+  harness.infra.acquireGatewayControlLock = async () => ({ release: () => undefined });
+  internal.isSessionGatewayLive = async () => false;
+  internal.isDefaultGatewayLive = async () => false;
+  internal.resolveNewestSessionArtifactMtimeMs = () => Date.now();
+  internal.resolveStorageLifecyclePolicyForGc = () => ({
+    telemetryRetentionMs: 60_000,
+    maintenanceIntervalMs: 1000,
+    pruneBatchSize: 200,
+  });
+  const maintainedPaths: string[] = [];
+  internal.runStorageLifecycleMaintenanceForStateDbPath = (stateDbPath) => {
+    maintainedPaths.push(stateDbPath);
+    return { status: 'applied' };
+  };
+
+  const gc = await service.runGatewaySessionGc({ olderThanDays: 7 });
+  assert.equal(gc.deleted, 0);
+  assert.equal(gc.skippedRecent >= 1, true);
+  assert.equal(gc.storageMaintenanceApplied, 2);
+  assert.equal(gc.storageMaintenanceSkippedLive, 0);
+  assert.deepEqual(gc.storageMaintenanceErrors, []);
+  assert.deepEqual(
+    maintainedPaths.sort((left, right) => left.localeCompare(right)),
+    [
+      resolve(alphaSessionRoot, 'control-plane.sqlite'),
+      harness.gatewayPaths.gatewayDefaultStateDbPath,
+    ].sort((left, right) => left.localeCompare(right)),
+  );
 });
 
 test('gateway runtime mux and foreground process runners execute adapter scripts', async () => {
@@ -1344,4 +1417,138 @@ test('gateway runtime session-root helpers parse gateway records and clean named
 
   const recordText = readFileSync(recordPath, 'utf8');
   assert.equal(recordText.includes('"pid"'), true);
+});
+
+test('gateway runtime default gateway liveness helper covers daemon, record, probe, and pid branches', async () => {
+  const harness = createRuntimeHarness();
+  const { service, workspaceRoot } = harness;
+  const internal = internals(service);
+  const runtimeRoot = resolveHarnessWorkspaceDirectory(workspaceRoot, {
+    ...process.env,
+    XDG_CONFIG_HOME: resolve(workspaceRoot, '.xdg-config'),
+  });
+  const defaultRecordPath = resolve(runtimeRoot, 'gateway.json');
+  const record = createGatewayRecord(workspaceRoot, {
+    pid: 9401,
+    host: '127.0.0.1',
+    port: 7901,
+    stateDbPath: harness.gatewayPaths.gatewayDefaultStateDbPath,
+  });
+
+  harness.infra.listGatewayDaemonProcesses = () => [
+    {
+      pid: 9400,
+      host: '127.0.0.1',
+      port: 7900,
+      authToken: null,
+      stateDbPath: harness.gatewayPaths.gatewayDefaultStateDbPath,
+    },
+  ];
+  harness.infra.readGatewayRecord = () => null;
+  assert.equal(await internal.isDefaultGatewayLive(), true);
+
+  harness.infra.listGatewayDaemonProcesses = () => [];
+  harness.infra.readGatewayRecord = () => null;
+  assert.equal(await internal.isDefaultGatewayLive(), false);
+
+  harness.infra.readGatewayRecord = (recordPath: unknown) =>
+    recordPath === defaultRecordPath ? record : null;
+  internal.probeGateway = async () => ({
+    connected: true,
+    sessionCount: 0,
+    liveSessionCount: 0,
+    error: null,
+  });
+  assert.equal(await internal.isDefaultGatewayLive(), true);
+
+  internal.probeGateway = async () => ({
+    connected: false,
+    sessionCount: 0,
+    liveSessionCount: 0,
+    error: 'offline',
+  });
+  harness.infra.isPidRunning = (pid: unknown) => pid === 9401;
+  assert.equal(await internal.isDefaultGatewayLive(), true);
+  harness.infra.isPidRunning = () => false;
+  assert.equal(await internal.isDefaultGatewayLive(), false);
+});
+
+test('gateway runtime session liveness helper falls back to pid when probe is offline', async () => {
+  const harness = createRuntimeHarness();
+  const { service } = harness;
+  const internal = internals(service);
+  const sessionRoot = resolve(harness.workspaceRoot, '.harness', 'sessions', 'alpha');
+  const record = createGatewayRecord(harness.workspaceRoot, {
+    pid: 9501,
+    host: '127.0.0.1',
+    port: 7950,
+    stateDbPath: resolve(sessionRoot, 'control-plane.sqlite'),
+  });
+
+  harness.infra.listGatewayDaemonProcesses = () => [];
+  internal.readGatewayRecordForSessionRoot = () => record;
+  internal.probeGateway = async () => ({
+    connected: false,
+    sessionCount: 0,
+    liveSessionCount: 0,
+    error: 'offline',
+  });
+  let observedPid = 0;
+  harness.infra.isPidRunning = (pid: unknown) => {
+    observedPid = typeof pid === 'number' ? pid : 0;
+    return true;
+  };
+
+  assert.equal(await internal.isSessionGatewayLive(sessionRoot), true);
+  assert.equal(observedPid, 9501);
+});
+
+test('gateway runtime storage maintenance helper returns missing, applied, and error statuses', async () => {
+  const harness = createRuntimeHarness();
+  const { service } = harness;
+  const internal = internals(service);
+  const policy = internal.resolveStorageLifecyclePolicyForGc();
+  const missingPath = resolve(harness.workspaceRoot, 'missing-control-plane.sqlite');
+  const presentPath = resolve(harness.workspaceRoot, 'present-control-plane.sqlite');
+
+  const seeded = new SqliteControlPlaneStore(presentPath);
+  seeded.appendTelemetry({
+    source: 'history',
+    sessionId: null,
+    providerThreadId: null,
+    eventName: 'event',
+    severity: 'info',
+    summary: 'summary',
+    observedAt: new Date().toISOString(),
+    payload: { ok: true },
+    fingerprint: 'maintenance-test-1',
+  });
+  await new Promise<void>((resolveDelay) => {
+    setTimeout(resolveDelay, 10);
+  });
+  seeded.close();
+
+  const missing = internal.runStorageLifecycleMaintenanceForStateDbPath(missingPath, policy);
+  assert.deepEqual(missing, { status: 'missing' });
+
+  const applied = internal.runStorageLifecycleMaintenanceForStateDbPath(presentPath, {
+    ...policy,
+    telemetryRetentionMs: 1,
+    pruneBatchSize: 10,
+    maintenanceIntervalMs: 1,
+  });
+  assert.deepEqual(applied, { status: 'applied' });
+
+  const throwingPolicy: Record<string, unknown> = {};
+  Object.defineProperty(throwingPolicy, 'telemetryRetentionMs', {
+    get: () => {
+      throw new Error('policy exploded');
+    },
+  });
+  const errored = internal.runStorageLifecycleMaintenanceForStateDbPath(
+    presentPath,
+    throwingPolicy,
+  );
+  assert.equal(errored.status, 'error');
+  assert.match(errored.error ?? '', /policy exploded/u);
 });
