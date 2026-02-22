@@ -265,19 +265,19 @@ export class ControlPlaneService {
     };
   }
 
-  async archiveConversation(conversationId: string): Promise<void> {
+  archiveConversation = async (conversationId: string): Promise<void> => {
     await this.client.sendCommand({
       type: 'conversation.archive',
       conversationId,
     });
-  }
+  };
 
-  async archiveDirectory(directoryId: string): Promise<void> {
+  archiveDirectory = async (directoryId: string): Promise<void> => {
     await this.client.sendCommand({
       type: 'directory.archive',
       directoryId,
     });
-  }
+  };
 
   async attachPty(input: { sessionId: string; sinceCursor: number }): Promise<void> {
     await this.client.sendCommand({
@@ -347,12 +347,12 @@ export class ControlPlaneService {
     await this.client.sendCommand(command);
   }
 
-  async closePtySession(sessionId: string): Promise<void> {
+  closePtySession = async (sessionId: string): Promise<void> => {
     await this.client.sendCommand({
       type: 'pty.close',
       sessionId,
     });
-  }
+  };
 
   async getSessionStatus(sessionId: string): Promise<ControlPlaneSessionSummary | null> {
     const result = await this.client.sendCommand({
@@ -382,12 +382,12 @@ export class ControlPlaneService {
     return parseSessionSummaryList(result['sessions']);
   }
 
-  async removeSession(sessionId: string): Promise<void> {
+  removeSession = async (sessionId: string): Promise<void> => {
     await this.client.sendCommand({
       type: 'session.remove',
       sessionId,
     });
-  }
+  };
 
   async claimSession(input: {
     sessionId: string;

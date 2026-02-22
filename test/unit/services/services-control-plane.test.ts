@@ -348,6 +348,32 @@ void test('control-plane service wraps pty/session lifecycle commands', async ()
   assert.equal(client.commands[9]?.type, 'session.interrupt');
 });
 
+void test('control-plane service lifecycle callbacks keep client binding when extracted', async () => {
+  const client = new MockCommandClient();
+  const service = new ControlPlaneService(client, {
+    tenantId: 'tenant-1',
+    userId: 'user-1',
+    workspaceId: 'workspace-1',
+  });
+
+  client.results.push({}, {}, {}, {});
+
+  const closePtySession = service.closePtySession;
+  const removeSession = service.removeSession;
+  const archiveConversation = service.archiveConversation;
+  const archiveDirectory = service.archiveDirectory;
+
+  await closePtySession('session-callback');
+  await removeSession('session-callback');
+  await archiveConversation('conversation-callback');
+  await archiveDirectory('directory-callback');
+
+  assert.equal(client.commands[0]?.type, 'pty.close');
+  assert.equal(client.commands[1]?.type, 'session.remove');
+  assert.equal(client.commands[2]?.type, 'conversation.archive');
+  assert.equal(client.commands[3]?.type, 'directory.archive');
+});
+
 void test('control-plane service wraps startup/session hydration commands', async () => {
   const client = new MockCommandClient();
   const service = new ControlPlaneService(client, {
