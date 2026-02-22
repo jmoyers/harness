@@ -22,7 +22,8 @@ import {
   type RuntimeConversationTitleEditServiceOptions,
 } from './runtime-conversation-title-edit.ts';
 import {
-  RuntimeStreamSubscriptions,
+  createRuntimeStreamSubscriptions,
+  type RuntimeStreamSubscriptions,
   type RuntimeStreamSubscriptionsOptions,
 } from './runtime-stream-subscriptions.ts';
 import {
@@ -75,7 +76,7 @@ export class ConversationLifecycle<
   constructor(
     options: ConversationLifecycleOptions<TConversation, TSessionSummary, TControllerRecord>,
   ) {
-    this.streamSubscriptions = new RuntimeStreamSubscriptions(options.streamSubscriptions);
+    this.streamSubscriptions = createRuntimeStreamSubscriptions(options.streamSubscriptions);
     this.starter = new RuntimeConversationStarter({
       ...options.starter,
       subscribeConversationEvents: async (sessionId) => {

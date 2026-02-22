@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { RuntimeStreamSubscriptions } from '../src/services/runtime-stream-subscriptions.ts';
+import { createRuntimeStreamSubscriptions } from '../src/services/runtime-stream-subscriptions.ts';
 
 void test('runtime stream subscriptions swallows recoverable conversation subscribe/unsubscribe errors', async () => {
   const calls: string[] = [];
-  const subscriptions = new RuntimeStreamSubscriptions({
+  const subscriptions = createRuntimeStreamSubscriptions({
     subscribePtyEvents: async (sessionId) => {
       calls.push(`subscribePtyEvents:${sessionId}`);
       throw new Error('not found');
@@ -26,7 +26,7 @@ void test('runtime stream subscriptions swallows recoverable conversation subscr
 });
 
 void test('runtime stream subscriptions rethrows non-recoverable conversation subscribe/unsubscribe errors', async () => {
-  const subscriptions = new RuntimeStreamSubscriptions({
+  const subscriptions = createRuntimeStreamSubscriptions({
     subscribePtyEvents: async () => {
       throw new Error('boom-subscribe');
     },
@@ -49,7 +49,7 @@ void test('runtime stream subscriptions rethrows non-recoverable conversation su
 
 void test('runtime stream subscriptions de-dupes task-planning subscribe and clears id on unsubscribe', async () => {
   const calls: string[] = [];
-  const subscriptions = new RuntimeStreamSubscriptions({
+  const subscriptions = createRuntimeStreamSubscriptions({
     subscribePtyEvents: async () => {},
     unsubscribePtyEvents: async () => {},
     isSessionNotFoundError: () => false,
