@@ -947,8 +947,8 @@ export class SqliteControlPlaneStore {
     return count ?? 0;
   }
 
-  checkpointWalTruncate(): void {
-    this.db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
+  checkpointWal(mode: 'PASSIVE' | 'TRUNCATE' = 'PASSIVE'): void {
+    this.db.exec(`PRAGMA wal_checkpoint(${mode});`);
   }
 
   compactFreelistPages(maxPages: number): void {
@@ -972,62 +972,71 @@ export class SqliteControlPlaneStore {
       ? Math.max(1, Math.floor(finalizeTailRows))
       : 1200;
 
-    this.db.exec('BEGIN IMMEDIATE TRANSACTION');
-    try {
-      if (!this.telemetryCopyForwardActive) {
-        if (!this.telemetryCopyForwardRequested) {
-          this.db.exec('COMMIT');
-          return {
-            state: 'idle',
-            copiedRows: 0,
-          };
-        }
-        if (this.countTotalTelemetryRows() === 0) {
-          this.telemetryCopyForwardRequested = false;
-          this.db.exec('COMMIT');
-          return {
-            state: 'idle',
-            copiedRows: 0,
-          };
-        }
-        this.resetTelemetryCompactionShadowTable();
-        this.telemetryCopyForwardActive = true;
-        this.telemetryCopyForwardCursorRowId = 0;
+    if (!this.telemetryCopyForwardActive) {
+      if (!this.telemetryCopyForwardRequested) {
+        return { state: 'idle', copiedRows: 0 };
       }
+      if (this.countTotalTelemetryRows() === 0) {
+        this.telemetryCopyForwardRequested = false;
+        return { state: 'idle', copiedRows: 0 };
+      }
+      this.db.exec('BEGIN IMMEDIATE TRANSACTION');
+      try {
+        this.resetTelemetryCompactionShadowTable();
+        this.db.exec('COMMIT');
+      } catch (error) {
+        this.db.exec('ROLLBACK');
+        throw error;
+      }
+      this.telemetryCopyForwardActive = true;
+      this.telemetryCopyForwardCursorRowId = 0;
+    }
 
-      const copiedRows = this.copyTelemetryCompactionBatch(
+    this.db.exec('BEGIN IMMEDIATE TRANSACTION');
+    let copiedRows: number;
+    let remainingRows: number;
+    try {
+      copiedRows = this.copyTelemetryCompactionBatch(
         this.telemetryCopyForwardCursorRowId,
         safeBatchSize,
       );
       if (copiedRows > 0) {
         this.telemetryCopyForwardCursorRowId = this.readTelemetryCompactionShadowCursorRowId();
       }
+      remainingRows = this.countTelemetryRowsAfterId(this.telemetryCopyForwardCursorRowId);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      this.resetTelemetryCompactionStateAfterFailure();
+      throw error;
+    }
 
-      const remainingRows = this.countTelemetryRowsAfterId(this.telemetryCopyForwardCursorRowId);
-      if (remainingRows > safeFinalizeTailRows) {
-        this.db.exec('COMMIT');
-        return {
-          state: 'copying',
-          copiedRows,
-        };
-      }
+    if (remainingRows > safeFinalizeTailRows) {
+      return { state: 'copying', copiedRows };
+    }
 
-      const finalizedTailCopiedRows = this.copyTelemetryCompactionBatch(
+    this.db.exec('BEGIN IMMEDIATE TRANSACTION');
+    try {
+      const tailCopied = this.copyTelemetryCompactionBatch(
         this.telemetryCopyForwardCursorRowId,
         safeFinalizeTailRows,
       );
-      if (finalizedTailCopiedRows > 0) {
+      if (tailCopied > 0) {
         this.telemetryCopyForwardCursorRowId = this.readTelemetryCompactionShadowCursorRowId();
+      }
+      const postTailRemaining = this.countTelemetryRowsAfterId(
+        this.telemetryCopyForwardCursorRowId,
+      );
+      if (postTailRemaining > 0) {
+        this.db.exec('COMMIT');
+        return { state: 'copying', copiedRows: copiedRows + tailCopied };
       }
       this.swapInTelemetryCompactionShadowTable();
       this.telemetryCopyForwardRequested = false;
       this.telemetryCopyForwardActive = false;
       this.telemetryCopyForwardCursorRowId = 0;
       this.db.exec('COMMIT');
-      return {
-        state: 'finalized',
-        copiedRows: copiedRows + finalizedTailCopiedRows,
-      };
+      return { state: 'finalized', copiedRows: copiedRows + tailCopied };
     } catch (error) {
       this.db.exec('ROLLBACK');
       this.resetTelemetryCompactionStateAfterFailure();

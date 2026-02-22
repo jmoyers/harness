@@ -43,9 +43,11 @@ interface StorageLifecycleCompactionStepResult {
   readonly copiedRows: number;
 }
 
+export type WalCheckpointMode = 'PASSIVE' | 'TRUNCATE';
+
 export interface StorageLifecycleEventStore {
   pruneEventsOlderThan(cutoffTs: string, limit: number): number;
-  checkpointWalTruncate(): void;
+  checkpointWal(mode?: WalCheckpointMode): void;
   compactFreelistPages(maxPages: number): void;
   runOnlineCopyForwardCompactionStep?(
     batchSize: number,
@@ -55,7 +57,7 @@ export interface StorageLifecycleEventStore {
 
 export interface StorageLifecycleTelemetryStore {
   pruneTelemetryOlderThan(cutoffIngestedAt: string, limit: number): number;
-  checkpointWalTruncate(): void;
+  checkpointWal(mode?: WalCheckpointMode): void;
   compactFreelistPages(maxPages: number): void;
   runOnlineCopyForwardCompactionStep?(
     batchSize: number,
@@ -399,7 +401,9 @@ export class StorageLifecycleCore {
           this.policyValues.copyForwardFinalizeTailRows,
         );
         if (eventsPruned > 0 || compaction?.state === 'finalized') {
-          this.eventStore.checkpointWalTruncate();
+          this.eventStore.checkpointWal();
+        }
+        if (compaction?.state === 'finalized') {
           this.eventStore.compactFreelistPages(this.policyValues.compactFreelistPages);
         }
       } catch (error: unknown) {
@@ -420,7 +424,9 @@ export class StorageLifecycleCore {
           this.policyValues.copyForwardFinalizeTailRows,
         );
         if (telemetryPruned > 0 || compaction?.state === 'finalized') {
-          this.telemetryStore.checkpointWalTruncate();
+          this.telemetryStore.checkpointWal();
+        }
+        if (compaction?.state === 'finalized') {
           this.telemetryStore.compactFreelistPages(this.policyValues.compactFreelistPages);
         }
       } catch (error: unknown) {

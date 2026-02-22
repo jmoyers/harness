@@ -446,7 +446,7 @@ void test('stream server runs storage lifecycle maintenance ticks while server i
     originalCopyForwardStore(batchSize, finalizeTailRows);
   const internals = stateStore as unknown as {
     pruneTelemetryOlderThan: (cutoffIngestedAt: string, limit: number) => number;
-    checkpointWalTruncate: () => void;
+    checkpointWal: (mode?: 'PASSIVE' | 'TRUNCATE') => void;
     compactFreelistPages: (maxPages: number) => void;
     runOnlineCopyForwardCompactionStep: (
       batchSize: number,
@@ -457,7 +457,7 @@ void test('stream server runs storage lifecycle maintenance ticks while server i
     };
   };
   const originalPrune = internals.pruneTelemetryOlderThan.bind(internals);
-  const originalCheckpoint = internals.checkpointWalTruncate.bind(internals);
+  const originalCheckpoint = internals.checkpointWal.bind(internals);
   const originalCompact = internals.compactFreelistPages.bind(internals);
   const originalCopyForward = internals.runOnlineCopyForwardCompactionStep.bind(internals);
   let pruneCalls = 0;
@@ -468,9 +468,9 @@ void test('stream server runs storage lifecycle maintenance ticks while server i
     pruneCalls += 1;
     return originalPrune(cutoffIngestedAt, limit);
   };
-  internals.checkpointWalTruncate = () => {
+  internals.checkpointWal = (mode) => {
     checkpointCalls += 1;
-    originalCheckpoint();
+    originalCheckpoint(mode);
   };
   internals.compactFreelistPages = (maxPages) => {
     compactCalls += 1;
@@ -506,7 +506,6 @@ void test('stream server runs storage lifecycle maintenance ticks while server i
     await delay(120);
     assert.equal(pruneCalls > 0, true);
     assert.equal(checkpointCalls > 0, true);
-    assert.equal(compactCalls > 0, true);
     assert.equal(copyForwardCalls > 0, true);
   } finally {
     await server.close();

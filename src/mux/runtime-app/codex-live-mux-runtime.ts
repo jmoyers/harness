@@ -893,8 +893,8 @@ class CodexLiveMuxRuntimeApplication {
     const storageLifecycle = new StorageLifecycleCore({
       eventStore: {
         pruneEventsOlderThan: (cutoffTs, limit) => store.pruneEventsOlderThan(cutoffTs, limit),
-        checkpointWalTruncate: () => {
-          store.checkpointWalTruncate();
+        checkpointWal: (mode) => {
+          store.checkpointWal(mode);
         },
         compactFreelistPages: (maxPages) => {
           store.compactFreelistPages(maxPages);

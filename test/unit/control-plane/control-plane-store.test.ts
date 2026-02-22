@@ -592,7 +592,7 @@ void test('control-plane telemetry prune uses ingested_at cutoff and bounded bat
     assert.equal(store.countTelemetryOlderThan(cutoff), 0);
     assert.equal(store.listTelemetryForSession('conversation-prune', 10).length, 1);
 
-    store.checkpointWalTruncate();
+    store.checkpointWal();
     store.compactFreelistPages(8);
   } finally {
     store.close();

@@ -226,7 +226,9 @@ export function startEventStoreMaintenanceDaemon(
         normalizedPolicy.copyForwardFinalizeTailRows,
       );
       if (prunedRows > 0 || compaction.state === 'finalized') {
-        store.checkpointWalTruncate();
+        store.checkpointWal();
+      }
+      if (compaction.state === 'finalized') {
         store.compactFreelistPages(normalizedPolicy.compactFreelistPages);
       }
     } catch (error: unknown) {

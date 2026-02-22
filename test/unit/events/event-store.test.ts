@@ -324,7 +324,9 @@ void test('event store checkpoint and compact hooks are callable', () => {
   const dbPath = join(dirPath, 'events.sqlite');
   const store = new SqliteEventStore(dbPath);
   try {
-    store.checkpointWalTruncate();
+    store.checkpointWal();
+    store.checkpointWal('PASSIVE');
+    store.checkpointWal('TRUNCATE');
     store.compactFreelistPages(16);
   } finally {
     store.close();

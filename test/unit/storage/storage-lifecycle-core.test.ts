@@ -128,7 +128,7 @@ test('storage lifecycle maintenance tick prunes event and telemetry stores on in
       maintenanceCalls.push(`event-prune:${String(limit)}`);
       return 4;
     },
-    checkpointWalTruncate: () => {
+    checkpointWal: () => {
       maintenanceCalls.push('event-checkpoint');
     },
     compactFreelistPages: (maxPages) => {
@@ -140,7 +140,7 @@ test('storage lifecycle maintenance tick prunes event and telemetry stores on in
       maintenanceCalls.push(`telemetry-prune:${String(limit)}`);
       return 2;
     },
-    checkpointWalTruncate: () => {
+    checkpointWal: () => {
       maintenanceCalls.push('telemetry-checkpoint');
     },
     compactFreelistPages: (maxPages) => {
@@ -187,16 +187,12 @@ test('storage lifecycle maintenance tick prunes event and telemetry stores on in
   assert.deepEqual(maintenanceCalls, [
     'event-prune:50',
     'event-checkpoint',
-    'event-compact:8',
     'telemetry-prune:50',
     'telemetry-checkpoint',
-    'telemetry-compact:8',
     'event-prune:50',
     'event-checkpoint',
-    'event-compact:8',
     'telemetry-prune:50',
     'telemetry-checkpoint',
-    'telemetry-compact:8',
   ]);
 });
 
@@ -207,14 +203,14 @@ test('storage lifecycle maintenance failures are isolated and reported', () => {
       pruneEventsOlderThan: () => {
         throw new Error('event-failure');
       },
-      checkpointWalTruncate: () => {},
+      checkpointWal: () => {},
       compactFreelistPages: () => {},
     },
     telemetryStore: {
       pruneTelemetryOlderThan: () => {
         throw new Error('telemetry-failure');
       },
-      checkpointWalTruncate: () => {},
+      checkpointWal: () => {},
       compactFreelistPages: () => {},
     },
     writeStderr: (text) => {
@@ -246,7 +242,7 @@ test('storage lifecycle checkpoints when online compaction finalizes even withou
   const core = new StorageLifecycleCore({
     eventStore: {
       pruneEventsOlderThan: () => 0,
-      checkpointWalTruncate: () => {
+      checkpointWal: () => {
         calls.push('event-checkpoint');
       },
       compactFreelistPages: (maxPages) => {
@@ -262,7 +258,7 @@ test('storage lifecycle checkpoints when online compaction finalizes even withou
     },
     telemetryStore: {
       pruneTelemetryOlderThan: () => 0,
-      checkpointWalTruncate: () => {
+      checkpointWal: () => {
         calls.push('telemetry-checkpoint');
       },
       compactFreelistPages: (maxPages) => {
@@ -346,7 +342,7 @@ test('storage lifecycle updatePolicy accelerates next tick when interval shrinks
         pruneCalls += 1;
         return 0;
       },
-      checkpointWalTruncate: () => {},
+      checkpointWal: () => {},
       compactFreelistPages: () => {},
     },
     nowMs: () => nowMs,

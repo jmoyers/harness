@@ -477,7 +477,7 @@ function asTelemetryLifecycleStore(value: unknown): StorageLifecycleTelemetrySto
   }
   const candidate = value as Record<string, unknown>;
   const prune = candidate['pruneTelemetryOlderThan'];
-  const checkpoint = candidate['checkpointWalTruncate'];
+  const checkpoint = candidate['checkpointWal'];
   const compact = candidate['compactFreelistPages'];
   const copyForward = candidate['runOnlineCopyForwardCompactionStep'];
   if (
@@ -494,8 +494,8 @@ function asTelemetryLifecycleStore(value: unknown): StorageLifecycleTelemetrySto
         cutoffIngestedAt,
         limit,
       ),
-    checkpointWalTruncate: () => {
-      (checkpoint as () => void).call(value);
+    checkpointWal: (mode) => {
+      (checkpoint as (mode?: 'PASSIVE' | 'TRUNCATE') => void).call(value, mode);
     },
     compactFreelistPages: (maxPages) => {
       (compact as (maxPages: number) => void).call(value, maxPages);

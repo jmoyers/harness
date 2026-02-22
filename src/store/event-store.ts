@@ -276,8 +276,8 @@ export class SqliteEventStore {
     return asNumber(asRow.count, 'count');
   }
 
-  checkpointWalTruncate(): void {
-    this.db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
+  checkpointWal(mode: 'PASSIVE' | 'TRUNCATE' = 'PASSIVE'): void {
+    this.db.exec(`PRAGMA wal_checkpoint(${mode});`);
   }
 
   compactFreelistPages(maxPages: number): void {
@@ -301,59 +301,66 @@ export class SqliteEventStore {
       ? Math.max(1, Math.floor(finalizeTailRows))
       : 1200;
 
-    this.db.exec('BEGIN IMMEDIATE TRANSACTION');
-    try {
-      if (!this.copyForwardActive) {
-        if (!this.copyForwardRequested) {
-          this.db.exec('COMMIT');
-          return {
-            state: 'idle',
-            copiedRows: 0,
-          };
-        }
-        if (this.countTotalEventRows() === 0) {
-          this.copyForwardRequested = false;
-          this.db.exec('COMMIT');
-          return {
-            state: 'idle',
-            copiedRows: 0,
-          };
-        }
-        this.resetCompactionShadowTable();
-        this.copyForwardActive = true;
-        this.copyForwardCursorRowId = 0;
+    if (!this.copyForwardActive) {
+      if (!this.copyForwardRequested) {
+        return { state: 'idle', copiedRows: 0 };
       }
+      if (this.countTotalEventRows() === 0) {
+        this.copyForwardRequested = false;
+        return { state: 'idle', copiedRows: 0 };
+      }
+      this.db.exec('BEGIN IMMEDIATE TRANSACTION');
+      try {
+        this.resetCompactionShadowTable();
+        this.db.exec('COMMIT');
+      } catch (error) {
+        this.db.exec('ROLLBACK');
+        throw error;
+      }
+      this.copyForwardActive = true;
+      this.copyForwardCursorRowId = 0;
+    }
 
-      const copiedRows = this.copyCompactionBatch(this.copyForwardCursorRowId, safeBatchSize);
+    this.db.exec('BEGIN IMMEDIATE TRANSACTION');
+    let copiedRows: number;
+    let remainingRows: number;
+    try {
+      copiedRows = this.copyCompactionBatch(this.copyForwardCursorRowId, safeBatchSize);
       if (copiedRows > 0) {
         this.copyForwardCursorRowId = this.readCompactionShadowCursorRowId();
       }
+      remainingRows = this.countEventsAfterRowId(this.copyForwardCursorRowId);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      this.resetCompactionStateAfterFailure();
+      throw error;
+    }
 
-      const remainingRows = this.countEventsAfterRowId(this.copyForwardCursorRowId);
-      if (remainingRows > safeFinalizeTailRows) {
-        this.db.exec('COMMIT');
-        return {
-          state: 'copying',
-          copiedRows,
-        };
-      }
+    if (remainingRows > safeFinalizeTailRows) {
+      return { state: 'copying', copiedRows };
+    }
 
-      const finalizedTailCopiedRows = this.copyCompactionBatch(
+    this.db.exec('BEGIN IMMEDIATE TRANSACTION');
+    try {
+      const tailCopied = this.copyCompactionBatch(
         this.copyForwardCursorRowId,
         safeFinalizeTailRows,
       );
-      if (finalizedTailCopiedRows > 0) {
+      if (tailCopied > 0) {
         this.copyForwardCursorRowId = this.readCompactionShadowCursorRowId();
+      }
+      const postTailRemaining = this.countEventsAfterRowId(this.copyForwardCursorRowId);
+      if (postTailRemaining > 0) {
+        this.db.exec('COMMIT');
+        return { state: 'copying', copiedRows: copiedRows + tailCopied };
       }
       this.swapInCompactionShadowTable();
       this.copyForwardRequested = false;
       this.copyForwardActive = false;
       this.copyForwardCursorRowId = 0;
       this.db.exec('COMMIT');
-      return {
-        state: 'finalized',
-        copiedRows: copiedRows + finalizedTailCopiedRows,
-      };
+      return { state: 'finalized', copiedRows: copiedRows + tailCopied };
     } catch (error) {
       this.db.exec('ROLLBACK');
       this.resetCompactionStateAfterFailure();

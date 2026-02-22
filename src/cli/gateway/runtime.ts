@@ -1168,8 +1168,8 @@ export class GatewayRuntimeService {
         telemetryStore: {
           pruneTelemetryOlderThan: (cutoffIngestedAt, limit) =>
             stateStore.pruneTelemetryOlderThan(cutoffIngestedAt, limit),
-          checkpointWalTruncate: () => {
-            stateStore.checkpointWalTruncate();
+          checkpointWal: (mode) => {
+            stateStore.checkpointWal(mode ?? 'TRUNCATE');
           },
           compactFreelistPages: (maxPages) => {
             stateStore.compactFreelistPages(maxPages);
