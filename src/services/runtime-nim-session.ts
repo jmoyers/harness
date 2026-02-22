@@ -33,6 +33,7 @@ interface RuntimeNimSessionOptions {
   readonly model?: NimModelRef;
   readonly providerDriver?: NimProviderDriver;
   readonly runtime?: InMemoryNimRuntime;
+  readonly retryWithMockOnFailedTurn?: boolean;
   readonly responseChunkDelayMs?: number;
   readonly maxTranscriptLines?: number;
   readonly sleep?: (delayMs: number) => Promise<void>;
@@ -200,7 +201,9 @@ function createMockProviderDriver(input: {
 export class RuntimeNimSession {
   private readonly runtime: InMemoryNimRuntime;
   private readonly model: NimModelRef;
-  private readonly providerDriver?: NimProviderDriver;
+  private readonly providerId: string;
+  private readonly providerDriver: NimProviderDriver | undefined;
+  private readonly retryWithMockOnFailedTurn: boolean;
   private readonly maxTranscriptLines: number;
   private readonly sleep: (delayMs: number) => Promise<void>;
   private readonly responseChunkDelayMs: number;
@@ -216,6 +219,7 @@ export class RuntimeNimSession {
   private queuedInputs: string[] = [];
   private activeRunId: string | null = null;
   private runSequence = 0;
+  private mockFallbackDriverInstalled = false;
   private inputLane: Promise<void> = Promise.resolve();
   private uiIterator: AsyncIterator<NimEventEnvelope> | null = null;
   private uiPump: Promise<void> | null = null;
@@ -223,16 +227,18 @@ export class RuntimeNimSession {
   constructor(private readonly options: RuntimeNimSessionOptions) {
     this.runtime = options.runtime ?? new InMemoryNimRuntime();
     this.model = options.model ?? DEFAULT_MODEL;
+    this.providerId = providerIdFromModel(this.model);
     this.providerDriver = options.providerDriver;
+    this.retryWithMockOnFailedTurn =
+      options.retryWithMockOnFailedTurn ?? this.providerDriver !== undefined;
     this.maxTranscriptLines = options.maxTranscriptLines ?? DEFAULT_MAX_TRANSCRIPT_LINES;
     this.sleep = options.sleep ?? sleep;
     this.responseChunkDelayMs = Math.max(
       0,
       options.responseChunkDelayMs ?? DEFAULT_RESPONSE_CHUNK_DELAY_MS,
     );
-    const providerId = providerIdFromModel(this.model);
     this.runtime.registerProvider({
-      id: providerId,
+      id: this.providerId,
       displayName: 'Mock',
       models: [this.model],
     });
@@ -240,7 +246,7 @@ export class RuntimeNimSession {
     this.runtime.registerProviderDriver(
       this.providerDriver ??
         createMockProviderDriver({
-          providerId,
+          providerId: this.providerId,
           responseChunkDelayMs: this.responseChunkDelayMs,
           sleep: this.sleep,
           invokeTool: async (toolName, argumentsText) => {
@@ -534,7 +540,13 @@ export class RuntimeNimSession {
     await this.startTurn(next);
   }
 
-  private async startTurn(text: string): Promise<void> {
+  private async startTurn(
+    text: string,
+    options?: {
+      readonly pushUserLine?: boolean;
+      readonly allowMockRetry?: boolean;
+    },
+  ): Promise<void> {
     const turn = await this.runtime.sendTurn({
       sessionId: this.requireSessionId(),
       input: text,
@@ -542,14 +554,36 @@ export class RuntimeNimSession {
     });
     this.runSequence += 1;
     this.activeRunId = turn.runId;
-    this.pushUserLine(text);
+    if (options?.pushUserLine !== false) {
+      this.pushUserLine(text);
+    }
     void turn.done
       .then((result) => {
         this.enqueueInput(async () => {
           if (this.activeRunId === turn.runId) {
             this.activeRunId = null;
           }
-          if (result.terminalState !== 'completed') {
+          if (result.terminalState === 'failed') {
+            const failureMessage = await this.resolveRunFailureMessage(turn.runId);
+            if ((options?.allowMockRetry ?? true) && this.shouldRetryFailedTurnWithMock()) {
+              if (failureMessage !== null) {
+                this.pushSystemLine(`[error] ${failureMessage}`);
+              }
+              this.pushSystemLine('[notice] provider failed; retrying with local fallback');
+              this.installMockFallbackDriver();
+              await this.startTurn(text, {
+                pushUserLine: false,
+                allowMockRetry: false,
+              });
+              this.options.markDirty();
+              return;
+            }
+            if (failureMessage !== null) {
+              this.pushSystemLine(`[error] ${failureMessage}`);
+            } else {
+              this.pushSystemLine(`[turn:failed] ${turn.runId}`);
+            }
+          } else if (result.terminalState !== 'completed') {
             this.pushSystemLine(`[turn:${result.terminalState}] ${turn.runId}`);
           }
           await this.drainQueue();
@@ -566,6 +600,66 @@ export class RuntimeNimSession {
           this.options.markDirty();
         });
       });
+  }
+
+  private shouldRetryFailedTurnWithMock(): boolean {
+    return this.retryWithMockOnFailedTurn && !this.mockFallbackDriverInstalled;
+  }
+
+  private installMockFallbackDriver(): void {
+    if (this.mockFallbackDriverInstalled) {
+      return;
+    }
+    this.runtime.registerProviderDriver(
+      createMockProviderDriver({
+        providerId: this.providerId,
+        responseChunkDelayMs: this.responseChunkDelayMs,
+        sleep: this.sleep,
+        invokeTool: async (toolName, argumentsText) => {
+          if (this.options.toolBridge === undefined) {
+            return {
+              notice: 'nim tool bridge unavailable',
+            };
+          }
+          return await this.options.toolBridge.invoke({
+            toolName,
+            argumentsText,
+          });
+        },
+      }),
+    );
+    this.mockFallbackDriverInstalled = true;
+  }
+
+  private async resolveRunFailureMessage(runId: string): Promise<string | null> {
+    if (this.sessionId === null) {
+      return null;
+    }
+    try {
+      const replay = await this.runtime.replayEvents({
+        tenantId: this.options.tenantId,
+        sessionId: this.sessionId,
+        runId,
+        fidelity: 'semantic',
+      });
+      for (let index = replay.events.length - 1; index >= 0; index -= 1) {
+        const event = replay.events[index];
+        if (event?.type !== 'turn.failed') {
+          continue;
+        }
+        const message = event.data?.['message'];
+        if (typeof message !== 'string') {
+          continue;
+        }
+        const trimmed = message.trim();
+        if (trimmed.length > 0) {
+          return trimmed;
+        }
+      }
+    } catch {
+      return null;
+    }
+    return null;
   }
 
   private requireSessionId(): string {

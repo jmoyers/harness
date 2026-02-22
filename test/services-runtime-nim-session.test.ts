@@ -329,6 +329,49 @@ void test('runtime nim session uses injected provider driver for live provider p
   }
 });
 
+void test('runtime nim session retries failed provider turns with local fallback', async () => {
+  const providerDriver: NimProviderDriver = {
+    providerId: 'anthropic',
+    async *runTurn() {
+      yield { type: 'provider.turn.error', message: 'provider unavailable' };
+      yield { type: 'provider.turn.finished', finishReason: 'error' };
+    },
+  };
+  const session = new RuntimeNimSession({
+    tenantId: 'tenant-fallback',
+    userId: 'user-fallback',
+    markDirty: () => {},
+    model: 'anthropic/claude-3-5-haiku-latest',
+    providerDriver,
+    responseChunkDelayMs: 0,
+    sleep: async () => {},
+  });
+  try {
+    await session.start();
+    session.handleInputChunk('hello fallback\r');
+    await waitFor(() =>
+      session.snapshot().transcriptLines.some((line) => line.includes('[error] provider unavailable')),
+    );
+    await waitFor(() =>
+      session
+        .snapshot()
+        .transcriptLines.some((line) => line.includes('provider failed; retrying with local fallback')),
+    );
+    await waitFor(() =>
+      session
+        .snapshot()
+        .transcriptLines.some((line) => line.includes('nim> nim mock: hello fallback')),
+    );
+    assert.equal(
+      session.snapshot().transcriptLines.some((line) => line.includes('[turn:failed]')),
+      false,
+    );
+    await waitFor(() => session.snapshot().activeRunId === null);
+  } finally {
+    await session.dispose();
+  }
+});
+
 void test('runtime nim session surfaces non-error input lane failures', async () => {
   const dirtyMarks: number[] = [];
   const session = new RuntimeNimSession({

@@ -21,7 +21,7 @@ void test('nim pane renders shell rows with transcript and composer sections', (
   });
 
   assert.equal(result.rows.length, 8);
-  assert.equal(result.rows[0]?.includes('NIM'), true);
+  assert.equal(result.rows[0]?.includes('nim'), true);
   assert.equal(result.rows[1]?.includes('status:responding'), true);
   assert.equal(result.rows[1]?.includes('mode:debug'), true);
   assert.equal(result.rows[1]?.includes('queued:1'), true);

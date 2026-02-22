@@ -104,7 +104,7 @@ void test(
 
       const result = await captureMuxBootOutput(workspace, 1800);
       assertExpectedBootTeardownExit(result.exit);
-      assert.equal(result.output.includes('NIM'), true);
+      assert.equal(result.output.includes('nim'), true);
       assert.equal(result.output.includes('nim>'), true);
     } finally {
       rmSync(workspace, { recursive: true, force: true });

@@ -14,7 +14,7 @@ interface NimPaneRenderResult {
   readonly rows: readonly string[];
 }
 
-const HEADER = 'NIM';
+const HEADER = 'nim';
 const COMPOSER_PROMPT = 'nim> ';
 
 export interface NimPaneViewModel {

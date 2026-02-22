@@ -154,7 +154,7 @@ Test anchors:
 
 Behavior fragments:
 
-- Left rail includes a persistent top-level `NIM` entry that routes to a dedicated NIM pane.
+- Left rail includes a persistent top-level `nim` entry that routes to a dedicated NIM pane.
 - NIM pane renders a pinned bottom composer, transcript viewport, and mode/status header rows.
 - NIM session state is workspace-scoped and remains active across pane switches.
 - Keyboard semantics in NIM pane are fixed:
@@ -165,6 +165,7 @@ Behavior fragments:
 - `debug` shows explicit lifecycle/tool activity timeline rows.
 - `user` suppresses debug timeline noise while preserving user/assistant transcript flow.
 - `/mode` accepts `debug|user` and keeps `seamless` as a compatibility alias mapped to `user`.
+- Provider-backed runs that fail are retried once with a local fallback driver, and failure reasons are surfaced in transcript `[error]` rows.
 - NIM tool bridge is read-first in v1 (`directory.list`, `repository.list`, `task.list`, `session.list`) and routes through control-plane service adapters.
 
 Owners:

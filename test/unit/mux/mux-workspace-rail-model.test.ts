@@ -843,7 +843,7 @@ void test('workspace rail model renders home as a selectable directory-style blo
   assert.equal(rows[homeHeaderIndex]?.active, true);
   assert.equal(rows[homeHeaderIndex]?.railAction, 'home.open');
   assert.equal(rows[homeHeaderIndex + 1]?.kind, 'dir-header');
-  assert.equal(rows[homeHeaderIndex + 1]?.text.includes('✦ NIM'), true);
+  assert.equal(rows[homeHeaderIndex + 1]?.text.includes('🦎 nim'), true);
   assert.equal(rows[homeHeaderIndex + 1]?.railAction, 'nim.open');
   assert.equal(rows[homeHeaderIndex + 2]?.kind, 'dir-header');
   assert.equal(rows[homeHeaderIndex + 2]?.text.includes('🗂️ tasks'), true);

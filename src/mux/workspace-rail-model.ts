@@ -460,7 +460,16 @@ function buildContentRows(
   if (showTaskPlanningUi) {
     pushRow(rows, 'dir-header', '├─ 🏠 home', homeSelectionEnabled, null, null, null, 'home.open');
     if (showNimEntry) {
-      pushRow(rows, 'dir-header', '├─ ✦ NIM', nimSelectionEnabled, null, null, null, 'nim.open');
+      pushRow(
+        rows,
+        'dir-header',
+        '├─ 🦎 nim',
+        nimSelectionEnabled,
+        null,
+        null,
+        null,
+        'nim.open',
+      );
     }
     if (showTasksEntry) {
       pushRow(
