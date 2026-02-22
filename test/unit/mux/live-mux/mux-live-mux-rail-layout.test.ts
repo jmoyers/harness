@@ -277,6 +277,7 @@ void test('live-mux rail model forwards github review map only when provided', (
     homeSelectionEnabled: false,
     showGitHubIntegration: true,
     visibleGitHubDirectoryIds: new Set<string>(['dir-1']),
+    expandedGitHubDirectoryIds: new Set<string>(['dir-1']),
     githubReviewByDirectoryId: reviewByDirectory,
     githubSelectionEnabled: true,
     activeGitHubProjectId: 'dir-1',
@@ -295,6 +296,14 @@ void test('live-mux rail model forwards github review map only when provided', (
         ? visibleKeys.includes('dir-1')
         : false;
   assert.equal(hasDirectory, true);
+  const expandedKeys = withReview.expandedGitHubDirectoryKeys;
+  const hasExpandedDirectory =
+    expandedKeys instanceof Set
+      ? expandedKeys.has('dir-1')
+      : Array.isArray(expandedKeys)
+        ? expandedKeys.includes('dir-1')
+        : false;
+  assert.equal(hasExpandedDirectory, true);
   assert.equal(withReview.githubReviewByDirectoryKey?.get('dir-1')?.branchName, 'feature/rail');
   assert.equal(withReview.githubSelectionEnabled, true);
   assert.equal(withReview.activeGitHubProjectId, 'dir-1');

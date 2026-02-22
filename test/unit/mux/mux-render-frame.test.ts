@@ -88,6 +88,44 @@ void test('mux render frame appends debug detail text while preserving perf foot
   assert.equal((rows[1] ?? '').length, 220);
 });
 
+void test('mux render frame omits entire status row when debug bar is hidden', () => {
+  const rows = buildRenderRows(
+    {
+      cols: 120,
+      paneRows: 2,
+      leftCols: 6,
+      rightCols: 10,
+      separatorCol: 7,
+      rightStartCol: 8,
+    },
+    ['LEFT-1', 'LEFT-2'],
+    ['RIGHT-1', 'RIGHT-2'],
+    {
+      fps: 3.5,
+      kbPerSecond: 1.2,
+      renderAvgMs: 0.9,
+      renderMaxMs: 1.6,
+      outputHandleAvgMs: 0.4,
+      outputHandleMaxMs: 0.7,
+      eventLoopP95Ms: 5.5,
+    },
+    '[dbg] hidden',
+    false,
+  );
+
+  assert.equal(rows.length, 2);
+  assert.equal((rows[0] ?? '').includes('LEFT-1'), true);
+  assert.equal((rows[1] ?? '').includes('LEFT-2'), true);
+  assert.equal(
+    rows.some((row) => row.includes('[mux] fps=')),
+    false,
+  );
+  assert.equal(
+    rows.some((row) => row.includes('[dbg] hidden')),
+    false,
+  );
+});
+
 void test('mux render frame handles defined right rows and sparse target rows', () => {
   const combined = buildRenderRows(
     {

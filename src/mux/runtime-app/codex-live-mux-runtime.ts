@@ -4459,7 +4459,14 @@ class CodexLiveMuxRuntimeApplication {
           });
         },
         buildRenderRows: (renderLayout, railRows, rightRows, statusRow, statusFooter) =>
-          buildRenderRows(renderLayout, railRows, rightRows, statusRow, statusFooter),
+          buildRenderRows(
+            renderLayout,
+            railRows,
+            rightRows,
+            statusRow,
+            statusFooter,
+            workspace.showDebugBar,
+          ),
         buildModalOverlay: () => buildCurrentModalOverlay(),
         applyModalOverlay: (rows, overlay) => {
           applyModalOverlay(rows, overlay);
