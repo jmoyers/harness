@@ -129,8 +129,7 @@ Related entities (repositories, tasks, project settings, runtime/session metadat
 - Write guardrails and rolling-window maintenance are centralized in `storage-lifecycle-core`.
 - Rolling-window maintenance must run online (while sessions are live) with bounded per-tick work.
 - Rolling-window maintenance includes bounded online copy-forward compaction of retained rows after prune churn.
-- Mux client storage lifecycle execution is delegated to a managed background daemon so maintenance I/O does not block the interactive TUI render/input loop.
-- The mux storage-maintenance daemon is parent-bound and interruptable (graceful stop with forced-kill fallback) to prevent orphaned maintenance workers.
+- Mux client storage lifecycle execution runs in-process on the same SQLite connection as event writes, eliminating cross-process lock contention; bounded batch sizes keep per-tick latency negligible.
 - Storage lifecycle policy knobs are configured through `storage.lifecycle` in `harness.config.jsonc`.
 - Migrations are explicit, transactional, versioned (`PRAGMA user_version`).
 - Unknown newer schema versions fail closed.

@@ -285,12 +285,11 @@ Behavior fragments:
 - Rolling-window pruning runs online on a maintenance tick while sessions remain live.
 - Rolling-window compaction runs online in bounded copy-forward steps after prune churn.
 - Copy-forward compaction uses separate transactions for initialization, batch copy, and finalization to minimize write-lock hold time and avoid blocking concurrent writers.
-- WAL checkpoints use explicit PASSIVE mode in all maintenance paths (online ticks, daemon, and GC) to avoid exclusive locks that block concurrent writers.
+- WAL checkpoints use explicit PASSIVE mode in all maintenance paths (online ticks and GC) to avoid exclusive locks that block concurrent writers.
 - Incremental vacuum runs only after compaction finalization, not after every prune tick, to reduce write-lock frequency during steady-state maintenance.
-- SQLite `busy_timeout` is configurable via `storage.lifecycle.busyTimeoutMs` (default 5 000 ms) and propagated to every store connection opened by the gateway, mux, and maintenance daemon processes.
+- SQLite `busy_timeout` is configurable via `storage.lifecycle.busyTimeoutMs` (default 5 000 ms) and propagated to every store connection opened by the gateway and mux processes.
 - Storage lifecycle policy values are configured under `storage.lifecycle` and applied to both mux event storage and control-plane telemetry storage.
-- Mux event-store maintenance runs in a managed background daemon process; the interactive TUI process receives daemon lifecycle/progress events (started, progress with percent left, completed) and does not run SQLite maintenance work on the render thread.
-- The maintenance daemon is parent-bound and interruptable: it self-terminates if the mux client parent PID disappears, and supervisor shutdown sends `SIGTERM` with a forced `SIGKILL` fallback if needed.
+- Mux event-store maintenance runs in-process on the same connection as event writes, eliminating cross-process SQLite lock contention; bounded batch sizes keep per-tick work under 1 ms at steady state.
 - Control-plane storage lifecycle policy is hot-reloaded from config while the server is live.
 - `harness gateway gc` also runs storage lifecycle maintenance for retained offline session databases.
 - Event and telemetry storage maintenance is coordinated through one module.
