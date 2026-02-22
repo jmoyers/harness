@@ -66,81 +66,74 @@ export interface RuntimeRenderFlushOptions<
   readonly recordRenderSample: (durationMs: number, changedRowCount: number) => void;
 }
 
-export class RuntimeRenderFlush<
+export function flushRuntimeRender<
   TConversation,
   TFrame,
   TSelection,
   TLayout,
   TModalOverlay,
   TStatusRow,
-> {
-  constructor(
-    private readonly options: RuntimeRenderFlushOptions<
-      TConversation,
-      TFrame,
-      TSelection,
-      TLayout,
-      TModalOverlay,
-      TStatusRow
-    >,
-  ) {}
-
-  flushRender(input: RuntimeRenderFlushInput<TConversation, TFrame, TSelection, TLayout>): void {
-    const renderStartedAtNs = this.options.perfNowNs();
-    const baseStatusFooter =
-      !input.projectPaneActive && !input.homePaneActive && input.activeConversation !== null
-        ? this.options.statusFooterForConversation(input.activeConversation)
-        : '';
-    const statusNotice = this.options.currentStatusNotice();
-    const statusFooter =
-      statusNotice === null || statusNotice.length === 0
-        ? baseStatusFooter
-        : `${baseStatusFooter.length > 0 ? `${baseStatusFooter}  ` : ''}${statusNotice}`;
-    const statusRow = this.options.currentStatusRow();
-    this.options.onStatusLineComposed?.({
-      activeConversation: input.activeConversation,
-      statusFooter,
-      statusRow,
-      projectPaneActive: input.projectPaneActive,
-      homePaneActive: input.homePaneActive,
-    });
-    const rows = this.options.buildRenderRows(
-      input.layout,
-      input.railAnsiRows,
-      input.rightRows,
-      statusRow,
-      statusFooter,
-    );
-    const modalOverlay = this.options.buildModalOverlay();
-    if (modalOverlay !== null) {
-      this.options.applyModalOverlay(rows, modalOverlay);
-    }
-    const selectionOverlay =
-      input.rightFrame === null
-        ? ''
-        : this.options.renderSelectionOverlay(
-            input.layout,
-            input.rightFrame,
-            input.renderSelection,
-          );
-    const flushResult = this.options.flush({
-      layout: input.layout,
-      rows,
-      rightFrame: input.rightFrame,
-      selectionRows: input.selectionRows,
-      selectionOverlay,
-    });
-    const changedRowCount = flushResult.changedRowCount;
-    if (flushResult.wroteOutput) {
-      this.options.onFlushOutput({
-        activeConversation: input.activeConversation,
-        rightFrame: input.rightFrame,
-        rows,
-        flushResult,
-        changedRowCount,
-      });
-    }
-    const renderDurationMs = Number(this.options.perfNowNs() - renderStartedAtNs) / 1e6;
-    this.options.recordRenderSample(renderDurationMs, changedRowCount);
+>(
+  options: RuntimeRenderFlushOptions<
+    TConversation,
+    TFrame,
+    TSelection,
+    TLayout,
+    TModalOverlay,
+    TStatusRow
+  >,
+  input: RuntimeRenderFlushInput<TConversation, TFrame, TSelection, TLayout>,
+): void {
+  const renderStartedAtNs = options.perfNowNs();
+  const baseStatusFooter =
+    !input.projectPaneActive && !input.homePaneActive && input.activeConversation !== null
+      ? options.statusFooterForConversation(input.activeConversation)
+      : '';
+  const statusNotice = options.currentStatusNotice();
+  const statusFooter =
+    statusNotice === null || statusNotice.length === 0
+      ? baseStatusFooter
+      : `${baseStatusFooter.length > 0 ? `${baseStatusFooter}  ` : ''}${statusNotice}`;
+  const statusRow = options.currentStatusRow();
+  options.onStatusLineComposed?.({
+    activeConversation: input.activeConversation,
+    statusFooter,
+    statusRow,
+    projectPaneActive: input.projectPaneActive,
+    homePaneActive: input.homePaneActive,
+  });
+  const rows = options.buildRenderRows(
+    input.layout,
+    input.railAnsiRows,
+    input.rightRows,
+    statusRow,
+    statusFooter,
+  );
+  const modalOverlay = options.buildModalOverlay();
+  if (modalOverlay !== null) {
+    options.applyModalOverlay(rows, modalOverlay);
   }
+  const selectionOverlay =
+    input.rightFrame === null
+      ? ''
+      : options.renderSelectionOverlay(input.layout, input.rightFrame, input.renderSelection);
+  const flushResult = options.flush({
+    layout: input.layout,
+    rows,
+    rightFrame: input.rightFrame,
+    selectionRows: input.selectionRows,
+    selectionOverlay,
+  });
+  const changedRowCount = flushResult.changedRowCount;
+  if (flushResult.wroteOutput) {
+    options.onFlushOutput({
+      activeConversation: input.activeConversation,
+      rightFrame: input.rightFrame,
+      rows,
+      flushResult,
+      changedRowCount,
+    });
+  }
+  const renderDurationMs = Number(options.perfNowNs() - renderStartedAtNs) / 1e6;
+  options.recordRenderSample(renderDurationMs, changedRowCount);
 }

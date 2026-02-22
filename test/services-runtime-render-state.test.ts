@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import { WorkspaceModel } from '../src/domain/workspace.ts';
 import type { PaneSelection, PaneSelectionDrag } from '../src/mux/live-mux/selection.ts';
-import { RuntimeRenderState } from '../src/services/runtime-render-state.ts';
+import {
+  prepareRuntimeRenderState,
+  type RuntimeRenderStateOptions,
+} from '../src/services/runtime-render-state.ts';
 
 interface ConversationRecord {
   readonly id: string;
@@ -51,7 +54,7 @@ void test('runtime render state returns null when no pane is active and no activ
   const workspace = createWorkspace();
   workspace.mainPaneMode = 'conversation';
 
-  const service = new RuntimeRenderState<ConversationRecord, FrameRecord>({
+  const options: RuntimeRenderStateOptions<ConversationRecord, FrameRecord> = {
     workspace,
     directories: {
       hasDirectory: () => true,
@@ -62,16 +65,16 @@ void test('runtime render state returns null when no pane is active and no activ
     },
     snapshotFrame: () => ({ id: 'frame-1' }),
     selectionVisibleRows: () => [0],
-  });
+  };
 
-  assert.equal(service.prepareRenderState(baseSelection, null), null);
+  assert.equal(prepareRuntimeRenderState(options, baseSelection, null), null);
 });
 
 void test('runtime render state returns null when active conversation id exists but conversation is missing', () => {
   const workspace = createWorkspace();
   workspace.mainPaneMode = 'conversation';
 
-  const service = new RuntimeRenderState<ConversationRecord, FrameRecord>({
+  const options: RuntimeRenderStateOptions<ConversationRecord, FrameRecord> = {
     workspace,
     directories: {
       hasDirectory: () => true,
@@ -82,9 +85,9 @@ void test('runtime render state returns null when active conversation id exists 
     },
     snapshotFrame: () => ({ id: 'frame-1' }),
     selectionVisibleRows: () => [0],
-  });
+  };
 
-  assert.equal(service.prepareRenderState(baseSelection, null), null);
+  assert.equal(prepareRuntimeRenderState(options, baseSelection, null), null);
 });
 
 void test('runtime render state builds dragged selection payload when drag is active', () => {
@@ -92,7 +95,7 @@ void test('runtime render state builds dragged selection payload when drag is ac
   workspace.mainPaneMode = 'conversation';
   const calls: PaneSelection[] = [];
 
-  const service = new RuntimeRenderState<ConversationRecord, FrameRecord>({
+  const options: RuntimeRenderStateOptions<ConversationRecord, FrameRecord> = {
     workspace,
     directories: {
       hasDirectory: () => true,
@@ -108,9 +111,9 @@ void test('runtime render state builds dragged selection payload when drag is ac
       }
       return [3, 4];
     },
-  });
+  };
 
-  const state = service.prepareRenderState(baseSelection, dragSelection);
+  const state = prepareRuntimeRenderState(options, baseSelection, dragSelection);
   if (state === null) {
     throw new Error('expected render state');
   }
@@ -138,7 +141,7 @@ void test('runtime render state uses existing selection when no drag is active',
   workspace.mainPaneMode = 'conversation';
   const calls: PaneSelection[] = [];
 
-  const service = new RuntimeRenderState<ConversationRecord, FrameRecord>({
+  const options: RuntimeRenderStateOptions<ConversationRecord, FrameRecord> = {
     workspace,
     directories: {
       hasDirectory: () => true,
@@ -154,9 +157,9 @@ void test('runtime render state uses existing selection when no drag is active',
       }
       return [1];
     },
-  });
+  };
 
-  const state = service.prepareRenderState(baseSelection, null);
+  const state = prepareRuntimeRenderState(options, baseSelection, null);
   if (state === null) {
     throw new Error('expected render state');
   }
@@ -170,7 +173,7 @@ void test('runtime render state allows project-pane rendering without active con
   workspace.mainPaneMode = 'project';
   workspace.activeDirectoryId = 'dir-1';
 
-  const service = new RuntimeRenderState<ConversationRecord, FrameRecord>({
+  const options: RuntimeRenderStateOptions<ConversationRecord, FrameRecord> = {
     workspace,
     directories: {
       hasDirectory: () => true,
@@ -181,9 +184,9 @@ void test('runtime render state allows project-pane rendering without active con
     },
     snapshotFrame: () => ({ id: 'frame-1' }),
     selectionVisibleRows: () => [9],
-  });
+  };
 
-  const state = service.prepareRenderState(baseSelection, null);
+  const state = prepareRuntimeRenderState(options, baseSelection, null);
   if (state === null) {
     throw new Error('expected render state');
   }

@@ -6,21 +6,25 @@ import type {
 } from '../mux/task-focused-pane.ts';
 import type { TerminalSnapshotFrameCore } from '../terminal/snapshot-oracle.ts';
 import {
-  RuntimeLeftRailRender,
+  renderRuntimeLeftRail,
   type RuntimeLeftRailRenderOptions,
   type RuntimeLeftRailRenderSnapshot,
 } from './runtime-left-rail-render.ts';
 import {
-  RuntimeRenderFlush,
+  flushRuntimeRender,
   type RuntimeRenderFlushOptions,
 } from './runtime-render-flush.ts';
-import { RuntimeRenderOrchestrator } from './runtime-render-orchestrator.ts';
 import {
-  RuntimeRenderState,
+  orchestrateRuntimeRender,
+  type RuntimeRenderOrchestratorInput,
+  type RuntimeRenderOrchestratorOptions,
+} from './runtime-render-orchestrator.ts';
+import {
+  prepareRuntimeRenderState,
   type RuntimeRenderStateOptions,
 } from './runtime-render-state.ts';
 import {
-  RuntimeRightPaneRender,
+  renderRuntimeRightPaneRows,
   type RuntimeRightPaneRenderOptions,
   type RuntimeRightPaneRenderSnapshot,
 } from './runtime-right-pane-render.ts';
@@ -88,17 +92,11 @@ export interface RuntimeRenderPipelineOptions<
   readonly activeDirectoryId: () => string | null;
 }
 
-type RuntimeRenderPipelineInput = Parameters<
-  RuntimeRenderOrchestrator<
-    RuntimeLayout,
-    unknown,
-    TerminalSnapshotFrameCore,
-    PaneSelection,
-    PaneSelectionDrag,
-    unknown,
-    unknown
-  >['render']
->[0];
+type RuntimeRenderPipelineInput = RuntimeRenderOrchestratorInput<
+  RuntimeLayout,
+  PaneSelection,
+  PaneSelectionDrag
+>;
 
 export function createRuntimeRenderPipeline<
   TConversation,
@@ -125,11 +123,7 @@ export function createRuntimeRenderPipeline<
     TStatusRow
   >,
 ): (input: RuntimeRenderPipelineInput) => void {
-  const renderFlush = new RuntimeRenderFlush(options.renderFlush);
-  const rightPaneRender = new RuntimeRightPaneRender(options.rightPaneRender);
-  const leftRailRender = new RuntimeLeftRailRender(options.leftRailRender);
-  const renderState = new RuntimeRenderState(options.renderState);
-  const renderOrchestrator = new RuntimeRenderOrchestrator<
+  const renderOrchestratorOptions: RuntimeRenderOrchestratorOptions<
     RuntimeLayout,
     TConversation,
     TerminalSnapshotFrameCore,
@@ -143,33 +137,36 @@ export function createRuntimeRenderPipeline<
       TTaskRecord,
       TProcessUsage
     >
-  >({
+  > = {
     isScreenDirty: options.isScreenDirty,
     clearDirty: options.clearDirty,
     readRenderSnapshot: options.readRenderSnapshot,
-    prepareRenderState: (selection, selectionDrag) =>
-      renderState.prepareRenderState(selection, selectionDrag),
-    renderLeftRail: (layout, snapshot) =>
-      leftRailRender.render({
+    prepareRenderState: (selection, selectionDrag) => {
+      return prepareRuntimeRenderState(options.renderState, selection, selectionDrag);
+    },
+    renderLeftRail: (layout, snapshot) => {
+      return renderRuntimeLeftRail(options.leftRailRender, {
         layout,
         snapshot: snapshot.leftRail,
-      }),
+      });
+    },
     setLatestRailViewRows: options.setLatestRailViewRows,
-    renderRightRows: (input) =>
-      rightPaneRender.renderRightRows({
+    renderRightRows: (input) => {
+      return renderRuntimeRightPaneRows(options.rightPaneRender, {
         layout: input.layout,
         rightFrame: input.rightFrame,
         homePaneActive: input.homePaneActive,
         projectPaneActive: input.projectPaneActive,
         activeDirectoryId: input.activeDirectoryId,
         snapshot: input.snapshot.rightPane,
-      }),
+      });
+    },
     flushRender: (input) => {
-      renderFlush.flushRender(input);
+      flushRuntimeRender(options.renderFlush, input);
     },
     activeDirectoryId: options.activeDirectoryId,
-  });
+  };
   return (input: RuntimeRenderPipelineInput): void => {
-    renderOrchestrator.render(input);
+    orchestrateRuntimeRender(renderOrchestratorOptions, input);
   };
 }

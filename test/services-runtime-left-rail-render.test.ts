@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import { WorkspaceModel } from '../src/domain/workspace.ts';
 import { RepositoryManager } from '../src/domain/repositories.ts';
-import { RuntimeLeftRailRender } from '../src/services/runtime-left-rail-render.ts';
+import {
+  renderRuntimeLeftRail,
+  type RuntimeLeftRailRenderLayout,
+  type RuntimeLeftRailRenderOptions,
+} from '../src/services/runtime-left-rail-render.ts';
 
 interface DirectoryRecord {
   readonly directoryId: string;
@@ -78,21 +82,9 @@ void test('runtime left-rail renderer refreshes selector snapshot and delegates 
     source: 'render' | 'observed';
     orderedConversationIds: readonly string[];
   }> = [];
-  let leftRailRenderInput:
-    | Parameters<
-        RuntimeLeftRailRender<
-          DirectoryRecord,
-          ConversationRecord,
-          RepositoryRecord,
-          RepositorySnapshot,
-          GitSummaryRecord,
-          ProcessUsageRecord,
-          readonly string[]
-        >['render']
-      >[0]['layout']
-    | null = null;
+  let leftRailRenderInput: RuntimeLeftRailRenderLayout | null = null;
 
-  const service = new RuntimeLeftRailRender<
+  const options: RuntimeLeftRailRenderOptions<
     DirectoryRecord,
     ConversationRecord,
     RepositoryRecord,
@@ -100,9 +92,11 @@ void test('runtime left-rail renderer refreshes selector snapshot and delegates 
     GitSummaryRecord,
     ProcessUsageRecord,
     readonly string[]
-  >({
+  > = {
     leftRailPane: {
-      render: (input) => {
+      render: (input: {
+        layout: RuntimeLeftRailRenderLayout;
+      }) => {
         leftRailRenderInput = input.layout;
         return {
           ansiRows: ['ansi-row'],
@@ -127,9 +121,9 @@ void test('runtime left-rail renderer refreshes selector snapshot and delegates 
       branch: '(loading)',
     },
     showTasksEntry: true,
-  });
+  };
 
-  const result = service.render({
+  const result = renderRuntimeLeftRail(options, {
     layout: {
       cols: 100,
       paneRows: 20,

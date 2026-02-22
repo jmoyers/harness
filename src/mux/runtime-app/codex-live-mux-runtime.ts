@@ -3038,7 +3038,7 @@ class CodexLiveMuxRuntimeApplication {
     const runtimeDirectoryActions = createRuntimeDirectoryActions({
       controlPlaneService,
       conversations: {
-        records: () => conversationRecords,
+        records: conversationRecords,
         orderedIds: () => conversationManager.orderedIds(),
         directoryIdOf: (sessionId) => conversationManager.directoryIdOf(sessionId),
         isLive: (sessionId) => conversationManager.isLive(sessionId),

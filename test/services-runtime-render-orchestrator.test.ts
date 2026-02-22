@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { RuntimeRenderOrchestrator } from '../src/services/runtime-render-orchestrator.ts';
+import {
+  orchestrateRuntimeRender,
+  type RuntimeRenderOrchestratorOptions,
+} from '../src/services/runtime-render-orchestrator.ts';
 
 interface LayoutRecord {
   readonly id: string;
@@ -28,7 +31,7 @@ interface SnapshotRecord {
 
 void test('runtime render orchestrator short-circuits when shutting down', () => {
   const calls: string[] = [];
-  const orchestrator = new RuntimeRenderOrchestrator<
+  const options: RuntimeRenderOrchestratorOptions<
     LayoutRecord,
     ConversationRecord,
     FrameRecord,
@@ -36,7 +39,7 @@ void test('runtime render orchestrator short-circuits when shutting down', () =>
     SelectionDragRecord,
     readonly string[],
     SnapshotRecord
-  >({
+  > = {
     isScreenDirty: () => {
       calls.push('isScreenDirty');
       return true;
@@ -70,9 +73,9 @@ void test('runtime render orchestrator short-circuits when shutting down', () =>
       calls.push('flushRender');
     },
     activeDirectoryId: () => null,
-  });
+  };
 
-  orchestrator.render({
+  orchestrateRuntimeRender(options, {
     shuttingDown: true,
     layout: { id: 'layout-1' },
     selection: null,
@@ -84,7 +87,7 @@ void test('runtime render orchestrator short-circuits when shutting down', () =>
 
 void test('runtime render orchestrator short-circuits when screen is not dirty', () => {
   const calls: string[] = [];
-  const orchestrator = new RuntimeRenderOrchestrator<
+  const options: RuntimeRenderOrchestratorOptions<
     LayoutRecord,
     ConversationRecord,
     FrameRecord,
@@ -92,7 +95,7 @@ void test('runtime render orchestrator short-circuits when screen is not dirty',
     SelectionDragRecord,
     readonly string[],
     SnapshotRecord
-  >({
+  > = {
     isScreenDirty: () => {
       calls.push('isScreenDirty');
       return false;
@@ -126,9 +129,9 @@ void test('runtime render orchestrator short-circuits when screen is not dirty',
       calls.push('flushRender');
     },
     activeDirectoryId: () => null,
-  });
+  };
 
-  orchestrator.render({
+  orchestrateRuntimeRender(options, {
     shuttingDown: false,
     layout: { id: 'layout-2' },
     selection: null,
@@ -140,7 +143,7 @@ void test('runtime render orchestrator short-circuits when screen is not dirty',
 
 void test('runtime render orchestrator clears dirty state when render-state prep returns null', () => {
   const calls: string[] = [];
-  const orchestrator = new RuntimeRenderOrchestrator<
+  const options: RuntimeRenderOrchestratorOptions<
     LayoutRecord,
     ConversationRecord,
     FrameRecord,
@@ -148,7 +151,7 @@ void test('runtime render orchestrator clears dirty state when render-state prep
     SelectionDragRecord,
     readonly string[],
     SnapshotRecord
-  >({
+  > = {
     isScreenDirty: () => true,
     clearDirty: () => {
       calls.push('clearDirty');
@@ -176,9 +179,9 @@ void test('runtime render orchestrator clears dirty state when render-state prep
       calls.push('flushRender');
     },
     activeDirectoryId: () => null,
-  });
+  };
 
-  orchestrator.render({
+  orchestrateRuntimeRender(options, {
     shuttingDown: false,
     layout: { id: 'layout-3' },
     selection: null,
@@ -193,7 +196,7 @@ void test('runtime render orchestrator composes rail, right rows, and flush payl
   let rightRowsInput: unknown = null;
   let flushInput: unknown = null;
   let latestRailRows: readonly string[] = [];
-  const orchestrator = new RuntimeRenderOrchestrator<
+  const options: RuntimeRenderOrchestratorOptions<
     LayoutRecord,
     ConversationRecord,
     FrameRecord,
@@ -201,7 +204,7 @@ void test('runtime render orchestrator composes rail, right rows, and flush payl
     SelectionDragRecord,
     readonly string[],
     SnapshotRecord
-  >({
+  > = {
     isScreenDirty: () => true,
     clearDirty: () => {
       calls.push('clearDirty');
@@ -237,9 +240,9 @@ void test('runtime render orchestrator composes rail, right rows, and flush payl
       calls.push('flushRender');
     },
     activeDirectoryId: () => 'dir-123',
-  });
+  };
 
-  orchestrator.render({
+  orchestrateRuntimeRender(options, {
     shuttingDown: false,
     layout: { id: 'layout-4' },
     selection: { id: 'selection-input' },

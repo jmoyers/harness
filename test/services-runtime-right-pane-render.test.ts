@@ -3,7 +3,11 @@ import { test } from 'bun:test';
 import { WorkspaceModel } from '../src/domain/workspace.ts';
 import type { ProjectPaneSnapshot } from '../src/mux/harness-core-ui.ts';
 import type { TaskComposerBuffer } from '../src/mux/task-composer.ts';
-import { RuntimeRightPaneRender } from '../src/services/runtime-right-pane-render.ts';
+import {
+  renderRuntimeRightPaneRows,
+  type RuntimeRightPaneRenderInput,
+  type RuntimeRightPaneRenderOptions,
+} from '../src/services/runtime-right-pane-render.ts';
 
 interface RepoRecord {
   readonly repositoryId: string;
@@ -46,9 +50,7 @@ function createWorkspace(): WorkspaceModel {
   });
 }
 
-function emptyRightPaneSnapshot(): Parameters<
-  RuntimeRightPaneRender<RepoRecord, TaskRecord>['renderRightRows']
->[0]['snapshot'] {
+function emptyRightPaneSnapshot(): RuntimeRightPaneRenderInput<RepoRecord, TaskRecord>['snapshot'] {
   return {
     repositories: new Map(),
     tasks: new Map(),
@@ -62,7 +64,7 @@ void test('runtime right-pane renderer resets task view and renders conversation
     ...emptyTaskPaneView(),
     rows: ['stale'],
   };
-  const render = new RuntimeRightPaneRender<RepoRecord, TaskRecord>({
+  const options: RuntimeRightPaneRenderOptions<RepoRecord, TaskRecord> = {
     workspace,
     showTasks: true,
     conversationPane: {
@@ -80,14 +82,14 @@ void test('runtime right-pane renderer resets task view and renders conversation
     },
     refreshProjectPaneSnapshot: () => null,
     emptyTaskPaneView,
-  });
+  };
 
-  const rows = render.renderRightRows({
+  const rows = renderRuntimeRightPaneRows(options, {
     layout: {
       rightCols: 20,
       paneRows: 4,
     },
-    rightFrame: {} as Parameters<typeof render.renderRightRows>[0]['rightFrame'],
+    rightFrame: {} as RuntimeRightPaneRenderInput<RepoRecord, TaskRecord>['rightFrame'],
     homePaneActive: false,
     projectPaneActive: false,
     activeDirectoryId: null,
@@ -115,7 +117,7 @@ void test('runtime right-pane renderer delegates home-pane render and updates wo
     selectedRepositoryId: 'repo-1',
   } as const;
   const showTaskPlanningUiCalls: boolean[] = [];
-  const render = new RuntimeRightPaneRender<RepoRecord, TaskRecord>({
+  const options: RuntimeRightPaneRenderOptions<RepoRecord, TaskRecord> = {
     workspace,
     showTasks: true,
     conversationPane: {
@@ -136,9 +138,9 @@ void test('runtime right-pane renderer delegates home-pane render and updates wo
     },
     refreshProjectPaneSnapshot: () => null,
     emptyTaskPaneView,
-  });
+  };
 
-  const rows = render.renderRightRows({
+  const rows = renderRuntimeRightPaneRows(options, {
     layout: {
       rightCols: 20,
       paneRows: 4,
@@ -167,7 +169,7 @@ void test('runtime right-pane renderer enables task-planning view only when task
     kind: 'tasks',
   };
   const showTaskPlanningUiCalls: boolean[] = [];
-  const render = new RuntimeRightPaneRender<RepoRecord, TaskRecord>({
+  const options: RuntimeRightPaneRenderOptions<RepoRecord, TaskRecord> = {
     workspace,
     showTasks: true,
     conversationPane: {
@@ -196,9 +198,9 @@ void test('runtime right-pane renderer enables task-planning view only when task
     },
     refreshProjectPaneSnapshot: () => null,
     emptyTaskPaneView,
-  });
+  };
 
-  const rows = render.renderRightRows({
+  const rows = renderRuntimeRightPaneRows(options, {
     layout: {
       rightCols: 20,
       paneRows: 4,
@@ -220,7 +222,7 @@ void test('runtime right-pane renderer keeps task-planning hidden when tasks are
     kind: 'tasks',
   };
   const showTaskPlanningUiCalls: boolean[] = [];
-  const render = new RuntimeRightPaneRender<RepoRecord, TaskRecord>({
+  const options: RuntimeRightPaneRenderOptions<RepoRecord, TaskRecord> = {
     workspace,
     showTasks: false,
     conversationPane: {
@@ -249,9 +251,9 @@ void test('runtime right-pane renderer keeps task-planning hidden when tasks are
     },
     refreshProjectPaneSnapshot: () => null,
     emptyTaskPaneView,
-  });
+  };
 
-  const rows = render.renderRightRows({
+  const rows = renderRuntimeRightPaneRows(options, {
     layout: {
       rightCols: 20,
       paneRows: 4,
@@ -281,7 +283,7 @@ void test('runtime right-pane renderer refreshes project snapshot once and reuse
       projectClose: 1,
     },
   };
-  const render = new RuntimeRightPaneRender<RepoRecord, TaskRecord>({
+  const options: RuntimeRightPaneRenderOptions<RepoRecord, TaskRecord> = {
     workspace,
     showTasks: true,
     conversationPane: {
@@ -308,9 +310,9 @@ void test('runtime right-pane renderer refreshes project snapshot once and reuse
       return snapshot;
     },
     emptyTaskPaneView,
-  });
+  };
 
-  const firstRows = render.renderRightRows({
+  const firstRows = renderRuntimeRightPaneRows(options, {
     layout: {
       rightCols: 20,
       paneRows: 4,
@@ -321,7 +323,7 @@ void test('runtime right-pane renderer refreshes project snapshot once and reuse
     activeDirectoryId: 'dir-1',
     snapshot: emptyRightPaneSnapshot(),
   });
-  const secondRows = render.renderRightRows({
+  const secondRows = renderRuntimeRightPaneRows(options, {
     layout: {
       rightCols: 20,
       paneRows: 4,
@@ -343,7 +345,7 @@ void test('runtime right-pane renderer refreshes project snapshot once and reuse
 
 void test('runtime right-pane renderer falls back to blank rows when no pane branch applies', () => {
   const workspace = createWorkspace();
-  const render = new RuntimeRightPaneRender<RepoRecord, TaskRecord>({
+  const options: RuntimeRightPaneRenderOptions<RepoRecord, TaskRecord> = {
     workspace,
     showTasks: true,
     conversationPane: {
@@ -368,9 +370,9 @@ void test('runtime right-pane renderer falls back to blank rows when no pane bra
     },
     refreshProjectPaneSnapshot: () => null,
     emptyTaskPaneView,
-  });
+  };
 
-  const rows = render.renderRightRows({
+  const rows = renderRuntimeRightPaneRows(options, {
     layout: {
       rightCols: 3,
       paneRows: 2,

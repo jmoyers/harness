@@ -24,7 +24,7 @@ export interface RuntimeDirectoryActionService<TDirectoryRecord extends RuntimeD
 export interface RuntimeDirectoryConversations<
   TConversationState extends RuntimeConversationStateLike,
 > {
-  readonly records: () => ReadonlyMap<string, TConversationState>;
+  readonly records: ReadonlyMap<string, TConversationState>;
   readonly orderedIds: () => readonly string[];
   readonly directoryIdOf: (sessionId: string) => string | null;
   readonly isLive: (sessionId: string) => boolean;
@@ -93,7 +93,7 @@ export function createRuntimeDirectoryActions<
   const archiveConversation = async (sessionId: string): Promise<void> => {
     await archiveConversationFn({
       sessionId,
-      conversations: options.conversations.records(),
+      conversations: options.conversations.records,
       closePtySession: options.controlPlaneService.closePtySession,
       removeSession: options.controlPlaneService.removeSession,
       isSessionNotFoundError: options.errors.isSessionNotFoundError,

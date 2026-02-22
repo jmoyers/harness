@@ -34,7 +34,7 @@ void test('runtime directory actions archive conversation routes lifecycle + pro
       archiveDirectory: async () => {},
     },
     conversations: {
-      records: () => conversations,
+      records: conversations,
       orderedIds: () => [...conversations.keys()],
       directoryIdOf: (sessionId) => conversations.get(sessionId)?.directoryId ?? null,
       isLive: (sessionId) => conversations.get(sessionId)?.live === true,
@@ -123,7 +123,7 @@ void test('runtime directory actions add directory hydrates and activates existi
       archiveDirectory: async () => {},
     },
     conversations: {
-      records: () => new Map(),
+      records: new Map(),
       orderedIds: () => [],
       directoryIdOf: () => null,
       isLive: () => false,
@@ -220,7 +220,7 @@ void test('runtime directory actions close directory seeds invocation directory 
       },
     },
     conversations: {
-      records: () => new Map(),
+      records: new Map(),
       orderedIds: () => [],
       directoryIdOf: () => null,
       isLive: () => false,
@@ -330,7 +330,7 @@ void test('runtime directory actions close directory archives live conversations
       },
     },
     conversations: {
-      records: () => conversations,
+      records: conversations,
       orderedIds: () => [...conversations.keys()],
       directoryIdOf: (sessionId) => conversations.get(sessionId)?.directoryId ?? null,
       isLive: (sessionId) => conversations.get(sessionId)?.live === true,

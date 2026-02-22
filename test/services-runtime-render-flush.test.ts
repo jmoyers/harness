@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { RuntimeRenderFlush } from '../src/services/runtime-render-flush.ts';
+import { flushRuntimeRender } from '../src/services/runtime-render-flush.ts';
 
 interface ConversationRecord {
   readonly id: string;
@@ -25,14 +25,7 @@ void test('runtime render flush composes status footer, applies modal overlay, a
   let renderedSelectionOverlay = '';
   let flushedRows: readonly string[] = [];
 
-  const service = new RuntimeRenderFlush<
-    ConversationRecord,
-    FrameRecord,
-    SelectionRecord,
-    LayoutRecord,
-    { id: string },
-    string
-  >({
+  const options = {
     perfNowNs: (() => {
       let now = 0n;
       return () => {
@@ -40,7 +33,7 @@ void test('runtime render flush composes status footer, applies modal overlay, a
         return now;
       };
     })(),
-    statusFooterForConversation: (conversation) => {
+    statusFooterForConversation: (conversation: ConversationRecord) => {
       calls.push(`statusFooterFor:${conversation.id}`);
       return 'base-footer';
     },
@@ -49,26 +42,48 @@ void test('runtime render flush composes status footer, applies modal overlay, a
       builtStatusRow = 'status-row';
       return builtStatusRow;
     },
-    onStatusLineComposed: (input) => {
+    onStatusLineComposed: (input: {
+      activeConversation: ConversationRecord | null;
+      statusFooter: string;
+      statusRow: string;
+      projectPaneActive: boolean;
+      homePaneActive: boolean;
+    }) => {
       calls.push(
         `onStatusLineComposed:${input.activeConversation?.id ?? 'none'}:${input.statusFooter}:${input.statusRow}`,
       );
     },
-    buildRenderRows: (_layout, _railRows, _rightRows, statusRow, statusFooter) => {
+    buildRenderRows: (
+      _layout: LayoutRecord,
+      _railRows: readonly string[],
+      _rightRows: readonly string[],
+      statusRow: string,
+      statusFooter: string,
+    ) => {
       builtStatusFooter = statusFooter;
       calls.push(`buildRenderRows:${statusRow}:${statusFooter}`);
       return ['row-1', 'row-2'];
     },
     buildModalOverlay: () => ({ id: 'overlay-1' }),
-    applyModalOverlay: (rows, overlay) => {
+    applyModalOverlay: (rows: string[], overlay: { id: string }) => {
       rows[0] = `${rows[0]}:${overlay.id}`;
       calls.push(`applyModalOverlay:${overlay.id}`);
     },
-    renderSelectionOverlay: (_layout, frame, selection) => {
+    renderSelectionOverlay: (
+      _layout: LayoutRecord,
+      frame: FrameRecord,
+      selection: SelectionRecord | null,
+    ) => {
       renderedSelectionOverlay = `${frame.id}:${selection?.id ?? 'none'}`;
       return renderedSelectionOverlay;
     },
-    flush: (input) => {
+    flush: (input: {
+      layout: LayoutRecord;
+      rows: readonly string[];
+      rightFrame: FrameRecord | null;
+      selectionRows: readonly number[];
+      selectionOverlay: string;
+    }) => {
       flushedRows = input.rows;
       calls.push(`flush:${input.selectionOverlay}`);
       return {
@@ -77,17 +92,23 @@ void test('runtime render flush composes status footer, applies modal overlay, a
         shouldShowCursor: true,
       };
     },
-    onFlushOutput: (input) => {
+    onFlushOutput: (input: {
+      activeConversation: ConversationRecord | null;
+      rightFrame: FrameRecord | null;
+      rows: readonly string[];
+      flushResult: { changedRowCount: number; wroteOutput: boolean; shouldShowCursor: boolean };
+      changedRowCount: number;
+    }) => {
       calls.push(
         `onFlushOutput:${input.activeConversation?.id ?? 'none'}:${input.rightFrame?.id ?? 'none'}:${input.changedRowCount}`,
       );
     },
-    recordRenderSample: (durationMs, changedRowCount) => {
+    recordRenderSample: (durationMs: number, changedRowCount: number) => {
       calls.push(`recordRenderSample:${durationMs > 0 ? '1' : '0'}:${changedRowCount}`);
     },
-  });
+  };
 
-  service.flushRender({
+  flushRuntimeRender(options, {
     layout: { id: 'layout-1' },
     projectPaneActive: false,
     homePaneActive: false,
@@ -116,47 +137,62 @@ void test('runtime render flush composes status footer, applies modal overlay, a
 
 void test('runtime render flush skips conversation footer and flush-output hook when output is not written', () => {
   const calls: string[] = [];
-  const service = new RuntimeRenderFlush<
-    ConversationRecord,
-    FrameRecord,
-    SelectionRecord,
-    LayoutRecord,
-    { id: string },
-    string
-  >({
+  const options = {
     perfNowNs: () => 10_000_000n,
-    statusFooterForConversation: () => {
+    statusFooterForConversation: (_conversation: ConversationRecord) => {
       calls.push('statusFooterForConversation');
       return 'base-footer';
     },
     currentStatusNotice: () => null,
     currentStatusRow: () => 'status-row',
-    buildRenderRows: (_layout, _railRows, _rightRows, _statusRow, statusFooter) => {
+    buildRenderRows: (
+      _layout: LayoutRecord,
+      _railRows: readonly string[],
+      _rightRows: readonly string[],
+      _statusRow: string,
+      statusFooter: string,
+    ) => {
       calls.push(`buildRenderRows:${statusFooter.length === 0 ? 'empty' : statusFooter}`);
       return ['row-only'];
     },
     buildModalOverlay: () => null,
-    applyModalOverlay: () => {
+    applyModalOverlay: (_rows: string[], _overlay: { id: string }) => {
       calls.push('applyModalOverlay');
     },
-    renderSelectionOverlay: () => {
+    renderSelectionOverlay: (
+      _layout: LayoutRecord,
+      _frame: FrameRecord,
+      _selection: SelectionRecord | null,
+    ) => {
       calls.push('renderSelectionOverlay');
       return 'overlay';
     },
-    flush: () => ({
+    flush: (_input: {
+      layout: LayoutRecord;
+      rows: readonly string[];
+      rightFrame: FrameRecord | null;
+      selectionRows: readonly number[];
+      selectionOverlay: string;
+    }) => ({
       changedRowCount: 0,
       wroteOutput: false,
       shouldShowCursor: false,
     }),
-    onFlushOutput: () => {
+    onFlushOutput: (_input: {
+      activeConversation: ConversationRecord | null;
+      rightFrame: FrameRecord | null;
+      rows: readonly string[];
+      flushResult: { changedRowCount: number; wroteOutput: boolean; shouldShowCursor: boolean };
+      changedRowCount: number;
+    }) => {
       calls.push('onFlushOutput');
     },
-    recordRenderSample: (_durationMs, changedRowCount) => {
+    recordRenderSample: (_durationMs: number, changedRowCount: number) => {
       calls.push(`recordRenderSample:${changedRowCount}`);
     },
-  });
+  };
 
-  service.flushRender({
+  flushRuntimeRender(options, {
     layout: { id: 'layout-2' },
     projectPaneActive: true,
     homePaneActive: false,

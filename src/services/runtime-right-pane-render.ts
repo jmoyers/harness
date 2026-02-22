@@ -86,61 +86,55 @@ export interface RuntimeRightPaneRenderOptions<
   readonly emptyTaskPaneView: () => TaskFocusedPaneView;
 }
 
-export class RuntimeRightPaneRender<
+export function renderRuntimeRightPaneRows<
   TRepositoryRecord extends TaskFocusedPaneRepositoryRecord,
   TTaskRecord extends TaskFocusedPaneTaskRecord,
-> {
-  constructor(
-    private readonly options: RuntimeRightPaneRenderOptions<TRepositoryRecord, TTaskRecord>,
-  ) {}
+>(
+  options: RuntimeRightPaneRenderOptions<TRepositoryRecord, TTaskRecord>,
+  input: RuntimeRightPaneRenderInput<TRepositoryRecord, TTaskRecord>,
+): readonly string[] {
+  const workspace = options.workspace;
+  workspace.latestTaskPaneView = options.emptyTaskPaneView();
 
-  renderRightRows(input: RuntimeRightPaneRenderInput<TRepositoryRecord, TTaskRecord>): readonly string[] {
-    const workspace = this.options.workspace;
-    workspace.latestTaskPaneView = this.options.emptyTaskPaneView();
-
-    if (input.rightFrame !== null) {
-      return this.options.conversationPane.render(input.rightFrame, input.layout);
-    }
-
-    if (input.homePaneActive) {
-      const view = this.options.homePane.render({
-        layout: input.layout,
-        repositories: input.snapshot.repositories,
-        tasks: input.snapshot.tasks,
-        showTaskPlanningUi:
-          (this.options.showTasks ?? true) && workspace.leftNavSelection.kind === 'tasks',
-        selectedRepositoryId: workspace.taskPaneSelectedRepositoryId,
-        repositoryDropdownOpen: workspace.taskRepositoryDropdownOpen,
-        editorTarget: workspace.taskEditorTarget,
-        draftBuffer: workspace.taskDraftComposer,
-        taskBufferById: input.snapshot.taskComposers,
-        notice: workspace.taskPaneNotice,
-        scrollTop: workspace.taskPaneScrollTop,
-      });
-      workspace.taskPaneSelectedRepositoryId = view.selectedRepositoryId;
-      workspace.taskPaneScrollTop = view.top;
-      workspace.latestTaskPaneView = view;
-      return view.rows;
-    }
-
-    if (input.projectPaneActive && input.activeDirectoryId !== null) {
-      const needsSnapshotRefresh =
-        workspace.projectPaneSnapshot === null ||
-        workspace.projectPaneSnapshot.directoryId !== input.activeDirectoryId;
-      if (needsSnapshotRefresh) {
-        workspace.projectPaneSnapshot = this.options.refreshProjectPaneSnapshot(
-          input.activeDirectoryId,
-        );
-      }
-      const view = this.options.projectPane.render({
-        layout: input.layout,
-        snapshot: workspace.projectPaneSnapshot,
-        scrollTop: workspace.projectPaneScrollTop,
-      });
-      workspace.projectPaneScrollTop = view.scrollTop;
-      return view.rows;
-    }
-
-    return Array.from({ length: input.layout.paneRows }, () => ' '.repeat(input.layout.rightCols));
+  if (input.rightFrame !== null) {
+    return options.conversationPane.render(input.rightFrame, input.layout);
   }
+
+  if (input.homePaneActive) {
+    const view = options.homePane.render({
+      layout: input.layout,
+      repositories: input.snapshot.repositories,
+      tasks: input.snapshot.tasks,
+      showTaskPlanningUi: (options.showTasks ?? true) && workspace.leftNavSelection.kind === 'tasks',
+      selectedRepositoryId: workspace.taskPaneSelectedRepositoryId,
+      repositoryDropdownOpen: workspace.taskRepositoryDropdownOpen,
+      editorTarget: workspace.taskEditorTarget,
+      draftBuffer: workspace.taskDraftComposer,
+      taskBufferById: input.snapshot.taskComposers,
+      notice: workspace.taskPaneNotice,
+      scrollTop: workspace.taskPaneScrollTop,
+    });
+    workspace.taskPaneSelectedRepositoryId = view.selectedRepositoryId;
+    workspace.taskPaneScrollTop = view.top;
+    workspace.latestTaskPaneView = view;
+    return view.rows;
+  }
+
+  if (input.projectPaneActive && input.activeDirectoryId !== null) {
+    const needsSnapshotRefresh =
+      workspace.projectPaneSnapshot === null ||
+      workspace.projectPaneSnapshot.directoryId !== input.activeDirectoryId;
+    if (needsSnapshotRefresh) {
+      workspace.projectPaneSnapshot = options.refreshProjectPaneSnapshot(input.activeDirectoryId);
+    }
+    const view = options.projectPane.render({
+      layout: input.layout,
+      snapshot: workspace.projectPaneSnapshot,
+      scrollTop: workspace.projectPaneScrollTop,
+    });
+    workspace.projectPaneScrollTop = view.scrollTop;
+    return view.rows;
+  }
+
+  return Array.from({ length: input.layout.paneRows }, () => ' '.repeat(input.layout.rightCols));
 }

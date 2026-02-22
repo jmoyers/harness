@@ -102,7 +102,7 @@ export interface RuntimeLeftRailRenderOptions<
   readonly showTasksEntry?: boolean;
 }
 
-export class RuntimeLeftRailRender<
+export function renderRuntimeLeftRail<
   TDirectoryRecord,
   TConversationRecord,
   TRepositoryRecord,
@@ -110,20 +110,17 @@ export class RuntimeLeftRailRender<
   TGitSummary,
   TProcessUsage,
   TRailViewRows,
-> {
-  constructor(
-    private readonly options: RuntimeLeftRailRenderOptions<
-      TDirectoryRecord,
-      TConversationRecord,
-      TRepositoryRecord,
-      TRepositorySnapshot,
-      TGitSummary,
-      TProcessUsage,
-      TRailViewRows
-    >,
-  ) {}
-
-  render(input: {
+>(
+  options: RuntimeLeftRailRenderOptions<
+    TDirectoryRecord,
+    TConversationRecord,
+    TRepositoryRecord,
+    TRepositorySnapshot,
+    TGitSummary,
+    TProcessUsage,
+    TRailViewRows
+  >,
+  input: {
     readonly layout: RuntimeLeftRailRenderLayout;
     readonly snapshot: RuntimeLeftRailRenderSnapshot<
       TDirectoryRecord,
@@ -131,39 +128,37 @@ export class RuntimeLeftRailRender<
       TRepositoryRecord,
       TProcessUsage
     >;
-  }): {
-    readonly ansiRows: readonly string[];
-    readonly viewRows: TRailViewRows;
-  } {
-    this.options.sessionProjectionInstrumentation.refreshSelectorSnapshot(
-      'render',
-      input.snapshot.directories,
-      input.snapshot.conversations,
-      input.snapshot.orderedConversationIds,
-    );
-    return this.options.leftRailPane.render({
-      layout: input.layout,
-      repositories: input.snapshot.repositories,
-      repositoryAssociationByDirectoryId: this.options.repositoryAssociationByDirectoryId,
-      directoryRepositorySnapshotByDirectoryId:
-        this.options.directoryRepositorySnapshotByDirectoryId,
-      directories: input.snapshot.directories,
-      conversations: input.snapshot.conversations,
-      orderedIds: input.snapshot.orderedConversationIds,
-      activeProjectId: this.options.workspace.activeDirectoryId,
-      activeRepositoryId: this.options.workspace.activeRepositorySelectionId,
-      activeConversationId: input.snapshot.activeConversationId,
-      projectSelectionEnabled: this.options.workspace.leftNavSelection.kind === 'project',
-      repositorySelectionEnabled: this.options.workspace.leftNavSelection.kind === 'repository',
-      homeSelectionEnabled: this.options.workspace.leftNavSelection.kind === 'home',
-      tasksSelectionEnabled: this.options.workspace.leftNavSelection.kind === 'tasks',
-      showTasksEntry: this.options.showTasksEntry ?? true,
-      repositoriesCollapsed: this.options.workspace.repositoriesCollapsed,
-      collapsedRepositoryGroupIds:
-        this.options.repositoryManager.readonlyCollapsedRepositoryGroupIds(),
-      gitSummaryByDirectoryId: this.options.gitSummaryByDirectoryId,
-      processUsageBySessionId: input.snapshot.processUsageBySessionId,
-      loadingGitSummary: this.options.loadingGitSummary,
-    });
-  }
+  },
+): {
+  readonly ansiRows: readonly string[];
+  readonly viewRows: TRailViewRows;
+} {
+  options.sessionProjectionInstrumentation.refreshSelectorSnapshot(
+    'render',
+    input.snapshot.directories,
+    input.snapshot.conversations,
+    input.snapshot.orderedConversationIds,
+  );
+  return options.leftRailPane.render({
+    layout: input.layout,
+    repositories: input.snapshot.repositories,
+    repositoryAssociationByDirectoryId: options.repositoryAssociationByDirectoryId,
+    directoryRepositorySnapshotByDirectoryId: options.directoryRepositorySnapshotByDirectoryId,
+    directories: input.snapshot.directories,
+    conversations: input.snapshot.conversations,
+    orderedIds: input.snapshot.orderedConversationIds,
+    activeProjectId: options.workspace.activeDirectoryId,
+    activeRepositoryId: options.workspace.activeRepositorySelectionId,
+    activeConversationId: input.snapshot.activeConversationId,
+    projectSelectionEnabled: options.workspace.leftNavSelection.kind === 'project',
+    repositorySelectionEnabled: options.workspace.leftNavSelection.kind === 'repository',
+    homeSelectionEnabled: options.workspace.leftNavSelection.kind === 'home',
+    tasksSelectionEnabled: options.workspace.leftNavSelection.kind === 'tasks',
+    showTasksEntry: options.showTasksEntry ?? true,
+    repositoriesCollapsed: options.workspace.repositoriesCollapsed,
+    collapsedRepositoryGroupIds: options.repositoryManager.readonlyCollapsedRepositoryGroupIds(),
+    gitSummaryByDirectoryId: options.gitSummaryByDirectoryId,
+    processUsageBySessionId: input.snapshot.processUsageBySessionId,
+    loadingGitSummary: options.loadingGitSummary,
+  });
 }
