@@ -14,12 +14,12 @@ export class ClaudeStatusReducer extends BaseAgentStatusReducer {
 
   protected override projectFromTelemetry(
     telemetry: StreamTelemetrySummary,
-  ): { text: string | null; phaseHint: 'needs-action' | 'working' | 'idle' | null } | null {
+  ): { text: string | null; activityHint: 'needs-action' | 'working' | 'idle' | null } | null {
     const eventName = normalize(telemetry.eventName);
     if (eventName === 'claude.userpromptsubmit' || eventName === 'claude.pretooluse') {
       return {
         text: 'active',
-        phaseHint: 'working',
+        activityHint: 'working',
       };
     }
     if (
@@ -29,7 +29,7 @@ export class ClaudeStatusReducer extends BaseAgentStatusReducer {
     ) {
       return {
         text: 'inactive',
-        phaseHint: 'idle',
+        activityHint: 'idle',
       };
     }
     return null;

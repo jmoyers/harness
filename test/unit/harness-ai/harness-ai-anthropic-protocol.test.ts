@@ -15,7 +15,7 @@ void test('parses message_start and message_delta chunks', () => {
         input_tokens: 1,
         output_tokens: 2,
       },
-      stop_reason: 'tool_use',
+      stop_reason: null,
     },
   });
 
@@ -28,7 +28,7 @@ void test('parses message_start and message_delta chunks', () => {
         input_tokens: 1,
         output_tokens: 2,
       },
-      stop_reason: 'tool_use',
+      stop_reason: null,
     },
   });
 
@@ -42,6 +42,7 @@ void test('parses message_start and message_delta chunks', () => {
       input_tokens: 3,
       output_tokens: 4,
       cache_read_input_tokens: 1,
+      cache_creation_input_tokens: 2,
     },
   });
 
@@ -55,6 +56,7 @@ void test('parses message_start and message_delta chunks', () => {
       input_tokens: 3,
       output_tokens: 4,
       cache_read_input_tokens: 1,
+      cache_creation_input_tokens: 2,
     },
   });
 });

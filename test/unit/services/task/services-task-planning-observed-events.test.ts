@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import type { StreamObservedEvent } from '../../../../src/control-plane/stream-protocol.ts';
-import { TaskPlanningObservedEvents } from '../../../../src/services/task-planning-observed-events.ts';
+import { TaskPlanningSyncedProjection } from '../../../../src/services/task-planning-observed-events.ts';
 
 interface RepositoryRecord {
   readonly repositoryId: string;
@@ -12,26 +11,12 @@ interface TaskRecord {
   readonly taskId: string;
 }
 
-void test('task planning observed events applies repository upsert/update and archive flows', () => {
+void test('task planning synced projection applies repository upserts', () => {
   const calls: string[] = [];
   const repositories = new Map<string, RepositoryRecord>([
     ['repo-1', { repositoryId: 'repo-1', archivedAt: null }],
   ]);
-  const service = new TaskPlanningObservedEvents<RepositoryRecord, TaskRecord>({
-    parseRepositoryRecord: (value) => {
-      if (typeof value === 'object' && value !== null && 'repositoryId' in value) {
-        const repositoryId = Reflect.get(value, 'repositoryId');
-        if (typeof repositoryId === 'string') {
-          return {
-            repositoryId,
-            archivedAt: null,
-          };
-        }
-      }
-      return null;
-    },
-    parseTaskRecord: () => null,
-    getRepository: (repositoryId) => repositories.get(repositoryId),
+  const service = new TaskPlanningSyncedProjection<RepositoryRecord, TaskRecord>({
     setRepository: (repositoryId, repository) => {
       repositories.set(repositoryId, repository);
       calls.push(`setRepository:${repositoryId}:${repository.archivedAt ?? 'null'}`);
@@ -52,35 +37,37 @@ void test('task planning observed events applies repository upsert/update and ar
   });
 
   service.apply({
-    type: 'repository-upserted',
-    repository: { repositoryId: 'repo-2' },
-  } as StreamObservedEvent);
+    changed: true,
+    state: {
+      repositoriesById: {
+        'repo-1': {
+          repositoryId: 'repo-1',
+          archivedAt: '2026-01-01T00:00:00.000Z',
+        },
+        'repo-2': {
+          repositoryId: 'repo-2',
+          archivedAt: null,
+        },
+      },
+      tasksById: {},
+    },
+    removedTaskIds: [],
+    upsertedRepositoryIds: ['repo-2', 'repo-1', 'repo-missing'],
+    upsertedTaskIds: [],
+  });
   service.apply({
-    type: 'repository-updated',
-    repository: { repositoryId: 'repo-3' },
-  } as StreamObservedEvent);
-  service.apply({
-    type: 'repository-updated',
-    repository: { invalid: true },
-  } as StreamObservedEvent);
-  service.apply({
-    type: 'repository-archived',
-    repositoryId: 'repo-1',
-    ts: '2026-01-01T00:00:00.000Z',
-  } as StreamObservedEvent);
-  service.apply({
-    type: 'repository-archived',
-    repositoryId: 'repo-missing',
-    ts: '2026-01-01T00:00:01.000Z',
-  } as StreamObservedEvent);
+    changed: false,
+    state: {
+      repositoriesById: {},
+      tasksById: {},
+    },
+    removedTaskIds: [],
+    upsertedRepositoryIds: [],
+    upsertedTaskIds: [],
+  });
 
   assert.deepEqual(calls, [
     'setRepository:repo-2:null',
-    'syncRepositorySelection',
-    'markDirty',
-    'setRepository:repo-3:null',
-    'syncRepositorySelection',
-    'markDirty',
     'setRepository:repo-1:2026-01-01T00:00:00.000Z',
     'syncRepositorySelection',
     'markDirty',
@@ -88,23 +75,10 @@ void test('task planning observed events applies repository upsert/update and ar
   assert.equal(repositories.get('repo-1')?.archivedAt, '2026-01-01T00:00:00.000Z');
 });
 
-void test('task planning observed events applies task create/update/delete/reorder flows', () => {
+void test('task planning synced projection applies task removals and upserts', () => {
   const calls: string[] = [];
-  const tasks = new Map<string, TaskRecord>();
-  const service = new TaskPlanningObservedEvents<RepositoryRecord, TaskRecord>({
-    parseRepositoryRecord: () => null,
-    parseTaskRecord: (value) => {
-      if (typeof value === 'object' && value !== null && 'taskId' in value) {
-        const taskId = Reflect.get(value, 'taskId');
-        if (typeof taskId === 'string') {
-          return {
-            taskId,
-          };
-        }
-      }
-      return null;
-    },
-    getRepository: () => undefined,
+  const tasks = new Map<string, TaskRecord>([['task-2', { taskId: 'task-2' }]]);
+  const service = new TaskPlanningSyncedProjection<RepositoryRecord, TaskRecord>({
     setRepository: () => {},
     setTask: (task) => {
       tasks.set(task.taskId, task);
@@ -127,54 +101,36 @@ void test('task planning observed events applies task create/update/delete/reord
   });
 
   service.apply({
-    type: 'task-created',
-    task: { taskId: 'task-1' },
-  } as StreamObservedEvent);
+    changed: true,
+    state: {
+      repositoriesById: {},
+      tasksById: {
+        'task-1': { taskId: 'task-1' },
+        'task-3': { taskId: 'task-3' },
+      },
+    },
+    removedTaskIds: ['task-missing', 'task-2'],
+    upsertedRepositoryIds: [],
+    upsertedTaskIds: ['task-1', 'task-3', 'task-missing'],
+  });
   service.apply({
-    type: 'task-updated',
-    task: { taskId: 'task-2' },
-  } as StreamObservedEvent);
-  service.apply({
-    type: 'task-updated',
-    task: { invalid: true },
-  } as StreamObservedEvent);
-  service.apply({
-    type: 'task-deleted',
-    taskId: 'task-missing',
-  } as StreamObservedEvent);
-  service.apply({
-    type: 'task-deleted',
-    taskId: 'task-2',
-  } as StreamObservedEvent);
-  service.apply({
-    type: 'task-reordered',
-    tasks: [{ invalid: true }],
-    ts: '2026-01-01T00:00:00.000Z',
-  } as StreamObservedEvent);
-  service.apply({
-    type: 'task-reordered',
-    tasks: [{ taskId: 'task-3' }, { invalid: true }, { taskId: 'task-4' }],
-    ts: '2026-01-01T00:00:01.000Z',
-  } as StreamObservedEvent);
-  service.apply({
-    type: 'session-status',
-  } as StreamObservedEvent);
+    changed: false,
+    state: {
+      repositoriesById: {},
+      tasksById: {},
+    },
+    removedTaskIds: [],
+    upsertedRepositoryIds: [],
+    upsertedTaskIds: [],
+  });
 
   assert.deepEqual(calls, [
-    'setTask:task-1',
-    'syncTaskSelection',
-    'markDirty',
-    'setTask:task-2',
-    'syncTaskSelection',
-    'markDirty',
     'deleteTask:task-missing:false',
     'deleteTask:task-2:true',
-    'syncTaskSelection',
-    'markDirty',
+    'setTask:task-1',
     'setTask:task-3',
-    'setTask:task-4',
     'syncTaskSelection',
     'markDirty',
   ]);
-  assert.deepEqual([...tasks.keys()].sort(), ['task-1', 'task-3', 'task-4']);
+  assert.deepEqual([...tasks.keys()].sort(), ['task-1', 'task-3']);
 });

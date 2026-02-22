@@ -65,6 +65,7 @@ These are temporary hygiene constraints for the ongoing mux/runtime decompositio
 - `packages/harness-ui` must not import `src/*` runtime/mux/domain internals.
 - Do not use `dependencies.foo ?? fooFrame` when `fooFrame` is app-layer behavior.
 - Do not use `ConstructorParameters<typeof X>[0]` for cross-module contracts; use named interfaces.
+- Branch-scoped coverage relaxation during this refactor uses `harness.coverage.jsonc` global thresholds of `95/95/95`; restore `100/100/100` before merge to `main`.
 
 ## Quality Bar
 

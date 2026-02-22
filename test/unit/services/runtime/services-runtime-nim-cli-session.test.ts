@@ -80,10 +80,22 @@ test('runtime nim cli session starts subprocess, parses output, and updates view
   assert.equal(view.status, 'idle');
   assert.equal(view.activeRunId, null);
   assert.equal(view.queuedCount, 0);
-  assert.equal(view.transcriptLines.some((line) => line.includes('nim subprocess ready')), true);
-  assert.equal(view.transcriptLines.some((line) => line.includes('queued turn position=0')), true);
-  assert.equal(view.transcriptLines.some((line) => line.includes('run started run-queue')), true);
-  assert.equal(view.transcriptLines.some((line) => line.includes('run completed completed')), true);
+  assert.equal(
+    view.transcriptLines.some((line) => line.includes('nim subprocess ready')),
+    true,
+  );
+  assert.equal(
+    view.transcriptLines.some((line) => line.includes('queued turn position=0')),
+    true,
+  );
+  assert.equal(
+    view.transcriptLines.some((line) => line.includes('run started run-queue')),
+    true,
+  );
+  assert.equal(
+    view.transcriptLines.some((line) => line.includes('run completed completed')),
+    true,
+  );
   assert.equal(dirtyEvents.length > 0, true);
 
   await session.dispose();

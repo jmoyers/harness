@@ -35,42 +35,48 @@ interface RuntimeGitStateOptions<TRepositoryRecord extends RepositoryRecordShape
   readonly markDirty: () => void;
 }
 
-export class RuntimeGitState<TRepositoryRecord extends RepositoryRecordShape> {
-  constructor(private readonly options: RuntimeGitStateOptions<TRepositoryRecord>) {}
+export interface RuntimeGitState {
+  deleteDirectoryGitState(directoryId: string): void;
+  syncGitStateWithDirectories(): void;
+  noteGitActivity(directoryId: string | null): void;
+  applyObservedGitStatusEvent(observed: StreamObservedEvent): void;
+}
 
-  deleteDirectoryGitState(directoryId: string): void {
+export function createRuntimeGitState<TRepositoryRecord extends RepositoryRecordShape>(
+  options: RuntimeGitStateOptions<TRepositoryRecord>,
+): RuntimeGitState {
+  const deleteDirectoryGitState = (directoryId: string): void => {
     deleteDirectoryGitStateFn(
       directoryId,
-      this.options.directoryManager.mutableGitSummaries(),
-      this.options.directoryRepositorySnapshotByDirectoryId,
-      this.options.repositoryAssociationByDirectoryId,
+      options.directoryManager.mutableGitSummaries(),
+      options.directoryRepositorySnapshotByDirectoryId,
+      options.repositoryAssociationByDirectoryId,
     );
-  }
+  };
 
-  syncGitStateWithDirectories(): void {
-    this.options.directoryManager.syncGitSummariesWithDirectories(this.options.loadingSummary);
-    this.options.syncRepositoryAssociationsWithDirectorySnapshots();
-  }
+  const syncGitStateWithDirectories = (): void => {
+    options.directoryManager.syncGitSummariesWithDirectories(options.loadingSummary);
+    options.syncRepositoryAssociationsWithDirectorySnapshots();
+  };
 
-  noteGitActivity(directoryId: string | null): void {
-    if (directoryId === null || !this.options.directoryManager.hasDirectory(directoryId)) {
+  const noteGitActivity = (directoryId: string | null): void => {
+    if (directoryId === null || !options.directoryManager.hasDirectory(directoryId)) {
       return;
     }
-    this.options.directoryManager.ensureGitSummary(directoryId, this.options.loadingSummary);
-  }
+    options.directoryManager.ensureGitSummary(directoryId, options.loadingSummary);
+  };
 
-  applyObservedGitStatusEvent(observed: StreamObservedEvent): void {
+  const applyObservedGitStatusEvent = (observed: StreamObservedEvent): void => {
     const reduced = applyObservedGitStatusEventFn({
-      enabled: this.options.enabled,
+      enabled: options.enabled,
       observed,
-      gitSummaryByDirectoryId: this.options.directoryManager.mutableGitSummaries(),
-      loadingSummary: this.options.loadingSummary,
-      directoryRepositorySnapshotByDirectoryId:
-        this.options.directoryRepositorySnapshotByDirectoryId,
-      emptyRepositorySnapshot: this.options.emptyRepositorySnapshot,
-      repositoryAssociationByDirectoryId: this.options.repositoryAssociationByDirectoryId,
-      repositories: this.options.repositories,
-      parseRepositoryRecord: this.options.parseRepositoryRecord,
+      gitSummaryByDirectoryId: options.directoryManager.mutableGitSummaries(),
+      loadingSummary: options.loadingSummary,
+      directoryRepositorySnapshotByDirectoryId: options.directoryRepositorySnapshotByDirectoryId,
+      emptyRepositorySnapshot: options.emptyRepositorySnapshot,
+      repositoryAssociationByDirectoryId: options.repositoryAssociationByDirectoryId,
+      repositories: options.repositories,
+      parseRepositoryRecord: options.parseRepositoryRecord,
       repositoryRecordChanged: (previous, repository) =>
         previous === undefined ||
         previous.name !== repository.name ||
@@ -82,11 +88,18 @@ export class RuntimeGitState<TRepositoryRecord extends RepositoryRecordShape> {
       return;
     }
     if (reduced.repositoryRecordChanged) {
-      this.options.syncRepositoryAssociationsWithDirectorySnapshots();
-      this.options.syncTaskPaneRepositorySelection();
+      options.syncRepositoryAssociationsWithDirectorySnapshots();
+      options.syncTaskPaneRepositorySelection();
     }
     if (reduced.changed) {
-      this.options.markDirty();
+      options.markDirty();
     }
-  }
+  };
+
+  return {
+    deleteDirectoryGitState,
+    syncGitStateWithDirectories,
+    noteGitActivity,
+    applyObservedGitStatusEvent,
+  };
 }

@@ -1,10 +1,12 @@
 import type { PtyExit } from '../pty/pty_host.ts';
-import type {
-  StreamSessionController,
-  StreamSessionControllerType,
-  StreamSessionRuntimeStatus,
-  StreamSessionStatusModel,
-  StreamTelemetrySummary,
+import {
+  isStreamSessionRuntimeStatus,
+  parseStreamSessionStatusModel,
+  type StreamSessionController,
+  type StreamSessionControllerType,
+  type StreamSessionRuntimeStatus,
+  type StreamSessionStatusModel,
+  type StreamTelemetrySummary,
 } from './stream-protocol.ts';
 
 interface StreamSessionSummary {
@@ -187,79 +189,6 @@ function readSessionController(value: unknown): StreamSessionController | null |
   };
 }
 
-function readSessionStatusModel(value: unknown): StreamSessionStatusModel | null | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (value === null) {
-    return null;
-  }
-  const record = asRecord(value);
-  if (record === null) {
-    return undefined;
-  }
-  const runtimeStatus = readString(record['runtimeStatus']);
-  const phase = readString(record['phase']);
-  const glyph = readString(record['glyph']);
-  const badge = readString(record['badge']);
-  const detailText = readString(record['detailText']);
-  const attentionReason = readNullableString(record['attentionReason']);
-  const lastKnownWork = readNullableString(record['lastKnownWork']);
-  const lastKnownWorkAt = readNullableString(record['lastKnownWorkAt']);
-  const phaseHintRaw = readNullableString(record['phaseHint']);
-  const observedAt = readString(record['observedAt']);
-  if (
-    runtimeStatus === null ||
-    !isRuntimeStatus(runtimeStatus) ||
-    phase === null ||
-    (phase !== 'needs-action' &&
-      phase !== 'starting' &&
-      phase !== 'working' &&
-      phase !== 'idle' &&
-      phase !== 'exited') ||
-    glyph === null ||
-    (glyph !== '▲' && glyph !== '◔' && glyph !== '◆' && glyph !== '○' && glyph !== '■') ||
-    badge === null ||
-    (badge !== 'NEED' && badge !== 'RUN ' && badge !== 'DONE' && badge !== 'EXIT') ||
-    detailText === null ||
-    attentionReason === undefined ||
-    lastKnownWork === undefined ||
-    lastKnownWorkAt === undefined ||
-    phaseHintRaw === undefined ||
-    observedAt === null
-  ) {
-    return undefined;
-  }
-  const phaseHint =
-    phaseHintRaw === null ||
-    phaseHintRaw === 'needs-action' ||
-    phaseHintRaw === 'working' ||
-    phaseHintRaw === 'idle'
-      ? phaseHintRaw
-      : undefined;
-  if (phaseHint === undefined) {
-    return undefined;
-  }
-  return {
-    runtimeStatus,
-    phase,
-    glyph,
-    badge,
-    detailText,
-    attentionReason,
-    lastKnownWork,
-    lastKnownWorkAt,
-    phaseHint,
-    observedAt,
-  };
-}
-
-function isRuntimeStatus(value: string): value is StreamSessionRuntimeStatus {
-  return (
-    value === 'running' || value === 'needs-input' || value === 'completed' || value === 'exited'
-  );
-}
-
 export function parseSessionSummaryRecord(value: unknown): StreamSessionSummary | null {
   const record = asRecord(value);
   if (record === null) {
@@ -280,12 +209,12 @@ export function parseSessionSummaryRecord(value: unknown): StreamSessionSummary 
     workspaceId === null ||
     worktreeId === null ||
     status === null ||
-    !isRuntimeStatus(status)
+    !isStreamSessionRuntimeStatus(status)
   ) {
     return null;
   }
   const attentionReason = readNullableString(record['attentionReason']);
-  const statusModel = readSessionStatusModel(record['statusModel']);
+  const statusModel = parseStreamSessionStatusModel(record['statusModel']);
   const latestCursor = readNullableNumber(record['latestCursor']);
   const processId = readNullableNumber(record['processId']);
   const attachedClients = readNumber(record['attachedClients']);

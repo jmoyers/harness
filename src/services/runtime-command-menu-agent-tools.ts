@@ -75,7 +75,7 @@ interface RuntimeCommandMenuAgentToolsOptions {
   readonly markDirty: () => void;
 }
 
-export class RuntimeCommandMenuAgentTools {
+export class RuntimeCommandMenuAgentToolsCache {
   private readonly statusByAgent = new Map<InstallableAgentType, AgentToolStatusRecord>();
 
   constructor(private readonly options: RuntimeCommandMenuAgentToolsOptions) {}

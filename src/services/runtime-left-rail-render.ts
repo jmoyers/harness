@@ -2,7 +2,7 @@ import type { WorkspaceModel } from '../domain/workspace.ts';
 import type { RepositoryManager } from '../domain/repositories.ts';
 import type { ProjectPaneGitHubReviewSummary } from '../mux/project-pane-github-review.ts';
 
-interface RuntimeLeftRailRenderLayout {
+export interface RuntimeLeftRailRenderLayout {
   readonly cols: number;
   readonly paneRows: number;
   readonly leftCols: number;
@@ -64,7 +64,21 @@ interface LeftRailPaneLike<
   };
 }
 
-interface RuntimeLeftRailRenderOptions<
+export interface RuntimeLeftRailRenderSnapshot<
+  TDirectoryRecord,
+  TConversationRecord,
+  TRepositoryRecord,
+  TProcessUsage,
+> {
+  readonly repositories: ReadonlyMap<string, TRepositoryRecord>;
+  readonly directories: ReadonlyMap<string, TDirectoryRecord>;
+  readonly conversations: ReadonlyMap<string, TConversationRecord>;
+  readonly orderedConversationIds: readonly string[];
+  readonly processUsageBySessionId: ReadonlyMap<string, TProcessUsage>;
+  readonly activeConversationId: string | null;
+}
+
+export interface RuntimeLeftRailRenderOptions<
   TDirectoryRecord,
   TConversationRecord,
   TRepositoryRecord,
@@ -89,24 +103,18 @@ interface RuntimeLeftRailRenderOptions<
   >;
   readonly workspace: WorkspaceModel;
   readonly repositoryManager: RepositoryManager<TRepositoryRecord, TRepositorySnapshot>;
-  readonly repositories: ReadonlyMap<string, TRepositoryRecord>;
   readonly repositoryAssociationByDirectoryId: ReadonlyMap<string, string>;
   readonly directoryRepositorySnapshotByDirectoryId: ReadonlyMap<string, TRepositorySnapshot>;
-  readonly directories: ReadonlyMap<string, TDirectoryRecord>;
-  readonly conversations: ReadonlyMap<string, TConversationRecord>;
   readonly gitSummaryByDirectoryId: ReadonlyMap<string, TGitSummary>;
-  readonly processUsageBySessionId: () => ReadonlyMap<string, TProcessUsage>;
   readonly loadingGitSummary: TGitSummary;
   readonly showGitHubIntegration?: boolean;
   readonly visibleGitHubDirectoryIds?: ReadonlySet<string>;
   readonly expandedGitHubDirectoryIds?: ReadonlySet<string>;
   readonly githubReviewByDirectoryId?: ReadonlyMap<string, ProjectPaneGitHubReviewSummary>;
   readonly showTasksEntry?: boolean;
-  readonly activeConversationId: () => string | null;
-  readonly orderedConversationIds: () => readonly string[];
 }
 
-export class RuntimeLeftRailRender<
+export function renderRuntimeLeftRail<
   TDirectoryRecord,
   TConversationRecord,
   TRepositoryRecord,
@@ -114,71 +122,74 @@ export class RuntimeLeftRailRender<
   TGitSummary,
   TProcessUsage,
   TRailViewRows,
-> {
-  constructor(
-    private readonly options: RuntimeLeftRailRenderOptions<
+>(
+  options: RuntimeLeftRailRenderOptions<
+    TDirectoryRecord,
+    TConversationRecord,
+    TRepositoryRecord,
+    TRepositorySnapshot,
+    TGitSummary,
+    TProcessUsage,
+    TRailViewRows
+  >,
+  input: {
+    readonly layout: RuntimeLeftRailRenderLayout;
+    readonly snapshot: RuntimeLeftRailRenderSnapshot<
       TDirectoryRecord,
       TConversationRecord,
       TRepositoryRecord,
-      TRepositorySnapshot,
-      TGitSummary,
-      TProcessUsage,
-      TRailViewRows
-    >,
-  ) {}
-
-  render(layout: RuntimeLeftRailRenderLayout): {
-    readonly ansiRows: readonly string[];
-    readonly viewRows: TRailViewRows;
-  } {
-    const orderedIds = this.options.orderedConversationIds();
-    this.options.sessionProjectionInstrumentation.refreshSelectorSnapshot(
-      'render',
-      this.options.directories,
-      this.options.conversations,
-      orderedIds,
-    );
-    return this.options.leftRailPane.render({
-      layout,
-      repositories: this.options.repositories,
-      repositoryAssociationByDirectoryId: this.options.repositoryAssociationByDirectoryId,
-      directoryRepositorySnapshotByDirectoryId:
-        this.options.directoryRepositorySnapshotByDirectoryId,
-      directories: this.options.directories,
-      conversations: this.options.conversations,
-      orderedIds,
-      activeProjectId: this.options.workspace.activeDirectoryId,
-      activeRepositoryId: this.options.workspace.activeRepositorySelectionId,
-      activeConversationId: this.options.activeConversationId(),
-      projectSelectionEnabled: this.options.workspace.leftNavSelection.kind === 'project',
-      repositorySelectionEnabled: this.options.workspace.leftNavSelection.kind === 'repository',
-      homeSelectionEnabled: this.options.workspace.leftNavSelection.kind === 'home',
-      nimSelectionEnabled: this.options.workspace.leftNavSelection.kind === 'nim',
-      tasksSelectionEnabled: this.options.workspace.leftNavSelection.kind === 'tasks',
-      showTasksEntry: this.options.showTasksEntry ?? true,
-      showGitHubIntegration: this.options.showGitHubIntegration ?? false,
-      ...(this.options.visibleGitHubDirectoryIds === undefined
-        ? {}
-        : {
-            visibleGitHubDirectoryIds: this.options.visibleGitHubDirectoryIds,
-          }),
-      ...(this.options.expandedGitHubDirectoryIds === undefined
-        ? {}
-        : {
-            expandedGitHubDirectoryIds: this.options.expandedGitHubDirectoryIds,
-          }),
-      githubReviewByDirectoryId: this.options.githubReviewByDirectoryId ?? new Map(),
-      githubSelectionEnabled: this.options.workspace.leftNavSelection.kind === 'github',
-      activeGitHubProjectId:
-        this.options.workspace.leftNavSelection.kind === 'github'
-          ? this.options.workspace.leftNavSelection.directoryId
-          : null,
-      repositoriesCollapsed: this.options.workspace.repositoriesCollapsed,
-      collapsedRepositoryGroupIds:
-        this.options.repositoryManager.readonlyCollapsedRepositoryGroupIds(),
-      gitSummaryByDirectoryId: this.options.gitSummaryByDirectoryId,
-      processUsageBySessionId: this.options.processUsageBySessionId(),
-      loadingGitSummary: this.options.loadingGitSummary,
-    });
-  }
+      TProcessUsage
+    >;
+  },
+): {
+  readonly ansiRows: readonly string[];
+  readonly viewRows: TRailViewRows;
+} {
+  options.sessionProjectionInstrumentation.refreshSelectorSnapshot(
+    'render',
+    input.snapshot.directories,
+    input.snapshot.conversations,
+    input.snapshot.orderedConversationIds,
+  );
+  const renderInput = {
+    layout: input.layout,
+    repositories: input.snapshot.repositories,
+    repositoryAssociationByDirectoryId: options.repositoryAssociationByDirectoryId,
+    directoryRepositorySnapshotByDirectoryId: options.directoryRepositorySnapshotByDirectoryId,
+    directories: input.snapshot.directories,
+    conversations: input.snapshot.conversations,
+    orderedIds: input.snapshot.orderedConversationIds,
+    activeProjectId: options.workspace.activeDirectoryId,
+    activeRepositoryId: options.workspace.activeRepositorySelectionId,
+    activeConversationId: input.snapshot.activeConversationId,
+    projectSelectionEnabled: options.workspace.leftNavSelection.kind === 'project',
+    repositorySelectionEnabled: options.workspace.leftNavSelection.kind === 'repository',
+    homeSelectionEnabled: options.workspace.leftNavSelection.kind === 'home',
+    nimSelectionEnabled: options.workspace.leftNavSelection.kind === 'nim',
+    tasksSelectionEnabled: options.workspace.leftNavSelection.kind === 'tasks',
+    showTasksEntry: options.showTasksEntry ?? true,
+    showGitHubIntegration: options.showGitHubIntegration ?? false,
+    githubReviewByDirectoryId: options.githubReviewByDirectoryId ?? new Map(),
+    githubSelectionEnabled: options.workspace.leftNavSelection.kind === 'github',
+    activeGitHubProjectId:
+      options.workspace.leftNavSelection.kind === 'github'
+        ? options.workspace.leftNavSelection.directoryId
+        : null,
+    repositoriesCollapsed: options.workspace.repositoriesCollapsed,
+    collapsedRepositoryGroupIds: options.repositoryManager.readonlyCollapsedRepositoryGroupIds(),
+    gitSummaryByDirectoryId: options.gitSummaryByDirectoryId,
+    processUsageBySessionId: input.snapshot.processUsageBySessionId,
+    loadingGitSummary: options.loadingGitSummary,
+    ...(options.visibleGitHubDirectoryIds !== undefined
+      ? {
+          visibleGitHubDirectoryIds: options.visibleGitHubDirectoryIds,
+        }
+      : {}),
+    ...(options.expandedGitHubDirectoryIds !== undefined
+      ? {
+          expandedGitHubDirectoryIds: options.expandedGitHubDirectoryIds,
+        }
+      : {}),
+  };
+  return options.leftRailPane.render(renderInput);
 }

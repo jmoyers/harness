@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { RecordingService } from '../../../src/services/recording.ts';
+import { createRecordingService } from '../../../src/services/recording.ts';
 
 void test('recording service closes writer when available', async () => {
   let closed = false;
-  const service = new RecordingService({
+  const service = createRecordingService({
     recordingWriter: {
       close: async () => {
         closed = true;
@@ -22,7 +22,7 @@ void test('recording service closes writer when available', async () => {
 });
 
 void test('recording service closeWriter returns null without writer', async () => {
-  const service = new RecordingService({
+  const service = createRecordingService({
     recordingWriter: null,
     recordingPath: null,
     recordingGifOutputPath: null,
@@ -36,7 +36,7 @@ void test('recording service closeWriter returns null without writer', async () 
 
 void test('recording service closeWriter returns thrown error', async () => {
   const closeError = new Error('close failed');
-  const service = new RecordingService({
+  const service = createRecordingService({
     recordingWriter: {
       close: async () => {
         throw closeError;
@@ -54,7 +54,7 @@ void test('recording service closeWriter returns thrown error', async () => {
 void test('recording service renders gif and writes success line after shutdown', async () => {
   const lines: string[] = [];
   const renders: Array<{ recordingPath: string; outputPath: string }> = [];
-  const service = new RecordingService({
+  const service = createRecordingService({
     recordingWriter: null,
     recordingPath: '/tmp/recording.jsonl',
     recordingGifOutputPath: '/tmp/recording.gif',
@@ -79,7 +79,7 @@ void test('recording service renders gif and writes success line after shutdown'
 
 void test('recording service reports gif export failures', async () => {
   const lines: string[] = [];
-  const service = new RecordingService({
+  const service = createRecordingService({
     recordingWriter: null,
     recordingPath: '/tmp/recording.jsonl',
     recordingGifOutputPath: '/tmp/recording.gif',
@@ -97,7 +97,7 @@ void test('recording service reports gif export failures', async () => {
 
 void test('recording service reports close errors from Error and string values', async () => {
   const lines: string[] = [];
-  const service = new RecordingService({
+  const service = createRecordingService({
     recordingWriter: null,
     recordingPath: '/tmp/recording.jsonl',
     recordingGifOutputPath: '/tmp/recording.gif',
@@ -118,7 +118,7 @@ void test('recording service reports close errors from Error and string values',
 void test('recording service reports unknown close error and stays silent when no action is needed', async () => {
   const lines: string[] = [];
   const renders: string[] = [];
-  const service = new RecordingService({
+  const service = createRecordingService({
     recordingWriter: null,
     recordingPath: null,
     recordingGifOutputPath: null,

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import type { ProjectPaneGitHubReviewSummary } from '../../../../src/mux/project-pane-github-review.ts';
-import { RuntimeProjectPaneGitHubReviewCache } from '../../../../src/services/runtime-project-pane-github-review-cache.ts';
+import { RuntimeProjectPaneGitHubReviewCacheEngine } from '../../../../src/services/runtime-project-pane-github-review-cache.ts';
 
 interface QueuedLatestOp {
   readonly key: string;
@@ -27,7 +27,7 @@ void test('runtime project pane GitHub review cache serves loading then ready an
   const updates: Array<{ directoryId: string; review: ProjectPaneGitHubReviewSummary }> = [];
   const loadCalls: Array<{ directoryId: string; forceRefresh: boolean | undefined }> = [];
 
-  const cache = new RuntimeProjectPaneGitHubReviewCache({
+  const cache = new RuntimeProjectPaneGitHubReviewCacheEngine({
     ttlMs: 1_000,
     refreshIntervalMs: 0,
     queueLatestControlPlaneOp: (key, task, label) => {
@@ -89,7 +89,7 @@ void test('runtime project pane GitHub review cache deduplicates in-flight reque
   let resolveLoad = (_value: ProjectPaneGitHubReviewSummary): void => {};
   let loadCount = 0;
 
-  const cache = new RuntimeProjectPaneGitHubReviewCache({
+  const cache = new RuntimeProjectPaneGitHubReviewCacheEngine({
     ttlMs: 100,
     refreshIntervalMs: 0,
     queueLatestControlPlaneOp: (key, task, label) => {
@@ -135,7 +135,7 @@ void test('runtime project pane GitHub review cache emits error state and preser
   const forceRefreshFlags: Array<boolean | undefined> = [];
   let shouldThrow = false;
 
-  const cache = new RuntimeProjectPaneGitHubReviewCache({
+  const cache = new RuntimeProjectPaneGitHubReviewCacheEngine({
     ttlMs: 1_000,
     refreshIntervalMs: 0,
     queueLatestControlPlaneOp: (key, task, label) => {
@@ -182,7 +182,7 @@ void test('runtime project pane GitHub review cache auto-refreshes active direct
   const timer = { unref: () => {} } as unknown as NodeJS.Timeout;
   let activeDirectoryId: string | null = 'dir-a';
 
-  const cache = new RuntimeProjectPaneGitHubReviewCache({
+  const cache = new RuntimeProjectPaneGitHubReviewCacheEngine({
     ttlMs: 1_000,
     refreshIntervalMs: 5_000,
     queueLatestControlPlaneOp: (key, task, label) => {

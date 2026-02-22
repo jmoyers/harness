@@ -12,24 +12,25 @@ interface StartupBackgroundResumeOptions {
   readonly clearTimeoutFn?: (handle: TimeoutHandle) => void;
 }
 
-export class StartupBackgroundResumeService {
-  private readonly setTimeoutFn: (handler: () => void, ms: number) => TimeoutHandle;
-  private readonly clearTimeoutFn: (handle: TimeoutHandle) => void;
+export interface StartupBackgroundResumeService {
+  run(initialActiveId: string | null): Promise<void>;
+}
 
-  constructor(private readonly options: StartupBackgroundResumeOptions) {
-    this.setTimeoutFn = options.setTimeoutFn ?? setTimeout;
-    this.clearTimeoutFn = options.clearTimeoutFn ?? clearTimeout;
-  }
+export function createStartupBackgroundResumeService(
+  options: StartupBackgroundResumeOptions,
+): StartupBackgroundResumeService {
+  const setTimeoutFn = options.setTimeoutFn ?? setTimeout;
+  const clearTimeoutFn = options.clearTimeoutFn ?? clearTimeout;
 
-  async run(initialActiveId: string | null): Promise<void> {
+  async function run(initialActiveId: string | null): Promise<void> {
     const sessionId = initialActiveId ?? 'none';
-    this.options.recordPerfEvent('mux.startup.background-start.wait', {
+    options.recordPerfEvent('mux.startup.background-start.wait', {
       sessionId,
-      maxWaitMs: this.options.maxWaitMs,
-      enabled: this.options.enabled ? 1 : 0,
+      maxWaitMs: options.maxWaitMs,
+      enabled: options.enabled ? 1 : 0,
     });
-    if (!this.options.enabled) {
-      this.options.recordPerfEvent('mux.startup.background-start.skipped', {
+    if (!options.enabled) {
+      options.recordPerfEvent('mux.startup.background-start.skipped', {
         sessionId,
         reason: 'disabled',
       });
@@ -39,27 +40,31 @@ export class StartupBackgroundResumeService {
     let timedOut = false;
     let timeoutHandle: TimeoutHandle | null = null;
     await Promise.race([
-      this.options.waitForSettled(),
+      options.waitForSettled(),
       new Promise<void>((resolve) => {
-        timeoutHandle = this.setTimeoutFn(() => {
+        timeoutHandle = setTimeoutFn(() => {
           timedOut = true;
           resolve();
-        }, this.options.maxWaitMs);
+        }, options.maxWaitMs);
       }),
     ]);
     if (timeoutHandle !== null) {
-      this.clearTimeoutFn(timeoutHandle);
+      clearTimeoutFn(timeoutHandle);
     }
 
-    this.options.recordPerfEvent('mux.startup.background-start.begin', {
+    options.recordPerfEvent('mux.startup.background-start.begin', {
       sessionId,
       timedOut,
-      settledObserved: this.options.settledObserved(),
+      settledObserved: options.settledObserved(),
     });
-    const queued = this.options.queuePersistedConversationsInBackground(initialActiveId);
-    this.options.recordPerfEvent('mux.startup.background-start.queued', {
+    const queued = options.queuePersistedConversationsInBackground(initialActiveId);
+    options.recordPerfEvent('mux.startup.background-start.queued', {
       sessionId,
       queued,
     });
   }
+
+  return {
+    run,
+  };
 }

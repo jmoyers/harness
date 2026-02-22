@@ -10,6 +10,17 @@ export type StreamPromptCaptureSource = 'otlp-log' | 'hook-notify' | 'history';
 export type StreamPromptConfidence = 'high' | 'medium' | 'low';
 export type StreamSessionControllerType = 'human' | 'agent' | 'automation';
 export type StreamSessionDisplayPhase = 'needs-action' | 'starting' | 'working' | 'idle' | 'exited';
+export type StreamSessionActivityHint = 'needs-action' | 'working' | 'idle';
+
+export function isStreamSessionRuntimeStatus(value: unknown): value is StreamSessionRuntimeStatus {
+  return (
+    value === 'running' || value === 'needs-input' || value === 'completed' || value === 'exited'
+  );
+}
+
+export function parseStreamSessionRuntimeStatus(value: unknown): StreamSessionRuntimeStatus | null {
+  return isStreamSessionRuntimeStatus(value) ? value : null;
+}
 
 export interface StreamSessionController {
   controllerId: string;
@@ -35,7 +46,7 @@ export interface StreamSessionStatusModel {
   attentionReason: string | null;
   lastKnownWork: string | null;
   lastKnownWorkAt: string | null;
-  phaseHint: 'needs-action' | 'working' | 'idle' | null;
+  activityHint: StreamSessionActivityHint | null;
   observedAt: string;
 }
 
@@ -1096,6 +1107,13 @@ function parsePromptConfidence(value: unknown): StreamPromptConfidence | null {
   return null;
 }
 
+function parseSessionActivityHint(value: unknown): StreamSessionActivityHint | undefined {
+  if (value === 'needs-action' || value === 'working' || value === 'idle') {
+    return value;
+  }
+  return undefined;
+}
+
 function parseTelemetrySummary(value: unknown): StreamTelemetrySummary | null | undefined {
   if (value === undefined) {
     return undefined;
@@ -1130,7 +1148,9 @@ function parseTelemetrySummary(value: unknown): StreamTelemetrySummary | null | 
   };
 }
 
-function parseSessionStatusModel(value: unknown): StreamSessionStatusModel | null | undefined {
+export function parseStreamSessionStatusModel(
+  value: unknown,
+): StreamSessionStatusModel | null | undefined {
   if (value === undefined) {
     return undefined;
   }
@@ -1152,14 +1172,12 @@ function parseSessionStatusModel(value: unknown): StreamSessionStatusModel | nul
     record['lastKnownWork'] === null ? null : readString(record['lastKnownWork']);
   const lastKnownWorkAt =
     record['lastKnownWorkAt'] === null ? null : readString(record['lastKnownWorkAt']);
-  const phaseHint = record['phaseHint'] === null ? null : readString(record['phaseHint']);
+  const activityHint =
+    record['activityHint'] === null ? null : parseSessionActivityHint(record['activityHint']);
   const observedAt = readString(record['observedAt']);
   if (
     runtimeStatus === null ||
-    (runtimeStatus !== 'running' &&
-      runtimeStatus !== 'needs-input' &&
-      runtimeStatus !== 'completed' &&
-      runtimeStatus !== 'exited') ||
+    !isStreamSessionRuntimeStatus(runtimeStatus) ||
     phase === null ||
     (phase !== 'needs-action' &&
       phase !== 'starting' &&
@@ -1174,11 +1192,7 @@ function parseSessionStatusModel(value: unknown): StreamSessionStatusModel | nul
     (attentionReason === null && record['attentionReason'] !== null) ||
     (lastKnownWork === null && record['lastKnownWork'] !== null) ||
     (lastKnownWorkAt === null && record['lastKnownWorkAt'] !== null) ||
-    (phaseHint === null && record['phaseHint'] !== null) ||
-    (phaseHint !== null &&
-      phaseHint !== 'needs-action' &&
-      phaseHint !== 'working' &&
-      phaseHint !== 'idle') ||
+    activityHint === undefined ||
     observedAt === null
   ) {
     return undefined;
@@ -1192,7 +1206,7 @@ function parseSessionStatusModel(value: unknown): StreamSessionStatusModel | nul
     attentionReason,
     lastKnownWork,
     lastKnownWorkAt,
-    phaseHint,
+    activityHint,
     observedAt,
   };
 }
@@ -1598,7 +1612,7 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
     const sessionId = readString(record['sessionId']);
     const status = readString(record['status']);
     const attentionReason = readString(record['attentionReason']);
-    const statusModel = parseSessionStatusModel(record['statusModel']);
+    const statusModel = parseStreamSessionStatusModel(record['statusModel']);
     const live = readBoolean(record['live']);
     const ts = readString(record['ts']);
     const directoryId = readString(record['directoryId']);

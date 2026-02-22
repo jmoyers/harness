@@ -13,21 +13,26 @@ interface RuntimeLeftRailRenderResult<TRailViewRows> {
   readonly viewRows: TRailViewRows;
 }
 
-interface RuntimeRenderOrchestratorOptions<
+export interface RuntimeRenderOrchestratorOptions<
   TLayout,
   TConversation,
   TFrame,
   TSelection,
   TSelectionDrag,
   TRailViewRows,
+  TRenderSnapshot,
 > {
   readonly isScreenDirty: () => boolean;
   readonly clearDirty: () => void;
+  readonly readRenderSnapshot: () => TRenderSnapshot;
   readonly prepareRenderState: (
     selection: TSelection | null,
     selectionDrag: TSelectionDrag | null,
   ) => RuntimeRenderStateResult<TConversation, TFrame, TSelection> | null;
-  readonly renderLeftRail: (layout: TLayout) => RuntimeLeftRailRenderResult<TRailViewRows>;
+  readonly renderLeftRail: (
+    layout: TLayout,
+    snapshot: TRenderSnapshot,
+  ) => RuntimeLeftRailRenderResult<TRailViewRows>;
   readonly setLatestRailViewRows: (rows: TRailViewRows) => void;
   readonly renderRightRows: (input: {
     layout: TLayout;
@@ -36,6 +41,7 @@ interface RuntimeRenderOrchestratorOptions<
     nimPaneActive: boolean;
     projectPaneActive: boolean;
     activeDirectoryId: string | null;
+    snapshot: TRenderSnapshot;
   }) => readonly string[];
   readonly flushRender: (input: {
     layout: TLayout;
@@ -51,61 +57,62 @@ interface RuntimeRenderOrchestratorOptions<
   readonly activeDirectoryId: () => string | null;
 }
 
-interface RuntimeRenderOrchestratorInput<TLayout, TSelection, TSelectionDrag> {
+export interface RuntimeRenderOrchestratorInput<TLayout, TSelection, TSelectionDrag> {
   readonly shuttingDown: boolean;
   readonly layout: TLayout;
   readonly selection: TSelection | null;
   readonly selectionDrag: TSelectionDrag | null;
 }
 
-export class RuntimeRenderOrchestrator<
+export function orchestrateRuntimeRender<
   TLayout,
   TConversation,
   TFrame,
   TSelection,
   TSelectionDrag,
   TRailViewRows,
-> {
-  constructor(
-    private readonly options: RuntimeRenderOrchestratorOptions<
-      TLayout,
-      TConversation,
-      TFrame,
-      TSelection,
-      TSelectionDrag,
-      TRailViewRows
-    >,
-  ) {}
-
-  render(input: RuntimeRenderOrchestratorInput<TLayout, TSelection, TSelectionDrag>): void {
-    if (input.shuttingDown || !this.options.isScreenDirty()) {
-      return;
-    }
-    const renderState = this.options.prepareRenderState(input.selection, input.selectionDrag);
-    if (renderState === null) {
-      this.options.clearDirty();
-      return;
-    }
-    const rail = this.options.renderLeftRail(input.layout);
-    this.options.setLatestRailViewRows(rail.viewRows);
-    const rightRows = this.options.renderRightRows({
-      layout: input.layout,
-      rightFrame: renderState.rightFrame,
-      homePaneActive: renderState.homePaneActive,
-      nimPaneActive: renderState.nimPaneActive,
-      projectPaneActive: renderState.projectPaneActive,
-      activeDirectoryId: this.options.activeDirectoryId(),
-    });
-    this.options.flushRender({
-      layout: input.layout,
-      projectPaneActive: renderState.projectPaneActive,
-      homePaneActive: renderState.homePaneActive,
-      activeConversation: renderState.activeConversation,
-      rightFrame: renderState.rightFrame,
-      renderSelection: renderState.renderSelection,
-      selectionRows: renderState.selectionRows,
-      railAnsiRows: rail.ansiRows,
-      rightRows,
-    });
+  TRenderSnapshot,
+>(
+  options: RuntimeRenderOrchestratorOptions<
+    TLayout,
+    TConversation,
+    TFrame,
+    TSelection,
+    TSelectionDrag,
+    TRailViewRows,
+    TRenderSnapshot
+  >,
+  input: RuntimeRenderOrchestratorInput<TLayout, TSelection, TSelectionDrag>,
+): void {
+  if (input.shuttingDown || !options.isScreenDirty()) {
+    return;
   }
+  const renderState = options.prepareRenderState(input.selection, input.selectionDrag);
+  if (renderState === null) {
+    options.clearDirty();
+    return;
+  }
+  const snapshot = options.readRenderSnapshot();
+  const rail = options.renderLeftRail(input.layout, snapshot);
+  options.setLatestRailViewRows(rail.viewRows);
+  const rightRows = options.renderRightRows({
+    layout: input.layout,
+    rightFrame: renderState.rightFrame,
+    homePaneActive: renderState.homePaneActive,
+    nimPaneActive: renderState.nimPaneActive,
+    projectPaneActive: renderState.projectPaneActive,
+    activeDirectoryId: options.activeDirectoryId(),
+    snapshot,
+  });
+  options.flushRender({
+    layout: input.layout,
+    projectPaneActive: renderState.projectPaneActive,
+    homePaneActive: renderState.homePaneActive,
+    activeConversation: renderState.activeConversation,
+    rightFrame: renderState.rightFrame,
+    renderSelection: renderState.renderSelection,
+    selectionRows: renderState.selectionRows,
+    railAnsiRows: rail.ansiRows,
+    rightRows,
+  });
 }

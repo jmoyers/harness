@@ -117,7 +117,9 @@ void test('runtime nim session handles slash commands and mode changes', async (
 
     session.handleInputChunk('/mode nope\r');
     await waitFor(() =>
-      session.snapshot().transcriptLines.some((line) => line.includes('[error] invalid mode: nope')),
+      session
+        .snapshot()
+        .transcriptLines.some((line) => line.includes('[error] invalid mode: nope')),
     );
 
     session.handleInputChunk('/abort\r');
@@ -180,7 +182,9 @@ void test('runtime nim session compacts duplicate adjacent transcript lines', as
     await session.start();
     session.handleInputChunk('/abort\r/abort\r');
     await waitFor(() =>
-      session.snapshot().transcriptLines.some((line) => line.includes('[notice] no active run (x2)')),
+      session
+        .snapshot()
+        .transcriptLines.some((line) => line.includes('[notice] no active run (x2)')),
     );
   } finally {
     await session.dispose();
@@ -205,10 +209,14 @@ void test('runtime nim session emits tool lifecycle rows in debug mode', async (
     await session.start();
     session.handleInputChunk('use-tool repository.list\r');
     await waitFor(() =>
-      session.snapshot().transcriptLines.some((line) => line.includes('[tool:start] repository.list')),
+      session
+        .snapshot()
+        .transcriptLines.some((line) => line.includes('[tool:start] repository.list')),
     );
     await waitFor(() =>
-      session.snapshot().transcriptLines.some((line) => line.includes('[tool:end] repository.list')),
+      session
+        .snapshot()
+        .transcriptLines.some((line) => line.includes('[tool:end] repository.list')),
     );
   } finally {
     await session.dispose();
@@ -236,17 +244,25 @@ void test('runtime nim session suppresses tool lifecycle rows in user mode', asy
 
     session.handleInputChunk('use-tool repository.list\r');
     await waitFor(() =>
-      session.snapshot().transcriptLines.some((line) => line.includes('you> use-tool repository.list')),
+      session
+        .snapshot()
+        .transcriptLines.some((line) => line.includes('you> use-tool repository.list')),
     );
     await waitFor(() =>
-      session.snapshot().transcriptLines.some((line) => line.includes('nim> nim mock: use-tool repository.list')),
+      session
+        .snapshot()
+        .transcriptLines.some((line) => line.includes('nim> nim mock: use-tool repository.list')),
     );
     assert.equal(
-      session.snapshot().transcriptLines.some((line) => line.includes('[tool:start] repository.list')),
+      session
+        .snapshot()
+        .transcriptLines.some((line) => line.includes('[tool:start] repository.list')),
       false,
     );
     assert.equal(
-      session.snapshot().transcriptLines.some((line) => line.includes('[tool:end] repository.list')),
+      session
+        .snapshot()
+        .transcriptLines.some((line) => line.includes('[tool:end] repository.list')),
       false,
     );
   } finally {
@@ -322,7 +338,9 @@ void test('runtime nim session uses injected provider driver for live provider p
   try {
     await session.start();
     session.handleInputChunk('hello live\r');
-    await waitFor(() => session.snapshot().transcriptLines.some((line) => line.includes('nim> live')));
+    await waitFor(() =>
+      session.snapshot().transcriptLines.some((line) => line.includes('nim> live')),
+    );
     await waitFor(() => session.snapshot().status === 'idle');
   } finally {
     await session.dispose();
@@ -350,12 +368,16 @@ void test('runtime nim session retries failed provider turns with local fallback
     await session.start();
     session.handleInputChunk('hello fallback\r');
     await waitFor(() =>
-      session.snapshot().transcriptLines.some((line) => line.includes('[error] provider unavailable')),
+      session
+        .snapshot()
+        .transcriptLines.some((line) => line.includes('[error] provider unavailable')),
     );
     await waitFor(() =>
       session
         .snapshot()
-        .transcriptLines.some((line) => line.includes('provider failed; retrying with local fallback')),
+        .transcriptLines.some((line) =>
+          line.includes('provider failed; retrying with local fallback'),
+        ),
     );
     await waitFor(() =>
       session
@@ -385,10 +407,11 @@ void test('runtime nim session surfaces non-error input lane failures', async ()
   });
   try {
     await session.start();
-    (session as unknown as { consumeInputText: (chunk: string) => Promise<void> }).consumeInputText =
-      async () => {
-        throw 'lane-failed';
-      };
+    (
+      session as unknown as { consumeInputText: (chunk: string) => Promise<void> }
+    ).consumeInputText = async () => {
+      throw 'lane-failed';
+    };
     session.handleInputChunk('hello');
     await waitFor(() =>
       session.snapshot().transcriptLines.some((line) => line.includes('[error] lane-failed')),

@@ -8,8 +8,8 @@ import {
   parseSessionControllerRecord,
   parseTaskRecord,
   parseTaskStatus,
-} from '../../../../src/mux/live-mux/control-plane-records.ts';
-import { statusModelFor } from '../../../support/status-model.ts';
+} from '../src/core/contracts/records.ts';
+import { statusModelFor } from './support/status-model.ts';
 
 void test('parseDirectoryRecord validates shape', () => {
   assert.equal(parseDirectoryRecord(null), null);
@@ -236,7 +236,7 @@ void test('parseConversationRecord validates runtime status and adapter state', 
       ...validBase,
       runtimeStatusModel: {
         ...statusModelFor('running'),
-        phaseHint: 'paused',
+        activityHint: 'paused',
       },
     }),
     null,

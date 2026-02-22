@@ -1,5 +1,3 @@
-import type { StreamObservedEvent } from '../control-plane/stream-protocol.ts';
-
 interface RepositoryRecordLike {
   readonly repositoryId: string;
   readonly archivedAt: string | null;
@@ -9,13 +7,29 @@ interface TaskRecordLike {
   readonly taskId: string;
 }
 
-interface TaskPlanningObservedEventsOptions<
+interface TaskPlanningSyncedProjectionState<
   TRepositoryRecord extends RepositoryRecordLike,
   TTaskRecord extends TaskRecordLike,
 > {
-  readonly parseRepositoryRecord: (value: unknown) => TRepositoryRecord | null;
-  readonly parseTaskRecord: (value: unknown) => TTaskRecord | null;
-  readonly getRepository: (repositoryId: string) => TRepositoryRecord | undefined;
+  readonly repositoriesById: Readonly<Record<string, TRepositoryRecord>>;
+  readonly tasksById: Readonly<Record<string, TTaskRecord>>;
+}
+
+interface TaskPlanningSyncedProjectionInput<
+  TRepositoryRecord extends RepositoryRecordLike,
+  TTaskRecord extends TaskRecordLike,
+> {
+  readonly changed: boolean;
+  readonly state: TaskPlanningSyncedProjectionState<TRepositoryRecord, TTaskRecord>;
+  readonly removedTaskIds: readonly string[];
+  readonly upsertedRepositoryIds: readonly string[];
+  readonly upsertedTaskIds: readonly string[];
+}
+
+interface TaskPlanningSyncedProjectionOptions<
+  TRepositoryRecord extends RepositoryRecordLike,
+  TTaskRecord extends TaskRecordLike,
+> {
   readonly setRepository: (repositoryId: string, repository: TRepositoryRecord) => void;
   readonly setTask: (task: TTaskRecord) => void;
   readonly deleteTask: (taskId: string) => boolean;
@@ -24,66 +38,50 @@ interface TaskPlanningObservedEventsOptions<
   readonly markDirty: () => void;
 }
 
-export class TaskPlanningObservedEvents<
+export class TaskPlanningSyncedProjection<
   TRepositoryRecord extends RepositoryRecordLike,
   TTaskRecord extends TaskRecordLike,
 > {
   constructor(
-    private readonly options: TaskPlanningObservedEventsOptions<TRepositoryRecord, TTaskRecord>,
+    private readonly options: TaskPlanningSyncedProjectionOptions<TRepositoryRecord, TTaskRecord>,
   ) {}
 
-  apply(observed: StreamObservedEvent): void {
-    if (observed.type === 'repository-upserted' || observed.type === 'repository-updated') {
-      const repository = this.options.parseRepositoryRecord(observed.repository);
-      if (repository !== null) {
-        this.options.setRepository(repository.repositoryId, repository);
-        this.options.syncTaskPaneRepositorySelection();
-        this.options.markDirty();
-      }
+  apply(reduction: TaskPlanningSyncedProjectionInput<TRepositoryRecord, TTaskRecord>): void {
+    if (!reduction.changed) {
       return;
     }
-    if (observed.type === 'repository-archived') {
-      const repository = this.options.getRepository(observed.repositoryId);
-      if (repository !== undefined) {
-        this.options.setRepository(observed.repositoryId, {
-          ...repository,
-          archivedAt: observed.ts,
-        });
-        this.options.syncTaskPaneRepositorySelection();
-        this.options.markDirty();
+
+    let repositoriesChanged = false;
+    for (const repositoryId of reduction.upsertedRepositoryIds) {
+      const repository = reduction.state.repositoriesById[repositoryId];
+      if (repository === undefined) {
+        continue;
       }
-      return;
+      this.options.setRepository(repositoryId, repository);
+      repositoriesChanged = true;
     }
-    if (observed.type === 'task-created' || observed.type === 'task-updated') {
-      const task = this.options.parseTaskRecord(observed.task);
-      if (task !== null) {
-        this.options.setTask(task);
-        this.options.syncTaskPaneSelection();
-        this.options.markDirty();
-      }
-      return;
+    if (repositoriesChanged) {
+      this.options.syncTaskPaneRepositorySelection();
+      this.options.markDirty();
     }
-    if (observed.type === 'task-deleted') {
-      if (this.options.deleteTask(observed.taskId)) {
-        this.options.syncTaskPaneSelection();
-        this.options.markDirty();
+
+    let tasksChanged = false;
+    for (const taskId of reduction.removedTaskIds) {
+      if (this.options.deleteTask(taskId)) {
+        tasksChanged = true;
       }
-      return;
     }
-    if (observed.type === 'task-reordered') {
-      let changed = false;
-      for (const value of observed.tasks) {
-        const task = this.options.parseTaskRecord(value);
-        if (task === null) {
-          continue;
-        }
-        this.options.setTask(task);
-        changed = true;
+    for (const taskId of reduction.upsertedTaskIds) {
+      const task = reduction.state.tasksById[taskId];
+      if (task === undefined) {
+        continue;
       }
-      if (changed) {
-        this.options.syncTaskPaneSelection();
-        this.options.markDirty();
-      }
+      this.options.setTask(task);
+      tasksChanged = true;
+    }
+    if (tasksChanged) {
+      this.options.syncTaskPaneSelection();
+      this.options.markDirty();
     }
   }
 }

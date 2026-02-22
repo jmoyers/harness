@@ -227,6 +227,51 @@ function collectPathsRecursive(rootDir: string, output: string[]): void {
   }
 }
 
+function hasRuntimeStatements(sourceText: string, filePath: string): boolean {
+  const sourceFile = ts.createSourceFile(filePath, sourceText, ts.ScriptTarget.Latest, true);
+  for (const statement of sourceFile.statements) {
+    if (
+      ts.isInterfaceDeclaration(statement) ||
+      ts.isTypeAliasDeclaration(statement) ||
+      ts.isEmptyStatement(statement)
+    ) {
+      continue;
+    }
+
+    if (ts.isImportDeclaration(statement)) {
+      const clause = statement.importClause;
+      if (clause === undefined) {
+        return true;
+      }
+      if (!clause.isTypeOnly) {
+        return true;
+      }
+      continue;
+    }
+
+    if (ts.isExportDeclaration(statement)) {
+      if (statement.isTypeOnly) {
+        continue;
+      }
+      if (statement.exportClause === undefined) {
+        return true;
+      }
+      if (ts.isNamespaceExport(statement.exportClause)) {
+        return true;
+      }
+      for (const element of statement.exportClause.elements) {
+        if (!element.isTypeOnly) {
+          return true;
+        }
+      }
+      continue;
+    }
+
+    return true;
+  }
+  return false;
+}
+
 function listTargetedFiles(config: CoverageCheckConfig): readonly string[] {
   const cwd = process.cwd();
   const candidates: string[] = [];
@@ -259,6 +304,10 @@ function listTargetedFiles(config: CoverageCheckConfig): readonly string[] {
       continue;
     }
     if (excludePatterns.some((pattern) => pattern.test(relativePath))) {
+      continue;
+    }
+    const sourceText = readFileSync(absolutePath, 'utf8');
+    if (!hasRuntimeStatements(sourceText, absolutePath)) {
       continue;
     }
     targeted.add(relativePath);

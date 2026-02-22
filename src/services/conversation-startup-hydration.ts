@@ -19,24 +19,28 @@ export interface ConversationStartupHydrationServiceOptions<
   readonly subscribeConversationEvents: (sessionId: string) => Promise<void>;
 }
 
-export class ConversationStartupHydrationService<TSessionSummary extends SessionSummaryLike> {
-  constructor(
-    private readonly options: ConversationStartupHydrationServiceOptions<TSessionSummary>,
-  ) {}
+export interface ConversationStartupHydrationService {
+  hydrateConversationList(): Promise<void>;
+}
 
-  async hydrateConversationList(): Promise<void> {
-    const hydrateSpan = this.options.startHydrationSpan();
-    await this.options.hydrateDirectoryList();
+export function createConversationStartupHydrationService<
+  TSessionSummary extends SessionSummaryLike,
+>(
+  options: ConversationStartupHydrationServiceOptions<TSessionSummary>,
+): ConversationStartupHydrationService {
+  async function hydrateConversationList(): Promise<void> {
+    const hydrateSpan = options.startHydrationSpan();
+    await options.hydrateDirectoryList();
     let persistedCount = 0;
-    for (const directoryId of this.options.directoryIds()) {
-      persistedCount += await this.options.hydratePersistedConversationsForDirectory(directoryId);
+    for (const directoryId of options.directoryIds()) {
+      persistedCount += await options.hydratePersistedConversationsForDirectory(directoryId);
     }
 
-    const summaries = await this.options.listSessions();
+    const summaries = await options.listSessions();
     for (const summary of summaries) {
-      this.options.upsertFromSessionSummary(summary);
+      options.upsertFromSessionSummary(summary);
       if (summary.live) {
-        await this.options.subscribeConversationEvents(summary.sessionId);
+        await options.subscribeConversationEvents(summary.sessionId);
       }
     }
     hydrateSpan.end({
@@ -44,4 +48,8 @@ export class ConversationStartupHydrationService<TSessionSummary extends Session
       live: summaries.length,
     });
   }
+
+  return {
+    hydrateConversationList,
+  };
 }

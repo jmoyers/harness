@@ -14,7 +14,7 @@ interface TaskPlanningHydrationServiceControlPlane<
   listTasks(limit: number): Promise<readonly TTaskRecord[]>;
 }
 
-interface TaskPlanningHydrationServiceOptions<
+export interface TaskPlanningHydrationServiceOptions<
   TRepositoryRecord extends RepositoryRecordLike,
   TTaskRecord extends TaskRecordLike,
 > {
@@ -32,27 +32,33 @@ interface TaskPlanningHydrationServiceOptions<
   readonly taskLimit: number;
 }
 
-export class TaskPlanningHydrationService<
+export interface TaskPlanningHydrationService {
+  hydrate(): Promise<void>;
+}
+
+export function createTaskPlanningHydrationService<
   TRepositoryRecord extends RepositoryRecordLike,
   TTaskRecord extends TaskRecordLike,
-> {
-  constructor(
-    private readonly options: TaskPlanningHydrationServiceOptions<TRepositoryRecord, TTaskRecord>,
-  ) {}
-
-  async hydrate(): Promise<void> {
-    this.options.clearRepositories();
-    for (const repository of await this.options.controlPlaneService.listRepositories()) {
-      this.options.setRepository(repository);
+>(
+  options: TaskPlanningHydrationServiceOptions<TRepositoryRecord, TTaskRecord>,
+): TaskPlanningHydrationService {
+  async function hydrate(): Promise<void> {
+    options.clearRepositories();
+    for (const repository of await options.controlPlaneService.listRepositories()) {
+      options.setRepository(repository);
     }
-    this.options.syncTaskPaneRepositorySelection();
+    options.syncTaskPaneRepositorySelection();
 
-    this.options.clearTasks();
-    for (const task of await this.options.controlPlaneService.listTasks(this.options.taskLimit)) {
-      this.options.setTask(task);
+    options.clearTasks();
+    for (const task of await options.controlPlaneService.listTasks(options.taskLimit)) {
+      options.setTask(task);
     }
-    this.options.syncTaskPaneSelection();
-    this.options.syncTaskPaneRepositorySelection();
-    this.options.markDirty();
+    options.syncTaskPaneSelection();
+    options.syncTaskPaneRepositorySelection();
+    options.markDirty();
   }
+
+  return {
+    hydrate,
+  };
 }

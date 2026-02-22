@@ -80,6 +80,9 @@ Boundary constraints:
 - `packages/harness-ui` must not import `src/*` app/domain internals.
 - app-specific policies live in `src/services/*` and are injected via explicit interfaces.
 - composition roots assemble collaborators; business rules remain in owning modules.
+- service shape follows ownership:
+  - non-state orchestration surfaces expose `create*` factories returning named interfaces,
+  - state-owning runtime collaborators use explicit `*Engine`/`*Cache` semantics.
 
 ## Anti-Glue Architecture Laws
 
@@ -108,7 +111,15 @@ Related entities (repositories, tasks, project settings, runtime/session metadat
 - Runtime emits normalized events independent of provider-specific formats.
 - Provider payloads are adapter concerns; normalized events are product concerns.
 - Event streams are replayable and support attention/status projection.
+- Shared synced entity state is maintained via a vanilla Zustand store (`src/core/store/harness-synced-store.ts`) fed by pure reducers in `src/core/state/*`.
 - Status/attention signals must remain explicit, deterministic, and test-covered.
+
+## Session Status Semantics
+
+- `runtimeStatus` is authoritative runtime/process truth (`running`, `needs-input`, `completed`, `exited`).
+- `phase` is authoritative client-facing interpretation used for UI state and attention projection.
+- `activityHint` is optional telemetry metadata and must not override `phase`.
+- Client presentation tokens (for example status glyphs/badges) are adapter-owned derivations, not cross-client architecture contracts.
 
 ## Persistence Model
 

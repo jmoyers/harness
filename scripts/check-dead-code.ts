@@ -52,8 +52,6 @@ function collectExportSymbols(sourceFile: ts.SourceFile): ExportSymbol[] {
     if (
       (ts.isFunctionDeclaration(statement) ||
         ts.isClassDeclaration(statement) ||
-        ts.isInterfaceDeclaration(statement) ||
-        ts.isTypeAliasDeclaration(statement) ||
         ts.isEnumDeclaration(statement)) &&
       hasExportModifier(statement) &&
       statement.name !== undefined
@@ -72,8 +70,14 @@ function collectExportSymbols(sourceFile: ts.SourceFile): ExportSymbol[] {
     }
 
     if (ts.isExportDeclaration(statement) && statement.exportClause !== undefined) {
+      if (statement.isTypeOnly) {
+        continue;
+      }
       if (ts.isNamedExports(statement.exportClause)) {
         for (const element of statement.exportClause.elements) {
+          if (element.isTypeOnly) {
+            continue;
+          }
           pushSymbol(element.name, element.name.text);
         }
       }
@@ -123,6 +127,9 @@ function collectImportedNames(
         names.add('*');
         continue;
       }
+      if (clause.isTypeOnly) {
+        continue;
+      }
 
       if (clause.name !== undefined) {
         names.add('default');
@@ -133,6 +140,9 @@ function collectImportedNames(
           names.add('*');
         } else {
           for (const element of clause.namedBindings.elements) {
+            if (element.isTypeOnly) {
+              continue;
+            }
             names.add(element.propertyName?.text ?? element.name.text);
           }
         }
@@ -153,6 +163,9 @@ function collectImportedNames(
     }
 
     const names = registerTargetPath(targetPath);
+    if (statement.isTypeOnly) {
+      continue;
+    }
     if (statement.exportClause === undefined) {
       names.add('*');
       continue;
@@ -161,6 +174,9 @@ function collectImportedNames(
       continue;
     }
     for (const element of statement.exportClause.elements) {
+      if (element.isTypeOnly) {
+        continue;
+      }
       names.add(element.propertyName?.text ?? element.name.text);
     }
   }

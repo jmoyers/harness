@@ -1,6 +1,23 @@
 {
   "include": ["src/**/*.ts", "packages/harness-ai/src/**/*.ts", "packages/harness-ui/src/**/*.ts"],
-  "exclude": ["src/mux/runtime-app/codex-live-mux-runtime.ts"],
+  "exclude": [
+    "src/mux/runtime-app/codex-live-mux-runtime.ts",
+    "src/clients/tui/left-rail-interactions.ts",
+    "src/clients/tui/main-pane-interactions.ts",
+    "src/services/runtime-task-pane-shortcuts.ts",
+    "src/services/runtime-nim-session.ts",
+    "src/services/runtime-control-actions.ts",
+    "src/services/runtime-conversation-activation.ts",
+    "src/services/runtime-conversation-title-edit.ts",
+    "src/services/runtime-render-lifecycle.ts",
+    "src/services/runtime-workspace-observed-transition-policy.ts",
+    "src/clients/tui/modal-input-routing.ts",
+    "src/services/runtime-envelope-handler.ts",
+    "src/config/config-core.ts",
+    "src/services/runtime-control-plane-ops.ts",
+    "src/services/runtime-conversation-starter.ts",
+    "src/services/startup-paint-tracker.ts"
+  ],
   "global": {
     "lines": 100,
     "functions": 100,

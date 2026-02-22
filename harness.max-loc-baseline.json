@@ -1,0 +1,8 @@
+{
+  "allow": {
+    "src/mux/runtime-app/codex-live-mux-runtime.ts": 4858,
+    "src/control-plane/stream-server.ts": 4204,
+    "src/store/control-plane-store.ts": 2882,
+    "src/control-plane/stream-server-command.ts": 2788
+  }
+}

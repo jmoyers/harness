@@ -89,7 +89,8 @@ function resolveLeftPaneCols(
   const availablePaneCols = normalizedCols - 1;
   const percent = normalizePaneWidthPercent(paneWidthPercent ?? DEFAULT_LEFT_PANE_WIDTH_PERCENT);
   const defaultLeftCols = Math.round((availablePaneCols * percent) / 100);
-  const requested = requestedLeftCols === undefined ? defaultLeftCols : Math.floor(requestedLeftCols);
+  const requested =
+    requestedLeftCols === undefined ? defaultLeftCols : Math.floor(requestedLeftCols);
 
   let leftCols = clamp(requested, 1, availablePaneCols - 1);
   if (normalizedCols >= MIN_LEFT_PANE_COLS + MIN_RIGHT_PANE_COLS + 1) {

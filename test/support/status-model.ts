@@ -56,7 +56,7 @@ export function statusModelFor(
     phase?: StreamSessionStatusModel['phase'];
     lastKnownWork?: string | null;
     lastKnownWorkAt?: string | null;
-    phaseHint?: StreamSessionStatusModel['phaseHint'];
+    activityHint?: StreamSessionStatusModel['activityHint'];
   } = {},
 ): StreamSessionStatusModel {
   const phase = options.phase ?? phaseForStatus(status);
@@ -81,7 +81,7 @@ export function statusModelFor(
     attentionReason,
     lastKnownWork: options.lastKnownWork ?? null,
     lastKnownWorkAt: options.lastKnownWorkAt ?? null,
-    phaseHint: options.phaseHint ?? null,
+    activityHint: options.activityHint ?? null,
     observedAt: options.observedAt ?? new Date(0).toISOString(),
   };
 }

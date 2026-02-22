@@ -80,7 +80,8 @@ function parseQueueTurnResultLine(line: string): QueueTurnResultLine | null {
     typeof positionValue === 'number' && Number.isInteger(positionValue) && positionValue >= 0
       ? positionValue
       : undefined;
-  const reason = typeof reasonValue === 'string' && reasonValue.trim().length > 0 ? reasonValue : undefined;
+  const reason =
+    typeof reasonValue === 'string' && reasonValue.trim().length > 0 ? reasonValue : undefined;
   return {
     queued: record['queued'],
     ...(position === undefined ? {} : { position }),
@@ -299,9 +300,7 @@ export class RuntimeNimCliSession {
       return;
     }
     const queueCommand =
-      message.startsWith('/queue ') || message === '/queue'
-        ? message
-        : `/queue ${message}`;
+      message.startsWith('/queue ') || message === '/queue' ? message : `/queue ${message}`;
     this.session.write(`${queueCommand}\n`);
   }
 
@@ -408,11 +407,15 @@ export class RuntimeNimCliSession {
     if (queuedTurnResult !== null) {
       if (queuedTurnResult.queued) {
         const nextQueuedCount =
-          queuedTurnResult.position === undefined ? this.queuedCount + 1 : queuedTurnResult.position + 1;
+          queuedTurnResult.position === undefined
+            ? this.queuedCount + 1
+            : queuedTurnResult.position + 1;
         this.queuedCount = Math.max(this.queuedCount, nextQueuedCount);
         this.pushTranscriptLine(
           `[notice] queued turn position=${String(
-            queuedTurnResult.position === undefined ? this.queuedCount - 1 : queuedTurnResult.position,
+            queuedTurnResult.position === undefined
+              ? this.queuedCount - 1
+              : queuedTurnResult.position,
           )}`,
         );
         return;

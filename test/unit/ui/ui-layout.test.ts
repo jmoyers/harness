@@ -9,9 +9,18 @@ test('ui layout computes dual-pane geometry with status row and base layers', ()
   assert.equal(layout.paneRows, 29);
   assert.equal(layout.statusRow, 30);
   assert.equal(layout.leftPane.cols + layout.separator.cols + layout.rightPane.cols, 100);
-  assert.equal(layout.layers.some((layer) => layer.id === 'left-pane'), true);
-  assert.equal(layout.layers.some((layer) => layer.id === 'right-pane'), true);
-  assert.equal(layout.layers.some((layer) => layer.id === 'status'), true);
+  assert.equal(
+    layout.layers.some((layer) => layer.id === 'left-pane'),
+    true,
+  );
+  assert.equal(
+    layout.layers.some((layer) => layer.id === 'right-pane'),
+    true,
+  );
+  assert.equal(
+    layout.layers.some((layer) => layer.id === 'status'),
+    true,
+  );
 });
 
 test('ui layout overlays anchor to right pane and clip against viewport by default', () => {
@@ -91,4 +100,57 @@ test('ui layout enforces minimum pane widths when viewport is wide enough', () =
   });
   assert.equal(layout.leftCols >= 28, true);
   assert.equal(layout.rightCols >= 20, true);
+});
+
+test('ui layout normalizes non-finite inputs and drops fully clipped overlays', () => {
+  const normalized = computeDualPaneLayoutWithLayers(Number.NaN, Number.POSITIVE_INFINITY, {
+    leftCols: 10_000,
+    paneWidthPercent: Number.NaN,
+    statusRows: Number.NaN,
+    overlays: [
+      {
+        id: 'left-anchor',
+        anchor: 'left-pane',
+        col: 1,
+        row: 1,
+        cols: 2,
+        rows: 1,
+      },
+      {
+        id: 'status-anchor',
+        anchor: 'status',
+        col: 1,
+        row: 1,
+        cols: 2,
+        rows: 1,
+      },
+      {
+        id: 'clipped-away',
+        col: 99,
+        row: 99,
+        cols: 3,
+        rows: 2,
+      },
+    ],
+  });
+  assert.equal(normalized.cols, 3);
+  assert.equal(normalized.rows >= 2, true);
+  assert.equal(normalized.leftCols, 1);
+  assert.equal(
+    normalized.layers.some((layer) => layer.id === 'left-anchor'),
+    true,
+  );
+  assert.equal(
+    normalized.layers.some((layer) => layer.id === 'status-anchor'),
+    true,
+  );
+  assert.equal(
+    normalized.layers.some((layer) => layer.id === 'clipped-away'),
+    false,
+  );
+
+  const clampedLow = computeDualPaneLayoutWithLayers(80, 20, {
+    leftCols: -500,
+  });
+  assert.equal(clampedLow.leftCols >= 1, true);
 });

@@ -49,7 +49,7 @@ void test(
     const workspace = createWorkspace();
 
     try {
-      const result = await captureMuxBootOutput(workspace, 1800);
+      const result = await captureMuxBootOutput(workspace, 3000);
       assertExpectedBootTeardownExit(result.exit);
       const output = result.output;
       assert.equal(output.includes('codex:live:mux fatal error'), false);

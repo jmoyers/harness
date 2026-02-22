@@ -2,7 +2,6 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { execFileSync, spawn } from 'node:child_process';
-import { homedir } from 'node:os';
 import { startCodexLiveSession } from '../../codex/live-session.ts';
 import {
   openCodexControlPlaneClient,
@@ -10,18 +9,11 @@ import {
   type ControlPlaneKeyEvent,
 } from '../../control-plane/codex-session-stream.ts';
 import { startControlPlaneStreamServer } from '../../control-plane/stream-server.ts';
-import type {
-  StreamObservedEvent,
-  StreamServerEnvelope,
-} from '../../control-plane/stream-protocol.ts';
+import type { StreamServerEnvelope } from '../../control-plane/stream-protocol.ts';
 import { SqliteEventStore } from '../../store/event-store.ts';
 import { TerminalSnapshotOracle } from '../../terminal/snapshot-oracle.ts';
 import type { PtyExit } from '../../pty/pty_host.ts';
-import {
-  classifyPaneAt,
-  computeDualPaneLayout,
-  parseMuxInputChunk,
-} from '../../mux/dual-pane-core.ts';
+import { computeDualPaneLayout } from '../../mux/dual-pane-core.ts';
 import {
   loadHarnessConfig,
   updateHarnessConfig,
@@ -31,11 +23,7 @@ import {
 import { resolveHarnessRuntimePath } from '../../config/harness-paths.ts';
 import { migrateLegacyHarnessLayout } from '../../config/harness-runtime-migration.ts';
 import { loadHarnessSecrets, upsertHarnessSecret } from '../../config/secrets-core.ts';
-import {
-  detectMuxGlobalShortcut,
-  normalizeMuxKeyboardInputForPty,
-  resolveMuxShortcutBindings,
-} from '../../mux/input-shortcuts.ts';
+import { detectMuxGlobalShortcut, resolveMuxShortcutBindings } from '../../mux/input-shortcuts.ts';
 import { createMuxInputModeManager } from '../../mux/terminal-input-modes.ts';
 import type { buildWorkspaceRailViewRows } from '../../mux/workspace-rail-model.ts';
 import {
@@ -58,7 +46,6 @@ import {
   type ResolvedCommandMenuOpenInTarget,
 } from '../../mux/live-mux/command-menu-open-in.ts';
 import {
-  buildGitHubReviewPaneSnapshot,
   buildProjectPaneSnapshotWithOptions,
   projectPaneActionAtRow,
   sortedRepositoryList,
@@ -70,12 +57,6 @@ import type {
   ProjectPaneGitHubReviewSummary,
   ProjectPaneGitHubReviewThread,
 } from '../../mux/project-pane-github-review.ts';
-import {
-  taskFocusedPaneActionAtCell,
-  taskFocusedPaneActionAtRow,
-  taskFocusedPaneRepositoryIdAtRow,
-  taskFocusedPaneTaskIdAtRow,
-} from '../../mux/task-focused-pane.ts';
 import {
   createTaskComposerBuffer,
   normalizeTaskComposerBuffer,
@@ -109,11 +90,13 @@ import {
   startPerfSpan,
 } from '../../perf/perf-core.ts';
 import {
-  parseConversationRecord,
-  parseDirectoryRecord,
+  type ControlPlaneConversationRecord,
+  type ControlPlaneDirectoryRecord,
+  type ControlPlaneRepositoryRecord,
+  type ControlPlaneTaskRecord,
   parseRepositoryRecord,
-  parseTaskRecord,
-} from '../../mux/live-mux/control-plane-records.ts';
+} from '../../core/contracts/records.ts';
+import { createHarnessSyncedStore } from '../../core/store/harness-synced-store.ts';
 import {
   leftColsFromPaneWidthPercent,
   paneWidthPercentFromLayout,
@@ -128,17 +111,6 @@ import {
 import { readProcessUsageSample, runGitCommand } from '../../mux/live-mux/git-snapshot.ts';
 import { probeTerminalPalette } from '../../mux/live-mux/terminal-palette.ts';
 import {
-  firstDirectoryForRepositoryGroup as firstDirectoryForRepositoryGroupFn,
-  reduceRepositoryFoldChordInput,
-  repositoryTreeArrowAction,
-} from '../../mux/live-mux/repository-folding.ts';
-import { visibleLeftNavTargets } from '../../mux/live-mux/left-nav.ts';
-import {
-  activateLeftNavTarget,
-  cycleLeftNavSelection,
-} from '../../mux/live-mux/left-nav-activation.ts';
-import { handleGlobalShortcut } from '../../mux/live-mux/global-shortcut-handlers.ts';
-import {
   readObservedStreamCursorBaseline,
   subscribeObservedStream,
   unsubscribeObservedStream,
@@ -151,7 +123,6 @@ import {
   type ConversationState,
 } from '../../mux/live-mux/conversation-state.ts';
 import {
-  extractFocusEvents,
   formatErrorMessage,
   parseBooleanEnv,
   parsePositiveInt,
@@ -162,14 +133,7 @@ import {
   sanitizeProcessEnv,
   terminalSize,
 } from '../../mux/live-mux/startup-utils.ts';
-import { routeInputTokensForConversation } from '../../mux/live-mux/input-forwarding.ts';
-import {
-  buildFileLinkPathArgumentForTarget,
-  prioritizeOpenInTargetsForFileLinks,
-  resolveFileLinkPath,
-  resolveLinkCommandFromTemplate,
-  resolveTerminalLinkTargetAtCell,
-} from '../../mux/live-mux/link-click.ts';
+import { resolveLinkCommandFromTemplate } from '../../mux/live-mux/link-click.ts';
 import {
   normalizeExitCode,
   isSessionNotFoundError,
@@ -179,15 +143,13 @@ import {
   mapSessionEventToNormalizedEvent,
   observedAtFromSessionEvent,
 } from '../../mux/live-mux/event-mapping.ts';
+import {
+  addDirectoryByPath as addDirectoryByPathAction,
+  archiveConversation as archiveConversationAction,
+  closeDirectory as closeDirectoryAction,
+} from '../../mux/live-mux/actions-conversation.ts';
 import { parseMuxArgs } from '../../mux/live-mux/args.ts';
 import {
-  compareSelectionPoints,
-  isCopyShortcutInput,
-  hasAltModifier,
-  isLeftButtonPress,
-  isMotionMouseCode,
-  pointFromMouseEvent,
-  reduceConversationMouseSelection,
   renderSelectionOverlay,
   selectionText,
   selectionVisibleRows,
@@ -220,43 +182,48 @@ import { RepositoryManager } from '../../domain/repositories.ts';
 import { DirectoryManager } from '../../domain/directories.ts';
 import { TaskManager } from '../../domain/tasks.ts';
 import { ControlPlaneService } from '../../services/control-plane.ts';
-import { ConversationLifecycle } from '../../services/conversation-lifecycle.ts';
-import { DirectoryHydrationService } from '../../services/directory-hydration.ts';
+import { createConversationLifecycle } from '../../services/conversation-lifecycle.ts';
+import { createDirectoryHydrationService } from '../../services/directory-hydration.ts';
 import { EventPersistence } from '../../services/event-persistence.ts';
 import { MuxUiStatePersistence } from '../../services/mux-ui-state-persistence.ts';
 import { OutputLoadSampler } from '../../services/output-load-sampler.ts';
 import { ProcessUsageRefreshService } from '../../services/process-usage-refresh.ts';
-import { RecordingService } from '../../services/recording.ts';
+import { createRecordingService } from '../../services/recording.ts';
 import { SessionProjectionInstrumentation } from '../../services/session-projection-instrumentation.ts';
 import { StartupOrchestrator } from '../../services/startup-orchestrator.ts';
-import { RuntimeProcessWiring } from '../../services/runtime-process-wiring.ts';
-import { RuntimeControlPlaneOps } from '../../services/runtime-control-plane-ops.ts';
-import { RuntimeControlActions } from '../../services/runtime-control-actions.ts';
-import { RuntimeDirectoryActions } from '../../services/runtime-directory-actions.ts';
-import { RuntimeEnvelopeHandler } from '../../services/runtime-envelope-handler.ts';
-import { RuntimeRenderPipeline } from '../../services/runtime-render-pipeline.ts';
-import { RuntimeRepositoryActions } from '../../services/runtime-repository-actions.ts';
-import { RuntimeGitState } from '../../services/runtime-git-state.ts';
-import { RuntimeLayoutResize } from '../../services/runtime-layout-resize.ts';
-import { RuntimeRenderLifecycle } from '../../services/runtime-render-lifecycle.ts';
-import { RuntimeShutdownService } from '../../services/runtime-shutdown.ts';
-import { RuntimeTaskEditorActions } from '../../services/runtime-task-editor-actions.ts';
-import { LeftRailPointerHandler } from '../../services/left-rail-pointer-handler.ts';
-import { RuntimeTaskComposerPersistenceService } from '../../services/runtime-task-composer-persistence.ts';
-import { RuntimeTaskPaneActions } from '../../services/runtime-task-pane-actions.ts';
-import { RuntimeTaskPaneShortcuts } from '../../services/runtime-task-pane-shortcuts.ts';
-import { RuntimeProjectPaneGitHubReviewCache } from '../../services/runtime-project-pane-github-review-cache.ts';
 import { RuntimeNimCliSession } from '../../services/runtime-nim-cli-session.ts';
-import { TaskPaneSelectionActions } from '../../services/task-pane-selection-actions.ts';
-import { TaskPlanningHydrationService } from '../../services/task-planning-hydration.ts';
-import { TaskPlanningObservedEvents } from '../../services/task-planning-observed-events.ts';
+import { attachRuntimeProcessWiring } from '../../services/runtime-process-wiring.ts';
+import { createRuntimeControlPlaneOps } from '../../services/runtime-control-plane-ops.ts';
+import { createRuntimeControlActions } from '../../services/runtime-control-actions.ts';
 import {
-  RuntimeCommandMenuAgentTools,
+  handleRuntimeEnvelope,
+  type RuntimeEnvelopeHandlerOptions,
+} from '../../services/runtime-envelope-handler.ts';
+import {
+  applyRuntimeObservedEventProjection,
+  type RuntimeObservedEventProjectionPipelineOptions,
+} from '../../services/runtime-observed-event-projection-pipeline.ts';
+import { createRuntimeRenderPipeline } from '../../services/runtime-render-pipeline.ts';
+import { createRuntimeRepositoryActions } from '../../services/runtime-repository-actions.ts';
+import { createRuntimeGitState } from '../../services/runtime-git-state.ts';
+import { RuntimeLayoutResizeEngine } from '../../services/runtime-layout-resize.ts';
+import { createRuntimeRenderLifecycle } from '../../services/runtime-render-lifecycle.ts';
+import { finalizeRuntimeShutdown } from '../../services/runtime-shutdown.ts';
+import { createRuntimeTaskEditorActions } from '../../services/runtime-task-editor-actions.ts';
+import { createRuntimeTaskComposerPersistenceService } from '../../services/runtime-task-composer-persistence.ts';
+import { createRuntimeTaskPaneActions } from '../../services/runtime-task-pane-actions.ts';
+import { createRuntimeTaskPaneShortcuts } from '../../services/runtime-task-pane-shortcuts.ts';
+import { RuntimeProjectPaneGitHubReviewCacheEngine } from '../../services/runtime-project-pane-github-review-cache.ts';
+import { createTaskPaneSelectionActions } from '../../services/task-pane-selection-actions.ts';
+import { createTaskPlanningHydrationService } from '../../services/task-planning-hydration.ts';
+import { TaskPlanningSyncedProjection } from '../../services/task-planning-observed-events.ts';
+import {
+  RuntimeCommandMenuAgentToolsCache,
   type InstallableAgentType,
 } from '../../services/runtime-command-menu-agent-tools.ts';
-import { WorkspaceObservedEvents } from '../../services/workspace-observed-events.ts';
-import { RuntimeWorkspaceObservedEvents } from '../../services/runtime-workspace-observed-events.ts';
-import { StartupStateHydrationService } from '../../services/startup-state-hydration.ts';
+import { WorkspaceSyncedProjection } from '../../services/workspace-observed-events.ts';
+import { subscribeRuntimeWorkspaceObservedEvents } from '../../services/runtime-workspace-observed-events.ts';
+import { createStartupStateHydrationService } from '../../services/startup-state-hydration.ts';
 import {
   StatusTimelineRecorder,
   type StatusTimelineLabels,
@@ -271,19 +238,6 @@ import {
   type ScreenCursorStyle,
 } from '../../../packages/harness-ui/src/screen.ts';
 import { InputRouter } from '../../../packages/harness-ui/src/interaction/input.ts';
-import { ConversationInputForwarder } from '../../../packages/harness-ui/src/interaction/conversation-input-forwarder.ts';
-import { GlobalShortcutInput } from '../../../packages/harness-ui/src/interaction/global-shortcut-input.ts';
-import { InputPreflight } from '../../../packages/harness-ui/src/interaction/input-preflight.ts';
-import { InputTokenRouter } from '../../../packages/harness-ui/src/interaction/input-token-router.ts';
-import { LeftNavInput } from '../../../packages/harness-ui/src/interaction/left-nav-input.ts';
-import { MainPanePointerInput } from '../../../packages/harness-ui/src/interaction/main-pane-pointer-input.ts';
-import { PointerRoutingInput } from '../../../packages/harness-ui/src/interaction/pointer-routing-input.ts';
-import { RailPointerInput } from '../../../packages/harness-ui/src/interaction/rail-pointer-input.ts';
-import { RepositoryFoldInput } from '../../../packages/harness-ui/src/interaction/repository-fold-input.ts';
-import {
-  ConversationSelectionInput,
-  type PaneSelection,
-} from '../../../packages/harness-ui/src/interaction/conversation-selection-input.ts';
 import { ConversationPane } from '../../ui/panes/conversation.ts';
 import { DebugFooterNotice } from '../../ui/debug-footer-notice.ts';
 import { HomePane } from '../../ui/panes/home.ts';
@@ -317,15 +271,6 @@ import {
 } from '../../mux/live-mux/modal-prompt-handlers.ts';
 import { handleTaskEditorPromptInput } from '../../mux/live-mux/modal-task-editor-handler.ts';
 import { handleReleaseNotesModalInput } from '../../mux/live-mux/modal-release-notes-handler.ts';
-import { handleHomePaneDragRelease } from '../../mux/live-mux/home-pane-drop.ts';
-import { handleHomePanePointerClick } from '../../mux/live-mux/home-pane-pointer.ts';
-import {
-  handleHomePaneDragMove,
-  handleMainPaneWheelInput,
-  handlePaneDividerDragInput,
-  handleSeparatorPointerPress,
-} from '../../mux/live-mux/pointer-routing.ts';
-import { handleProjectPaneActionClick } from '../../mux/live-mux/project-pane-pointer.ts';
 import {
   fetchReleaseNotesPrompt,
   readInstalledHarnessVersion,
@@ -335,6 +280,13 @@ import {
   type ReleaseNotesPrompt,
   type ReleaseNotesState,
 } from '../../mux/live-mux/release-notes.ts';
+import { createTuiLeftRailInteractions } from '../../clients/tui/left-rail-interactions.ts';
+import { createTuiMainPaneInteractions } from '../../clients/tui/main-pane-interactions.ts';
+import {
+  createTuiModalInputRemainderState,
+  routeTuiModalInput,
+} from '../../clients/tui/modal-input-routing.ts';
+import { readTuiRenderSnapshot } from '../../clients/tui/render-snapshot-adapter.ts';
 import {
   getActiveMuxTheme,
   muxThemePresetNames,
@@ -344,10 +296,6 @@ import {
 
 const MODAL_OVERLAY_LAYER_ID = 'active-modal';
 
-type ControlPlaneDirectoryRecord = Awaited<ReturnType<ControlPlaneService['upsertDirectory']>>;
-type ControlPlaneConversationRecord = NonNullable<ReturnType<typeof parseConversationRecord>>;
-type ControlPlaneRepositoryRecord = NonNullable<ReturnType<typeof parseRepositoryRecord>>;
-type ControlPlaneTaskRecord = NonNullable<ReturnType<typeof parseTaskRecord>>;
 type ControlPlaneSessionSummary = NonNullable<
   Awaited<ReturnType<ControlPlaneService['getSessionStatus']>>
 >;
@@ -414,12 +362,8 @@ const DEFAULT_BACKGROUND_PROBES_ENABLED = false;
 const DEBUG_FOOTER_NOTICE_TTL_MS = 8000;
 const DEFAULT_CONVERSATION_TITLE_EDIT_DEBOUNCE_MS = 250;
 const DEFAULT_TASK_EDITOR_AUTOSAVE_DEBOUNCE_MS = 250;
-const CONVERSATION_TITLE_EDIT_DOUBLE_CLICK_WINDOW_MS = 350;
-const HOME_PANE_EDIT_DOUBLE_CLICK_WINDOW_MS = 350;
 const HOME_PANE_BACKGROUND_INTERVAL_MS = 80;
 const UI_STATE_PERSIST_DEBOUNCE_MS = 200;
-const REPOSITORY_TOGGLE_CHORD_TIMEOUT_MS = 1250;
-const REPOSITORY_COLLAPSE_ALL_CHORD_PREFIX = Buffer.from([0x0b]);
 const PROJECT_PANE_GITHUB_REVIEW_TTL_MS = 600_000;
 const PROJECT_PANE_GITHUB_REVIEW_REFRESH_INTERVAL_MS = 300_000;
 const UNTRACKED_REPOSITORY_GROUP_ID = 'untracked';
@@ -505,10 +449,7 @@ function isOverlayLayerHit(
   }
   const rect = modalLayer.rect;
   return (
-    col >= rect.col &&
-    col < rect.col + rect.cols &&
-    row >= rect.row &&
-    row < rect.row + rect.rows
+    col >= rect.col && col < rect.col + rect.cols && row >= rect.row && row < rect.row + rect.rows
   );
 }
 
@@ -808,25 +749,6 @@ function openUrlInBrowser(url: string, browserCommand: readonly string[] | null)
   return launchDetachedCommand('xdg-open', [target]);
 }
 
-function commandModifierPressed(code: number): boolean {
-  return (code & 0b0000_1000) !== 0;
-}
-
-function wheelMouseCode(code: number): boolean {
-  return (code & 0b0100_0000) !== 0;
-}
-
-function motionMouseCode(code: number): boolean {
-  return (code & 0b0010_0000) !== 0;
-}
-
-function leftMouseButtonPress(code: number, final: 'M' | 'm'): boolean {
-  if (final !== 'M' || wheelMouseCode(code) || motionMouseCode(code)) {
-    return false;
-  }
-  return (code & 0b0000_0011) === 0;
-}
-
 function isMacApplicationInstalled(appName: string): boolean {
   const target = appName.trim();
   if (target.length === 0 || process.platform !== 'darwin') {
@@ -977,8 +899,6 @@ class CodexLiveMuxRuntimeApplication {
       isMacApplicationInstalled,
     });
     const linkOpenConfig = loadedConfig.config.mux.openIn.links;
-    const fileLinkOpenTargets = prioritizeOpenInTargetsForFileLinks(commandMenuOpenInTargets);
-    const userHomeDirectory = homedir();
     let runtimeThemeConfig: HarnessMuxThemeConfig | null = configuredMuxUi.theme;
     const resolveAndApplyRuntimeTheme = (
       nextThemeConfig: HarnessMuxThemeConfig | null,
@@ -1126,7 +1046,7 @@ class CodexLiveMuxRuntimeApplication {
       muxRecordingWriter = createTerminalRecordingWriter(recordingWriterOptions);
       muxRecordingOracle = new TerminalSnapshotOracle(size.cols, size.rows);
     }
-    const recordingService = new RecordingService({
+    const recordingService = createRecordingService({
       recordingWriter: muxRecordingWriter,
       recordingPath: options.recordingPath,
       recordingGifOutputPath: options.recordingGifOutputPath,
@@ -1443,36 +1363,6 @@ class CodexLiveMuxRuntimeApplication {
     const repositoryGroupIdForDirectory = (directoryId: string): string =>
       repositoryManager.repositoryGroupIdForDirectory(directoryId, UNTRACKED_REPOSITORY_GROUP_ID);
 
-    const collapseRepositoryGroup = (repositoryGroupId: string): void => {
-      repositoryManager.collapseRepositoryGroup(repositoryGroupId, workspace.repositoriesCollapsed);
-    };
-
-    const expandRepositoryGroup = (repositoryGroupId: string): void => {
-      repositoryManager.expandRepositoryGroup(repositoryGroupId, workspace.repositoriesCollapsed);
-    };
-
-    const toggleRepositoryGroup = (repositoryGroupId: string): void => {
-      repositoryManager.toggleRepositoryGroup(repositoryGroupId, workspace.repositoriesCollapsed);
-    };
-
-    const collapseAllRepositoryGroups = (): void => {
-      workspace.repositoriesCollapsed = repositoryManager.collapseAllRepositoryGroups();
-      queuePersistMuxUiState();
-    };
-
-    const expandAllRepositoryGroups = (): void => {
-      workspace.repositoriesCollapsed = repositoryManager.expandAllRepositoryGroups();
-      queuePersistMuxUiState();
-    };
-
-    const firstDirectoryForRepositoryGroup = (repositoryGroupId: string): string | null => {
-      return firstDirectoryForRepositoryGroupFn(
-        directoryRecords,
-        repositoryGroupIdForDirectory,
-        repositoryGroupId,
-      );
-    };
-
     conversationManager.configureEnsureDependencies({
       resolveDefaultDirectoryId: resolveActiveDirectoryId,
       normalizeAdapterState,
@@ -1523,7 +1413,7 @@ class CodexLiveMuxRuntimeApplication {
       sessionProjectionInstrumentation.recordTransition(event, beforeProjection, updated);
     };
 
-    const directoryHydrationService = new DirectoryHydrationService<ControlPlaneDirectoryRecord>({
+    const directoryHydrationService = createDirectoryHydrationService<ControlPlaneDirectoryRecord>({
       controlPlaneService,
       resolveWorkspacePathForMux: (rawPath) =>
         resolveWorkspacePathForMux(options.invocationDirectory, rawPath),
@@ -1561,7 +1451,7 @@ class CodexLiveMuxRuntimeApplication {
       return persistedRows.length;
     };
 
-    const conversationLifecycle = new ConversationLifecycle<
+    const conversationLifecycle = createConversationLifecycle<
       ConversationState,
       ControlPlaneSessionSummary,
       ConversationState['controller']
@@ -1804,7 +1694,7 @@ class CodexLiveMuxRuntimeApplication {
     const hydrateConversationList = async (): Promise<void> => {
       await conversationLifecycle.hydrateConversationList();
     };
-    const startupStateHydrationService = new StartupStateHydrationService<
+    const startupStateHydrationService = createStartupStateHydrationService<
       ControlPlaneRepositoryRecord,
       GitSummary,
       GitRepositorySnapshot,
@@ -1857,7 +1747,7 @@ class CodexLiveMuxRuntimeApplication {
     hydrateStartupStateForStartupOrchestrator = async (afterCursor) =>
       await startupStateHydrationService.hydrateStartupState(afterCursor);
 
-    const runtimeGitState = new RuntimeGitState<ControlPlaneRepositoryRecord>({
+    const runtimeGitState = createRuntimeGitState<ControlPlaneRepositoryRecord>({
       enabled: configuredMuxGit.enabled,
       directoryManager,
       directoryRepositorySnapshotByDirectoryId,
@@ -1882,9 +1772,6 @@ class CodexLiveMuxRuntimeApplication {
     };
     const noteGitActivity = (directoryId: string | null): void => {
       runtimeGitState.noteGitActivity(directoryId);
-    };
-    const applyObservedGitStatusEvent = (observed: StreamObservedEvent): void => {
-      runtimeGitState.applyObservedGitStatusEvent(observed);
     };
 
     const idFactory = (): string => `event-${randomUUID()}`;
@@ -1929,7 +1816,7 @@ class CodexLiveMuxRuntimeApplication {
     const projectPane = new ProjectPane();
     const leftRailPane = new LeftRailPane();
     let stop = false;
-    let inputRemainder = '';
+    const modalInputRemainderState = createTuiModalInputRemainderState();
     const debugFooterNotice = new DebugFooterNotice({
       ttlMs: DEBUG_FOOTER_NOTICE_TTL_MS,
     });
@@ -2184,7 +2071,7 @@ class CodexLiveMuxRuntimeApplication {
       });
     };
 
-    const runtimeRenderLifecycle = new RuntimeRenderLifecycle({
+    const runtimeRenderLifecycle = createRuntimeRenderLifecycle({
       screen,
       render: () => {
         render();
@@ -2227,7 +2114,8 @@ class CodexLiveMuxRuntimeApplication {
         ? anthropicApiKeyRaw.trim()
         : null;
     const runtimeNimModel: NimModelRef =
-      configuredNimModel ?? (anthropicApiKey === null ? 'mock/echo-v1' : 'anthropic/claude-3-5-haiku-latest');
+      configuredNimModel ??
+      (anthropicApiKey === null ? 'mock/echo-v1' : 'anthropic/claude-3-5-haiku-latest');
     const runtimeNimProviderId = runtimeNimModel.split('/')[0] ?? 'mock';
     const runtimeNimUseMock = runtimeNimProviderId !== 'anthropic' || anthropicApiKey === null;
     const runtimeNimBaseUrlRaw = process.env.HARNESS_NIM_ANTHROPIC_BASE_URL;
@@ -2245,7 +2133,7 @@ class CodexLiveMuxRuntimeApplication {
       useMock: runtimeNimUseMock,
       ...(runtimeNimBaseUrl === undefined ? {} : { baseUrl: runtimeNimBaseUrl }),
     });
-    const controlPlaneOps = new RuntimeControlPlaneOps({
+    const controlPlaneOps = createRuntimeControlPlaneOps({
       onFatal: (error: unknown) => {
         handleRuntimeFatal('control-plane-pump', error);
       },
@@ -2279,7 +2167,7 @@ class CodexLiveMuxRuntimeApplication {
     ): void => {
       controlPlaneOps.enqueueBackground(task, label);
     };
-    const commandMenuAgentTools = new RuntimeCommandMenuAgentTools({
+    const commandMenuAgentTools = new RuntimeCommandMenuAgentToolsCache({
       sendCommand: async (command) => await streamClient.sendCommand(command),
       queueControlPlaneOp,
       getCommandMenu: () => workspace.commandMenu,
@@ -2289,107 +2177,6 @@ class CodexLiveMuxRuntimeApplication {
       workspace.taskPaneNotice = message;
       debugFooterNotice.set(message);
       markDirty();
-    };
-    const openFileLink = (target: {
-      path: string;
-      line: number | null;
-      column: number | null;
-    }): boolean => {
-      const activeConversation = conversationManager.getActiveConversation();
-      const activeDirectoryPath =
-        activeConversation?.directoryId === null || activeConversation?.directoryId === undefined
-          ? null
-          : (directoryRecords.get(activeConversation.directoryId)?.path ?? null);
-      const resolvedPath = resolveFileLinkPath({
-        path: target.path,
-        directoryPath: activeDirectoryPath,
-        homeDirectory: userHomeDirectory,
-      });
-      if (linkOpenConfig.fileCommand !== null) {
-        const resolvedCustom = resolveLinkCommandFromTemplate({
-          template: linkOpenConfig.fileCommand,
-          values: {
-            path: resolvedPath,
-            line: target.line,
-            column: target.column,
-          },
-          appendPrimaryPlaceholder: '{path}',
-        });
-        if (resolvedCustom === null) {
-          return false;
-        }
-        return launchDetachedCommand(resolvedCustom.command, resolvedCustom.args);
-      }
-      for (const openTarget of fileLinkOpenTargets) {
-        const pathArgument = buildFileLinkPathArgumentForTarget({
-          targetId: openTarget.id,
-          path: resolvedPath,
-          line: target.line,
-          column: target.column,
-        });
-        const resolvedCommand = resolveCommandMenuOpenInCommand(openTarget, pathArgument);
-        if (resolvedCommand === null) {
-          continue;
-        }
-        if (launchDetachedCommand(resolvedCommand.command, resolvedCommand.args)) {
-          return true;
-        }
-      }
-      if (process.platform === 'darwin') {
-        return launchDetachedCommand('open', [resolvedPath]);
-      }
-      if (process.platform === 'win32') {
-        return launchDetachedCommand('cmd', ['/c', 'start', '', resolvedPath]);
-      }
-      return launchDetachedCommand('xdg-open', [resolvedPath]);
-    };
-    const handleConversationCommandClick = (input: {
-      event: {
-        col: number;
-        row: number;
-      };
-      layout: {
-        paneRows: number;
-        rightCols: number;
-        rightStartCol: number;
-      };
-      snapshotForInput: {
-        lines?: readonly string[];
-      } | null;
-    }): boolean => {
-      const lines = input.snapshotForInput?.lines;
-      if (lines === undefined) {
-        return false;
-      }
-      const sessionCol = Math.max(
-        1,
-        Math.min(input.layout.rightCols, input.event.col - input.layout.rightStartCol + 1),
-      );
-      const sessionRow = Math.max(1, Math.min(input.layout.paneRows, input.event.row));
-      const linkTarget = resolveTerminalLinkTargetAtCell({
-        lines,
-        row: sessionRow,
-        col: sessionCol,
-      });
-      if (linkTarget === null) {
-        return false;
-      }
-      if (linkTarget.kind === 'url') {
-        const opened = openUrlInBrowser(linkTarget.url, linkOpenConfig.browserCommand);
-        setCommandNotice(opened ? 'opened url in browser' : `open url: ${linkTarget.url}`);
-        return true;
-      }
-      const opened = openFileLink(linkTarget);
-      const locationSuffix =
-        linkTarget.line === null
-          ? ''
-          : linkTarget.column === null
-            ? `:${String(linkTarget.line)}`
-            : `:${String(linkTarget.line)}:${String(linkTarget.column)}`;
-      setCommandNotice(
-        opened ? 'opened file link' : `open file link: ${linkTarget.path}${locationSuffix}`,
-      );
-      return true;
     };
     const openDirectoryInCommandMenuTarget = (
       target: ResolvedCommandMenuOpenInTarget,
@@ -2727,7 +2514,7 @@ class CodexLiveMuxRuntimeApplication {
     }, HOME_PANE_BACKGROUND_INTERVAL_MS);
     homePaneBackgroundTimer.unref?.();
 
-    const runtimeLayoutResize = new RuntimeLayoutResize<ConversationState>({
+    const runtimeLayoutResize = new RuntimeLayoutResizeEngine<ConversationState>({
       getSize: () => size,
       setSize: (nextSize) => {
         size = nextSize;
@@ -2790,10 +2577,6 @@ class CodexLiveMuxRuntimeApplication {
       conversationLifecycle.stopConversationTitleEdit(persistPending);
     };
 
-    const beginConversationTitleEdit = (conversationId: string): void => {
-      conversationLifecycle.beginConversationTitleEdit(conversationId);
-    };
-
     const buildNewThreadModalOverlay = (viewportRows: number) => {
       return modalManager.buildNewThreadOverlay(layout.cols, viewportRows);
     };
@@ -2821,27 +2604,6 @@ class CodexLiveMuxRuntimeApplication {
         return releaseNotesOverlay;
       }
       return modalManager.buildCurrentOverlay(layout.cols, layout.rows);
-    };
-
-    const dismissModalOnOutsideClick = (
-      input: Buffer,
-      dismiss: () => void,
-      onInsidePointerPress?: (col: number, row: number) => boolean,
-    ): boolean => {
-      const result = modalManager.dismissOnOutsideClick({
-        input,
-        inputRemainder,
-        layoutCols: layout.cols,
-        viewportRows: layout.rows,
-        dismiss,
-        ...(onInsidePointerPress === undefined
-          ? {}
-          : {
-              onInsidePointerPress,
-            }),
-      });
-      inputRemainder = result.inputRemainder;
-      return result.handled;
     };
 
     const attachConversation = async (sessionId: string): Promise<void> => {
@@ -2877,7 +2639,8 @@ class CodexLiveMuxRuntimeApplication {
       }
     };
 
-    const refreshProjectTreePaneSnapshot = (directoryId: string): void => {
+    const projectPaneGitHubExpandedNodeIdsByDirectoryId = new Map<string, Set<string>>();
+    const refreshProjectPaneSnapshot = (directoryId: string): void => {
       const directory = directoryManager.getDirectory(directoryId);
       if (directory === undefined) {
         workspace.projectPaneSnapshot = null;
@@ -2889,31 +2652,7 @@ class CodexLiveMuxRuntimeApplication {
       );
     };
 
-    const refreshGitHubPaneSnapshot = (directoryId: string): void => {
-      const directory = directoryManager.getDirectory(directoryId);
-      if (directory === undefined) {
-        workspace.projectPaneSnapshot = null;
-        return;
-      }
-      workspace.projectPaneSnapshot = buildGitHubReviewPaneSnapshot(
-        directory.directoryId,
-        directory.path,
-        projectPaneGitHubReviewByDirectoryId.get(directory.directoryId) ?? null,
-      );
-    };
-
-    const refreshProjectPaneSnapshot = (directoryId: string): void => {
-      if (
-        workspace.leftNavSelection.kind === 'github' &&
-        workspace.leftNavSelection.directoryId === directoryId
-      ) {
-        refreshGitHubPaneSnapshot(directoryId);
-        return;
-      }
-      refreshProjectTreePaneSnapshot(directoryId);
-    };
-
-    const projectPaneGitHubReviewCache = new RuntimeProjectPaneGitHubReviewCache({
+    const projectPaneGitHubReviewCache = new RuntimeProjectPaneGitHubReviewCacheEngine({
       ttlMs: PROJECT_PANE_GITHUB_REVIEW_TTL_MS,
       refreshIntervalMs: PROJECT_PANE_GITHUB_REVIEW_REFRESH_INTERVAL_MS,
       queueLatestControlPlaneOp: queueLatestBackgroundControlPlaneOp,
@@ -2990,21 +2729,21 @@ class CodexLiveMuxRuntimeApplication {
       screen.resetFrameCache();
     };
 
-    const toggleGitHubProjectExpanded = (directoryId: string): void => {
+    const toggleProjectPaneGitHubNode = (directoryId: string, nodeId: string): boolean => {
       if (!directoryManager.hasDirectory(directoryId)) {
-        return;
+        return false;
       }
-      if (workspace.expandedGitHubDirectoryIds.has(directoryId)) {
-        workspace.expandedGitHubDirectoryIds.delete(directoryId);
+      const expanded =
+        projectPaneGitHubExpandedNodeIdsByDirectoryId.get(directoryId) ?? new Set<string>();
+      if (expanded.has(nodeId)) {
+        expanded.delete(nodeId);
       } else {
-        workspace.expandedGitHubDirectoryIds.add(directoryId);
-        workspace.visibleGitHubDirectoryIds.add(directoryId);
+        expanded.add(nodeId);
       }
-      noteGitActivity(directoryId);
-      if (workspace.expandedGitHubDirectoryIds.has(directoryId)) {
-        refreshProjectPaneGitHubReviewState(directoryId);
-      }
-      screen.resetFrameCache();
+      projectPaneGitHubExpandedNodeIdsByDirectoryId.set(directoryId, expanded);
+      refreshProjectPaneSnapshot(directoryId);
+      markDirty();
+      return true;
     };
 
     function orderedTaskRecords(): readonly ControlPlaneTaskRecord[] {
@@ -3035,7 +2774,7 @@ class CodexLiveMuxRuntimeApplication {
       return task;
     };
 
-    const taskComposerPersistence = new RuntimeTaskComposerPersistenceService<
+    const taskComposerPersistence = createRuntimeTaskComposerPersistenceService<
       ControlPlaneTaskRecord,
       TaskComposerBuffer
     >({
@@ -3096,7 +2835,7 @@ class CodexLiveMuxRuntimeApplication {
       return orderedActiveRepositoryRecords().map((repository) => repository.repositoryId);
     };
 
-    const taskPaneSelectionActions = new TaskPaneSelectionActions<ControlPlaneTaskRecord>({
+    const taskPaneSelectionActions = createTaskPaneSelectionActions<ControlPlaneTaskRecord>({
       workspace,
       taskRecordById: (taskId) => taskManager.getTask(taskId),
       hasTask: (taskId) => taskManager.hasTask(taskId),
@@ -3116,31 +2855,22 @@ class CodexLiveMuxRuntimeApplication {
       taskPaneSelectionActions.syncTaskPaneRepositorySelection();
     };
 
-    const focusDraftComposer = (): void => {
-      taskPaneSelectionActions.focusDraftComposer();
-    };
-
-    const focusTaskComposer = (taskId: string): void => {
+    const focusDraftComposer = (): void => taskPaneSelectionActions.focusDraftComposer();
+    const focusTaskComposer = (taskId: string): void =>
       taskPaneSelectionActions.focusTaskComposer(taskId);
-    };
 
-    const selectedTaskRecord = (): ControlPlaneTaskRecord | null => {
-      if (workspace.taskPaneSelectedTaskId === null) {
-        return null;
-      }
-      return taskManager.getTask(workspace.taskPaneSelectedTaskId) ?? null;
-    };
+    const selectedTaskRecord = (): ControlPlaneTaskRecord | null =>
+      workspace.taskPaneSelectedTaskId === null
+        ? null
+        : (taskManager.getTask(workspace.taskPaneSelectedTaskId) ?? null);
 
-    const selectTaskById = (taskId: string): void => {
+    const selectTaskById = (taskId: string): void =>
       taskPaneSelectionActions.selectTaskById(taskId);
-    };
-
-    const selectRepositoryById = (repositoryId: string): void => {
+    const selectRepositoryById = (repositoryId: string): void =>
       taskPaneSelectionActions.selectRepositoryById(repositoryId);
-    };
 
-    const enterHomePane = (): void => {
-      workspace.enterHomePane();
+    const enterPane = (enter: () => void): void => {
+      enter();
       queuePersistMuxUiState();
       workspace.selection = null;
       workspace.selectionDrag = null;
@@ -3150,30 +2880,11 @@ class CodexLiveMuxRuntimeApplication {
       screen.resetFrameCache();
       markDirty();
     };
+    const enterHomePane = (): void => enterPane(() => workspace.enterHomePane());
+    const enterNimPane = (): void => enterPane(() => workspace.enterNimPane());
+    const enterTasksPane = (): void => enterPane(() => workspace.enterTasksPane());
 
-    const enterNimPane = (): void => {
-      workspace.enterNimPane();
-      queuePersistMuxUiState();
-      workspace.selection = null;
-      workspace.selectionDrag = null;
-      releaseViewportPinForSelection();
-      screen.resetFrameCache();
-      markDirty();
-    };
-
-    const enterTasksPane = (): void => {
-      workspace.enterTasksPane();
-      queuePersistMuxUiState();
-      workspace.selection = null;
-      workspace.selectionDrag = null;
-      releaseViewportPinForSelection();
-      syncTaskPaneSelection();
-      syncTaskPaneRepositorySelection();
-      screen.resetFrameCache();
-      markDirty();
-    };
-
-    const taskPlanningHydrationService = new TaskPlanningHydrationService<
+    const taskPlanningHydrationService = createTaskPlanningHydrationService<
       ControlPlaneRepositoryRecord,
       ControlPlaneTaskRecord
     >({
@@ -3200,13 +2911,10 @@ class CodexLiveMuxRuntimeApplication {
       await taskPlanningHydrationService.hydrate();
     }
 
-    const taskPlanningObservedEvents = new TaskPlanningObservedEvents<
+    const taskPlanningSyncedProjection = new TaskPlanningSyncedProjection<
       ControlPlaneRepositoryRecord,
       ControlPlaneTaskRecord
     >({
-      parseRepositoryRecord,
-      parseTaskRecord,
-      getRepository: (repositoryId) => repositories.get(repositoryId),
       setRepository: (repositoryId, repository) => {
         repositories.set(repositoryId, repository);
       },
@@ -3219,16 +2927,12 @@ class CodexLiveMuxRuntimeApplication {
       markDirty,
     });
 
-    const applyObservedTaskPlanningEvent = (observed: StreamObservedEvent): void => {
-      taskPlanningObservedEvents.apply(observed);
-    };
+    const harnessSyncedStore = createHarnessSyncedStore();
 
-    const workspaceObservedEvents = new WorkspaceObservedEvents<
+    const workspaceSyncedProjection = new WorkspaceSyncedProjection<
       ControlPlaneDirectoryRecord,
       ControlPlaneConversationRecord
     >({
-      parseDirectoryRecord,
-      parseConversationRecord,
       setDirectory: (directoryId, directory) => {
         directoryManager.setDirectory(directoryId, directory);
       },
@@ -3254,39 +2958,47 @@ class CodexLiveMuxRuntimeApplication {
         removeConversationState(sessionId);
         return true;
       },
-      orderedConversationIds: () => conversationManager.orderedIds(),
-      conversationDirectoryId: (sessionId) => conversationManager.directoryIdOf(sessionId),
     });
 
-    const runtimeWorkspaceObservedEvents = new RuntimeWorkspaceObservedEvents<StreamObservedEvent>({
-      reducer: workspaceObservedEvents,
-      workspace,
+    const stopWorkspaceObservedEvents = subscribeRuntimeWorkspaceObservedEvents({
+      store: harnessSyncedStore,
       orderedConversationIds: () => conversationManager.orderedIds(),
-      conversationDirectoryId: (sessionId) => conversationManager.directoryIdOf(sessionId),
-      hasConversation: (sessionId) => conversationManager.has(sessionId),
-      getActiveConversationId: () => conversationManager.activeConversationId,
-      setActiveConversationId: (sessionId) => {
-        conversationManager.setActiveConversationId(sessionId);
+      transitionPolicy: {
+        workspace,
+        getActiveConversationId: () => conversationManager.activeConversationId,
+        setActiveConversationId: (sessionId) => {
+          conversationManager.setActiveConversationId(sessionId);
+        },
+        resolveActiveDirectoryId,
+        stopConversationTitleEdit: (persistPending) => {
+          stopConversationTitleEdit(persistPending);
+        },
+        enterProjectPane,
+        enterHomePane,
       },
-      hasDirectory: (directoryId) => directoryManager.hasDirectory(directoryId),
-      resolveActiveDirectoryId,
-      unsubscribeConversationEvents: async (sessionId) => {
-        await conversationLifecycle.unsubscribeConversationEvents(sessionId);
-      },
-      stopConversationTitleEdit: (persistPending) => {
-        stopConversationTitleEdit(persistPending);
-      },
-      enterProjectPane,
-      enterHomePane,
-      queueControlPlaneOp,
-      activateConversation: async (sessionId) => {
-        await conversationLifecycle.activateConversation(sessionId);
+      effectQueue: {
+        enqueueQueuedReaction: queueControlPlaneOp,
+        unsubscribeConversationEvents: async (sessionId) => {
+          await conversationLifecycle.unsubscribeConversationEvents(sessionId);
+        },
+        activateConversation: async (sessionId) => {
+          await conversationLifecycle.activateConversation(sessionId);
+        },
       },
       markDirty,
     });
 
-    const applyObservedWorkspaceEvent = (observed: StreamObservedEvent): void => {
-      runtimeWorkspaceObservedEvents.apply(observed);
+    const runtimeObservedEventProjection: RuntimeObservedEventProjectionPipelineOptions = {
+      syncedStore: harnessSyncedStore,
+      applyWorkspaceProjection: (reduction) => {
+        workspaceSyncedProjection.apply(reduction);
+      },
+      applyDirectoryGitProjection: (event) => {
+        runtimeGitState.applyObservedGitStatusEvent(event);
+      },
+      applyTaskPlanningProjection: (reduction) => {
+        taskPlanningSyncedProjection.apply(reduction);
+      },
     };
 
     activateConversationForStartupOrchestrator = async (sessionId: string): Promise<void> => {
@@ -3324,7 +3036,7 @@ class CodexLiveMuxRuntimeApplication {
       markDirty();
     };
 
-    const runtimeRepositoryActions = new RuntimeRepositoryActions<ControlPlaneRepositoryRecord>({
+    const runtimeRepositoryActions = createRuntimeRepositoryActions<ControlPlaneRepositoryRecord>({
       workspace,
       repositories,
       controlPlaneService,
@@ -3340,7 +3052,7 @@ class CodexLiveMuxRuntimeApplication {
       markDirty,
     });
 
-    const runtimeTaskPaneActions = new RuntimeTaskPaneActions<ControlPlaneTaskRecord>({
+    const runtimeTaskPaneActions = createRuntimeTaskPaneActions<ControlPlaneTaskRecord>({
       workspace,
       controlPlaneService,
       repositoriesHas: (repositoryId) => repositories.has(repositoryId),
@@ -3386,7 +3098,7 @@ class CodexLiveMuxRuntimeApplication {
       },
       markDirty,
     });
-    const runtimeTaskPaneShortcuts = new RuntimeTaskPaneShortcuts<ControlPlaneTaskRecord>({
+    const runtimeTaskPaneShortcuts = createRuntimeTaskPaneShortcuts<ControlPlaneTaskRecord>({
       workspace,
       taskScreenKeybindings,
       repositoriesHas: (repositoryId) => repositories.has(repositoryId),
@@ -3412,7 +3124,7 @@ class CodexLiveMuxRuntimeApplication {
       applyTaskRecord: (task) => runtimeTaskPaneActions.applyTaskRecord(task),
       markDirty,
     });
-    const runtimeTaskEditorActions = new RuntimeTaskEditorActions<ControlPlaneTaskRecord>({
+    const runtimeTaskEditorActions = createRuntimeTaskEditorActions<ControlPlaneTaskRecord>({
       workspace,
       controlPlaneService,
       applyTaskRecord: (task) => runtimeTaskPaneActions.applyTaskRecord(task),
@@ -3420,62 +3132,116 @@ class CodexLiveMuxRuntimeApplication {
       markDirty,
     });
 
-    const runtimeDirectoryActions = new RuntimeDirectoryActions({
-      controlPlaneService,
-      conversations: () => conversationRecords,
-      orderedConversationIds: () => conversationManager.orderedIds(),
-      conversationDirectoryId: (sessionId) => conversationManager.directoryIdOf(sessionId),
-      conversationLive: (sessionId) => conversationManager.isLive(sessionId),
-      removeConversationState,
-      unsubscribeConversationEvents: async (sessionId) => {
-        await conversationLifecycle.unsubscribeConversationEvents(sessionId);
-      },
-      activeConversationId: () => conversationManager.activeConversationId,
-      setActiveConversationId: (sessionId) => {
-        conversationManager.setActiveConversationId(sessionId);
-      },
-      activateConversation: async (sessionId) => {
-        await conversationLifecycle.activateConversation(sessionId);
-      },
-      resolveActiveDirectoryId,
-      enterProjectPane,
-      markDirty,
-      isSessionNotFoundError,
-      isConversationNotFoundError,
-      createDirectoryId: () => `directory-${randomUUID()}`,
-      resolveWorkspacePathForMux: (rawPath) =>
-        resolveWorkspacePathForMux(options.invocationDirectory, rawPath),
-      setDirectory: (directory) => {
-        directoryManager.setDirectory(directory.directoryId, directory);
-      },
-      directoryIdOf: (directory) => directory.directoryId,
-      setActiveDirectoryId: (directoryId) => {
-        workspace.activeDirectoryId = directoryId;
-      },
-      syncGitStateWithDirectories,
-      noteGitActivity,
-      hydratePersistedConversationsForDirectory,
-      findConversationIdByDirectory: (directoryId) =>
-        conversationManager.findConversationIdByDirectory(
-          directoryId,
-          conversationManager.orderedIds(),
-        ),
-      directoriesHas: (directoryId) => directoryManager.hasDirectory(directoryId),
-      deleteDirectory: (directoryId) => {
-        directoryManager.deleteDirectory(directoryId);
-      },
-      deleteDirectoryGitState,
-      projectPaneSnapshotDirectoryId: () => workspace.projectPaneSnapshot?.directoryId ?? null,
-      clearProjectPaneSnapshot: () => {
-        workspace.projectPaneSnapshot = null;
-        workspace.projectPaneScrollTop = 0;
-      },
-      directoriesSize: () => directoryManager.directoriesSize(),
-      invocationDirectory: options.invocationDirectory,
-      activeDirectoryId: () => workspace.activeDirectoryId,
-      firstDirectoryId: () => directoryManager.firstDirectoryId(),
-    });
-    const runtimeControlActions = new RuntimeControlActions({
+    const archiveConversationById = async (sessionId: string): Promise<void> => {
+      await archiveConversationAction({
+        sessionId,
+        conversations: conversationRecords,
+        closePtySession: controlPlaneService.closePtySession,
+        removeSession: controlPlaneService.removeSession,
+        isSessionNotFoundError,
+        archiveConversationRecord: controlPlaneService.archiveConversation,
+        isConversationNotFoundError,
+        unsubscribeConversationEvents: async (conversationId) => {
+          await conversationLifecycle.unsubscribeConversationEvents(conversationId);
+        },
+        removeConversationState,
+        activeConversationId: conversationManager.activeConversationId,
+        setActiveConversationId: (conversationId) => {
+          conversationManager.setActiveConversationId(conversationId);
+        },
+        orderedConversationIds: () => conversationManager.orderedIds(),
+        conversationDirectoryId: (conversationId) =>
+          conversationManager.directoryIdOf(conversationId),
+        resolveActiveDirectoryId,
+        enterProjectPane,
+        activateConversation: async (conversationId) => {
+          await conversationLifecycle.activateConversation(conversationId);
+        },
+        markDirty,
+      });
+    };
+
+    const addDirectoryByPath = async (rawPath: string): Promise<void> => {
+      await addDirectoryByPathAction({
+        rawPath,
+        resolveWorkspacePathForMux: (candidatePath) =>
+          resolveWorkspacePathForMux(options.invocationDirectory, candidatePath),
+        upsertDirectory: async (path) => {
+          return await controlPlaneService.upsertDirectory({
+            directoryId: `directory-${randomUUID()}`,
+            path,
+          });
+        },
+        setDirectory: (directory) => {
+          directoryManager.setDirectory(directory.directoryId, directory);
+        },
+        directoryIdOf: (directory) => directory.directoryId,
+        setActiveDirectoryId: (directoryId) => {
+          workspace.activeDirectoryId = directoryId;
+        },
+        syncGitStateWithDirectories,
+        noteGitActivity,
+        hydratePersistedConversationsForDirectory: hydratePersistedConversationsForDirectory,
+        findConversationIdByDirectory: (directoryId) =>
+          conversationManager.findConversationIdByDirectory(
+            directoryId,
+            conversationManager.orderedIds(),
+          ),
+        activateConversation: async (conversationId) => {
+          await conversationLifecycle.activateConversation(conversationId);
+        },
+        enterProjectPane,
+        markDirty,
+      });
+    };
+
+    const closeDirectoryById = async (directoryId: string): Promise<void> => {
+      await closeDirectoryAction({
+        directoryId,
+        directoriesHas: (candidateDirectoryId) =>
+          directoryManager.hasDirectory(candidateDirectoryId),
+        orderedConversationIds: () => conversationManager.orderedIds(),
+        conversationDirectoryId: (conversationId) =>
+          conversationManager.directoryIdOf(conversationId),
+        conversationLive: (conversationId) => conversationManager.isLive(conversationId),
+        closePtySession: controlPlaneService.closePtySession,
+        archiveConversationRecord: controlPlaneService.archiveConversation,
+        unsubscribeConversationEvents: async (conversationId) => {
+          await conversationLifecycle.unsubscribeConversationEvents(conversationId);
+        },
+        removeConversationState,
+        activeConversationId: conversationManager.activeConversationId,
+        setActiveConversationId: (conversationId) => {
+          conversationManager.setActiveConversationId(conversationId);
+        },
+        archiveDirectory: controlPlaneService.archiveDirectory,
+        deleteDirectory: (targetDirectoryId) => {
+          directoryManager.deleteDirectory(targetDirectoryId);
+        },
+        deleteDirectoryGitState,
+        projectPaneSnapshotDirectoryId: workspace.projectPaneSnapshot?.directoryId ?? null,
+        clearProjectPaneSnapshot: () => {
+          workspace.projectPaneSnapshot = null;
+          workspace.projectPaneScrollTop = 0;
+        },
+        directoriesSize: () => directoryManager.directoriesSize(),
+        addDirectoryByPath,
+        invocationDirectory: options.invocationDirectory,
+        activeDirectoryId: workspace.activeDirectoryId,
+        setActiveDirectoryId: (targetDirectoryId) => {
+          workspace.activeDirectoryId = targetDirectoryId;
+        },
+        firstDirectoryId: () => directoryManager.firstDirectoryId(),
+        noteGitActivity,
+        resolveActiveDirectoryId,
+        activateConversation: async (conversationId) => {
+          await conversationLifecycle.activateConversation(conversationId);
+        },
+        enterProjectPane,
+        markDirty,
+      });
+    };
+    const runtimeControlActions = createRuntimeControlActions({
       conversationById: (sessionId) => conversationManager.get(sessionId),
       interruptSession: async (sessionId) => {
         return await controlPlaneService.interruptSession(sessionId);
@@ -4014,7 +3780,7 @@ class CodexLiveMuxRuntimeApplication {
           return;
         }
         queueControlPlaneOp(async () => {
-          await runtimeDirectoryActions.archiveConversation(conversationId);
+          await archiveConversationById(conversationId);
         }, 'command-menu-close-thread');
       },
     });
@@ -4505,7 +4271,8 @@ class CodexLiveMuxRuntimeApplication {
       }
     };
 
-    const runtimeRenderPipeline = new RuntimeRenderPipeline<
+    let latestRailViewRows = [] as ReturnType<typeof buildWorkspaceRailViewRows>;
+    const renderRuntimePipeline = createRuntimeRenderPipeline<
       ConversationState,
       ControlPlaneRepositoryRecord,
       ControlPlaneTaskRecord,
@@ -4612,8 +4379,6 @@ class CodexLiveMuxRuntimeApplication {
       rightPaneRender: {
         workspace,
         showTasks: showTasksEntry,
-        repositories,
-        taskManager,
         conversationPane,
         homePane,
         nimPane,
@@ -4638,27 +4403,20 @@ class CodexLiveMuxRuntimeApplication {
         sessionProjectionInstrumentation,
         workspace,
         repositoryManager,
-        repositories,
         repositoryAssociationByDirectoryId,
         directoryRepositorySnapshotByDirectoryId,
-        directories: directoryRecords,
-        conversations: conversationRecords,
         gitSummaryByDirectoryId: gitSummaryByDirectoryId,
-        processUsageBySessionId: () => processUsageRefreshService.readonlyUsage(),
         loadingGitSummary: GIT_SUMMARY_LOADING,
         showGitHubIntegration: loadedConfig.config.github.enabled,
         visibleGitHubDirectoryIds: workspace.visibleGitHubDirectoryIds,
         expandedGitHubDirectoryIds: workspace.expandedGitHubDirectoryIds,
         githubReviewByDirectoryId: projectPaneGitHubReviewByDirectoryId,
         showTasksEntry,
-        activeConversationId: () => conversationManager.activeConversationId,
-        orderedConversationIds: () => conversationManager.orderedIds(),
       },
       renderState: {
         workspace,
-        hasDirectory: (directoryId) => directoryManager.hasDirectory(directoryId),
-        activeConversationId: () => conversationManager.activeConversationId,
-        activeConversation: () => conversationManager.getActiveConversation(),
+        directories: directoryManager,
+        conversations: conversationManager,
         snapshotFrame: (conversation) => conversation.oracle.snapshotWithoutHash(),
         selectionVisibleRows,
       },
@@ -4666,15 +4424,29 @@ class CodexLiveMuxRuntimeApplication {
       clearDirty: () => {
         screen.clearDirty();
       },
+      readRenderSnapshot: () =>
+        readTuiRenderSnapshot<
+          ControlPlaneDirectoryRecord,
+          ConversationState,
+          ControlPlaneRepositoryRecord,
+          ControlPlaneTaskRecord,
+          ProcessUsageSample
+        >({
+          directories: directoryManager,
+          conversations: conversationManager,
+          repositories: repositoryManager,
+          tasks: taskManager,
+          processUsage: processUsageRefreshService,
+        }),
       setLatestRailViewRows: (rows) => {
-        workspace.latestRailViewRows = rows;
+        latestRailViewRows = rows;
       },
       activeDirectoryId: () => workspace.activeDirectoryId,
     });
 
     const render = (): void => {
       syncThemePickerPreview();
-      runtimeRenderPipeline.render({
+      renderRuntimePipeline({
         shuttingDown,
         layout,
         selection: workspace.selection,
@@ -4682,10 +4454,10 @@ class CodexLiveMuxRuntimeApplication {
       });
     };
 
-    const runtimeEnvelopeHandler = new RuntimeEnvelopeHandler<
+    const runtimeEnvelopeHandlerOptions: RuntimeEnvelopeHandlerOptions<
       ConversationState,
       ReturnType<typeof mapTerminalOutputToNormalizedEvent>
-    >({
+    > = {
       perfNowNs,
       isRemoved: (sessionId) => conversationManager.isRemoved(sessionId),
       ensureConversation,
@@ -4741,11 +4513,11 @@ class CodexLiveMuxRuntimeApplication {
         outputLoadSampler.recordOutputHandled(durationMs);
       },
       conversationById: (sessionId) => conversationManager.get(sessionId),
-      applyObservedWorkspaceEvent,
-      applyObservedGitStatusEvent,
-      applyObservedTaskPlanningEvent,
+      applyObservedEvent: (input) => {
+        applyRuntimeObservedEventProjection(input, runtimeObservedEventProjection);
+      },
       idFactory,
-    });
+    };
     const handleEnvelope = (envelope: StreamServerEnvelope): void => {
       if (envelope.kind === 'pty.output') {
         const conversation = conversationManager.get(envelope.sessionId);
@@ -4811,7 +4583,7 @@ class CodexLiveMuxRuntimeApplication {
           payload: envelope,
         });
       }
-      runtimeEnvelopeHandler.handleEnvelope(envelope);
+      handleRuntimeEnvelope(runtimeEnvelopeHandlerOptions, envelope);
     };
 
     const removeEnvelopeListener = streamClient.onEnvelope((envelope) => {
@@ -4845,7 +4617,18 @@ class CodexLiveMuxRuntimeApplication {
         isQuitShortcut: (rawInput) =>
           detectMuxGlobalShortcut(rawInput, modalDismissShortcutBindings) === 'mux.app.quit',
         dismissOnOutsideClick: (rawInput, dismiss, onInsidePointerPress) =>
-          dismissModalOnOutsideClick(rawInput, dismiss, onInsidePointerPress),
+          modalInputRemainderState.dismissModalOnOutsideClick({
+            modalManager,
+            layoutCols: layout.cols,
+            viewportRows: layout.rows,
+            input: rawInput,
+            dismiss,
+            ...(onInsidePointerPress === undefined
+              ? {}
+              : {
+                  onInsidePointerPress,
+                }),
+          }),
         buildReleaseNotesModalOverlay: () => buildReleaseNotesModalOverlay(layout.rows),
         setPrompt: (next) => {
           releaseNotesPrompt = next;
@@ -4884,7 +4667,18 @@ class CodexLiveMuxRuntimeApplication {
         },
         overlays: {
           dismissOnOutsideClick: (rawInput, dismiss, onInsidePointerPress) =>
-            dismissModalOnOutsideClick(rawInput, dismiss, onInsidePointerPress),
+            modalInputRemainderState.dismissModalOnOutsideClick({
+              modalManager,
+              layoutCols: layout.cols,
+              viewportRows: layout.rows,
+              input: rawInput,
+              dismiss,
+              ...(onInsidePointerPress === undefined
+                ? {}
+                : {
+                    onInsidePointerPress,
+                  }),
+            }),
           buildCommandMenuModalOverlay: () => buildCommandMenuModalOverlay(layout.rows),
           buildConversationTitleModalOverlay: () => buildConversationTitleModalOverlay(layout.rows),
           buildNewThreadModalOverlay: () => buildNewThreadModalOverlay(layout.rows),
@@ -4894,7 +4688,7 @@ class CodexLiveMuxRuntimeApplication {
           stopConversationTitleEdit,
           queueControlPlaneOp,
           archiveConversation: async (sessionId) => {
-            await runtimeDirectoryActions.archiveConversation(sessionId);
+            await archiveConversationById(sessionId);
           },
           createAndActivateConversationInDirectory: async (directoryId, agentType) => {
             await conversationLifecycle.createAndActivateConversationInDirectory(
@@ -4903,7 +4697,7 @@ class CodexLiveMuxRuntimeApplication {
             );
           },
           addDirectoryByPath: async (rawPath) => {
-            await runtimeDirectoryActions.addDirectoryByPath(rawPath);
+            await addDirectoryByPath(rawPath);
           },
           normalizeGitHubRemoteUrl,
           upsertRepositoryByRemoteUrl: async (remoteUrl, existingRepositoryId) => {
@@ -4964,670 +4758,145 @@ class CodexLiveMuxRuntimeApplication {
       },
     );
 
-    const openAddDirectoryPromptFromRail = (): void => {
-      workspace.repositoryPrompt = null;
-      workspace.apiKeyPrompt = null;
-      workspace.addDirectoryPrompt = {
-        value: '',
-        error: null,
-      };
-    };
-    const railNowMs = (): number => Date.now();
-    const selectLeftNavRepository = workspace.selectLeftNavRepository.bind(workspace);
-    const selectLeftNavConversation = workspace.selectLeftNavConversation.bind(workspace);
-    const leftNavInput = new LeftNavInput(
-      {
-        latestRailRows: () => workspace.latestRailViewRows,
-        currentSelection: () => workspace.leftNavSelection,
-      },
-      {
-        enterHomePane,
-        enterNimPane,
-        firstDirectoryForRepositoryGroup,
-        enterProjectPane,
-        enterGitHubPane,
-        setMainPaneProjectMode: () => {
-          workspace.mainPaneMode = 'project';
-          queuePersistMuxUiState();
+    const { handleRepositoryFoldInput, handleGlobalShortcutInput, leftRailPointerInput } =
+      createTuiLeftRailInteractions({
+        workspace,
+        railViewState: {
+          readLatestRows: () => latestRailViewRows,
         },
-        selectLeftNavRepository,
-        selectLeftNavConversation,
-        markDirty,
-        directoriesHas: (directoryId) => directoryManager.hasDirectory(directoryId),
-        conversationDirectoryId: (sessionId) => conversationManager.directoryIdOf(sessionId),
-        queueControlPlaneOp,
-        queueLatestControlPlaneOp,
-        activateConversation: async (sessionId, options) => {
-          await conversationLifecycle.activateConversation(sessionId, options);
+        directories: directoryRecords,
+        conversationRecords,
+        repositories,
+        conversationLookup: conversationManager,
+        directoryLookup: directoryManager,
+        repositoryManager,
+        repositoryGroupFallbackId: UNTRACKED_REPOSITORY_GROUP_ID,
+        queueControlPlaneOps: {
+          queueControlPlaneOp,
+          queueLatestControlPlaneOp,
         },
-        conversationsHas: (sessionId) => conversationManager.has(sessionId),
-        ...(showTasksEntry
-          ? {
-              enterTasksPane,
-            }
-          : {}),
-      },
-      {
-        visibleTargets: visibleLeftNavTargets,
-        activateTarget: activateLeftNavTarget,
-        cycleSelection: cycleLeftNavSelection,
-      },
-    );
+        conversationLifecycle,
+        runtimeDirectoryActions: {
+          archiveConversation: archiveConversationById,
+          closeDirectory: closeDirectoryById,
+        },
+        runtimeRepositoryActions,
+        runtimeControlActions,
+        navigation: {
+          enterHomePane,
+          enterNimPane,
+          enterProjectPane,
+          ...(showTasksEntry
+            ? {
+                enterTasksPane,
+              }
+            : {}),
+          resolveDirectoryForAction,
+          openNewThreadPrompt,
+          toggleCommandMenu,
+          requestStop,
+          markDirty,
+          queuePersistMuxUiState,
+          resetFrameCache: () => {
+            screen.resetFrameCache();
+          },
+          releaseViewportPinForSelection,
+        },
+        shortcutBindings,
+        showTasksEntry,
+      });
 
-    const repositoryFoldInput = new RepositoryFoldInput(
-      {
-        leftNavSelection: () => workspace.leftNavSelection,
-        repositoryToggleChordPrefixAtMs: () => workspace.repositoryToggleChordPrefixAtMs,
-        setRepositoryToggleChordPrefixAtMs: (value) => {
-          workspace.repositoryToggleChordPrefixAtMs = value;
-        },
-        conversations: () => conversationRecords,
-        repositoryGroupIdForDirectory,
-        nowMs: railNowMs,
-      },
-      {
-        collapseRepositoryGroup,
-        expandRepositoryGroup,
-        collapseAllRepositoryGroups,
-        expandAllRepositoryGroups,
-        selectLeftNavRepository,
-        markDirty,
-      },
-      {
-        chordTimeoutMs: REPOSITORY_TOGGLE_CHORD_TIMEOUT_MS,
-        collapseAllChordPrefix: REPOSITORY_COLLAPSE_ALL_CHORD_PREFIX,
-      },
-      {
-        reduceRepositoryFoldChordInput,
-        repositoryTreeArrowAction,
-      },
-    );
-    const globalShortcutInput = new GlobalShortcutInput(
-      shortcutBindings,
-      {
-        mainPaneMode: () => workspace.mainPaneMode,
-        activeConversationId: () => conversationManager.activeConversationId,
-        activeConversationAgentType: () => {
-          const activeConversationId = conversationManager.activeConversationId;
-          if (activeConversationId === null) {
-            return null;
-          }
-          return conversationRecords.get(activeConversationId)?.agentType ?? null;
-        },
-        resolveConversationForAction: () => {
-          if (workspace.mainPaneMode === 'conversation') {
-            return conversationManager.activeConversationId;
-          }
-          if (workspace.leftNavSelection.kind !== 'github') {
-            return null;
-          }
-          const targetDirectoryId = workspace.leftNavSelection.directoryId;
-          const activeConversationId = conversationManager.activeConversationId;
-          if (
-            activeConversationId !== null &&
-            conversationManager.directoryIdOf(activeConversationId) === targetDirectoryId
-          ) {
-            return activeConversationId;
-          }
-          return (
-            conversationManager
-              .orderedIds()
-              .find(
-                (sessionId) => conversationManager.directoryIdOf(sessionId) === targetDirectoryId,
-              ) ?? null
-          );
-        },
-        conversationsHas: (sessionId) => conversationManager.has(sessionId),
-        activeDirectoryId: () => workspace.activeDirectoryId,
-        directoryExists: (directoryId) => directoryManager.hasDirectory(directoryId),
-      },
-      {
-        requestStop,
-        resolveDirectoryForAction,
-        openNewThreadPrompt,
-        toggleCommandMenu,
-        openOrCreateCritiqueConversationInDirectory: async (directoryId) => {
-          await conversationLifecycle.openOrCreateCritiqueConversationInDirectory(directoryId);
-        },
-        toggleGatewayProfile: async () => {
-          await runtimeControlActions.toggleGatewayProfiler();
-        },
-        toggleGatewayStatusTimeline: async () => {
-          await runtimeControlActions.toggleGatewayStatusTimeline();
-        },
-        toggleGatewayRenderTrace: async (conversationId) => {
-          await runtimeControlActions.toggleGatewayRenderTrace(conversationId);
-        },
-        queueControlPlaneOp,
-        archiveConversation: async (sessionId) => {
-          await runtimeDirectoryActions.archiveConversation(sessionId);
-        },
-        refreshAllConversationTitles: async () => {
-          await runtimeControlActions.refreshAllConversationTitles();
-        },
-        interruptConversation: async (sessionId) => {
-          await runtimeControlActions.interruptConversation(sessionId);
-        },
-        takeoverConversation: async (sessionId) => {
-          await conversationLifecycle.takeoverConversation(sessionId);
-        },
-        openAddDirectoryPrompt: () => {
-          openAddDirectoryPromptFromRail();
-          markDirty();
-        },
-        closeDirectory: async (directoryId) => {
-          await runtimeDirectoryActions.closeDirectory(directoryId);
-        },
-        cycleLeftNavSelection: leftNavInput.cycleSelection.bind(leftNavInput),
-      },
-      {
-        detectShortcut: detectMuxGlobalShortcut,
-        handleShortcut: handleGlobalShortcut,
-      },
-    );
-    const handleRepositoryFoldInput = (input: Buffer): boolean => {
-      return (
-        repositoryFoldInput.handleRepositoryFoldChords(input) ||
-        repositoryFoldInput.handleRepositoryTreeArrow(input)
-      );
+    const routeModalInput = (input: Buffer): boolean => {
+      return routeTuiModalInput({
+        input,
+        routeReleaseNotesModalInput,
+        routeModalInput: (modalInput) => modalInputRouter.routeModalInput(modalInput),
+      });
     };
-    const handleGlobalShortcutInput = (input: Buffer): boolean => {
-      return globalShortcutInput.handleInput(input);
-    };
-
-    const leftRailPointerHandler = new LeftRailPointerHandler(
-      {
-        latestRailRows: () => workspace.latestRailViewRows,
-        conversationTitleEditConversationId: () =>
-          workspace.conversationTitleEdit?.conversationId ?? null,
-        activeConversationId: () => conversationManager.activeConversationId,
-        repositoriesCollapsed: () => workspace.repositoriesCollapsed,
-        resolveDirectoryForAction,
-        previousConversationClickState: () => workspace.conversationTitleEditClickState,
-        nowMs: railNowMs,
-        isConversationPaneActive: () => workspace.mainPaneMode === 'conversation',
-        directoriesHas: (directoryId) => directoryManager.hasDirectory(directoryId),
+    const { handleInput } = createTuiMainPaneInteractions({
+      workspace,
+      controllerId: muxControllerId,
+      getLayout: () => layout,
+      noteGitActivity,
+      getInputRemainder: () => modalInputRemainderState.getInputRemainder(),
+      setInputRemainder: (next) => {
+        modalInputRemainderState.setInputRemainder(next);
       },
-      {
-        clearConversationTitleEditClickState: () => {
-          workspace.conversationTitleEditClickState = null;
+      leftRailPointerInput,
+      project: {
+        projectPaneActionAtRow,
+        refreshGitHubReview: (directoryId) => {
+          refreshProjectPaneGitHubReviewState(directoryId, {
+            forceRefresh: true,
+          });
         },
+        toggleGitHubNode: toggleProjectPaneGitHubNode,
         openNewThreadPrompt,
-        queueArchiveConversation: (conversationId) => {
-          queueControlPlaneOp(async () => {
-            await runtimeDirectoryActions.archiveConversation(conversationId);
-          }, 'mouse-archive-conversation');
-        },
-        openAddDirectoryPrompt: openAddDirectoryPromptFromRail,
-        openRepositoryPromptForCreate: () => {
-          runtimeRepositoryActions.openRepositoryPromptForCreate();
-        },
-        repositoryExists: (repositoryId) => repositories.has(repositoryId),
-        openRepositoryPromptForEdit: (repositoryId) => {
-          runtimeRepositoryActions.openRepositoryPromptForEdit(repositoryId);
-        },
-        queueArchiveRepository: (repositoryId) => {
-          queueControlPlaneOp(async () => {
-            await runtimeRepositoryActions.archiveRepositoryById(repositoryId);
-          }, 'mouse-archive-repository');
-        },
-        toggleRepositoryGroup,
-        selectLeftNavRepository,
-        expandAllRepositoryGroups,
-        collapseAllRepositoryGroups,
-        enterHomePane,
-        enterNimPane,
-        ...(showTasksEntry
-          ? {
-              enterTasksPane,
-            }
-          : {}),
         queueCloseDirectory: (directoryId) => {
           queueControlPlaneOp(async () => {
-            await runtimeDirectoryActions.closeDirectory(directoryId);
-          }, 'mouse-close-directory');
-        },
-        toggleShortcutsCollapsed: () => {
-          workspace.shortcutsCollapsed = !workspace.shortcutsCollapsed;
-          queuePersistMuxUiState();
-        },
-        setConversationClickState: (next) => {
-          workspace.conversationTitleEditClickState = next;
-        },
-        ensureConversationPaneActive: (conversationId) => {
-          workspace.mainPaneMode = 'conversation';
-          queuePersistMuxUiState();
-          workspace.selectLeftNavConversation(conversationId);
-          workspace.projectPaneSnapshot = null;
-          workspace.projectPaneScrollTop = 0;
-          screen.resetFrameCache();
-        },
-        beginConversationTitleEdit,
-        queueActivateConversation: (conversationId) => {
-          queueLatestControlPlaneOp(
-            'left-nav:activate-conversation',
-            async ({ signal }) => {
-              if (signal.aborted) {
-                return;
-              }
-              await conversationLifecycle.activateConversation(conversationId, {
-                signal,
-              });
-            },
-            'mouse-activate-conversation',
-          );
-        },
-        queueActivateConversationAndEdit: (conversationId) => {
-          queueLatestControlPlaneOp(
-            'left-nav:activate-conversation',
-            async ({ signal }) => {
-              if (signal.aborted) {
-                return;
-              }
-              await conversationLifecycle.activateConversation(conversationId, {
-                signal,
-              });
-              if (signal.aborted) {
-                return;
-              }
-              beginConversationTitleEdit(conversationId);
-            },
-            'mouse-activate-edit-conversation',
-          );
-        },
-        enterProjectPane,
-        enterGitHubPane,
-        toggleGitHubProjectExpanded,
-        markDirty,
-      },
-      {
-        conversationTitleEditDoubleClickWindowMs: CONVERSATION_TITLE_EDIT_DOUBLE_CLICK_WINDOW_MS,
-      },
-    );
-
-    const leftRailPointerInput = new RailPointerInput(
-      leftRailPointerHandler,
-      leftRailPointerHandler,
-      {
-        hasActiveEdit: () => workspace.conversationTitleEdit !== null,
-        shouldKeepActiveEdit: (hit) =>
-          leftRailPointerHandler.shouldKeepConversationTitleEditActive(hit),
-        stopActiveEdit: () => {
-          stopConversationTitleEdit(true);
+            await closeDirectoryById(directoryId);
+          }, 'project-pane-close-project');
         },
       },
-      {
-        hasSelection: () => workspace.selection !== null || workspace.selectionDrag !== null,
-        clearSelection: () => {
-          workspace.selection = null;
-          workspace.selectionDrag = null;
-          releaseViewportPinForSelection();
-        },
-      },
-    );
-
-    const stripAnsiSgr = (value: string): string => {
-      let output = '';
-      let index = 0;
-      while (index < value.length) {
-        const char = value[index]!;
-        if (char === '\u001b' && value[index + 1] === '[') {
-          index += 2;
-          while (index < value.length) {
-            const nextChar = value[index]!;
-            if (nextChar >= '@' && nextChar <= '~') {
-              index += 1;
-              break;
-            }
-            index += 1;
-          }
-          continue;
-        }
-        output += char;
-        index += 1;
-      }
-      return output;
-    };
-
-    const selectionTextFromHomePaneRows = (
-      rows: readonly string[],
-      viewportTop: number,
-      selection: PaneSelection,
-    ): string => {
-      const normalized =
-        compareSelectionPoints(selection.anchor, selection.focus) <= 0
-          ? {
-              start: selection.anchor,
-              end: selection.focus,
-            }
-          : {
-              start: selection.focus,
-              end: selection.anchor,
-            };
-      const selectedRows: string[] = [];
-      for (let rowAbs = normalized.start.rowAbs; rowAbs <= normalized.end.rowAbs; rowAbs += 1) {
-        const rowIndex = rowAbs - viewportTop;
-        const rowText = rows[rowIndex] ?? '';
-        const rowStart = rowAbs === normalized.start.rowAbs ? normalized.start.col : 0;
-        const rowEnd = rowAbs === normalized.end.rowAbs ? normalized.end.col : rowText.length - 1;
-        if (rowEnd < rowStart || rowStart >= rowText.length) {
-          selectedRows.push('');
-          continue;
-        }
-        const start = Math.max(0, rowStart);
-        const endExclusive = Math.min(rowText.length, rowEnd + 1);
-        selectedRows.push(rowText.slice(start, endExclusive));
-      }
-      return selectedRows.join('\n');
-    };
-
-    const mainPaneNowMs = (): number => Date.now();
-    const mainPanePointerInput = new MainPanePointerInput(
-      {
-        getMainPaneMode: () => workspace.mainPaneMode,
-        getProjectPaneSnapshot: () => workspace.projectPaneSnapshot,
-        getProjectPaneScrollTop: () => workspace.projectPaneScrollTop,
-        projectPaneActionAtRow,
-        openNewThreadPrompt,
-        queueCloseDirectory: (directoryId) =>
-          queueControlPlaneOp(async () => {
-            await runtimeDirectoryActions.closeDirectory(directoryId);
-          }, 'project-pane-close-project'),
-        actionAtCell: (rowIndex, colIndex) =>
-          taskFocusedPaneActionAtCell(workspace.latestTaskPaneView, rowIndex, colIndex),
-        actionAtRow: (rowIndex) =>
-          taskFocusedPaneActionAtRow(workspace.latestTaskPaneView, rowIndex),
-        clearTaskEditClickState: () => {
-          workspace.taskPaneTaskEditClickState = null;
-        },
-        clearRepositoryEditClickState: () => {
-          workspace.taskPaneRepositoryEditClickState = null;
-        },
-        clearHomePaneDragState: () => {
-          workspace.homePaneDragState = null;
-        },
-        getTaskRepositoryDropdownOpen: () => workspace.taskRepositoryDropdownOpen,
-        setTaskRepositoryDropdownOpen: (open) => {
-          workspace.taskRepositoryDropdownOpen = open;
-        },
-        taskIdAtRow: (rowIndex) =>
-          taskFocusedPaneTaskIdAtRow(workspace.latestTaskPaneView, rowIndex),
-        repositoryIdAtRow: (rowIndex) =>
-          taskFocusedPaneRepositoryIdAtRow(workspace.latestTaskPaneView, rowIndex),
-        rowTextAtRow: (rowIndex) => workspace.latestTaskPaneView.plainRows?.[rowIndex] ?? null,
+      task: {
         selectTaskById,
         selectRepositoryById,
         runTaskPaneAction: (action) => {
           runtimeTaskPaneActions.runTaskPaneAction(action);
         },
-        nowMs: mainPaneNowMs,
-        homePaneEditDoubleClickWindowMs: HOME_PANE_EDIT_DOUBLE_CLICK_WINDOW_MS,
-        getTaskEditClickState: () => workspace.taskPaneTaskEditClickState,
-        getRepositoryEditClickState: () => workspace.taskPaneRepositoryEditClickState,
-        clearTaskPaneNotice: () => {
-          workspace.taskPaneNotice = null;
-        },
-        setTaskEditClickState: (next) => {
-          workspace.taskPaneTaskEditClickState = next;
-        },
-        setRepositoryEditClickState: (next) => {
-          workspace.taskPaneRepositoryEditClickState = next;
-        },
-        setHomePaneDragState: (next) => {
-          workspace.homePaneDragState = next;
-        },
         openTaskEditPrompt: (taskId) => {
           runtimeTaskPaneActions.openTaskEditPrompt(taskId);
         },
-        openRepositoryPromptForEdit: (repositoryId) => {
-          runtimeRepositoryActions.openRepositoryPromptForEdit(repositoryId);
-        },
-        markDirty,
-      },
-      {
-        handleProjectPaneActionClick: (input) =>
-          handleProjectPaneActionClick({
-            ...input,
-            handleProjectPaneAction: (action, directoryId) => {
-              if (action === 'project.github.refresh') {
-                refreshProjectPaneGitHubReviewState(directoryId, {
-                  forceRefresh: true,
-                });
-                return true;
-              }
-              return false;
-            },
-          }),
-        handleHomePanePointerClick,
-      },
-    );
-
-    const pointerRoutingInput = new PointerRoutingInput(
-      {
-        getPaneDividerDragActive: () => workspace.paneDividerDragActive,
-        setPaneDividerDragActive: (active) => {
-          workspace.paneDividerDragActive = active;
-        },
-        applyPaneDividerAtCol: (col) => {
-          applyPaneDividerAtCol(col);
-        },
-        getHomePaneDragState: () => workspace.homePaneDragState,
-        setHomePaneDragState: (next) => {
-          workspace.homePaneDragState = next;
-        },
-        getMainPaneMode: () => workspace.mainPaneMode,
-        taskIdAtRow: (index) => taskFocusedPaneTaskIdAtRow(workspace.latestTaskPaneView, index),
-        repositoryIdAtRow: (index) =>
-          taskFocusedPaneRepositoryIdAtRow(workspace.latestTaskPaneView, index),
         reorderTaskByDrop: (draggedTaskId, targetTaskId) => {
           runtimeTaskPaneActions.reorderTaskByDrop(draggedTaskId, targetTaskId);
         },
         reorderRepositoryByDrop,
-        onProjectWheel: (delta) => {
-          workspace.projectPaneScrollTop = Math.max(0, workspace.projectPaneScrollTop + delta);
-        },
-        onHomeWheel: (delta) => {
-          workspace.taskPaneScrollTop = Math.max(0, workspace.taskPaneScrollTop + delta);
-        },
-        onNimWheel: () => {},
-        markDirty,
+        handleShortcutInput: (input) => runtimeTaskPaneShortcuts.handleInput(input),
       },
-      {
-        handlePaneDividerDragInput,
-        handleHomePaneDragRelease,
-        handleSeparatorPointerPress,
-        handleMainPaneWheelInput,
-        handleHomePaneDragMove,
+      repository: {
+        openRepositoryPromptForEdit: (repositoryId) => {
+          runtimeRepositoryActions.openRepositoryPromptForEdit(repositoryId);
+        },
       },
-    );
-
-    const conversationSelectionInput = new ConversationSelectionInput(
-      {
-        getSelection: () => workspace.selection,
-        setSelection: (next) => {
-          workspace.selection = next;
-        },
-        getSelectionDrag: () => workspace.selectionDrag,
-        setSelectionDrag: (next) => {
-          workspace.selectionDrag = next;
-        },
+      selection: {
         pinViewportForSelection,
-        releaseViewportPinForSelection: () => {
-          releaseViewportPinForSelection();
-        },
-        markDirty,
+        releaseViewportPinForSelection,
       },
-      {
-        pointFromMouseEvent,
-        reduceConversationMouseSelection,
-        selectionText,
-      },
-    );
-
-    const mainPaneInputTokenRouter = new InputTokenRouter(
-      {
-        getMainPaneMode: () => workspace.mainPaneMode,
-        getHomePaneSelectionContext: () => {
-          const plainRows =
-            workspace.latestTaskPaneView.plainRows ?? workspace.latestTaskPaneView.rows;
-          const rows = plainRows.map((row) => stripAnsiSgr(row));
-          const viewportTop = Math.max(0, workspace.latestTaskPaneView.top);
-          return {
-            viewportTop,
-            totalRows: Math.max(1, viewportTop + rows.length),
-            resolveSelectionText: (selection) =>
-              selectionTextFromHomePaneRows(rows, viewportTop, selection),
-          };
-        },
-        pointerRoutingInput,
-        mainPanePointerInput,
-        leftRailPointerInput,
-        conversationSelectionInput,
-      },
-      {
-        classifyPaneAt: (layout, col, row) =>
-          classifyPaneAt(layout as Parameters<typeof classifyPaneAt>[0], col, row),
-        isLeftButtonPress,
-        hasAltModifier,
-        hasShiftModifier: (code) => (code & 0b0000_0100) !== 0,
-        isMotionMouseCode,
-      },
-    );
-
-    const inputPreflight = new InputPreflight(
-      {
+      runtime: {
         isShuttingDown: () => shuttingDown,
-        routeModalInput: (input) => {
-          if (routeReleaseNotesModalInput(input)) {
-            return true;
-          }
-          return modalInputRouter.routeModalInput(input);
+        getActiveConversation: () => conversationManager.getActiveConversation(),
+        sendInputToSession: (sessionId, input) => {
+          streamClient.sendInput(sessionId, input);
         },
-        handleEscapeInput: (input) => {
-          if (workspace.selection !== null || workspace.selectionDrag !== null) {
-            workspace.selection = null;
-            workspace.selectionDrag = null;
-            releaseViewportPinForSelection();
-            markDirty();
-          }
-          if (workspace.mainPaneMode === 'conversation') {
-            const escapeTarget = conversationManager.getActiveConversation();
-            if (escapeTarget !== null) {
-              streamClient.sendInput(escapeTarget.sessionId, input);
-            }
-            return;
-          }
-          if (workspace.mainPaneMode === 'nim') {
-            runtimeNimSession.handleEscape();
-          }
-        },
-        onFocusIn: () => {
+        isControlledByLocalHuman: (input) => conversationManager.isControlledByLocalHuman(input),
+        enableInputMode: () => {
           inputModeManager.enable();
-          markDirty();
         },
-        onFocusOut: () => {
-          markDirty();
-        },
+      },
+      modal: {
+        routeModalInput,
+      },
+      shortcuts: {
         handleRepositoryFoldInput,
         handleGlobalShortcutInput,
-        handleTaskPaneShortcutInput: (input) => {
-          const handled = runtimeTaskPaneShortcuts.handleInput(input);
-          if (handled && (workspace.selection !== null || workspace.selectionDrag !== null)) {
-            workspace.selection = null;
-            workspace.selectionDrag = null;
-            releaseViewportPinForSelection();
-            markDirty();
-          }
-          return handled;
-        },
-        handleCopyShortcutInput: (input) => {
-          if (workspace.selection === null || !isCopyShortcutInput(input)) {
-            return false;
-          }
-          let textToCopy = workspace.selection.text;
-          if (workspace.mainPaneMode === 'conversation') {
-            const active = conversationManager.getActiveConversation();
-            if (active === null) {
-              return true;
-            }
-            const selectedFrame = active.oracle.snapshotWithoutHash();
-            textToCopy = selectionText(selectedFrame, workspace.selection);
-          }
-          if (textToCopy.length === 0) {
-            return true;
-          }
-          const copied = writeTextToClipboard(textToCopy);
-          if (copied) {
-            markDirty();
-          }
-          return true;
-        },
       },
-      {
-        extractFocusEvents,
+      layout: {
+        applyPaneDividerAtCol,
       },
-    );
-    const conversationInputForwarder = new ConversationInputForwarder<
-      ReturnType<ConversationState['oracle']['snapshotWithoutHash']>,
-      ConversationState
-    >({
-      getInputRemainder: () => inputRemainder,
-      setInputRemainder: (next) => {
-        inputRemainder = next;
-      },
-      getMainPaneMode: () => workspace.mainPaneMode,
-      getLayout: () => layout,
-      inputTokenRouter: mainPaneInputTokenRouter,
-      getActiveConversation: () => conversationManager.getActiveConversation(),
       markDirty,
-      isControlledByLocalHuman: (input) => conversationManager.isControlledByLocalHuman(input),
-      controllerId: muxControllerId,
-      sendInputToSession: (sessionId, chunk) => {
-        streamClient.sendInput(sessionId, chunk);
+      handlePassthroughTextInMainPaneMode: ({ mainPaneMode, text }) => {
+        if (mainPaneMode === 'nim') runtimeNimSession.handleInputChunk(text);
       },
-      noteGitActivity,
-      parseMuxInputChunk,
-      routeInputTokensForConversation: (input) =>
-        routeInputTokensForConversation({
-          ...input,
-          hasMetaModifier: commandModifierPressed,
-          handleMetaClick: ({ event, layout, snapshotForInput }) => {
-            if (!leftMouseButtonPress(event.code, event.final)) {
-              return false;
-            }
-            return handleConversationCommandClick({
-              event: {
-                col: event.col,
-                row: event.row,
-              },
-              layout,
-              snapshotForInput,
-            });
-          },
-        }),
-      classifyPaneAt,
-      normalizeMuxKeyboardInputForPty,
-      handlePassthroughTextInMainPaneMode: (input) => {
-        if (input.mainPaneMode === 'nim') {
-          runtimeNimSession.handleInputChunk(input.text);
-        }
+      handleEscapeInMainPaneMode: (mainPaneMode) => {
+        if (mainPaneMode === 'nim') runtimeNimSession.handleEscape();
       },
     });
-
-    const onInput = (chunk: Buffer): void => {
-      const sanitized = inputPreflight.nextInput(chunk);
-      if (sanitized === null) {
-        return;
-      }
-      conversationInputForwarder.handleInput(sanitized);
-    };
-
     const onResize = (): void => {
       const nextSize = terminalSize();
       queueResize(nextSize);
     };
-    const runtimeProcessWiring = new RuntimeProcessWiring({
-      onInput,
+    const detachRuntimeProcessWiring = attachRuntimeProcessWiring({
+      onInput: handleInput,
       onResize,
       requestStop,
       handleRuntimeFatal,
@@ -5637,12 +4906,10 @@ class CodexLiveMuxRuntimeApplication {
     runtimeNimSession.resize(layout.rightCols, layout.paneRows);
     await startupOrchestrator.hydrateStartupState(startupObservedCursor);
 
-    runtimeProcessWiring.attach();
-
     inputModeManager.enable();
     applyLayout(size, true);
     scheduleRender();
-    const runtimeShutdownService = new RuntimeShutdownService({
+    const runtimeShutdownOptions = {
       screen,
       outputLoadSampler,
       startupBackgroundProbeService: startupOrchestrator,
@@ -5680,9 +4947,12 @@ class CodexLiveMuxRuntimeApplication {
         runtimeRenderLifecycle.clearRenderScheduled();
       },
       detachProcessListeners: () => {
-        runtimeProcessWiring.detach();
+        detachRuntimeProcessWiring();
       },
       removeEnvelopeListener,
+      stopWorkspaceObservedEvents: () => {
+        stopWorkspaceObservedEvents();
+      },
       unsubscribeTaskPlanningEvents: async () => {
         await conversationLifecycle.unsubscribeTaskPlanningEvents();
       },
@@ -5705,7 +4975,7 @@ class CodexLiveMuxRuntimeApplication {
       },
       startupShutdownService: startupOrchestrator,
       shutdownPerfCore,
-    });
+    };
 
     try {
       while (!stop) {
@@ -5718,7 +4988,7 @@ class CodexLiveMuxRuntimeApplication {
       statusTimelineRecorder.close();
       renderTraceRecorder.close();
       await runtimeNimSession.dispose();
-      await runtimeShutdownService.finalize();
+      await finalizeRuntimeShutdown(runtimeShutdownOptions);
     }
 
     if (exit === null) {

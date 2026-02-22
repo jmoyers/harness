@@ -7,7 +7,7 @@ interface RenderTerminalRecordingToGifInput {
   readonly outputPath: string;
 }
 
-interface RecordingServiceOptions {
+export interface RecordingServiceOptions {
   readonly recordingWriter: RecordingWriter | null;
   readonly recordingPath: string | null;
   readonly recordingGifOutputPath: string | null;
@@ -17,37 +17,50 @@ interface RecordingServiceOptions {
   readonly writeStderr: (text: string) => void;
 }
 
-export class RecordingService {
-  constructor(private readonly options: RecordingServiceOptions) {}
+export interface RecordingService {
+  closeWriter(): Promise<unknown | null>;
+  finalizeAfterShutdown(recordingCloseError: unknown | null): Promise<void>;
+}
 
-  async closeWriter(): Promise<unknown | null> {
-    if (this.options.recordingWriter === null) {
+export function createRecordingService(options: RecordingServiceOptions): RecordingService {
+  function formatCloseError(recordingCloseError: unknown): string {
+    if (recordingCloseError instanceof Error) {
+      return recordingCloseError.message;
+    }
+    if (typeof recordingCloseError === 'string') {
+      return recordingCloseError;
+    }
+    return 'unknown error';
+  }
+
+  async function closeWriter(): Promise<unknown | null> {
+    if (options.recordingWriter === null) {
       return null;
     }
     try {
-      await this.options.recordingWriter.close();
+      await options.recordingWriter.close();
       return null;
     } catch (error: unknown) {
       return error;
     }
   }
 
-  async finalizeAfterShutdown(recordingCloseError: unknown | null): Promise<void> {
+  async function finalizeAfterShutdown(recordingCloseError: unknown | null): Promise<void> {
     if (
-      this.options.recordingGifOutputPath !== null &&
-      this.options.recordingPath !== null &&
+      options.recordingGifOutputPath !== null &&
+      options.recordingPath !== null &&
       recordingCloseError === null
     ) {
       try {
-        await this.options.renderTerminalRecordingToGif({
-          recordingPath: this.options.recordingPath,
-          outputPath: this.options.recordingGifOutputPath,
+        await options.renderTerminalRecordingToGif({
+          recordingPath: options.recordingPath,
+          outputPath: options.recordingGifOutputPath,
         });
-        this.options.writeStderr(
-          `[mux-recording] jsonl=${this.options.recordingPath} gif=${this.options.recordingGifOutputPath}\n`,
+        options.writeStderr(
+          `[mux-recording] jsonl=${options.recordingPath} gif=${options.recordingGifOutputPath}\n`,
         );
       } catch (error: unknown) {
-        this.options.writeStderr(
+        options.writeStderr(
           `[mux-recording] gif-export-failed ${
             error instanceof Error ? error.message : String(error)
           }\n`,
@@ -57,19 +70,14 @@ export class RecordingService {
     }
 
     if (recordingCloseError !== null) {
-      this.options.writeStderr(
-        `[mux-recording] close-failed ${this.formatCloseError(recordingCloseError)}\n`,
+      options.writeStderr(
+        `[mux-recording] close-failed ${formatCloseError(recordingCloseError)}\n`,
       );
     }
   }
 
-  private formatCloseError(recordingCloseError: unknown): string {
-    if (recordingCloseError instanceof Error) {
-      return recordingCloseError.message;
-    }
-    if (typeof recordingCloseError === 'string') {
-      return recordingCloseError;
-    }
-    return 'unknown error';
-  }
+  return {
+    closeWriter,
+    finalizeAfterShutdown,
+  };
 }

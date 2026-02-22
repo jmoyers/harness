@@ -1,13 +1,16 @@
 import type { ConversationState } from '../mux/live-mux/conversation-state.ts';
 import { StartupSequencer } from '../mux/startup-sequencer.ts';
 import { StartupBackgroundProbeService } from './startup-background-probe.ts';
-import { StartupBackgroundResumeService } from './startup-background-resume.ts';
+import {
+  createStartupBackgroundResumeService,
+  type StartupBackgroundResumeService,
+} from './startup-background-resume.ts';
 import { StartupOutputTracker } from './startup-output-tracker.ts';
-import { StartupPaintTracker } from './startup-paint-tracker.ts';
-import { StartupSettledGate } from './startup-settled-gate.ts';
-import { StartupShutdownService } from './startup-shutdown.ts';
+import { createStartupPaintTracker, type StartupPaintTracker } from './startup-paint-tracker.ts';
+import { createStartupSettledGate } from './startup-settled-gate.ts';
+import { finalizeStartupShutdown, type StartupShutdownServiceOptions } from './startup-shutdown.ts';
 import { StartupSpanTracker } from './startup-span-tracker.ts';
-import { StartupVisibility } from './startup-visibility.ts';
+import { createStartupVisibility } from './startup-visibility.ts';
 
 type PerfAttrs = Record<string, boolean | number | string>;
 
@@ -47,7 +50,7 @@ export class StartupOrchestrator {
   private readonly startupPaintTracker: StartupPaintTracker;
   private readonly startupBackgroundProbeService: StartupBackgroundProbeService;
   private readonly startupBackgroundResumeService: StartupBackgroundResumeService;
-  private readonly startupShutdownService: StartupShutdownService;
+  private readonly startupShutdownOptions: StartupShutdownServiceOptions;
 
   constructor(private readonly options: StartupOrchestratorOptions) {
     this.startupSequencer = new StartupSequencer({
@@ -58,8 +61,8 @@ export class StartupOrchestrator {
       options.startPerfSpan,
       options.startupSettleQuietMs,
     );
-    const startupVisibility = new StartupVisibility();
-    const startupSettledGate = new StartupSettledGate({
+    const startupVisibility = createStartupVisibility();
+    const startupSettledGate = createStartupSettledGate({
       startupSequencer: this.startupSequencer,
       startupSpanTracker: this.startupSpanTracker,
       getConversation: options.getConversation,
@@ -72,7 +75,7 @@ export class StartupOrchestrator {
       startupSpanTracker: this.startupSpanTracker,
       recordPerfEvent: options.recordPerfEvent,
     });
-    this.startupPaintTracker = new StartupPaintTracker({
+    this.startupPaintTracker = createStartupPaintTracker({
       startupSequencer: this.startupSequencer,
       startupSpanTracker: this.startupSpanTracker,
       startupVisibility,
@@ -88,7 +91,7 @@ export class StartupOrchestrator {
       refreshProcessUsage: options.refreshProcessUsage,
       recordPerfEvent: options.recordPerfEvent,
     });
-    this.startupBackgroundResumeService = new StartupBackgroundResumeService({
+    this.startupBackgroundResumeService = createStartupBackgroundResumeService({
       enabled: options.backgroundResumeEnabled,
       maxWaitMs: options.backgroundWaitMaxMs,
       waitForSettled: () => this.startupSequencer.waitForSettled(),
@@ -96,11 +99,11 @@ export class StartupOrchestrator {
       queuePersistedConversationsInBackground: options.queuePersistedConversationsInBackground,
       recordPerfEvent: options.recordPerfEvent,
     });
-    this.startupShutdownService = new StartupShutdownService({
+    this.startupShutdownOptions = {
       startupSequencer: this.startupSequencer,
       startupSpanTracker: this.startupSpanTracker,
       startupSettledGate,
-    });
+    };
   }
 
   get firstPaintTargetSessionId(): string | null {
@@ -161,6 +164,6 @@ export class StartupOrchestrator {
   }
 
   finalize(): void {
-    this.startupShutdownService.finalize();
+    finalizeStartupShutdown(this.startupShutdownOptions);
   }
 }

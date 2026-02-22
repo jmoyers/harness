@@ -6,9 +6,7 @@ import type {
   TaskFocusedPaneRepositoryRecord,
   TaskFocusedPaneTaskRecord,
 } from '../../../../src/mux/task-focused-pane.ts';
-import type { RuntimeLeftRailRender } from '../../../../src/services/runtime-left-rail-render.ts';
-import { RuntimeRenderPipeline } from '../../../../src/services/runtime-render-pipeline.ts';
-import type { RuntimeRightPaneRender } from '../../../../src/services/runtime-right-pane-render.ts';
+import { createRuntimeRenderPipeline } from '../../../../src/services/runtime-render-pipeline.ts';
 
 interface TestConversation {
   readonly conversationId: string;
@@ -56,6 +54,27 @@ function createWorkspace(): WorkspaceModel {
   });
 }
 
+function buildSnapshot<
+  TRepositoryRecord extends TaskFocusedPaneRepositoryRecord,
+  TTaskRecord extends TaskFocusedPaneTaskRecord,
+>() {
+  return {
+    leftRail: {
+      repositories: new Map<string, TRepositoryRecord>(),
+      directories: new Map<string, TestDirectory>(),
+      conversations: new Map<string, TestConversation>(),
+      orderedConversationIds: [],
+      processUsageBySessionId: new Map<string, TestProcessUsage>(),
+      activeConversationId: null,
+    },
+    rightPane: {
+      repositories: new Map<string, TRepositoryRecord>(),
+      tasks: new Map<string, TTaskRecord>(),
+      taskComposers: new Map(),
+    },
+  };
+}
+
 void test('runtime render pipeline composes underlying render services and delegates render calls', () => {
   const workspace = createWorkspace();
   let clearDirtyCalls = 0;
@@ -64,22 +83,8 @@ void test('runtime render pipeline composes underlying render services and deleg
   });
   type RepoRecord = TaskFocusedPaneRepositoryRecord;
   type TaskRecord = TaskFocusedPaneTaskRecord;
-  type RightPaneOptions = ConstructorParameters<
-    typeof RuntimeRightPaneRender<RepoRecord, TaskRecord>
-  >[0];
-  type LeftRailOptions = ConstructorParameters<
-    typeof RuntimeLeftRailRender<
-      TestDirectory,
-      TestConversation,
-      RepoRecord,
-      TestRepositorySnapshot,
-      TestGitSummary,
-      TestProcessUsage,
-      TestRailRows
-    >
-  >[0];
 
-  const renderPipeline = new RuntimeRenderPipeline<
+  const renderPipeline = createRuntimeRenderPipeline<
     TestConversation,
     RepoRecord,
     TaskRecord,
@@ -110,11 +115,6 @@ void test('runtime render pipeline composes underlying render services and deleg
     },
     rightPaneRender: {
       workspace,
-      repositories: new Map<string, RepoRecord>(),
-      taskManager: {
-        readonlyTasks: () => new Map<string, TaskRecord>(),
-        readonlyTaskComposers: () => new Map(),
-      } as unknown as RightPaneOptions['taskManager'],
       conversationPane: {
         render: () => [],
       },
@@ -157,23 +157,21 @@ void test('runtime render pipeline composes underlying render services and deleg
       workspace,
       repositoryManager: {
         readonlyCollapsedRepositoryGroupIds: () => new Set<string>(),
-      } as unknown as LeftRailOptions['repositoryManager'],
-      repositories: new Map<string, RepoRecord>(),
+      } as never,
       repositoryAssociationByDirectoryId: new Map<string, string>(),
       directoryRepositorySnapshotByDirectoryId: new Map<string, TestRepositorySnapshot>(),
-      directories: new Map<string, TestDirectory>(),
-      conversations: new Map<string, TestConversation>(),
       gitSummaryByDirectoryId: new Map<string, TestGitSummary>(),
-      processUsageBySessionId: () => new Map<string, TestProcessUsage>(),
       loadingGitSummary: { branch: 'loading' },
-      activeConversationId: () => null,
-      orderedConversationIds: () => [],
     },
     renderState: {
       workspace,
-      hasDirectory: () => false,
-      activeConversationId: () => null,
-      activeConversation: () => null,
+      directories: {
+        hasDirectory: () => false,
+      },
+      conversations: {
+        activeConversationId: null,
+        getActiveConversation: () => null,
+      },
       snapshotFrame: () => {
         throw new Error('snapshotFrame should not be called in this test');
       },
@@ -183,11 +181,12 @@ void test('runtime render pipeline composes underlying render services and deleg
     clearDirty: () => {
       clearDirtyCalls += 1;
     },
+    readRenderSnapshot: () => buildSnapshot<RepoRecord, TaskRecord>(),
     setLatestRailViewRows: () => {},
     activeDirectoryId: () => workspace.activeDirectoryId,
   });
 
-  renderPipeline.render({
+  renderPipeline({
     shuttingDown: false,
     layout,
     selection: null,
@@ -207,22 +206,8 @@ void test('runtime render pipeline renders right pane and flushes when render st
   });
   type RepoRecord = TaskFocusedPaneRepositoryRecord;
   type TaskRecord = TaskFocusedPaneTaskRecord;
-  type RightPaneOptions = ConstructorParameters<
-    typeof RuntimeRightPaneRender<RepoRecord, TaskRecord>
-  >[0];
-  type LeftRailOptions = ConstructorParameters<
-    typeof RuntimeLeftRailRender<
-      TestDirectory,
-      TestConversation,
-      RepoRecord,
-      TestRepositorySnapshot,
-      TestGitSummary,
-      TestProcessUsage,
-      TestRailRows
-    >
-  >[0];
 
-  const renderPipeline = new RuntimeRenderPipeline<
+  const renderPipeline = createRuntimeRenderPipeline<
     TestConversation,
     RepoRecord,
     TaskRecord,
@@ -241,7 +226,7 @@ void test('runtime render pipeline renders right pane and flushes when render st
       currentStatusRow: () => ({ eventLoopLagMs: 0 }),
       buildRenderRows: (_layout, _railRows, rightRows) => Array.from(rightRows),
       buildModalOverlay: () => null,
-      applyModalOverlay: (_rows) => null,
+      applyModalOverlay: () => {},
       renderSelectionOverlay: () => '',
       flush: () => ({
         changedRowCount: 1,
@@ -255,11 +240,6 @@ void test('runtime render pipeline renders right pane and flushes when render st
     },
     rightPaneRender: {
       workspace,
-      repositories: new Map<string, RepoRecord>(),
-      taskManager: {
-        readonlyTasks: () => new Map<string, TaskRecord>(),
-        readonlyTaskComposers: () => new Map(),
-      } as unknown as RightPaneOptions['taskManager'],
       conversationPane: {
         render: () => {
           rightPaneCalls += 1;
@@ -311,23 +291,21 @@ void test('runtime render pipeline renders right pane and flushes when render st
       workspace,
       repositoryManager: {
         readonlyCollapsedRepositoryGroupIds: () => new Set<string>(),
-      } as unknown as LeftRailOptions['repositoryManager'],
-      repositories: new Map<string, RepoRecord>(),
+      } as never,
       repositoryAssociationByDirectoryId: new Map<string, string>(),
       directoryRepositorySnapshotByDirectoryId: new Map<string, TestRepositorySnapshot>(),
-      directories: new Map<string, TestDirectory>(),
-      conversations: new Map<string, TestConversation>(),
       gitSummaryByDirectoryId: new Map<string, TestGitSummary>(),
-      processUsageBySessionId: () => new Map<string, TestProcessUsage>(),
       loadingGitSummary: { branch: 'loading' },
-      activeConversationId: () => null,
-      orderedConversationIds: () => [],
     },
     renderState: {
       workspace,
-      hasDirectory: () => false,
-      activeConversationId: () => null,
-      activeConversation: () => null,
+      directories: {
+        hasDirectory: () => false,
+      },
+      conversations: {
+        activeConversationId: null,
+        getActiveConversation: () => null,
+      },
       snapshotFrame: () => {
         throw new Error('snapshotFrame should not be called in this test');
       },
@@ -335,11 +313,12 @@ void test('runtime render pipeline renders right pane and flushes when render st
     },
     isScreenDirty: () => true,
     clearDirty: () => {},
+    readRenderSnapshot: () => buildSnapshot<RepoRecord, TaskRecord>(),
     setLatestRailViewRows: () => {},
     activeDirectoryId: () => workspace.activeDirectoryId,
   });
 
-  renderPipeline.render({
+  renderPipeline({
     shuttingDown: false,
     layout,
     selection: null,

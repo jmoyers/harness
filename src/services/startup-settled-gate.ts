@@ -22,7 +22,7 @@ interface StartupSpanTrackerLike {
   endSettledSpan(attrs: PerfAttrs): void;
 }
 
-interface StartupSettledGateOptions {
+export interface StartupSettledGateOptions {
   readonly startupSequencer: StartupSequencerLike;
   readonly startupSpanTracker: StartupSpanTrackerLike;
   readonly getConversation: (sessionId: string) => ConversationState | undefined;
@@ -30,38 +30,48 @@ interface StartupSettledGateOptions {
   readonly recordPerfEvent: (name: string, attrs: PerfAttrs) => void;
 }
 
-export class StartupSettledGate {
-  constructor(private readonly options: StartupSettledGateOptions) {}
+export interface StartupSettledGate {
+  clearTimer(): void;
+  signalSettled(): void;
+  scheduleProbe(sessionId: string): void;
+}
 
-  clearTimer(): void {
-    this.options.startupSequencer.clearSettledTimer();
+export function createStartupSettledGate(options: StartupSettledGateOptions): StartupSettledGate {
+  function clearTimer(): void {
+    options.startupSequencer.clearSettledTimer();
   }
 
-  signalSettled(): void {
-    this.options.startupSequencer.signalSettled();
+  function signalSettled(): void {
+    options.startupSequencer.signalSettled();
   }
 
-  scheduleProbe(sessionId: string): void {
-    this.options.startupSequencer.scheduleSettledProbe(sessionId, (event) => {
-      if (this.options.startupSpanTracker.firstPaintTargetSessionId !== event.sessionId) {
+  function scheduleProbe(sessionId: string): void {
+    options.startupSequencer.scheduleSettledProbe(sessionId, (event) => {
+      if (options.startupSpanTracker.firstPaintTargetSessionId !== event.sessionId) {
         return;
       }
-      const conversation = this.options.getConversation(event.sessionId);
+      const conversation = options.getConversation(event.sessionId);
       const glyphCells =
-        conversation === undefined ? 0 : this.options.visibleGlyphCellCount(conversation);
-      this.options.recordPerfEvent('mux.startup.active-settled', {
+        conversation === undefined ? 0 : options.visibleGlyphCellCount(conversation);
+      options.recordPerfEvent('mux.startup.active-settled', {
         sessionId: event.sessionId,
         gate: event.gate,
         quietMs: event.quietMs,
         glyphCells,
       });
-      this.options.startupSpanTracker.endSettledSpan({
+      options.startupSpanTracker.endSettledSpan({
         observed: true,
         gate: event.gate,
         quietMs: event.quietMs,
         glyphCells,
       });
-      this.options.startupSequencer.signalSettled();
+      options.startupSequencer.signalSettled();
     });
   }
+
+  return {
+    clearTimer,
+    signalSettled,
+    scheduleProbe,
+  };
 }

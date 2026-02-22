@@ -8,7 +8,7 @@ import type { AgentStatusProjectionInput, AgentStatusReducer } from './agent-sta
 
 interface WorkProjection {
   readonly text: string | null;
-  readonly phaseHint: 'needs-action' | 'working' | 'idle' | null;
+  readonly activityHint: 'needs-action' | 'working' | 'idle' | null;
 }
 
 function normalizeText(value: string | null): string | null {
@@ -40,7 +40,7 @@ function eventIsNewer(observedAt: string, previousObservedAt: string | null): bo
 
 function phaseFromRuntimeStatus(
   runtimeStatus: StreamSessionRuntimeStatus,
-  phaseHint: WorkProjection['phaseHint'],
+  activityHint: WorkProjection['activityHint'],
 ): StreamSessionDisplayPhase {
   if (runtimeStatus === 'needs-input') {
     return 'needs-action';
@@ -48,13 +48,13 @@ function phaseFromRuntimeStatus(
   if (runtimeStatus === 'exited') {
     return 'exited';
   }
-  if (phaseHint === 'working') {
+  if (activityHint === 'working') {
     return 'working';
   }
-  if (phaseHint === 'needs-action') {
+  if (activityHint === 'needs-action') {
     return 'needs-action';
   }
-  if (phaseHint === 'idle') {
+  if (activityHint === 'idle') {
     return 'idle';
   }
   if (runtimeStatus === 'running') {
@@ -118,14 +118,14 @@ export abstract class BaseAgentStatusReducer implements AgentStatusReducer {
   project(input: AgentStatusProjectionInput): StreamSessionStatusModel | null {
     const previous = input.previous;
     let workText = previous?.lastKnownWork ?? null;
-    let workPhaseHint = previous?.phaseHint ?? null;
+    let workActivityHint = previous?.activityHint ?? null;
     let workObservedAt = previous?.lastKnownWorkAt ?? null;
 
     if (input.telemetry !== null && eventIsNewer(input.telemetry.observedAt, workObservedAt)) {
       const projected = this.projectFromTelemetry(input.telemetry);
       if (projected !== null) {
         workText = projected.text;
-        workPhaseHint = projected.phaseHint;
+        workActivityHint = projected.activityHint;
         workObservedAt = input.telemetry.observedAt;
       }
     }
@@ -133,19 +133,19 @@ export abstract class BaseAgentStatusReducer implements AgentStatusReducer {
     if (
       input.runtimeStatus === 'completed' &&
       eventIsNewer(input.observedAt, workObservedAt) &&
-      workPhaseHint !== 'needs-action'
+      workActivityHint !== 'needs-action'
     ) {
       workText = 'inactive';
-      workPhaseHint = 'idle';
+      workActivityHint = 'idle';
       workObservedAt = input.observedAt;
     }
     if (input.runtimeStatus === 'exited' && eventIsNewer(input.observedAt, workObservedAt)) {
       workText = 'exited';
-      workPhaseHint = 'idle';
+      workActivityHint = 'idle';
       workObservedAt = input.observedAt;
     }
 
-    const phase = phaseFromRuntimeStatus(input.runtimeStatus, workPhaseHint);
+    const phase = phaseFromRuntimeStatus(input.runtimeStatus, workActivityHint);
     const normalizedAttentionReason = normalizeText(input.attentionReason);
     const detailText =
       (input.runtimeStatus === 'needs-input' ? normalizedAttentionReason : null) ??
@@ -162,7 +162,7 @@ export abstract class BaseAgentStatusReducer implements AgentStatusReducer {
       attentionReason: normalizedAttentionReason,
       lastKnownWork: workText,
       lastKnownWorkAt: workObservedAt,
-      phaseHint: workPhaseHint,
+      activityHint: workActivityHint,
       observedAt: input.observedAt,
     };
   }

@@ -190,7 +190,7 @@ void test('parseSessionSummaryRecord rejects malformed summaries', () => {
       ...validSummary,
       statusModel: {
         ...validSummary.statusModel,
-        phaseHint: 'unsupported',
+        activityHint: 'unsupported',
       },
     }),
     null,

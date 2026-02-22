@@ -21,6 +21,7 @@ void test(
       await driver.locator('🦎 nim').click(12_000);
       await driver.waitForText('nim>', 12_000);
       await driver.waitForText('queued:0', 12_000);
+      await driver.waitForText('nim subprocess ready', 12_000);
       driver.keyboard.type('hello from mux nim');
       driver.keyboard.press('Enter');
       await driver.waitForText('run started', 12_000);

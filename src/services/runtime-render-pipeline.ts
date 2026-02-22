@@ -5,55 +5,46 @@ import type {
   TaskFocusedPaneTaskRecord,
 } from '../mux/task-focused-pane.ts';
 import type { TerminalSnapshotFrameCore } from '../terminal/snapshot-oracle.ts';
-import { RuntimeLeftRailRender } from './runtime-left-rail-render.ts';
-import { RuntimeRenderFlush } from './runtime-render-flush.ts';
-import { RuntimeRenderOrchestrator } from './runtime-render-orchestrator.ts';
-import { RuntimeRenderState } from './runtime-render-state.ts';
-import { RuntimeRightPaneRender } from './runtime-right-pane-render.ts';
+import {
+  renderRuntimeLeftRail,
+  type RuntimeLeftRailRenderOptions,
+  type RuntimeLeftRailRenderSnapshot,
+} from './runtime-left-rail-render.ts';
+import { flushRuntimeRender, type RuntimeRenderFlushOptions } from './runtime-render-flush.ts';
+import {
+  orchestrateRuntimeRender,
+  type RuntimeRenderOrchestratorInput,
+  type RuntimeRenderOrchestratorOptions,
+} from './runtime-render-orchestrator.ts';
+import {
+  prepareRuntimeRenderState,
+  type RuntimeRenderStateOptions,
+} from './runtime-render-state.ts';
+import {
+  renderRuntimeRightPaneRows,
+  type RuntimeRightPaneRenderOptions,
+  type RuntimeRightPaneRenderSnapshot,
+} from './runtime-right-pane-render.ts';
 
 type RuntimeLayout = ReturnType<typeof computeDualPaneLayout>;
 
-type RuntimeRenderFlushOptions<TConversation, TModalOverlay, TStatusRow> = ConstructorParameters<
-  typeof RuntimeRenderFlush<
-    TConversation,
-    TerminalSnapshotFrameCore,
-    PaneSelection,
-    RuntimeLayout,
-    TModalOverlay,
-    TStatusRow
-  >
->[0];
-
-type RuntimeRightPaneRenderOptions<
-  TRepositoryRecord extends TaskFocusedPaneRepositoryRecord,
-  TTaskRecord extends TaskFocusedPaneTaskRecord,
-> = ConstructorParameters<typeof RuntimeRightPaneRender<TRepositoryRecord, TTaskRecord>>[0];
-
-type RuntimeLeftRailRenderOptions<
+export interface RuntimeRenderPipelineSnapshot<
   TDirectoryRecord,
   TConversation,
-  TRepositoryRecord,
-  TRepositorySnapshot,
-  TGitSummary,
+  TRepositoryRecord extends TaskFocusedPaneRepositoryRecord,
+  TTaskRecord extends TaskFocusedPaneTaskRecord,
   TProcessUsage,
-  TRailViewRows,
-> = ConstructorParameters<
-  typeof RuntimeLeftRailRender<
+> {
+  readonly leftRail: RuntimeLeftRailRenderSnapshot<
     TDirectoryRecord,
     TConversation,
     TRepositoryRecord,
-    TRepositorySnapshot,
-    TGitSummary,
-    TProcessUsage,
-    TRailViewRows
-  >
->[0];
+    TProcessUsage
+  >;
+  readonly rightPane: RuntimeRightPaneRenderSnapshot<TRepositoryRecord, TTaskRecord>;
+}
 
-type RuntimeRenderStateOptions<TConversation> = ConstructorParameters<
-  typeof RuntimeRenderState<TConversation, TerminalSnapshotFrameCore>
->[0];
-
-interface RuntimeRenderPipelineOptions<
+export interface RuntimeRenderPipelineOptions<
   TConversation,
   TRepositoryRecord extends TaskFocusedPaneRepositoryRecord,
   TTaskRecord extends TaskFocusedPaneTaskRecord,
@@ -65,7 +56,14 @@ interface RuntimeRenderPipelineOptions<
   TModalOverlay,
   TStatusRow,
 > {
-  readonly renderFlush: RuntimeRenderFlushOptions<TConversation, TModalOverlay, TStatusRow>;
+  readonly renderFlush: RuntimeRenderFlushOptions<
+    TConversation,
+    TerminalSnapshotFrameCore,
+    PaneSelection,
+    RuntimeLayout,
+    TModalOverlay,
+    TStatusRow
+  >;
   readonly rightPaneRender: RuntimeRightPaneRenderOptions<TRepositoryRecord, TTaskRecord>;
   readonly leftRailRender: RuntimeLeftRailRenderOptions<
     TDirectoryRecord,
@@ -76,25 +74,28 @@ interface RuntimeRenderPipelineOptions<
     TProcessUsage,
     TRailViewRows
   >;
-  readonly renderState: RuntimeRenderStateOptions<TConversation>;
+  readonly renderState: RuntimeRenderStateOptions<TConversation, TerminalSnapshotFrameCore>;
   readonly isScreenDirty: () => boolean;
   readonly clearDirty: () => void;
+  // Frame-local TUI snapshot read. React/web adapters should consume store selectors directly.
+  readonly readRenderSnapshot: () => RuntimeRenderPipelineSnapshot<
+    TDirectoryRecord,
+    TConversation,
+    TRepositoryRecord,
+    TTaskRecord,
+    TProcessUsage
+  >;
   readonly setLatestRailViewRows: (rows: TRailViewRows) => void;
   readonly activeDirectoryId: () => string | null;
 }
 
-type RuntimeRenderPipelineInput = Parameters<
-  RuntimeRenderOrchestrator<
-    RuntimeLayout,
-    unknown,
-    TerminalSnapshotFrameCore,
-    PaneSelection,
-    PaneSelectionDrag,
-    unknown
-  >['render']
->[0];
+type RuntimeRenderPipelineInput = RuntimeRenderOrchestratorInput<
+  RuntimeLayout,
+  PaneSelection,
+  PaneSelectionDrag
+>;
 
-export class RuntimeRenderPipeline<
+export function createRuntimeRenderPipeline<
   TConversation,
   TRepositoryRecord extends TaskFocusedPaneRepositoryRecord,
   TTaskRecord extends TaskFocusedPaneTaskRecord,
@@ -105,58 +106,65 @@ export class RuntimeRenderPipeline<
   TRailViewRows,
   TModalOverlay,
   TStatusRow,
-> {
-  private readonly renderOrchestrator: RuntimeRenderOrchestrator<
+>(
+  options: RuntimeRenderPipelineOptions<
+    TConversation,
+    TRepositoryRecord,
+    TTaskRecord,
+    TDirectoryRecord,
+    TRepositorySnapshot,
+    TGitSummary,
+    TProcessUsage,
+    TRailViewRows,
+    TModalOverlay,
+    TStatusRow
+  >,
+): (input: RuntimeRenderPipelineInput) => void {
+  const renderOrchestratorOptions: RuntimeRenderOrchestratorOptions<
     RuntimeLayout,
     TConversation,
     TerminalSnapshotFrameCore,
     PaneSelection,
     PaneSelectionDrag,
-    TRailViewRows
-  >;
-
-  constructor(
-    options: RuntimeRenderPipelineOptions<
+    TRailViewRows,
+    RuntimeRenderPipelineSnapshot<
+      TDirectoryRecord,
       TConversation,
       TRepositoryRecord,
       TTaskRecord,
-      TDirectoryRecord,
-      TRepositorySnapshot,
-      TGitSummary,
-      TProcessUsage,
-      TRailViewRows,
-      TModalOverlay,
-      TStatusRow
-    >,
-  ) {
-    const renderFlush = new RuntimeRenderFlush(options.renderFlush);
-    const rightPaneRender = new RuntimeRightPaneRender(options.rightPaneRender);
-    const leftRailRender = new RuntimeLeftRailRender(options.leftRailRender);
-    const renderState = new RuntimeRenderState(options.renderState);
-    this.renderOrchestrator = new RuntimeRenderOrchestrator({
-      isScreenDirty: options.isScreenDirty,
-      clearDirty: options.clearDirty,
-      prepareRenderState: (selection, selectionDrag) =>
-        renderState.prepareRenderState(selection, selectionDrag),
-      renderLeftRail: (layout) => leftRailRender.render(layout),
-      setLatestRailViewRows: options.setLatestRailViewRows,
-      renderRightRows: (input) =>
-        rightPaneRender.renderRightRows({
-          layout: input.layout,
-          rightFrame: input.rightFrame,
-          homePaneActive: input.homePaneActive,
-          nimPaneActive: input.nimPaneActive,
-          projectPaneActive: input.projectPaneActive,
-          activeDirectoryId: input.activeDirectoryId,
-        }),
-      flushRender: (input) => {
-        renderFlush.flushRender(input);
-      },
-      activeDirectoryId: options.activeDirectoryId,
-    });
-  }
-
-  render(input: RuntimeRenderPipelineInput): void {
-    this.renderOrchestrator.render(input);
-  }
+      TProcessUsage
+    >
+  > = {
+    isScreenDirty: options.isScreenDirty,
+    clearDirty: options.clearDirty,
+    readRenderSnapshot: options.readRenderSnapshot,
+    prepareRenderState: (selection, selectionDrag) => {
+      return prepareRuntimeRenderState(options.renderState, selection, selectionDrag);
+    },
+    renderLeftRail: (layout, snapshot) => {
+      return renderRuntimeLeftRail(options.leftRailRender, {
+        layout,
+        snapshot: snapshot.leftRail,
+      });
+    },
+    setLatestRailViewRows: options.setLatestRailViewRows,
+    renderRightRows: (input) => {
+      return renderRuntimeRightPaneRows(options.rightPaneRender, {
+        layout: input.layout,
+        rightFrame: input.rightFrame,
+        homePaneActive: input.homePaneActive,
+        nimPaneActive: input.nimPaneActive,
+        projectPaneActive: input.projectPaneActive,
+        activeDirectoryId: input.activeDirectoryId,
+        snapshot: input.snapshot.rightPane,
+      });
+    },
+    flushRender: (input) => {
+      flushRuntimeRender(options.renderFlush, input);
+    },
+    activeDirectoryId: options.activeDirectoryId,
+  };
+  return (input: RuntimeRenderPipelineInput): void => {
+    orchestrateRuntimeRender(renderOrchestratorOptions, input);
+  };
 }

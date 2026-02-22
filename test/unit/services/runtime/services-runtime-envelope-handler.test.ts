@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import type { StreamServerEnvelope } from '../../../../src/control-plane/stream-protocol.ts';
-import { RuntimeEnvelopeHandler } from '../../../../src/services/runtime-envelope-handler.ts';
+import {
+  handleRuntimeEnvelope,
+  type RuntimeEnvelopeHandlerOptions,
+} from '../../../../src/services/runtime-envelope-handler.ts';
 
 interface ConversationRecord {
   directoryId: string | null;
@@ -25,7 +28,7 @@ void test('runtime envelope handler handles pty.output, records cursor regressio
     lastEventAt: 'old-ts',
   };
   const events: Array<{ ts: string }> = [];
-  const handler = new RuntimeEnvelopeHandler({
+  const options: RuntimeEnvelopeHandlerOptions<ConversationRecord, { ts: string }> = {
     perfNowNs: (() => {
       let tick = 0n;
       return () => {
@@ -88,19 +91,14 @@ void test('runtime envelope handler handles pty.output, records cursor regressio
       calls.push(`recordOutputHandled:${durationMs > 0 ? '1' : '0'}`);
     },
     conversationById: () => conversation,
-    applyObservedWorkspaceEvent: () => {
-      calls.push('applyObservedWorkspace');
-    },
-    applyObservedGitStatusEvent: () => {
-      calls.push('applyObservedGit');
-    },
-    applyObservedTaskPlanningEvent: () => {
-      calls.push('applyObservedTasks');
+    applyObservedEvent: () => {
+      calls.push('applyObserved');
     },
     idFactory: () => 'event-id',
-  });
+  };
 
-  handler.handleEnvelope(
+  handleRuntimeEnvelope(
+    options,
     asEnvelope({
       kind: 'pty.output',
       sessionId: 'session-1',
@@ -136,7 +134,7 @@ void test('runtime envelope handler handles pty.event session-exit and pty.exit 
     lastEventAt: 'old-ts',
   };
 
-  const handler = new RuntimeEnvelopeHandler({
+  const options: RuntimeEnvelopeHandlerOptions<ConversationRecord, { ts: string }> = {
     perfNowNs: () => 10n,
     isRemoved: () => false,
     ensureConversation: () => conversation,
@@ -177,13 +175,12 @@ void test('runtime envelope handler handles pty.event session-exit and pty.exit 
     nowIso: () => '2026-02-18T00:00:00.000Z',
     recordOutputHandled: () => {},
     conversationById: () => conversation,
-    applyObservedWorkspaceEvent: () => {},
-    applyObservedGitStatusEvent: () => {},
-    applyObservedTaskPlanningEvent: () => {},
+    applyObservedEvent: () => {},
     idFactory: () => 'event-id',
-  });
+  };
 
-  handler.handleEnvelope(
+  handleRuntimeEnvelope(
+    options,
     asEnvelope({
       kind: 'pty.event',
       sessionId: 'session-2',
@@ -200,7 +197,8 @@ void test('runtime envelope handler handles pty.event session-exit and pty.exit 
     resumeSessionId: 'new',
   });
 
-  handler.handleEnvelope(
+  handleRuntimeEnvelope(
+    options,
     asEnvelope({
       kind: 'pty.exit',
       sessionId: 'session-2',
@@ -226,7 +224,7 @@ void test('runtime envelope handler handles pty.event session-exit and pty.exit 
   ]);
 });
 
-void test('runtime envelope handler handles stream.event and removed-session short-circuit', () => {
+void test('runtime envelope handler forwards stream.event envelopes and removed-session short-circuit', () => {
   const calls: string[] = [];
   const conversation: ConversationRecord = {
     directoryId: 'dir-3',
@@ -237,7 +235,7 @@ void test('runtime envelope handler handles stream.event and removed-session sho
   };
   let removed = true;
 
-  const handler = new RuntimeEnvelopeHandler({
+  const options: RuntimeEnvelopeHandlerOptions<ConversationRecord, { ts: string }> = {
     perfNowNs: () => 0n,
     isRemoved: () => removed,
     ensureConversation: () => conversation,
@@ -273,19 +271,14 @@ void test('runtime envelope handler handles stream.event and removed-session sho
     nowIso: () => '2026-02-18T00:00:00.000Z',
     recordOutputHandled: () => {},
     conversationById: () => undefined,
-    applyObservedWorkspaceEvent: () => {
-      calls.push('applyObservedWorkspace');
-    },
-    applyObservedGitStatusEvent: () => {
-      calls.push('applyObservedGit');
-    },
-    applyObservedTaskPlanningEvent: () => {
-      calls.push('applyObservedTasks');
+    applyObservedEvent: (input) => {
+      calls.push(`applyObserved:${input.subscriptionId}:${input.cursor}`);
     },
     idFactory: () => 'event-id',
-  });
+  };
 
-  handler.handleEnvelope(
+  handleRuntimeEnvelope(
+    options,
     asEnvelope({
       kind: 'pty.output',
       sessionId: 'session-3',
@@ -294,7 +287,8 @@ void test('runtime envelope handler handles stream.event and removed-session sho
     }),
   );
   removed = false;
-  handler.handleEnvelope(
+  handleRuntimeEnvelope(
+    options,
     asEnvelope({
       kind: 'stream.event',
       subscriptionId: 'sub-1',
@@ -317,6 +311,58 @@ void test('runtime envelope handler handles stream.event and removed-session sho
       },
     }),
   );
+  handleRuntimeEnvelope(
+    options,
+    asEnvelope({
+      kind: 'stream.event',
+      subscriptionId: 'sub-1',
+      cursor: 9,
+      event: {
+        kind: 'repository-created',
+        observedAt: '2026-02-18T00:00:00.000Z',
+        repository: {
+          repositoryId: 'repository-2',
+          tenantId: 'tenant',
+          userId: 'user',
+          workspaceId: 'workspace',
+          name: 'repo-2',
+          remoteUrl: 'https://example.com/repo-2.git',
+          defaultBranch: 'main',
+          metadata: {},
+          createdAt: '2026-02-18T00:00:00.000Z',
+          archivedAt: null,
+        },
+      },
+    }),
+  );
+  handleRuntimeEnvelope(
+    options,
+    asEnvelope({
+      kind: 'stream.event',
+      subscriptionId: 'sub-1',
+      cursor: 10,
+      event: {
+        kind: 'repository-created',
+        observedAt: '2026-02-18T00:00:01.000Z',
+        repository: {
+          repositoryId: 'repository-3',
+          tenantId: 'tenant',
+          userId: 'user',
+          workspaceId: 'workspace',
+          name: 'repo-3',
+          remoteUrl: 'https://example.com/repo-3.git',
+          defaultBranch: 'main',
+          metadata: {},
+          createdAt: '2026-02-18T00:00:01.000Z',
+          archivedAt: null,
+        },
+      },
+    }),
+  );
 
-  assert.deepEqual(calls, ['applyObservedWorkspace', 'applyObservedGit', 'applyObservedTasks']);
+  assert.deepEqual(calls, [
+    'applyObserved:sub-1:9',
+    'applyObserved:sub-1:9',
+    'applyObserved:sub-1:10',
+  ]);
 });

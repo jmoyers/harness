@@ -1773,7 +1773,7 @@ void test('parseServerEnvelope rejects malformed session-status status model pay
         ...baseEnvelope.event,
         statusModel: {
           ...baseEnvelope.event.statusModel,
-          phaseHint: 'invalid',
+          activityHint: 'invalid',
         },
       },
     }),

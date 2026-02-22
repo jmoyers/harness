@@ -83,7 +83,9 @@ function createFastCycleHarness(sessionIds: readonly string[]): FastCycleHarness
   };
 
   const leftNavState: LeftNavState = {
-    latestRailRows: () => [] as never,
+    railViewState: {
+      readLatestRows: () => [] as never,
+    },
     currentSelection: () => leftNavSelection,
   };
   const leftNavActions: LeftNavActions = {
@@ -246,7 +248,9 @@ void test('fast ctrl+j under project-review contention reproduces stale activati
 
   const leftNavInput = new LeftNavInput(
     {
-      latestRailRows: () => [] as never,
+      railViewState: {
+        readLatestRows: () => [] as never,
+      },
       currentSelection: () => leftNavSelection,
     },
     {
@@ -398,7 +402,9 @@ void test('fast ctrl+j under project-review contention with latest keyed queue k
 
   const leftNavInput = new LeftNavInput(
     {
-      latestRailRows: () => [] as never,
+      railViewState: {
+        readLatestRows: () => [] as never,
+      },
       currentSelection: () => leftNavSelection,
     },
     {

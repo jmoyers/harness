@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { RuntimeShutdownService } from '../../../../src/services/runtime-shutdown.ts';
+import {
+  finalizeRuntimeShutdown,
+  type RuntimeShutdownServiceOptions,
+} from '../../../../src/services/runtime-shutdown.ts';
 
 interface BuildResult {
   readonly calls: string[];
   readonly finalizeRecordingArgs: unknown[];
-  readonly service: RuntimeShutdownService;
+  readonly options: RuntimeShutdownServiceOptions;
 }
 
 function buildService(options?: {
@@ -14,7 +17,7 @@ function buildService(options?: {
 }): BuildResult {
   const calls: string[] = [];
   const finalizeRecordingArgs: unknown[] = [];
-  const service = new RuntimeShutdownService({
+  const shutdownOptions: RuntimeShutdownServiceOptions = {
     screen: {
       clearDirty: () => {
         calls.push('clearScreenDirty');
@@ -59,6 +62,9 @@ function buildService(options?: {
     },
     removeEnvelopeListener: () => {
       calls.push('removeEnvelopeListener');
+    },
+    stopWorkspaceObservedEvents: () => {
+      calls.push('stopWorkspaceObservedEvents');
     },
     unsubscribeTaskPlanningEvents: async () => {
       calls.push('unsubscribeTaskPlanningEvents');
@@ -115,11 +121,11 @@ function buildService(options?: {
     shutdownPerfCore: () => {
       calls.push('shutdownPerfCore');
     },
-  });
+  };
   return {
     calls,
     finalizeRecordingArgs,
-    service,
+    options: shutdownOptions,
   };
 }
 
@@ -132,7 +138,7 @@ void test('runtime shutdown service finalizes dependencies in order and forwards
     },
   });
 
-  await fixture.service.finalize();
+  await finalizeRuntimeShutdown(fixture.options);
 
   assert.deepEqual(fixture.calls, [
     'clearScreenDirty',
@@ -148,6 +154,7 @@ void test('runtime shutdown service finalizes dependencies in order and forwards
     'clearRenderScheduled',
     'detachProcessListeners',
     'removeEnvelopeListener',
+    'stopWorkspaceObservedEvents',
     'unsubscribeTaskPlanningEvents',
     'closeKeyEventSubscription',
     'clearRuntimeFatalExitTimer',
@@ -172,7 +179,7 @@ void test('runtime shutdown service tolerates control-plane close failures and s
     },
   });
 
-  await fixture.service.finalize();
+  await finalizeRuntimeShutdown(fixture.options);
 
   assert.deepEqual(fixture.calls, [
     'clearScreenDirty',
@@ -188,6 +195,7 @@ void test('runtime shutdown service tolerates control-plane close failures and s
     'clearRenderScheduled',
     'detachProcessListeners',
     'removeEnvelopeListener',
+    'stopWorkspaceObservedEvents',
     'unsubscribeTaskPlanningEvents',
     'closeKeyEventSubscription',
     'clearRuntimeFatalExitTimer',

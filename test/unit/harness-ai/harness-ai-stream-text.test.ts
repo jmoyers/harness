@@ -115,6 +115,31 @@ void test('streams simple text response', async () => {
   assert.equal(requestBodies[0]?.['model'], 'claude-sonnet');
 });
 
+void test('handles null stop reason on message_start without crashing', async () => {
+  const { model } = createQueuedModel([
+    createAnthropicResponse([
+      {
+        type: 'message_start',
+        message: {
+          id: 'msg-null-stop',
+          model: 'claude-sonnet',
+          usage: { input_tokens: 1, output_tokens: 0 },
+          stop_reason: null,
+        },
+      },
+      { type: 'message_stop' },
+    ]),
+  ]);
+
+  const result = streamText({
+    model,
+    prompt: 'hi',
+  });
+
+  assert.equal(await result.text, '');
+  assert.equal(await result.finishReason, 'other');
+});
+
 void test('executes local tools across roundtrips and continues after tool-calls finish reason', async () => {
   const { model, requestBodies } = createQueuedModel([
     createAnthropicResponse([

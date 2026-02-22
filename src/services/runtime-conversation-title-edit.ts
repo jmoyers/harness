@@ -20,100 +20,44 @@ export interface RuntimeConversationTitleEditServiceOptions<
   readonly clearDebounceTimer?: (timer: NodeJS.Timeout) => void;
 }
 
-export class RuntimeConversationTitleEditService<
+export interface RuntimeConversationTitleEditService {
+  clearCurrentTimer(): void;
+  schedulePersist(): void;
+  stop(persistPending: boolean): void;
+  begin(conversationId: string): void;
+}
+
+export function createRuntimeConversationTitleEditService<
   TConversation extends ConversationTitleRecordLike,
-> {
-  private readonly setDebounceTimer: (callback: () => void, ms: number) => NodeJS.Timeout;
-  private readonly clearDebounceTimer: (timer: NodeJS.Timeout) => void;
+>(
+  options: RuntimeConversationTitleEditServiceOptions<TConversation>,
+): RuntimeConversationTitleEditService {
+  const setDebounceTimer = options.setDebounceTimer ?? setTimeout;
+  const clearDebounceTimer = options.clearDebounceTimer ?? clearTimeout;
 
-  constructor(private readonly options: RuntimeConversationTitleEditServiceOptions<TConversation>) {
-    this.setDebounceTimer = options.setDebounceTimer ?? setTimeout;
-    this.clearDebounceTimer = options.clearDebounceTimer ?? clearTimeout;
-  }
-
-  clearCurrentTimer(): void {
-    const edit = this.options.workspace.conversationTitleEdit;
-    if (edit === null) {
-      return;
-    }
-    this.clearTimer(edit);
-  }
-
-  schedulePersist(): void {
-    const edit = this.options.workspace.conversationTitleEdit;
-    if (edit === null) {
-      return;
-    }
-    this.clearTimer(edit);
-    edit.debounceTimer = this.setDebounceTimer(() => {
-      const latestEdit = this.options.workspace.conversationTitleEdit;
-      if (latestEdit === null || latestEdit.conversationId !== edit.conversationId) {
-        return;
-      }
-      latestEdit.debounceTimer = null;
-      this.queuePersist(latestEdit, 'debounced');
-    }, this.options.debounceMs);
-    edit.debounceTimer.unref?.();
-  }
-
-  stop(persistPending: boolean): void {
-    const edit = this.options.workspace.conversationTitleEdit;
-    if (edit === null) {
-      return;
-    }
-    this.clearTimer(edit);
-    if (persistPending) {
-      this.queuePersist(edit, 'flush');
-    }
-    this.options.workspace.conversationTitleEdit = null;
-    this.options.markDirty();
-  }
-
-  begin(conversationId: string): void {
-    const target = this.options.conversationById(conversationId);
-    if (target === undefined) {
-      return;
-    }
-    if (this.options.workspace.conversationTitleEdit?.conversationId === conversationId) {
-      return;
-    }
-    if (this.options.workspace.conversationTitleEdit !== null) {
-      this.stop(true);
-    }
-    this.options.workspace.conversationTitleEdit = {
-      conversationId,
-      value: target.title,
-      lastSavedValue: target.title,
-      error: null,
-      persistInFlight: false,
-      debounceTimer: null,
-    };
-    this.options.markDirty();
-  }
-
-  private clearTimer(edit: ConversationTitleEditState): void {
+  function clearTimer(edit: ConversationTitleEditState): void {
     if (edit.debounceTimer !== null) {
-      this.clearDebounceTimer(edit.debounceTimer);
+      clearDebounceTimer(edit.debounceTimer);
       edit.debounceTimer = null;
     }
   }
 
-  private queuePersist(edit: ConversationTitleEditState, reason: 'debounced' | 'flush'): void {
+  function queuePersist(edit: ConversationTitleEditState, reason: 'debounced' | 'flush'): void {
     const titleToPersist = edit.value;
     if (titleToPersist === edit.lastSavedValue) {
       return;
     }
     edit.persistInFlight = true;
-    this.options.markDirty();
-    this.options.queueControlPlaneOp(async () => {
+    options.markDirty();
+    options.queueControlPlaneOp(async () => {
       try {
-        const parsed = await this.options.updateConversationTitle({
+        const parsed = await options.updateConversationTitle({
           conversationId: edit.conversationId,
           title: titleToPersist,
         });
         const persistedTitle = parsed?.title ?? titleToPersist;
-        const latestConversation = this.options.conversationById(edit.conversationId);
-        const latestEdit = this.options.workspace.conversationTitleEdit;
+        const latestConversation = options.conversationById(edit.conversationId);
+        const latestEdit = options.workspace.conversationTitleEdit;
         const shouldApplyToConversation =
           latestEdit === null ||
           latestEdit.conversationId !== edit.conversationId ||
@@ -128,7 +72,7 @@ export class RuntimeConversationTitleEditService<
           }
         }
       } catch (error: unknown) {
-        const latestEdit = this.options.workspace.conversationTitleEdit;
+        const latestEdit = options.workspace.conversationTitleEdit;
         if (
           latestEdit !== null &&
           latestEdit.conversationId === edit.conversationId &&
@@ -138,12 +82,79 @@ export class RuntimeConversationTitleEditService<
         }
         throw error;
       } finally {
-        const latestEdit = this.options.workspace.conversationTitleEdit;
+        const latestEdit = options.workspace.conversationTitleEdit;
         if (latestEdit !== null && latestEdit.conversationId === edit.conversationId) {
           latestEdit.persistInFlight = false;
         }
-        this.options.markDirty();
+        options.markDirty();
       }
     }, `title-edit-${reason}:${edit.conversationId}`);
   }
+
+  function clearCurrentTimer(): void {
+    const edit = options.workspace.conversationTitleEdit;
+    if (edit === null) {
+      return;
+    }
+    clearTimer(edit);
+  }
+
+  function schedulePersist(): void {
+    const edit = options.workspace.conversationTitleEdit;
+    if (edit === null) {
+      return;
+    }
+    clearTimer(edit);
+    edit.debounceTimer = setDebounceTimer(() => {
+      const latestEdit = options.workspace.conversationTitleEdit;
+      if (latestEdit === null || latestEdit.conversationId !== edit.conversationId) {
+        return;
+      }
+      latestEdit.debounceTimer = null;
+      queuePersist(latestEdit, 'debounced');
+    }, options.debounceMs);
+    edit.debounceTimer.unref?.();
+  }
+
+  function stop(persistPending: boolean): void {
+    const edit = options.workspace.conversationTitleEdit;
+    if (edit === null) {
+      return;
+    }
+    clearTimer(edit);
+    if (persistPending) {
+      queuePersist(edit, 'flush');
+    }
+    options.workspace.conversationTitleEdit = null;
+    options.markDirty();
+  }
+
+  function begin(conversationId: string): void {
+    const target = options.conversationById(conversationId);
+    if (target === undefined) {
+      return;
+    }
+    if (options.workspace.conversationTitleEdit?.conversationId === conversationId) {
+      return;
+    }
+    if (options.workspace.conversationTitleEdit !== null) {
+      stop(true);
+    }
+    options.workspace.conversationTitleEdit = {
+      conversationId,
+      value: target.title,
+      lastSavedValue: target.title,
+      error: null,
+      persistInFlight: false,
+      debounceTimer: null,
+    };
+    options.markDirty();
+  }
+
+  return {
+    clearCurrentTimer,
+    schedulePersist,
+    stop,
+    begin,
+  };
 }

@@ -10,7 +10,7 @@ interface DirectoryGitStatusLike<TRepository, TSummary, TSnapshot> {
   readonly repository: TRepository | null;
 }
 
-interface StartupStateHydrationServiceOptions<
+export interface StartupStateHydrationServiceOptions<
   TRepository extends RepositoryRecordLike,
   TSummary,
   TSnapshot,
@@ -37,53 +37,63 @@ interface StartupStateHydrationServiceOptions<
   readonly enterStartupPane: () => void;
 }
 
-export class StartupStateHydrationService<
+export interface StartupStateHydrationService {
+  hydrateRepositoryList(): Promise<void>;
+  hydrateDirectoryGitStatus(): Promise<void>;
+  hydrateStartupState(afterCursor: number | null): Promise<void>;
+}
+
+export function createStartupStateHydrationService<
   TRepository extends RepositoryRecordLike,
   TSummary,
   TSnapshot,
   TDirectoryGitStatus extends DirectoryGitStatusLike<TRepository, TSummary, TSnapshot>,
-> {
-  constructor(
-    private readonly options: StartupStateHydrationServiceOptions<
-      TRepository,
-      TSummary,
-      TSnapshot,
-      TDirectoryGitStatus
-    >,
-  ) {}
-
-  async hydrateRepositoryList(): Promise<void> {
-    const rows = await this.options.listRepositories();
-    this.options.clearRepositories();
+>(
+  options: StartupStateHydrationServiceOptions<
+    TRepository,
+    TSummary,
+    TSnapshot,
+    TDirectoryGitStatus
+  >,
+): StartupStateHydrationService {
+  async function hydrateRepositoryList(): Promise<void> {
+    const rows = await options.listRepositories();
+    options.clearRepositories();
     for (const record of rows) {
-      this.options.setRepository(record.repositoryId, record);
+      options.setRepository(record.repositoryId, record);
     }
-    this.options.syncRepositoryAssociationsWithDirectorySnapshots();
+    options.syncRepositoryAssociationsWithDirectorySnapshots();
   }
 
-  async hydrateDirectoryGitStatus(): Promise<void> {
-    if (!this.options.gitHydrationEnabled) {
+  async function hydrateDirectoryGitStatus(): Promise<void> {
+    if (!options.gitHydrationEnabled) {
       return;
     }
-    const rows = await this.options.listDirectoryGitStatuses();
+    const rows = await options.listDirectoryGitStatuses();
     for (const record of rows) {
-      this.options.setDirectoryGitSummary(record.directoryId, record.summary);
-      this.options.setDirectoryRepositorySnapshot(record.directoryId, record.repositorySnapshot);
-      this.options.setDirectoryRepositoryAssociation(record.directoryId, record.repositoryId);
+      options.setDirectoryGitSummary(record.directoryId, record.summary);
+      options.setDirectoryRepositorySnapshot(record.directoryId, record.repositorySnapshot);
+      options.setDirectoryRepositoryAssociation(record.directoryId, record.repositoryId);
       if (record.repository !== null) {
-        this.options.setRepository(record.repository.repositoryId, record.repository);
+        options.setRepository(record.repository.repositoryId, record.repository);
       }
     }
-    this.options.syncRepositoryAssociationsWithDirectorySnapshots();
+    options.syncRepositoryAssociationsWithDirectorySnapshots();
   }
 
-  async hydrateStartupState(afterCursor: number | null): Promise<void> {
-    await this.options.hydrateConversationList();
-    await this.hydrateRepositoryList();
-    await this.options.hydrateTaskPlanningState();
-    await this.hydrateDirectoryGitStatus();
-    await this.options.subscribeTaskPlanningEvents(afterCursor);
-    this.options.ensureActiveConversationId();
-    this.options.enterStartupPane();
+  async function hydrateStartupState(afterCursor: number | null): Promise<void> {
+    await options.hydrateConversationList();
+    await hydrateRepositoryList();
+    await options.hydrateTaskPlanningState();
+    await hydrateDirectoryGitStatus();
+    await options.subscribeTaskPlanningEvents(afterCursor);
+    options.ensureActiveConversationId();
+    options.enterStartupPane();
   }
+
+  return {
+    hydrateRepositoryList,
+    hydrateDirectoryGitStatus,
+    hydrateStartupState,
+  };
 }

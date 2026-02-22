@@ -99,7 +99,7 @@ function createConversationState(sessionId: string): RuntimeConversationState {
       attentionReason: null,
       lastKnownWork: null,
       lastKnownWorkAt: null,
-      phaseHint: null,
+      activityHint: null,
       observedAt: new Date(0).toISOString(),
     },
     attentionReason: null,

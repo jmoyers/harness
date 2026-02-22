@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { test } from 'bun:test';
 import {
   InMemoryNimRuntime,
+  type InMemoryNimRuntimeOptions,
   type NimEventEnvelope,
   type NimUiEvent,
   NimSqliteEventStore,
@@ -51,7 +52,7 @@ async function collectUntil<T>(
   throw new Error(`stream predicate not met after ${String(events.length)} events`);
 }
 
-function createRuntime(input?: ConstructorParameters<typeof InMemoryNimRuntime>[0]) {
+function createRuntime(input?: InMemoryNimRuntimeOptions) {
   const runtime = new InMemoryNimRuntime(input);
   runtime.registerProvider({
     id: 'anthropic',

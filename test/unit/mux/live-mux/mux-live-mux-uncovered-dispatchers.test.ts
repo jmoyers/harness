@@ -83,7 +83,9 @@ function handleLeftRailActionClick(options: HandleLeftRailActionClickOptions): b
   }
   const handler = new LeftRailPointerHandler(
     {
-      latestRailRows: () => [] as never,
+      railViewState: {
+        readLatestRows: () => [] as never,
+      },
       conversationTitleEditConversationId: () => null,
       activeConversationId: () => options.activeConversationId,
       repositoriesCollapsed: () => options.repositoriesCollapsed,
@@ -153,7 +155,9 @@ function handleLeftRailActionClick(options: HandleLeftRailActionClickOptions): b
 function handleLeftRailConversationClick(options: HandleLeftRailConversationClickOptions): boolean {
   const handler = new LeftRailPointerHandler(
     {
-      latestRailRows: () => [] as never,
+      railViewState: {
+        readLatestRows: () => [] as never,
+      },
       conversationTitleEditConversationId: () => null,
       activeConversationId: () => options.activeConversationId,
       repositoriesCollapsed: () => false,
@@ -204,7 +208,9 @@ function handleLeftRailConversationClick(options: HandleLeftRailConversationClic
 void test('left-rail pointer handler resolveHit and title-edit retention checks are stable', () => {
   const handler = new LeftRailPointerHandler(
     {
-      latestRailRows: () => [] as never,
+      railViewState: {
+        readLatestRows: () => [] as never,
+      },
       conversationTitleEditConversationId: () => 'conv-1',
       activeConversationId: () => null,
       repositoriesCollapsed: () => false,

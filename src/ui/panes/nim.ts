@@ -135,7 +135,13 @@ export class NimPane {
       const formatted = formatTranscriptLine(row);
       surface.fillRow(rowIndex, backgroundStyle);
       surface.drawText(1, rowIndex, formatted.symbol, formatted.symbolStyle);
-      uiKit.paintRow(surface, rowIndex, `  ${formatted.text}`, formatted.textStyle, backgroundStyle);
+      uiKit.paintRow(
+        surface,
+        rowIndex,
+        `  ${formatted.text}`,
+        formatted.textStyle,
+        backgroundStyle,
+      );
     }
 
     return {
@@ -235,10 +241,7 @@ function paintSectionDivider(
   paintRow(surface, row, divider, textStyle, fillStyle);
 }
 
-function withStyle(
-  base: UiStyle,
-  overrides: Partial<UiStyle>,
-): UiStyle {
+function withStyle(base: UiStyle, overrides: Partial<UiStyle>): UiStyle {
   return {
     fg: overrides.fg ?? base.fg,
     bg: overrides.bg ?? base.bg,

@@ -1,5 +1,4 @@
 import type { WorkspaceModel } from '../domain/workspace.ts';
-import type { TaskManager } from '../domain/tasks.ts';
 import type { ProjectPaneSnapshot } from '../mux/harness-core-ui.ts';
 import type { TaskComposerBuffer } from '../mux/task-composer.ts';
 import type { NimPaneViewModel } from '../ui/panes/nim.ts';
@@ -10,7 +9,7 @@ import type {
 } from '../mux/task-focused-pane.ts';
 import type { TerminalSnapshotFrameCore } from '../terminal/snapshot-oracle.ts';
 
-interface RuntimeRightPaneLayout {
+export interface RuntimeRightPaneLayout {
   readonly rightCols: number;
   readonly paneRows: number;
 }
@@ -60,23 +59,34 @@ interface NimPaneLike {
   };
 }
 
-interface RuntimeRightPaneRenderInput {
+export interface RuntimeRightPaneRenderInput<
+  TRepositoryRecord extends TaskFocusedPaneRepositoryRecord,
+  TTaskRecord extends TaskFocusedPaneTaskRecord,
+> {
   readonly layout: RuntimeRightPaneLayout;
   readonly rightFrame: TerminalSnapshotFrameCore | null;
   readonly homePaneActive: boolean;
   readonly nimPaneActive: boolean;
   readonly projectPaneActive: boolean;
   readonly activeDirectoryId: string | null;
+  readonly snapshot: RuntimeRightPaneRenderSnapshot<TRepositoryRecord, TTaskRecord>;
 }
 
-interface RuntimeRightPaneRenderOptions<
+export interface RuntimeRightPaneRenderSnapshot<
+  TRepositoryRecord extends TaskFocusedPaneRepositoryRecord,
+  TTaskRecord extends TaskFocusedPaneTaskRecord,
+> {
+  readonly repositories: ReadonlyMap<string, TRepositoryRecord>;
+  readonly tasks: ReadonlyMap<string, TTaskRecord>;
+  readonly taskComposers: ReadonlyMap<string, TaskComposerBuffer>;
+}
+
+export interface RuntimeRightPaneRenderOptions<
   TRepositoryRecord extends TaskFocusedPaneRepositoryRecord,
   TTaskRecord extends TaskFocusedPaneTaskRecord,
 > {
   readonly workspace: WorkspaceModel;
   readonly showTasks?: boolean;
-  readonly repositories: ReadonlyMap<string, TRepositoryRecord>;
-  readonly taskManager: TaskManager<TTaskRecord, TaskComposerBuffer, NodeJS.Timeout>;
   readonly conversationPane: ConversationPaneLike;
   readonly homePane: HomePaneLike<TRepositoryRecord, TTaskRecord>;
   readonly projectPane: ProjectPaneLike;
@@ -86,69 +96,64 @@ interface RuntimeRightPaneRenderOptions<
   readonly emptyTaskPaneView: () => TaskFocusedPaneView;
 }
 
-export class RuntimeRightPaneRender<
+export function renderRuntimeRightPaneRows<
   TRepositoryRecord extends TaskFocusedPaneRepositoryRecord,
   TTaskRecord extends TaskFocusedPaneTaskRecord,
-> {
-  constructor(
-    private readonly options: RuntimeRightPaneRenderOptions<TRepositoryRecord, TTaskRecord>,
-  ) {}
+>(
+  options: RuntimeRightPaneRenderOptions<TRepositoryRecord, TTaskRecord>,
+  input: RuntimeRightPaneRenderInput<TRepositoryRecord, TTaskRecord>,
+): readonly string[] {
+  const workspace = options.workspace;
+  workspace.latestTaskPaneView = options.emptyTaskPaneView();
 
-  renderRightRows(input: RuntimeRightPaneRenderInput): readonly string[] {
-    const workspace = this.options.workspace;
-    workspace.latestTaskPaneView = this.options.emptyTaskPaneView();
-
-    if (input.rightFrame !== null) {
-      return this.options.conversationPane.render(input.rightFrame, input.layout);
-    }
-
-    if (input.homePaneActive) {
-      const view = this.options.homePane.render({
-        layout: input.layout,
-        repositories: this.options.repositories,
-        tasks: this.options.taskManager.readonlyTasks(),
-        showTaskPlanningUi:
-          (this.options.showTasks ?? true) && workspace.leftNavSelection.kind === 'tasks',
-        selectedRepositoryId: workspace.taskPaneSelectedRepositoryId,
-        repositoryDropdownOpen: workspace.taskRepositoryDropdownOpen,
-        editorTarget: workspace.taskEditorTarget,
-        draftBuffer: workspace.taskDraftComposer,
-        taskBufferById: this.options.taskManager.readonlyTaskComposers(),
-        notice: workspace.taskPaneNotice,
-        scrollTop: workspace.taskPaneScrollTop,
-      });
-      workspace.taskPaneSelectedRepositoryId = view.selectedRepositoryId;
-      workspace.taskPaneScrollTop = view.top;
-      workspace.latestTaskPaneView = view;
-      return view.rows;
-    }
-
-    if (input.nimPaneActive) {
-      const view = this.options.nimPane.render({
-        layout: input.layout,
-        viewModel: this.options.getNimViewModel(),
-      });
-      return view.rows;
-    }
-
-    if (input.projectPaneActive && input.activeDirectoryId !== null) {
-      const needsSnapshotRefresh =
-        workspace.projectPaneSnapshot === null ||
-        workspace.projectPaneSnapshot.directoryId !== input.activeDirectoryId;
-      if (needsSnapshotRefresh) {
-        workspace.projectPaneSnapshot = this.options.refreshProjectPaneSnapshot(
-          input.activeDirectoryId,
-        );
-      }
-      const view = this.options.projectPane.render({
-        layout: input.layout,
-        snapshot: workspace.projectPaneSnapshot,
-        scrollTop: workspace.projectPaneScrollTop,
-      });
-      workspace.projectPaneScrollTop = view.scrollTop;
-      return view.rows;
-    }
-
-    return Array.from({ length: input.layout.paneRows }, () => ' '.repeat(input.layout.rightCols));
+  if (input.rightFrame !== null) {
+    return options.conversationPane.render(input.rightFrame, input.layout);
   }
+
+  if (input.homePaneActive) {
+    const view = options.homePane.render({
+      layout: input.layout,
+      repositories: input.snapshot.repositories,
+      tasks: input.snapshot.tasks,
+      showTaskPlanningUi:
+        (options.showTasks ?? true) && workspace.leftNavSelection.kind === 'tasks',
+      selectedRepositoryId: workspace.taskPaneSelectedRepositoryId,
+      repositoryDropdownOpen: workspace.taskRepositoryDropdownOpen,
+      editorTarget: workspace.taskEditorTarget,
+      draftBuffer: workspace.taskDraftComposer,
+      taskBufferById: input.snapshot.taskComposers,
+      notice: workspace.taskPaneNotice,
+      scrollTop: workspace.taskPaneScrollTop,
+    });
+    workspace.taskPaneSelectedRepositoryId = view.selectedRepositoryId;
+    workspace.taskPaneScrollTop = view.top;
+    workspace.latestTaskPaneView = view;
+    return view.rows;
+  }
+
+  if (input.nimPaneActive) {
+    const view = options.nimPane.render({
+      layout: input.layout,
+      viewModel: options.getNimViewModel(),
+    });
+    return view.rows;
+  }
+
+  if (input.projectPaneActive && input.activeDirectoryId !== null) {
+    const needsSnapshotRefresh =
+      workspace.projectPaneSnapshot === null ||
+      workspace.projectPaneSnapshot.directoryId !== input.activeDirectoryId;
+    if (needsSnapshotRefresh) {
+      workspace.projectPaneSnapshot = options.refreshProjectPaneSnapshot(input.activeDirectoryId);
+    }
+    const view = options.projectPane.render({
+      layout: input.layout,
+      snapshot: workspace.projectPaneSnapshot,
+      scrollTop: workspace.projectPaneScrollTop,
+    });
+    workspace.projectPaneScrollTop = view.scrollTop;
+    return view.rows;
+  }
+
+  return Array.from({ length: input.layout.paneRows }, () => ' '.repeat(input.layout.rightCols));
 }

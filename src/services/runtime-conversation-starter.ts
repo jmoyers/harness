@@ -83,99 +83,113 @@ export interface RuntimeConversationStarterOptions<
   readonly subscribeConversationEvents: (sessionId: string) => Promise<void>;
 }
 
-export class RuntimeConversationStarter<
+export interface RuntimeConversationStarter<
+  TConversation extends RuntimeConversationStarterConversationRecord,
+> {
+  startConversation(sessionId: string): Promise<TConversation>;
+}
+
+export function createRuntimeConversationStarter<
   TConversation extends RuntimeConversationStarterConversationRecord,
   TSessionSummary,
-> {
-  constructor(
-    private readonly options: RuntimeConversationStarterOptions<TConversation, TSessionSummary>,
-  ) {}
+>(
+  options: RuntimeConversationStarterOptions<TConversation, TSessionSummary>,
+): RuntimeConversationStarter<TConversation> {
+  function endStartCommandSpanIfTarget(
+    sessionId: string,
+    payload: RuntimeConversationStarterSpanAttributes,
+  ): void {
+    if (options.firstPaintTargetSessionId() !== sessionId) {
+      return;
+    }
+    options.endStartCommandSpan(payload);
+  }
 
-  async startConversation(sessionId: string): Promise<TConversation> {
-    return await this.options.runWithStartInFlight(sessionId, async () => {
-      const existing = this.options.conversationById(sessionId);
-      const targetConversation = existing ?? this.options.ensureConversation(sessionId);
-      const agentType = this.options.normalizeThreadAgentType(targetConversation.agentType);
+  async function startConversation(sessionId: string): Promise<TConversation> {
+    return await options.runWithStartInFlight(sessionId, async () => {
+      const existing = options.conversationById(sessionId);
+      const targetConversation = existing ?? options.ensureConversation(sessionId);
+      const agentType = options.normalizeThreadAgentType(targetConversation.agentType);
       const baseArgsForAgent =
         agentType === 'codex'
-          ? this.options.codexArgs
+          ? options.codexArgs
           : agentType === 'critique'
-            ? this.options.critiqueDefaultArgs
+            ? options.critiqueDefaultArgs
             : [];
-      const sessionCwd = this.options.sessionCwdForConversation(targetConversation);
-      const launchArgs = this.options.buildLaunchArgs({
+      const sessionCwd = options.sessionCwdForConversation(targetConversation);
+      const launchArgs = options.buildLaunchArgs({
         agentType,
         baseArgsForAgent,
         adapterState: targetConversation.adapterState,
         sessionCwd,
       });
-      targetConversation.launchCommand = this.options.formatCommandForDebugBar(
-        this.options.launchCommandForAgent(agentType),
+      targetConversation.launchCommand = options.formatCommandForDebugBar(
+        options.launchCommandForAgent(agentType),
         launchArgs,
       );
 
       if (existing?.live === true) {
-        this.endStartCommandSpanIfTarget(sessionId, {
+        endStartCommandSpanIfTarget(sessionId, {
           alreadyLive: true,
         });
         return existing;
       }
 
-      const startSpan = this.options.startConversationSpan(sessionId);
+      const startSpan = options.startConversationSpan(sessionId);
       targetConversation.lastOutputCursor = 0;
-      const layout = this.options.layout();
+      const layout = options.layout();
       const ptyStartInput: RuntimeConversationStarterPtyStartInput = {
         sessionId,
         args: launchArgs,
-        env: this.options.sessionEnv,
+        env: options.sessionEnv,
         cwd: sessionCwd,
         initialCols: layout.rightCols,
         initialRows: layout.paneRows,
       };
-      if (this.options.worktreeId !== undefined) {
-        ptyStartInput.worktreeId = this.options.worktreeId;
+      if (options.worktreeId !== undefined) {
+        ptyStartInput.worktreeId = options.worktreeId;
       }
-      if (this.options.terminalForegroundHex !== undefined) {
-        ptyStartInput.terminalForegroundHex = this.options.terminalForegroundHex;
+      if (options.terminalForegroundHex !== undefined) {
+        ptyStartInput.terminalForegroundHex = options.terminalForegroundHex;
       }
-      if (this.options.terminalBackgroundHex !== undefined) {
-        ptyStartInput.terminalBackgroundHex = this.options.terminalBackgroundHex;
+      if (options.terminalBackgroundHex !== undefined) {
+        ptyStartInput.terminalBackgroundHex = options.terminalBackgroundHex;
       }
       let startedSession = false;
       try {
-        await this.options.startPtySession(ptyStartInput);
+        await options.startPtySession(ptyStartInput);
         startedSession = true;
       } catch (error: unknown) {
         if (!isSessionAlreadyExistsError(error)) {
           throw error;
         }
       }
-      this.options.setPtySize(sessionId, {
+      options.setPtySize(sessionId, {
         cols: layout.rightCols,
         rows: layout.paneRows,
       });
-      this.options.sendResize(sessionId, layout.rightCols, layout.paneRows);
+      options.sendResize(sessionId, layout.rightCols, layout.paneRows);
       if (startedSession) {
-        this.endStartCommandSpanIfTarget(sessionId, {
+        endStartCommandSpanIfTarget(sessionId, {
           alreadyLive: false,
           argCount: launchArgs.length,
           resumed: launchArgs[0] === 'resume',
         });
       } else {
-        this.endStartCommandSpanIfTarget(sessionId, {
+        endStartCommandSpanIfTarget(sessionId, {
           alreadyLive: true,
           recoveredDuplicateStart: true,
         });
       }
-      const state = this.options.ensureConversation(sessionId);
+      const state = options.ensureConversation(sessionId);
       if (startedSession) {
-        this.options.recordStartCommand(sessionId, launchArgs);
+        options.recordStartCommand(sessionId, launchArgs);
       }
-      const statusSummary = await this.options.getSessionStatus(sessionId);
+      const statusSummary = await options.getSessionStatus(sessionId);
       if (statusSummary !== null) {
-        this.options.upsertFromSessionSummary(statusSummary);
+        options.upsertFromSessionSummary(statusSummary);
       }
-      await this.options.subscribeConversationEvents(sessionId);
+      await options.subscribeConversationEvents(sessionId);
       startSpan.end({
         live: state.live,
       });
@@ -183,13 +197,7 @@ export class RuntimeConversationStarter<
     });
   }
 
-  private endStartCommandSpanIfTarget(
-    sessionId: string,
-    payload: RuntimeConversationStarterSpanAttributes,
-  ): void {
-    if (this.options.firstPaintTargetSessionId() !== sessionId) {
-      return;
-    }
-    this.options.endStartCommandSpan(payload);
-  }
+  return {
+    startConversation,
+  };
 }

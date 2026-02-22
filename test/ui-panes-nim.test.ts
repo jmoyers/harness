@@ -50,8 +50,14 @@ void test('nim pane renders shell rows with transcript and composer sections', (
   assert.equal(plainRows[1]?.includes('queued:1'), true);
   assert.equal(plainRows[2]?.includes('enter=send/steer'), true);
   assert.equal(plainRows[3]?.includes('transcript'), true);
-  assert.equal(plainRows.some((row) => row.includes('nim> hi there')), true);
-  assert.equal(plainRows.some((row) => row.includes('nim> working')), true);
+  assert.equal(
+    plainRows.some((row) => row.includes('nim> hi there')),
+    true,
+  );
+  assert.equal(
+    plainRows.some((row) => row.includes('nim> working')),
+    true,
+  );
   assert.equal(plainRows[6]?.includes('composer'), true);
   assert.equal(plainRows[7]?.includes('nim> ship it'), true);
 });
@@ -75,4 +81,46 @@ void test('nim pane supports zero-row layouts', () => {
   });
 
   assert.deepEqual(result.rows, []);
+});
+
+void test('nim pane formats user assistant tool error and fallback transcript rows', () => {
+  const pane = new NimPane();
+  const result = pane.render({
+    layout: {
+      rightCols: 60,
+      paneRows: 16,
+    },
+    viewModel: {
+      sessionId: 'session-transcript',
+      status: 'idle',
+      uiMode: 'debug',
+      composerText: '',
+      queuedCount: 0,
+      transcriptLines: ['you> hi', 'nim> hello', '[error] bad', '[tool:search] call', 'plain note'],
+      assistantDraftText: '',
+    },
+  });
+
+  const plainRows = result.rows.map((row) => stripAnsi(row));
+
+  assert.equal(
+    plainRows.some((row) => row.includes('you> hi')),
+    true,
+  );
+  assert.equal(
+    plainRows.some((row) => row.includes('nim> hello')),
+    true,
+  );
+  assert.equal(
+    plainRows.some((row) => row.includes('[error] bad')),
+    true,
+  );
+  assert.equal(
+    plainRows.some((row) => row.includes('[tool:search] call')),
+    true,
+  );
+  assert.equal(
+    plainRows.some((row) => row.includes('plain note')),
+    true,
+  );
 });

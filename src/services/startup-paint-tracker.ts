@@ -26,7 +26,7 @@ interface StartupSettledGateLike {
   scheduleProbe(sessionId: string): void;
 }
 
-interface StartupPaintTrackerOptions {
+export interface StartupPaintTrackerOptions {
   readonly startupSequencer: StartupSequencerLike;
   readonly startupSpanTracker: StartupSpanTrackerLike;
   readonly startupVisibility: StartupVisibilityLike;
@@ -41,11 +41,16 @@ interface StartupRenderFlushInput {
   readonly changedRowCount: number;
 }
 
-export class StartupPaintTracker {
-  constructor(private readonly options: StartupPaintTrackerOptions) {}
+export interface StartupPaintTracker {
+  onRenderFlush(input: StartupRenderFlushInput): void;
+  onOutputChunk(sessionId: string): void;
+}
 
-  onRenderFlush(input: StartupRenderFlushInput): void {
-    const targetSessionId = this.options.startupSpanTracker.firstPaintTargetSessionId;
+export function createStartupPaintTracker(
+  options: StartupPaintTrackerOptions,
+): StartupPaintTracker {
+  function onRenderFlush(input: StartupRenderFlushInput): void {
+    const targetSessionId = options.startupSpanTracker.firstPaintTargetSessionId;
     if (targetSessionId === null) {
       return;
     }
@@ -56,24 +61,22 @@ export class StartupPaintTracker {
     ) {
       return;
     }
-    const startupSnapshot = this.options.startupSequencer.snapshot();
+    const startupSnapshot = options.startupSequencer.snapshot();
     if (!startupSnapshot.firstOutputObserved) {
       return;
     }
 
-    const glyphCells = this.options.startupVisibility.visibleGlyphCellCount(
-      input.activeConversation,
-    );
+    const glyphCells = options.startupVisibility.visibleGlyphCellCount(input.activeConversation);
     if (
       !startupSnapshot.firstPaintObserved &&
-      this.options.startupSequencer.markFirstPaintVisible(targetSessionId, glyphCells)
+      options.startupSequencer.markFirstPaintVisible(targetSessionId, glyphCells)
     ) {
-      this.options.recordPerfEvent('mux.startup.active-first-visible-paint', {
+      options.recordPerfEvent('mux.startup.active-first-visible-paint', {
         sessionId: targetSessionId,
         changedRows: input.changedRowCount,
         glyphCells,
       });
-      this.options.startupSpanTracker.endFirstPaintSpan({
+      options.startupSpanTracker.endFirstPaintSpan({
         observed: true,
         changedRows: input.changedRowCount,
         glyphCells,
@@ -81,35 +84,40 @@ export class StartupPaintTracker {
     }
 
     if (
-      this.options.startupSequencer.markHeaderVisible(
+      options.startupSequencer.markHeaderVisible(
         targetSessionId,
-        this.options.startupVisibility.codexHeaderVisible(input.activeConversation),
+        options.startupVisibility.codexHeaderVisible(input.activeConversation),
       )
     ) {
-      this.options.recordPerfEvent('mux.startup.active-header-visible', {
+      options.recordPerfEvent('mux.startup.active-header-visible', {
         sessionId: targetSessionId,
         glyphCells,
       });
     }
-    const selectedGate = this.options.startupSequencer.maybeSelectSettleGate(
+    const selectedGate = options.startupSequencer.maybeSelectSettleGate(
       targetSessionId,
       glyphCells,
     );
     if (selectedGate !== null) {
-      this.options.recordPerfEvent('mux.startup.active-settle-gate', {
+      options.recordPerfEvent('mux.startup.active-settle-gate', {
         sessionId: targetSessionId,
         gate: selectedGate,
         glyphCells,
       });
     }
-    this.options.startupSettledGate.scheduleProbe(targetSessionId);
+    options.startupSettledGate.scheduleProbe(targetSessionId);
   }
 
-  onOutputChunk(sessionId: string): void {
-    const targetSessionId = this.options.startupSpanTracker.firstPaintTargetSessionId;
+  function onOutputChunk(sessionId: string): void {
+    const targetSessionId = options.startupSpanTracker.firstPaintTargetSessionId;
     if (targetSessionId === null || sessionId !== targetSessionId) {
       return;
     }
-    this.options.startupSettledGate.scheduleProbe(sessionId);
+    options.startupSettledGate.scheduleProbe(sessionId);
   }
+
+  return {
+    onRenderFlush,
+    onOutputChunk,
+  };
 }

@@ -62,7 +62,7 @@ void test('conversation-state create/apply/summary helpers preserve session proj
       phase: 'working',
       lastKnownWork: 'active',
       lastKnownWorkAt: '2026-02-18T00:01:00.000Z',
-      phaseHint: 'working',
+      activityHint: 'working',
       observedAt: '2026-02-18T00:01:00.000Z',
     }),
     latestCursor: 42,

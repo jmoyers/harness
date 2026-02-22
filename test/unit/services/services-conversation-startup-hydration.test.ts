@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { ConversationStartupHydrationService } from '../../../src/services/conversation-startup-hydration.ts';
+import { createConversationStartupHydrationService } from '../../../src/services/conversation-startup-hydration.ts';
 
 interface SessionSummary {
   readonly sessionId: string;
@@ -10,7 +10,7 @@ interface SessionSummary {
 void test('conversation startup hydration service hydrates directories and sessions and records span counts', async () => {
   const calls: string[] = [];
   let spanEndPayload: Record<string, unknown> | null = null;
-  const service = new ConversationStartupHydrationService<SessionSummary>({
+  const service = createConversationStartupHydrationService<SessionSummary>({
     startHydrationSpan: () => ({
       end: (input) => {
         spanEndPayload = input ?? null;
@@ -60,7 +60,7 @@ void test('conversation startup hydration service hydrates directories and sessi
 
 void test('conversation startup hydration service handles empty hydration payloads', async () => {
   let spanEndPayload: Record<string, unknown> | null = null;
-  const service = new ConversationStartupHydrationService<SessionSummary>({
+  const service = createConversationStartupHydrationService<SessionSummary>({
     startHydrationSpan: () => ({
       end: (input) => {
         spanEndPayload = input ?? null;

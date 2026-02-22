@@ -5,10 +5,7 @@ import { test } from 'bun:test';
 import { setTimeout as delay } from 'node:timers/promises';
 import { startPtySession, type PtyExit } from '../../../src/pty/pty_host.ts';
 import { TerminalSnapshotOracle } from '../../../src/terminal/snapshot-oracle.ts';
-import {
-  createWorkspace,
-  workspaceXdgConfigHome,
-} from '../../helpers/harness-cli-test-helpers.ts';
+import { createWorkspace, workspaceXdgConfigHome } from '../../helpers/harness-cli-test-helpers.ts';
 
 const HARNESS_SCRIPT_PATH = resolve(process.cwd(), 'scripts/harness.ts');
 

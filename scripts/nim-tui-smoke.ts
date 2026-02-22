@@ -646,7 +646,11 @@ async function runNimTuiInteractive(args: ParsedArgs): Promise<void> {
           priority: command.priority,
         });
         if (queued.queued) {
-          if (typeof queued.position === 'number' && Number.isInteger(queued.position) && queued.position >= 0) {
+          if (
+            typeof queued.position === 'number' &&
+            Number.isInteger(queued.position) &&
+            queued.position >= 0
+          ) {
             queuedCount = Math.max(queuedCount, queued.position + 1);
           } else {
             queuedCount += 1;

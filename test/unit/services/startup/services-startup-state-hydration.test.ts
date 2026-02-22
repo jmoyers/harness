@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { StartupStateHydrationService } from '../../../../src/services/startup-state-hydration.ts';
+import { createStartupStateHydrationService } from '../../../../src/services/startup-state-hydration.ts';
 
 interface RepositoryRecord {
   readonly repositoryId: string;
@@ -22,7 +22,7 @@ void test('startup state hydration service hydrates startup state and enters sta
   const gitAssociations = new Map<string, string | null>();
   let activeConversationId: string | null = 'session-active';
 
-  const service = new StartupStateHydrationService<
+  const service = createStartupStateHydrationService<
     RepositoryRecord,
     string,
     string,
@@ -130,7 +130,7 @@ void test('startup state hydration service hydrates startup state and enters sta
 void test('startup state hydration service falls back to startup pane when no active conversation exists', async () => {
   const calls: string[] = [];
   let activeConversationId: string | null = null;
-  const service = new StartupStateHydrationService<
+  const service = createStartupStateHydrationService<
     RepositoryRecord,
     string,
     string,
@@ -183,7 +183,7 @@ void test('startup state hydration service falls back to startup pane when no ac
 
 void test('startup state hydration service supports no active conversation and enters startup pane', async () => {
   const calls: string[] = [];
-  const service = new StartupStateHydrationService<
+  const service = createStartupStateHydrationService<
     RepositoryRecord,
     string,
     string,

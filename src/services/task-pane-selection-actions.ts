@@ -9,7 +9,7 @@ interface RepositoryRecordLike {
   readonly archivedAt: string | null;
 }
 
-interface TaskPaneSelectionActionsOptions<TTaskRecord extends TaskRecordLike> {
+export interface TaskPaneSelectionActionsOptions<TTaskRecord extends TaskRecordLike> {
   readonly workspace: WorkspaceModel;
   readonly taskRecordById: (taskId: string) => TTaskRecord | undefined;
   readonly hasTask: (taskId: string) => boolean;
@@ -21,133 +21,150 @@ interface TaskPaneSelectionActionsOptions<TTaskRecord extends TaskRecordLike> {
   readonly markDirty: () => void;
 }
 
-export class TaskPaneSelectionActions<TTaskRecord extends TaskRecordLike> {
-  constructor(private readonly options: TaskPaneSelectionActionsOptions<TTaskRecord>) {}
+export interface TaskPaneSelectionActions {
+  syncTaskPaneSelectionFocus(): void;
+  syncTaskPaneSelection(): void;
+  syncTaskPaneRepositorySelection(): void;
+  focusDraftComposer(): void;
+  focusTaskComposer(taskId: string): void;
+  selectTaskById(taskId: string): void;
+  selectRepositoryById(repositoryId: string): void;
+}
 
-  syncTaskPaneSelectionFocus(): void {
+export function createTaskPaneSelectionActions<TTaskRecord extends TaskRecordLike>(
+  options: TaskPaneSelectionActionsOptions<TTaskRecord>,
+): TaskPaneSelectionActions {
+  function syncTaskPaneSelectionFocus(): void {
     const hasTaskSelection =
-      this.options.workspace.taskPaneSelectedTaskId !== null &&
-      this.options.hasTask(this.options.workspace.taskPaneSelectedTaskId);
+      options.workspace.taskPaneSelectedTaskId !== null &&
+      options.hasTask(options.workspace.taskPaneSelectedTaskId);
     const hasRepositorySelection =
-      this.options.workspace.taskPaneSelectedRepositoryId !== null &&
-      this.options.hasRepository(this.options.workspace.taskPaneSelectedRepositoryId);
-    if (this.options.workspace.taskPaneSelectionFocus === 'task' && hasTaskSelection) {
+      options.workspace.taskPaneSelectedRepositoryId !== null &&
+      options.hasRepository(options.workspace.taskPaneSelectedRepositoryId);
+    if (options.workspace.taskPaneSelectionFocus === 'task' && hasTaskSelection) {
       return;
     }
-    if (this.options.workspace.taskPaneSelectionFocus === 'repository' && hasRepositorySelection) {
+    if (options.workspace.taskPaneSelectionFocus === 'repository' && hasRepositorySelection) {
       return;
     }
     if (hasTaskSelection) {
-      this.options.workspace.taskPaneSelectionFocus = 'task';
+      options.workspace.taskPaneSelectionFocus = 'task';
       return;
     }
     if (hasRepositorySelection) {
-      this.options.workspace.taskPaneSelectionFocus = 'repository';
+      options.workspace.taskPaneSelectionFocus = 'repository';
       return;
     }
-    this.options.workspace.taskPaneSelectionFocus = 'task';
+    options.workspace.taskPaneSelectionFocus = 'task';
   }
 
-  syncTaskPaneSelection(): void {
-    const scopedTaskIds = new Set(
-      this.options.selectedRepositoryTasks().map((task) => task.taskId),
-    );
+  function syncTaskPaneSelection(): void {
+    const scopedTaskIds = new Set(options.selectedRepositoryTasks().map((task) => task.taskId));
     if (
-      this.options.workspace.taskPaneSelectedTaskId !== null &&
-      !scopedTaskIds.has(this.options.workspace.taskPaneSelectedTaskId)
+      options.workspace.taskPaneSelectedTaskId !== null &&
+      !scopedTaskIds.has(options.workspace.taskPaneSelectedTaskId)
     ) {
-      this.options.workspace.taskPaneSelectedTaskId = null;
+      options.workspace.taskPaneSelectedTaskId = null;
     }
-    if (this.options.workspace.taskPaneSelectedTaskId === null) {
-      const scopedTasks = this.options.selectedRepositoryTasks();
-      this.options.workspace.taskPaneSelectedTaskId = scopedTasks[0]?.taskId ?? null;
+    if (options.workspace.taskPaneSelectedTaskId === null) {
+      const scopedTasks = options.selectedRepositoryTasks();
+      options.workspace.taskPaneSelectedTaskId = scopedTasks[0]?.taskId ?? null;
     }
-    this.syncTaskPaneSelectionFocus();
+    syncTaskPaneSelectionFocus();
     if (
-      this.options.workspace.taskEditorTarget.kind === 'task' &&
-      !scopedTaskIds.has(this.options.workspace.taskEditorTarget.taskId)
+      options.workspace.taskEditorTarget.kind === 'task' &&
+      !scopedTaskIds.has(options.workspace.taskEditorTarget.taskId)
     ) {
-      this.focusDraftComposer();
+      focusDraftComposer();
     }
   }
 
-  syncTaskPaneRepositorySelection(): void {
-    if (this.options.workspace.taskPaneSelectedRepositoryId !== null) {
-      const selectedRepository = this.options.repositoryById(
-        this.options.workspace.taskPaneSelectedRepositoryId,
+  function syncTaskPaneRepositorySelection(): void {
+    if (options.workspace.taskPaneSelectedRepositoryId !== null) {
+      const selectedRepository = options.repositoryById(
+        options.workspace.taskPaneSelectedRepositoryId,
       );
       if (selectedRepository === undefined || selectedRepository.archivedAt !== null) {
-        this.options.workspace.taskPaneSelectedRepositoryId = null;
+        options.workspace.taskPaneSelectedRepositoryId = null;
       }
     }
-    if (this.options.workspace.taskPaneSelectedRepositoryId === null) {
-      this.options.workspace.taskPaneSelectedRepositoryId =
-        this.options.activeRepositoryIds()[0] ?? null;
+    if (options.workspace.taskPaneSelectedRepositoryId === null) {
+      options.workspace.taskPaneSelectedRepositoryId = options.activeRepositoryIds()[0] ?? null;
     }
-    this.options.workspace.taskRepositoryDropdownOpen = false;
-    this.syncTaskPaneSelectionFocus();
-    this.syncTaskPaneSelection();
+    options.workspace.taskRepositoryDropdownOpen = false;
+    syncTaskPaneSelectionFocus();
+    syncTaskPaneSelection();
   }
 
-  focusDraftComposer(): void {
-    if (this.options.workspace.taskEditorTarget.kind === 'task') {
-      this.options.flushTaskComposerPersist(this.options.workspace.taskEditorTarget.taskId);
+  function focusDraftComposer(): void {
+    if (options.workspace.taskEditorTarget.kind === 'task') {
+      options.flushTaskComposerPersist(options.workspace.taskEditorTarget.taskId);
     }
-    this.options.workspace.taskEditorTarget = {
+    options.workspace.taskEditorTarget = {
       kind: 'draft',
     };
-    this.options.workspace.taskPaneSelectionFocus = 'task';
-    this.options.markDirty();
+    options.workspace.taskPaneSelectionFocus = 'task';
+    options.markDirty();
   }
 
-  focusTaskComposer(taskId: string): void {
-    if (!this.options.hasTask(taskId)) {
+  function focusTaskComposer(taskId: string): void {
+    if (!options.hasTask(taskId)) {
       return;
     }
     if (
-      this.options.workspace.taskEditorTarget.kind === 'task' &&
-      this.options.workspace.taskEditorTarget.taskId !== taskId
+      options.workspace.taskEditorTarget.kind === 'task' &&
+      options.workspace.taskEditorTarget.taskId !== taskId
     ) {
-      this.options.flushTaskComposerPersist(this.options.workspace.taskEditorTarget.taskId);
+      options.flushTaskComposerPersist(options.workspace.taskEditorTarget.taskId);
     }
-    this.options.workspace.taskEditorTarget = {
+    options.workspace.taskEditorTarget = {
       kind: 'task',
       taskId,
     };
-    this.options.workspace.taskPaneSelectedTaskId = taskId;
-    this.options.workspace.taskPaneSelectionFocus = 'task';
-    this.options.workspace.taskPaneNotice = null;
-    this.options.markDirty();
+    options.workspace.taskPaneSelectedTaskId = taskId;
+    options.workspace.taskPaneSelectionFocus = 'task';
+    options.workspace.taskPaneNotice = null;
+    options.markDirty();
   }
 
-  selectTaskById(taskId: string): void {
-    const taskRecord = this.options.taskRecordById(taskId);
+  function selectTaskById(taskId: string): void {
+    const taskRecord = options.taskRecordById(taskId);
     if (taskRecord === undefined) {
       return;
     }
-    this.options.workspace.taskPaneSelectedTaskId = taskId;
-    this.options.workspace.taskPaneSelectionFocus = 'task';
-    if (taskRecord.repositoryId !== null && this.options.hasRepository(taskRecord.repositoryId)) {
-      this.options.workspace.taskPaneSelectedRepositoryId = taskRecord.repositoryId;
+    options.workspace.taskPaneSelectedTaskId = taskId;
+    options.workspace.taskPaneSelectionFocus = 'task';
+    if (taskRecord.repositoryId !== null && options.hasRepository(taskRecord.repositoryId)) {
+      options.workspace.taskPaneSelectedRepositoryId = taskRecord.repositoryId;
     }
-    this.focusTaskComposer(taskId);
+    focusTaskComposer(taskId);
   }
 
-  selectRepositoryById(repositoryId: string): void {
-    if (!this.options.hasRepository(repositoryId)) {
+  function selectRepositoryById(repositoryId: string): void {
+    if (!options.hasRepository(repositoryId)) {
       return;
     }
-    if (this.options.workspace.taskEditorTarget.kind === 'task') {
-      this.options.flushTaskComposerPersist(this.options.workspace.taskEditorTarget.taskId);
+    if (options.workspace.taskEditorTarget.kind === 'task') {
+      options.flushTaskComposerPersist(options.workspace.taskEditorTarget.taskId);
     }
-    this.options.workspace.taskPaneSelectedRepositoryId = repositoryId;
-    this.options.workspace.taskRepositoryDropdownOpen = false;
-    this.options.workspace.taskPaneSelectionFocus = 'repository';
-    this.options.workspace.taskEditorTarget = {
+    options.workspace.taskPaneSelectedRepositoryId = repositoryId;
+    options.workspace.taskRepositoryDropdownOpen = false;
+    options.workspace.taskPaneSelectionFocus = 'repository';
+    options.workspace.taskEditorTarget = {
       kind: 'draft',
     };
-    this.syncTaskPaneSelection();
-    this.options.workspace.taskPaneNotice = null;
-    this.options.markDirty();
+    syncTaskPaneSelection();
+    options.workspace.taskPaneNotice = null;
+    options.markDirty();
   }
+
+  return {
+    syncTaskPaneSelectionFocus,
+    syncTaskPaneSelection,
+    syncTaskPaneRepositorySelection,
+    focusDraftComposer,
+    focusTaskComposer,
+    selectTaskById,
+    selectRepositoryById,
+  };
 }

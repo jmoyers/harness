@@ -1,8 +1,12 @@
-import type { StreamSessionController } from '../../control-plane/stream-protocol.ts';
-import type { StreamSessionStatusModel } from '../../control-plane/stream-protocol.ts';
-import type { ConversationRailSessionSummary } from '../conversation-rail.ts';
+import {
+  isStreamSessionRuntimeStatus,
+  parseStreamSessionStatusModel,
+  type StreamSessionController,
+  type StreamSessionRuntimeStatus,
+  type StreamSessionStatusModel,
+} from '../../control-plane/stream-protocol.ts';
 
-interface ControlPlaneDirectoryRecord {
+export interface ControlPlaneDirectoryRecord {
   readonly directoryId: string;
   readonly tenantId: string;
   readonly userId: string;
@@ -12,7 +16,7 @@ interface ControlPlaneDirectoryRecord {
   readonly archivedAt: string | null;
 }
 
-interface ControlPlaneConversationRecord {
+export interface ControlPlaneConversationRecord {
   readonly conversationId: string;
   readonly directoryId: string;
   readonly tenantId: string;
@@ -21,12 +25,12 @@ interface ControlPlaneConversationRecord {
   readonly title: string;
   readonly agentType: string;
   readonly adapterState: Record<string, unknown>;
-  readonly runtimeStatus: ConversationRailSessionSummary['status'];
+  readonly runtimeStatus: StreamSessionRuntimeStatus;
   readonly runtimeStatusModel: StreamSessionStatusModel | null;
   readonly runtimeLive: boolean;
 }
 
-interface ControlPlaneRepositoryRecord {
+export interface ControlPlaneRepositoryRecord {
   readonly repositoryId: string;
   readonly tenantId: string;
   readonly userId: string;
@@ -39,14 +43,14 @@ interface ControlPlaneRepositoryRecord {
   readonly archivedAt: string | null;
 }
 
-interface ControlPlaneGitSummaryRecord {
+export interface ControlPlaneGitSummaryRecord {
   readonly branch: string;
   readonly changedFiles: number;
   readonly additions: number;
   readonly deletions: number;
 }
 
-interface ControlPlaneGitRepositorySnapshotRecord {
+export interface ControlPlaneGitRepositorySnapshotRecord {
   readonly normalizedRemoteUrl: string | null;
   readonly commitCount: number | null;
   readonly lastCommitAt: string | null;
@@ -55,7 +59,7 @@ interface ControlPlaneGitRepositorySnapshotRecord {
   readonly defaultBranch: string | null;
 }
 
-interface ControlPlaneDirectoryGitStatusRecord {
+export interface ControlPlaneDirectoryGitStatusRecord {
   readonly directoryId: string;
   readonly summary: ControlPlaneGitSummaryRecord;
   readonly repositorySnapshot: ControlPlaneGitRepositorySnapshotRecord;
@@ -64,10 +68,10 @@ interface ControlPlaneDirectoryGitStatusRecord {
   readonly observedAt: string;
 }
 
-type TaskStatus = 'draft' | 'ready' | 'in-progress' | 'completed';
-type TaskScopeKind = 'global' | 'repository' | 'project';
+export type TaskStatus = 'draft' | 'ready' | 'in-progress' | 'completed';
+export type TaskScopeKind = 'global' | 'repository' | 'project';
 
-interface ControlPlaneTaskRecord {
+export interface ControlPlaneTaskRecord {
   readonly taskId: string;
   readonly tenantId: string;
   readonly userId: string;
@@ -123,78 +127,6 @@ function asObjectRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
-function parseRuntimeStatusModel(value: unknown): StreamSessionStatusModel | null | undefined {
-  if (value === null) {
-    return null;
-  }
-  const model = asObjectRecord(value);
-  if (model === null) {
-    return undefined;
-  }
-  const runtimeStatus = model['runtimeStatus'];
-  const phase = model['phase'];
-  const glyph = model['glyph'];
-  const badge = model['badge'];
-  const detailText = asRequiredString(model['detailText']);
-  const attentionReason = asNullableString(model['attentionReason']);
-  const lastKnownWork = asNullableString(model['lastKnownWork']);
-  const lastKnownWorkAt = asNullableString(model['lastKnownWorkAt']);
-  const phaseHint = model['phaseHint'];
-  const observedAt = asRequiredString(model['observedAt']);
-  if (
-    detailText === null ||
-    attentionReason === undefined ||
-    lastKnownWork === undefined ||
-    lastKnownWorkAt === undefined ||
-    observedAt === null
-  ) {
-    return undefined;
-  }
-  if (
-    runtimeStatus !== 'running' &&
-    runtimeStatus !== 'needs-input' &&
-    runtimeStatus !== 'completed' &&
-    runtimeStatus !== 'exited'
-  ) {
-    return undefined;
-  }
-  if (
-    phase !== 'needs-action' &&
-    phase !== 'starting' &&
-    phase !== 'working' &&
-    phase !== 'idle' &&
-    phase !== 'exited'
-  ) {
-    return undefined;
-  }
-  if (glyph !== '▲' && glyph !== '◔' && glyph !== '◆' && glyph !== '○' && glyph !== '■') {
-    return undefined;
-  }
-  if (badge !== 'NEED' && badge !== 'RUN ' && badge !== 'DONE' && badge !== 'EXIT') {
-    return undefined;
-  }
-  if (
-    phaseHint !== null &&
-    phaseHint !== 'needs-action' &&
-    phaseHint !== 'working' &&
-    phaseHint !== 'idle'
-  ) {
-    return undefined;
-  }
-  return {
-    runtimeStatus,
-    phase,
-    glyph,
-    badge,
-    detailText,
-    attentionReason,
-    lastKnownWork,
-    lastKnownWorkAt,
-    phaseHint,
-    observedAt,
-  };
-}
-
 export function parseDirectoryRecord(value: unknown): ControlPlaneDirectoryRecord | null {
   const record = asRecord(value);
   if (record === null) {
@@ -247,7 +179,7 @@ export function parseConversationRecord(value: unknown): ControlPlaneConversatio
   const agentType = asRequiredString(record['agentType']);
   const adapterState = asObjectRecord(record['adapterState']);
   const runtimeStatus = record['runtimeStatus'];
-  const runtimeStatusModel = parseRuntimeStatusModel(record['runtimeStatusModel']);
+  const runtimeStatusModel = parseStreamSessionStatusModel(record['runtimeStatusModel']);
   const runtimeLive = record['runtimeLive'];
 
   if (
@@ -265,12 +197,7 @@ export function parseConversationRecord(value: unknown): ControlPlaneConversatio
     return null;
   }
 
-  if (
-    runtimeStatus !== 'running' &&
-    runtimeStatus !== 'needs-input' &&
-    runtimeStatus !== 'completed' &&
-    runtimeStatus !== 'exited'
-  ) {
+  if (!isStreamSessionRuntimeStatus(runtimeStatus)) {
     return null;
   }
 

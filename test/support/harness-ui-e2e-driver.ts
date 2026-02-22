@@ -198,9 +198,7 @@ export class HarnessUiE2EDriver {
   public async waitForTextGone(text: string, timeoutMs: number): Promise<void> {
     const startedAt = Date.now();
     while (Date.now() - startedAt < timeoutMs) {
-      const hasText = this.oracle
-        .snapshotWithoutHash()
-        .lines.some((line) => line.includes(text));
+      const hasText = this.oracle.snapshotWithoutHash().lines.some((line) => line.includes(text));
       if (!hasText) {
         return;
       }

@@ -149,7 +149,7 @@ void test('property: codex reducer ignores invalid telemetry observedAt for work
           attentionReason: null,
           lastKnownWork: 'active',
           lastKnownWorkAt: previousAt,
-          phaseHint: 'working',
+          activityHint: 'working',
           observedAt: previousAt,
         };
         const projected = reducer.project({
@@ -172,7 +172,7 @@ void test('property: codex reducer ignores invalid telemetry observedAt for work
         }
         assert.equal(projected.lastKnownWork, previous.lastKnownWork);
         assert.equal(projected.lastKnownWorkAt, previous.lastKnownWorkAt);
-        assert.equal(projected.phaseHint, previous.phaseHint);
+        assert.equal(projected.activityHint, previous.activityHint);
       },
     ),
     { numRuns: 120 },

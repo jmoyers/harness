@@ -650,10 +650,10 @@ void test('control-plane store normalization helpers validate row shapes and fie
         ...conversationRowBase,
         runtime_status_model_json: JSON.stringify({
           ...statusModelFor('running'),
-          phaseHint: 'paused',
+          activityHint: 'paused',
         }),
       }),
-    /phaseHint enum value/,
+    /activityHint enum value/,
   );
 
   assert.throws(

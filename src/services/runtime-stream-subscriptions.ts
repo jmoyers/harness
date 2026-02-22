@@ -7,50 +7,58 @@ export interface RuntimeStreamSubscriptionsOptions {
   readonly unsubscribeObservedStream: (subscriptionId: string) => Promise<void>;
 }
 
-export class RuntimeStreamSubscriptions {
-  private observedStreamSubscriptionId: string | null = null;
+export interface RuntimeStreamSubscriptions {
+  subscribeConversationEvents(sessionId: string): Promise<void>;
+  unsubscribeConversationEvents(sessionId: string): Promise<void>;
+  subscribeTaskPlanningEvents(afterCursor: number | null): Promise<void>;
+  unsubscribeTaskPlanningEvents(): Promise<void>;
+}
 
-  constructor(private readonly options: RuntimeStreamSubscriptionsOptions) {}
+export function createRuntimeStreamSubscriptions(
+  options: RuntimeStreamSubscriptionsOptions,
+): RuntimeStreamSubscriptions {
+  let observedStreamSubscriptionId: string | null = null;
 
-  async subscribeConversationEvents(sessionId: string): Promise<void> {
+  const subscribeConversationEvents = async (sessionId: string): Promise<void> => {
     try {
-      await this.options.subscribePtyEvents(sessionId);
+      await options.subscribePtyEvents(sessionId);
     } catch (error: unknown) {
-      if (
-        !this.options.isSessionNotFoundError(error) &&
-        !this.options.isSessionNotLiveError(error)
-      ) {
+      if (!options.isSessionNotFoundError(error) && !options.isSessionNotLiveError(error)) {
         throw error;
       }
     }
-  }
+  };
 
-  async unsubscribeConversationEvents(sessionId: string): Promise<void> {
+  const unsubscribeConversationEvents = async (sessionId: string): Promise<void> => {
     try {
-      await this.options.unsubscribePtyEvents(sessionId);
+      await options.unsubscribePtyEvents(sessionId);
     } catch (error: unknown) {
-      if (
-        !this.options.isSessionNotFoundError(error) &&
-        !this.options.isSessionNotLiveError(error)
-      ) {
+      if (!options.isSessionNotFoundError(error) && !options.isSessionNotLiveError(error)) {
         throw error;
       }
     }
-  }
+  };
 
-  async subscribeTaskPlanningEvents(afterCursor: number | null): Promise<void> {
-    if (this.observedStreamSubscriptionId !== null) {
+  const subscribeTaskPlanningEvents = async (afterCursor: number | null): Promise<void> => {
+    if (observedStreamSubscriptionId !== null) {
       return;
     }
-    this.observedStreamSubscriptionId = await this.options.subscribeObservedStream(afterCursor);
-  }
+    observedStreamSubscriptionId = await options.subscribeObservedStream(afterCursor);
+  };
 
-  async unsubscribeTaskPlanningEvents(): Promise<void> {
-    if (this.observedStreamSubscriptionId === null) {
+  const unsubscribeTaskPlanningEvents = async (): Promise<void> => {
+    if (observedStreamSubscriptionId === null) {
       return;
     }
-    const subscriptionId = this.observedStreamSubscriptionId;
-    this.observedStreamSubscriptionId = null;
-    await this.options.unsubscribeObservedStream(subscriptionId);
-  }
+    const subscriptionId = observedStreamSubscriptionId;
+    observedStreamSubscriptionId = null;
+    await options.unsubscribeObservedStream(subscriptionId);
+  };
+
+  return {
+    subscribeConversationEvents,
+    unsubscribeConversationEvents,
+    subscribeTaskPlanningEvents,
+    unsubscribeTaskPlanningEvents,
+  };
 }

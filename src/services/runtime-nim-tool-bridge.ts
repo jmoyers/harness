@@ -73,13 +73,13 @@ export class RuntimeNimToolBridge {
     }
     if (input.toolName === 'task.list') {
       const limitInput: {
-        readonly argumentsText?: string;
-        readonly argumentsValue?: unknown;
+        readonly argumentsText: string | undefined;
+        readonly argumentsValue: unknown;
         readonly fallback: number;
       } = {
+        argumentsText: input.argumentsText,
         argumentsValue: input.argumentsValue,
         fallback: this.taskListLimit,
-        ...(input.argumentsText === undefined ? {} : { argumentsText: input.argumentsText }),
       };
       const limit = resolveTaskListLimit(limitInput);
       const tasks = await this.options.listTasks(limit);
@@ -113,8 +113,8 @@ function resolvePositiveLimit(argumentsText: string, fallback: number): number {
 }
 
 function resolveTaskListLimit(input: {
-  readonly argumentsText?: string;
-  readonly argumentsValue?: unknown;
+  readonly argumentsText: string | undefined;
+  readonly argumentsValue: unknown;
   readonly fallback: number;
 }): number {
   const value = input.argumentsValue;
