@@ -55,6 +55,7 @@ interface LeftRailPointerActions {
   readonly expandAllRepositoryGroups: () => void;
   readonly collapseAllRepositoryGroups: () => void;
   readonly enterHomePane: () => void;
+  readonly enterNimPane?: () => void;
   readonly enterTasksPane?: () => void;
   readonly queueCloseDirectory: (directoryId: string) => void;
   readonly toggleShortcutsCollapsed: () => void;
@@ -64,6 +65,8 @@ interface LeftRailPointerActions {
   readonly queueActivateConversation: (conversationId: string) => void;
   readonly queueActivateConversationAndEdit: (conversationId: string) => void;
   readonly enterProjectPane: (directoryId: string) => void;
+  readonly enterGitHubPane?: (directoryId: string) => void;
+  readonly toggleGitHubProjectExpanded?: (directoryId: string) => void;
   readonly markDirty: () => void;
 }
 
@@ -202,6 +205,17 @@ export class LeftRailPointerHandler
       return true;
     }
 
+    if (hit.selectedAction === 'nim.open') {
+      this.actions.clearConversationTitleEditClickState();
+      if (this.actions.enterNimPane !== undefined) {
+        this.actions.enterNimPane();
+      } else {
+        this.actions.enterHomePane();
+      }
+      this.actions.markDirty();
+      return true;
+    }
+
     if (hit.selectedAction === 'tasks.open') {
       this.actions.clearConversationTitleEditClickState();
       if (this.actions.enterTasksPane !== undefined) {
@@ -217,6 +231,32 @@ export class LeftRailPointerHandler
       this.actions.clearConversationTitleEditClickState();
       if (targetDirectoryId !== null) {
         this.actions.queueCloseDirectory(targetDirectoryId);
+      }
+      this.actions.markDirty();
+      return true;
+    }
+
+    if (hit.selectedAction === 'project.github.open') {
+      this.actions.clearConversationTitleEditClickState();
+      if (targetDirectoryId !== null && this.state.directoriesHas(targetDirectoryId)) {
+        if (this.actions.enterGitHubPane !== undefined) {
+          this.actions.enterGitHubPane(targetDirectoryId);
+        } else {
+          this.actions.enterProjectPane(targetDirectoryId);
+        }
+      }
+      this.actions.markDirty();
+      return true;
+    }
+
+    if (hit.selectedAction === 'project.github.toggle') {
+      this.actions.clearConversationTitleEditClickState();
+      if (
+        targetDirectoryId !== null &&
+        this.state.directoriesHas(targetDirectoryId) &&
+        this.actions.toggleGitHubProjectExpanded !== undefined
+      ) {
+        this.actions.toggleGitHubProjectExpanded(targetDirectoryId);
       }
       this.actions.markDirty();
       return true;

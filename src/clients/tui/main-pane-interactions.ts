@@ -309,6 +309,9 @@ export function createTuiMainPaneInteractions<TConversation extends ActiveConver
       onHomeWheel: (delta) => {
         options.workspace.taskPaneScrollTop = Math.max(0, options.workspace.taskPaneScrollTop + delta);
       },
+      onNimWheel: (_delta) => {
+        // Nim pane currently has no independent scroll state in the TUI adapter.
+      },
       markDirty: options.markDirty,
     },
     {

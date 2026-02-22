@@ -1,5 +1,6 @@
 import type { WorkspaceModel } from '../domain/workspace.ts';
 import type { RepositoryManager } from '../domain/repositories.ts';
+import type { ProjectPaneGitHubReviewSummary } from '../mux/project-pane-github-review.ts';
 
 export interface RuntimeLeftRailRenderLayout {
   readonly cols: number;
@@ -43,8 +44,15 @@ interface LeftRailPaneLike<
     projectSelectionEnabled: boolean;
     repositorySelectionEnabled: boolean;
     homeSelectionEnabled: boolean;
+    nimSelectionEnabled: boolean;
     tasksSelectionEnabled: boolean;
     showTasksEntry: boolean;
+    showGitHubIntegration: boolean;
+    visibleGitHubDirectoryIds?: ReadonlySet<string>;
+    expandedGitHubDirectoryIds?: ReadonlySet<string>;
+    githubReviewByDirectoryId: ReadonlyMap<string, ProjectPaneGitHubReviewSummary>;
+    githubSelectionEnabled: boolean;
+    activeGitHubProjectId: string | null;
     repositoriesCollapsed: boolean;
     collapsedRepositoryGroupIds: ReadonlySet<string>;
     gitSummaryByDirectoryId: ReadonlyMap<string, TGitSummary>;
@@ -99,6 +107,10 @@ export interface RuntimeLeftRailRenderOptions<
   readonly directoryRepositorySnapshotByDirectoryId: ReadonlyMap<string, TRepositorySnapshot>;
   readonly gitSummaryByDirectoryId: ReadonlyMap<string, TGitSummary>;
   readonly loadingGitSummary: TGitSummary;
+  readonly showGitHubIntegration?: boolean;
+  readonly visibleGitHubDirectoryIds?: ReadonlySet<string>;
+  readonly expandedGitHubDirectoryIds?: ReadonlySet<string>;
+  readonly githubReviewByDirectoryId?: ReadonlyMap<string, ProjectPaneGitHubReviewSummary>;
   readonly showTasksEntry?: boolean;
 }
 
@@ -153,8 +165,18 @@ export function renderRuntimeLeftRail<
     projectSelectionEnabled: options.workspace.leftNavSelection.kind === 'project',
     repositorySelectionEnabled: options.workspace.leftNavSelection.kind === 'repository',
     homeSelectionEnabled: options.workspace.leftNavSelection.kind === 'home',
+    nimSelectionEnabled: options.workspace.leftNavSelection.kind === 'nim',
     tasksSelectionEnabled: options.workspace.leftNavSelection.kind === 'tasks',
     showTasksEntry: options.showTasksEntry ?? true,
+    showGitHubIntegration: options.showGitHubIntegration ?? false,
+    visibleGitHubDirectoryIds: options.visibleGitHubDirectoryIds,
+    expandedGitHubDirectoryIds: options.expandedGitHubDirectoryIds,
+    githubReviewByDirectoryId: options.githubReviewByDirectoryId ?? new Map(),
+    githubSelectionEnabled: options.workspace.leftNavSelection.kind === 'github',
+    activeGitHubProjectId:
+      options.workspace.leftNavSelection.kind === 'github'
+        ? options.workspace.leftNavSelection.directoryId
+        : null,
     repositoriesCollapsed: options.workspace.repositoriesCollapsed,
     collapsedRepositoryGroupIds: options.repositoryManager.readonlyCollapsedRepositoryGroupIds(),
     gitSummaryByDirectoryId: options.gitSummaryByDirectoryId,

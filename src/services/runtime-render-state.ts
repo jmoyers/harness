@@ -24,6 +24,7 @@ export interface RuntimeRenderStateOptions<TConversation, TFrame> {
 export interface RuntimeRenderStateResult<TConversation, TFrame> {
   readonly projectPaneActive: boolean;
   readonly homePaneActive: boolean;
+  readonly nimPaneActive: boolean;
   readonly activeConversation: TConversation | null;
   readonly rightFrame: TFrame | null;
   readonly renderSelection: PaneSelection | null;
@@ -41,17 +42,23 @@ export function prepareRuntimeRenderState<TConversation, TFrame>(
     workspace.activeDirectoryId !== null &&
     options.directories.hasDirectory(workspace.activeDirectoryId);
   const homePaneActive = workspace.mainPaneMode === 'home';
-  if (!projectPaneActive && !homePaneActive && options.conversations.activeConversationId === null) {
+  const nimPaneActive = workspace.mainPaneMode === 'nim';
+  if (
+    !projectPaneActive &&
+    !homePaneActive &&
+    !nimPaneActive &&
+    options.conversations.activeConversationId === null
+  ) {
     return null;
   }
 
   const activeConversation = options.conversations.getActiveConversation();
-  if (!projectPaneActive && !homePaneActive && activeConversation === null) {
+  if (!projectPaneActive && !homePaneActive && !nimPaneActive && activeConversation === null) {
     return null;
   }
 
   const rightFrame =
-    !projectPaneActive && !homePaneActive && activeConversation !== null
+    !projectPaneActive && !homePaneActive && !nimPaneActive && activeConversation !== null
       ? options.snapshotFrame(activeConversation)
       : null;
   const renderSelection =
@@ -69,6 +76,7 @@ export function prepareRuntimeRenderState<TConversation, TFrame>(
   return {
     projectPaneActive,
     homePaneActive,
+    nimPaneActive,
     activeConversation,
     rightFrame,
     renderSelection,

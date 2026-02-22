@@ -2,6 +2,7 @@ import { basename } from 'node:path';
 import type { ConversationRailSessionSummary } from '../conversation-rail.ts';
 import { buildWorkspaceRailViewRows } from '../workspace-rail-model.ts';
 import { renderWorkspaceRailAnsiRows } from '../workspace-rail.ts';
+import type { ProjectPaneGitHubReviewSummary } from '../project-pane-github-review.ts';
 import type {
   StreamSessionController,
   StreamSessionStatusModel,
@@ -68,8 +69,16 @@ interface BuildRailModelArgs {
   readonly projectSelectionEnabled: boolean;
   readonly repositorySelectionEnabled: boolean;
   readonly homeSelectionEnabled: boolean;
+  readonly nimSelectionEnabled?: boolean;
   readonly tasksSelectionEnabled?: boolean;
+  readonly showNimEntry?: boolean;
   readonly showTasksEntry?: boolean;
+  readonly showGitHubIntegration?: boolean;
+  readonly visibleGitHubDirectoryIds?: ReadonlySet<string>;
+  readonly expandedGitHubDirectoryIds?: ReadonlySet<string>;
+  readonly githubReviewByDirectoryId?: ReadonlyMap<string, ProjectPaneGitHubReviewSummary>;
+  readonly githubSelectionEnabled?: boolean;
+  readonly activeGitHubProjectId?: string | null;
   readonly repositoriesCollapsed: boolean;
   readonly collapsedRepositoryGroupIds: ReadonlySet<string>;
   readonly gitSummaryByDirectoryId: ReadonlyMap<string, GitSummary>;
@@ -193,10 +202,30 @@ export function buildRailModel(args: BuildRailModelArgs): WorkspaceRailModel {
     activeRepositoryId: args.activeRepositoryId,
     activeConversationId: args.activeConversationId,
     showTaskPlanningUi: true,
+    showNimEntry: args.showNimEntry ?? true,
     showTasksEntry: args.showTasksEntry ?? true,
+    showGitHubIntegration: args.showGitHubIntegration ?? false,
+    ...(args.visibleGitHubDirectoryIds === undefined
+      ? {}
+      : {
+          visibleGitHubDirectoryKeys: [...args.visibleGitHubDirectoryIds],
+        }),
+    ...(args.expandedGitHubDirectoryIds === undefined
+      ? {}
+      : {
+          expandedGitHubDirectoryKeys: [...args.expandedGitHubDirectoryIds],
+        }),
+    ...(args.githubReviewByDirectoryId === undefined
+      ? {}
+      : {
+          githubReviewByDirectoryKey: args.githubReviewByDirectoryId,
+        }),
     projectSelectionEnabled: args.projectSelectionEnabled,
+    githubSelectionEnabled: args.githubSelectionEnabled ?? false,
+    activeGitHubProjectId: args.activeGitHubProjectId ?? null,
     repositorySelectionEnabled: args.repositorySelectionEnabled,
     homeSelectionEnabled: args.homeSelectionEnabled,
+    nimSelectionEnabled: args.nimSelectionEnabled ?? false,
     tasksSelectionEnabled: args.tasksSelectionEnabled ?? false,
     repositoriesCollapsed: args.repositoriesCollapsed,
     collapsedRepositoryGroupIds: [...args.collapsedRepositoryGroupIds],

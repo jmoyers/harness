@@ -50,7 +50,7 @@ function printUsage(): void {
       '  --tenant-id <id>',
       '  --user-id <id>',
       '  --model <provider/model>',
-      '  --ui-mode <debug|seamless>',
+      '  --ui-mode <debug|user>',
       '  --live-anthropic',
       '  --mock',
       '  --session-id <id>',
@@ -111,10 +111,7 @@ export function parseNimTuiArgs(
     }
     if (arg === '--ui-mode') {
       const rawMode = requireArg(next, '--ui-mode');
-      if (rawMode !== 'debug' && rawMode !== 'seamless') {
-        throw new Error(`invalid --ui-mode: ${rawMode}`);
-      }
-      uiMode = rawMode;
+      uiMode = parseCliUiMode(rawMode, '--ui-mode');
       index += 1;
       continue;
     }
@@ -191,6 +188,22 @@ function parseModelRef(value: string): NimModelRef {
     throw new Error(`invalid model ref: ${value}`);
   }
   return normalized as NimModelRef;
+}
+
+function parseCliUiMode(value: string, origin: '--ui-mode' | '/mode'): NimUiMode {
+  const normalized = value.trim();
+  if (normalized === 'debug') {
+    return 'debug';
+  }
+  if (normalized === 'user' || normalized === 'seamless') {
+    return 'seamless';
+  }
+  const prefix = origin === '--ui-mode' ? 'invalid --ui-mode' : 'invalid mode';
+  throw new Error(`${prefix}: ${value}`);
+}
+
+function uiModeLabel(mode: NimUiMode): 'debug' | 'user' {
+  return mode === 'debug' ? 'debug' : 'user';
 }
 
 export function parseNimTuiCommand(input: string): Command {
@@ -283,12 +296,9 @@ export function parseNimTuiCommand(input: string): Command {
   }
   if (trimmed.startsWith('/mode ')) {
     const raw = trimmed.slice('/mode '.length).trim();
-    if (raw !== 'debug' && raw !== 'seamless') {
-      throw new Error(`invalid mode: ${raw}`);
-    }
     return {
       type: 'mode',
-      mode: raw,
+      mode: parseCliUiMode(raw, '/mode'),
     };
   }
   if (trimmed.startsWith('/model ')) {
@@ -313,7 +323,7 @@ function printHelp(): void {
       '  /queue [high|normal] <text>',
       '  /replay [count]',
       '  /state',
-      '  /mode <debug|seamless>',
+      '  /mode <debug|user>',
       '  /model <provider/model>',
       '  /session new',
       '  /session resume <session-id>',
@@ -519,7 +529,7 @@ async function runNimTuiInteractive(args: ParsedArgs): Promise<void> {
               userId: currentSession.userId,
               sessionId: currentSession.sessionId,
               model: currentModel,
-              uiMode,
+              uiMode: uiModeLabel(uiMode),
               activeRunId: activeRunId ?? null,
               lastEventId: lastEventId ?? null,
             },
@@ -531,7 +541,7 @@ async function runNimTuiInteractive(args: ParsedArgs): Promise<void> {
       }
       if (command.type === 'mode') {
         uiMode = command.mode;
-        process.stdout.write(`ui mode set to ${uiMode}\n`);
+        process.stdout.write(`ui mode set to ${uiModeLabel(uiMode)}\n`);
         continue;
       }
       if (command.type === 'switch-model') {

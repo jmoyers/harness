@@ -156,6 +156,7 @@ export function createRuntimeRenderPipeline<
         layout: input.layout,
         rightFrame: input.rightFrame,
         homePaneActive: input.homePaneActive,
+        nimPaneActive: input.nimPaneActive,
         projectPaneActive: input.projectPaneActive,
         activeDirectoryId: input.activeDirectoryId,
         snapshot: input.snapshot.rightPane,

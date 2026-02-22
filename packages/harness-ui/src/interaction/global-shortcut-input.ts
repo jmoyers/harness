@@ -1,5 +1,5 @@
 type ShortcutCycleDirection = 'next' | 'previous';
-type MainPaneMode = 'conversation' | 'project' | 'home';
+type MainPaneMode = 'conversation' | 'project' | 'home' | 'nim';
 
 function parseNumericPrefix(value: string): number | null {
   const parsed = Number.parseInt(value, 10);
@@ -58,6 +58,7 @@ export interface GlobalShortcutState {
   readonly mainPaneMode: () => MainPaneMode;
   readonly activeConversationId: () => string | null;
   readonly activeConversationAgentType?: () => string | null;
+  readonly resolveConversationForAction?: () => string | null;
   readonly conversationsHas: (sessionId: string) => boolean;
   readonly activeDirectoryId: () => string | null;
   readonly directoryExists: (directoryId: string) => boolean;
@@ -145,7 +146,11 @@ export class GlobalShortcutInput<TShortcutBindings> {
       toggleGatewayStatusTimeline: this.actions.toggleGatewayStatusTimeline,
       toggleGatewayRenderTrace: this.actions.toggleGatewayRenderTrace,
       resolveConversationForAction: () =>
-        this.state.mainPaneMode() === 'conversation' ? this.state.activeConversationId() : null,
+        this.state.resolveConversationForAction !== undefined
+          ? this.state.resolveConversationForAction()
+          : this.state.mainPaneMode() === 'conversation'
+            ? this.state.activeConversationId()
+            : null,
       conversationsHas: this.state.conversationsHas,
       queueControlPlaneOp: this.actions.queueControlPlaneOp,
       archiveConversation: this.actions.archiveConversation,

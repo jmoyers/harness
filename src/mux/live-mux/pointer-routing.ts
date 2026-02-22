@@ -45,9 +45,10 @@ export function handleSeparatorPointerPress(options: HandleSeparatorPointerPress
 interface HandleMainPaneWheelInputOptions {
   target: string;
   wheelDelta: number | null;
-  mainPaneMode: 'conversation' | 'project' | 'home';
+  mainPaneMode: 'conversation' | 'project' | 'home' | 'nim';
   onProjectWheel: (delta: number) => void;
   onHomeWheel: (delta: number) => void;
+  onNimWheel: (delta: number) => void;
   onConversationWheel: (delta: number) => void;
   markDirty: () => void;
 }
@@ -60,6 +61,8 @@ export function handleMainPaneWheelInput(options: HandleMainPaneWheelInputOption
     options.onProjectWheel(options.wheelDelta);
   } else if (options.mainPaneMode === 'home') {
     options.onHomeWheel(options.wheelDelta);
+  } else if (options.mainPaneMode === 'nim') {
+    options.onNimWheel(options.wheelDelta);
   } else {
     options.onConversationWheel(options.wheelDelta);
   }
@@ -77,7 +80,7 @@ interface HomePaneDragState {
 
 interface HandleHomePaneDragMoveOptions {
   homePaneDragState: HomePaneDragState | null;
-  mainPaneMode: 'conversation' | 'project' | 'home';
+  mainPaneMode: 'conversation' | 'project' | 'home' | 'nim';
   target: string;
   isSelectionDrag: boolean;
   hasAltModifier: boolean;

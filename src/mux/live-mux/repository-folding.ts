@@ -12,6 +12,9 @@ export function selectedRepositoryGroupIdForLeftNav(
   if (leftNavSelection.kind === 'project') {
     return repositoryGroupIdForDirectory(leftNavSelection.directoryId);
   }
+  if (leftNavSelection.kind === 'github') {
+    return repositoryGroupIdForDirectory(leftNavSelection.directoryId);
+  }
   if (leftNavSelection.kind === 'conversation') {
     const conversation = conversations.get(leftNavSelection.sessionId);
     if (conversation?.directoryId !== null && conversation?.directoryId !== undefined) {

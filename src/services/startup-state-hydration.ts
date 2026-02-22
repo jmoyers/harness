@@ -34,7 +34,7 @@ export interface StartupStateHydrationServiceOptions<
   readonly ensureActiveConversationId: () => void;
   readonly activeConversationId: () => string | null;
   readonly selectLeftNavConversation: (sessionId: string) => void;
-  readonly enterHomePane: () => void;
+  readonly enterStartupPane: () => void;
 }
 
 export interface StartupStateHydrationService {
@@ -88,7 +88,7 @@ export function createStartupStateHydrationService<
     await hydrateDirectoryGitStatus();
     await options.subscribeTaskPlanningEvents(afterCursor);
     options.ensureActiveConversationId();
-    options.enterHomePane();
+    options.enterStartupPane();
   }
 
   return {

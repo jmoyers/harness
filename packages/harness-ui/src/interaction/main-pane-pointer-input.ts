@@ -11,7 +11,7 @@ interface HomePaneDragState {
   readonly hasDragged: boolean;
 }
 
-type MainPaneMode = 'conversation' | 'project' | 'home';
+type MainPaneMode = 'conversation' | 'project' | 'home' | 'nim';
 type PointerTarget = 'left' | 'right' | 'separator' | 'status' | 'outside';
 
 function isWheelMouseCode(code: number): boolean {

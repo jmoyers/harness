@@ -9,7 +9,7 @@ interface HomePaneDragState {
 interface HandleHomePaneDragReleaseOptions {
   homePaneDragState: HomePaneDragState | null;
   isMouseRelease: boolean;
-  mainPaneMode: 'conversation' | 'project' | 'home';
+  mainPaneMode: 'conversation' | 'project' | 'home' | 'nim';
   target: string;
   rowIndex: number;
   taskIdAtRow: (rowIndex: number) => string | null;

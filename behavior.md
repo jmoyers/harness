@@ -17,6 +17,7 @@ Behavior fragments:
 - Scoped command registry and provider-driven action lists.
 - Query matching/ranking with deterministic ordering.
 - Empty-query grouping with stable default focus behavior.
+- Modal wheel scrolling moves command selection with the same wrap behavior as keyboard navigation.
 - Action execution through runtime-owned handlers.
 
 Owners:
@@ -93,17 +94,38 @@ Test anchors:
 - `test/ui-left-nav-fast-cycle.integration.test.ts`
 - `test/services-runtime-conversation-activation.test.ts`
 
+## Conversation Link Clicks
+
+Behavior fragments:
+
+- Command-click in conversation VTE resolves the token under the pointer as either URL or file-like path.
+- URL targets open through the configured browser command override when set, otherwise platform default browser opener.
+- File targets prefer configured pinned file command override; otherwise they use detected `open in` targets with `zed` priority, then platform default file opener fallback.
+
+Owners:
+
+- `src/mux/live-mux/input-forwarding.ts`
+- `src/mux/live-mux/link-click.ts`
+- `src/mux/runtime-app/codex-live-mux-runtime.ts`
+
+Test anchors:
+
+- `test/mux-live-mux-link-click.test.ts`
+- `test/mux-live-mux-uncovered-small.test.ts`
+
 ## Pane Rendering and Navigation
 
 Behavior fragments:
 
 - Left/right pane layout and divider semantics.
 - Home/project/task pane render branching.
-- Project pane GitHub review tree for tracked branch state (PR lifecycle + open/resolved review threads).
-- Project pane GitHub review loads via centralized runtime cache with TTL freshness, in-flight dedupe, and active-pane timed refresh.
+- Left rail keeps project-scoped GitHub PR nodes hidden until explicitly opened from command palette (`Open GitHub Thread (git)`).
+- Selecting a GitHub rail node opens the project main panel in GitHub review mode and renders full tracked-branch PR details (lifecycle + open/resolved review threads and comments).
+- GitHub rail rows show compact PR summary detail inline when the rail node is active.
+- GitHub review data loads via centralized runtime cache with TTL freshness, in-flight dedupe, and active-pane timed refresh.
 - GitHub review refresh work runs in latest-wins background control-plane slots so rapid interactive left-nav cycling is not starved by review refresh backlog.
-- Entering project pane does not trigger GitHub review loading; project pane render stays instant from existing local snapshot state.
-- Project pane exposes an explicit refresh action for GitHub review data; force refresh is user-driven.
+- Entering project pane does not trigger GitHub review loading; default project tree render stays instant from existing local snapshot state.
+- GitHub review mode exposes an explicit refresh action for GitHub review data; force refresh is user-driven.
 - Gateway prewarms and serves cached project review data by repository+tracked branch so non-force reads avoid direct GitHub API fetches.
 - Navigation transitions and selection synchronization.
 - Local Git repositories without GitHub remotes still hydrate into repository groups (not `untracked`).
@@ -127,6 +149,41 @@ Test anchors:
 - `test/mux-live-mux-uncovered-small.test.ts`
 - `test/services-runtime-left-rail-render.test.ts`
 - `test/mux-live-mux-rail-layout.test.ts`
+
+## NIM Pane Runtime
+
+Behavior fragments:
+
+- Left rail includes a persistent top-level `nim` entry that routes to a dedicated NIM pane.
+- NIM pane renders a pinned bottom composer, transcript viewport, and mode/status header rows.
+- NIM session state is workspace-scoped and remains active across pane switches.
+- Keyboard semantics in NIM pane are fixed:
+- `Enter`: submit when idle, steer when a run is active.
+- `Tab`: queue a follow-up message.
+- `Esc`: request abort for active run and stay silent when already idle.
+- NIM supports `debug` and `user` output modes.
+- `debug` shows explicit lifecycle/tool activity timeline rows.
+- `user` suppresses debug timeline noise while preserving user/assistant transcript flow.
+- `/mode` accepts `debug|user` and keeps `seamless` as a compatibility alias mapped to `user`.
+- Provider-backed runs that fail are retried once with a local fallback driver, and failure reasons are surfaced in transcript `[error]` rows.
+- NIM tool bridge is read-first in v1 (`directory.list`, `repository.list`, `task.list`, `session.list`) and routes through control-plane service adapters.
+
+Owners:
+
+- `src/services/runtime-nim-session.ts`
+- `src/services/runtime-right-pane-render.ts`
+- `src/ui/panes/nim.ts`
+- `src/services/runtime-nim-tool-bridge.ts`
+- `src/mux/live-mux/left-nav.ts`
+
+Test anchors:
+
+- `test/services-runtime-nim-session.test.ts`
+- `test/ui-panes-nim.test.ts`
+- `test/services-runtime-right-pane-render.test.ts`
+- `test/services-runtime-nim-tool-bridge.test.ts`
+- `test/mux-live-mux-uncovered-small.test.ts`
+- `test/codex-live-mux-startup.integration.test.ts`
 
 ## Task Pane and Editing
 

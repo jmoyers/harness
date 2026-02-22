@@ -175,7 +175,7 @@ class AuthCommand extends HarnessCommandBase {
   static override summary = 'Authenticate providers and manage saved credential state.';
 
   static override usage = [
-    'auth login <github|linear> [options]',
+    'auth login <github|linear> [--no-browser] [--timeout-ms <ms>] [--scopes <list>] [--callback-port <port>]',
     'auth logout <github|linear|all>',
     'auth status [--json]',
   ];

@@ -1,6 +1,7 @@
 interface RuntimeRenderStateResult<TConversation, TFrame, TSelection> {
   readonly projectPaneActive: boolean;
   readonly homePaneActive: boolean;
+  readonly nimPaneActive: boolean;
   readonly activeConversation: TConversation | null;
   readonly rightFrame: TFrame | null;
   readonly renderSelection: TSelection | null;
@@ -37,6 +38,7 @@ export interface RuntimeRenderOrchestratorOptions<
     layout: TLayout;
     rightFrame: TFrame | null;
     homePaneActive: boolean;
+    nimPaneActive: boolean;
     projectPaneActive: boolean;
     activeDirectoryId: string | null;
     snapshot: TRenderSnapshot;
@@ -97,6 +99,7 @@ export function orchestrateRuntimeRender<
     layout: input.layout,
     rightFrame: renderState.rightFrame,
     homePaneActive: renderState.homePaneActive,
+    nimPaneActive: renderState.nimPaneActive,
     projectPaneActive: renderState.projectPaneActive,
     activeDirectoryId: options.activeDirectoryId(),
     snapshot,

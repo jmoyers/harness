@@ -12,8 +12,9 @@ Programmable, agent-agnostic, threaded, ergonomic, and fast.
 - Codex, Claude Code, and Cursor together in one workspace.
 - Diff with Critique, with integrated terminals (`harness diff` + critique actions).
 - Detached gateway sessions keep long-running work alive through reconnects.
-- Project pane GitHub review tree shows tracked-branch PR state plus open/resolved review comments.
+- Command palette can open a GitHub thread entry in the left rail for the active project, then show full tracked-branch PR/review details in the main panel.
 - Open the active project directly in local tools (`iTerm2`, `Ghostty`, `Zed`, `Cursor`, `VSCode`, `Warp`, `Finder`) or copy its path from the palette.
+- Command-click links inside conversation terminal output: URLs open in browser, file-like paths open in your configured editor/open-in command.
 
 ## Demo
 

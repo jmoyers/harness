@@ -1,4 +1,4 @@
-type MainPaneMode = 'conversation' | 'project' | 'home';
+type MainPaneMode = 'conversation' | 'project' | 'home' | 'nim';
 type PointerTarget = 'left' | 'right' | 'separator' | 'status' | 'outside';
 
 interface HomePaneDragState {
@@ -62,6 +62,7 @@ export interface PointerRoutingInputOptions {
   ) => void;
   readonly onProjectWheel: (delta: number) => void;
   readonly onHomeWheel: (delta: number) => void;
+  readonly onNimWheel: (delta: number) => void;
   readonly markDirty: () => void;
 }
 
@@ -107,6 +108,7 @@ export interface HandleMainPaneWheelInput {
   readonly mainPaneMode: MainPaneMode;
   readonly onProjectWheel: (delta: number) => void;
   readonly onHomeWheel: (delta: number) => void;
+  readonly onNimWheel: (delta: number) => void;
   readonly onConversationWheel: (delta: number) => void;
   readonly markDirty: () => void;
 }
@@ -197,6 +199,7 @@ export class PointerRoutingInput {
       mainPaneMode: this.options.getMainPaneMode(),
       onProjectWheel: this.options.onProjectWheel,
       onHomeWheel: this.options.onHomeWheel,
+      onNimWheel: this.options.onNimWheel,
       onConversationWheel,
       markDirty: this.options.markDirty,
     });

@@ -10,3 +10,4 @@ var/
 
 assets/poem-recording.jsonl
 .cursor/
+tmp/bun-test-junit*.xml

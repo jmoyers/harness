@@ -1,6 +1,13 @@
 export type ProjectPaneGitHubToggleAction = `project.github.toggle:${string}`;
 
 type ProjectPaneGitHubPrLifecycleState = 'draft' | 'open' | 'merged' | 'closed';
+type ProjectPaneGitHubCiRollup =
+  | 'pending'
+  | 'success'
+  | 'failure'
+  | 'cancelled'
+  | 'neutral'
+  | 'none';
 
 export interface ProjectPaneGitHubReviewComment {
   readonly commentId: string;
@@ -30,6 +37,7 @@ export interface ProjectPaneGitHubPullRequestSummary {
   readonly isDraft: boolean;
   readonly mergedAt: string | null;
   readonly closedAt: string | null;
+  readonly ciRollup?: ProjectPaneGitHubCiRollup | null;
   readonly updatedAt: string;
   readonly createdAt: string;
 }

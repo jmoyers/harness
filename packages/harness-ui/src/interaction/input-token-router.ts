@@ -3,7 +3,7 @@ import type {
   PaneSelection,
 } from './conversation-selection-input.ts';
 
-type MainPaneMode = 'conversation' | 'project' | 'home';
+type MainPaneMode = 'conversation' | 'project' | 'home' | 'nim';
 type PointerTarget = 'left' | 'right' | 'separator' | 'status' | 'outside';
 
 interface MouseSelectionEvent {
