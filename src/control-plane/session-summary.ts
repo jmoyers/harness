@@ -1,5 +1,6 @@
 import type { PtyExit } from '../pty/pty_host.ts';
 import {
+  isStreamSessionRuntimeStatus,
   parseStreamSessionStatusModel,
   type StreamSessionController,
   type StreamSessionControllerType,
@@ -188,12 +189,6 @@ function readSessionController(value: unknown): StreamSessionController | null |
   };
 }
 
-function isRuntimeStatus(value: string): value is StreamSessionRuntimeStatus {
-  return (
-    value === 'running' || value === 'needs-input' || value === 'completed' || value === 'exited'
-  );
-}
-
 export function parseSessionSummaryRecord(value: unknown): StreamSessionSummary | null {
   const record = asRecord(value);
   if (record === null) {
@@ -214,7 +209,7 @@ export function parseSessionSummaryRecord(value: unknown): StreamSessionSummary 
     workspaceId === null ||
     worktreeId === null ||
     status === null ||
-    !isRuntimeStatus(status)
+    !isStreamSessionRuntimeStatus(status)
   ) {
     return null;
   }

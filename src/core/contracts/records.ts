@@ -1,4 +1,5 @@
 import {
+  isStreamSessionRuntimeStatus,
   parseStreamSessionStatusModel,
   type StreamSessionController,
   type StreamSessionRuntimeStatus,
@@ -196,12 +197,7 @@ export function parseConversationRecord(value: unknown): ControlPlaneConversatio
     return null;
   }
 
-  if (
-    runtimeStatus !== 'running' &&
-    runtimeStatus !== 'needs-input' &&
-    runtimeStatus !== 'completed' &&
-    runtimeStatus !== 'exited'
-  ) {
+  if (!isStreamSessionRuntimeStatus(runtimeStatus)) {
     return null;
   }
 

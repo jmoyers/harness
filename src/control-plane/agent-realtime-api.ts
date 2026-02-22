@@ -2,6 +2,7 @@ import type { PtyExit } from '../pty/pty_host.ts';
 import { connectControlPlaneStreamClient, type ControlPlaneStreamClient } from './stream-client.ts';
 import { parseSessionSummaryList, parseSessionSummaryRecord } from './session-summary.ts';
 import {
+  parseStreamSessionRuntimeStatus,
   parseStreamSessionStatusModel,
   type StreamCommand,
   type StreamObservedEvent,
@@ -405,18 +406,6 @@ function parseTaskScopeKind(
   return null;
 }
 
-function parseRuntimeStatus(value: unknown): StreamSessionRuntimeStatus | null {
-  if (
-    value === 'running' ||
-    value === 'needs-input' ||
-    value === 'completed' ||
-    value === 'exited'
-  ) {
-    return value;
-  }
-  return null;
-}
-
 function parseSignal(value: unknown): NodeJS.Signals | null | undefined {
   if (value === undefined) {
     return undefined;
@@ -586,7 +575,7 @@ function parseThreadRecord(value: unknown): AgentThread | null {
   const agentType = readString(record['agentType']);
   const createdAt = readString(record['createdAt']);
   const archivedAt = readNullableString(record['archivedAt']);
-  const runtimeStatus = parseRuntimeStatus(record['runtimeStatus']);
+  const runtimeStatus = parseStreamSessionRuntimeStatus(record['runtimeStatus']);
   const runtimeStatusModel = parseStreamSessionStatusModel(record['runtimeStatusModel']);
   const runtimeLive = readBoolean(record['runtimeLive']);
   const runtimeAttentionReason = readNullableString(record['runtimeAttentionReason']);

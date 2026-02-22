@@ -12,6 +12,21 @@ export type StreamSessionControllerType = 'human' | 'agent' | 'automation';
 export type StreamSessionDisplayPhase = 'needs-action' | 'starting' | 'working' | 'idle' | 'exited';
 export type StreamSessionActivityHint = 'needs-action' | 'working' | 'idle';
 
+export function isStreamSessionRuntimeStatus(
+  value: unknown,
+): value is StreamSessionRuntimeStatus {
+  return (
+    value === 'running' ||
+    value === 'needs-input' ||
+    value === 'completed' ||
+    value === 'exited'
+  );
+}
+
+export function parseStreamSessionRuntimeStatus(value: unknown): StreamSessionRuntimeStatus | null {
+  return isStreamSessionRuntimeStatus(value) ? value : null;
+}
+
 export interface StreamSessionController {
   controllerId: string;
   controllerType: StreamSessionControllerType;
@@ -1169,10 +1184,7 @@ export function parseStreamSessionStatusModel(
   const observedAt = readString(record['observedAt']);
   if (
     runtimeStatus === null ||
-    (runtimeStatus !== 'running' &&
-      runtimeStatus !== 'needs-input' &&
-      runtimeStatus !== 'completed' &&
-      runtimeStatus !== 'exited') ||
+    !isStreamSessionRuntimeStatus(runtimeStatus) ||
     phase === null ||
     (phase !== 'needs-action' &&
       phase !== 'starting' &&
