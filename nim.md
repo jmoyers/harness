@@ -152,11 +152,29 @@ flowchart LR
 
 ### Phase 5: Hardening and Readiness
 
-- [ ] Unit/integration/e2e coverage at project standards.
-- [ ] Performance pass on render path and event fanout.
-- [ ] Update `behavior.md` for new surfaces once behavior is implemented.
+- [x] Unit/integration/e2e coverage at project standards.
+- [x] Performance pass on render path and event fanout.
+- [x] Update `behavior.md` for new surfaces once behavior is implemented.
 - Exit criteria:
 - feature is reliable under restart, queue, abort, and tool-heavy runs.
+
+Performance baseline notes (2026-02-22):
+
+- Command:
+  - `bun run scripts/perf-mux-hotpath-harness.ts --duration-ms 3000 --output-hz 120 --input-hz 60 --sessions 2 --active-share 1 --profile mixed --seed 7`
+- Result highlights:
+  - `render-total p95=0.395ms`
+  - `event-loop delay p95=1.142ms`
+
+- Command:
+  - `bun run scripts/perf-mux-hotpath-harness.ts --duration-ms 3000 --output-hz 240 --chunks-per-tick 2 --bytes-per-chunk 320 --input-hz 120 --sessions 4 --active-share 0.75 --profile ansi --seed 7`
+- Result highlights:
+  - `render-total p95=0.351ms`
+  - `event-loop delay p95=1.023ms`
+
+- Interpretation:
+  - render/ingest timings remain sub-millisecond at p95 in both baseline and stress configurations,
+  - event-loop delay remained low single-digit milliseconds with no starvation indicators in this harness pass.
 
 ## 7. Test Plan (By Surface)
 
@@ -203,4 +221,5 @@ Resolved:
 
 ## 10. Immediate Next Step
 
-- Execute Phase 5 hardening: broaden test closure, run perf pass, and update `behavior.md`.
+- Phase 5 is complete for v1 scope.
+- Next: plan v1.1 mutating control-plane tool rollout with explicit policy and audit surfaces.

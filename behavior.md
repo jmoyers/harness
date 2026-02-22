@@ -129,6 +129,40 @@ Test anchors:
 - `test/services-runtime-left-rail-render.test.ts`
 - `test/mux-live-mux-rail-layout.test.ts`
 
+## NIM Pane Runtime
+
+Behavior fragments:
+
+- Left rail includes a persistent top-level `NIM` entry that routes to a dedicated NIM pane.
+- NIM pane renders a pinned bottom composer, transcript viewport, and mode/status header rows.
+- NIM session state is workspace-scoped and remains active across pane switches.
+- Keyboard semantics in NIM pane are fixed:
+- `Enter`: submit when idle, steer when a run is active.
+- `Tab`: queue a follow-up message.
+- `Esc`: request abort for active run and stay silent when already idle.
+- NIM supports `debug` and `user` output modes.
+- `debug` shows explicit lifecycle/tool activity timeline rows.
+- `user` suppresses debug timeline noise while preserving user/assistant transcript flow.
+- `/mode` accepts `debug|user` and keeps `seamless` as a compatibility alias mapped to `user`.
+- NIM tool bridge is read-first in v1 (`directory.list`, `repository.list`, `task.list`, `session.list`) and routes through control-plane service adapters.
+
+Owners:
+
+- `src/services/runtime-nim-session.ts`
+- `src/services/runtime-right-pane-render.ts`
+- `src/ui/panes/nim.ts`
+- `src/services/runtime-nim-tool-bridge.ts`
+- `src/mux/live-mux/left-nav.ts`
+
+Test anchors:
+
+- `test/services-runtime-nim-session.test.ts`
+- `test/ui-panes-nim.test.ts`
+- `test/services-runtime-right-pane-render.test.ts`
+- `test/services-runtime-nim-tool-bridge.test.ts`
+- `test/mux-live-mux-uncovered-small.test.ts`
+- `test/codex-live-mux-startup.integration.test.ts`
+
 ## Task Pane and Editing
 
 Behavior fragments:
