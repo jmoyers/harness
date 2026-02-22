@@ -1,5 +1,6 @@
 import type { WorkspaceModel } from '../domain/workspace.ts';
 import type { RepositoryManager } from '../domain/repositories.ts';
+import type { ProjectPaneGitHubReviewSummary } from '../mux/project-pane-github-review.ts';
 
 interface RuntimeLeftRailRenderLayout {
   readonly cols: number;
@@ -45,6 +46,11 @@ interface LeftRailPaneLike<
     homeSelectionEnabled: boolean;
     tasksSelectionEnabled: boolean;
     showTasksEntry: boolean;
+    showGitHubIntegration: boolean;
+    visibleGitHubDirectoryIds?: ReadonlySet<string>;
+    githubReviewByDirectoryId: ReadonlyMap<string, ProjectPaneGitHubReviewSummary>;
+    githubSelectionEnabled: boolean;
+    activeGitHubProjectId: string | null;
     repositoriesCollapsed: boolean;
     collapsedRepositoryGroupIds: ReadonlySet<string>;
     gitSummaryByDirectoryId: ReadonlyMap<string, TGitSummary>;
@@ -89,6 +95,9 @@ interface RuntimeLeftRailRenderOptions<
   readonly gitSummaryByDirectoryId: ReadonlyMap<string, TGitSummary>;
   readonly processUsageBySessionId: () => ReadonlyMap<string, TProcessUsage>;
   readonly loadingGitSummary: TGitSummary;
+  readonly showGitHubIntegration?: boolean;
+  readonly visibleGitHubDirectoryIds?: ReadonlySet<string>;
+  readonly githubReviewByDirectoryId?: ReadonlyMap<string, ProjectPaneGitHubReviewSummary>;
   readonly showTasksEntry?: boolean;
   readonly activeConversationId: () => string | null;
   readonly orderedConversationIds: () => readonly string[];
@@ -143,6 +152,14 @@ export class RuntimeLeftRailRender<
       homeSelectionEnabled: this.options.workspace.leftNavSelection.kind === 'home',
       tasksSelectionEnabled: this.options.workspace.leftNavSelection.kind === 'tasks',
       showTasksEntry: this.options.showTasksEntry ?? true,
+      showGitHubIntegration: this.options.showGitHubIntegration ?? false,
+      visibleGitHubDirectoryIds: this.options.visibleGitHubDirectoryIds,
+      githubReviewByDirectoryId: this.options.githubReviewByDirectoryId ?? new Map(),
+      githubSelectionEnabled: this.options.workspace.leftNavSelection.kind === 'github',
+      activeGitHubProjectId:
+        this.options.workspace.leftNavSelection.kind === 'github'
+          ? this.options.workspace.leftNavSelection.directoryId
+          : null,
       repositoriesCollapsed: this.options.workspace.repositoriesCollapsed,
       collapsedRepositoryGroupIds:
         this.options.repositoryManager.readonlyCollapsedRepositoryGroupIds(),

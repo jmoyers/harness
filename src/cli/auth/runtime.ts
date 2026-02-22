@@ -35,6 +35,7 @@ interface ParsedAuthLoginCommand {
   readonly noBrowser: boolean;
   readonly timeoutMs: number;
   readonly scopes: string | null;
+  readonly callbackPort: number | null;
 }
 
 interface ParsedAuthRefreshCommand {
@@ -63,6 +64,18 @@ interface RefreshLinearOauthTokenResult {
   readonly skippedReason: string | null;
 }
 
+function parseOauthCallbackPort(value: string, label: string): number {
+  const trimmed = value.trim();
+  if (!/^\d+$/u.test(trimmed)) {
+    throw new Error(`invalid ${label} value: ${value}`);
+  }
+  const parsed = Number.parseInt(trimmed, 10);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65_535) {
+    throw new Error(`invalid ${label} value: ${value}`);
+  }
+  return parsed;
+}
+
 class AuthCommandParser {
   public constructor() {}
 
@@ -88,6 +101,7 @@ class AuthCommandParser {
     let noBrowser = false;
     let timeoutMs = DEFAULT_AUTH_TIMEOUT_MS;
     let scopes: string | null = null;
+    let callbackPort: number | null = null;
     for (let index = 1; index < argv.length; index += 1) {
       const arg = argv[index]!;
       if (arg === '--no-browser') {
@@ -104,7 +118,18 @@ class AuthCommandParser {
         index += 1;
         continue;
       }
+      if (arg === '--callback-port') {
+        callbackPort = parseOauthCallbackPort(
+          readCliValue(argv, index, '--callback-port'),
+          '--callback-port',
+        );
+        index += 1;
+        continue;
+      }
       throw new Error(`unknown auth login option: ${arg}`);
+    }
+    if (provider !== 'linear' && callbackPort !== null) {
+      throw new Error('--callback-port is only supported for auth login linear');
     }
     return {
       type: 'login',
@@ -112,6 +137,7 @@ class AuthCommandParser {
       noBrowser,
       timeoutMs,
       scopes,
+      callbackPort,
     };
   }
 
@@ -521,6 +547,17 @@ export class AuthRuntimeService {
     return DEFAULT_LINEAR_TOKEN_URL;
   }
 
+  private resolveLinearOauthCallbackPort(command: ParsedAuthLoginCommand): number {
+    if (command.callbackPort !== null) {
+      return command.callbackPort;
+    }
+    const configured = this.env.HARNESS_LINEAR_OAUTH_CALLBACK_PORT;
+    if (typeof configured !== 'string' || configured.trim().length === 0) {
+      return 0;
+    }
+    return parseOauthCallbackPort(configured, 'HARNESS_LINEAR_OAUTH_CALLBACK_PORT');
+  }
+
   private createPkceVerifier(): string {
     return randomBytes(32).toString('base64url');
   }
@@ -665,6 +702,7 @@ export class AuthRuntimeService {
     scopes: string,
     timeoutMs: number,
     noBrowser: boolean,
+    preferredCallbackPort: number,
   ): Promise<{ code: string; redirectUri: string; verifier: string }> {
     const verifier = this.createPkceVerifier();
     const challenge = this.createPkceChallenge(verifier);
@@ -673,6 +711,7 @@ export class AuthRuntimeService {
     return await new Promise<{ code: string; redirectUri: string; verifier: string }>(
       (resolveCode, rejectCode) => {
         let settled = false;
+        let attemptedDynamicFallback = preferredCallbackPort === 0;
         const server = createHttpServer((request, response) => {
           const requestUrl = new URL(request.url ?? '/', 'http://127.0.0.1');
           if (requestUrl.pathname !== '/oauth/callback') {
@@ -714,6 +753,7 @@ export class AuthRuntimeService {
           }
           settled = true;
           clearTimeout(timeoutHandle);
+          server.off('error', onListenError);
           server.close(() => {
             if (error !== null) {
               rejectCode(error);
@@ -726,13 +766,7 @@ export class AuthRuntimeService {
             resolveCode(result);
           });
         };
-        server.once('error', finish);
-        const timeoutHandle = setTimeout(() => {
-          finish(new Error('timed out waiting for linear oauth callback'));
-        }, timeoutMs);
-        timeoutHandle.unref();
-        let redirectUri = '';
-        server.listen(0, '127.0.0.1', () => {
+        const onListening = (): void => {
           const address = server.address();
           if (address === null || typeof address === 'string') {
             finish(new Error('unable to determine linear oauth callback address'));
@@ -752,7 +786,26 @@ export class AuthRuntimeService {
           if (!noBrowser) {
             this.tryOpenBrowserUrl(authorizeUrlText);
           }
-        });
+        };
+        const onListenError = (error: Error): void => {
+          const typedError = error as NodeJS.ErrnoException;
+          if (!attemptedDynamicFallback && typedError.code === 'EADDRINUSE') {
+            attemptedDynamicFallback = true;
+            this.writeStdout(
+              `linear oauth callback port ${String(preferredCallbackPort)} in use, retrying with dynamic port\n`,
+            );
+            server.listen(0, '127.0.0.1', onListening);
+            return;
+          }
+          finish(typedError);
+        };
+        server.on('error', onListenError);
+        const timeoutHandle = setTimeout(() => {
+          finish(new Error('timed out waiting for linear oauth callback'));
+        }, timeoutMs);
+        timeoutHandle.unref();
+        let redirectUri = '';
+        server.listen(preferredCallbackPort, '127.0.0.1', onListening);
       },
     );
   }
@@ -768,11 +821,13 @@ export class AuthRuntimeService {
       command.scopes ?? this.env.HARNESS_LINEAR_OAUTH_SCOPES,
       DEFAULT_LINEAR_OAUTH_SCOPE,
     );
+    const callbackPort = this.resolveLinearOauthCallbackPort(command);
     const callback = await this.waitForLinearOauthCodeViaCallback(
       clientId,
       scopes,
       command.timeoutMs,
       command.noBrowser,
+      callbackPort,
     );
     const tokenPayload = await this.fetchJsonRecord(this.resolveLinearTokenUrl(), {
       method: 'POST',

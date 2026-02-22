@@ -1,4 +1,8 @@
 import type { ConversationRailSessionSummary } from './conversation-rail.ts';
+import type {
+  ProjectPaneGitHubReviewSummary,
+  ProjectPaneGitHubReviewThread,
+} from './project-pane-github-review.ts';
 import { UiKit } from '../../packages/harness-ui/src/kit.ts';
 import type {
   StreamSessionController,
@@ -63,12 +67,17 @@ interface WorkspaceRailModel {
   readonly directories: readonly WorkspaceRailDirectorySummary[];
   readonly conversations: readonly WorkspaceRailConversationSummary[];
   readonly processes: readonly WorkspaceRailProcessSummary[];
+  readonly showGitHubIntegration?: boolean;
+  readonly visibleGitHubDirectoryKeys?: ReadonlySet<string> | readonly string[];
+  readonly githubReviewByDirectoryKey?: ReadonlyMap<string, ProjectPaneGitHubReviewSummary>;
   readonly showTaskPlanningUi?: boolean;
   readonly showTasksEntry?: boolean;
   readonly activeProjectId: string | null;
+  readonly activeGitHubProjectId?: string | null;
   readonly activeRepositoryId?: string | null;
   readonly activeConversationId: string | null;
   readonly projectSelectionEnabled?: boolean;
+  readonly githubSelectionEnabled?: boolean;
   readonly repositorySelectionEnabled?: boolean;
   readonly homeSelectionEnabled?: boolean;
   readonly tasksSelectionEnabled?: boolean;
@@ -85,6 +94,8 @@ interface WorkspaceRailViewRow {
     | 'conversation-body'
     | 'process-title'
     | 'process-meta'
+    | 'github-header'
+    | 'github-detail'
     | 'repository-header'
     | 'repository-row'
     | 'action'
@@ -112,6 +123,7 @@ type WorkspaceRailAction =
   | 'home.open'
   | 'tasks.open'
   | 'project.close'
+  | 'project.github.open'
   | 'repository.toggle'
   | 'repository.add'
   | 'repository.edit'
@@ -243,6 +255,52 @@ function trackedProjectGitSuffix(git: WorkspaceRailGitSummary): string {
   return ` (${git.branch}:+${String(git.additions)},-${String(git.deletions)})`;
 }
 
+function githubReviewCommentCount(threads: readonly ProjectPaneGitHubReviewThread[]): number {
+  let total = 0;
+  for (const thread of threads) {
+    total += thread.comments.length;
+  }
+  return total;
+}
+
+function githubPrLifecycleLabel(pr: NonNullable<ProjectPaneGitHubReviewSummary['pr']>): string {
+  if (pr.isDraft || pr.state === 'draft') {
+    return 'draft';
+  }
+  if (pr.state === 'merged') {
+    return 'merged';
+  }
+  if (pr.state === 'closed') {
+    return 'closed';
+  }
+  return 'open';
+}
+
+function githubRailSummarySuffix(review: ProjectPaneGitHubReviewSummary | null): string {
+  if (review === null) {
+    return '(not loaded)';
+  }
+  if (review.status === 'loading') {
+    return '(loading)';
+  }
+  if (review.status === 'error') {
+    return '(error)';
+  }
+  if (review.pr === null) {
+    return '(no pr)';
+  }
+  return `(#${String(review.pr.number)} ${githubPrLifecycleLabel(review.pr)})`;
+}
+
+function sanitizeInlineText(value: string): string {
+  return value.replace(/\s+/gu, ' ').trim();
+}
+
+function formatAuthor(login: string | null): string {
+  const normalized = login?.trim() ?? '';
+  return normalized.length > 0 ? `@${normalized}` : '@unknown';
+}
+
 function conversationDisplayTitle(conversation: WorkspaceRailConversationSummary): string {
   const title = conversation.title.trim();
   if (title.length === 0) {
@@ -280,10 +338,21 @@ function buildContentRows(
 ): readonly WorkspaceRailViewRow[] {
   const rows: WorkspaceRailViewRow[] = [];
   const showTaskPlanningUi = model.showTaskPlanningUi ?? true;
+  const showGitHubIntegration = model.showGitHubIntegration ?? false;
+  const visibleGitHubDirectoryKeys =
+    model.visibleGitHubDirectoryKeys === undefined
+      ? new Set<string>()
+      : model.visibleGitHubDirectoryKeys instanceof Set
+        ? model.visibleGitHubDirectoryKeys
+        : new Set(model.visibleGitHubDirectoryKeys);
+  const githubReviewByDirectoryKey =
+    model.githubReviewByDirectoryKey ?? new Map<string, ProjectPaneGitHubReviewSummary>();
   const showTasksEntry = model.showTasksEntry ?? showTaskPlanningUi;
   const homeSelectionEnabled = model.homeSelectionEnabled ?? false;
   const tasksSelectionEnabled = model.tasksSelectionEnabled ?? false;
   const projectSelectionEnabled = model.projectSelectionEnabled ?? false;
+  const githubSelectionEnabled = model.githubSelectionEnabled ?? false;
+  const activeGitHubProjectId = model.activeGitHubProjectId ?? null;
   const repositorySelectionEnabled = model.repositorySelectionEnabled ?? false;
   const collapsedRepositoryGroupIds = new Set(model.collapsedRepositoryGroupIds ?? []);
   const repositoryById = new Map(
@@ -438,6 +507,132 @@ function buildContentRows(
       const conversations = model.conversations.filter(
         (conversation) => conversation.directoryKey === directory.key,
       );
+      const processes = model.processes.filter((process) => process.directoryKey === directory.key);
+
+      const githubVisibleForDirectory =
+        visibleGitHubDirectoryKeys.has(directory.key) ||
+        (githubSelectionEnabled && directory.key === activeGitHubProjectId);
+      if (showGitHubIntegration && group.tracked && githubVisibleForDirectory) {
+        const githubReview = githubReviewByDirectoryKey.get(directory.key) ?? null;
+        const githubSelected =
+          githubSelectionEnabled && directory.key === activeGitHubProjectId;
+        const githubTreePrefix = `${projectChildPrefix}├─ `;
+        const githubDetailPrefix = `${projectChildPrefix}│  `;
+        pushRow(
+          rows,
+          'github-header',
+          `${githubTreePrefix}${githubSelected ? '▼' : '▶'} github pr ${githubRailSummarySuffix(
+            githubReview,
+          )}`,
+          githubSelected,
+          null,
+          directory.key,
+          repositoryId,
+          'project.github.open',
+        );
+        if (githubSelected) {
+          if (githubReview === null) {
+            pushRow(
+              rows,
+              'github-detail',
+              `${githubDetailPrefix}status not loaded`,
+              true,
+              null,
+              directory.key,
+              repositoryId,
+              null,
+            );
+          } else if (githubReview.status === 'loading') {
+            pushRow(
+              rows,
+              'github-detail',
+              `${githubDetailPrefix}status loading GitHub review data…`,
+              true,
+              null,
+              directory.key,
+              repositoryId,
+              null,
+            );
+          } else if (githubReview.status === 'error') {
+            const message =
+              githubReview.errorMessage === null
+                ? 'unknown error'
+                : sanitizeInlineText(githubReview.errorMessage);
+            pushRow(
+              rows,
+              'github-detail',
+              `${githubDetailPrefix}status error ${message}`,
+              true,
+              null,
+              directory.key,
+              repositoryId,
+              null,
+            );
+          } else if (githubReview.pr === null) {
+            const branchName = githubReview.branchName?.trim() ?? '';
+            pushRow(
+              rows,
+              'github-detail',
+              `${githubDetailPrefix}branch ${branchName.length > 0 ? branchName : '(none)'}`,
+              true,
+              null,
+              directory.key,
+              repositoryId,
+              null,
+            );
+            pushRow(
+              rows,
+              'github-detail',
+              `${githubDetailPrefix}no pull request for tracked branch`,
+              true,
+              null,
+              directory.key,
+              repositoryId,
+              null,
+            );
+          } else {
+            const pr = githubReview.pr;
+            pushRow(
+              rows,
+              'github-detail',
+              `${githubDetailPrefix}pr #${String(pr.number)} ${githubPrLifecycleLabel(pr)} ${sanitizeInlineText(pr.title)}`,
+              true,
+              null,
+              directory.key,
+              repositoryId,
+              null,
+            );
+            pushRow(
+              rows,
+              'github-detail',
+              `${githubDetailPrefix}from ${pr.headBranch} -> ${pr.baseBranch} by ${formatAuthor(
+                pr.authorLogin,
+              )}`,
+              true,
+              null,
+              directory.key,
+              repositoryId,
+              null,
+            );
+            pushRow(
+              rows,
+              'github-detail',
+              `${githubDetailPrefix}threads ${String(githubReview.openThreads.length)} open / ${String(
+                githubReview.resolvedThreads.length,
+              )} resolved (${String(
+                githubReviewCommentCount(githubReview.openThreads) +
+                  githubReviewCommentCount(githubReview.resolvedThreads),
+              )} comments)`,
+              true,
+              null,
+              directory.key,
+              repositoryId,
+              null,
+            );
+          }
+        }
+      }
+
       for (
         let conversationIndex = 0;
         conversationIndex < conversations.length;
@@ -487,8 +682,6 @@ function buildContentRows(
           );
         }
       }
-
-      const processes = model.processes.filter((process) => process.directoryKey === directory.key);
       for (const process of processes) {
         pushRow(
           rows,

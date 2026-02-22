@@ -139,6 +139,29 @@ void test('global shortcut input delegates detection and handler wiring', () => 
   ]);
 });
 
+void test('global shortcut input honors custom conversation resolver when pane mode is not conversation', () => {
+  const calls: string[] = [];
+  const input = new GlobalShortcutInput(
+    resolveMuxShortcutBindings(),
+    createState({
+      mainPaneMode: () => 'project',
+      activeConversationId: () => 'session-active',
+      resolveConversationForAction: () => 'session-github',
+    }),
+    createActions(),
+    {
+      detectShortcut: () => 'mux.conversation.archive',
+      handleShortcut: (options) => {
+        calls.push(options.resolveConversationForAction() ?? 'none');
+        return true;
+      },
+    },
+  );
+
+  assert.equal(input.handleInput(Buffer.from([0x18])), true);
+  assert.deepEqual(calls, ['session-github']);
+});
+
 void test('global shortcut input default dependencies return false when no shortcut matches', () => {
   const input = new GlobalShortcutInput(
     resolveMuxShortcutBindings(),

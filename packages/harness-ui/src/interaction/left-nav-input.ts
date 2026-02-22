@@ -14,6 +14,10 @@ export type LeftNavSelection =
       readonly directoryId: string;
     }
   | {
+      readonly kind: 'github';
+      readonly directoryId: string;
+    }
+  | {
       readonly kind: 'conversation';
       readonly sessionId: string;
     };
@@ -28,6 +32,7 @@ export interface LeftNavActions {
   readonly enterTasksPane?: () => void;
   readonly firstDirectoryForRepositoryGroup: (repositoryGroupId: string) => string | null;
   readonly enterProjectPane: (directoryId: string) => void;
+  readonly enterGitHubPane?: (directoryId: string) => void;
   readonly setMainPaneProjectMode: () => void;
   readonly selectLeftNavRepository: (repositoryGroupId: string) => void;
   readonly selectLeftNavConversation?: (sessionId: string) => void;
@@ -54,6 +59,7 @@ export interface ActivateLeftNavTargetInput {
   readonly enterTasksPane?: () => void;
   readonly firstDirectoryForRepositoryGroup: (repositoryGroupId: string) => string | null;
   readonly enterProjectPane: (directoryId: string) => void;
+  readonly enterGitHubPane?: (directoryId: string) => void;
   readonly setMainPaneProjectMode: () => void;
   readonly selectLeftNavRepository: (repositoryGroupId: string) => void;
   readonly selectLeftNavConversation?: (sessionId: string) => void;
@@ -105,6 +111,11 @@ export class LeftNavInput {
       enterHomePane: this.actions.enterHomePane,
       firstDirectoryForRepositoryGroup: this.actions.firstDirectoryForRepositoryGroup,
       enterProjectPane: this.actions.enterProjectPane,
+      ...(this.actions.enterGitHubPane === undefined
+        ? {}
+        : {
+            enterGitHubPane: this.actions.enterGitHubPane,
+          }),
       setMainPaneProjectMode: this.actions.setMainPaneProjectMode,
       selectLeftNavRepository: this.actions.selectLeftNavRepository,
       ...(this.actions.selectLeftNavConversation === undefined

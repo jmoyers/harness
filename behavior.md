@@ -100,11 +100,13 @@ Behavior fragments:
 
 - Left/right pane layout and divider semantics.
 - Home/project/task pane render branching.
-- Project pane GitHub review tree for tracked branch state (PR lifecycle + open/resolved review threads).
-- Project pane GitHub review loads via centralized runtime cache with TTL freshness, in-flight dedupe, and active-pane timed refresh.
+- Left rail keeps project-scoped GitHub PR nodes hidden until explicitly opened from command palette (`Open GitHub Thread (git)`).
+- Selecting a GitHub rail node opens the project main panel in GitHub review mode and renders full tracked-branch PR details (lifecycle + open/resolved review threads and comments).
+- GitHub rail rows show compact PR summary detail inline when the rail node is active.
+- GitHub review data loads via centralized runtime cache with TTL freshness, in-flight dedupe, and active-pane timed refresh.
 - GitHub review refresh work runs in latest-wins background control-plane slots so rapid interactive left-nav cycling is not starved by review refresh backlog.
-- Entering project pane does not trigger GitHub review loading; project pane render stays instant from existing local snapshot state.
-- Project pane exposes an explicit refresh action for GitHub review data; force refresh is user-driven.
+- Entering project pane does not trigger GitHub review loading; default project tree render stays instant from existing local snapshot state.
+- GitHub review mode exposes an explicit refresh action for GitHub review data; force refresh is user-driven.
 - Gateway prewarms and serves cached project review data by repository+tracked branch so non-force reads avoid direct GitHub API fetches.
 - Navigation transitions and selection synchronization.
 - Local Git repositories without GitHub remotes still hydrate into repository groups (not `untracked`).

@@ -46,6 +46,8 @@ interface HandleLeftRailActionClickOptions {
   collapseAllRepositoryGroups: () => void;
   enterHomePane: () => void;
   enterTasksPane?: () => void;
+  enterGitHubPane?: (directoryId: string) => void;
+  directoriesHas?: (directoryId: string) => boolean;
   queueCloseDirectory: (directoryId: string) => void;
   toggleShortcutsCollapsed: () => void;
   markDirty: () => void;
@@ -84,7 +86,7 @@ function handleLeftRailActionClick(options: HandleLeftRailActionClickOptions): b
       previousConversationClickState: () => null,
       nowMs: () => 0,
       isConversationPaneActive: () => true,
-      directoriesHas: () => false,
+      directoriesHas: options.directoriesHas ?? (() => false),
     },
     {
       clearConversationTitleEditClickState: options.clearConversationTitleEditClickState,
@@ -113,6 +115,11 @@ function handleLeftRailActionClick(options: HandleLeftRailActionClickOptions): b
       queueActivateConversation: () => {},
       queueActivateConversationAndEdit: () => {},
       enterProjectPane: () => {},
+      ...(options.enterGitHubPane === undefined
+        ? {}
+        : {
+            enterGitHubPane: options.enterGitHubPane,
+          }),
       markDirty: options.markDirty,
     },
     {
@@ -589,6 +596,9 @@ void test('left-nav activation routes targets and cycle helper handles empty/nor
     enterProjectPane: (directoryId: string) => {
       calls.push(`enterProjectPane:${directoryId}`);
     },
+    enterGitHubPane: (directoryId: string) => {
+      calls.push(`enterGitHubPane:${directoryId}`);
+    },
     setMainPaneProjectMode: () => {
       calls.push('setMainPaneProjectMode');
     },
@@ -628,6 +638,10 @@ void test('left-nav activation routes targets and cycle helper handles empty/nor
   activateLeftNavTarget({ ...common, target: { kind: 'repository', repositoryId: 'repo-empty' } });
   activateLeftNavTarget({ ...common, target: { kind: 'project', directoryId: 'dir-a' } });
   activateLeftNavTarget({ ...common, target: { kind: 'project', directoryId: 'dir-missing' } });
+  activateLeftNavTarget({ ...common, target: { kind: 'github', directoryId: 'dir-a' } });
+  const { enterGitHubPane: _enterGitHubPaneOmitted, ...withoutGitHubPane } = common;
+  activateLeftNavTarget({ ...withoutGitHubPane, target: { kind: 'github', directoryId: 'dir-a' } });
+  activateLeftNavTarget({ ...common, target: { kind: 'github', directoryId: 'dir-missing' } });
   activateLeftNavTarget({
     ...common,
     target: { kind: 'conversation', sessionId: 'session-missing' },
@@ -640,6 +654,7 @@ void test('left-nav activation routes targets and cycle helper handles empty/nor
   assert.equal(calls.includes('enterHomePane'), true);
   assert.equal(calls.includes('enterTasksPane'), true);
   assert.equal(calls.includes('enterProjectPane:dir-a'), true);
+  assert.equal(calls.includes('enterGitHubPane:dir-a'), true);
   assert.equal(calls.includes('setMainPaneProjectMode'), true);
   assert.equal(calls.includes('selectLeftNavRepository:repo-a'), true);
   assert.equal(
@@ -785,6 +800,60 @@ void test('left-nav activation latest queue supports project fallback and aborts
   assert.equal(calls.includes('activateConversation:session-fallback'), false);
 });
 
+void test('left-nav activation latest queue supports github fallback and aborts stale activation', async () => {
+  const calls: string[] = [];
+  const latestTasks: Array<(options: { readonly signal: AbortSignal }) => Promise<void>> = [];
+
+  activateLeftNavTarget({
+    target: { kind: 'github', directoryId: 'dir-missing' },
+    direction: 'next',
+    enterHomePane: () => {},
+    firstDirectoryForRepositoryGroup: () => null,
+    enterProjectPane: () => {
+      calls.push('enterProjectPane');
+    },
+    setMainPaneProjectMode: () => {},
+    selectLeftNavRepository: () => {},
+    selectLeftNavConversation: (sessionId) => {
+      calls.push(`selectLeftNavConversation:${sessionId}`);
+    },
+    markDirty: () => {
+      calls.push('markDirty');
+    },
+    directoriesHas: () => false,
+    visibleTargetsForState: () =>
+      [
+        { kind: 'conversation', sessionId: 'session-fallback' },
+      ] as const satisfies readonly LeftNavSelection[],
+    conversationDirectoryId: () => 'dir-missing',
+    queueControlPlaneOp: (_task, label) => {
+      calls.push(`queueControlPlaneOp:${label}`);
+    },
+    queueLatestControlPlaneOp: (_key, task, label) => {
+      calls.push(`queueLatestControlPlaneOp:${label}`);
+      latestTasks.push(task);
+    },
+    activateConversation: async (sessionId) => {
+      calls.push(`activateConversation:${sessionId}`);
+    },
+    conversationsHas: () => true,
+  });
+
+  assert.deepEqual(calls.slice(0, 3), [
+    'selectLeftNavConversation:session-fallback',
+    'markDirty',
+    'queueLatestControlPlaneOp:shortcut-activate-next-github-fallback',
+  ]);
+  assert.equal(latestTasks.length, 1);
+
+  const controller = new AbortController();
+  controller.abort();
+  await latestTasks[0]?.({
+    signal: controller.signal,
+  });
+  assert.equal(calls.includes('activateConversation:session-fallback'), false);
+});
+
 void test('left-rail action click routes all supported actions and default false', () => {
   const calls: string[] = [];
   const base = {
@@ -830,6 +899,10 @@ void test('left-rail action click routes all supported actions and default false
     enterHomePane: () => {
       calls.push('enterHomePane');
     },
+    enterGitHubPane: (directoryId: string) => {
+      calls.push(`enterGitHubPane:${directoryId}`);
+    },
+    directoriesHas: () => true,
     queueCloseDirectory: (directoryId: string) => {
       calls.push(`queueCloseDirectory:${directoryId}`);
     },
@@ -871,6 +944,16 @@ void test('left-rail action click routes all supported actions and default false
   assert.equal(calls.includes('enterHomePane'), true);
   assert.equal(calls.includes('queueCloseDirectory:dir-a'), true);
   calls.length = 0;
+  assert.equal(
+    handleLeftRailActionClick({
+      ...base,
+      action: 'project.github.open',
+    }),
+    true,
+  );
+  assert.equal(calls.includes('enterGitHubPane:dir-a'), true);
+  calls.length = 0;
+
   assert.equal(
     handleLeftRailActionClick({
       ...base,

@@ -198,6 +198,14 @@ function paintWorkspaceRailRow(
     drawTreeRow(surface, rowIndex, row, theme, theme.metaStyle, theme.activeRowStyle);
     return;
   }
+  if (row.kind === 'github-header') {
+    drawTreeRow(surface, rowIndex, row, theme, theme.headerStyle, theme.activeRowStyle);
+    return;
+  }
+  if (row.kind === 'github-detail') {
+    drawTreeRow(surface, rowIndex, row, theme, theme.metaStyle, theme.activeRowStyle);
+    return;
+  }
   if (row.kind === 'conversation-title' || row.kind === 'conversation-body') {
     drawConversationRow(surface, rowIndex, row, theme);
     return;

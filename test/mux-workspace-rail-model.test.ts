@@ -2266,3 +2266,391 @@ void test('workspace rail model omits title glyph when non-terminal conversation
   assert.equal(titleRow?.text.includes('codex - task'), true);
   assert.equal(/[▲◔◆○■⌨✎]/u.test(titleRow?.text ?? ''), false);
 });
+
+void test('workspace rail model renders github project row and expands summary when selected', () => {
+  const reviewByDirectory = new Map([
+    [
+      'dir',
+      {
+        status: 'ready' as const,
+        branchName: 'feature/github-rail',
+        branchSource: 'current' as const,
+        pr: {
+          number: 123,
+          title: 'GitHub rail integration',
+          url: 'https://github.com/acme/harness/pull/123',
+          authorLogin: 'jmoyers',
+          headBranch: 'feature/github-rail',
+          baseBranch: 'main',
+          state: 'open' as const,
+          isDraft: false,
+          mergedAt: null,
+          closedAt: null,
+          updatedAt: '2026-02-21T00:00:00.000Z',
+          createdAt: '2026-02-20T00:00:00.000Z',
+        },
+        openThreads: [
+          {
+            threadId: 'thread-open',
+            isResolved: false,
+            isOutdated: false,
+            resolvedByLogin: null,
+            comments: [
+              {
+                commentId: 'comment-open',
+                authorLogin: 'alice',
+                body: 'looks good',
+                url: null,
+                createdAt: '2026-02-21T00:00:00.000Z',
+                updatedAt: '2026-02-21T00:00:00.000Z',
+              },
+            ],
+          },
+        ],
+        resolvedThreads: [],
+        errorMessage: null,
+      },
+    ],
+  ]);
+
+  const collapsedRows = buildWorkspaceRailViewRowsRaw(
+    {
+      showGitHubIntegration: true,
+      visibleGitHubDirectoryKeys: ['dir'],
+      githubReviewByDirectoryKey: reviewByDirectory,
+      directories: [
+        {
+          key: 'dir',
+          workspaceId: 'harness',
+          worktreeId: '/tmp/harness',
+          repositoryId: 'repo-a',
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0,
+          },
+        },
+      ],
+      repositories: [
+        {
+          repositoryId: 'repo-a',
+          name: 'harness',
+          remoteUrl: 'https://github.com/acme/harness.git',
+          associatedProjectCount: 1,
+          commitCount: 100,
+          lastCommitAt: '2026-02-21T00:00:00.000Z',
+          shortCommitHash: 'abc1234',
+        },
+      ],
+      conversations: [],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: null,
+    },
+    24,
+  );
+  const collapsedGithubRow = collapsedRows.find(
+    (row) => row.kind === 'github-header' && row.directoryKey === 'dir',
+  );
+  assert.notEqual(collapsedGithubRow, undefined);
+  assert.equal(collapsedGithubRow?.railAction, 'project.github.open');
+  assert.equal(collapsedGithubRow?.text.includes('▶ github pr (#123 open)'), true);
+
+  const expandedRows = buildWorkspaceRailViewRowsRaw(
+    {
+      showGitHubIntegration: true,
+      visibleGitHubDirectoryKeys: ['dir'],
+      githubReviewByDirectoryKey: reviewByDirectory,
+      githubSelectionEnabled: true,
+      activeGitHubProjectId: 'dir',
+      directories: [
+        {
+          key: 'dir',
+          workspaceId: 'harness',
+          worktreeId: '/tmp/harness',
+          repositoryId: 'repo-a',
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0,
+          },
+        },
+      ],
+      repositories: [
+        {
+          repositoryId: 'repo-a',
+          name: 'harness',
+          remoteUrl: 'https://github.com/acme/harness.git',
+          associatedProjectCount: 1,
+          commitCount: 100,
+          lastCommitAt: '2026-02-21T00:00:00.000Z',
+          shortCommitHash: 'abc1234',
+        },
+      ],
+      conversations: [],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: null,
+    },
+    24,
+  );
+  assert.equal(
+    expandedRows.some(
+      (row) =>
+        row.kind === 'github-header' &&
+        row.directoryKey === 'dir' &&
+        row.active &&
+        row.text.includes('▼ github pr (#123 open)'),
+    ),
+    true,
+  );
+  assert.equal(
+    expandedRows.some(
+      (row) => row.kind === 'github-detail' && row.text.includes('pr #123 open GitHub rail'),
+    ),
+    true,
+  );
+});
+
+void test('workspace rail model keeps github project row hidden until explicitly requested', () => {
+  const rows = buildWorkspaceRailViewRowsRaw(
+    {
+      showGitHubIntegration: true,
+      directories: [
+        {
+          key: 'dir',
+          workspaceId: 'harness',
+          worktreeId: '/tmp/harness',
+          repositoryId: 'repo-a',
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0,
+          },
+        },
+      ],
+      repositories: [
+        {
+          repositoryId: 'repo-a',
+          name: 'harness',
+          remoteUrl: 'https://github.com/acme/harness.git',
+          associatedProjectCount: 1,
+          commitCount: 100,
+          lastCommitAt: '2026-02-21T00:00:00.000Z',
+          shortCommitHash: 'abc1234',
+        },
+      ],
+      conversations: [],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: null,
+    },
+    24,
+  );
+  assert.equal(rows.some((row) => row.kind === 'github-header' && row.directoryKey === 'dir'), false);
+});
+
+void test('workspace rail model github row covers loading, error, missing review, and no-pr detail states', () => {
+  const baseModel = {
+    showGitHubIntegration: true,
+    githubSelectionEnabled: true,
+    activeGitHubProjectId: 'dir',
+    directories: [
+      {
+        key: 'dir',
+        workspaceId: 'harness',
+        worktreeId: '/tmp/harness',
+        repositoryId: 'repo-a',
+        git: {
+          branch: 'main',
+          additions: 0,
+          deletions: 0,
+          changedFiles: 0,
+        },
+      },
+    ],
+    repositories: [
+      {
+        repositoryId: 'repo-a',
+        name: 'harness',
+        remoteUrl: 'https://github.com/acme/harness.git',
+        associatedProjectCount: 1,
+        commitCount: 100,
+        lastCommitAt: '2026-02-21T00:00:00.000Z',
+        shortCommitHash: 'abc1234',
+      },
+    ],
+    conversations: [],
+    processes: [],
+    activeProjectId: null,
+    activeConversationId: null,
+  } as const;
+
+  const notLoaded = buildWorkspaceRailViewRowsRaw(baseModel, 24);
+  assert.equal(
+    notLoaded.some((row) => row.kind === 'github-detail' && row.text.includes('status not loaded')),
+    true,
+  );
+
+  const loading = buildWorkspaceRailViewRowsRaw(
+    {
+      ...baseModel,
+      githubReviewByDirectoryKey: new Map([
+        [
+          'dir',
+          {
+            status: 'loading' as const,
+            branchName: 'feature/loading',
+            branchSource: 'current' as const,
+            pr: null,
+            openThreads: [],
+            resolvedThreads: [],
+            errorMessage: null,
+          },
+        ],
+      ]),
+    },
+    24,
+  );
+  assert.equal(
+    loading.some(
+      (row) => row.kind === 'github-detail' && row.text.includes('status loading GitHub review'),
+    ),
+    true,
+  );
+
+  const errored = buildWorkspaceRailViewRowsRaw(
+    {
+      ...baseModel,
+      githubReviewByDirectoryKey: new Map([
+        [
+          'dir',
+          {
+            status: 'error' as const,
+            branchName: null,
+            branchSource: null,
+            pr: null,
+            openThreads: [],
+            resolvedThreads: [],
+            errorMessage: '  api   timeout ',
+          },
+        ],
+      ]),
+    },
+    24,
+  );
+  assert.equal(
+    errored.some(
+      (row) => row.kind === 'github-detail' && row.text.includes('status error api timeout'),
+    ),
+    true,
+  );
+
+  const noPr = buildWorkspaceRailViewRowsRaw(
+    {
+      ...baseModel,
+      githubReviewByDirectoryKey: new Map([
+        [
+          'dir',
+          {
+            status: 'ready' as const,
+            branchName: 'feature/no-pr',
+            branchSource: 'pinned' as const,
+            pr: null,
+            openThreads: [],
+            resolvedThreads: [],
+            errorMessage: null,
+          },
+        ],
+      ]),
+    },
+    24,
+  );
+  assert.equal(
+    noPr.some((row) => row.kind === 'github-detail' && row.text.includes('branch feature/no-pr')),
+    true,
+  );
+  assert.equal(
+    noPr.some(
+      (row) => row.kind === 'github-detail' && row.text.includes('no pull request for tracked branch'),
+    ),
+    true,
+  );
+});
+
+void test('workspace rail model github summary labels draft, merged, and closed pull requests', () => {
+  const buildRows = (state: 'open' | 'merged' | 'closed', isDraft: boolean) =>
+    buildWorkspaceRailViewRowsRaw(
+      {
+        showGitHubIntegration: true,
+        visibleGitHubDirectoryKeys: ['dir'],
+        githubReviewByDirectoryKey: new Map([
+          [
+            'dir',
+            {
+              status: 'ready' as const,
+              branchName: 'feature/state',
+              branchSource: 'current' as const,
+              pr: {
+                number: 55,
+                title: 'State PR',
+                url: 'https://github.com/acme/harness/pull/55',
+                authorLogin: 'jmoyers',
+                headBranch: 'feature/state',
+                baseBranch: 'main',
+                state,
+                isDraft,
+                mergedAt: null,
+                closedAt: null,
+                updatedAt: '2026-02-21T00:00:00.000Z',
+                createdAt: '2026-02-21T00:00:00.000Z',
+              },
+              openThreads: [],
+              resolvedThreads: [],
+              errorMessage: null,
+            },
+          ],
+        ]),
+        directories: [
+          {
+            key: 'dir',
+            workspaceId: 'harness',
+            worktreeId: '/tmp/harness',
+            repositoryId: 'repo-a',
+            git: {
+              branch: 'main',
+              additions: 0,
+              deletions: 0,
+              changedFiles: 0,
+            },
+          },
+        ],
+        repositories: [
+          {
+            repositoryId: 'repo-a',
+            name: 'harness',
+            remoteUrl: 'https://github.com/acme/harness.git',
+            associatedProjectCount: 1,
+            commitCount: 100,
+            lastCommitAt: '2026-02-21T00:00:00.000Z',
+            shortCommitHash: 'abc1234',
+          },
+        ],
+        conversations: [],
+        processes: [],
+        activeProjectId: null,
+        activeConversationId: null,
+      },
+      20,
+    );
+
+  const draft = buildRows('open', true);
+  const merged = buildRows('merged', false);
+  const closed = buildRows('closed', false);
+  assert.equal(draft.some((row) => row.text.includes('(#55 draft)')), true);
+  assert.equal(merged.some((row) => row.text.includes('(#55 merged)')), true);
+  assert.equal(closed.some((row) => row.text.includes('(#55 closed)')), true);
+});

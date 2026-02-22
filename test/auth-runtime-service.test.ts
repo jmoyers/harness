@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createServer as createHttpServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'bun:test';
@@ -60,9 +61,29 @@ test('auth runtime parser validates command shapes and options', () => {
   assert.equal(service.parseCommand([]).type, 'status');
   assert.equal(service.parseCommand(['status']).type, 'status');
   assert.equal(service.parseCommand(['login', 'github']).type, 'login');
+  const linearWithCallbackPort = service.parseCommand([
+    'login',
+    'linear',
+    '--callback-port',
+    '0',
+  ]);
+  assert.equal(linearWithCallbackPort.type, 'login');
+  if (linearWithCallbackPort.type !== 'login') {
+    throw new Error('expected login command');
+  }
+  assert.equal(linearWithCallbackPort.provider, 'linear');
+  assert.equal(linearWithCallbackPort.callbackPort, 0);
   assert.equal(service.parseCommand(['refresh']).type, 'refresh');
   assert.equal(service.parseCommand(['logout', 'linear']).type, 'logout');
   assert.throws(() => service.parseCommand(['login']), /missing auth login provider/u);
+  assert.throws(
+    () => service.parseCommand(['login', 'linear', '--callback-port', '99999']),
+    /invalid --callback-port value/u,
+  );
+  assert.throws(
+    () => service.parseCommand(['login', 'github', '--callback-port', '1234']),
+    /only supported for auth login linear/u,
+  );
   assert.throws(
     () => service.parseCommand(['refresh', 'all', 'extra']),
     /unknown auth refresh option/u,
@@ -233,6 +254,52 @@ test('auth runtime helper internals cover scope parsing, token timing, and URL r
     'https://override.linear/authorize',
   );
   assert.equal(callInternal<string>('resolveLinearTokenUrl'), 'https://override.linear/token');
+  assert.equal(
+    callInternal<number>(
+      'resolveLinearOauthCallbackPort',
+      {
+        type: 'login',
+        provider: 'linear',
+        noBrowser: true,
+        timeoutMs: 1,
+        scopes: null,
+        callbackPort: 9321,
+      },
+    ),
+    9321,
+  );
+  env.HARNESS_LINEAR_OAUTH_CALLBACK_PORT = '3010';
+  assert.equal(
+    callInternal<number>(
+      'resolveLinearOauthCallbackPort',
+      {
+        type: 'login',
+        provider: 'linear',
+        noBrowser: true,
+        timeoutMs: 1,
+        scopes: null,
+        callbackPort: null,
+      },
+    ),
+    3010,
+  );
+  env.HARNESS_LINEAR_OAUTH_CALLBACK_PORT = 'bad-port';
+  assert.throws(
+    () =>
+      callInternal<number>(
+        'resolveLinearOauthCallbackPort',
+        {
+          type: 'login',
+          provider: 'linear',
+          noBrowser: true,
+          timeoutMs: 1,
+          scopes: null,
+          callbackPort: null,
+        },
+      ),
+    /invalid HARNESS_LINEAR_OAUTH_CALLBACK_PORT value/u,
+  );
+  delete env.HARNESS_LINEAR_OAUTH_CALLBACK_PORT;
 
   const verifier = callInternal<string>('createPkceVerifier');
   const challenge = callInternal<string>('createPkceChallenge', verifier);
@@ -501,6 +568,7 @@ test('auth runtime linear oauth callback helper handles success and callback err
     scopes: string,
     timeoutMs: number,
     noBrowser: boolean,
+    preferredCallbackPort: number,
   ) => Promise<{ code: string; redirectUri: string; verifier: string }>;
   const browserUrls: string[] = [];
   internal['tryOpenBrowserUrl'] = (url: string): void => {
@@ -514,6 +582,7 @@ test('auth runtime linear oauth callback helper handles success and callback err
     'read write',
     750,
     false,
+    0,
   );
   const successAuthorizeUrl = await waitForAuthorizeUrl(stdout, successStart);
   const successRedirectUri = successAuthorizeUrl.searchParams.get('redirect_uri');
@@ -538,6 +607,7 @@ test('auth runtime linear oauth callback helper handles success and callback err
     'read',
     750,
     true,
+    0,
   );
   const mismatchRejected = assert.rejects(mismatchPromise, /state mismatch/u);
   const mismatchAuthorizeUrl = await waitForAuthorizeUrl(stdout, mismatchStart);
@@ -556,6 +626,7 @@ test('auth runtime linear oauth callback helper handles success and callback err
     'read',
     750,
     true,
+    0,
   );
   const missingCodeRejected = assert.rejects(missingCodePromise, /missing code/u);
   const missingCodeAuthorizeUrl = await waitForAuthorizeUrl(stdout, missingCodeStart);
@@ -566,6 +637,70 @@ test('auth runtime linear oauth callback helper handles success and callback err
   const missingCodeResponse = await fetch(missingCodeCallbackUrl.toString());
   assert.equal(missingCodeResponse.status, 400);
   await missingCodeRejected;
+});
+
+test('auth runtime linear oauth callback helper falls back to a dynamic port when preferred port is occupied', async () => {
+  const workspace = createWorkspace();
+  const env = createEnv(workspace);
+  const stdout: string[] = [];
+  const service = new AuthRuntimeService(
+    workspace,
+    env,
+    (text) => stdout.push(text),
+    () => undefined,
+  );
+  const internal = service as unknown as Record<string, unknown>;
+  const waitForLinearOauthCodeViaCallback = internal['waitForLinearOauthCodeViaCallback'] as (
+    clientId: string,
+    scopes: string,
+    timeoutMs: number,
+    noBrowser: boolean,
+    preferredCallbackPort: number,
+  ) => Promise<{ code: string; redirectUri: string; verifier: string }>;
+
+  const occupiedServer = createHttpServer((_, response) => {
+    response.statusCode = 503;
+    response.end('occupied');
+  });
+  await new Promise<void>((resolveListen, rejectListen) => {
+    occupiedServer.once('error', rejectListen);
+    occupiedServer.listen(0, '127.0.0.1', () => resolveListen());
+  });
+  const occupiedAddress = occupiedServer.address();
+  if (occupiedAddress === null || typeof occupiedAddress === 'string') {
+    occupiedServer.close();
+    throw new Error('failed to resolve occupied callback port');
+  }
+
+  try {
+    const start = stdout.length;
+    const callbackPromise = waitForLinearOauthCodeViaCallback.call(
+      service,
+      'linear-client-id',
+      'read',
+      1000,
+      true,
+      occupiedAddress.port,
+    );
+    const authorizeUrl = await waitForAuthorizeUrl(stdout, start);
+    const redirectUri = authorizeUrl.searchParams.get('redirect_uri');
+    assert.equal(typeof redirectUri, 'string');
+    const callbackUrl = new URL(redirectUri!);
+    assert.notEqual(callbackUrl.port, String(occupiedAddress.port));
+    const state = authorizeUrl.searchParams.get('state');
+    callbackUrl.searchParams.set('state', state ?? '');
+    callbackUrl.searchParams.set('code', 'dynamic-port-code');
+    const callbackResponse = await fetch(callbackUrl.toString());
+    assert.equal(callbackResponse.status, 200);
+    const callbackResult = await callbackPromise;
+    assert.equal(callbackResult.code, 'dynamic-port-code');
+    assert.equal(
+      stdout.join('').includes('retrying with dynamic port'),
+      true,
+    );
+  } finally {
+    await new Promise<void>((resolveClose) => occupiedServer.close(() => resolveClose()));
+  }
 });
 
 test('auth runtime browser opener tolerates configured command failures', async () => {
@@ -630,9 +765,10 @@ test('auth runtime default stdio and internal secret/timeout branches are exerci
       scopes: string,
       timeoutMs: number,
       noBrowser: boolean,
+      preferredCallbackPort: number,
     ) => Promise<{ code: string; redirectUri: string; verifier: string }>;
     await assert.rejects(
-      waitForLinearOauthCodeViaCallback.call(service, 'linear-client-id', 'read', 1, true),
+      waitForLinearOauthCodeViaCallback.call(service, 'linear-client-id', 'read', 1, true, 0),
       /timed out waiting for linear oauth callback/u,
     );
   } finally {

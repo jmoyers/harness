@@ -25,6 +25,10 @@ const createHarness = (input?: {
         directoryId: string;
       }
     | {
+        kind: 'github';
+        directoryId: string;
+      }
+    | {
         kind: 'conversation';
         sessionId: string;
       };
@@ -40,6 +44,10 @@ const createHarness = (input?: {
     leftNavSelection:
       | {
           kind: 'project';
+          directoryId: string;
+        }
+      | {
+          kind: 'github';
           directoryId: string;
         }
       | {
@@ -414,4 +422,26 @@ void test('runtime workspace observed events repairs invalid project selection a
     'enterHomePane',
     'markDirty',
   ]);
+});
+
+void test('runtime workspace observed events repairs invalid github selection with project fallback', () => {
+  const harness = createHarness({
+    reduction: {
+      changed: true,
+      removedConversationIds: [],
+      removedDirectoryIds: [],
+    },
+    leftNavSelection: {
+      kind: 'github',
+      directoryId: 'directory-missing',
+    },
+    existingDirectories: new Set(['directory-fallback']),
+    resolvedActiveDirectoryId: 'directory-fallback',
+  });
+
+  harness.service.apply({
+    id: 'event-8',
+  });
+
+  assert.deepEqual(harness.calls, ['enterProjectPane:directory-fallback', 'markDirty']);
 });
