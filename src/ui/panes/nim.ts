@@ -20,7 +20,7 @@ const COMPOSER_PROMPT = 'nim> ';
 export interface NimPaneViewModel {
   readonly sessionId: string | null;
   readonly status: 'thinking' | 'tool-calling' | 'responding' | 'idle';
-  readonly uiMode: 'debug' | 'seamless';
+  readonly uiMode: 'debug' | 'user';
   readonly composerText: string;
   readonly queuedCount: number;
   readonly transcriptLines: readonly string[];
@@ -45,6 +45,9 @@ export class NimPane {
         ` status:${viewModel.status} mode:${viewModel.uiMode} queued:${String(viewModel.queuedCount)} session:${sessionLabel}`,
         input.layout.rightCols,
       );
+    }
+    if (rows.length > 2) {
+      rows[2] = padOrTrimDisplay(' enter=send/steer tab=queue esc=abort /mode debug|user', input.layout.rightCols);
     }
     if (rows.length > 3) {
       rows[3] = padOrTrimDisplay(' ─ transcript ─', input.layout.rightCols);

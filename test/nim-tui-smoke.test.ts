@@ -29,7 +29,7 @@ test('nim tui arg parser supports mock override and disables telemetry', () => {
       '--model',
       'anthropic/claude-3-5-haiku-latest',
       '--ui-mode',
-      'seamless',
+      'user',
       '--mock',
       '--session-id',
       'session-x',
@@ -84,6 +84,7 @@ test('nim tui command parser maps interactive commands', () => {
   assert.deepEqual(parseNimTuiCommand('/replay'), { type: 'replay', count: 30 });
   assert.deepEqual(parseNimTuiCommand('/replay 5'), { type: 'replay', count: 5 });
   assert.deepEqual(parseNimTuiCommand('/mode debug'), { type: 'mode', mode: 'debug' });
+  assert.deepEqual(parseNimTuiCommand('/mode user'), { type: 'mode', mode: 'seamless' });
   assert.deepEqual(parseNimTuiCommand('/mode seamless'), { type: 'mode', mode: 'seamless' });
   assert.deepEqual(parseNimTuiCommand('/model anthropic/claude-3-haiku-20240307'), {
     type: 'switch-model',

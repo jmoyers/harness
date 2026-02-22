@@ -23,7 +23,7 @@ The v1 experience is done when all are true:
 - NIM session continues running when the user leaves and re-enters the pane.
 - NIM exposes gateway/control-plane capabilities as tools so it can inspect and operate within Harness.
 - NIM supports two output modes:
-- `seamless`: minimal, user-facing.
+- `user`: minimal, user-facing.
 - `debug`: explicit lifecycle timeline (thinking/tool calls/state changes).
 - Keyboard semantics are consistent:
 - `Enter`: submit when idle, steer when active.
@@ -144,9 +144,9 @@ flowchart LR
 
 ### Phase 4: Live Provider and Parity Polish
 
-- [ ] Enable Anthropic driver path via existing `nim-core` driver registration.
-- [ ] Improve composer ergonomics, timeline compaction, and status/footer clarity.
-- [ ] Add keybinding parity (`Enter`/`Tab`/`Esc`) in mux runtime.
+- [x] Enable Anthropic driver path via existing `nim-core` driver registration.
+- [x] Improve composer ergonomics, timeline compaction, and status/footer clarity.
+- [x] Add keybinding parity (`Enter`/`Tab`/`Esc`) in mux runtime.
 - Exit criteria:
 - live run in mux replicates expected Codex-like flow with our UI stack.
 
@@ -196,10 +196,11 @@ flowchart LR
 
 ## 9. Open Decisions
 
-- Single NIM session per workspace vs per-directory NIM sessions for v1.
-- Whether mutating control-plane tools are in v1 or staged to v1.1.
-- How prominently to show NIM debug timeline in seamless mode (collapsed by default vs hidden).
+Resolved:
+- Single NIM session is workspace-scoped for v1.
+- Mutating control-plane tools are deferred to v1.1.
+- Debug timeline remains visible in `debug` mode; user-facing mode is named `user`.
 
 ## 10. Immediate Next Step
 
-- Implement PR-1 scope only and lock contracts/tests before introducing tool bridge or provider complexity.
+- Execute Phase 5 hardening: broaden test closure, run perf pass, and update `behavior.md`.

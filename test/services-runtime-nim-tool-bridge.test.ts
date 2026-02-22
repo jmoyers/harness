@@ -75,6 +75,19 @@ void test('runtime nim tool bridge invokes read-only control-plane adapters', as
   );
   assert.deepEqual(
     await bridge.invoke({
+      toolName: 'task.list',
+      argumentsValue: {
+        limit: 7,
+      },
+    }),
+    {
+      count: 1,
+      limit: 7,
+      tasks: [{ taskId: 'task-7' }],
+    },
+  );
+  assert.deepEqual(
+    await bridge.invoke({
       toolName: 'session.list',
       argumentsText: '',
     }),

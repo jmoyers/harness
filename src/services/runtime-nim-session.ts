@@ -10,16 +10,14 @@ import {
   projectEventToUiEvents,
   type NimUiMode,
 } from '../../packages/nim-ui-core/src/projection.ts';
-import {
-  type RuntimeNimToolBridge,
-} from './runtime-nim-tool-bridge.ts';
+import { type RuntimeNimToolBridge } from './runtime-nim-tool-bridge.ts';
 
 type NimSessionStatus = 'thinking' | 'tool-calling' | 'responding' | 'idle';
 
 export interface RuntimeNimViewModel {
   readonly sessionId: string | null;
   readonly status: NimSessionStatus;
-  readonly uiMode: NimUiMode;
+  readonly uiMode: 'debug' | 'user';
   readonly composerText: string;
   readonly queuedCount: number;
   readonly activeRunId: string | null;
@@ -33,6 +31,7 @@ interface RuntimeNimSessionOptions {
   readonly markDirty: () => void;
   readonly toolBridge?: RuntimeNimToolBridge;
   readonly model?: NimModelRef;
+  readonly providerDriver?: NimProviderDriver;
   readonly runtime?: InMemoryNimRuntime;
   readonly responseChunkDelayMs?: number;
   readonly maxTranscriptLines?: number;
@@ -80,6 +79,31 @@ function parseRequestedToolInvocation(
   return {
     toolName,
     argumentsText: typeof match[2] === 'string' ? match[2].trim() : '',
+  };
+}
+
+function toUiModeLabel(mode: NimUiMode): 'debug' | 'user' {
+  return mode === 'debug' ? 'debug' : 'user';
+}
+
+function parseCompactTranscriptLine(text: string): { readonly base: string; readonly count: number } {
+  const match = /^(.*) \(x(\d+)\)$/u.exec(text);
+  if (match === null) {
+    return {
+      base: text,
+      count: 1,
+    };
+  }
+  const count = Number.parseInt(match[2] ?? '1', 10);
+  if (!Number.isInteger(count) || count < 2) {
+    return {
+      base: text,
+      count: 1,
+    };
+  }
+  return {
+    base: match[1] ?? text,
+    count,
   };
 }
 
@@ -176,6 +200,7 @@ function createMockProviderDriver(input: {
 export class RuntimeNimSession {
   private readonly runtime: InMemoryNimRuntime;
   private readonly model: NimModelRef;
+  private readonly providerDriver?: NimProviderDriver;
   private readonly maxTranscriptLines: number;
   private readonly sleep: (delayMs: number) => Promise<void>;
   private readonly responseChunkDelayMs: number;
@@ -198,6 +223,7 @@ export class RuntimeNimSession {
   constructor(private readonly options: RuntimeNimSessionOptions) {
     this.runtime = options.runtime ?? new InMemoryNimRuntime();
     this.model = options.model ?? DEFAULT_MODEL;
+    this.providerDriver = options.providerDriver;
     this.maxTranscriptLines = options.maxTranscriptLines ?? DEFAULT_MAX_TRANSCRIPT_LINES;
     this.sleep = options.sleep ?? sleep;
     this.responseChunkDelayMs = Math.max(
@@ -212,22 +238,23 @@ export class RuntimeNimSession {
     });
     this.options.toolBridge?.registerWithRuntime(this.runtime);
     this.runtime.registerProviderDriver(
-      createMockProviderDriver({
-        providerId,
-        responseChunkDelayMs: this.responseChunkDelayMs,
-        sleep: this.sleep,
-        invokeTool: async (toolName, argumentsText) => {
-          if (this.options.toolBridge === undefined) {
-            return {
-              notice: 'nim tool bridge unavailable',
-            };
-          }
-          return await this.options.toolBridge.invoke({
-            toolName,
-            argumentsText,
-          });
-        },
-      }),
+      this.providerDriver ??
+        createMockProviderDriver({
+          providerId,
+          responseChunkDelayMs: this.responseChunkDelayMs,
+          sleep: this.sleep,
+          invokeTool: async (toolName, argumentsText) => {
+            if (this.options.toolBridge === undefined) {
+              return {
+                notice: 'nim tool bridge unavailable',
+              };
+            }
+            return await this.options.toolBridge.invoke({
+              toolName,
+              argumentsText,
+            });
+          },
+        }),
     );
   }
 
@@ -264,7 +291,7 @@ export class RuntimeNimSession {
     return {
       sessionId: this.sessionId,
       status: this.status,
-      uiMode: this.uiMode,
+      uiMode: toUiModeLabel(this.uiMode),
       composerText: this.composerText,
       queuedCount: this.queuedInputs.length,
       activeRunId: this.activeRunId,
@@ -430,13 +457,13 @@ export class RuntimeNimSession {
     const trimmed = commandText.trim();
     if (trimmed === '/help') {
       this.pushSystemLine(
-        '[help] /help /mode <debug|seamless> /state /clear /abort use-tool <tool>',
+        '[help] /help /mode <debug|user> /state /clear /abort use-tool <tool>',
       );
       return;
     }
     if (trimmed === '/state') {
       this.pushSystemLine(
-        `[state] status:${this.status} mode:${this.uiMode} queued:${String(this.queuedInputs.length)} active:${this.activeRunId === null ? 'none' : 'yes'}`,
+        `[state] status:${this.status} mode:${toUiModeLabel(this.uiMode)} queued:${String(this.queuedInputs.length)} active:${this.activeRunId === null ? 'none' : 'yes'}`,
       );
       return;
     }
@@ -454,16 +481,18 @@ export class RuntimeNimSession {
     }
     if (trimmed.startsWith('/mode ')) {
       const rawMode = trimmed.slice('/mode '.length).trim();
-      if (rawMode !== 'debug' && rawMode !== 'seamless') {
+      const resolvedMode =
+        rawMode === 'debug' ? 'debug' : rawMode === 'user' || rawMode === 'seamless' ? 'seamless' : null;
+      if (resolvedMode === null) {
         this.pushSystemLine(`[error] invalid mode: ${rawMode}`);
         return;
       }
-      if (this.uiMode === rawMode) {
-        this.pushSystemLine(`[notice] ui mode already ${rawMode}`);
+      if (this.uiMode === resolvedMode) {
+        this.pushSystemLine(`[notice] ui mode already ${toUiModeLabel(this.uiMode)}`);
         return;
       }
-      this.uiMode = rawMode;
-      this.pushSystemLine(`[notice] ui mode set to ${rawMode}`);
+      this.uiMode = resolvedMode;
+      this.pushSystemLine(`[notice] ui mode set to ${toUiModeLabel(this.uiMode)}`);
       return;
     }
     this.pushSystemLine(`[error] unknown command: ${trimmed}`);
@@ -559,6 +588,14 @@ export class RuntimeNimSession {
   }
 
   private pushTranscriptLine(text: string): void {
+    const lastLine = this.transcriptLines[this.transcriptLines.length - 1];
+    if (typeof lastLine === 'string') {
+      const parsed = parseCompactTranscriptLine(lastLine);
+      if (parsed.base === text) {
+        this.transcriptLines[this.transcriptLines.length - 1] = `${text} (x${String(parsed.count + 1)})`;
+        return;
+      }
+    }
     this.transcriptLines.push(text);
     const overflow = this.transcriptLines.length - this.maxTranscriptLines;
     if (overflow > 0) {

@@ -35,7 +35,8 @@ export interface RuntimeNimToolBridgeOptions {
 
 export interface RuntimeNimToolBridgeInvokeInput {
   readonly toolName: string;
-  readonly argumentsText: string;
+  readonly argumentsText?: string;
+  readonly argumentsValue?: unknown;
 }
 
 export interface RuntimeNimToolRuntime {
@@ -71,7 +72,11 @@ export class RuntimeNimToolBridge {
       };
     }
     if (input.toolName === 'task.list') {
-      const limit = resolvePositiveLimit(input.argumentsText, this.taskListLimit);
+      const limit = resolveTaskListLimit({
+        argumentsText: input.argumentsText,
+        argumentsValue: input.argumentsValue,
+        fallback: this.taskListLimit,
+      });
       const tasks = await this.options.listTasks(limit);
       return {
         count: tasks.length,
@@ -100,4 +105,32 @@ function resolvePositiveLimit(argumentsText: string, fallback: number): number {
     throw new Error(`invalid task.list limit: ${trimmed}`);
   }
   return parsed;
+}
+
+function resolveTaskListLimit(input: {
+  readonly argumentsText?: string;
+  readonly argumentsValue?: unknown;
+  readonly fallback: number;
+}): number {
+  const value = input.argumentsValue;
+  if (typeof value === 'number') {
+    if (!Number.isInteger(value) || value <= 0) {
+      throw new Error(`invalid task.list limit: ${String(value)}`);
+    }
+    return value;
+  }
+  if (typeof value === 'object' && value !== null && 'limit' in value) {
+    const limit = (value as { readonly limit?: unknown }).limit;
+    if (typeof limit === 'number') {
+      if (!Number.isInteger(limit) || limit <= 0) {
+        throw new Error(`invalid task.list limit: ${String(limit)}`);
+      }
+      return limit;
+    }
+    if (typeof limit === 'string') {
+      return resolvePositiveLimit(limit, input.fallback);
+    }
+    throw new Error(`invalid task.list limit: ${String(limit)}`);
+  }
+  return resolvePositiveLimit(input.argumentsText ?? '', input.fallback);
 }

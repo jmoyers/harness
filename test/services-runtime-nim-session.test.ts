@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import { RuntimeNimSession } from '../src/services/runtime-nim-session.ts';
 import { RuntimeNimToolBridge } from '../src/services/runtime-nim-tool-bridge.ts';
+import type { NimProviderDriver } from '../packages/nim-core/src/index.ts';
 
 async function waitFor(predicate: () => boolean, timeoutMs = 3000, pollMs = 10): Promise<void> {
   const startedAt = Date.now();
@@ -108,10 +109,10 @@ void test('runtime nim session handles slash commands and mode changes', async (
         .transcriptLines.some((line) => line.includes('[state] status:idle mode:debug queued:0')),
     );
 
-    session.handleInputChunk('/mode seamless\r');
-    await waitFor(() => session.snapshot().uiMode === 'seamless');
+    session.handleInputChunk('/mode user\r');
+    await waitFor(() => session.snapshot().uiMode === 'user');
     await waitFor(() =>
-      session.snapshot().transcriptLines.some((line) => line.includes('ui mode set to seamless')),
+      session.snapshot().transcriptLines.some((line) => line.includes('ui mode set to user')),
     );
 
     session.handleInputChunk('/mode nope\r');
@@ -167,6 +168,25 @@ void test('runtime nim session ignores escape when no run is active', async () =
   }
 });
 
+void test('runtime nim session compacts duplicate adjacent transcript lines', async () => {
+  const session = new RuntimeNimSession({
+    tenantId: 'tenant-dup',
+    userId: 'user-dup',
+    markDirty: () => {},
+    responseChunkDelayMs: 0,
+    sleep: async () => {},
+  });
+  try {
+    await session.start();
+    session.handleInputChunk('/abort\r/abort\r');
+    await waitFor(() =>
+      session.snapshot().transcriptLines.some((line) => line.includes('[notice] no active run (x2)')),
+    );
+  } finally {
+    await session.dispose();
+  }
+});
+
 void test('runtime nim session emits tool lifecycle rows in debug mode', async () => {
   const session = new RuntimeNimSession({
     tenantId: 'tenant-e',
@@ -195,7 +215,7 @@ void test('runtime nim session emits tool lifecycle rows in debug mode', async (
   }
 });
 
-void test('runtime nim session suppresses tool lifecycle rows in seamless mode', async () => {
+void test('runtime nim session suppresses tool lifecycle rows in user mode', async () => {
   const session = new RuntimeNimSession({
     tenantId: 'tenant-f',
     userId: 'user-f',
@@ -211,8 +231,8 @@ void test('runtime nim session suppresses tool lifecycle rows in seamless mode',
   });
   try {
     await session.start();
-    session.handleInputChunk('/mode seamless\r');
-    await waitFor(() => session.snapshot().uiMode === 'seamless');
+    session.handleInputChunk('/mode user\r');
+    await waitFor(() => session.snapshot().uiMode === 'user');
 
     session.handleInputChunk('use-tool repository.list\r');
     await waitFor(() =>
@@ -228,6 +248,26 @@ void test('runtime nim session suppresses tool lifecycle rows in seamless mode',
     assert.equal(
       session.snapshot().transcriptLines.some((line) => line.includes('[tool:end] repository.list')),
       false,
+    );
+  } finally {
+    await session.dispose();
+  }
+});
+
+void test('runtime nim session accepts /mode seamless as alias for /mode user', async () => {
+  const session = new RuntimeNimSession({
+    tenantId: 'tenant-h',
+    userId: 'user-h',
+    markDirty: () => {},
+    responseChunkDelayMs: 0,
+    sleep: async () => {},
+  });
+  try {
+    await session.start();
+    session.handleInputChunk('/mode seamless\r');
+    await waitFor(() => session.snapshot().uiMode === 'user');
+    await waitFor(() =>
+      session.snapshot().transcriptLines.some((line) => line.includes('ui mode set to user')),
     );
   } finally {
     await session.dispose();
@@ -254,6 +294,36 @@ void test('runtime nim session reports unavailable tools in debug mode', async (
     await waitFor(() =>
       session.snapshot().transcriptLines.some((line) => line.includes('[tool:error] not-real')),
     );
+  } finally {
+    await session.dispose();
+  }
+});
+
+void test('runtime nim session uses injected provider driver for live provider path', async () => {
+  const providerDriver: NimProviderDriver = {
+    providerId: 'anthropic',
+    async *runTurn() {
+      yield { type: 'provider.thinking.started' };
+      yield { type: 'provider.thinking.completed' };
+      yield { type: 'assistant.output.delta', text: 'live' };
+      yield { type: 'assistant.output.completed' };
+      yield { type: 'provider.turn.finished', finishReason: 'stop' };
+    },
+  };
+  const session = new RuntimeNimSession({
+    tenantId: 'tenant-i',
+    userId: 'user-i',
+    markDirty: () => {},
+    model: 'anthropic/claude-3-5-haiku-latest',
+    providerDriver,
+    responseChunkDelayMs: 0,
+    sleep: async () => {},
+  });
+  try {
+    await session.start();
+    session.handleInputChunk('hello live\r');
+    await waitFor(() => session.snapshot().transcriptLines.some((line) => line.includes('nim> live')));
+    await waitFor(() => session.snapshot().status === 'idle');
   } finally {
     await session.dispose();
   }

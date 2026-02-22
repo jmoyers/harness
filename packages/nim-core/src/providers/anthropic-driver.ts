@@ -21,9 +21,19 @@ export type AnthropicNimProviderDriverOptions = CreateAnthropicOptions & {
   readonly providerId?: string;
   readonly streamTextFn?: StreamTextFn;
   readonly createAnthropicFn?: CreateAnthropicFn;
+  readonly executeTool?: (input: {
+    readonly toolName: string;
+    readonly toolInput: unknown;
+  }) => Promise<unknown> | unknown;
 };
 
-function toToolSet(input: NimProviderTurnInput): ToolSet {
+function toToolSet(
+  input: NimProviderTurnInput,
+  executeTool?: (input: {
+    readonly toolName: string;
+    readonly toolInput: unknown;
+  }) => Promise<unknown> | unknown,
+): ToolSet {
   const tools: ToolSet = {};
   for (const tool of input.tools) {
     tools[tool.name] = {
@@ -32,13 +42,20 @@ function toToolSet(input: NimProviderTurnInput): ToolSet {
         type: 'object',
         additionalProperties: true,
       },
-      execute: (toolInput: unknown) => {
-        return {
-          ok: true,
-          toolName: tool.name,
-          input: toolInput,
-        };
-      },
+      execute:
+        executeTool === undefined
+          ? (toolInput: unknown) => {
+              return {
+                ok: true,
+                toolName: tool.name,
+                input: toolInput,
+              };
+            }
+          : async (toolInput: unknown) =>
+              await executeTool({
+                toolName: tool.name,
+                toolInput,
+              }),
     };
   }
   return tools;
@@ -73,7 +90,7 @@ export function createAnthropicNimProviderDriver(
     providerId,
     async *runTurn(input: NimProviderTurnInput): AsyncIterable<NimProviderTurnEvent> {
       const model = anthropicFactory(input.providerModelId);
-      const toolSet = toToolSet(input);
+      const toolSet = toToolSet(input, options.executeTool);
       const result: StreamTextResult<ToolSet> = streamTextFn({
         model,
         prompt: input.input,

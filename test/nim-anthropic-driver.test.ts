@@ -209,3 +209,59 @@ test('anthropic nim provider driver synthesizes thinking lifecycle when provider
     'provider.turn.finished',
   ]);
 });
+
+test('anthropic nim provider driver supports custom tool execution bridge', async () => {
+  let toolExecutionOutput: unknown = undefined;
+  const parts: StreamTextPart<ToolSet>[] = [
+    { type: 'text-delta', id: 'txt-1', text: 'done' },
+    { type: 'text-end', id: 'txt-1' },
+    {
+      type: 'finish',
+      finishReason: 'stop',
+      totalUsage: {
+        inputTokens: 1,
+        outputTokens: 1,
+        totalTokens: 2,
+      },
+    },
+  ];
+  const driver = createAnthropicNimProviderDriver({
+    apiKey: 'test-key',
+    createAnthropicFn: () => anthropicFactory(),
+    executeTool: async (input) => ({
+      source: 'bridge',
+      toolName: input.toolName,
+      toolInput: input.toolInput,
+    }),
+    streamTextFn: (input) => {
+      const tools = input.tools as ToolSet | undefined;
+      const bridgeTool = tools?.['bridge.tool'];
+      if (bridgeTool !== undefined) {
+        toolExecutionOutput = bridgeTool.execute({
+          sample: true,
+        });
+      }
+      return mockStreamResult(parts, 'stop');
+    },
+  });
+
+  for await (const _event of driver.runTurn({
+    modelRef: 'anthropic/claude-3-haiku-20240307',
+    providerModelId: 'claude-3-haiku-20240307',
+    input: 'hello',
+    tools: [
+      {
+        name: 'bridge.tool',
+        description: 'bridge',
+      },
+    ],
+  })) {
+    // consume stream
+  }
+
+  assert.deepEqual(await Promise.resolve(toolExecutionOutput), {
+    source: 'bridge',
+    toolName: 'bridge.tool',
+    toolInput: { sample: true },
+  });
+});

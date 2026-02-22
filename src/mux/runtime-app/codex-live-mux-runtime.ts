@@ -281,6 +281,11 @@ import { DebugFooterNotice } from '../../ui/debug-footer-notice.ts';
 import { HomePane } from '../../ui/panes/home.ts';
 import { NimPane } from '../../ui/panes/nim.ts';
 import { ProjectPane } from '../../ui/panes/project.ts';
+import {
+  createAnthropicNimProviderDriver,
+  type NimModelRef,
+  type NimProviderDriver,
+} from '../../../packages/nim-core/src/index.ts';
 import { LeftRailPane } from '../../ui/panes/left-rail.ts';
 import { ModalManager } from '../../../packages/harness-ui/src/modal-manager.ts';
 import { UiKit } from '../../../packages/harness-ui/src/kit.ts';
@@ -2127,10 +2132,44 @@ class CodexLiveMuxRuntimeApplication {
           sort: 'started-asc',
         }),
     });
+    const configuredNimModelRaw = process.env.HARNESS_NIM_MODEL?.trim();
+    const configuredNimModel =
+      typeof configuredNimModelRaw === 'string' &&
+      configuredNimModelRaw.length > 0 &&
+      /^[^/]+\/[^/]+$/u.test(configuredNimModelRaw)
+        ? (configuredNimModelRaw as NimModelRef)
+        : null;
+    const anthropicApiKeyRaw = process.env.ANTHROPIC_API_KEY;
+    const anthropicApiKey =
+      typeof anthropicApiKeyRaw === 'string' && anthropicApiKeyRaw.trim().length > 0
+        ? anthropicApiKeyRaw.trim()
+        : null;
+    const runtimeNimModel: NimModelRef =
+      configuredNimModel ?? (anthropicApiKey === null ? 'mock/echo-v1' : 'anthropic/claude-3-5-haiku-latest');
+    const runtimeNimProviderId = runtimeNimModel.split('/')[0] ?? 'mock';
+    const runtimeNimProviderDriver: NimProviderDriver | undefined =
+      runtimeNimProviderId === 'anthropic' && anthropicApiKey !== null
+        ? createAnthropicNimProviderDriver({
+            apiKey: anthropicApiKey,
+            ...(typeof process.env.HARNESS_NIM_ANTHROPIC_BASE_URL === 'string' &&
+            process.env.HARNESS_NIM_ANTHROPIC_BASE_URL.trim().length > 0
+              ? {
+                  baseUrl: process.env.HARNESS_NIM_ANTHROPIC_BASE_URL.trim(),
+                }
+              : {}),
+            executeTool: async ({ toolName, toolInput }) =>
+              await runtimeNimToolBridge.invoke({
+                toolName,
+                argumentsValue: toolInput,
+              }),
+          })
+        : undefined;
     const runtimeNimSession = new RuntimeNimSession({
       tenantId: options.scope.tenantId,
       userId: options.scope.userId,
       markDirty,
+      model: runtimeNimModel,
+      ...(runtimeNimProviderDriver === undefined ? {} : { providerDriver: runtimeNimProviderDriver }),
       toolBridge: runtimeNimToolBridge,
     });
     const controlPlaneOps = new RuntimeControlPlaneOps({

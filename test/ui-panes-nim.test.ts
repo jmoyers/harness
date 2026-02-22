@@ -25,6 +25,7 @@ void test('nim pane renders shell rows with transcript and composer sections', (
   assert.equal(result.rows[1]?.includes('status:responding'), true);
   assert.equal(result.rows[1]?.includes('mode:debug'), true);
   assert.equal(result.rows[1]?.includes('queued:1'), true);
+  assert.equal(result.rows[2]?.includes('enter=send/steer'), true);
   assert.equal(result.rows[3]?.includes('transcript'), true);
   assert.equal(result.rows.some((row) => row.includes('nim> hi there')), true);
   assert.equal(result.rows.some((row) => row.includes('nim> working')), true);
@@ -42,7 +43,7 @@ void test('nim pane supports zero-row layouts', () => {
     viewModel: {
       sessionId: null,
       status: 'idle',
-      uiMode: 'seamless',
+      uiMode: 'user',
       composerText: '',
       queuedCount: 0,
       transcriptLines: [],
