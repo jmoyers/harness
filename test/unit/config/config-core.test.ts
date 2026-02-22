@@ -38,6 +38,7 @@ const DEFAULT_GIT = DEFAULT_HARNESS_CONFIG.mux.git;
 const DEFAULT_OPEN_IN = DEFAULT_HARNESS_CONFIG.mux.openIn;
 const DEFAULT_GITHUB = DEFAULT_HARNESS_CONFIG.github;
 const DEFAULT_LINEAR = DEFAULT_HARNESS_CONFIG.linear;
+const DEFAULT_STORAGE_LIFECYCLE = DEFAULT_HARNESS_CONFIG.storage.lifecycle;
 const TEST_MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 
 function testEnvWithHome(homeDirectory: string): NodeJS.ProcessEnv {
@@ -1335,6 +1336,81 @@ void test('parseHarnessConfigText parses codex/claude/cursor install command set
   assert.equal(parsed.codex.install.command, 'bunx @openai/codex@latest');
   assert.equal(parsed.claude.install.command, 'bunx @anthropic-ai/claude-code@latest');
   assert.equal(parsed.cursor.install.command, null);
+});
+
+void test('parseHarnessConfigText parses storage lifecycle policy settings', () => {
+  const parsed = parseHarnessConfigText(`
+    {
+      "storage": {
+        "lifecycle": {
+          "eventRetentionMs": 86400000,
+          "telemetryRetentionMs": 43200000,
+          "maintenanceIntervalMs": 2500,
+          "pruneBatchSize": 1000,
+          "compactFreelistPages": 64,
+          "copyForwardBatchSize": 3000,
+          "copyForwardFinalizeTailRows": 500,
+          "telemetryPayloadMaxBytes": 8192,
+          "textDeltaPayloadMaxBytes": 16384,
+          "textDeltaCoalesceWindowMs": 900
+        }
+      }
+    }
+  `);
+  assert.deepEqual(parsed.storage.lifecycle, {
+    eventRetentionMs: 86400000,
+    telemetryRetentionMs: 43200000,
+    maintenanceIntervalMs: 2500,
+    pruneBatchSize: 1000,
+    compactFreelistPages: 64,
+    copyForwardBatchSize: 3000,
+    copyForwardFinalizeTailRows: 500,
+    telemetryPayloadMaxBytes: 8192,
+    textDeltaPayloadMaxBytes: 16384,
+    textDeltaCoalesceWindowMs: 900,
+  });
+});
+
+void test('parseHarnessConfigText falls back for invalid storage lifecycle policy values', () => {
+  const parsed = parseHarnessConfigText(`
+    {
+      "storage": {
+        "lifecycle": {
+          "eventRetentionMs": 0,
+          "telemetryRetentionMs": "bad",
+          "maintenanceIntervalMs": -1,
+          "pruneBatchSize": 0,
+          "compactFreelistPages": null,
+          "copyForwardBatchSize": 1234,
+          "copyForwardFinalizeTailRows": -2,
+          "telemetryPayloadMaxBytes": 0,
+          "textDeltaPayloadMaxBytes": -7,
+          "textDeltaCoalesceWindowMs": 300
+        }
+      }
+    }
+  `);
+  assert.deepEqual(parsed.storage.lifecycle, {
+    ...DEFAULT_STORAGE_LIFECYCLE,
+    copyForwardBatchSize: 1234,
+    textDeltaCoalesceWindowMs: 300,
+  });
+
+  const parsedInvalidStorage = parseHarnessConfigText(`
+    {
+      "storage": []
+    }
+  `);
+  assert.deepEqual(parsedInvalidStorage.storage.lifecycle, DEFAULT_STORAGE_LIFECYCLE);
+
+  const parsedNullLifecycle = parseHarnessConfigText(`
+    {
+      "storage": {
+        "lifecycle": null
+      }
+    }
+  `);
+  assert.deepEqual(parsedNullLifecycle.storage.lifecycle, DEFAULT_STORAGE_LIFECYCLE);
 });
 
 void test('parseHarnessConfigText parses lifecycle hook connectors and event filters', () => {

@@ -25,6 +25,19 @@ export interface StorageLifecyclePolicy {
   readonly textDeltaCoalesceWindowMs: number;
 }
 
+export const DEFAULT_STORAGE_LIFECYCLE_POLICY: StorageLifecyclePolicy = {
+  eventRetentionMs: DEFAULT_EVENT_RETENTION_MS,
+  telemetryRetentionMs: DEFAULT_TELEMETRY_RETENTION_MS,
+  maintenanceIntervalMs: DEFAULT_MAINTENANCE_INTERVAL_MS,
+  pruneBatchSize: DEFAULT_PRUNE_BATCH_SIZE,
+  compactFreelistPages: DEFAULT_COMPACT_FREELIST_PAGES,
+  copyForwardBatchSize: DEFAULT_COPY_FORWARD_BATCH_SIZE,
+  copyForwardFinalizeTailRows: DEFAULT_COPY_FORWARD_FINALIZE_TAIL_ROWS,
+  telemetryPayloadMaxBytes: DEFAULT_TELEMETRY_PAYLOAD_MAX_BYTES,
+  textDeltaPayloadMaxBytes: DEFAULT_TEXT_DELTA_PAYLOAD_MAX_BYTES,
+  textDeltaCoalesceWindowMs: DEFAULT_TEXT_DELTA_COALESCE_WINDOW_MS,
+};
+
 interface StorageLifecycleCompactionStepResult {
   readonly state: 'idle' | 'copying' | 'finalized';
   readonly copiedRows: number;
@@ -75,39 +88,45 @@ function normalizePolicy(
   policy: Partial<StorageLifecyclePolicy> | undefined,
 ): StorageLifecyclePolicy {
   return {
-    eventRetentionMs: normalizePositiveInt(policy?.eventRetentionMs, DEFAULT_EVENT_RETENTION_MS),
+    eventRetentionMs: normalizePositiveInt(
+      policy?.eventRetentionMs,
+      DEFAULT_STORAGE_LIFECYCLE_POLICY.eventRetentionMs,
+    ),
     telemetryRetentionMs: normalizePositiveInt(
       policy?.telemetryRetentionMs,
-      DEFAULT_TELEMETRY_RETENTION_MS,
+      DEFAULT_STORAGE_LIFECYCLE_POLICY.telemetryRetentionMs,
     ),
     maintenanceIntervalMs: normalizePositiveInt(
       policy?.maintenanceIntervalMs,
-      DEFAULT_MAINTENANCE_INTERVAL_MS,
+      DEFAULT_STORAGE_LIFECYCLE_POLICY.maintenanceIntervalMs,
     ),
-    pruneBatchSize: normalizePositiveInt(policy?.pruneBatchSize, DEFAULT_PRUNE_BATCH_SIZE),
+    pruneBatchSize: normalizePositiveInt(
+      policy?.pruneBatchSize,
+      DEFAULT_STORAGE_LIFECYCLE_POLICY.pruneBatchSize,
+    ),
     compactFreelistPages: normalizePositiveInt(
       policy?.compactFreelistPages,
-      DEFAULT_COMPACT_FREELIST_PAGES,
+      DEFAULT_STORAGE_LIFECYCLE_POLICY.compactFreelistPages,
     ),
     copyForwardBatchSize: normalizePositiveInt(
       policy?.copyForwardBatchSize,
-      DEFAULT_COPY_FORWARD_BATCH_SIZE,
+      DEFAULT_STORAGE_LIFECYCLE_POLICY.copyForwardBatchSize,
     ),
     copyForwardFinalizeTailRows: normalizePositiveInt(
       policy?.copyForwardFinalizeTailRows,
-      DEFAULT_COPY_FORWARD_FINALIZE_TAIL_ROWS,
+      DEFAULT_STORAGE_LIFECYCLE_POLICY.copyForwardFinalizeTailRows,
     ),
     telemetryPayloadMaxBytes: normalizePositiveInt(
       policy?.telemetryPayloadMaxBytes,
-      DEFAULT_TELEMETRY_PAYLOAD_MAX_BYTES,
+      DEFAULT_STORAGE_LIFECYCLE_POLICY.telemetryPayloadMaxBytes,
     ),
     textDeltaPayloadMaxBytes: normalizePositiveInt(
       policy?.textDeltaPayloadMaxBytes,
-      DEFAULT_TEXT_DELTA_PAYLOAD_MAX_BYTES,
+      DEFAULT_STORAGE_LIFECYCLE_POLICY.textDeltaPayloadMaxBytes,
     ),
     textDeltaCoalesceWindowMs: normalizePositiveInt(
       policy?.textDeltaCoalesceWindowMs,
-      DEFAULT_TEXT_DELTA_COALESCE_WINDOW_MS,
+      DEFAULT_STORAGE_LIFECYCLE_POLICY.textDeltaCoalesceWindowMs,
     ),
   };
 }

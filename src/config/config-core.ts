@@ -10,6 +10,10 @@ import {
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  DEFAULT_STORAGE_LIFECYCLE_POLICY,
+  type StorageLifecyclePolicy,
+} from '../storage/storage-lifecycle-core.ts';
 
 export const HARNESS_CONFIG_FILE_NAME = 'harness.config.jsonc';
 export const HARNESS_CONFIG_VERSION = 1;
@@ -262,6 +266,12 @@ interface HarnessHooksConfig {
   readonly lifecycle: HarnessLifecycleHooksConfig;
 }
 
+export type HarnessStorageLifecycleConfig = StorageLifecyclePolicy;
+
+interface HarnessStorageConfig {
+  readonly lifecycle: HarnessStorageLifecycleConfig;
+}
+
 interface HarnessConfig {
   readonly configVersion: number;
   readonly mux: HarnessMuxConfig;
@@ -273,6 +283,7 @@ interface HarnessConfig {
   readonly claude: HarnessClaudeConfig;
   readonly cursor: HarnessCursorConfig;
   readonly critique: HarnessCritiqueConfig;
+  readonly storage: HarnessStorageConfig;
   readonly hooks: HarnessHooksConfig;
 }
 
@@ -400,6 +411,11 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
     },
     install: {
       command: 'bun add --global critique@latest',
+    },
+  },
+  storage: {
+    lifecycle: {
+      ...DEFAULT_STORAGE_LIFECYCLE_POLICY,
     },
   },
   hooks: {
@@ -938,6 +954,14 @@ function normalizeNonNegativeInt(value: unknown, fallback: number): number {
   }
   const normalized = Math.floor(value);
   if (normalized < 0) {
+    return fallback;
+  }
+  return normalized;
+}
+
+function normalizePositiveInt(value: unknown, fallback: number): number {
+  const normalized = normalizeNonNegativeInt(value, fallback);
+  if (normalized < 1) {
     return fallback;
   }
   return normalized;
@@ -1538,6 +1562,65 @@ function normalizeLifecycleWebhookConfig(
   };
 }
 
+function normalizeStorageLifecycleConfig(input: unknown): HarnessStorageLifecycleConfig {
+  const record = asRecord(input);
+  if (record === null) {
+    return DEFAULT_HARNESS_CONFIG.storage.lifecycle;
+  }
+  return {
+    eventRetentionMs: normalizePositiveInt(
+      record['eventRetentionMs'],
+      DEFAULT_HARNESS_CONFIG.storage.lifecycle.eventRetentionMs,
+    ),
+    telemetryRetentionMs: normalizePositiveInt(
+      record['telemetryRetentionMs'],
+      DEFAULT_HARNESS_CONFIG.storage.lifecycle.telemetryRetentionMs,
+    ),
+    maintenanceIntervalMs: normalizePositiveInt(
+      record['maintenanceIntervalMs'],
+      DEFAULT_HARNESS_CONFIG.storage.lifecycle.maintenanceIntervalMs,
+    ),
+    pruneBatchSize: normalizePositiveInt(
+      record['pruneBatchSize'],
+      DEFAULT_HARNESS_CONFIG.storage.lifecycle.pruneBatchSize,
+    ),
+    compactFreelistPages: normalizePositiveInt(
+      record['compactFreelistPages'],
+      DEFAULT_HARNESS_CONFIG.storage.lifecycle.compactFreelistPages,
+    ),
+    copyForwardBatchSize: normalizePositiveInt(
+      record['copyForwardBatchSize'],
+      DEFAULT_HARNESS_CONFIG.storage.lifecycle.copyForwardBatchSize,
+    ),
+    copyForwardFinalizeTailRows: normalizePositiveInt(
+      record['copyForwardFinalizeTailRows'],
+      DEFAULT_HARNESS_CONFIG.storage.lifecycle.copyForwardFinalizeTailRows,
+    ),
+    telemetryPayloadMaxBytes: normalizePositiveInt(
+      record['telemetryPayloadMaxBytes'],
+      DEFAULT_HARNESS_CONFIG.storage.lifecycle.telemetryPayloadMaxBytes,
+    ),
+    textDeltaPayloadMaxBytes: normalizePositiveInt(
+      record['textDeltaPayloadMaxBytes'],
+      DEFAULT_HARNESS_CONFIG.storage.lifecycle.textDeltaPayloadMaxBytes,
+    ),
+    textDeltaCoalesceWindowMs: normalizePositiveInt(
+      record['textDeltaCoalesceWindowMs'],
+      DEFAULT_HARNESS_CONFIG.storage.lifecycle.textDeltaCoalesceWindowMs,
+    ),
+  };
+}
+
+function normalizeStorageConfig(input: unknown): HarnessStorageConfig {
+  const record = asRecord(input);
+  if (record === null) {
+    return DEFAULT_HARNESS_CONFIG.storage;
+  }
+  return {
+    lifecycle: normalizeStorageLifecycleConfig(record['lifecycle']),
+  };
+}
+
 function normalizeLifecycleHooksConfig(input: unknown): HarnessLifecycleHooksConfig {
   const record = asRecord(input);
   if (record === null) {
@@ -1613,6 +1696,7 @@ export function parseHarnessConfigText(text: string): HarnessConfig {
   const claude = normalizeClaudeConfig(migratedRoot['claude']);
   const cursor = normalizeCursorConfig(migratedRoot['cursor']);
   const critique = normalizeCritiqueConfig(migratedRoot['critique']);
+  const storage = normalizeStorageConfig(migratedRoot['storage']);
   const hooks = normalizeLifecycleHooksConfig(asRecord(migratedRoot['hooks'])?.['lifecycle']);
 
   return {
@@ -1632,6 +1716,7 @@ export function parseHarnessConfigText(text: string): HarnessConfig {
     claude,
     cursor,
     critique,
+    storage,
     hooks: {
       lifecycle: hooks,
     },

@@ -129,6 +129,7 @@ Related entities (repositories, tasks, project settings, runtime/session metadat
 - Write guardrails and rolling-window maintenance are centralized in `storage-lifecycle-core`.
 - Rolling-window maintenance must run online (while sessions are live) with bounded per-tick work.
 - Rolling-window maintenance includes bounded online copy-forward compaction of retained rows after prune churn.
+- Storage lifecycle policy knobs are configured through `storage.lifecycle` in `harness.config.jsonc`.
 - Migrations are explicit, transactional, versioned (`PRAGMA user_version`).
 - Unknown newer schema versions fail closed.
 

@@ -108,6 +108,20 @@
       "command": "bun add --global critique@latest",
     },
   },
+  "storage": {
+    "lifecycle": {
+      "eventRetentionMs": 259200000,
+      "telemetryRetentionMs": 259200000,
+      "maintenanceIntervalMs": 5000,
+      "pruneBatchSize": 2000,
+      "compactFreelistPages": 256,
+      "copyForwardBatchSize": 5000,
+      "copyForwardFinalizeTailRows": 1200,
+      "telemetryPayloadMaxBytes": 16384,
+      "textDeltaPayloadMaxBytes": 32768,
+      "textDeltaCoalesceWindowMs": 1200,
+    },
+  },
   "hooks": {
     "lifecycle": {
       "enabled": false,

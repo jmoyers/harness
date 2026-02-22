@@ -897,6 +897,7 @@ class CodexLiveMuxRuntimeApplication {
         runOnlineCopyForwardCompactionStep: (batchSize, finalizeTailRows) =>
           store.runOnlineCopyForwardCompactionStep(batchSize, finalizeTailRows),
       },
+      policy: loadedConfig.config.storage.lifecycle,
       writeStderr: (text) => process.stderr.write(text),
     });
 
@@ -1126,6 +1127,7 @@ class CodexLiveMuxRuntimeApplication {
             tokenEnvVar: loadedConfig.config.linear.tokenEnvVar,
           },
           lifecycleHooks: loadedConfig.config.hooks.lifecycle,
+          storageLifecyclePolicy: loadedConfig.config.storage.lifecycle,
           startSession: (input) => {
             const sessionOptions: Parameters<typeof startCodexLiveSession>[0] = {
               args: input.args,

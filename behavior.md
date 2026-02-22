@@ -284,6 +284,7 @@ Behavior fragments:
 - Event/telemetry write guardrails run before persistence.
 - Rolling-window pruning runs online on a maintenance tick while sessions remain live.
 - Rolling-window compaction runs online in bounded copy-forward steps after prune churn.
+- Storage lifecycle policy values are configured under `storage.lifecycle` and applied to both mux event storage and control-plane telemetry storage.
 - Event and telemetry storage maintenance is coordinated through one module.
 - Existing SQLite files are upgraded on open to incremental auto-vacuum mode (best-effort).
 
