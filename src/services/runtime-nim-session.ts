@@ -10,6 +10,9 @@ import {
   projectEventToUiEvents,
   type NimUiMode,
 } from '../../packages/nim-ui-core/src/projection.ts';
+import {
+  type RuntimeNimToolBridge,
+} from './runtime-nim-tool-bridge.ts';
 
 type NimSessionStatus = 'thinking' | 'tool-calling' | 'responding' | 'idle';
 
@@ -28,6 +31,7 @@ interface RuntimeNimSessionOptions {
   readonly tenantId: string;
   readonly userId: string;
   readonly markDirty: () => void;
+  readonly toolBridge?: RuntimeNimToolBridge;
   readonly model?: NimModelRef;
   readonly runtime?: InMemoryNimRuntime;
   readonly responseChunkDelayMs?: number;
@@ -62,10 +66,28 @@ function providerIdFromModel(model: NimModelRef): string {
   return model.slice(0, slash);
 }
 
+function parseRequestedToolInvocation(
+  input: string,
+): { readonly toolName: string; readonly argumentsText: string } | null {
+  const match = /(?:^|\s)use-tool(?:\s+([A-Za-z0-9._:-]+))?(?:\s+(.+))?/u.exec(input);
+  if (match === null) {
+    return null;
+  }
+  const toolName = match[1];
+  if (typeof toolName !== 'string' || toolName.length === 0) {
+    return null;
+  }
+  return {
+    toolName,
+    argumentsText: typeof match[2] === 'string' ? match[2].trim() : '',
+  };
+}
+
 function createMockProviderDriver(input: {
   readonly providerId: string;
   readonly responseChunkDelayMs: number;
   readonly sleep: (delayMs: number) => Promise<void>;
+  readonly invokeTool?: (toolName: string, argumentsText: string) => Promise<unknown>;
 }): NimProviderDriver {
   return {
     providerId: input.providerId,
@@ -73,6 +95,59 @@ function createMockProviderDriver(input: {
       yield { type: 'provider.thinking.started' };
       await input.sleep(input.responseChunkDelayMs);
       yield { type: 'provider.thinking.completed' };
+
+      const requestedTool = parseRequestedToolInvocation(turnInput.input);
+      if (requestedTool !== null) {
+        const toolCallId = randomUUID();
+        const supportedTool = turnInput.tools.some((tool) => tool.name === requestedTool.toolName);
+        if (!supportedTool) {
+          yield {
+            type: 'tool.call.failed',
+            toolCallId,
+            toolName: requestedTool.toolName,
+            error: 'tool unavailable',
+          };
+        } else {
+          yield {
+            type: 'tool.call.started',
+            toolCallId,
+            toolName: requestedTool.toolName,
+          };
+          if (requestedTool.argumentsText.length > 0) {
+            yield {
+              type: 'tool.call.arguments.delta',
+              toolCallId,
+              delta: requestedTool.argumentsText,
+            };
+          }
+          try {
+            const output =
+              input.invokeTool === undefined
+                ? {
+                    notice: 'nim tool bridge unavailable',
+                  }
+                : await input.invokeTool(requestedTool.toolName, requestedTool.argumentsText);
+            yield {
+              type: 'tool.call.completed',
+              toolCallId,
+              toolName: requestedTool.toolName,
+            };
+            yield {
+              type: 'tool.result.emitted',
+              toolCallId,
+              toolName: requestedTool.toolName,
+              output,
+            };
+          } catch (error: unknown) {
+            yield {
+              type: 'tool.call.failed',
+              toolCallId,
+              toolName: requestedTool.toolName,
+              error: toErrorMessage(error),
+            };
+          }
+        }
+      }
 
       const response = `nim mock: ${turnInput.input}`;
       const tokens = response.split(/\s+/u);
@@ -135,11 +210,23 @@ export class RuntimeNimSession {
       displayName: 'Mock',
       models: [this.model],
     });
+    this.options.toolBridge?.registerWithRuntime(this.runtime);
     this.runtime.registerProviderDriver(
       createMockProviderDriver({
         providerId,
         responseChunkDelayMs: this.responseChunkDelayMs,
         sleep: this.sleep,
+        invokeTool: async (toolName, argumentsText) => {
+          if (this.options.toolBridge === undefined) {
+            return {
+              notice: 'nim tool bridge unavailable',
+            };
+          }
+          return await this.options.toolBridge.invoke({
+            toolName,
+            argumentsText,
+          });
+        },
       }),
     );
   }
@@ -342,7 +429,9 @@ export class RuntimeNimSession {
   private async runCommand(commandText: string): Promise<void> {
     const trimmed = commandText.trim();
     if (trimmed === '/help') {
-      this.pushSystemLine('[help] /help /mode <debug|seamless> /state /clear /abort');
+      this.pushSystemLine(
+        '[help] /help /mode <debug|seamless> /state /clear /abort use-tool <tool>',
+      );
       return;
     }
     if (trimmed === '/state') {

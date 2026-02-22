@@ -238,6 +238,7 @@ import { RuntimeTaskPaneActions } from '../../services/runtime-task-pane-actions
 import { RuntimeTaskPaneShortcuts } from '../../services/runtime-task-pane-shortcuts.ts';
 import { RuntimeProjectPaneGitHubReviewCache } from '../../services/runtime-project-pane-github-review-cache.ts';
 import { RuntimeNimSession } from '../../services/runtime-nim-session.ts';
+import { RuntimeNimToolBridge } from '../../services/runtime-nim-tool-bridge.ts';
 import { TaskPaneSelectionActions } from '../../services/task-pane-selection-actions.ts';
 import { TaskPlanningHydrationService } from '../../services/task-planning-hydration.ts';
 import { TaskPlanningObservedEvents } from '../../services/task-planning-observed-events.ts';
@@ -2116,10 +2117,21 @@ class CodexLiveMuxRuntimeApplication {
     const markDirty = (): void => {
       runtimeRenderLifecycle.markDirty();
     };
+    const runtimeNimToolBridge = new RuntimeNimToolBridge({
+      listDirectories: async () => await controlPlaneService.listDirectories(),
+      listRepositories: async () => await controlPlaneService.listRepositories(),
+      listTasks: async (limit) => await controlPlaneService.listTasks(limit),
+      listSessions: async () =>
+        await controlPlaneService.listSessions({
+          worktreeId: options.scope.worktreeId,
+          sort: 'started-asc',
+        }),
+    });
     const runtimeNimSession = new RuntimeNimSession({
       tenantId: options.scope.tenantId,
       userId: options.scope.userId,
       markDirty,
+      toolBridge: runtimeNimToolBridge,
     });
     const controlPlaneOps = new RuntimeControlPlaneOps({
       onFatal: (error: unknown) => {

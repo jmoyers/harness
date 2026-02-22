@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import { RuntimeNimSession } from '../src/services/runtime-nim-session.ts';
+import { RuntimeNimToolBridge } from '../src/services/runtime-nim-tool-bridge.ts';
 
 async function waitFor(predicate: () => boolean, timeoutMs = 3000, pollMs = 10): Promise<void> {
   const startedAt = Date.now();
@@ -161,6 +162,98 @@ void test('runtime nim session ignores escape when no run is active', async () =
     session.handleEscape();
     await new Promise((resolve) => setTimeout(resolve, 25));
     assert.deepEqual(session.snapshot().transcriptLines, []);
+  } finally {
+    await session.dispose();
+  }
+});
+
+void test('runtime nim session emits tool lifecycle rows in debug mode', async () => {
+  const session = new RuntimeNimSession({
+    tenantId: 'tenant-e',
+    userId: 'user-e',
+    markDirty: () => {},
+    responseChunkDelayMs: 0,
+    sleep: async () => {},
+    toolBridge: new RuntimeNimToolBridge({
+      listDirectories: async () => [{ directoryId: 'dir-1' }],
+      listRepositories: async () => [{ repositoryId: 'repo-1' }],
+      listTasks: async () => [{ taskId: 'task-1' }],
+      listSessions: async () => [{ sessionId: 'session-1' }],
+    }),
+  });
+  try {
+    await session.start();
+    session.handleInputChunk('use-tool repository.list\r');
+    await waitFor(() =>
+      session.snapshot().transcriptLines.some((line) => line.includes('[tool:start] repository.list')),
+    );
+    await waitFor(() =>
+      session.snapshot().transcriptLines.some((line) => line.includes('[tool:end] repository.list')),
+    );
+  } finally {
+    await session.dispose();
+  }
+});
+
+void test('runtime nim session suppresses tool lifecycle rows in seamless mode', async () => {
+  const session = new RuntimeNimSession({
+    tenantId: 'tenant-f',
+    userId: 'user-f',
+    markDirty: () => {},
+    responseChunkDelayMs: 0,
+    sleep: async () => {},
+    toolBridge: new RuntimeNimToolBridge({
+      listDirectories: async () => [{ directoryId: 'dir-1' }],
+      listRepositories: async () => [{ repositoryId: 'repo-1' }],
+      listTasks: async () => [{ taskId: 'task-1' }],
+      listSessions: async () => [{ sessionId: 'session-1' }],
+    }),
+  });
+  try {
+    await session.start();
+    session.handleInputChunk('/mode seamless\r');
+    await waitFor(() => session.snapshot().uiMode === 'seamless');
+
+    session.handleInputChunk('use-tool repository.list\r');
+    await waitFor(() =>
+      session.snapshot().transcriptLines.some((line) => line.includes('you> use-tool repository.list')),
+    );
+    await waitFor(() =>
+      session.snapshot().transcriptLines.some((line) => line.includes('nim> nim mock: use-tool repository.list')),
+    );
+    assert.equal(
+      session.snapshot().transcriptLines.some((line) => line.includes('[tool:start] repository.list')),
+      false,
+    );
+    assert.equal(
+      session.snapshot().transcriptLines.some((line) => line.includes('[tool:end] repository.list')),
+      false,
+    );
+  } finally {
+    await session.dispose();
+  }
+});
+
+void test('runtime nim session reports unavailable tools in debug mode', async () => {
+  const session = new RuntimeNimSession({
+    tenantId: 'tenant-g',
+    userId: 'user-g',
+    markDirty: () => {},
+    responseChunkDelayMs: 0,
+    sleep: async () => {},
+    toolBridge: new RuntimeNimToolBridge({
+      listDirectories: async () => [],
+      listRepositories: async () => [],
+      listTasks: async () => [],
+      listSessions: async () => [],
+    }),
+  });
+  try {
+    await session.start();
+    session.handleInputChunk('use-tool not-real\r');
+    await waitFor(() =>
+      session.snapshot().transcriptLines.some((line) => line.includes('[tool:error] not-real')),
+    );
   } finally {
     await session.dispose();
   }

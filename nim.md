@@ -136,9 +136,9 @@ flowchart LR
 
 ### Phase 3: Control Plane Tool Surface
 
-- [ ] Implement read-first tool bridge to control-plane commands.
-- [ ] Surface tool lifecycle (start/args/result/error) in debug mode.
-- [ ] Add policy allow/deny control for NIM tool exposure.
+- [x] Implement read-first tool bridge to control-plane commands.
+- [x] Surface tool lifecycle (start/args/result/error) in debug mode.
+- [x] Add policy allow/deny control for NIM tool exposure.
 - Exit criteria:
 - NIM can inspect Harness state via tools and show observable lifecycle.
 
