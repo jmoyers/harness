@@ -1,4 +1,4 @@
-interface RuntimeShutdownServiceOptions {
+export interface RuntimeShutdownServiceOptions {
   readonly screen: {
     clearDirty: () => void;
   };
@@ -43,41 +43,37 @@ interface RuntimeShutdownServiceOptions {
   readonly shutdownPerfCore: () => void;
 }
 
-export class RuntimeShutdownService {
-  constructor(private readonly options: RuntimeShutdownServiceOptions) {}
+export async function finalizeRuntimeShutdown(options: RuntimeShutdownServiceOptions): Promise<void> {
+  options.screen.clearDirty();
+  options.outputLoadSampler.stop();
+  options.startupBackgroundProbeService.stop();
+  options.clearResizeTimer();
+  options.clearPtyResizeTimer();
+  options.clearHomePaneBackgroundTimer();
+  options.clearProjectPaneGitHubReviewRefreshTimer();
+  options.persistMuxUiStateNow();
+  options.clearConversationTitleEditTimer();
+  options.flushTaskComposerPersist();
+  options.clearRenderScheduled();
+  options.detachProcessListeners();
+  options.removeEnvelopeListener();
+  options.stopWorkspaceObservedEvents();
+  await options.unsubscribeTaskPlanningEvents();
+  await options.closeKeyEventSubscription();
+  options.clearRuntimeFatalExitTimer();
 
-  async finalize(): Promise<void> {
-    this.options.screen.clearDirty();
-    this.options.outputLoadSampler.stop();
-    this.options.startupBackgroundProbeService.stop();
-    this.options.clearResizeTimer();
-    this.options.clearPtyResizeTimer();
-    this.options.clearHomePaneBackgroundTimer();
-    this.options.clearProjectPaneGitHubReviewRefreshTimer();
-    this.options.persistMuxUiStateNow();
-    this.options.clearConversationTitleEditTimer();
-    this.options.flushTaskComposerPersist();
-    this.options.clearRenderScheduled();
-    this.options.detachProcessListeners();
-    this.options.removeEnvelopeListener();
-    this.options.stopWorkspaceObservedEvents();
-    await this.options.unsubscribeTaskPlanningEvents();
-    await this.options.closeKeyEventSubscription();
-    this.options.clearRuntimeFatalExitTimer();
-
-    try {
-      await this.options.waitForControlPlaneDrain();
-      await this.options.controlPlaneClient.close();
-    } catch {
-      // Best-effort shutdown only.
-    }
-
-    this.options.eventPersistence.flush('shutdown');
-    const recordingCloseError = await this.options.recordingService.closeWriter();
-    this.options.store.close();
-    this.options.restoreTerminalState();
-    await this.options.recordingService.finalizeAfterShutdown(recordingCloseError);
-    this.options.startupShutdownService.finalize();
-    this.options.shutdownPerfCore();
+  try {
+    await options.waitForControlPlaneDrain();
+    await options.controlPlaneClient.close();
+  } catch {
+    // Best-effort shutdown only.
   }
+
+  options.eventPersistence.flush('shutdown');
+  const recordingCloseError = await options.recordingService.closeWriter();
+  options.store.close();
+  options.restoreTerminalState();
+  await options.recordingService.finalizeAfterShutdown(recordingCloseError);
+  options.startupShutdownService.finalize();
+  options.shutdownPerfCore();
 }

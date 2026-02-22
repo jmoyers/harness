@@ -6,7 +6,7 @@ import type {
   TaskFocusedPaneRepositoryRecord,
   TaskFocusedPaneTaskRecord,
 } from '../src/mux/task-focused-pane.ts';
-import { RuntimeRenderPipeline } from '../src/services/runtime-render-pipeline.ts';
+import { createRuntimeRenderPipeline } from '../src/services/runtime-render-pipeline.ts';
 
 interface TestConversation {
   readonly conversationId: string;
@@ -84,7 +84,7 @@ void test('runtime render pipeline composes underlying render services and deleg
   type RepoRecord = TaskFocusedPaneRepositoryRecord;
   type TaskRecord = TaskFocusedPaneTaskRecord;
 
-  const renderPipeline = new RuntimeRenderPipeline<
+  const renderPipeline = createRuntimeRenderPipeline<
     TestConversation,
     RepoRecord,
     TaskRecord,
@@ -172,7 +172,7 @@ void test('runtime render pipeline composes underlying render services and deleg
     activeDirectoryId: () => workspace.activeDirectoryId,
   });
 
-  renderPipeline.render({
+  renderPipeline({
     shuttingDown: false,
     layout,
     selection: null,
@@ -193,7 +193,7 @@ void test('runtime render pipeline renders right pane and flushes when render st
   type RepoRecord = TaskFocusedPaneRepositoryRecord;
   type TaskRecord = TaskFocusedPaneTaskRecord;
 
-  const renderPipeline = new RuntimeRenderPipeline<
+  const renderPipeline = createRuntimeRenderPipeline<
     TestConversation,
     RepoRecord,
     TaskRecord,
@@ -290,7 +290,7 @@ void test('runtime render pipeline renders right pane and flushes when render st
     activeDirectoryId: () => workspace.activeDirectoryId,
   });
 
-  renderPipeline.render({
+  renderPipeline({
     shuttingDown: false,
     layout,
     selection: null,

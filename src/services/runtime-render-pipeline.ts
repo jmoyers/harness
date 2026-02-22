@@ -100,7 +100,7 @@ type RuntimeRenderPipelineInput = Parameters<
   >['render']
 >[0];
 
-export class RuntimeRenderPipeline<
+export function createRuntimeRenderPipeline<
   TConversation,
   TRepositoryRecord extends TaskFocusedPaneRepositoryRecord,
   TTaskRecord extends TaskFocusedPaneTaskRecord,
@@ -111,8 +111,25 @@ export class RuntimeRenderPipeline<
   TRailViewRows,
   TModalOverlay,
   TStatusRow,
-> {
-  private readonly renderOrchestrator: RuntimeRenderOrchestrator<
+>(
+  options: RuntimeRenderPipelineOptions<
+    TConversation,
+    TRepositoryRecord,
+    TTaskRecord,
+    TDirectoryRecord,
+    TRepositorySnapshot,
+    TGitSummary,
+    TProcessUsage,
+    TRailViewRows,
+    TModalOverlay,
+    TStatusRow
+  >,
+): (input: RuntimeRenderPipelineInput) => void {
+  const renderFlush = new RuntimeRenderFlush(options.renderFlush);
+  const rightPaneRender = new RuntimeRightPaneRender(options.rightPaneRender);
+  const leftRailRender = new RuntimeLeftRailRender(options.leftRailRender);
+  const renderState = new RuntimeRenderState(options.renderState);
+  const renderOrchestrator = new RuntimeRenderOrchestrator<
     RuntimeLayout,
     TConversation,
     TerminalSnapshotFrameCore,
@@ -126,55 +143,33 @@ export class RuntimeRenderPipeline<
       TTaskRecord,
       TProcessUsage
     >
-  >;
-
-  constructor(
-    options: RuntimeRenderPipelineOptions<
-      TConversation,
-      TRepositoryRecord,
-      TTaskRecord,
-      TDirectoryRecord,
-      TRepositorySnapshot,
-      TGitSummary,
-      TProcessUsage,
-      TRailViewRows,
-      TModalOverlay,
-      TStatusRow
-    >,
-  ) {
-    const renderFlush = new RuntimeRenderFlush(options.renderFlush);
-    const rightPaneRender = new RuntimeRightPaneRender(options.rightPaneRender);
-    const leftRailRender = new RuntimeLeftRailRender(options.leftRailRender);
-    const renderState = new RuntimeRenderState(options.renderState);
-    this.renderOrchestrator = new RuntimeRenderOrchestrator({
-      isScreenDirty: options.isScreenDirty,
-      clearDirty: options.clearDirty,
-      readRenderSnapshot: options.readRenderSnapshot,
-      prepareRenderState: (selection, selectionDrag) =>
-        renderState.prepareRenderState(selection, selectionDrag),
-      renderLeftRail: (layout, snapshot) =>
-        leftRailRender.render({
-          layout,
-          snapshot: snapshot.leftRail,
-        }),
-      setLatestRailViewRows: options.setLatestRailViewRows,
-      renderRightRows: (input) =>
-        rightPaneRender.renderRightRows({
-          layout: input.layout,
-          rightFrame: input.rightFrame,
-          homePaneActive: input.homePaneActive,
-          projectPaneActive: input.projectPaneActive,
-          activeDirectoryId: input.activeDirectoryId,
-          snapshot: input.snapshot.rightPane,
-        }),
-      flushRender: (input) => {
-        renderFlush.flushRender(input);
-      },
-      activeDirectoryId: options.activeDirectoryId,
-    });
-  }
-
-  render(input: RuntimeRenderPipelineInput): void {
-    this.renderOrchestrator.render(input);
-  }
+  >({
+    isScreenDirty: options.isScreenDirty,
+    clearDirty: options.clearDirty,
+    readRenderSnapshot: options.readRenderSnapshot,
+    prepareRenderState: (selection, selectionDrag) =>
+      renderState.prepareRenderState(selection, selectionDrag),
+    renderLeftRail: (layout, snapshot) =>
+      leftRailRender.render({
+        layout,
+        snapshot: snapshot.leftRail,
+      }),
+    setLatestRailViewRows: options.setLatestRailViewRows,
+    renderRightRows: (input) =>
+      rightPaneRender.renderRightRows({
+        layout: input.layout,
+        rightFrame: input.rightFrame,
+        homePaneActive: input.homePaneActive,
+        projectPaneActive: input.projectPaneActive,
+        activeDirectoryId: input.activeDirectoryId,
+        snapshot: input.snapshot.rightPane,
+      }),
+    flushRender: (input) => {
+      renderFlush.flushRender(input);
+    },
+    activeDirectoryId: options.activeDirectoryId,
+  });
+  return (input: RuntimeRenderPipelineInput): void => {
+    renderOrchestrator.render(input);
+  };
 }

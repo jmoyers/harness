@@ -201,12 +201,12 @@ import {
   applyRuntimeObservedEventProjection,
   type RuntimeObservedEventProjectionPipelineOptions,
 } from '../../services/runtime-observed-event-projection-pipeline.ts';
-import { RuntimeRenderPipeline } from '../../services/runtime-render-pipeline.ts';
+import { createRuntimeRenderPipeline } from '../../services/runtime-render-pipeline.ts';
 import { RuntimeRepositoryActions } from '../../services/runtime-repository-actions.ts';
 import { RuntimeGitState } from '../../services/runtime-git-state.ts';
 import { RuntimeLayoutResize } from '../../services/runtime-layout-resize.ts';
 import { RuntimeRenderLifecycle } from '../../services/runtime-render-lifecycle.ts';
-import { RuntimeShutdownService } from '../../services/runtime-shutdown.ts';
+import { finalizeRuntimeShutdown } from '../../services/runtime-shutdown.ts';
 import { RuntimeTaskEditorActions } from '../../services/runtime-task-editor-actions.ts';
 import { RuntimeTaskComposerPersistenceService } from '../../services/runtime-task-composer-persistence.ts';
 import { RuntimeTaskPaneActions } from '../../services/runtime-task-pane-actions.ts';
@@ -4105,7 +4105,7 @@ class CodexLiveMuxRuntimeApplication {
     };
 
     let latestRailViewRows = [] as ReturnType<typeof buildWorkspaceRailViewRows>;
-    const runtimeRenderPipeline = new RuntimeRenderPipeline<
+    const renderRuntimePipeline = createRuntimeRenderPipeline<
       ConversationState,
       ControlPlaneRepositoryRecord,
       ControlPlaneTaskRecord,
@@ -4266,7 +4266,7 @@ class CodexLiveMuxRuntimeApplication {
 
     const render = (): void => {
       syncThemePickerPreview();
-      runtimeRenderPipeline.render({
+      renderRuntimePipeline({
         shuttingDown,
         layout,
         selection: workspace.selection,
@@ -4719,7 +4719,7 @@ class CodexLiveMuxRuntimeApplication {
     inputModeManager.enable();
     applyLayout(size, true);
     scheduleRender();
-    const runtimeShutdownService = new RuntimeShutdownService({
+    const runtimeShutdownOptions = {
       screen,
       outputLoadSampler,
       startupBackgroundProbeService: startupOrchestrator,
@@ -4785,7 +4785,7 @@ class CodexLiveMuxRuntimeApplication {
       },
       startupShutdownService: startupOrchestrator,
       shutdownPerfCore,
-    });
+    };
 
     try {
       while (!stop) {
@@ -4797,7 +4797,7 @@ class CodexLiveMuxRuntimeApplication {
       shuttingDown = true;
       statusTimelineRecorder.close();
       renderTraceRecorder.close();
-      await runtimeShutdownService.finalize();
+      await finalizeRuntimeShutdown(runtimeShutdownOptions);
     }
 
     if (exit === null) {
