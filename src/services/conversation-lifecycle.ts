@@ -13,7 +13,8 @@ import {
   type RuntimeConversationActivationOptions,
 } from './runtime-conversation-activation.ts';
 import {
-  RuntimeConversationActions,
+  createRuntimeConversationActions,
+  type RuntimeConversationActions,
   type RuntimeConversationActionsOptions,
 } from './runtime-conversation-actions.ts';
 import {
@@ -68,7 +69,7 @@ export class ConversationLifecycle<
   private readonly startupHydration: ConversationStartupHydrationService<TSessionSummary>;
   private readonly startupQueue: StartupPersistedConversationQueueService<TConversation>;
   private readonly activation: RuntimeConversationActivation;
-  private readonly actions: RuntimeConversationActions<TControllerRecord>;
+  private readonly actions: RuntimeConversationActions;
   private readonly titleEdit: RuntimeConversationTitleEditService<TConversation>;
 
   constructor(
@@ -99,7 +100,7 @@ export class ConversationLifecycle<
         await this.startConversation(sessionId);
       },
     });
-    this.actions = new RuntimeConversationActions({
+    this.actions = createRuntimeConversationActions({
       ...options.actions,
       startConversation: async (sessionId) => {
         await this.startConversation(sessionId);

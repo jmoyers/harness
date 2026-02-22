@@ -206,7 +206,7 @@ import {
 } from '../../services/runtime-observed-event-projection-pipeline.ts';
 import { createRuntimeRenderPipeline } from '../../services/runtime-render-pipeline.ts';
 import { createRuntimeRepositoryActions } from '../../services/runtime-repository-actions.ts';
-import { RuntimeGitState } from '../../services/runtime-git-state.ts';
+import { createRuntimeGitState } from '../../services/runtime-git-state.ts';
 import { RuntimeLayoutResize } from '../../services/runtime-layout-resize.ts';
 import { createRuntimeRenderLifecycle } from '../../services/runtime-render-lifecycle.ts';
 import { finalizeRuntimeShutdown } from '../../services/runtime-shutdown.ts';
@@ -1674,7 +1674,7 @@ class CodexLiveMuxRuntimeApplication {
     hydrateStartupStateForStartupOrchestrator = async (afterCursor) =>
       await startupStateHydrationService.hydrateStartupState(afterCursor);
 
-    const runtimeGitState = new RuntimeGitState<ControlPlaneRepositoryRecord>({
+    const runtimeGitState = createRuntimeGitState<ControlPlaneRepositoryRecord>({
       enabled: configuredMuxGit.enabled,
       directoryManager,
       directoryRepositorySnapshotByDirectoryId,

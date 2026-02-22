@@ -52,19 +52,25 @@ export interface RuntimeConversationActionsOptions<TControllerRecord> {
   readonly markDirty: () => void;
 }
 
-export class RuntimeConversationActions<TControllerRecord> {
-  constructor(private readonly options: RuntimeConversationActionsOptions<TControllerRecord>) {}
+export interface RuntimeConversationActions {
+  createAndActivateConversationInDirectory(directoryId: string, agentType: string): Promise<void>;
+  openOrCreateCritiqueConversationInDirectory(directoryId: string): Promise<void>;
+  takeoverConversation(sessionId: string): Promise<void>;
+}
 
-  async createAndActivateConversationInDirectory(
+export function createRuntimeConversationActions<TControllerRecord>(
+  options: RuntimeConversationActionsOptions<TControllerRecord>,
+): RuntimeConversationActions {
+  const createAndActivateConversationInDirectory = async (
     directoryId: string,
     agentType: string,
-  ): Promise<void> {
+  ): Promise<void> => {
     await createAndActivateConversationInDirectoryFn({
       directoryId,
       agentType,
-      createConversationId: this.options.createConversationId,
+      createConversationId: options.createConversationId,
       createConversationRecord: async (sessionId, targetDirectoryId, targetAgentType) => {
-        await this.options.controlPlaneService.createConversation({
+        await options.controlPlaneService.createConversation({
           conversationId: sessionId,
           directoryId: targetDirectoryId,
           title: '',
@@ -72,42 +78,48 @@ export class RuntimeConversationActions<TControllerRecord> {
           adapterState: {},
         });
       },
-      ensureConversation: this.options.ensureConversation,
-      noteGitActivity: this.options.noteGitActivity,
-      startConversation: this.options.startConversation,
-      activateConversation: this.options.activateConversation,
+      ensureConversation: options.ensureConversation,
+      noteGitActivity: options.noteGitActivity,
+      startConversation: options.startConversation,
+      activateConversation: options.activateConversation,
     });
-  }
+  };
 
-  async openOrCreateCritiqueConversationInDirectory(directoryId: string): Promise<void> {
+  const openOrCreateCritiqueConversationInDirectory = async (directoryId: string): Promise<void> => {
     await openOrCreateCritiqueConversationInDirectoryFn({
       directoryId,
-      orderedConversationIds: this.options.orderedConversationIds,
-      conversationById: this.options.conversationById,
-      activateConversation: this.options.activateConversation,
+      orderedConversationIds: options.orderedConversationIds,
+      conversationById: options.conversationById,
+      activateConversation: options.activateConversation,
       createAndActivateCritiqueConversationInDirectory: async (targetDirectoryId) => {
-        await this.createAndActivateConversationInDirectory(targetDirectoryId, 'critique');
+        await createAndActivateConversationInDirectory(targetDirectoryId, 'critique');
       },
     });
-  }
+  };
 
-  async takeoverConversation(sessionId: string): Promise<void> {
+  const takeoverConversation = async (sessionId: string): Promise<void> => {
     await takeoverConversationFn({
       sessionId,
-      conversationsHas: this.options.conversationsHas,
+      conversationsHas: options.conversationsHas,
       claimSession: async (targetSessionId) => {
-        return await this.options.controlPlaneService.claimSession({
+        return await options.controlPlaneService.claimSession({
           sessionId: targetSessionId,
-          controllerId: this.options.muxControllerId,
+          controllerId: options.muxControllerId,
           controllerType: 'human',
-          controllerLabel: this.options.muxControllerLabel,
+          controllerLabel: options.muxControllerLabel,
           reason: 'human takeover',
           takeover: true,
         });
       },
-      applyController: this.options.applyController,
-      setLastEventNow: this.options.setLastEventNow,
-      markDirty: this.options.markDirty,
+      applyController: options.applyController,
+      setLastEventNow: options.setLastEventNow,
+      markDirty: options.markDirty,
     });
-  }
+  };
+
+  return {
+    createAndActivateConversationInDirectory,
+    openOrCreateCritiqueConversationInDirectory,
+    takeoverConversation,
+  };
 }

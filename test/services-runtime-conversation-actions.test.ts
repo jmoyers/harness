@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { RuntimeConversationActions } from '../src/services/runtime-conversation-actions.ts';
+import { createRuntimeConversationActions } from '../src/services/runtime-conversation-actions.ts';
 
 interface ControllerRecord {
   readonly controllerId: string;
@@ -24,7 +24,7 @@ void test('runtime conversation actions create-and-activate flow delegates in ex
   const calls: string[] = [];
   const created: Array<Record<string, unknown>> = [];
   const ensured: Array<Record<string, unknown>> = [];
-  const actions = new RuntimeConversationActions<ControllerRecord>({
+  const actions = createRuntimeConversationActions<ControllerRecord>({
     controlPlaneService: {
       createConversation: async (input) => {
         created.push(input);
@@ -89,7 +89,7 @@ void test('runtime conversation actions open-or-create critique activates existi
   const calls: string[] = [];
   const createdConversationIds: string[] = [];
   let nextConversationId = 'critique-created';
-  const actions = new RuntimeConversationActions<ControllerRecord>({
+  const actions = createRuntimeConversationActions<ControllerRecord>({
     controlPlaneService: {
       createConversation: async (input) => {
         createdConversationIds.push(String(input.conversationId));
@@ -131,7 +131,7 @@ void test('runtime conversation actions open-or-create critique activates existi
 
   calls.length = 0;
   nextConversationId = 'critique-created-2';
-  const createFlowActions = new RuntimeConversationActions<ControllerRecord>({
+  const createFlowActions = createRuntimeConversationActions<ControllerRecord>({
     controlPlaneService: {
       createConversation: async (input) => {
         createdConversationIds.push(String(input.conversationId));
@@ -177,7 +177,7 @@ void test('runtime conversation actions open-or-create critique activates existi
 void test('runtime conversation actions takeover delegates claim/apply/dirty flow', async () => {
   const calls: string[] = [];
   const applied: Array<Record<string, unknown>> = [];
-  const actions = new RuntimeConversationActions<ControllerRecord>({
+  const actions = createRuntimeConversationActions<ControllerRecord>({
     controlPlaneService: {
       createConversation: async () => {},
       claimSession: async (input) => {

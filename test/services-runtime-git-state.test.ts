@@ -3,7 +3,7 @@ import { test } from 'bun:test';
 import type { StreamObservedEvent } from '../src/control-plane/stream-protocol.ts';
 import { DirectoryManager } from '../src/domain/directories.ts';
 import type { GitRepositorySnapshot, GitSummary } from '../src/mux/live-mux/git-state.ts';
-import { RuntimeGitState } from '../src/services/runtime-git-state.ts';
+import { createRuntimeGitState } from '../src/services/runtime-git-state.ts';
 
 interface RepositoryRecord {
   readonly repositoryId: string;
@@ -38,7 +38,7 @@ function createHarness(overrides?: {
   const repositoryAssociationByDirectoryId = new Map<string, string>();
   const repositories = new Map<string, RepositoryRecord>();
   const calls: string[] = [];
-  const service = new RuntimeGitState<RepositoryRecord>({
+  const service = createRuntimeGitState<RepositoryRecord>({
     enabled: overrides?.enabled ?? true,
     directoryManager,
     directoryRepositorySnapshotByDirectoryId,
