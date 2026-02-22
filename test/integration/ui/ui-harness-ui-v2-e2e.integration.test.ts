@@ -27,6 +27,11 @@ void test(
 
       await driver.keyboard.openCommandMenu(12_000);
       await driver.waitForText('Command Menu', 12_000);
+      driver.mouse.click(2, 2);
+      await driver.waitForTextGone('Command Menu', 12_000);
+
+      await driver.keyboard.openCommandMenu(12_000);
+      await driver.waitForText('Command Menu', 12_000);
       driver.keyboard.press('Escape');
       await driver.waitForTextGone('Command Menu', 12_000);
     } finally {

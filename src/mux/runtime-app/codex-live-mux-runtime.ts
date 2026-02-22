@@ -292,7 +292,8 @@ import { ProjectPane } from '../../ui/panes/project.ts';
 import { type NimModelRef } from '../../../packages/nim-core/src/index.ts';
 import { LeftRailPane } from '../../ui/panes/left-rail.ts';
 import { ModalManager } from '../../../packages/harness-ui/src/modal-manager.ts';
-import { UiKit } from '../../../packages/harness-ui/src/kit.ts';
+import type { UiModalOverlay } from '../../../packages/harness-ui/src/kit.ts';
+import { computeDualPaneLayoutWithLayers } from '../../../packages/harness-ui/src/layout.ts';
 import {
   buildAddDirectoryModalOverlay as buildAddDirectoryModalOverlayFrame,
   buildApiKeyModalOverlay as buildApiKeyModalOverlayFrame,
@@ -341,7 +342,7 @@ import {
   setActiveMuxTheme,
 } from '../../ui/mux-theme.ts';
 
-const UI_KIT = new UiKit();
+const MODAL_OVERLAY_LAYER_ID = 'active-modal';
 
 type ControlPlaneDirectoryRecord = Awaited<ReturnType<ControlPlaneService['upsertDirectory']>>;
 type ControlPlaneConversationRecord = NonNullable<ReturnType<typeof parseConversationRecord>>;
@@ -476,6 +477,39 @@ function asStringOrNull(value: unknown): string | null {
     return value;
   }
   return null;
+}
+
+function isOverlayLayerHit(
+  layout: ReturnType<typeof computeDualPaneLayout>,
+  overlay: UiModalOverlay,
+  col: number,
+  row: number,
+): boolean {
+  const layeredLayout = computeDualPaneLayoutWithLayers(layout.cols, layout.rows, {
+    leftCols: layout.leftCols,
+    statusRows: 1,
+    overlays: [
+      {
+        id: MODAL_OVERLAY_LAYER_ID,
+        anchor: 'viewport',
+        col: overlay.left + 1,
+        row: overlay.top + 1,
+        cols: overlay.width,
+        rows: overlay.height,
+      },
+    ],
+  });
+  const modalLayer = layeredLayout.layers.find((layer) => layer.id === MODAL_OVERLAY_LAYER_ID);
+  if (modalLayer === undefined) {
+    return false;
+  }
+  const rect = modalLayer.rect;
+  return (
+    col >= rect.col &&
+    col < rect.col + rect.cols &&
+    row >= rect.row &&
+    row < rect.row + rect.rows
+  );
 }
 
 function parseGitHubReviewComment(value: unknown): ProjectPaneGitHubReviewComment | null {
@@ -2114,7 +2148,7 @@ class CodexLiveMuxRuntimeApplication {
           buildRepositoryModalOverlay: buildRepositoryModalOverlayFrame,
           buildConversationTitleModalOverlay: buildConversationTitleModalOverlayFrame,
           dismissModalOnOutsideClick: dismissModalOnOutsideClickFrame,
-          isOverlayHit: (overlay, col, row) => UI_KIT.isModalOverlayHit(overlay, col, row),
+          isOverlayHit: (overlay, col, row) => isOverlayLayerHit(layout, overlay, col, row),
         },
       );
     let modalManager = createModalManager();
