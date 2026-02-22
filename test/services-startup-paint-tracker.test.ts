@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { StartupPaintTracker } from '../src/services/startup-paint-tracker.ts';
+import { createStartupPaintTracker } from '../src/services/startup-paint-tracker.ts';
 import type { ConversationState } from '../src/mux/live-mux/conversation-state.ts';
 
 function createConversation(): ConversationState {
@@ -12,7 +12,7 @@ void test('startup paint tracker records paint/header/gate events for active tar
   const spanEnds: string[] = [];
   const scheduled: string[] = [];
   const conversation = createConversation();
-  const startupPaintTracker = new StartupPaintTracker({
+  const startupPaintTracker = createStartupPaintTracker({
     startupSequencer: {
       snapshot: () => ({
         firstOutputObserved: true,
@@ -56,7 +56,7 @@ void test('startup paint tracker ignores ineligible render flush states', () => 
   const events: string[] = [];
   const spanEnds: string[] = [];
   const scheduled: string[] = [];
-  const startupPaintTracker = new StartupPaintTracker({
+  const startupPaintTracker = createStartupPaintTracker({
     startupSequencer: {
       snapshot: () => ({
         firstOutputObserved: false,
@@ -115,7 +115,7 @@ void test('startup paint tracker ignores ineligible render flush states', () => 
 
 void test('startup paint tracker schedules output probes only for target session', () => {
   const scheduled: string[] = [];
-  const startupPaintTracker = new StartupPaintTracker({
+  const startupPaintTracker = createStartupPaintTracker({
     startupSequencer: {
       snapshot: () => ({
         firstOutputObserved: true,
@@ -147,7 +147,7 @@ void test('startup paint tracker schedules output probes only for target session
 
 void test('startup paint tracker records header and gate even when first paint was already observed', () => {
   const events: string[] = [];
-  const startupPaintTracker = new StartupPaintTracker({
+  const startupPaintTracker = createStartupPaintTracker({
     startupSequencer: {
       snapshot: () => ({
         firstOutputObserved: true,

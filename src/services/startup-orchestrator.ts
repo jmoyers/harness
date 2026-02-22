@@ -6,8 +6,8 @@ import {
   type StartupBackgroundResumeService,
 } from './startup-background-resume.ts';
 import { StartupOutputTracker } from './startup-output-tracker.ts';
-import { StartupPaintTracker } from './startup-paint-tracker.ts';
-import { StartupSettledGate } from './startup-settled-gate.ts';
+import { createStartupPaintTracker, type StartupPaintTracker } from './startup-paint-tracker.ts';
+import { createStartupSettledGate } from './startup-settled-gate.ts';
 import {
   finalizeStartupShutdown,
   type StartupShutdownServiceOptions,
@@ -65,7 +65,7 @@ export class StartupOrchestrator {
       options.startupSettleQuietMs,
     );
     const startupVisibility = createStartupVisibility();
-    const startupSettledGate = new StartupSettledGate({
+    const startupSettledGate = createStartupSettledGate({
       startupSequencer: this.startupSequencer,
       startupSpanTracker: this.startupSpanTracker,
       getConversation: options.getConversation,
@@ -78,7 +78,7 @@ export class StartupOrchestrator {
       startupSpanTracker: this.startupSpanTracker,
       recordPerfEvent: options.recordPerfEvent,
     });
-    this.startupPaintTracker = new StartupPaintTracker({
+    this.startupPaintTracker = createStartupPaintTracker({
       startupSequencer: this.startupSequencer,
       startupSpanTracker: this.startupSpanTracker,
       startupVisibility,

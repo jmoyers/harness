@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { StartupSettledGate } from '../src/services/startup-settled-gate.ts';
+import { createStartupSettledGate } from '../src/services/startup-settled-gate.ts';
 import type { ConversationState } from '../src/mux/live-mux/conversation-state.ts';
 
 function createConversation(): ConversationState {
@@ -9,7 +9,7 @@ function createConversation(): ConversationState {
 
 void test('startup settled gate forwards clear and signal calls to sequencer', () => {
   const calls: string[] = [];
-  const startupSettledGate = new StartupSettledGate({
+  const startupSettledGate = createStartupSettledGate({
     startupSequencer: {
       clearSettledTimer: () => calls.push('clear'),
       signalSettled: () => calls.push('signal'),
@@ -35,7 +35,7 @@ void test('startup settled gate ignores scheduled events for non-target sessions
   > = [];
   const perfCalls: string[] = [];
   const spanCalls: string[] = [];
-  const startupSettledGate = new StartupSettledGate({
+  const startupSettledGate = createStartupSettledGate({
     startupSequencer: {
       clearSettledTimer: () => {},
       signalSettled: () => {},
@@ -76,7 +76,7 @@ void test('startup settled gate records settled events with glyph fallback and v
   const signalCalls: string[] = [];
   const conversation = createConversation();
   let includeConversation = true;
-  const startupSettledGate = new StartupSettledGate({
+  const startupSettledGate = createStartupSettledGate({
     startupSequencer: {
       clearSettledTimer: () => {},
       signalSettled: () => signalCalls.push('signal'),

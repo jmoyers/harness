@@ -48,6 +48,8 @@
     - `startup-background-resume`
     - `startup-visibility`
     - `task-pane-selection-actions`
+    - `startup-paint-tracker`
+    - `startup-settled-gate`
 - Keep only true state engines:
   - `RuntimeLayoutResizeEngine`
   - `RuntimeProjectPaneGitHubReviewCacheEngine`
