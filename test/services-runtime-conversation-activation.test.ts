@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { RuntimeConversationActivation } from '../src/services/runtime-conversation-activation.ts';
+import { createRuntimeConversationActivation } from '../src/services/runtime-conversation-activation.ts';
 
 interface ConversationRecord {
   readonly directoryId: string | null;
@@ -10,7 +10,7 @@ interface ConversationRecord {
 
 void test('runtime conversation activation keeps active conversation when already in conversation pane', async () => {
   const calls: string[] = [];
-  const activation = new RuntimeConversationActivation({
+  const activation = createRuntimeConversationActivation({
     getActiveConversationId: () => 'session-1',
     setActiveConversationId: () => {
       calls.push('setActiveConversationId');
@@ -60,7 +60,7 @@ void test('runtime conversation activation keeps active conversation when alread
 
 void test('runtime conversation activation restores conversation pane for already-active session', async () => {
   const calls: string[] = [];
-  const activation = new RuntimeConversationActivation({
+  const activation = createRuntimeConversationActivation({
     getActiveConversationId: () => 'session-1',
     setActiveConversationId: () => {},
     isConversationPaneMode: () => false,
@@ -90,7 +90,7 @@ void test('runtime conversation activation restores conversation pane for alread
 
 void test('runtime conversation activation readies already-active session when switching from home/project pane', async () => {
   const calls: string[] = [];
-  const activation = new RuntimeConversationActivation({
+  const activation = createRuntimeConversationActivation({
     getActiveConversationId: () => 'session-1',
     setActiveConversationId: () => {},
     isConversationPaneMode: () => false,
@@ -148,7 +148,7 @@ void test('runtime conversation activation switches session and retries attach o
   let activeSessionId: string | null = 'session-1';
   let attachAttempts = 0;
 
-  const activation = new RuntimeConversationActivation({
+  const activation = createRuntimeConversationActivation({
     getActiveConversationId: () => activeSessionId,
     setActiveConversationId: (sessionId) => {
       activeSessionId = sessionId;
@@ -228,7 +228,7 @@ void test('runtime conversation activation does not commit session switch when a
   });
   const controller = new AbortController();
 
-  const activation = new RuntimeConversationActivation({
+  const activation = createRuntimeConversationActivation({
     getActiveConversationId: () => activeSessionId,
     setActiveConversationId: (sessionId) => {
       activeSessionId = sessionId;
@@ -296,7 +296,7 @@ void test('runtime conversation activation does not commit session switch when a
 });
 
 void test('runtime conversation activation rethrows non-recoverable attach errors', async () => {
-  const activation = new RuntimeConversationActivation({
+  const activation = createRuntimeConversationActivation({
     getActiveConversationId: () => null,
     setActiveConversationId: () => {},
     isConversationPaneMode: () => false,

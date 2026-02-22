@@ -4,12 +4,14 @@ import {
   type SessionSummaryLike,
 } from './conversation-startup-hydration.ts';
 import {
-  RuntimeConversationStarter,
+  createRuntimeConversationStarter,
+  type RuntimeConversationStarter,
   type RuntimeConversationStarterConversationRecord,
   type RuntimeConversationStarterOptions,
 } from './runtime-conversation-starter.ts';
 import {
-  RuntimeConversationActivation,
+  createRuntimeConversationActivation,
+  type RuntimeConversationActivation,
   type RuntimeConversationActivationOptions,
 } from './runtime-conversation-activation.ts';
 import {
@@ -18,7 +20,8 @@ import {
   type RuntimeConversationActionsOptions,
 } from './runtime-conversation-actions.ts';
 import {
-  RuntimeConversationTitleEditService,
+  createRuntimeConversationTitleEditService,
+  type RuntimeConversationTitleEditService,
   type RuntimeConversationTitleEditServiceOptions,
 } from './runtime-conversation-title-edit.ts';
 import {
@@ -66,18 +69,18 @@ export class ConversationLifecycle<
   TControllerRecord,
 > {
   private readonly streamSubscriptions: RuntimeStreamSubscriptions;
-  private readonly starter: RuntimeConversationStarter<TConversation, TSessionSummary>;
+  private readonly starter: RuntimeConversationStarter<TConversation>;
   private readonly startupHydration: ConversationStartupHydrationService<TSessionSummary>;
   private readonly startupQueue: StartupPersistedConversationQueueService<TConversation>;
   private readonly activation: RuntimeConversationActivation;
   private readonly actions: RuntimeConversationActions;
-  private readonly titleEdit: RuntimeConversationTitleEditService<TConversation>;
+  private readonly titleEdit: RuntimeConversationTitleEditService;
 
   constructor(
     options: ConversationLifecycleOptions<TConversation, TSessionSummary, TControllerRecord>,
   ) {
     this.streamSubscriptions = createRuntimeStreamSubscriptions(options.streamSubscriptions);
-    this.starter = new RuntimeConversationStarter({
+    this.starter = createRuntimeConversationStarter({
       ...options.starter,
       subscribeConversationEvents: async (sessionId) => {
         await this.subscribeConversationEvents(sessionId);
@@ -95,7 +98,7 @@ export class ConversationLifecycle<
         await this.startConversation(sessionId);
       },
     });
-    this.activation = new RuntimeConversationActivation({
+    this.activation = createRuntimeConversationActivation({
       ...options.activation,
       startConversation: async (sessionId) => {
         await this.startConversation(sessionId);
@@ -110,7 +113,7 @@ export class ConversationLifecycle<
         await this.activateConversation(sessionId);
       },
     });
-    this.titleEdit = new RuntimeConversationTitleEditService(options.titleEdit);
+    this.titleEdit = createRuntimeConversationTitleEditService(options.titleEdit);
   }
 
   async subscribeConversationEvents(sessionId: string): Promise<void> {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import { WorkspaceModel } from '../src/domain/workspace.ts';
-import { RuntimeConversationTitleEditService } from '../src/services/runtime-conversation-title-edit.ts';
+import { createRuntimeConversationTitleEditService } from '../src/services/runtime-conversation-title-edit.ts';
 
 interface ConversationRecord {
   title: string;
@@ -48,7 +48,7 @@ void test('runtime conversation title edit service begin/schedule/debounced pers
     },
   } as unknown as NodeJS.Timeout;
 
-  const service = new RuntimeConversationTitleEditService<ConversationRecord>({
+  const service = createRuntimeConversationTitleEditService<ConversationRecord>({
     workspace,
     updateConversationTitle: async (input) => {
       updateCalls.push(input);
@@ -115,7 +115,7 @@ void test('runtime conversation title edit service stop/begin guard branches pre
   ]);
   const queued: Array<{ label: string; task: () => Promise<void> }> = [];
   let markDirtyCount = 0;
-  const service = new RuntimeConversationTitleEditService<ConversationRecord>({
+  const service = createRuntimeConversationTitleEditService<ConversationRecord>({
     workspace,
     updateConversationTitle: async (input) => ({ title: `${input.title}!` }),
     conversationById: (conversationId) => conversations.get(conversationId),
@@ -162,7 +162,7 @@ void test('runtime conversation title edit service handles persisted update fail
   let markDirtyCount = 0;
   let scheduledCallback: (() => void) | null = null;
   const error = new Error('persist failed');
-  const service = new RuntimeConversationTitleEditService<ConversationRecord>({
+  const service = createRuntimeConversationTitleEditService<ConversationRecord>({
     workspace,
     updateConversationTitle: async () => {
       throw error;
@@ -219,7 +219,7 @@ void test('runtime conversation title edit service handles persisted update fail
 void test('runtime conversation title edit service clearCurrentTimer handles empty and active timer states', () => {
   const workspace = createWorkspace();
   let clearCalls = 0;
-  const service = new RuntimeConversationTitleEditService<ConversationRecord>({
+  const service = createRuntimeConversationTitleEditService<ConversationRecord>({
     workspace,
     updateConversationTitle: async () => ({ title: 'unused' }),
     conversationById: () => ({ title: 'unused' }),

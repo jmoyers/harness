@@ -24,10 +24,38 @@ export interface RuntimeConversationActivationOptions {
   readonly markDirty: () => void;
 }
 
-export class RuntimeConversationActivation {
-  constructor(private readonly options: RuntimeConversationActivationOptions) {}
+export interface RuntimeConversationActivation {
+  activateConversation(
+    sessionId: string,
+    input?: { readonly signal?: AbortSignal },
+  ): Promise<void>;
+}
 
-  async activateConversation(
+export function createRuntimeConversationActivation(
+  options: RuntimeConversationActivationOptions,
+): RuntimeConversationActivation {
+  async function attachConversationWithRecovery(
+    sessionId: string,
+    signal: AbortSignal | undefined,
+  ): Promise<boolean> {
+    try {
+      await options.attachConversation(sessionId);
+      return !(signal?.aborted ?? false);
+    } catch (error: unknown) {
+      if (!options.isSessionNotFoundError(error) && !options.isSessionNotLiveError(error)) {
+        throw error;
+      }
+      options.markSessionUnavailable(sessionId);
+      await options.startConversation(sessionId);
+      if (signal?.aborted) {
+        return false;
+      }
+      await options.attachConversation(sessionId);
+      return !(signal?.aborted ?? false);
+    }
+  }
+
+  async function activateConversation(
     sessionId: string,
     input: { readonly signal?: AbortSignal } = {},
   ): Promise<void> {
@@ -35,103 +63,71 @@ export class RuntimeConversationActivation {
     if (signal?.aborted) {
       return;
     }
-    if (this.options.getActiveConversationId() === sessionId) {
-      if (!this.options.isConversationPaneMode()) {
-        const targetConversation = this.options.conversationById(sessionId);
+    if (options.getActiveConversationId() === sessionId) {
+      if (!options.isConversationPaneMode()) {
+        const targetConversation = options.conversationById(sessionId);
         if (
           targetConversation !== undefined &&
           !targetConversation.live &&
           targetConversation.status !== 'exited'
         ) {
-          await this.options.startConversation(sessionId);
+          await options.startConversation(sessionId);
           if (signal?.aborted) {
             return;
           }
         }
         if (targetConversation?.status !== 'exited') {
-          try {
-            await this.options.attachConversation(sessionId);
-            if (signal?.aborted) {
-              return;
-            }
-          } catch (error: unknown) {
-            if (
-              !this.options.isSessionNotFoundError(error) &&
-              !this.options.isSessionNotLiveError(error)
-            ) {
-              throw error;
-            }
-            this.options.markSessionUnavailable(sessionId);
-            await this.options.startConversation(sessionId);
-            if (signal?.aborted) {
-              return;
-            }
-            await this.options.attachConversation(sessionId);
-            if (signal?.aborted) {
-              return;
-            }
+          const attached = await attachConversationWithRecovery(sessionId, signal);
+          if (!attached) {
+            return;
           }
         }
-        this.options.enterConversationPaneForActiveSession(sessionId);
-        this.options.noteGitActivity(targetConversation?.directoryId ?? null);
-        this.options.schedulePtyResizeImmediate();
-        this.options.markDirty();
+        options.enterConversationPaneForActiveSession(sessionId);
+        options.noteGitActivity(targetConversation?.directoryId ?? null);
+        options.schedulePtyResizeImmediate();
+        options.markDirty();
       }
       return;
     }
 
-    this.options.stopConversationTitleEditForOtherSession(sessionId);
-    const previousActiveId = this.options.getActiveConversationId();
-    this.options.clearSelectionState();
+    options.stopConversationTitleEditForOtherSession(sessionId);
+    const previousActiveId = options.getActiveConversationId();
+    options.clearSelectionState();
     if (previousActiveId !== null) {
-      await this.options.detachConversation(previousActiveId);
+      await options.detachConversation(previousActiveId);
       if (signal?.aborted) {
         return;
       }
     }
 
-    const targetConversation = this.options.conversationById(sessionId);
+    const targetConversation = options.conversationById(sessionId);
 
     if (
       targetConversation !== undefined &&
       !targetConversation.live &&
       targetConversation.status !== 'exited'
     ) {
-      await this.options.startConversation(sessionId);
+      await options.startConversation(sessionId);
       if (signal?.aborted) {
         return;
       }
     }
 
     if (targetConversation?.status !== 'exited') {
-      try {
-        await this.options.attachConversation(sessionId);
-        if (signal?.aborted) {
-          return;
-        }
-      } catch (error: unknown) {
-        if (
-          !this.options.isSessionNotFoundError(error) &&
-          !this.options.isSessionNotLiveError(error)
-        ) {
-          throw error;
-        }
-        this.options.markSessionUnavailable(sessionId);
-        await this.options.startConversation(sessionId);
-        if (signal?.aborted) {
-          return;
-        }
-        await this.options.attachConversation(sessionId);
-        if (signal?.aborted) {
-          return;
-        }
+      const attached = await attachConversationWithRecovery(sessionId, signal);
+      if (!attached) {
+        return;
       }
     }
 
-    this.options.setActiveConversationId(sessionId);
-    this.options.enterConversationPaneForSessionSwitch(sessionId);
-    this.options.noteGitActivity(targetConversation?.directoryId ?? null);
-    this.options.schedulePtyResizeImmediate();
-    this.options.markDirty();
+    options.setActiveConversationId(sessionId);
+    options.enterConversationPaneForSessionSwitch(sessionId);
+    options.noteGitActivity(targetConversation?.directoryId ?? null);
+    options.schedulePtyResizeImmediate();
+    options.markDirty();
   }
+
+  return {
+    activateConversation,
+  };
 }

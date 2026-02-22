@@ -3,6 +3,7 @@
 ## Current State
 - Branch: `jm/client-abstraction`
 - Latest checkpoints:
+  - `3b58734` Flatten runtime stream subscriptions wrapper
   - `5baa136` Remove runtime directory action bridge layer
   - `0d5f2d2` Flatten runtime conversation and git state action wrappers
   - `202ed15` Flatten runtime control/repository/editor/envelope action classes
@@ -20,26 +21,27 @@
 
 ## Execution Slices
 
-### Slice 1 (Execute now)
+### Slice 1 (completed)
 - Replace `RuntimeStreamSubscriptions` class with stateful factory API.
 - Rewire `ConversationLifecycle` to consume the factory output.
 - Update `test/services-runtime-stream-subscriptions.test.ts`.
 
-### Slice 2
+### Slice 2 (completed)
 - Flatten `RuntimeConversationActivation` into factory/function service if no external state is required.
 - Rewire `ConversationLifecycle` + activation tests.
 
-### Slice 3
+### Slice 3 (completed)
 - Flatten `RuntimeConversationTitleEditService` and `RuntimeConversationStarter` if wrappers remain purely orchestration.
 - Preserve explicit option contracts and timer behavior.
 
-### Slice 4
-- Evaluate remaining stateful modules and keep only true state engines:
+### Slice 4 (in progress)
+- Keep only true state engines and avoid new compatibility bridges:
   - `runtime-layout-resize`
   - `runtime-project-pane-github-review-cache`
   - `runtime-command-menu-agent-tools`
   - `runtime-task-composer-persistence`
 - Rename survivors to reflect state ownership (engine/controller semantics) where useful.
+- Remove duplicated parser paths where one canonical contracts parser can be used.
 
 ## Validation Gates Per Slice
 - `bun run lint`

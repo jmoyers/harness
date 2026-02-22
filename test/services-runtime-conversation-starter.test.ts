@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { RuntimeConversationStarter } from '../src/services/runtime-conversation-starter.ts';
+import { createRuntimeConversationStarter } from '../src/services/runtime-conversation-starter.ts';
 
 interface ConversationRecord {
   readonly sessionId: string;
@@ -24,10 +24,7 @@ void test('runtime conversation starter returns existing live conversation and r
     launchCommand: '',
   };
 
-  const starter = new RuntimeConversationStarter<
-    ConversationRecord,
-    { readonly sessionId: string }
-  >({
+  const starter = createRuntimeConversationStarter<ConversationRecord, { readonly sessionId: string }>({
     runWithStartInFlight: async (_sessionId, run) => {
       calls.push('runWithStartInFlight');
       return await run();
@@ -118,10 +115,7 @@ void test('runtime conversation starter starts codex conversation, updates statu
     launchCommand: '',
   };
 
-  const starter = new RuntimeConversationStarter<
-    ConversationRecord,
-    { readonly sessionId: string }
-  >({
+  const starter = createRuntimeConversationStarter<ConversationRecord, { readonly sessionId: string }>({
     runWithStartInFlight: async (_sessionId, run) => {
       calls.push('runWithStartInFlight');
       return await run();
@@ -238,10 +232,7 @@ void test('runtime conversation starter uses critique defaults and skips startup
     launchCommand: '',
   };
 
-  const starter = new RuntimeConversationStarter<
-    ConversationRecord,
-    { readonly sessionId: string }
-  >({
+  const starter = createRuntimeConversationStarter<ConversationRecord, { readonly sessionId: string }>({
     runWithStartInFlight: async (_sessionId, run) => {
       return await run();
     },
@@ -325,10 +316,7 @@ void test('runtime conversation starter falls back to empty base args for non-co
     launchCommand: '',
   };
 
-  const starter = new RuntimeConversationStarter<
-    ConversationRecord,
-    { readonly sessionId: string }
-  >({
+  const starter = createRuntimeConversationStarter<ConversationRecord, { readonly sessionId: string }>({
     runWithStartInFlight: async (_sessionId, run) => {
       return await run();
     },
@@ -383,10 +371,7 @@ void test('runtime conversation starter recovers when pty.start reports existing
     launchCommand: '',
   };
 
-  const starter = new RuntimeConversationStarter<
-    ConversationRecord,
-    { readonly sessionId: string }
-  >({
+  const starter = createRuntimeConversationStarter<ConversationRecord, { readonly sessionId: string }>({
     runWithStartInFlight: async (_sessionId, run) => {
       calls.push('runWithStartInFlight');
       return await run();
@@ -464,10 +449,7 @@ void test('runtime conversation starter recovers when pty.start reports existing
 });
 
 void test('runtime conversation starter rethrows non-duplicate pty.start failures', async () => {
-  const starter = new RuntimeConversationStarter<
-    ConversationRecord,
-    { readonly sessionId: string }
-  >({
+  const starter = createRuntimeConversationStarter<ConversationRecord, { readonly sessionId: string }>({
     runWithStartInFlight: async (_sessionId, run) => {
       return await run();
     },
