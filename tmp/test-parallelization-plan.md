@@ -52,6 +52,11 @@ Date: 2026-02-21
   - `test/unit/cli/parsing`
   - `test/unit/cli/runtime`
   - `test/unit/cli/workflows`
+- Completed: benchmarked Bun test worker concurrency:
+  - `--max-concurrency 20` (default): stable baseline.
+  - `--max-concurrency 32`: faster in some runs but produced intermittent CLI profile failures under full-suite load.
+  - `--max-concurrency 40`: clear wall-clock regression.
+- Decision: keep default Bun concurrency in scripts for CI stability.
 - Completed: set `bun run test` and `bun run test:coverage` to use stable `--concurrent` mode.
 - Completed: extracted shared helpers for split `harness-cli*` tests into `test/helpers/harness-cli-test-helpers.ts`.
 - Completed: extracted shared helpers for split `codex-live-mux-startup*` tests into `test/helpers/codex-live-mux-startup-test-helpers.ts`.
@@ -63,4 +68,4 @@ Date: 2026-02-21
   - `bun run lint` -> pass
   - `bun run typecheck` -> pass
   - `bun test --concurrent test/unit/cli` -> pass (`75 pass`, ~18.05s wall clock)
-  - `bun run test` -> pass (`1690 pass`, ~37.97s wall clock)
+  - `bun run test` -> pass (`1690 pass`, ~37.02s wall clock)
