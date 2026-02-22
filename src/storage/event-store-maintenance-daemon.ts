@@ -124,7 +124,9 @@ export function startEventStoreMaintenanceDaemon(
   const normalizedPolicy = new StorageLifecycleCore({
     policy: options.policy,
   }).policy();
-  const store = new SqliteEventStore(options.storePath);
+  const store = new SqliteEventStore(options.storePath, {
+    busyTimeoutMs: normalizedPolicy.busyTimeoutMs,
+  });
 
   let stopped = false;
   let runId = 0;
@@ -226,7 +228,7 @@ export function startEventStoreMaintenanceDaemon(
         normalizedPolicy.copyForwardFinalizeTailRows,
       );
       if (prunedRows > 0 || compaction.state === 'finalized') {
-        store.checkpointWal();
+        store.checkpointWal('PASSIVE');
       }
       if (compaction.state === 'finalized') {
         store.compactFreelistPages(normalizedPolicy.compactFreelistPages);

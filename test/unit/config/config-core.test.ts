@@ -1352,7 +1352,8 @@ void test('parseHarnessConfigText parses storage lifecycle policy settings', () 
           "copyForwardFinalizeTailRows": 500,
           "telemetryPayloadMaxBytes": 8192,
           "textDeltaPayloadMaxBytes": 16384,
-          "textDeltaCoalesceWindowMs": 900
+          "textDeltaCoalesceWindowMs": 900,
+          "busyTimeoutMs": 8000
         }
       }
     }
@@ -1368,6 +1369,7 @@ void test('parseHarnessConfigText parses storage lifecycle policy settings', () 
     telemetryPayloadMaxBytes: 8192,
     textDeltaPayloadMaxBytes: 16384,
     textDeltaCoalesceWindowMs: 900,
+    busyTimeoutMs: 8000,
   });
 });
 

@@ -119,11 +119,18 @@ export class SqliteEventStore {
   private copyForwardRequested = false;
   private copyForwardActive = false;
   private copyForwardCursorRowId = 0;
+  private readonly busyTimeoutMs: number;
 
-  constructor(filePath = ':memory:') {
+  constructor(filePath = ':memory:', options?: { busyTimeoutMs?: number }) {
     const dbPath = this.preparePath(filePath);
     this.dbPath = dbPath;
     this.inMemory = dbPath === ':memory:';
+    this.busyTimeoutMs =
+      typeof options?.busyTimeoutMs === 'number' &&
+      Number.isFinite(options.busyTimeoutMs) &&
+      options.busyTimeoutMs > 0
+        ? Math.floor(options.busyTimeoutMs)
+        : 5000;
     this.db = new DatabaseSync(dbPath);
     this.configureConnection();
     this.initializeSchema();
@@ -484,7 +491,7 @@ export class SqliteEventStore {
   }
 
   private configureConnection(): void {
-    this.db.exec('PRAGMA busy_timeout = 2000;');
+    this.db.exec(`PRAGMA busy_timeout = ${String(this.busyTimeoutMs)};`);
     this.db.exec('PRAGMA journal_mode = WAL;');
     this.db.exec('PRAGMA synchronous = NORMAL;');
   }

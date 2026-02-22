@@ -285,8 +285,9 @@ Behavior fragments:
 - Rolling-window pruning runs online on a maintenance tick while sessions remain live.
 - Rolling-window compaction runs online in bounded copy-forward steps after prune churn.
 - Copy-forward compaction uses separate transactions for initialization, batch copy, and finalization to minimize write-lock hold time and avoid blocking concurrent writers.
-- WAL checkpoints use PASSIVE mode during online maintenance to avoid exclusive locks; TRUNCATE mode is reserved for offline GC where no concurrent access exists.
+- WAL checkpoints use explicit PASSIVE mode in all maintenance paths (online ticks, daemon, and GC) to avoid exclusive locks that block concurrent writers.
 - Incremental vacuum runs only after compaction finalization, not after every prune tick, to reduce write-lock frequency during steady-state maintenance.
+- SQLite `busy_timeout` is configurable via `storage.lifecycle.busyTimeoutMs` (default 5 000 ms) and propagated to every store connection opened by the gateway, mux, and maintenance daemon processes.
 - Storage lifecycle policy values are configured under `storage.lifecycle` and applied to both mux event storage and control-plane telemetry storage.
 - Mux event-store maintenance runs in a managed background daemon process; the interactive TUI process receives daemon lifecycle/progress events (started, progress with percent left, completed) and does not run SQLite maintenance work on the render thread.
 - The maintenance daemon is parent-bound and interruptable: it self-terminates if the mux client parent PID disappears, and supervisor shutdown sends `SIGTERM` with a forced `SIGKILL` fallback if needed.

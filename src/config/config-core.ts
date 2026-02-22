@@ -1608,6 +1608,10 @@ function normalizeStorageLifecycleConfig(input: unknown): HarnessStorageLifecycl
       record['textDeltaCoalesceWindowMs'],
       DEFAULT_HARNESS_CONFIG.storage.lifecycle.textDeltaCoalesceWindowMs,
     ),
+    busyTimeoutMs: normalizePositiveInt(
+      record['busyTimeoutMs'],
+      DEFAULT_HARNESS_CONFIG.storage.lifecycle.busyTimeoutMs,
+    ),
   };
 }
 

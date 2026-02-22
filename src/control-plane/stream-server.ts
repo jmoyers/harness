@@ -1361,7 +1361,9 @@ export class ControlPlaneStreamServer {
       this.stateStore = options.stateStore;
       this.ownsStateStore = false;
     } else {
-      this.stateStore = new SqliteControlPlaneStore(options.stateStorePath ?? ':memory:');
+      this.stateStore = new SqliteControlPlaneStore(options.stateStorePath ?? ':memory:', {
+        busyTimeoutMs: options.storageLifecyclePolicy?.busyTimeoutMs,
+      });
       this.ownsStateStore = true;
     }
     this.codexTelemetry = normalizeCodexTelemetryConfig(options.codexTelemetry);

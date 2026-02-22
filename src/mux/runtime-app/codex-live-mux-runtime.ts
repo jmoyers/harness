@@ -889,7 +889,9 @@ class CodexLiveMuxRuntimeApplication {
       'mux.directory.add': [],
       'mux.directory.close': [],
     });
-    const store = new SqliteEventStore(options.storePath);
+    const store = new SqliteEventStore(options.storePath, {
+      busyTimeoutMs: loadedConfig.config.storage.lifecycle.busyTimeoutMs,
+    });
     const storageLifecycle = new StorageLifecycleCore({
       eventStore: {
         pruneEventsOlderThan: (cutoffTs, limit) => store.pruneEventsOlderThan(cutoffTs, limit),

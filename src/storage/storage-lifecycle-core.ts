@@ -6,11 +6,12 @@ const DEFAULT_TELEMETRY_RETENTION_MS = 72 * 60 * 60 * 1000;
 const DEFAULT_MAINTENANCE_INTERVAL_MS = 5000;
 const DEFAULT_PRUNE_BATCH_SIZE = 2000;
 const DEFAULT_COMPACT_FREELIST_PAGES = 256;
-const DEFAULT_COPY_FORWARD_BATCH_SIZE = 5000;
+const DEFAULT_COPY_FORWARD_BATCH_SIZE = 500;
 const DEFAULT_COPY_FORWARD_FINALIZE_TAIL_ROWS = 1200;
 const DEFAULT_TELEMETRY_PAYLOAD_MAX_BYTES = 16 * 1024;
 const DEFAULT_TEXT_DELTA_PAYLOAD_MAX_BYTES = 32 * 1024;
 const DEFAULT_TEXT_DELTA_COALESCE_WINDOW_MS = 1200;
+const DEFAULT_BUSY_TIMEOUT_MS = 5000;
 
 export interface StorageLifecyclePolicy {
   readonly eventRetentionMs: number;
@@ -23,6 +24,7 @@ export interface StorageLifecyclePolicy {
   readonly telemetryPayloadMaxBytes: number;
   readonly textDeltaPayloadMaxBytes: number;
   readonly textDeltaCoalesceWindowMs: number;
+  readonly busyTimeoutMs: number;
 }
 
 export const DEFAULT_STORAGE_LIFECYCLE_POLICY: StorageLifecyclePolicy = {
@@ -36,6 +38,7 @@ export const DEFAULT_STORAGE_LIFECYCLE_POLICY: StorageLifecyclePolicy = {
   telemetryPayloadMaxBytes: DEFAULT_TELEMETRY_PAYLOAD_MAX_BYTES,
   textDeltaPayloadMaxBytes: DEFAULT_TEXT_DELTA_PAYLOAD_MAX_BYTES,
   textDeltaCoalesceWindowMs: DEFAULT_TEXT_DELTA_COALESCE_WINDOW_MS,
+  busyTimeoutMs: DEFAULT_BUSY_TIMEOUT_MS,
 };
 
 interface StorageLifecycleCompactionStepResult {
@@ -130,6 +133,10 @@ function normalizePolicy(
       policy?.textDeltaCoalesceWindowMs,
       DEFAULT_STORAGE_LIFECYCLE_POLICY.textDeltaCoalesceWindowMs,
     ),
+    busyTimeoutMs: normalizePositiveInt(
+      policy?.busyTimeoutMs,
+      DEFAULT_STORAGE_LIFECYCLE_POLICY.busyTimeoutMs,
+    ),
   };
 }
 
@@ -172,6 +179,7 @@ function normalizePolicyWithFallback(
       policy?.textDeltaCoalesceWindowMs,
       fallback.textDeltaCoalesceWindowMs,
     ),
+    busyTimeoutMs: normalizePositiveInt(policy?.busyTimeoutMs, fallback.busyTimeoutMs),
   };
 }
 
@@ -401,7 +409,7 @@ export class StorageLifecycleCore {
           this.policyValues.copyForwardFinalizeTailRows,
         );
         if (eventsPruned > 0 || compaction?.state === 'finalized') {
-          this.eventStore.checkpointWal();
+          this.eventStore.checkpointWal('PASSIVE');
         }
         if (compaction?.state === 'finalized') {
           this.eventStore.compactFreelistPages(this.policyValues.compactFreelistPages);
@@ -424,7 +432,7 @@ export class StorageLifecycleCore {
           this.policyValues.copyForwardFinalizeTailRows,
         );
         if (telemetryPruned > 0 || compaction?.state === 'finalized') {
-          this.telemetryStore.checkpointWal();
+          this.telemetryStore.checkpointWal('PASSIVE');
         }
         if (compaction?.state === 'finalized') {
           this.telemetryStore.compactFreelistPages(this.policyValues.compactFreelistPages);

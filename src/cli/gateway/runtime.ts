@@ -1162,14 +1162,16 @@ export class GatewayRuntimeService {
     if (!existsSync(stateDbPath)) {
       return { status: 'missing' };
     }
-    const stateStore = new SqliteControlPlaneStore(stateDbPath);
+    const stateStore = new SqliteControlPlaneStore(stateDbPath, {
+      busyTimeoutMs: policy.busyTimeoutMs,
+    });
     try {
       const lifecycle = new StorageLifecycleCore({
         telemetryStore: {
           pruneTelemetryOlderThan: (cutoffIngestedAt, limit) =>
             stateStore.pruneTelemetryOlderThan(cutoffIngestedAt, limit),
           checkpointWal: (mode) => {
-            stateStore.checkpointWal(mode ?? 'TRUNCATE');
+            stateStore.checkpointWal(mode ?? 'PASSIVE');
           },
           compactFreelistPages: (maxPages) => {
             stateStore.compactFreelistPages(maxPages);

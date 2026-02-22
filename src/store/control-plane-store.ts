@@ -379,10 +379,17 @@ export class SqliteControlPlaneStore {
   private telemetryCopyForwardRequested = false;
   private telemetryCopyForwardActive = false;
   private telemetryCopyForwardCursorRowId = 0;
+  private readonly busyTimeoutMs: number;
 
-  constructor(filePath = ':memory:') {
+  constructor(filePath = ':memory:', options?: { busyTimeoutMs?: number }) {
     const resolvedPath = this.preparePath(filePath);
     this.inMemory = resolvedPath === ':memory:';
+    this.busyTimeoutMs =
+      typeof options?.busyTimeoutMs === 'number' &&
+      Number.isFinite(options.busyTimeoutMs) &&
+      options.busyTimeoutMs > 0
+        ? Math.floor(options.busyTimeoutMs)
+        : 5000;
     this.db = new DatabaseSync(resolvedPath);
     this.configureConnection();
     this.initializeSchema();
@@ -3116,7 +3123,7 @@ export class SqliteControlPlaneStore {
     this.db.exec('PRAGMA auto_vacuum = INCREMENTAL;');
     this.db.exec('PRAGMA journal_mode = WAL;');
     this.db.exec('PRAGMA synchronous = NORMAL;');
-    this.db.exec('PRAGMA busy_timeout = 2000;');
+    this.db.exec(`PRAGMA busy_timeout = ${String(this.busyTimeoutMs)};`);
   }
 
   private ensureIncrementalAutoVacuumMode(): void {

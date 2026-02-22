@@ -115,11 +115,12 @@
       "maintenanceIntervalMs": 5000,
       "pruneBatchSize": 2000,
       "compactFreelistPages": 256,
-      "copyForwardBatchSize": 5000,
+      "copyForwardBatchSize": 500,
       "copyForwardFinalizeTailRows": 1200,
       "telemetryPayloadMaxBytes": 16384,
       "textDeltaPayloadMaxBytes": 32768,
       "textDeltaCoalesceWindowMs": 1200,
+      "busyTimeoutMs": 5000,
     },
   },
   "hooks": {
