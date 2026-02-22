@@ -209,8 +209,8 @@ import { createRuntimeRenderLifecycle } from '../../services/runtime-render-life
 import { finalizeRuntimeShutdown } from '../../services/runtime-shutdown.ts';
 import { RuntimeTaskEditorActions } from '../../services/runtime-task-editor-actions.ts';
 import { RuntimeTaskComposerPersistenceService } from '../../services/runtime-task-composer-persistence.ts';
-import { RuntimeTaskPaneActions } from '../../services/runtime-task-pane-actions.ts';
-import { RuntimeTaskPaneShortcuts } from '../../services/runtime-task-pane-shortcuts.ts';
+import { createRuntimeTaskPaneActions } from '../../services/runtime-task-pane-actions.ts';
+import { createRuntimeTaskPaneShortcuts } from '../../services/runtime-task-pane-shortcuts.ts';
 import { RuntimeProjectPaneGitHubReviewCache } from '../../services/runtime-project-pane-github-review-cache.ts';
 import { TaskPaneSelectionActions } from '../../services/task-pane-selection-actions.ts';
 import { TaskPlanningHydrationService } from '../../services/task-planning-hydration.ts';
@@ -2955,7 +2955,7 @@ class CodexLiveMuxRuntimeApplication {
       markDirty,
     });
 
-    const runtimeTaskPaneActions = new RuntimeTaskPaneActions<ControlPlaneTaskRecord>({
+    const runtimeTaskPaneActions = createRuntimeTaskPaneActions<ControlPlaneTaskRecord>({
       workspace,
       controlPlaneService,
       repositoriesHas: (repositoryId) => repositories.has(repositoryId),
@@ -3001,7 +3001,7 @@ class CodexLiveMuxRuntimeApplication {
       },
       markDirty,
     });
-    const runtimeTaskPaneShortcuts = new RuntimeTaskPaneShortcuts<ControlPlaneTaskRecord>({
+    const runtimeTaskPaneShortcuts = createRuntimeTaskPaneShortcuts<ControlPlaneTaskRecord>({
       workspace,
       taskScreenKeybindings,
       repositoriesHas: (repositoryId) => repositories.has(repositoryId),

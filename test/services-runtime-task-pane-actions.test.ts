@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import { WorkspaceModel } from '../src/domain/workspace.ts';
 import {
-  RuntimeTaskPaneActions,
+  createRuntimeTaskPaneActions,
   type RuntimeTaskPaneActionsOptions,
 } from '../src/services/runtime-task-pane-actions.ts';
 
@@ -134,7 +134,7 @@ function createHarness(overrides: Partial<TaskPaneActionsOptions> = {}) {
     },
     ...overrides,
   };
-  const service = new RuntimeTaskPaneActions<TaskRecord>(options);
+  const service = createRuntimeTaskPaneActions<TaskRecord>(options);
   return {
     workspace,
     service,

@@ -4,7 +4,7 @@ import { WorkspaceModel } from '../src/domain/workspace.ts';
 import type { TaskComposerBuffer } from '../src/mux/task-composer.ts';
 import { resolveTaskScreenKeybindings } from '../src/mux/task-screen-keybindings.ts';
 import {
-  RuntimeTaskPaneShortcuts,
+  createRuntimeTaskPaneShortcuts,
   type RuntimeTaskPaneShortcutsOptions,
 } from '../src/services/runtime-task-pane-shortcuts.ts';
 
@@ -120,7 +120,7 @@ function createHarness(overrides: Partial<ShortcutsOptions> = {}) {
     ...overrides,
   };
 
-  const service = new RuntimeTaskPaneShortcuts<TaskRecord>(options);
+  const service = createRuntimeTaskPaneShortcuts<TaskRecord>(options);
   return {
     workspace,
     service,
