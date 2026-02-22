@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import { RuntimeNimSession } from '../src/services/runtime-nim-session.ts';
 import { RuntimeNimToolBridge } from '../src/services/runtime-nim-tool-bridge.ts';
-import type { NimProviderDriver } from '../packages/nim-core/src/index.ts';
+import { InMemoryNimRuntime, type NimProviderDriver } from '../packages/nim-core/src/index.ts';
 
 async function waitFor(predicate: () => boolean, timeoutMs = 3000, pollMs = 10): Promise<void> {
   const startedAt = Date.now();
@@ -324,6 +324,63 @@ void test('runtime nim session uses injected provider driver for live provider p
     session.handleInputChunk('hello live\r');
     await waitFor(() => session.snapshot().transcriptLines.some((line) => line.includes('nim> live')));
     await waitFor(() => session.snapshot().status === 'idle');
+  } finally {
+    await session.dispose();
+  }
+});
+
+void test('runtime nim session surfaces non-error input lane failures', async () => {
+  const dirtyMarks: number[] = [];
+  const session = new RuntimeNimSession({
+    tenantId: 'tenant-j',
+    userId: 'user-j',
+    markDirty: () => {
+      dirtyMarks.push(1);
+    },
+    responseChunkDelayMs: 0,
+    sleep: async () => {},
+  });
+  try {
+    await session.start();
+    (session as unknown as { consumeInputText: (chunk: string) => Promise<void> }).consumeInputText =
+      async () => {
+        throw 'lane-failed';
+      };
+    session.handleInputChunk('hello');
+    await waitFor(() =>
+      session.snapshot().transcriptLines.some((line) => line.includes('[error] lane-failed')),
+    );
+    assert.equal(dirtyMarks.length > 0, true);
+  } finally {
+    await session.dispose();
+  }
+});
+
+void test('runtime nim session handles rejected turn completion promises', async () => {
+  const runtime = new InMemoryNimRuntime();
+  const session = new RuntimeNimSession({
+    tenantId: 'tenant-k',
+    userId: 'user-k',
+    markDirty: () => {},
+    runtime,
+    responseChunkDelayMs: 0,
+    sleep: async () => {},
+  });
+  try {
+    await session.start();
+    (
+      runtime as unknown as {
+        sendTurn: (input: unknown) => Promise<{ runId: string; done: Promise<unknown> }>;
+      }
+    ).sendTurn = async () => ({
+      runId: 'run-rejected',
+      done: Promise.reject('turn-done-failed'),
+    });
+    session.handleInputChunk('trigger\r');
+    await waitFor(() =>
+      session.snapshot().transcriptLines.some((line) => line.includes('[error] turn-done-failed')),
+    );
+    await waitFor(() => session.snapshot().activeRunId === null);
   } finally {
     await session.dispose();
   }

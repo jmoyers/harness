@@ -361,6 +361,75 @@ test('gateway runtime probe and call command paths work with a stream-compatible
   );
 });
 
+test(
+  'gateway runtime session listing parses optional summary fields defensively',
+  async () => {
+    const { service } = createRuntimeHarness();
+    const internal = internals(service);
+    const server = await withMockStreamServer(() => ({
+      sessions: [
+        {
+          sessionId: 'session-good',
+          live: true,
+          status: 'running',
+          statusModel: {
+            phase: 'working',
+            detailText: 'streaming',
+          },
+          processId: 42,
+          controller: {
+            controllerLabel: 'human',
+          },
+        },
+        {
+          sessionId: 'session-fallback',
+          live: 'yes',
+          status: '   ',
+          statusModel: {
+            phase: '',
+            detailText: ' ',
+          },
+          processId: 'not-a-number',
+          controller: {
+            controllerType: 'agent',
+          },
+        },
+        {
+          id: 'invalid-shape',
+          live: true,
+        },
+      ],
+    }));
+    try {
+      const listed = await internal.listGatewaySessionsForEndpoint(server.host, server.port, null);
+      assert.equal(listed.connected, true);
+      assert.equal(listed.totalSessions, 3);
+      assert.equal(listed.liveSessions, 2);
+      assert.equal(listed.sessions.length, 2);
+      assert.deepEqual(listed.sessions[0], {
+        sessionId: 'session-good',
+        live: true,
+        status: 'running',
+        phase: 'working',
+        detail: 'streaming',
+        processId: 42,
+        controller: 'human',
+      });
+      assert.deepEqual(listed.sessions[1], {
+        sessionId: 'session-fallback',
+        live: false,
+        status: null,
+        phase: null,
+        detail: null,
+        processId: null,
+        controller: 'agent',
+      });
+    } finally {
+      await server.close();
+    }
+  },
+);
+
 test('gateway runtime run dispatcher covers status/list/start/stop/restart/run/call/gc flows', async () => {
   const harness = createRuntimeHarness();
   const { service, stdout, stderr } = harness;

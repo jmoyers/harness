@@ -397,10 +397,11 @@ void test('workspace rail keeps navigation and project action rows when vertical
 
   assert.equal(rows.length, 6);
   assert.equal(rows[0]?.includes('home'), true);
-  assert.equal(rows[1]?.includes('tasks'), true);
-  assert.equal(rows[2]?.includes('untracked'), true);
+  assert.equal(rows[1]?.includes('NIM'), true);
+  assert.equal(rows[2]?.includes('tasks'), true);
   assert.equal(rows[3]?.includes('add project'), true);
-  assert.equal(rows[4]?.includes('harness'), true);
+  assert.equal(rows[4]?.includes('untracked'), true);
+  assert.equal(rows[5]?.includes('harness'), true);
 });
 
 void test('workspace rail renders icon colors for needs-action exited starting and idle states', () => {

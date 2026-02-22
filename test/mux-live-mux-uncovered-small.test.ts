@@ -1076,6 +1076,7 @@ void test('dismissModalOnOutsideClick handles no-escape, null-overlay, and point
 
 void test('left-nav helpers build stable target keys and dedupe visible targets', () => {
   assert.equal(leftNavTargetKey({ kind: 'home' }), 'home');
+  assert.equal(leftNavTargetKey({ kind: 'nim' }), 'nim');
   assert.equal(leftNavTargetKey({ kind: 'tasks' }), 'tasks');
   assert.equal(
     leftNavTargetKey({ kind: 'repository', repositoryId: 'repo-a' }),
@@ -1096,6 +1097,16 @@ void test('left-nav helpers build stable target keys and dedupe visible targets'
       directoryKey: null,
       repositoryId: null,
       railAction: 'home.open',
+      conversationStatus: null,
+    },
+    {
+      kind: 'dir-header',
+      text: 'nim',
+      active: false,
+      conversationSessionId: null,
+      directoryKey: null,
+      repositoryId: null,
+      railAction: 'nim.open',
       conversationStatus: null,
     },
     {
@@ -1159,7 +1170,7 @@ void test('left-nav helpers build stable target keys and dedupe visible targets'
       conversationStatus: null,
     },
   ] as unknown as Array<Record<string, unknown>>;
-  rows[8] = {
+  rows[9] = {
     kind: 'muted',
     text: 'gap filler',
     active: false,
@@ -1172,6 +1183,7 @@ void test('left-nav helpers build stable target keys and dedupe visible targets'
 
   assert.deepEqual(visibleLeftNavTargets(rows as unknown as RailRows), [
     { kind: 'home' },
+    { kind: 'nim' },
     { kind: 'tasks' },
     { kind: 'repository', repositoryId: 'repo-a' },
     { kind: 'project', directoryId: 'dir-a' },
