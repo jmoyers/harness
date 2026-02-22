@@ -899,7 +899,7 @@ void test('workspace rail row renderer paints github header/detail rows with act
   const activeGithubDetailRowAnsi = renderWorkspaceRailRowAnsiForTest(
     {
       kind: 'github-detail',
-      text: '│  │  status loading GitHub review data…',
+      text: '│  │    status loading GitHub review data…',
       active: true,
       conversationSessionId: null,
       directoryKey: 'dir-gh',

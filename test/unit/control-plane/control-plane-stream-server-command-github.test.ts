@@ -976,6 +976,7 @@ void test('stream server executes github command set and error branches', async 
     const projectReviewStoredPr = projectReviewStored['pr'] as Record<string, unknown>;
     assert.equal(projectReviewStoredPr['number'], 901);
     assert.equal(projectReviewStoredPr['state'], 'open');
+    assert.equal(projectReviewStoredPr['ciRollup'], 'none');
     assert.equal((projectReviewStored['openThreads'] as unknown[]).length, 0);
     assert.equal((projectReviewStored['resolvedThreads'] as unknown[]).length, 0);
     internals.stateStore.upsertGitHubPullRequest({

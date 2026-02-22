@@ -73,6 +73,7 @@ interface BuildRailModelArgs {
   readonly showTasksEntry?: boolean;
   readonly showGitHubIntegration?: boolean;
   readonly visibleGitHubDirectoryIds?: ReadonlySet<string>;
+  readonly expandedGitHubDirectoryIds?: ReadonlySet<string>;
   readonly githubReviewByDirectoryId?: ReadonlyMap<string, ProjectPaneGitHubReviewSummary>;
   readonly githubSelectionEnabled?: boolean;
   readonly activeGitHubProjectId?: string | null;
@@ -205,6 +206,11 @@ export function buildRailModel(args: BuildRailModelArgs): WorkspaceRailModel {
       ? {}
       : {
           visibleGitHubDirectoryKeys: [...args.visibleGitHubDirectoryIds],
+        }),
+    ...(args.expandedGitHubDirectoryIds === undefined
+      ? {}
+      : {
+          expandedGitHubDirectoryKeys: [...args.expandedGitHubDirectoryIds],
         }),
     ...(args.githubReviewByDirectoryId === undefined
       ? {}

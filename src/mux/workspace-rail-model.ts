@@ -69,6 +69,7 @@ interface WorkspaceRailModel {
   readonly processes: readonly WorkspaceRailProcessSummary[];
   readonly showGitHubIntegration?: boolean;
   readonly visibleGitHubDirectoryKeys?: ReadonlySet<string> | readonly string[];
+  readonly expandedGitHubDirectoryKeys?: ReadonlySet<string> | readonly string[];
   readonly githubReviewByDirectoryKey?: ReadonlyMap<string, ProjectPaneGitHubReviewSummary>;
   readonly showTaskPlanningUi?: boolean;
   readonly showTasksEntry?: boolean;
@@ -124,6 +125,7 @@ type WorkspaceRailAction =
   | 'tasks.open'
   | 'project.close'
   | 'project.github.open'
+  | 'project.github.toggle'
   | 'repository.toggle'
   | 'repository.add'
   | 'repository.edit'
@@ -289,7 +291,15 @@ function githubRailSummarySuffix(review: ProjectPaneGitHubReviewSummary | null):
   if (review.pr === null) {
     return '(no pr)';
   }
-  return `(#${String(review.pr.number)} ${githubPrLifecycleLabel(review.pr)})`;
+  const unresolvedCommentCount = githubReviewCommentCount(review.openThreads);
+  const detailParts = [
+    `#${String(review.pr.number)} ${githubPrLifecycleLabel(review.pr)}`,
+    `unresolved ${String(unresolvedCommentCount)}`,
+  ];
+  if (review.pr.ciRollup === 'failure') {
+    detailParts.push('ci failed');
+  }
+  return `(${detailParts.join(', ')})`;
 }
 
 function sanitizeInlineText(value: string): string {
@@ -345,6 +355,12 @@ function buildContentRows(
       : model.visibleGitHubDirectoryKeys instanceof Set
         ? model.visibleGitHubDirectoryKeys
         : new Set(model.visibleGitHubDirectoryKeys);
+  const expandedGitHubDirectoryKeys =
+    model.expandedGitHubDirectoryKeys === undefined
+      ? new Set<string>()
+      : model.expandedGitHubDirectoryKeys instanceof Set
+        ? model.expandedGitHubDirectoryKeys
+        : new Set(model.expandedGitHubDirectoryKeys);
   const githubReviewByDirectoryKey =
     model.githubReviewByDirectoryKey ?? new Map<string, ProjectPaneGitHubReviewSummary>();
   const showTasksEntry = model.showTasksEntry ?? showTaskPlanningUi;
@@ -515,12 +531,13 @@ function buildContentRows(
       if (showGitHubIntegration && group.tracked && githubVisibleForDirectory) {
         const githubReview = githubReviewByDirectoryKey.get(directory.key) ?? null;
         const githubSelected = githubSelectionEnabled && directory.key === activeGitHubProjectId;
+        const githubExpanded = expandedGitHubDirectoryKeys.has(directory.key);
         const githubTreePrefix = `${projectChildPrefix}├─ `;
-        const githubDetailPrefix = `${projectChildPrefix}│  `;
+        const githubDetailPrefix = `${projectChildPrefix}│    `;
         pushRow(
           rows,
           'github-header',
-          `${githubTreePrefix}${githubSelected ? '▼' : '▶'} github pr ${githubRailSummarySuffix(
+          `${githubTreePrefix}${githubExpanded ? '▼' : '▶'} github pr ${githubRailSummarySuffix(
             githubReview,
           )}`,
           githubSelected,
@@ -529,13 +546,13 @@ function buildContentRows(
           repositoryId,
           'project.github.open',
         );
-        if (githubSelected) {
+        if (githubExpanded) {
           if (githubReview === null) {
             pushRow(
               rows,
               'github-detail',
               `${githubDetailPrefix}status not loaded`,
-              true,
+              githubSelected,
               null,
               directory.key,
               repositoryId,
@@ -546,7 +563,7 @@ function buildContentRows(
               rows,
               'github-detail',
               `${githubDetailPrefix}status loading GitHub review data…`,
-              true,
+              githubSelected,
               null,
               directory.key,
               repositoryId,
@@ -561,7 +578,7 @@ function buildContentRows(
               rows,
               'github-detail',
               `${githubDetailPrefix}status error ${message}`,
-              true,
+              githubSelected,
               null,
               directory.key,
               repositoryId,
@@ -573,7 +590,7 @@ function buildContentRows(
               rows,
               'github-detail',
               `${githubDetailPrefix}branch ${branchName.length > 0 ? branchName : '(none)'}`,
-              true,
+              githubSelected,
               null,
               directory.key,
               repositoryId,
@@ -583,7 +600,7 @@ function buildContentRows(
               rows,
               'github-detail',
               `${githubDetailPrefix}no pull request for tracked branch`,
-              true,
+              githubSelected,
               null,
               directory.key,
               repositoryId,
@@ -595,7 +612,7 @@ function buildContentRows(
               rows,
               'github-detail',
               `${githubDetailPrefix}pr #${String(pr.number)} ${githubPrLifecycleLabel(pr)} ${sanitizeInlineText(pr.title)}`,
-              true,
+              githubSelected,
               null,
               directory.key,
               repositoryId,
@@ -607,7 +624,7 @@ function buildContentRows(
               `${githubDetailPrefix}from ${pr.headBranch} -> ${pr.baseBranch} by ${formatAuthor(
                 pr.authorLogin,
               )}`,
-              true,
+              githubSelected,
               null,
               directory.key,
               repositoryId,
@@ -622,7 +639,7 @@ function buildContentRows(
                 githubReviewCommentCount(githubReview.openThreads) +
                   githubReviewCommentCount(githubReview.resolvedThreads),
               )} comments)`,
-              true,
+              githubSelected,
               null,
               directory.key,
               repositoryId,
@@ -779,27 +796,32 @@ export function actionAtWorkspaceRailCell(
   if (row === undefined) {
     return null;
   }
-  if (row.railAction !== null) {
+  const normalizedCol = Math.max(0, Math.floor(colIndex));
+
+  if (row.kind === 'github-header') {
+    const collapsedGlyphCol = row.text.indexOf('▶');
+    const expandedGlyphCol = row.text.indexOf('▼');
+    const glyphCol = collapsedGlyphCol >= 0 ? collapsedGlyphCol : expandedGlyphCol;
+    if (glyphCol >= 0 && normalizedCol === glyphCol) {
+      return 'project.github.toggle';
+    }
     return row.railAction;
   }
-  if (row.kind !== 'dir-header') {
-    return null;
+
+  if (row.kind === 'dir-header' && row.text.includes(NEW_THREAD_INLINE_LABEL)) {
+    const buttonStart =
+      paneCols === null
+        ? row.text.lastIndexOf(NEW_THREAD_INLINE_LABEL)
+        : Math.max(0, Math.floor(paneCols) - NEW_THREAD_INLINE_LABEL.length);
+    if (
+      normalizedCol >= buttonStart &&
+      normalizedCol < buttonStart + NEW_THREAD_INLINE_LABEL.length
+    ) {
+      return 'conversation.new';
+    }
   }
-  if (!row.text.includes(NEW_THREAD_INLINE_LABEL)) {
-    return null;
-  }
-  const buttonStart =
-    paneCols === null
-      ? row.text.lastIndexOf(NEW_THREAD_INLINE_LABEL)
-      : Math.max(0, Math.floor(paneCols) - NEW_THREAD_INLINE_LABEL.length);
-  const normalizedCol = Math.max(0, Math.floor(colIndex));
-  if (
-    normalizedCol < buttonStart ||
-    normalizedCol >= buttonStart + NEW_THREAD_INLINE_LABEL.length
-  ) {
-    return null;
-  }
-  return 'conversation.new';
+
+  return row.railAction;
 }
 
 export function projectIdAtWorkspaceRailRow(

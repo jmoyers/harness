@@ -2267,7 +2267,7 @@ void test('workspace rail model omits title glyph when non-terminal conversation
   assert.equal(/[▲◔◆○■⌨✎]/u.test(titleRow?.text ?? ''), false);
 });
 
-void test('workspace rail model renders github project row and expands summary when selected', () => {
+void test('workspace rail model renders github project row and only expands summary when explicitly expanded', () => {
   const reviewByDirectory = new Map([
     [
       'dir',
@@ -2355,12 +2355,67 @@ void test('workspace rail model renders github project row and expands summary w
   );
   assert.notEqual(collapsedGithubRow, undefined);
   assert.equal(collapsedGithubRow?.railAction, 'project.github.open');
-  assert.equal(collapsedGithubRow?.text.includes('▶ github pr (#123 open)'), true);
+  assert.equal(collapsedGithubRow?.text.includes('▶ github pr (#123 open, unresolved 1)'), true);
+
+  const selectedRows = buildWorkspaceRailViewRowsRaw(
+    {
+      showGitHubIntegration: true,
+      visibleGitHubDirectoryKeys: ['dir'],
+      githubReviewByDirectoryKey: reviewByDirectory,
+      githubSelectionEnabled: true,
+      activeGitHubProjectId: 'dir',
+      directories: [
+        {
+          key: 'dir',
+          workspaceId: 'harness',
+          worktreeId: '/tmp/harness',
+          repositoryId: 'repo-a',
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0,
+          },
+        },
+      ],
+      repositories: [
+        {
+          repositoryId: 'repo-a',
+          name: 'harness',
+          remoteUrl: 'https://github.com/acme/harness.git',
+          associatedProjectCount: 1,
+          commitCount: 100,
+          lastCommitAt: '2026-02-21T00:00:00.000Z',
+          shortCommitHash: 'abc1234',
+        },
+      ],
+      conversations: [],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: null,
+    },
+    24,
+  );
+  assert.equal(
+    selectedRows.some(
+      (row) =>
+        row.kind === 'github-header' &&
+        row.directoryKey === 'dir' &&
+        row.active &&
+        row.text.includes('▶ github pr (#123 open, unresolved 1)'),
+    ),
+    true,
+  );
+  assert.equal(
+    selectedRows.some((row) => row.kind === 'github-detail' && row.directoryKey === 'dir'),
+    false,
+  );
 
   const expandedRows = buildWorkspaceRailViewRowsRaw(
     {
       showGitHubIntegration: true,
       visibleGitHubDirectoryKeys: ['dir'],
+      expandedGitHubDirectoryKeys: ['dir'],
       githubReviewByDirectoryKey: reviewByDirectory,
       githubSelectionEnabled: true,
       activeGitHubProjectId: 'dir',
@@ -2402,7 +2457,7 @@ void test('workspace rail model renders github project row and expands summary w
         row.kind === 'github-header' &&
         row.directoryKey === 'dir' &&
         row.active &&
-        row.text.includes('▼ github pr (#123 open)'),
+        row.text.includes('▼ github pr (#123 open, unresolved 1)'),
     ),
     true,
   );
@@ -2459,8 +2514,8 @@ void test('workspace rail model keeps github project row hidden until explicitly
 void test('workspace rail model github row covers loading, error, missing review, and no-pr detail states', () => {
   const baseModel = {
     showGitHubIntegration: true,
-    githubSelectionEnabled: true,
-    activeGitHubProjectId: 'dir',
+    visibleGitHubDirectoryKeys: ['dir'],
+    expandedGitHubDirectoryKeys: ['dir'],
     directories: [
       {
         key: 'dir',
@@ -2655,15 +2710,169 @@ void test('workspace rail model github summary labels draft, merged, and closed 
   const merged = buildRows('merged', false);
   const closed = buildRows('closed', false);
   assert.equal(
-    draft.some((row) => row.text.includes('(#55 draft)')),
+    draft.some((row) => row.text.includes('(#55 draft, unresolved 0)')),
     true,
   );
   assert.equal(
-    merged.some((row) => row.text.includes('(#55 merged)')),
+    merged.some((row) => row.text.includes('(#55 merged, unresolved 0)')),
     true,
   );
   assert.equal(
-    closed.some((row) => row.text.includes('(#55 closed)')),
+    closed.some((row) => row.text.includes('(#55 closed, unresolved 0)')),
     true,
+  );
+});
+
+void test('workspace rail model github summary includes ci failure when latest rollup failed', () => {
+  const rows = buildWorkspaceRailViewRowsRaw(
+    {
+      showGitHubIntegration: true,
+      visibleGitHubDirectoryKeys: ['dir'],
+      githubReviewByDirectoryKey: new Map([
+        [
+          'dir',
+          {
+            status: 'ready' as const,
+            branchName: 'feature/ci-failure',
+            branchSource: 'current' as const,
+            pr: {
+              number: 77,
+              title: 'CI failed PR',
+              url: 'https://github.com/acme/harness/pull/77',
+              authorLogin: 'jmoyers',
+              headBranch: 'feature/ci-failure',
+              baseBranch: 'main',
+              state: 'open' as const,
+              isDraft: false,
+              mergedAt: null,
+              closedAt: null,
+              ciRollup: 'failure' as const,
+              updatedAt: '2026-02-21T00:00:00.000Z',
+              createdAt: '2026-02-21T00:00:00.000Z',
+            },
+            openThreads: [],
+            resolvedThreads: [],
+            errorMessage: null,
+          },
+        ],
+      ]),
+      directories: [
+        {
+          key: 'dir',
+          workspaceId: 'harness',
+          worktreeId: '/tmp/harness',
+          repositoryId: 'repo-a',
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0,
+          },
+        },
+      ],
+      repositories: [
+        {
+          repositoryId: 'repo-a',
+          name: 'harness',
+          remoteUrl: 'https://github.com/acme/harness.git',
+          associatedProjectCount: 1,
+          commitCount: 100,
+          lastCommitAt: '2026-02-21T00:00:00.000Z',
+          shortCommitHash: 'abc1234',
+        },
+      ],
+      conversations: [],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: null,
+    },
+    20,
+  );
+  assert.equal(
+    rows.some((row) => row.kind === 'github-header' && row.text.includes('ci failed')),
+    true,
+  );
+});
+
+void test('workspace rail model github header only toggles expansion from glyph hitbox', () => {
+  const rows = buildWorkspaceRailViewRowsRaw(
+    {
+      showGitHubIntegration: true,
+      visibleGitHubDirectoryKeys: ['dir'],
+      githubReviewByDirectoryKey: new Map([
+        [
+          'dir',
+          {
+            status: 'ready' as const,
+            branchName: 'feature/hitbox',
+            branchSource: 'current' as const,
+            pr: {
+              number: 12,
+              title: 'Hitbox PR',
+              url: 'https://github.com/acme/harness/pull/12',
+              authorLogin: 'jmoyers',
+              headBranch: 'feature/hitbox',
+              baseBranch: 'main',
+              state: 'open' as const,
+              isDraft: false,
+              mergedAt: null,
+              closedAt: null,
+              updatedAt: '2026-02-21T00:00:00.000Z',
+              createdAt: '2026-02-21T00:00:00.000Z',
+            },
+            openThreads: [],
+            resolvedThreads: [],
+            errorMessage: null,
+          },
+        ],
+      ]),
+      directories: [
+        {
+          key: 'dir',
+          workspaceId: 'harness',
+          worktreeId: '/tmp/harness',
+          repositoryId: 'repo-a',
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0,
+          },
+        },
+      ],
+      repositories: [
+        {
+          repositoryId: 'repo-a',
+          name: 'harness',
+          remoteUrl: 'https://github.com/acme/harness.git',
+          associatedProjectCount: 1,
+          commitCount: 100,
+          lastCommitAt: '2026-02-21T00:00:00.000Z',
+          shortCommitHash: 'abc1234',
+        },
+      ],
+      conversations: [],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: null,
+    },
+    20,
+  );
+  const githubHeaderRowIndex = rows.findIndex(
+    (row) => row.kind === 'github-header' && row.directoryKey === 'dir',
+  );
+  assert.notEqual(githubHeaderRowIndex, -1);
+  const githubHeaderRow = rows[githubHeaderRowIndex]!;
+  const glyphCol = githubHeaderRow.text.indexOf('▶');
+  const labelCol = githubHeaderRow.text.indexOf('github pr');
+  assert.notEqual(glyphCol, -1);
+  assert.notEqual(labelCol, -1);
+  assert.equal(
+    actionAtWorkspaceRailCell(rows, githubHeaderRowIndex, glyphCol),
+    'project.github.toggle',
+  );
+  assert.equal(
+    actionAtWorkspaceRailCell(rows, githubHeaderRowIndex, labelCol),
+    'project.github.open',
   );
 });

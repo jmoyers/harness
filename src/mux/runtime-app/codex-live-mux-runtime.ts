@@ -540,6 +540,22 @@ function parseGitHubReviewPrState(
   return null;
 }
 
+function parseGitHubReviewCiRollup(
+  value: unknown,
+): NonNullable<ProjectPaneGitHubPullRequestSummary['ciRollup']> | null {
+  if (
+    value === 'pending' ||
+    value === 'success' ||
+    value === 'failure' ||
+    value === 'cancelled' ||
+    value === 'neutral' ||
+    value === 'none'
+  ) {
+    return value;
+  }
+  return null;
+}
+
 function parseGitHubReviewPullRequest(value: unknown): ProjectPaneGitHubPullRequestSummary | null {
   const record = asRecord(value);
   if (record === null) {
@@ -554,6 +570,7 @@ function parseGitHubReviewPullRequest(value: unknown): ProjectPaneGitHubPullRequ
   const isDraft = record['isDraft'];
   const updatedAt = asStringOrNull(record['updatedAt']);
   const createdAt = asStringOrNull(record['createdAt']);
+  const ciRollup = parseGitHubReviewCiRollup(record['ciRollup']);
   if (
     typeof number !== 'number' ||
     title === null ||
@@ -578,6 +595,7 @@ function parseGitHubReviewPullRequest(value: unknown): ProjectPaneGitHubPullRequ
     isDraft,
     mergedAt: asStringOrNull(record['mergedAt']),
     closedAt: asStringOrNull(record['closedAt']),
+    ciRollup,
     updatedAt,
     createdAt,
   };
@@ -2891,6 +2909,23 @@ class CodexLiveMuxRuntimeApplication {
       screen.resetFrameCache();
     };
 
+    const toggleGitHubProjectExpanded = (directoryId: string): void => {
+      if (!directoryManager.hasDirectory(directoryId)) {
+        return;
+      }
+      if (workspace.expandedGitHubDirectoryIds.has(directoryId)) {
+        workspace.expandedGitHubDirectoryIds.delete(directoryId);
+      } else {
+        workspace.expandedGitHubDirectoryIds.add(directoryId);
+        workspace.visibleGitHubDirectoryIds.add(directoryId);
+      }
+      noteGitActivity(directoryId);
+      if (workspace.expandedGitHubDirectoryIds.has(directoryId)) {
+        refreshProjectPaneGitHubReviewState(directoryId);
+      }
+      screen.resetFrameCache();
+    };
+
     function orderedTaskRecords(): readonly ControlPlaneTaskRecord[] {
       return taskManager.orderedTasks(sortTasksByOrder);
     }
@@ -4511,6 +4546,7 @@ class CodexLiveMuxRuntimeApplication {
         loadingGitSummary: GIT_SUMMARY_LOADING,
         showGitHubIntegration: loadedConfig.config.github.enabled,
         visibleGitHubDirectoryIds: workspace.visibleGitHubDirectoryIds,
+        expandedGitHubDirectoryIds: workspace.expandedGitHubDirectoryIds,
         githubReviewByDirectoryId: projectPaneGitHubReviewByDirectoryId,
         showTasksEntry,
         activeConversationId: () => conversationManager.activeConversationId,
@@ -5095,6 +5131,7 @@ class CodexLiveMuxRuntimeApplication {
         },
         enterProjectPane,
         enterGitHubPane,
+        toggleGitHubProjectExpanded,
         markDirty,
       },
       {

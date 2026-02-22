@@ -50,6 +50,7 @@ interface HandleLeftRailActionClickOptions {
   enterHomePane: () => void;
   enterTasksPane?: () => void;
   enterGitHubPane?: (directoryId: string) => void;
+  toggleGitHubProjectExpanded?: (directoryId: string) => void;
   directoriesHas?: (directoryId: string) => boolean;
   queueCloseDirectory: (directoryId: string) => void;
   toggleShortcutsCollapsed: () => void;
@@ -122,6 +123,11 @@ function handleLeftRailActionClick(options: HandleLeftRailActionClickOptions): b
         ? {}
         : {
             enterGitHubPane: options.enterGitHubPane,
+          }),
+      ...(options.toggleGitHubProjectExpanded === undefined
+        ? {}
+        : {
+            toggleGitHubProjectExpanded: options.toggleGitHubProjectExpanded,
           }),
       markDirty: options.markDirty,
     },
@@ -905,6 +911,9 @@ void test('left-rail action click routes all supported actions and default false
     enterGitHubPane: (directoryId: string) => {
       calls.push(`enterGitHubPane:${directoryId}`);
     },
+    toggleGitHubProjectExpanded: (directoryId: string) => {
+      calls.push(`toggleGitHubProjectExpanded:${directoryId}`);
+    },
     directoriesHas: () => true,
     queueCloseDirectory: (directoryId: string) => {
       calls.push(`queueCloseDirectory:${directoryId}`);
@@ -955,6 +964,15 @@ void test('left-rail action click routes all supported actions and default false
     true,
   );
   assert.equal(calls.includes('enterGitHubPane:dir-a'), true);
+  calls.length = 0;
+  assert.equal(
+    handleLeftRailActionClick({
+      ...base,
+      action: 'project.github.toggle',
+    }),
+    true,
+  );
+  assert.equal(calls.includes('toggleGitHubProjectExpanded:dir-a'), true);
   calls.length = 0;
 
   assert.equal(

@@ -41,6 +41,7 @@ interface RuntimeWorkspaceStateLike {
   projectPaneScrollTop: number;
   activeDirectoryId: string | null;
   visibleGitHubDirectoryIds?: Set<string>;
+  expandedGitHubDirectoryIds?: Set<string>;
   selectLeftNavConversation(sessionId: string): void;
 }
 
@@ -94,6 +95,7 @@ export class RuntimeWorkspaceObservedEvents<TObservedEvent> {
 
     for (const directoryId of reduced.removedDirectoryIds) {
       this.options.workspace.visibleGitHubDirectoryIds?.delete(directoryId);
+      this.options.workspace.expandedGitHubDirectoryIds?.delete(directoryId);
       if (this.options.workspace.projectPaneSnapshot?.directoryId === directoryId) {
         this.options.workspace.projectPaneSnapshot = null;
         this.options.workspace.projectPaneScrollTop = 0;

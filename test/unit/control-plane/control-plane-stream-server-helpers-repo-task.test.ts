@@ -668,10 +668,7 @@ void test('stream server telemetry/history private guard branches are stable', a
         return iterator;
       },
     };
-    internals.handleTelemetryHttpRequest(
-      abortedRequest,
-      abortedResponse,
-    );
+    internals.handleTelemetryHttpRequest(abortedRequest, abortedResponse);
     await delay(20);
     assert.equal(abortRequestErrorListeners.length > 0, true);
     abortRequestErrorListeners[0]?.(Object.assign(new Error('aborted'), { code: 'ECONNRESET' }));
