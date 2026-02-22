@@ -44,7 +44,7 @@ interface RuntimeLayoutResizeOptions<TConversation extends RuntimeLayoutResizeCo
   readonly clearTimeoutFn?: (timer: ReturnType<typeof setTimeout>) => void;
 }
 
-export class RuntimeLayoutResize<TConversation extends RuntimeLayoutResizeConversationRecord> {
+export class RuntimeLayoutResizeEngine<TConversation extends RuntimeLayoutResizeConversationRecord> {
   private resizeTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingSize: RuntimeLayoutResizeSize | null = null;
   private lastResizeApplyAtMs = 0;

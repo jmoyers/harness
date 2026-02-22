@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import {
   parseAgentToolStatusList,
-  RuntimeCommandMenuAgentTools,
+  RuntimeCommandMenuAgentToolsCache,
 } from '../src/services/runtime-command-menu-agent-tools.ts';
 
 void test('parseAgentToolStatusList keeps only valid agent tool status rows', () => {
@@ -38,13 +38,13 @@ void test('parseAgentToolStatusList keeps only valid agent tool status rows', ()
   ]);
 });
 
-void test('RuntimeCommandMenuAgentTools refreshes status cache and marks dirty only with an open menu', async () => {
+void test('RuntimeCommandMenuAgentToolsCache refreshes status cache and marks dirty only with an open menu', async () => {
   const queue: Array<() => Promise<void>> = [];
   let dirtyCount = 0;
   let menuState: { scope: string } | null = {
     scope: 'thread-start',
   };
-  const service = new RuntimeCommandMenuAgentTools({
+  const service = new RuntimeCommandMenuAgentToolsCache({
     sendCommand: async () => ({
       tools: [
         {

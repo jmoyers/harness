@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import { computeDualPaneLayout } from '../src/mux/dual-pane-core.ts';
-import { RuntimeLayoutResize } from '../src/services/runtime-layout-resize.ts';
+import { RuntimeLayoutResizeEngine } from '../src/services/runtime-layout-resize.ts';
 
 interface ConversationRecord {
   readonly sessionId: string;
@@ -18,7 +18,7 @@ interface TimerRecord {
 }
 
 interface Harness {
-  readonly service: RuntimeLayoutResize<ConversationRecord>;
+  readonly service: RuntimeLayoutResizeEngine<ConversationRecord>;
   readonly conversations: Map<string, ConversationRecord>;
   readonly conversationManager: {
     activeConversationId: string | null;
@@ -84,7 +84,7 @@ const createHarness = (input?: {
   };
   const ptySizeByConversationId = new Map<string, { cols: number; rows: number }>();
 
-  const service = new RuntimeLayoutResize<ConversationRecord>({
+  const service = new RuntimeLayoutResizeEngine<ConversationRecord>({
     getSize: () => state.size,
     setSize: (nextSize) => {
       state.size = {
@@ -281,7 +281,7 @@ void test('runtime layout resize queues and throttles terminal resize updates', 
 
 void test('runtime layout resize schedules follow-up resize when pending size appears during apply', () => {
   let callbackArmed = false;
-  let callbackService: RuntimeLayoutResize<ConversationRecord> | null = null;
+  let callbackService: RuntimeLayoutResizeEngine<ConversationRecord> | null = null;
   const harness = createHarness({
     activeConversationId: null,
     resizeMinIntervalMs: 33,

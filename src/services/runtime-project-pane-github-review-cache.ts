@@ -62,7 +62,7 @@ function errorState(
   };
 }
 
-export class RuntimeProjectPaneGitHubReviewCache {
+export class RuntimeProjectPaneGitHubReviewCacheEngine {
   private readonly entries = new Map<string, CacheEntry>();
   private readonly nowMs: () => number;
   private readonly setIntervalFn: (callback: () => void, ms: number) => NodeJS.Timeout;

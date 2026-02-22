@@ -43,9 +43,9 @@
     - `startup-persisted-conversation-queue`
     - `runtime-task-composer-persistence`
 - Keep only true state engines:
-  - `runtime-layout-resize`
-  - `runtime-project-pane-github-review-cache`
-  - `runtime-command-menu-agent-tools`
+  - `RuntimeLayoutResizeEngine`
+  - `RuntimeProjectPaneGitHubReviewCacheEngine`
+  - `RuntimeCommandMenuAgentToolsCache`
 - Rename survivors to reflect state ownership (engine/controller semantics) where useful.
 - Optional hardening pass:
   - remove duplicated parser paths where one canonical contracts parser can be used.

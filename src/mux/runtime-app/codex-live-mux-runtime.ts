@@ -211,19 +211,19 @@ import {
 import { createRuntimeRenderPipeline } from '../../services/runtime-render-pipeline.ts';
 import { createRuntimeRepositoryActions } from '../../services/runtime-repository-actions.ts';
 import { createRuntimeGitState } from '../../services/runtime-git-state.ts';
-import { RuntimeLayoutResize } from '../../services/runtime-layout-resize.ts';
+import { RuntimeLayoutResizeEngine } from '../../services/runtime-layout-resize.ts';
 import { createRuntimeRenderLifecycle } from '../../services/runtime-render-lifecycle.ts';
 import { finalizeRuntimeShutdown } from '../../services/runtime-shutdown.ts';
 import { createRuntimeTaskEditorActions } from '../../services/runtime-task-editor-actions.ts';
 import { createRuntimeTaskComposerPersistenceService } from '../../services/runtime-task-composer-persistence.ts';
 import { createRuntimeTaskPaneActions } from '../../services/runtime-task-pane-actions.ts';
 import { createRuntimeTaskPaneShortcuts } from '../../services/runtime-task-pane-shortcuts.ts';
-import { RuntimeProjectPaneGitHubReviewCache } from '../../services/runtime-project-pane-github-review-cache.ts';
+import { RuntimeProjectPaneGitHubReviewCacheEngine } from '../../services/runtime-project-pane-github-review-cache.ts';
 import { TaskPaneSelectionActions } from '../../services/task-pane-selection-actions.ts';
 import { TaskPlanningHydrationService } from '../../services/task-planning-hydration.ts';
 import { TaskPlanningSyncedProjection } from '../../services/task-planning-observed-events.ts';
 import {
-  RuntimeCommandMenuAgentTools,
+  RuntimeCommandMenuAgentToolsCache,
   type InstallableAgentType,
 } from '../../services/runtime-command-menu-agent-tools.ts';
 import { WorkspaceSyncedProjection } from '../../services/workspace-observed-events.ts';
@@ -2066,7 +2066,7 @@ class CodexLiveMuxRuntimeApplication {
     ): void => {
       controlPlaneOps.enqueueBackground(task, label);
     };
-    const commandMenuAgentTools = new RuntimeCommandMenuAgentTools({
+    const commandMenuAgentTools = new RuntimeCommandMenuAgentToolsCache({
       sendCommand: async (command) => await streamClient.sendCommand(command),
       queueControlPlaneOp,
       getCommandMenu: () => workspace.commandMenu,
@@ -2424,7 +2424,7 @@ class CodexLiveMuxRuntimeApplication {
     }, HOME_PANE_BACKGROUND_INTERVAL_MS);
     homePaneBackgroundTimer.unref?.();
 
-    const runtimeLayoutResize = new RuntimeLayoutResize<ConversationState>({
+    const runtimeLayoutResize = new RuntimeLayoutResizeEngine<ConversationState>({
       getSize: () => size,
       setSize: (nextSize) => {
         size = nextSize;
@@ -2565,7 +2565,7 @@ class CodexLiveMuxRuntimeApplication {
       );
     };
 
-    const projectPaneGitHubReviewCache = new RuntimeProjectPaneGitHubReviewCache({
+    const projectPaneGitHubReviewCache = new RuntimeProjectPaneGitHubReviewCacheEngine({
       ttlMs: PROJECT_PANE_GITHUB_REVIEW_TTL_MS,
       refreshIntervalMs: PROJECT_PANE_GITHUB_REVIEW_REFRESH_INTERVAL_MS,
       queueLatestControlPlaneOp: queueLatestBackgroundControlPlaneOp,
