@@ -24,7 +24,7 @@ interface RuntimeRepositoryActionService<TRepository extends RepositoryRecordSha
   archiveRepository(repositoryId: string): Promise<unknown>;
 }
 
-interface RuntimeRepositoryActionsOptions<TRepository extends RepositoryRecordShape> {
+export interface RuntimeRepositoryActionsOptions<TRepository extends RepositoryRecordShape> {
   readonly workspace: WorkspaceModel;
   readonly repositories: Map<string, TRepository>;
   readonly controlPlaneService: RuntimeRepositoryActionService<TRepository>;
@@ -49,53 +49,85 @@ function repositoryHomePriority(repository: RepositoryRecordShape): number | nul
   return raw;
 }
 
-export class RuntimeRepositoryActions<TRepository extends RepositoryRecordShape> {
-  constructor(private readonly options: RuntimeRepositoryActionsOptions<TRepository>) {}
+export interface RuntimeRepositoryActions {
+  openRepositoryPromptForCreate(): void;
+  openRepositoryPromptForEdit(repositoryId: string): void;
+  queueRepositoryPriorityOrder(orderedRepositoryIds: readonly string[], label: string): void;
+  reorderRepositoryByDrop(
+    draggedRepositoryId: string,
+    targetRepositoryId: string,
+    orderedRepositoryIds: readonly string[],
+  ): void;
+  upsertRepositoryByRemoteUrl(remoteUrl: string, existingRepositoryId?: string): Promise<void>;
+  archiveRepositoryById(repositoryId: string): Promise<void>;
+}
 
-  openRepositoryPromptForCreate(): void {
-    this.options.workspace.newThreadPrompt = null;
-    this.options.workspace.addDirectoryPrompt = null;
-    this.options.workspace.apiKeyPrompt = null;
-    if (this.options.workspace.conversationTitleEdit !== null) {
-      this.options.stopConversationTitleEdit();
+export function createRuntimeRepositoryActions<TRepository extends RepositoryRecordShape>(
+  options: RuntimeRepositoryActionsOptions<TRepository>,
+): RuntimeRepositoryActions {
+  const reorderIdsByMove = (
+    orderedIds: readonly string[],
+    movedId: string,
+    targetId: string,
+  ): readonly string[] | null => {
+    const fromIndex = orderedIds.indexOf(movedId);
+    const targetIndex = orderedIds.indexOf(targetId);
+    if (fromIndex < 0 || targetIndex < 0 || fromIndex === targetIndex) {
+      return null;
     }
-    this.options.workspace.conversationTitleEditClickState = null;
-    this.options.workspace.repositoryPrompt = {
+    const reordered = [...orderedIds];
+    const moved = reordered.splice(fromIndex, 1)[0]!;
+    reordered.splice(targetIndex, 0, moved);
+    return reordered;
+  };
+
+  const openRepositoryPromptForCreate = (): void => {
+    options.workspace.newThreadPrompt = null;
+    options.workspace.addDirectoryPrompt = null;
+    options.workspace.apiKeyPrompt = null;
+    if (options.workspace.conversationTitleEdit !== null) {
+      options.stopConversationTitleEdit();
+    }
+    options.workspace.conversationTitleEditClickState = null;
+    options.workspace.repositoryPrompt = {
       mode: 'add',
       repositoryId: null,
       value: '',
       error: null,
     };
-    this.options.markDirty();
-  }
+    options.markDirty();
+  };
 
-  openRepositoryPromptForEdit(repositoryId: string): void {
-    const repository = this.options.repositories.get(repositoryId);
+  const openRepositoryPromptForEdit = (repositoryId: string): void => {
+    const repository = options.repositories.get(repositoryId);
     if (repository === undefined) {
       return;
     }
-    this.options.workspace.newThreadPrompt = null;
-    this.options.workspace.addDirectoryPrompt = null;
-    this.options.workspace.apiKeyPrompt = null;
-    if (this.options.workspace.conversationTitleEdit !== null) {
-      this.options.stopConversationTitleEdit();
+    options.workspace.newThreadPrompt = null;
+    options.workspace.addDirectoryPrompt = null;
+    options.workspace.apiKeyPrompt = null;
+    if (options.workspace.conversationTitleEdit !== null) {
+      options.stopConversationTitleEdit();
     }
-    this.options.workspace.conversationTitleEditClickState = null;
-    this.options.workspace.repositoryPrompt = {
+    options.workspace.conversationTitleEditClickState = null;
+    options.workspace.repositoryPrompt = {
       mode: 'edit',
       repositoryId,
       value: repository.remoteUrl,
       error: null,
     };
-    this.options.workspace.taskPaneSelectionFocus = 'repository';
-    this.options.markDirty();
-  }
+    options.workspace.taskPaneSelectionFocus = 'repository';
+    options.markDirty();
+  };
 
-  queueRepositoryPriorityOrder(orderedRepositoryIds: readonly string[], label: string): void {
+  const queueRepositoryPriorityOrder = (
+    orderedRepositoryIds: readonly string[],
+    label: string,
+  ): void => {
     const updates: Array<{ repositoryId: string; metadata: Record<string, unknown> }> = [];
     for (let index = 0; index < orderedRepositoryIds.length; index += 1) {
       const repositoryId = orderedRepositoryIds[index]!;
-      const repository = this.options.repositories.get(repositoryId);
+      const repository = options.repositories.get(repositoryId);
       if (repository === undefined) {
         continue;
       }
@@ -113,48 +145,44 @@ export class RuntimeRepositoryActions<TRepository extends RepositoryRecordShape>
     if (updates.length === 0) {
       return;
     }
-    this.options.queueControlPlaneOp(async () => {
+    options.queueControlPlaneOp(async () => {
       for (const update of updates) {
-        const repository = await this.options.controlPlaneService.updateRepository({
+        const repository = await options.controlPlaneService.updateRepository({
           repositoryId: update.repositoryId,
           metadata: update.metadata,
         });
-        this.options.repositories.set(repository.repositoryId, repository);
+        options.repositories.set(repository.repositoryId, repository);
       }
-      this.options.syncTaskPaneRepositorySelection();
-      this.options.markDirty();
+      options.syncTaskPaneRepositorySelection();
+      options.markDirty();
     }, label);
-  }
+  };
 
-  reorderRepositoryByDrop(
+  const reorderRepositoryByDrop = (
     draggedRepositoryId: string,
     targetRepositoryId: string,
     orderedRepositoryIds: readonly string[],
-  ): void {
-    const reordered = this.reorderIdsByMove(
-      orderedRepositoryIds,
-      draggedRepositoryId,
-      targetRepositoryId,
-    );
+  ): void => {
+    const reordered = reorderIdsByMove(orderedRepositoryIds, draggedRepositoryId, targetRepositoryId);
     if (reordered === null) {
       return;
     }
-    this.queueRepositoryPriorityOrder(reordered, 'repositories-reorder-drag');
-  }
+    queueRepositoryPriorityOrder(reordered, 'repositories-reorder-drag');
+  };
 
-  async upsertRepositoryByRemoteUrl(
+  const upsertRepositoryByRemoteUrl = async (
     remoteUrl: string,
     existingRepositoryId?: string,
-  ): Promise<void> {
-    const normalizedRemoteUrl = this.options.normalizeGitHubRemoteUrl(remoteUrl);
+  ): Promise<void> => {
+    const normalizedRemoteUrl = options.normalizeGitHubRemoteUrl(remoteUrl);
     if (normalizedRemoteUrl === null) {
       throw new Error('github url required');
     }
-    const repositoryName = this.options.repositoryNameFromGitHubRemoteUrl(normalizedRemoteUrl);
+    const repositoryName = options.repositoryNameFromGitHubRemoteUrl(normalizedRemoteUrl);
     const repository =
       existingRepositoryId === undefined
-        ? await this.options.controlPlaneService.upsertRepository({
-            repositoryId: this.options.createRepositoryId(),
+        ? await options.controlPlaneService.upsertRepository({
+            repositoryId: options.createRepositoryId(),
             name: repositoryName,
             remoteUrl: normalizedRemoteUrl,
             defaultBranch: 'main',
@@ -162,38 +190,31 @@ export class RuntimeRepositoryActions<TRepository extends RepositoryRecordShape>
               source: 'mux-manual',
             },
           })
-        : await this.options.controlPlaneService.updateRepository({
+        : await options.controlPlaneService.updateRepository({
             repositoryId: existingRepositoryId,
             name: repositoryName,
             remoteUrl: normalizedRemoteUrl,
           });
-    this.options.repositories.set(repository.repositoryId, repository);
-    this.options.syncRepositoryAssociationsWithDirectorySnapshots();
-    this.options.syncTaskPaneRepositorySelection();
-    this.options.markDirty();
-  }
+    options.repositories.set(repository.repositoryId, repository);
+    options.syncRepositoryAssociationsWithDirectorySnapshots();
+    options.syncTaskPaneRepositorySelection();
+    options.markDirty();
+  };
 
-  async archiveRepositoryById(repositoryId: string): Promise<void> {
-    await this.options.controlPlaneService.archiveRepository(repositoryId);
-    this.options.repositories.delete(repositoryId);
-    this.options.syncRepositoryAssociationsWithDirectorySnapshots();
-    this.options.syncTaskPaneRepositorySelection();
-    this.options.markDirty();
-  }
+  const archiveRepositoryById = async (repositoryId: string): Promise<void> => {
+    await options.controlPlaneService.archiveRepository(repositoryId);
+    options.repositories.delete(repositoryId);
+    options.syncRepositoryAssociationsWithDirectorySnapshots();
+    options.syncTaskPaneRepositorySelection();
+    options.markDirty();
+  };
 
-  private reorderIdsByMove(
-    orderedIds: readonly string[],
-    movedId: string,
-    targetId: string,
-  ): readonly string[] | null {
-    const fromIndex = orderedIds.indexOf(movedId);
-    const targetIndex = orderedIds.indexOf(targetId);
-    if (fromIndex < 0 || targetIndex < 0 || fromIndex === targetIndex) {
-      return null;
-    }
-    const reordered = [...orderedIds];
-    const moved = reordered.splice(fromIndex, 1)[0]!;
-    reordered.splice(targetIndex, 0, moved);
-    return reordered;
-  }
+  return {
+    openRepositoryPromptForCreate,
+    openRepositoryPromptForEdit,
+    queueRepositoryPriorityOrder,
+    reorderRepositoryByDrop,
+    upsertRepositoryByRemoteUrl,
+    archiveRepositoryById,
+  };
 }

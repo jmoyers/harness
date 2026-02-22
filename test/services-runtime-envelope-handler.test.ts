@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import type { StreamServerEnvelope } from '../src/control-plane/stream-protocol.ts';
-import { RuntimeEnvelopeHandler } from '../src/services/runtime-envelope-handler.ts';
+import {
+  handleRuntimeEnvelope,
+  type RuntimeEnvelopeHandlerOptions,
+} from '../src/services/runtime-envelope-handler.ts';
 
 interface ConversationRecord {
   directoryId: string | null;
@@ -25,7 +28,7 @@ void test('runtime envelope handler handles pty.output, records cursor regressio
     lastEventAt: 'old-ts',
   };
   const events: Array<{ ts: string }> = [];
-  const handler = new RuntimeEnvelopeHandler({
+  const options: RuntimeEnvelopeHandlerOptions<ConversationRecord, { ts: string }> = {
     perfNowNs: (() => {
       let tick = 0n;
       return () => {
@@ -92,9 +95,10 @@ void test('runtime envelope handler handles pty.output, records cursor regressio
       calls.push('applyObserved');
     },
     idFactory: () => 'event-id',
-  });
+  };
 
-  handler.handleEnvelope(
+  handleRuntimeEnvelope(
+    options,
     asEnvelope({
       kind: 'pty.output',
       sessionId: 'session-1',
@@ -130,7 +134,7 @@ void test('runtime envelope handler handles pty.event session-exit and pty.exit 
     lastEventAt: 'old-ts',
   };
 
-  const handler = new RuntimeEnvelopeHandler({
+  const options: RuntimeEnvelopeHandlerOptions<ConversationRecord, { ts: string }> = {
     perfNowNs: () => 10n,
     isRemoved: () => false,
     ensureConversation: () => conversation,
@@ -173,9 +177,10 @@ void test('runtime envelope handler handles pty.event session-exit and pty.exit 
     conversationById: () => conversation,
     applyObservedEvent: () => {},
     idFactory: () => 'event-id',
-  });
+  };
 
-  handler.handleEnvelope(
+  handleRuntimeEnvelope(
+    options,
     asEnvelope({
       kind: 'pty.event',
       sessionId: 'session-2',
@@ -192,7 +197,8 @@ void test('runtime envelope handler handles pty.event session-exit and pty.exit 
     resumeSessionId: 'new',
   });
 
-  handler.handleEnvelope(
+  handleRuntimeEnvelope(
+    options,
     asEnvelope({
       kind: 'pty.exit',
       sessionId: 'session-2',
@@ -229,7 +235,7 @@ void test('runtime envelope handler forwards stream.event envelopes and removed-
   };
   let removed = true;
 
-  const handler = new RuntimeEnvelopeHandler({
+  const options: RuntimeEnvelopeHandlerOptions<ConversationRecord, { ts: string }> = {
     perfNowNs: () => 0n,
     isRemoved: () => removed,
     ensureConversation: () => conversation,
@@ -269,9 +275,10 @@ void test('runtime envelope handler forwards stream.event envelopes and removed-
       calls.push(`applyObserved:${input.subscriptionId}:${input.cursor}`);
     },
     idFactory: () => 'event-id',
-  });
+  };
 
-  handler.handleEnvelope(
+  handleRuntimeEnvelope(
+    options,
     asEnvelope({
       kind: 'pty.output',
       sessionId: 'session-3',
@@ -280,7 +287,8 @@ void test('runtime envelope handler forwards stream.event envelopes and removed-
     }),
   );
   removed = false;
-  handler.handleEnvelope(
+  handleRuntimeEnvelope(
+    options,
     asEnvelope({
       kind: 'stream.event',
       subscriptionId: 'sub-1',
@@ -303,7 +311,8 @@ void test('runtime envelope handler forwards stream.event envelopes and removed-
       },
     }),
   );
-  handler.handleEnvelope(
+  handleRuntimeEnvelope(
+    options,
     asEnvelope({
       kind: 'stream.event',
       subscriptionId: 'sub-1',
@@ -326,7 +335,8 @@ void test('runtime envelope handler forwards stream.event envelopes and removed-
       },
     }),
   );
-  handler.handleEnvelope(
+  handleRuntimeEnvelope(
+    options,
     asEnvelope({
       kind: 'stream.event',
       subscriptionId: 'sub-1',

@@ -24,7 +24,7 @@ interface RuntimeObservedEventEnvelopeInput {
   readonly event: StreamObservedEvent;
 }
 
-interface RuntimeEnvelopeHandlerOptions<
+export interface RuntimeEnvelopeHandlerOptions<
   TConversation extends RuntimeEnvelopeConversationLike,
   TNormalizedEvent extends { ts: string },
 > {
@@ -83,122 +83,118 @@ interface RuntimeEnvelopeHandlerOptions<
   readonly idFactory: () => string;
 }
 
-export class RuntimeEnvelopeHandler<
+export function handleRuntimeEnvelope<
   TConversation extends RuntimeEnvelopeConversationLike,
   TNormalizedEvent extends { ts: string },
-> {
-  constructor(
-    private readonly options: RuntimeEnvelopeHandlerOptions<TConversation, TNormalizedEvent>,
-  ) {}
-
-  handleEnvelope(envelope: StreamServerEnvelope): void {
-    if (envelope.kind === 'pty.output') {
-      const outputHandledStartedAtNs = this.options.perfNowNs();
-      if (this.options.isRemoved(envelope.sessionId)) {
-        return;
-      }
-      const chunk = Buffer.from(envelope.chunkBase64, 'base64');
-      const outputIngest = this.options.ingestOutputChunk({
+>(
+  options: RuntimeEnvelopeHandlerOptions<TConversation, TNormalizedEvent>,
+  envelope: StreamServerEnvelope,
+): void {
+  if (envelope.kind === 'pty.output') {
+    const outputHandledStartedAtNs = options.perfNowNs();
+    if (options.isRemoved(envelope.sessionId)) {
+      return;
+    }
+    const chunk = Buffer.from(envelope.chunkBase64, 'base64');
+    const outputIngest = options.ingestOutputChunk({
+      sessionId: envelope.sessionId,
+      cursor: envelope.cursor,
+      chunk,
+      ensureConversation: options.ensureConversation,
+    });
+    const conversation = outputIngest.conversation;
+    options.noteGitActivity(conversation.directoryId);
+    options.recordOutputChunk({
+      sessionId: envelope.sessionId,
+      chunkLength: chunk.length,
+      active: options.activeConversationId() === envelope.sessionId,
+    });
+    options.startupOutputChunk(envelope.sessionId, chunk.length);
+    options.startupPaintOutputChunk(envelope.sessionId);
+    if (outputIngest.cursorRegressed) {
+      options.recordPerfEvent('mux.output.cursor-regression', {
         sessionId: envelope.sessionId,
+        previousCursor: outputIngest.previousCursor,
         cursor: envelope.cursor,
-        chunk,
-        ensureConversation: this.options.ensureConversation,
       });
-      const conversation = outputIngest.conversation;
-      this.options.noteGitActivity(conversation.directoryId);
-      this.options.recordOutputChunk({
+    }
+
+    const normalized = options.mapTerminalOutputToNormalizedEvent(
+      chunk,
+      conversation.scope,
+      options.idFactory,
+    );
+    options.enqueueEvent(normalized);
+    conversation.lastEventAt = normalized.ts;
+    if (options.activeConversationId() === envelope.sessionId) {
+      options.markDirty();
+    }
+    const outputHandledDurationMs = Number(options.perfNowNs() - outputHandledStartedAtNs) / 1e6;
+    options.recordOutputHandled(outputHandledDurationMs);
+    return;
+  }
+
+  if (envelope.kind === 'pty.event') {
+    if (options.isRemoved(envelope.sessionId)) {
+      return;
+    }
+    const conversation = options.ensureConversation(envelope.sessionId);
+    options.noteGitActivity(conversation.directoryId);
+    const observedAt = options.observedAtFromSessionEvent(envelope.event);
+    const updatedAdapterState = options.mergeAdapterStateFromSessionEvent(
+      conversation.agentType,
+      conversation.adapterState,
+      envelope.event,
+      observedAt,
+    );
+    if (updatedAdapterState !== null) {
+      conversation.adapterState = updatedAdapterState;
+    }
+    const normalized = options.mapSessionEventToNormalizedEvent(
+      envelope.event,
+      conversation.scope,
+      options.idFactory,
+    );
+    if (normalized !== null) {
+      options.enqueueEvent(normalized);
+    }
+    if (envelope.event.type === 'session-exit') {
+      options.setExit(envelope.event.exit);
+      options.markSessionExited({
         sessionId: envelope.sessionId,
-        chunkLength: chunk.length,
-        active: this.options.activeConversationId() === envelope.sessionId,
+        exit: envelope.event.exit,
+        exitedAt: options.nowIso(),
       });
-      this.options.startupOutputChunk(envelope.sessionId, chunk.length);
-      this.options.startupPaintOutputChunk(envelope.sessionId);
-      if (outputIngest.cursorRegressed) {
-        this.options.recordPerfEvent('mux.output.cursor-regression', {
-          sessionId: envelope.sessionId,
-          previousCursor: outputIngest.previousCursor,
-          cursor: envelope.cursor,
-        });
-      }
+      options.deletePtySize(envelope.sessionId);
+    }
+    options.markDirty();
+    return;
+  }
 
-      const normalized = this.options.mapTerminalOutputToNormalizedEvent(
-        chunk,
-        conversation.scope,
-        this.options.idFactory,
-      );
-      this.options.enqueueEvent(normalized);
-      conversation.lastEventAt = normalized.ts;
-      if (this.options.activeConversationId() === envelope.sessionId) {
-        this.options.markDirty();
-      }
-      const outputHandledDurationMs =
-        Number(this.options.perfNowNs() - outputHandledStartedAtNs) / 1e6;
-      this.options.recordOutputHandled(outputHandledDurationMs);
+  if (envelope.kind === 'pty.exit') {
+    if (options.isRemoved(envelope.sessionId)) {
       return;
     }
-
-    if (envelope.kind === 'pty.event') {
-      if (this.options.isRemoved(envelope.sessionId)) {
-        return;
-      }
-      const conversation = this.options.ensureConversation(envelope.sessionId);
-      this.options.noteGitActivity(conversation.directoryId);
-      const observedAt = this.options.observedAtFromSessionEvent(envelope.event);
-      const updatedAdapterState = this.options.mergeAdapterStateFromSessionEvent(
-        conversation.agentType,
-        conversation.adapterState,
-        envelope.event,
-        observedAt,
-      );
-      if (updatedAdapterState !== null) {
-        conversation.adapterState = updatedAdapterState;
-      }
-      const normalized = this.options.mapSessionEventToNormalizedEvent(
-        envelope.event,
-        conversation.scope,
-        this.options.idFactory,
-      );
-      if (normalized !== null) {
-        this.options.enqueueEvent(normalized);
-      }
-      if (envelope.event.type === 'session-exit') {
-        this.options.setExit(envelope.event.exit);
-        this.options.markSessionExited({
-          sessionId: envelope.sessionId,
-          exit: envelope.event.exit,
-          exitedAt: this.options.nowIso(),
-        });
-        this.options.deletePtySize(envelope.sessionId);
-      }
-      this.options.markDirty();
-      return;
-    }
-
-    if (envelope.kind === 'pty.exit') {
-      if (this.options.isRemoved(envelope.sessionId)) {
-        return;
-      }
-      const conversation = this.options.conversationById(envelope.sessionId);
-      if (conversation !== undefined) {
-        this.options.noteGitActivity(conversation.directoryId);
-        this.options.setExit(envelope.exit);
-        this.options.markSessionExited({
-          sessionId: envelope.sessionId,
-          exit: envelope.exit,
-          exitedAt: this.options.nowIso(),
-        });
-        this.options.deletePtySize(envelope.sessionId);
-      }
-      this.options.markDirty();
-      return;
-    }
-
-    if (envelope.kind === 'stream.event') {
-      this.options.applyObservedEvent({
-        subscriptionId: envelope.subscriptionId,
-        cursor: envelope.cursor,
-        event: envelope.event,
+    const conversation = options.conversationById(envelope.sessionId);
+    if (conversation !== undefined) {
+      options.noteGitActivity(conversation.directoryId);
+      options.setExit(envelope.exit);
+      options.markSessionExited({
+        sessionId: envelope.sessionId,
+        exit: envelope.exit,
+        exitedAt: options.nowIso(),
       });
+      options.deletePtySize(envelope.sessionId);
     }
+    options.markDirty();
+    return;
+  }
+
+  if (envelope.kind === 'stream.event') {
+    options.applyObservedEvent({
+      subscriptionId: envelope.subscriptionId,
+      cursor: envelope.cursor,
+      event: envelope.event,
+    });
   }
 }

@@ -194,20 +194,23 @@ import { SessionProjectionInstrumentation } from '../../services/session-project
 import { StartupOrchestrator } from '../../services/startup-orchestrator.ts';
 import { attachRuntimeProcessWiring } from '../../services/runtime-process-wiring.ts';
 import { createRuntimeControlPlaneOps } from '../../services/runtime-control-plane-ops.ts';
-import { RuntimeControlActions } from '../../services/runtime-control-actions.ts';
+import { createRuntimeControlActions } from '../../services/runtime-control-actions.ts';
 import { createRuntimeDirectoryActions } from '../../services/runtime-directory-actions.ts';
-import { RuntimeEnvelopeHandler } from '../../services/runtime-envelope-handler.ts';
+import {
+  handleRuntimeEnvelope,
+  type RuntimeEnvelopeHandlerOptions,
+} from '../../services/runtime-envelope-handler.ts';
 import {
   applyRuntimeObservedEventProjection,
   type RuntimeObservedEventProjectionPipelineOptions,
 } from '../../services/runtime-observed-event-projection-pipeline.ts';
 import { createRuntimeRenderPipeline } from '../../services/runtime-render-pipeline.ts';
-import { RuntimeRepositoryActions } from '../../services/runtime-repository-actions.ts';
+import { createRuntimeRepositoryActions } from '../../services/runtime-repository-actions.ts';
 import { RuntimeGitState } from '../../services/runtime-git-state.ts';
 import { RuntimeLayoutResize } from '../../services/runtime-layout-resize.ts';
 import { createRuntimeRenderLifecycle } from '../../services/runtime-render-lifecycle.ts';
 import { finalizeRuntimeShutdown } from '../../services/runtime-shutdown.ts';
-import { RuntimeTaskEditorActions } from '../../services/runtime-task-editor-actions.ts';
+import { createRuntimeTaskEditorActions } from '../../services/runtime-task-editor-actions.ts';
 import { RuntimeTaskComposerPersistenceService } from '../../services/runtime-task-composer-persistence.ts';
 import { createRuntimeTaskPaneActions } from '../../services/runtime-task-pane-actions.ts';
 import { createRuntimeTaskPaneShortcuts } from '../../services/runtime-task-pane-shortcuts.ts';
@@ -2939,7 +2942,7 @@ class CodexLiveMuxRuntimeApplication {
       markDirty();
     };
 
-    const runtimeRepositoryActions = new RuntimeRepositoryActions<ControlPlaneRepositoryRecord>({
+    const runtimeRepositoryActions = createRuntimeRepositoryActions<ControlPlaneRepositoryRecord>({
       workspace,
       repositories,
       controlPlaneService,
@@ -3027,7 +3030,7 @@ class CodexLiveMuxRuntimeApplication {
       applyTaskRecord: (task) => runtimeTaskPaneActions.applyTaskRecord(task),
       markDirty,
     });
-    const runtimeTaskEditorActions = new RuntimeTaskEditorActions<ControlPlaneTaskRecord>({
+    const runtimeTaskEditorActions = createRuntimeTaskEditorActions<ControlPlaneTaskRecord>({
       workspace,
       controlPlaneService,
       applyTaskRecord: (task) => runtimeTaskPaneActions.applyTaskRecord(task),
@@ -3098,7 +3101,7 @@ class CodexLiveMuxRuntimeApplication {
       },
       invocationDirectory: options.invocationDirectory,
     });
-    const runtimeControlActions = new RuntimeControlActions({
+    const runtimeControlActions = createRuntimeControlActions({
       conversationById: (sessionId) => conversationManager.get(sessionId),
       interruptSession: async (sessionId) => {
         return await controlPlaneService.interruptSession(sessionId);
@@ -4274,10 +4277,10 @@ class CodexLiveMuxRuntimeApplication {
       });
     };
 
-    const runtimeEnvelopeHandler = new RuntimeEnvelopeHandler<
+    const runtimeEnvelopeHandlerOptions: RuntimeEnvelopeHandlerOptions<
       ConversationState,
       ReturnType<typeof mapTerminalOutputToNormalizedEvent>
-    >({
+    > = {
       perfNowNs,
       isRemoved: (sessionId) => conversationManager.isRemoved(sessionId),
       ensureConversation,
@@ -4337,7 +4340,7 @@ class CodexLiveMuxRuntimeApplication {
         applyRuntimeObservedEventProjection(input, runtimeObservedEventProjection);
       },
       idFactory,
-    });
+    };
     const handleEnvelope = (envelope: StreamServerEnvelope): void => {
       if (envelope.kind === 'pty.output') {
         const conversation = conversationManager.get(envelope.sessionId);
@@ -4403,7 +4406,7 @@ class CodexLiveMuxRuntimeApplication {
           payload: envelope,
         });
       }
-      runtimeEnvelopeHandler.handleEnvelope(envelope);
+      handleRuntimeEnvelope(runtimeEnvelopeHandlerOptions, envelope);
     };
 
     const removeEnvelopeListener = streamClient.onEnvelope((envelope) => {

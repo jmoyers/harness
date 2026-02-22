@@ -28,7 +28,7 @@ interface RuntimeConversationTitleRefreshResult {
 
 const THREAD_TITLE_AGENT_TYPES = new Set(['codex', 'claude', 'cursor']);
 
-interface RuntimeControlActionsOptions<TConversation extends RuntimeConversationControlState> {
+export interface RuntimeControlActionsOptions<TConversation extends RuntimeConversationControlState> {
   readonly conversationById: (sessionId: string) => TConversation | undefined;
   readonly interruptSession: (sessionId: string) => Promise<RuntimeInterruptResult>;
   readonly nowIso: () => string;
@@ -57,81 +57,101 @@ interface RuntimeControlActionsOptions<TConversation extends RuntimeConversation
   ) => Promise<RuntimeConversationTitleRefreshResult>;
 }
 
-export class RuntimeControlActions<TConversation extends RuntimeConversationControlState> {
-  constructor(private readonly options: RuntimeControlActionsOptions<TConversation>) {}
+export interface RuntimeControlActions {
+  interruptConversation(sessionId: string): Promise<void>;
+  toggleGatewayProfiler(): Promise<void>;
+  toggleGatewayStatusTimeline(): Promise<void>;
+  toggleGatewayRenderTrace(conversationId: string | null): Promise<void>;
+  refreshAllConversationTitles(): Promise<void>;
+}
 
-  async interruptConversation(sessionId: string): Promise<void> {
-    const conversation = this.options.conversationById(sessionId);
+export function createRuntimeControlActions<TConversation extends RuntimeConversationControlState>(
+  options: RuntimeControlActionsOptions<TConversation>,
+): RuntimeControlActions {
+  const scopeMessage = (prefix: string, message: string): string => {
+    if (options.sessionName === null) {
+      return `[${prefix}] ${message}`;
+    }
+    return `[${prefix}:${options.sessionName}] ${message}`;
+  };
+
+  const setNotices = (message: string): void => {
+    options.setTaskPaneNotice(message);
+    options.setDebugFooterNotice(message);
+  };
+
+  const interruptConversation = async (sessionId: string): Promise<void> => {
+    const conversation = options.conversationById(sessionId);
     if (conversation === undefined || !conversation.live) {
       return;
     }
-    const result = await this.options.interruptSession(sessionId);
+    const result = await options.interruptSession(sessionId);
     if (!result.interrupted) {
       return;
     }
     conversation.status = 'completed';
     conversation.attentionReason = null;
-    conversation.lastEventAt = this.options.nowIso();
-    this.options.markDirty();
-  }
+    conversation.lastEventAt = options.nowIso();
+    options.markDirty();
+  };
 
-  async toggleGatewayProfiler(): Promise<void> {
+  const toggleGatewayProfiler = async (): Promise<void> => {
     try {
-      const result = await this.options.toggleGatewayProfiler({
-        invocationDirectory: this.options.invocationDirectory,
-        sessionName: this.options.sessionName,
+      const result = await options.toggleGatewayProfiler({
+        invocationDirectory: options.invocationDirectory,
+        sessionName: options.sessionName,
       });
-      this.setNotices(this.scopeMessage('profile', result.message));
+      setNotices(scopeMessage('profile', result.message));
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      this.setNotices(this.scopeMessage('profile', message));
+      setNotices(scopeMessage('profile', message));
     } finally {
-      this.options.markDirty();
+      options.markDirty();
     }
-  }
+  };
 
-  async toggleGatewayStatusTimeline(): Promise<void> {
+  const toggleGatewayStatusTimeline = async (): Promise<void> => {
     try {
-      const result = await this.options.toggleGatewayStatusTimeline({
-        invocationDirectory: this.options.invocationDirectory,
-        sessionName: this.options.sessionName,
+      const result = await options.toggleGatewayStatusTimeline({
+        invocationDirectory: options.invocationDirectory,
+        sessionName: options.sessionName,
       });
-      this.setNotices(this.scopeMessage('status-trace', result.message));
+      setNotices(scopeMessage('status-trace', result.message));
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      this.setNotices(this.scopeMessage('status-trace', message));
+      setNotices(scopeMessage('status-trace', message));
     } finally {
-      this.options.markDirty();
+      options.markDirty();
     }
-  }
+  };
 
-  async toggleGatewayRenderTrace(conversationId: string | null): Promise<void> {
+  const toggleGatewayRenderTrace = async (conversationId: string | null): Promise<void> => {
     try {
-      const result = await this.options.toggleGatewayRenderTrace({
-        invocationDirectory: this.options.invocationDirectory,
-        sessionName: this.options.sessionName,
+      const result = await options.toggleGatewayRenderTrace({
+        invocationDirectory: options.invocationDirectory,
+        sessionName: options.sessionName,
         conversationId,
       });
-      this.setNotices(this.scopeMessage('render-trace', result.message));
+      setNotices(scopeMessage('render-trace', result.message));
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      this.setNotices(this.scopeMessage('render-trace', message));
+      setNotices(scopeMessage('render-trace', message));
     } finally {
-      this.options.markDirty();
+      options.markDirty();
     }
-  }
+  };
 
-  async refreshAllConversationTitles(): Promise<void> {
-    const listConversationIds = this.options.listConversationIdsForTitleRefresh;
-    const resolveAgentType = this.options.conversationAgentTypeForTitleRefresh;
-    const refreshConversationTitle = this.options.refreshConversationTitle;
+  const refreshAllConversationTitles = async (): Promise<void> => {
+    const listConversationIds = options.listConversationIdsForTitleRefresh;
+    const resolveAgentType = options.conversationAgentTypeForTitleRefresh;
+    const refreshConversationTitle = options.refreshConversationTitle;
     if (
       listConversationIds === undefined ||
       resolveAgentType === undefined ||
       refreshConversationTitle === undefined
     ) {
-      this.setNotices(this.scopeMessage('thread-title', 'refresh unavailable'));
-      this.options.markDirty();
+      setNotices(scopeMessage('thread-title', 'refresh unavailable'));
+      options.markDirty();
       return;
     }
     const allConversationIds = listConversationIds();
@@ -140,16 +160,16 @@ export class RuntimeControlActions<TConversation extends RuntimeConversationCont
       return agentType !== undefined && THREAD_TITLE_AGENT_TYPES.has(agentType);
     });
     if (eligibleConversationIds.length === 0) {
-      this.setNotices(this.scopeMessage('thread-title', 'no agent threads to refresh'));
-      this.options.markDirty();
+      setNotices(scopeMessage('thread-title', 'no agent threads to refresh'));
+      options.markDirty();
       return;
     }
     const total = eligibleConversationIds.length;
     let updated = 0;
     let unchanged = 0;
     let skipped = 0;
-    this.setNotices(this.scopeMessage('thread-title', `refreshing names 0/${String(total)}`));
-    this.options.markDirty();
+    setNotices(scopeMessage('thread-title', `refreshing names 0/${String(total)}`));
+    options.markDirty();
     for (let index = 0; index < eligibleConversationIds.length; index += 1) {
       const sessionId = eligibleConversationIds[index]!;
       try {
@@ -164,29 +184,23 @@ export class RuntimeControlActions<TConversation extends RuntimeConversationCont
       } catch {
         skipped += 1;
       }
-      this.setNotices(
-        this.scopeMessage('thread-title', `refreshing names ${String(index + 1)}/${String(total)}`),
-      );
-      this.options.markDirty();
+      setNotices(scopeMessage('thread-title', `refreshing names ${String(index + 1)}/${String(total)}`));
+      options.markDirty();
     }
-    this.setNotices(
-      this.scopeMessage(
+    setNotices(
+      scopeMessage(
         'thread-title',
         `refreshed ${String(updated)} updated ${String(unchanged)} unchanged ${String(skipped)} skipped`,
       ),
     );
-    this.options.markDirty();
-  }
+    options.markDirty();
+  };
 
-  private scopeMessage(prefix: string, message: string): string {
-    if (this.options.sessionName === null) {
-      return `[${prefix}] ${message}`;
-    }
-    return `[${prefix}:${this.options.sessionName}] ${message}`;
-  }
-
-  private setNotices(message: string): void {
-    this.options.setTaskPaneNotice(message);
-    this.options.setDebugFooterNotice(message);
-  }
+  return {
+    interruptConversation,
+    toggleGatewayProfiler,
+    toggleGatewayStatusTimeline,
+    toggleGatewayRenderTrace,
+    refreshAllConversationTitles,
+  };
 }

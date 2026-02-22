@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import { WorkspaceModel } from '../src/domain/workspace.ts';
 import {
-  RuntimeTaskEditorActions,
+  createRuntimeTaskEditorActions,
   type RuntimeTaskEditorSubmitPayload,
 } from '../src/services/runtime-task-editor-actions.ts';
 
@@ -52,7 +52,7 @@ function createHarness(
   const calls: string[] = [];
   const queuedOps: Array<() => Promise<void>> = [];
 
-  const service = new RuntimeTaskEditorActions<TaskRecord>({
+  const service = createRuntimeTaskEditorActions<TaskRecord>({
     workspace,
     controlPlaneService: {
       createTask:

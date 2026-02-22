@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { RuntimeControlActions } from '../src/services/runtime-control-actions.ts';
+import { createRuntimeControlActions } from '../src/services/runtime-control-actions.ts';
 
 interface TestConversationState {
   live: boolean;
@@ -12,7 +12,7 @@ interface TestConversationState {
 void test('runtime control actions interrupt is a no-op for missing conversation', async () => {
   let interruptedCalls = 0;
   let dirtyCalls = 0;
-  const actions = new RuntimeControlActions<TestConversationState>({
+  const actions = createRuntimeControlActions<TestConversationState>({
     conversationById: () => undefined,
     interruptSession: async () => {
       interruptedCalls += 1;
@@ -45,7 +45,7 @@ void test('runtime control actions interrupt updates live conversation when inte
     attentionReason: 'waiting',
     lastEventAt: 'old',
   };
-  const actions = new RuntimeControlActions<TestConversationState>({
+  const actions = createRuntimeControlActions<TestConversationState>({
     conversationById: () => conversation,
     interruptSession: async () => ({ interrupted: true }),
     nowIso: () => '2026-02-18T00:00:00.000Z',
@@ -77,7 +77,7 @@ void test('runtime control actions interrupt keeps state unchanged when interrup
     attentionReason: 'waiting',
     lastEventAt: 'old',
   };
-  const actions = new RuntimeControlActions<TestConversationState>({
+  const actions = createRuntimeControlActions<TestConversationState>({
     conversationById: () => conversation,
     interruptSession: async () => ({ interrupted: false }),
     nowIso: () => '2026-02-18T00:00:00.000Z',
@@ -104,7 +104,7 @@ void test('runtime control actions interrupt keeps state unchanged when interrup
 void test('runtime control actions toggle gateway profiler writes success notice with session scope', async () => {
   const notices: string[] = [];
   let dirtyCalls = 0;
-  const actions = new RuntimeControlActions<TestConversationState>({
+  const actions = createRuntimeControlActions<TestConversationState>({
     conversationById: () => undefined,
     interruptSession: async () => ({ interrupted: false }),
     nowIso: () => '2026-02-18T00:00:00.000Z',
@@ -140,7 +140,7 @@ void test('runtime control actions toggle gateway profiler writes success notice
 void test('runtime control actions toggle gateway profiler writes failure notice with default scope', async () => {
   const notices: string[] = [];
   let dirtyCalls = 0;
-  const actions = new RuntimeControlActions<TestConversationState>({
+  const actions = createRuntimeControlActions<TestConversationState>({
     conversationById: () => undefined,
     interruptSession: async () => ({ interrupted: false }),
     nowIso: () => '2026-02-18T00:00:00.000Z',
@@ -174,7 +174,7 @@ void test('runtime control actions toggle gateway profiler writes failure notice
 void test('runtime control actions toggle gateway status timeline writes success notice with session scope', async () => {
   const notices: string[] = [];
   let dirtyCalls = 0;
-  const actions = new RuntimeControlActions<TestConversationState>({
+  const actions = createRuntimeControlActions<TestConversationState>({
     conversationById: () => undefined,
     interruptSession: async () => ({ interrupted: false }),
     nowIso: () => '2026-02-18T00:00:00.000Z',
@@ -210,7 +210,7 @@ void test('runtime control actions toggle gateway status timeline writes success
 void test('runtime control actions toggle gateway status timeline writes failure notice with default scope', async () => {
   const notices: string[] = [];
   let dirtyCalls = 0;
-  const actions = new RuntimeControlActions<TestConversationState>({
+  const actions = createRuntimeControlActions<TestConversationState>({
     conversationById: () => undefined,
     interruptSession: async () => ({ interrupted: false }),
     nowIso: () => '2026-02-18T00:00:00.000Z',
@@ -244,7 +244,7 @@ void test('runtime control actions toggle gateway status timeline writes failure
 void test('runtime control actions toggle gateway render trace writes scoped notice and forwards conversation id', async () => {
   const notices: string[] = [];
   let dirtyCalls = 0;
-  const actions = new RuntimeControlActions<TestConversationState>({
+  const actions = createRuntimeControlActions<TestConversationState>({
     conversationById: () => undefined,
     interruptSession: async () => ({ interrupted: false }),
     nowIso: () => '2026-02-18T00:00:00.000Z',
@@ -281,7 +281,7 @@ void test('runtime control actions toggle gateway render trace writes scoped not
 void test('runtime control actions refreshAllConversationTitles reports unavailable when callbacks are missing', async () => {
   const notices: string[] = [];
   let dirtyCalls = 0;
-  const actions = new RuntimeControlActions<TestConversationState>({
+  const actions = createRuntimeControlActions<TestConversationState>({
     conversationById: () => undefined,
     interruptSession: async () => ({ interrupted: false }),
     nowIso: () => '2026-02-18T00:00:00.000Z',
@@ -314,7 +314,7 @@ void test('runtime control actions refreshAllConversationTitles tracks progress 
   const notices: string[] = [];
   let dirtyCalls = 0;
   const refreshedSessionIds: string[] = [];
-  const actions = new RuntimeControlActions<TestConversationState>({
+  const actions = createRuntimeControlActions<TestConversationState>({
     conversationById: () => undefined,
     interruptSession: async () => ({ interrupted: false }),
     nowIso: () => '2026-02-18T00:00:00.000Z',

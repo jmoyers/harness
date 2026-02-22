@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import { WorkspaceModel, type ConversationTitleEditState } from '../src/domain/workspace.ts';
 import { createNewThreadPromptState } from '../src/mux/new-thread-prompt.ts';
-import { RuntimeRepositoryActions } from '../src/services/runtime-repository-actions.ts';
+import { createRuntimeRepositoryActions } from '../src/services/runtime-repository-actions.ts';
 
 interface RepositoryRecord {
   readonly repositoryId: string;
@@ -49,7 +49,7 @@ function createHarness() {
   const repositories = new Map<string, RepositoryRecord>();
   const calls: string[] = [];
   const queuedOps: Array<() => Promise<void>> = [];
-  const service = new RuntimeRepositoryActions<RepositoryRecord>({
+  const service = createRuntimeRepositoryActions<RepositoryRecord>({
     workspace,
     repositories,
     controlPlaneService: {

@@ -30,7 +30,7 @@ export interface RuntimeTaskEditorSubmitPayload {
   readonly commandLabel: string;
 }
 
-interface RuntimeTaskEditorActionsOptions<TTaskRecord extends TaskRecordShape> {
+export interface RuntimeTaskEditorActionsOptions<TTaskRecord extends TaskRecordShape> {
   readonly workspace: WorkspaceModel;
   readonly controlPlaneService: RuntimeTaskEditorActionService<TTaskRecord>;
   readonly applyTaskRecord: (task: TTaskRecord) => void;
@@ -42,15 +42,19 @@ function formatErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export class RuntimeTaskEditorActions<TTaskRecord extends TaskRecordShape> {
-  constructor(private readonly options: RuntimeTaskEditorActionsOptions<TTaskRecord>) {}
+export interface RuntimeTaskEditorActions {
+  submitTaskEditorPayload(payload: RuntimeTaskEditorSubmitPayload): void;
+}
 
-  submitTaskEditorPayload(payload: RuntimeTaskEditorSubmitPayload): void {
-    this.options.queueControlPlaneOp(async () => {
+export function createRuntimeTaskEditorActions<TTaskRecord extends TaskRecordShape>(
+  options: RuntimeTaskEditorActionsOptions<TTaskRecord>,
+): RuntimeTaskEditorActions {
+  const submitTaskEditorPayload = (payload: RuntimeTaskEditorSubmitPayload): void => {
+    options.queueControlPlaneOp(async () => {
       try {
         if (payload.mode === 'create') {
-          this.options.applyTaskRecord(
-            await this.options.controlPlaneService.createTask({
+          options.applyTaskRecord(
+            await options.controlPlaneService.createTask({
               ...(payload.repositoryId === null ? {} : { repositoryId: payload.repositoryId }),
               ...(payload.projectId === undefined || payload.projectId === null
                 ? {}
@@ -63,8 +67,8 @@ export class RuntimeTaskEditorActions<TTaskRecord extends TaskRecordShape> {
           if (payload.taskId === null) {
             throw new Error('task edit state missing task id');
           }
-          this.options.applyTaskRecord(
-            await this.options.controlPlaneService.updateTask({
+          options.applyTaskRecord(
+            await options.controlPlaneService.updateTask({
               taskId: payload.taskId,
               ...(payload.repositoryId === null ? {} : { repositoryId: payload.repositoryId }),
               ...(payload.projectId === undefined || payload.projectId === null
@@ -75,18 +79,22 @@ export class RuntimeTaskEditorActions<TTaskRecord extends TaskRecordShape> {
             }),
           );
         }
-        this.options.workspace.taskEditorPrompt = null;
-        this.options.workspace.taskPaneNotice = null;
+        options.workspace.taskEditorPrompt = null;
+        options.workspace.taskPaneNotice = null;
       } catch (error: unknown) {
         const message = formatErrorMessage(error);
-        if (this.options.workspace.taskEditorPrompt !== null) {
-          this.options.workspace.taskEditorPrompt.error = message;
+        if (options.workspace.taskEditorPrompt !== null) {
+          options.workspace.taskEditorPrompt.error = message;
         } else {
-          this.options.workspace.taskPaneNotice = message;
+          options.workspace.taskPaneNotice = message;
         }
       } finally {
-        this.options.markDirty();
+        options.markDirty();
       }
     }, payload.commandLabel);
-  }
+  };
+
+  return {
+    submitTaskEditorPayload,
+  };
 }
