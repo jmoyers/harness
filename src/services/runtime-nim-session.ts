@@ -201,7 +201,9 @@ export class RuntimeNimSession {
       return;
     }
     this.enqueueInput(async () => {
-      await this.requestAbort();
+      await this.requestAbort({
+        emitIdleNotice: false,
+      });
       this.options.markDirty();
     });
   }
@@ -356,7 +358,9 @@ export class RuntimeNimSession {
       return;
     }
     if (trimmed === '/abort') {
-      await this.requestAbort();
+      await this.requestAbort({
+        emitIdleNotice: true,
+      });
       return;
     }
     if (trimmed.startsWith('/mode ')) {
@@ -376,9 +380,11 @@ export class RuntimeNimSession {
     this.pushSystemLine(`[error] unknown command: ${trimmed}`);
   }
 
-  private async requestAbort(): Promise<void> {
+  private async requestAbort(input: { readonly emitIdleNotice: boolean }): Promise<void> {
     if (this.activeRunId === null) {
-      this.pushSystemLine('[notice] no active run');
+      if (input.emitIdleNotice) {
+        this.pushSystemLine('[notice] no active run');
+      }
       return;
     }
     await this.runtime.abortTurn({

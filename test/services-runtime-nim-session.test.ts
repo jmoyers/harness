@@ -147,3 +147,21 @@ void test('runtime nim session handles slash commands and mode changes', async (
     await session.dispose();
   }
 });
+
+void test('runtime nim session ignores escape when no run is active', async () => {
+  const session = new RuntimeNimSession({
+    tenantId: 'tenant-d',
+    userId: 'user-d',
+    markDirty: () => {},
+    responseChunkDelayMs: 0,
+    sleep: async () => {},
+  });
+  try {
+    await session.start();
+    session.handleEscape();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    assert.deepEqual(session.snapshot().transcriptLines, []);
+  } finally {
+    await session.dispose();
+  }
+});
