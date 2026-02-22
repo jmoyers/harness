@@ -26,6 +26,16 @@ type ParsedArgs = {
   readonly baseUrl?: string;
 };
 
+interface NimTuiParseOptions {
+  readonly cwd?: string;
+  readonly env?: NodeJS.ProcessEnv;
+  readonly sessionName?: string | null;
+}
+
+interface RunNimTuiSmokeOptions {
+  readonly sessionName?: string | null;
+}
+
 type Command =
   | { readonly type: 'help' }
   | { readonly type: 'exit' }
@@ -71,21 +81,24 @@ function printUsage(): void {
 
 export function parseNimTuiArgs(
   argv: readonly string[],
-  input: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
+  input: NimTuiParseOptions = {},
 ): ParsedArgs {
   const cwd = input.cwd ?? process.cwd();
   const env = input.env ?? process.env;
+  const sessionName = input.sessionName ?? null;
   let tenantId = 'nim-tui-tenant';
   let userId = 'nim-tui-user';
   let model: NimModelRef = 'anthropic/claude-3-haiku-20240307';
   let uiMode: NimUiMode = 'debug';
   let liveAnthropic = true;
   let sessionId: string | undefined;
-  let eventStorePath = resolveHarnessRuntimePath(cwd, '.harness/nim/events.sqlite', env);
-  let sessionStorePath = resolveHarnessRuntimePath(cwd, '.harness/nim/sessions.sqlite', env);
+  const runtimeRoot =
+    sessionName === null ? '.harness/nim' : `.harness/sessions/${sessionName}/nim`;
+  let eventStorePath = resolveHarnessRuntimePath(cwd, `${runtimeRoot}/events.sqlite`, env);
+  let sessionStorePath = resolveHarnessRuntimePath(cwd, `${runtimeRoot}/sessions.sqlite`, env);
   let telemetryPath: string | undefined = resolveHarnessRuntimePath(
     cwd,
-    '.harness/nim/events.jsonl',
+    `${runtimeRoot}/events.jsonl`,
     env,
   );
   let secretsFile: string | undefined;
@@ -666,12 +679,17 @@ async function runNimTuiInteractive(args: ParsedArgs): Promise<void> {
   }
 }
 
-export async function runNimTuiSmoke(argv: readonly string[]): Promise<number> {
+export async function runNimTuiSmoke(
+  argv: readonly string[],
+  options: RunNimTuiSmokeOptions = {},
+): Promise<number> {
   if (argv.length > 0 && (argv[0] === '--help' || argv[0] === '-h')) {
     printUsage();
     return 0;
   }
-  const args = parseNimTuiArgs(argv);
+  const args = parseNimTuiArgs(argv, {
+    sessionName: options.sessionName ?? null,
+  });
   await runNimTuiInteractive(args);
   return 0;
 }

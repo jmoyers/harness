@@ -184,3 +184,26 @@ void test('ui surface style comparison covers indexed and rgb fg/bg delta branch
   assert.equal(row.includes('\u001b[0;39;48;2;9;8;6m'), true);
   assert.equal(stripAnsi(row), 'abcdefgh');
 });
+
+void test('ui surface emits extended sgr flags for dim italic underline inverse styles', () => {
+  const surface = createUiSurface(2, 1);
+  drawUiText(surface, 0, 0, 'a', {
+    fg: { kind: 'default' },
+    bg: { kind: 'default' },
+    bold: false,
+    dim: true,
+    italic: true,
+    underline: true,
+    inverse: true,
+  });
+  drawUiText(surface, 1, 0, 'b', {
+    fg: { kind: 'default' },
+    bg: { kind: 'default' },
+    bold: false,
+  });
+
+  const row = renderUiSurfaceAnsiRows(surface)[0] ?? '';
+  assert.equal(row.includes('\u001b[0;2;3;4;7;39;49m'), true);
+  assert.equal(row.includes('\u001b[0;39;49m'), true);
+  assert.equal(stripAnsi(row), 'ab');
+});

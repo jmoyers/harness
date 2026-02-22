@@ -9,6 +9,10 @@ export interface UiStyle {
   readonly fg: UiColor;
   readonly bg: UiColor;
   readonly bold: boolean;
+  readonly dim?: boolean;
+  readonly italic?: boolean;
+  readonly underline?: boolean;
+  readonly inverse?: boolean;
 }
 
 export interface UiCell {
@@ -50,11 +54,31 @@ function cloneStyle(style: UiStyle): UiStyle {
     fg: cloneColor(style.fg),
     bg: cloneColor(style.bg),
     bold: style.bold,
+    ...(style.dim === true ? { dim: true } : {}),
+    ...(style.italic === true ? { italic: true } : {}),
+    ...(style.underline === true ? { underline: true } : {}),
+    ...(style.inverse === true ? { inverse: true } : {}),
   };
+}
+
+function styleFlag(value: boolean | undefined): boolean {
+  return value === true;
 }
 
 function styleEqual(left: UiStyle, right: UiStyle): boolean {
   if (left.bold !== right.bold) {
+    return false;
+  }
+  if (styleFlag(left.dim) !== styleFlag(right.dim)) {
+    return false;
+  }
+  if (styleFlag(left.italic) !== styleFlag(right.italic)) {
+    return false;
+  }
+  if (styleFlag(left.underline) !== styleFlag(right.underline)) {
+    return false;
+  }
+  if (styleFlag(left.inverse) !== styleFlag(right.inverse)) {
     return false;
   }
   if (left.fg.kind !== right.fg.kind || left.bg.kind !== right.bg.kind) {
@@ -101,6 +125,18 @@ function styleToSgr(style: UiStyle): string {
   const codes: string[] = ['0'];
   if (style.bold) {
     codes.push('1');
+  }
+  if (styleFlag(style.dim)) {
+    codes.push('2');
+  }
+  if (styleFlag(style.italic)) {
+    codes.push('3');
+  }
+  if (styleFlag(style.underline)) {
+    codes.push('4');
+  }
+  if (styleFlag(style.inverse)) {
+    codes.push('7');
   }
   codes.push(...colorSgrCodes(style.fg, 'fg'));
   codes.push(...colorSgrCodes(style.bg, 'bg'));

@@ -4,6 +4,7 @@ export * from './kit.ts';
 export * from './frame-primitives.ts';
 export * from './screen.ts';
 export * from './modal-manager.ts';
+export * from './layout.ts';
 export * from './interaction/conversation-input-forwarder.ts';
 export * from './interaction/conversation-selection-input.ts';
 export * from './interaction/global-shortcut-input.ts';

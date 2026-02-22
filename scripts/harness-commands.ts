@@ -262,7 +262,7 @@ class NimCommand extends HarnessCommandBase {
 
   override async run(): Promise<void> {
     const parsed = this.extractSessionArg(this.argv);
-    const code = await runNimCli(parsed.argv);
+    const code = await runNimCli(parsed.argv, parsed.sessionName);
     this.exitIfNeeded(code);
   }
 }

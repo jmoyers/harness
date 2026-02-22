@@ -72,11 +72,16 @@ export class RuntimeNimToolBridge {
       };
     }
     if (input.toolName === 'task.list') {
-      const limit = resolveTaskListLimit({
-        argumentsText: input.argumentsText,
+      const limitInput: {
+        readonly argumentsText?: string;
+        readonly argumentsValue?: unknown;
+        readonly fallback: number;
+      } = {
         argumentsValue: input.argumentsValue,
         fallback: this.taskListLimit,
-      });
+        ...(input.argumentsText === undefined ? {} : { argumentsText: input.argumentsText }),
+      };
+      const limit = resolveTaskListLimit(limitInput);
       const tasks = await this.options.listTasks(limit);
       return {
         count: tasks.length,

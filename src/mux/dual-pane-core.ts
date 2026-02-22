@@ -1,4 +1,5 @@
 import { measureDisplayWidth, wrapTextForColumns } from '../terminal/snapshot-oracle.ts';
+import { computeDualPaneLayoutWithLayers } from '../../packages/harness-ui/src/layout.ts';
 
 const MIN_LEFT_PANE_COLS = 28;
 const MIN_RIGHT_PANE_COLS = 20;
@@ -92,22 +93,21 @@ export function computeDualPaneLayout(
 ): DualPaneLayout {
   const normalizedCols = Math.max(3, cols);
   const normalizedRows = Math.max(2, rows);
-  const paneRows = Math.max(1, normalizedRows - 1);
-  const statusRow = paneRows + 1;
-
-  const availablePaneCols = normalizedCols - 1;
   const leftCols = resolveLeftPaneCols(normalizedCols, options.leftCols ?? null);
-  const rightCols = availablePaneCols - leftCols;
+  const layout = computeDualPaneLayoutWithLayers(normalizedCols, normalizedRows, {
+    leftCols,
+    statusRows: 1,
+  });
 
   return {
-    cols: normalizedCols,
-    rows: normalizedRows,
-    paneRows,
-    statusRow,
-    leftCols,
-    rightCols,
-    separatorCol: leftCols + 1,
-    rightStartCol: leftCols + 2,
+    cols: layout.cols,
+    rows: layout.rows,
+    paneRows: layout.paneRows,
+    statusRow: layout.statusRow,
+    leftCols: layout.leftCols,
+    rightCols: layout.rightCols,
+    separatorCol: layout.separatorCol,
+    rightStartCol: layout.rightStartCol,
   };
 }
 

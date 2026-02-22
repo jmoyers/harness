@@ -19,6 +19,22 @@ test('nim tui arg parser resolves defaults and runtime paths', () => {
   assert.equal(parsed.telemetryPath?.includes('/workspaces/'), true);
 });
 
+test('nim tui arg parser scopes default runtime paths under named harness session', () => {
+  const parsed = parseNimTuiArgs([], {
+    cwd: '/tmp/workspace',
+    env: {
+      HOME: '/tmp/home',
+    },
+    sessionName: 'nim-session-a',
+  });
+  assert.equal(parsed.eventStorePath.includes('/sessions/nim-session-a/nim/events.sqlite'), true);
+  assert.equal(
+    parsed.sessionStorePath.includes('/sessions/nim-session-a/nim/sessions.sqlite'),
+    true,
+  );
+  assert.equal(parsed.telemetryPath?.includes('/sessions/nim-session-a/nim/events.jsonl'), true);
+});
+
 test('nim tui arg parser supports mock override and disables telemetry', () => {
   const parsed = parseNimTuiArgs(
     [

@@ -155,8 +155,10 @@ Test anchors:
 Behavior fragments:
 
 - Left rail includes a persistent top-level `nim` entry that routes to a dedicated NIM pane.
-- NIM pane renders a pinned bottom composer, transcript viewport, and mode/status header rows.
-- NIM session state is workspace-scoped and remains active across pane switches.
+- NIM pane renders a themed header band, transcript viewport, and pinned bottom composer in the existing main-pane layout.
+- In mux, NIM is hosted as a standalone PTY subprocess (`harness nim`) and is started/stopped with runtime lifecycle.
+- NIM runtime artifacts are session-scoped when mux runs under `--session` (`.harness/sessions/<name>/nim/*`).
+- NIM subprocess state remains active across pane switches during a live mux session.
 - Keyboard semantics in NIM pane are fixed:
 - `Enter`: submit when idle, steer when a run is active.
 - `Tab`: queue a follow-up message.
@@ -166,24 +168,28 @@ Behavior fragments:
 - `user` suppresses debug timeline noise while preserving user/assistant transcript flow.
 - `/mode` accepts `debug|user` and keeps `seamless` as a compatibility alias mapped to `user`.
 - Provider-backed runs that fail are retried once with a local fallback driver, and failure reasons are surfaced in transcript `[error]` rows.
-- NIM tool bridge is read-first in v1 (`directory.list`, `repository.list`, `task.list`, `session.list`) and routes through control-plane service adapters.
 
 Owners:
 
-- `src/services/runtime-nim-session.ts`
+- `src/services/runtime-nim-cli-session.ts`
+- `scripts/harness-commands.ts`
+- `scripts/harness-runtime.ts`
+- `scripts/nim-tui-smoke.ts`
 - `src/services/runtime-right-pane-render.ts`
 - `src/ui/panes/nim.ts`
-- `src/services/runtime-nim-tool-bridge.ts`
+- `src/mux/runtime-app/codex-live-mux-runtime.ts`
 - `src/mux/live-mux/left-nav.ts`
 
 Test anchors:
 
-- `test/services-runtime-nim-session.test.ts`
+- `test/unit/services/runtime/services-runtime-nim-cli-session.test.ts`
+- `test/unit/nim/nim-tui-smoke.test.ts`
 - `test/ui-panes-nim.test.ts`
 - `test/services-runtime-right-pane-render.test.ts`
-- `test/services-runtime-nim-tool-bridge.test.ts`
+- `test/integration/nim/nim-cli-session-scope.integration.test.ts`
+- `test/integration/ui/ui-harness-ui-v2-e2e.integration.test.ts`
 - `test/mux-live-mux-uncovered-small.test.ts`
-- `test/codex-live-mux-startup.integration.test.ts`
+- `test/integration/codex/codex-live-mux-startup-hydration.integration.test.ts`
 
 ## Task Pane and Editing
 

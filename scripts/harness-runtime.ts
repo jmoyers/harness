@@ -74,6 +74,9 @@ export async function runAnimateCli(args: readonly string[]): Promise<number> {
   return await runHarnessAnimate(args);
 }
 
-export async function runNimCli(args: readonly string[]): Promise<number> {
-  return await runNimTuiSmoke(args);
+export async function runNimCli(
+  args: readonly string[],
+  sessionName: string | null,
+): Promise<number> {
+  return await runNimTuiSmoke(args, { sessionName });
 }

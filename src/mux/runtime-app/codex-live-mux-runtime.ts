@@ -246,8 +246,7 @@ import { RuntimeTaskComposerPersistenceService } from '../../services/runtime-ta
 import { RuntimeTaskPaneActions } from '../../services/runtime-task-pane-actions.ts';
 import { RuntimeTaskPaneShortcuts } from '../../services/runtime-task-pane-shortcuts.ts';
 import { RuntimeProjectPaneGitHubReviewCache } from '../../services/runtime-project-pane-github-review-cache.ts';
-import { RuntimeNimSession } from '../../services/runtime-nim-session.ts';
-import { RuntimeNimToolBridge } from '../../services/runtime-nim-tool-bridge.ts';
+import { RuntimeNimCliSession } from '../../services/runtime-nim-cli-session.ts';
 import { TaskPaneSelectionActions } from '../../services/task-pane-selection-actions.ts';
 import { TaskPlanningHydrationService } from '../../services/task-planning-hydration.ts';
 import { TaskPlanningObservedEvents } from '../../services/task-planning-observed-events.ts';
@@ -290,11 +289,7 @@ import { DebugFooterNotice } from '../../ui/debug-footer-notice.ts';
 import { HomePane } from '../../ui/panes/home.ts';
 import { NimPane } from '../../ui/panes/nim.ts';
 import { ProjectPane } from '../../ui/panes/project.ts';
-import {
-  createAnthropicNimProviderDriver,
-  type NimModelRef,
-  type NimProviderDriver,
-} from '../../../packages/nim-core/src/index.ts';
+import { type NimModelRef } from '../../../packages/nim-core/src/index.ts';
 import { LeftRailPane } from '../../ui/panes/left-rail.ts';
 import { ModalManager } from '../../../packages/harness-ui/src/modal-manager.ts';
 import { UiKit } from '../../../packages/harness-ui/src/kit.ts';
@@ -2185,16 +2180,6 @@ class CodexLiveMuxRuntimeApplication {
     const markDirty = (): void => {
       runtimeRenderLifecycle.markDirty();
     };
-    const runtimeNimToolBridge = new RuntimeNimToolBridge({
-      listDirectories: async () => await controlPlaneService.listDirectories(),
-      listRepositories: async () => await controlPlaneService.listRepositories(),
-      listTasks: async (limit) => await controlPlaneService.listTasks(limit),
-      listSessions: async () =>
-        await controlPlaneService.listSessions({
-          worktreeId: options.scope.worktreeId,
-          sort: 'started-asc',
-        }),
-    });
     const configuredNimModelRaw = process.env.HARNESS_NIM_MODEL?.trim();
     const configuredNimModel =
       typeof configuredNimModelRaw === 'string' &&
@@ -2210,30 +2195,21 @@ class CodexLiveMuxRuntimeApplication {
     const runtimeNimModel: NimModelRef =
       configuredNimModel ?? (anthropicApiKey === null ? 'mock/echo-v1' : 'anthropic/claude-3-5-haiku-latest');
     const runtimeNimProviderId = runtimeNimModel.split('/')[0] ?? 'mock';
-    const runtimeNimProviderDriver: NimProviderDriver | undefined =
-      runtimeNimProviderId === 'anthropic' && anthropicApiKey !== null
-        ? createAnthropicNimProviderDriver({
-            apiKey: anthropicApiKey,
-            ...(typeof process.env.HARNESS_NIM_ANTHROPIC_BASE_URL === 'string' &&
-            process.env.HARNESS_NIM_ANTHROPIC_BASE_URL.trim().length > 0
-              ? {
-                  baseUrl: process.env.HARNESS_NIM_ANTHROPIC_BASE_URL.trim(),
-                }
-              : {}),
-            executeTool: async ({ toolName, toolInput }) =>
-              await runtimeNimToolBridge.invoke({
-                toolName,
-                argumentsValue: toolInput,
-              }),
-          })
+    const runtimeNimUseMock = runtimeNimProviderId !== 'anthropic' || anthropicApiKey === null;
+    const runtimeNimBaseUrlRaw = process.env.HARNESS_NIM_ANTHROPIC_BASE_URL;
+    const runtimeNimBaseUrl =
+      typeof runtimeNimBaseUrlRaw === 'string' && runtimeNimBaseUrlRaw.trim().length > 0
+        ? runtimeNimBaseUrlRaw.trim()
         : undefined;
-    const runtimeNimSession = new RuntimeNimSession({
+    const runtimeNimSession = new RuntimeNimCliSession({
+      invocationDirectory: options.invocationDirectory,
       tenantId: options.scope.tenantId,
       userId: options.scope.userId,
       markDirty,
+      sessionName: muxSessionName,
       model: runtimeNimModel,
-      ...(runtimeNimProviderDriver === undefined ? {} : { providerDriver: runtimeNimProviderDriver }),
-      toolBridge: runtimeNimToolBridge,
+      useMock: runtimeNimUseMock,
+      ...(runtimeNimBaseUrl === undefined ? {} : { baseUrl: runtimeNimBaseUrl }),
     });
     const controlPlaneOps = new RuntimeControlPlaneOps({
       onFatal: (error: unknown) => {
@@ -2725,6 +2701,7 @@ class CodexLiveMuxRuntimeApplication {
       getLayout: () => layout,
       setLayout: (nextLayout) => {
         layout = nextLayout;
+        runtimeNimSession.resize(nextLayout.rightCols, nextLayout.paneRows);
       },
       getLeftPaneColsOverride: () => leftPaneColsOverride,
       setLeftPaneColsOverride: (nextLeftPaneColsOverride) => {
@@ -5623,6 +5600,7 @@ class CodexLiveMuxRuntimeApplication {
     });
 
     await runtimeNimSession.start();
+    runtimeNimSession.resize(layout.rightCols, layout.paneRows);
     await startupOrchestrator.hydrateStartupState(startupObservedCursor);
 
     runtimeProcessWiring.attach();
@@ -5705,6 +5683,7 @@ class CodexLiveMuxRuntimeApplication {
       shuttingDown = true;
       statusTimelineRecorder.close();
       renderTraceRecorder.close();
+      await runtimeNimSession.dispose();
       await runtimeShutdownService.finalize();
     }
 
