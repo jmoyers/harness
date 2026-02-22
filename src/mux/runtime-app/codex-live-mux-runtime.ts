@@ -194,7 +194,7 @@ import { EventPersistence } from '../../services/event-persistence.ts';
 import { MuxUiStatePersistence } from '../../services/mux-ui-state-persistence.ts';
 import { OutputLoadSampler } from '../../services/output-load-sampler.ts';
 import { ProcessUsageRefreshService } from '../../services/process-usage-refresh.ts';
-import { RecordingService } from '../../services/recording.ts';
+import { createRecordingService } from '../../services/recording.ts';
 import { SessionProjectionInstrumentation } from '../../services/session-projection-instrumentation.ts';
 import { StartupOrchestrator } from '../../services/startup-orchestrator.ts';
 import { attachRuntimeProcessWiring } from '../../services/runtime-process-wiring.ts';
@@ -984,7 +984,7 @@ class CodexLiveMuxRuntimeApplication {
       muxRecordingWriter = createTerminalRecordingWriter(recordingWriterOptions);
       muxRecordingOracle = new TerminalSnapshotOracle(size.cols, size.rows);
     }
-    const recordingService = new RecordingService({
+    const recordingService = createRecordingService({
       recordingWriter: muxRecordingWriter,
       recordingPath: options.recordingPath,
       recordingGifOutputPath: options.recordingGifOutputPath,
