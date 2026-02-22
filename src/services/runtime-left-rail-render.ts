@@ -1,7 +1,7 @@
 import type { WorkspaceModel } from '../domain/workspace.ts';
 import type { RepositoryManager } from '../domain/repositories.ts';
 
-interface RuntimeLeftRailRenderLayout {
+export interface RuntimeLeftRailRenderLayout {
   readonly cols: number;
   readonly paneRows: number;
   readonly leftCols: number;
@@ -56,7 +56,21 @@ interface LeftRailPaneLike<
   };
 }
 
-interface RuntimeLeftRailRenderOptions<
+export interface RuntimeLeftRailRenderSnapshot<
+  TDirectoryRecord,
+  TConversationRecord,
+  TRepositoryRecord,
+  TProcessUsage,
+> {
+  readonly repositories: ReadonlyMap<string, TRepositoryRecord>;
+  readonly directories: ReadonlyMap<string, TDirectoryRecord>;
+  readonly conversations: ReadonlyMap<string, TConversationRecord>;
+  readonly orderedConversationIds: readonly string[];
+  readonly processUsageBySessionId: ReadonlyMap<string, TProcessUsage>;
+  readonly activeConversationId: string | null;
+}
+
+export interface RuntimeLeftRailRenderOptions<
   TDirectoryRecord,
   TConversationRecord,
   TRepositoryRecord,
@@ -81,17 +95,11 @@ interface RuntimeLeftRailRenderOptions<
   >;
   readonly workspace: WorkspaceModel;
   readonly repositoryManager: RepositoryManager<TRepositoryRecord, TRepositorySnapshot>;
-  readonly repositories: ReadonlyMap<string, TRepositoryRecord>;
   readonly repositoryAssociationByDirectoryId: ReadonlyMap<string, string>;
   readonly directoryRepositorySnapshotByDirectoryId: ReadonlyMap<string, TRepositorySnapshot>;
-  readonly directories: ReadonlyMap<string, TDirectoryRecord>;
-  readonly conversations: ReadonlyMap<string, TConversationRecord>;
   readonly gitSummaryByDirectoryId: ReadonlyMap<string, TGitSummary>;
-  readonly processUsageBySessionId: () => ReadonlyMap<string, TProcessUsage>;
   readonly loadingGitSummary: TGitSummary;
   readonly showTasksEntry?: boolean;
-  readonly activeConversationId: () => string | null;
-  readonly orderedConversationIds: () => readonly string[];
 }
 
 export class RuntimeLeftRailRender<
@@ -115,29 +123,36 @@ export class RuntimeLeftRailRender<
     >,
   ) {}
 
-  render(layout: RuntimeLeftRailRenderLayout): {
+  render(input: {
+    readonly layout: RuntimeLeftRailRenderLayout;
+    readonly snapshot: RuntimeLeftRailRenderSnapshot<
+      TDirectoryRecord,
+      TConversationRecord,
+      TRepositoryRecord,
+      TProcessUsage
+    >;
+  }): {
     readonly ansiRows: readonly string[];
     readonly viewRows: TRailViewRows;
   } {
-    const orderedIds = this.options.orderedConversationIds();
     this.options.sessionProjectionInstrumentation.refreshSelectorSnapshot(
       'render',
-      this.options.directories,
-      this.options.conversations,
-      orderedIds,
+      input.snapshot.directories,
+      input.snapshot.conversations,
+      input.snapshot.orderedConversationIds,
     );
     return this.options.leftRailPane.render({
-      layout,
-      repositories: this.options.repositories,
+      layout: input.layout,
+      repositories: input.snapshot.repositories,
       repositoryAssociationByDirectoryId: this.options.repositoryAssociationByDirectoryId,
       directoryRepositorySnapshotByDirectoryId:
         this.options.directoryRepositorySnapshotByDirectoryId,
-      directories: this.options.directories,
-      conversations: this.options.conversations,
-      orderedIds,
+      directories: input.snapshot.directories,
+      conversations: input.snapshot.conversations,
+      orderedIds: input.snapshot.orderedConversationIds,
       activeProjectId: this.options.workspace.activeDirectoryId,
       activeRepositoryId: this.options.workspace.activeRepositorySelectionId,
-      activeConversationId: this.options.activeConversationId(),
+      activeConversationId: input.snapshot.activeConversationId,
       projectSelectionEnabled: this.options.workspace.leftNavSelection.kind === 'project',
       repositorySelectionEnabled: this.options.workspace.leftNavSelection.kind === 'repository',
       homeSelectionEnabled: this.options.workspace.leftNavSelection.kind === 'home',
@@ -147,7 +162,7 @@ export class RuntimeLeftRailRender<
       collapsedRepositoryGroupIds:
         this.options.repositoryManager.readonlyCollapsedRepositoryGroupIds(),
       gitSummaryByDirectoryId: this.options.gitSummaryByDirectoryId,
-      processUsageBySessionId: this.options.processUsageBySessionId(),
+      processUsageBySessionId: input.snapshot.processUsageBySessionId,
       loadingGitSummary: this.options.loadingGitSummary,
     });
   }

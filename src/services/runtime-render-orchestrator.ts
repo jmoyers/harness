@@ -19,14 +19,19 @@ interface RuntimeRenderOrchestratorOptions<
   TSelection,
   TSelectionDrag,
   TRailViewRows,
+  TRenderSnapshot,
 > {
   readonly isScreenDirty: () => boolean;
   readonly clearDirty: () => void;
+  readonly readRenderSnapshot: () => TRenderSnapshot;
   readonly prepareRenderState: (
     selection: TSelection | null,
     selectionDrag: TSelectionDrag | null,
   ) => RuntimeRenderStateResult<TConversation, TFrame, TSelection> | null;
-  readonly renderLeftRail: (layout: TLayout) => RuntimeLeftRailRenderResult<TRailViewRows>;
+  readonly renderLeftRail: (
+    layout: TLayout,
+    snapshot: TRenderSnapshot,
+  ) => RuntimeLeftRailRenderResult<TRailViewRows>;
   readonly setLatestRailViewRows: (rows: TRailViewRows) => void;
   readonly renderRightRows: (input: {
     layout: TLayout;
@@ -34,6 +39,7 @@ interface RuntimeRenderOrchestratorOptions<
     homePaneActive: boolean;
     projectPaneActive: boolean;
     activeDirectoryId: string | null;
+    snapshot: TRenderSnapshot;
   }) => readonly string[];
   readonly flushRender: (input: {
     layout: TLayout;
@@ -63,6 +69,7 @@ export class RuntimeRenderOrchestrator<
   TSelection,
   TSelectionDrag,
   TRailViewRows,
+  TRenderSnapshot,
 > {
   constructor(
     private readonly options: RuntimeRenderOrchestratorOptions<
@@ -71,7 +78,8 @@ export class RuntimeRenderOrchestrator<
       TFrame,
       TSelection,
       TSelectionDrag,
-      TRailViewRows
+      TRailViewRows,
+      TRenderSnapshot
     >,
   ) {}
 
@@ -84,7 +92,8 @@ export class RuntimeRenderOrchestrator<
       this.options.clearDirty();
       return;
     }
-    const rail = this.options.renderLeftRail(input.layout);
+    const snapshot = this.options.readRenderSnapshot();
+    const rail = this.options.renderLeftRail(input.layout, snapshot);
     this.options.setLatestRailViewRows(rail.viewRows);
     const rightRows = this.options.renderRightRows({
       layout: input.layout,
@@ -92,6 +101,7 @@ export class RuntimeRenderOrchestrator<
       homePaneActive: renderState.homePaneActive,
       projectPaneActive: renderState.projectPaneActive,
       activeDirectoryId: this.options.activeDirectoryId(),
+      snapshot,
     });
     this.options.flushRender({
       layout: input.layout,

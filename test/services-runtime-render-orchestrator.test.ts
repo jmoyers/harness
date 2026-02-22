@@ -22,6 +22,10 @@ interface SelectionDragRecord {
   readonly id: string;
 }
 
+interface SnapshotRecord {
+  readonly id: string;
+}
+
 void test('runtime render orchestrator short-circuits when shutting down', () => {
   const calls: string[] = [];
   const orchestrator = new RuntimeRenderOrchestrator<
@@ -30,7 +34,8 @@ void test('runtime render orchestrator short-circuits when shutting down', () =>
     FrameRecord,
     SelectionRecord,
     SelectionDragRecord,
-    readonly string[]
+    readonly string[],
+    SnapshotRecord
   >({
     isScreenDirty: () => {
       calls.push('isScreenDirty');
@@ -38,6 +43,10 @@ void test('runtime render orchestrator short-circuits when shutting down', () =>
     },
     clearDirty: () => {
       calls.push('clearDirty');
+    },
+    readRenderSnapshot: () => {
+      calls.push('readRenderSnapshot');
+      return { id: 'snapshot-1' };
     },
     prepareRenderState: () => {
       calls.push('prepareRenderState');
@@ -81,7 +90,8 @@ void test('runtime render orchestrator short-circuits when screen is not dirty',
     FrameRecord,
     SelectionRecord,
     SelectionDragRecord,
-    readonly string[]
+    readonly string[],
+    SnapshotRecord
   >({
     isScreenDirty: () => {
       calls.push('isScreenDirty');
@@ -89,6 +99,10 @@ void test('runtime render orchestrator short-circuits when screen is not dirty',
     },
     clearDirty: () => {
       calls.push('clearDirty');
+    },
+    readRenderSnapshot: () => {
+      calls.push('readRenderSnapshot');
+      return { id: 'snapshot-2' };
     },
     prepareRenderState: () => {
       calls.push('prepareRenderState');
@@ -132,11 +146,16 @@ void test('runtime render orchestrator clears dirty state when render-state prep
     FrameRecord,
     SelectionRecord,
     SelectionDragRecord,
-    readonly string[]
+    readonly string[],
+    SnapshotRecord
   >({
     isScreenDirty: () => true,
     clearDirty: () => {
       calls.push('clearDirty');
+    },
+    readRenderSnapshot: () => {
+      calls.push('readRenderSnapshot');
+      return { id: 'snapshot-3' };
     },
     prepareRenderState: () => null,
     renderLeftRail: () => {
@@ -180,12 +199,14 @@ void test('runtime render orchestrator composes rail, right rows, and flush payl
     FrameRecord,
     SelectionRecord,
     SelectionDragRecord,
-    readonly string[]
+    readonly string[],
+    SnapshotRecord
   >({
     isScreenDirty: () => true,
     clearDirty: () => {
       calls.push('clearDirty');
     },
+    readRenderSnapshot: () => ({ id: 'snapshot-4' }),
     prepareRenderState: () => ({
       projectPaneActive: true,
       homePaneActive: false,
@@ -194,8 +215,9 @@ void test('runtime render orchestrator composes rail, right rows, and flush payl
       renderSelection: { id: 'selection-1' },
       selectionRows: [4, 7],
     }),
-    renderLeftRail: (layout) => {
+    renderLeftRail: (layout, snapshot) => {
       calls.push(`renderLeftRail:${layout.id}`);
+      assert.equal(snapshot.id, 'snapshot-4');
       return {
         ansiRows: ['rail-row'],
         viewRows: ['row-a', 'row-b'],
@@ -237,6 +259,9 @@ void test('runtime render orchestrator composes rail, right rows, and flush payl
     homePaneActive: false,
     projectPaneActive: true,
     activeDirectoryId: 'dir-123',
+    snapshot: {
+      id: 'snapshot-4',
+    },
   });
   assert.deepEqual(flushInput, {
     layout: { id: 'layout-4' },

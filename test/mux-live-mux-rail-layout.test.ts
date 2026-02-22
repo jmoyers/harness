@@ -58,7 +58,7 @@ void test('live-mux rail layout infers untracked directories from conversation-o
           statusModel: statusModelFor('running', {
             detailText: 'active',
             phase: 'working',
-            phaseHint: 'working',
+            activityHint: 'working',
             lastKnownWork: 'active',
             lastKnownWorkAt: '2026-02-17T00:00:01.000Z',
             observedAt: '2026-02-17T00:00:01.000Z',
@@ -82,7 +82,7 @@ void test('live-mux rail layout infers untracked directories from conversation-o
           status: 'completed',
           statusModel: statusModelFor('completed', {
             detailText: 'inactive',
-            phaseHint: 'idle',
+            activityHint: 'idle',
             lastKnownWork: 'inactive',
             lastKnownWorkAt: '2026-02-17T00:00:02.000Z',
             observedAt: '2026-02-17T00:00:02.000Z',

@@ -8,13 +8,18 @@ import {
   parseSessionSummaryRecord,
 } from '../control-plane/session-summary.ts';
 import {
+  type ControlPlaneConversationRecord,
+  type ControlPlaneDirectoryGitStatusRecord,
+  type ControlPlaneDirectoryRecord,
+  type ControlPlaneRepositoryRecord,
+  type ControlPlaneTaskRecord,
   parseConversationRecord,
   parseDirectoryGitStatusRecord,
   parseDirectoryRecord,
   parseRepositoryRecord,
   parseSessionControllerRecord,
   parseTaskRecord,
-} from '../mux/live-mux/control-plane-records.ts';
+} from '../core/contracts/records.ts';
 
 interface ControlPlaneScope {
   readonly tenantId: string;
@@ -26,13 +31,6 @@ interface ControlPlaneCommandClient {
   sendCommand(command: StreamCommand): Promise<Record<string, unknown>>;
 }
 
-type ControlPlaneRepositoryRecord = NonNullable<ReturnType<typeof parseRepositoryRecord>>;
-type ControlPlaneTaskRecord = NonNullable<ReturnType<typeof parseTaskRecord>>;
-type ControlPlaneDirectoryRecord = NonNullable<ReturnType<typeof parseDirectoryRecord>>;
-type ControlPlaneConversationRecord = NonNullable<ReturnType<typeof parseConversationRecord>>;
-type ControlPlaneDirectoryGitStatusRecord = NonNullable<
-  ReturnType<typeof parseDirectoryGitStatusRecord>
->;
 type ControlPlaneSessionControllerRecord = NonNullable<
   ReturnType<typeof parseSessionControllerRecord>
 >;

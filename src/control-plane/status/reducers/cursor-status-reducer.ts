@@ -14,7 +14,7 @@ export class CursorStatusReducer extends BaseAgentStatusReducer {
 
   protected override projectFromTelemetry(
     telemetry: StreamTelemetrySummary,
-  ): { text: string | null; phaseHint: 'needs-action' | 'working' | 'idle' | null } | null {
+  ): { text: string | null; activityHint: 'needs-action' | 'working' | 'idle' | null } | null {
     const eventName = normalize(telemetry.eventName);
     if (
       eventName === 'cursor.beforesubmitprompt' ||
@@ -23,13 +23,13 @@ export class CursorStatusReducer extends BaseAgentStatusReducer {
     ) {
       return {
         text: 'active',
-        phaseHint: 'working',
+        activityHint: 'working',
       };
     }
     if (eventName === 'cursor.stop' || eventName === 'cursor.sessionend') {
       return {
         text: 'inactive',
-        phaseHint: 'idle',
+        activityHint: 'idle',
       };
     }
     return null;

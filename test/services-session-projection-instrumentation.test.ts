@@ -76,7 +76,7 @@ void test('session projection instrumentation records transition metadata for te
     detailText: 'working on changes',
     lastKnownWork: 'working on changes',
     lastKnownWorkAt: '2026-02-18T00:00:00.000Z',
-    phaseHint: 'working',
+    activityHint: 'working',
     observedAt: '2026-02-18T00:00:00.000Z',
   });
   conversation.lastKnownWork = 'working on changes';

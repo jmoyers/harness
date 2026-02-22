@@ -28,7 +28,9 @@ interface LeftRailPointerHit {
 }
 
 interface LeftRailPointerState {
-  readonly latestRailRows: () => ReturnType<typeof buildWorkspaceRailViewRows>;
+  readonly railViewState: {
+    readLatestRows(): ReturnType<typeof buildWorkspaceRailViewRows>;
+  };
   readonly conversationTitleEditConversationId: () => string | null;
   readonly activeConversationId: () => string | null;
   readonly repositoriesCollapsed: () => boolean;
@@ -81,7 +83,7 @@ export class LeftRailPointerHandler
   ) {}
 
   resolveHit(rowIndex: number, colIndex: number, railCols: number): LeftRailPointerHit {
-    const rows = this.state.latestRailRows();
+    const rows = this.state.railViewState.readLatestRows();
     const selectedConversationId = conversationIdAtWorkspaceRailRow(rows, rowIndex);
     const selectedProjectId = projectIdAtWorkspaceRailRow(rows, rowIndex);
     const selectedRepositoryId = repositoryIdAtWorkspaceRailRow(rows, rowIndex);

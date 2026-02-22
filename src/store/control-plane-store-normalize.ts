@@ -146,15 +146,15 @@ function normalizeRuntimeStatusModel(value: unknown): StreamSessionStatusModel |
   const attentionReason = asStringOrNull(model.attentionReason, 'attentionReason');
   const lastKnownWork = asStringOrNull(model.lastKnownWork, 'lastKnownWork');
   const lastKnownWorkAt = asStringOrNull(model.lastKnownWorkAt, 'lastKnownWorkAt');
-  const phaseHintRaw = asStringOrNull(model.phaseHint, 'phaseHint');
+  const activityHintRaw = asStringOrNull(model.activityHint, 'activityHint');
   const observedAt = asString(model.observedAt, 'observedAt');
   if (
-    phaseHintRaw !== null &&
-    phaseHintRaw !== 'needs-action' &&
-    phaseHintRaw !== 'working' &&
-    phaseHintRaw !== 'idle'
+    activityHintRaw !== null &&
+    activityHintRaw !== 'needs-action' &&
+    activityHintRaw !== 'working' &&
+    activityHintRaw !== 'idle'
   ) {
-    throw new Error('expected phaseHint enum value');
+    throw new Error('expected activityHint enum value');
   }
   return {
     runtimeStatus: runtimeStatusRaw,
@@ -165,7 +165,7 @@ function normalizeRuntimeStatusModel(value: unknown): StreamSessionStatusModel |
     attentionReason,
     lastKnownWork,
     lastKnownWorkAt,
-    phaseHint: phaseHintRaw,
+    activityHint: activityHintRaw,
     observedAt,
   };
 }

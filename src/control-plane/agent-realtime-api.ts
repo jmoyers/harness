@@ -1,6 +1,7 @@
 import type { PtyExit } from '../pty/pty_host.ts';
 import { connectControlPlaneStreamClient, type ControlPlaneStreamClient } from './stream-client.ts';
 import { parseSessionSummaryList, parseSessionSummaryRecord } from './session-summary.ts';
+import { parseStreamSessionStatusModel } from '../core/contracts/records.ts';
 import {
   type StreamCommand,
   type StreamObservedEvent,
@@ -416,63 +417,6 @@ function parseRuntimeStatus(value: unknown): StreamSessionRuntimeStatus | null {
   return null;
 }
 
-function parseRuntimeStatusModel(value: unknown): StreamSessionStatusModel | null | undefined {
-  if (value === null) {
-    return null;
-  }
-  const record = asRecord(value);
-  if (record === null) {
-    return undefined;
-  }
-  const runtimeStatus = parseRuntimeStatus(record['runtimeStatus']);
-  const phase = readString(record['phase']);
-  const glyph = readString(record['glyph']);
-  const badge = readString(record['badge']);
-  const detailText = readString(record['detailText']);
-  const attentionReason = readNullableString(record['attentionReason']);
-  const lastKnownWork = readNullableString(record['lastKnownWork']);
-  const lastKnownWorkAt = readNullableString(record['lastKnownWorkAt']);
-  const phaseHint = readNullableString(record['phaseHint']);
-  const observedAt = readString(record['observedAt']);
-  if (
-    runtimeStatus === null ||
-    phase === null ||
-    (phase !== 'needs-action' &&
-      phase !== 'starting' &&
-      phase !== 'working' &&
-      phase !== 'idle' &&
-      phase !== 'exited') ||
-    glyph === null ||
-    (glyph !== '▲' && glyph !== '◔' && glyph !== '◆' && glyph !== '○' && glyph !== '■') ||
-    badge === null ||
-    (badge !== 'NEED' && badge !== 'RUN ' && badge !== 'DONE' && badge !== 'EXIT') ||
-    detailText === null ||
-    attentionReason === undefined ||
-    lastKnownWork === undefined ||
-    lastKnownWorkAt === undefined ||
-    phaseHint === undefined ||
-    (phaseHint !== null &&
-      phaseHint !== 'needs-action' &&
-      phaseHint !== 'working' &&
-      phaseHint !== 'idle') ||
-    observedAt === null
-  ) {
-    return undefined;
-  }
-  return {
-    runtimeStatus,
-    phase,
-    glyph,
-    badge,
-    detailText,
-    attentionReason,
-    lastKnownWork,
-    lastKnownWorkAt,
-    phaseHint,
-    observedAt,
-  };
-}
-
 function parseSignal(value: unknown): NodeJS.Signals | null | undefined {
   if (value === undefined) {
     return undefined;
@@ -643,7 +587,7 @@ function parseThreadRecord(value: unknown): AgentThread | null {
   const createdAt = readString(record['createdAt']);
   const archivedAt = readNullableString(record['archivedAt']);
   const runtimeStatus = parseRuntimeStatus(record['runtimeStatus']);
-  const runtimeStatusModel = parseRuntimeStatusModel(record['runtimeStatusModel']);
+  const runtimeStatusModel = parseStreamSessionStatusModel(record['runtimeStatusModel']);
   const runtimeLive = readBoolean(record['runtimeLive']);
   const runtimeAttentionReason = readNullableString(record['runtimeAttentionReason']);
   const runtimeProcessId = readNullableNumber(record['runtimeProcessId']);

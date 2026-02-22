@@ -1,24 +1,62 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
+import { createHarnessSyncedStore } from '../src/core/store/harness-synced-store.ts';
+import type { HarnessSyncedState } from '../src/core/state/synced-observed-state.ts';
 import { RuntimeWorkspaceObservedEvents } from '../src/services/runtime-workspace-observed-events.ts';
+import { RuntimeWorkspaceObservedEffectQueue } from '../src/services/runtime-workspace-observed-effect-queue.ts';
+import { RuntimeWorkspaceObservedTransitionPolicy } from '../src/services/runtime-workspace-observed-transition-policy.ts';
 
-interface ObservedEvent {
-  readonly id: string;
-}
+function createSyncedState(input: {
+  readonly directoryIds?: readonly string[];
+  readonly conversationDirectoryById?: Readonly<Record<string, string | null>>;
+}): HarnessSyncedState {
+  const directoriesById: Record<string, HarnessSyncedState['directoriesById'][string]> = {};
+  for (const directoryId of input.directoryIds ?? []) {
+    directoriesById[directoryId] = {
+      directoryId,
+      tenantId: 'tenant',
+      userId: 'user',
+      workspaceId: 'workspace',
+      path: `/tmp/${directoryId}`,
+      createdAt: null,
+      archivedAt: null,
+    };
+  }
 
-interface Reduction {
-  readonly changed: boolean;
-  readonly removedConversationIds: readonly string[];
-  readonly removedDirectoryIds: readonly string[];
+  const conversationsById: Record<string, HarnessSyncedState['conversationsById'][string]> = {};
+  for (const [conversationId, directoryId] of Object.entries(
+    input.conversationDirectoryById ?? {},
+  )) {
+    if (directoryId === null) {
+      continue;
+    }
+    conversationsById[conversationId] = {
+      conversationId,
+      directoryId,
+      tenantId: 'tenant',
+      userId: 'user',
+      workspaceId: 'workspace',
+      title: conversationId,
+      agentType: 'codex',
+      adapterState: {},
+      runtimeStatus: 'running',
+      runtimeStatusModel: null,
+      runtimeLive: true,
+    };
+  }
+
+  return {
+    directoriesById,
+    conversationsById,
+    repositoriesById: {},
+    tasksById: {},
+  };
 }
 
 const createHarness = (input?: {
-  reduction?: Reduction;
+  initialSynced?: HarnessSyncedState;
   activeConversationId?: string | null;
   orderedConversationIds?: string[];
-  conversationDirectoryById?: Record<string, string | null>;
-  existingConversations?: Set<string>;
-  existingDirectories?: Set<string>;
   leftNavSelection?:
     | {
         kind: 'project';
@@ -32,9 +70,8 @@ const createHarness = (input?: {
   resolvedActiveDirectoryId?: string | null;
   conversationTitleEditId?: string | null;
   projectPaneSnapshotDirectoryId?: string | null;
-  orderedConversationIdsAfterApply?: string[];
 }): {
-  readonly service: RuntimeWorkspaceObservedEvents<ObservedEvent>;
+  readonly service: RuntimeWorkspaceObservedEvents;
   readonly calls: string[];
   readonly workspace: {
     leftNavSelection:
@@ -56,27 +93,20 @@ const createHarness = (input?: {
     activeDirectoryId: string | null;
     selectLeftNavConversation: (sessionId: string) => void;
   };
-  readonly setReduction: (reduction: Reduction) => void;
   readonly setResolvedActiveDirectoryId: (directoryId: string | null) => void;
-  readonly setOrderedConversationIds: (ids: string[]) => void;
-  readonly setExistingConversations: (ids: readonly string[]) => void;
-  readonly setExistingDirectories: (ids: readonly string[]) => void;
   readonly getActiveConversationId: () => string | null;
+  readonly apply: (next: {
+    readonly synced: HarnessSyncedState;
+    readonly orderedConversationIds?: readonly string[];
+  }) => void;
+  readonly drainQueuedReactions: () => Promise<void>;
 } => {
   const calls: string[] = [];
-  let reduction: Reduction = input?.reduction ?? {
-    changed: false,
-    removedConversationIds: [],
-    removedDirectoryIds: [],
-  };
   let activeConversationId = input?.activeConversationId ?? null;
   let orderedConversationIds = input?.orderedConversationIds ?? [];
-  const conversationDirectoryById = new Map<string, string | null>(
-    Object.entries(input?.conversationDirectoryById ?? {}),
-  );
-  let existingConversations = input?.existingConversations ?? new Set<string>();
-  let existingDirectories = input?.existingDirectories ?? new Set<string>();
   let resolvedActiveDirectoryId = input?.resolvedActiveDirectoryId ?? null;
+  const queuedReactions: Array<() => Promise<void>> = [];
+
   const workspace = {
     leftNavSelection: input?.leftNavSelection ?? {
       kind: 'project' as const,
@@ -106,29 +136,18 @@ const createHarness = (input?: {
     },
   };
 
-  const service = new RuntimeWorkspaceObservedEvents<ObservedEvent>({
-    reducer: {
-      apply: () => {
-        if (input?.orderedConversationIdsAfterApply !== undefined) {
-          orderedConversationIds = input.orderedConversationIdsAfterApply;
-        }
-        return reduction;
-      },
-    },
+  const store = createHarnessSyncedStore({
+    synced: input?.initialSynced ?? createSyncedState({}),
+  });
+
+  const transitionPolicy = new RuntimeWorkspaceObservedTransitionPolicy({
     workspace,
-    orderedConversationIds: () => orderedConversationIds,
-    conversationDirectoryId: (sessionId) => conversationDirectoryById.get(sessionId) ?? null,
-    hasConversation: (sessionId) => existingConversations.has(sessionId),
     getActiveConversationId: () => activeConversationId,
     setActiveConversationId: (sessionId) => {
       activeConversationId = sessionId;
       calls.push(`setActiveConversationId:${sessionId}`);
     },
-    hasDirectory: (directoryId) => existingDirectories.has(directoryId),
     resolveActiveDirectoryId: () => resolvedActiveDirectoryId,
-    unsubscribeConversationEvents: async (sessionId) => {
-      calls.push(`unsubscribeConversationEvents:${sessionId}`);
-    },
     stopConversationTitleEdit: (persistPending) => {
       calls.push(`stopConversationTitleEdit:${persistPending ? 'true' : 'false'}`);
     },
@@ -138,274 +157,325 @@ const createHarness = (input?: {
     enterHomePane: () => {
       calls.push('enterHomePane');
     },
-    queueControlPlaneOp: (task, label) => {
-      calls.push(`queueControlPlaneOp:${label}`);
-      void task();
+  });
+  const effectQueue = new RuntimeWorkspaceObservedEffectQueue({
+    enqueueQueuedReaction: (task, label) => {
+      calls.push(`enqueueQueuedReaction:${label}`);
+      queuedReactions.push(task);
+    },
+    unsubscribeConversationEvents: async (sessionId) => {
+      calls.push(`unsubscribeConversationEvents:${sessionId}`);
     },
     activateConversation: async (sessionId) => {
       calls.push(`activateConversation:${sessionId}`);
     },
+  });
+  const service = new RuntimeWorkspaceObservedEvents({
+    store,
+    orderedConversationIds: () => orderedConversationIds,
+    transitionPolicy,
+    effectQueue,
     markDirty: () => {
       calls.push('markDirty');
     },
   });
+  service.start();
 
   return {
     service,
     calls,
     workspace,
-    setReduction: (nextReduction) => {
-      reduction = nextReduction;
-    },
     setResolvedActiveDirectoryId: (directoryId) => {
       resolvedActiveDirectoryId = directoryId;
     },
-    setOrderedConversationIds: (ids) => {
-      orderedConversationIds = ids;
-    },
-    setExistingConversations: (ids) => {
-      existingConversations = new Set(ids);
-    },
-    setExistingDirectories: (ids) => {
-      existingDirectories = new Set(ids);
-    },
     getActiveConversationId: () => activeConversationId,
+    apply: (next) => {
+      if (next.orderedConversationIds !== undefined) {
+        orderedConversationIds = [...next.orderedConversationIds];
+      }
+      store.setState({
+        ...store.getState(),
+        synced: next.synced,
+      });
+    },
+    drainQueuedReactions: async () => {
+      while (queuedReactions.length > 0) {
+        const next = queuedReactions.shift();
+        await next?.();
+      }
+    },
   };
 };
 
-void test('runtime workspace observed events returns early when reducer reports no change', () => {
-  const harness = createHarness();
-  harness.service.apply({
-    id: 'event-1',
+void test('runtime workspace observed events returns early when synced state is unchanged', () => {
+  const initial = createSyncedState({});
+  const harness = createHarness({
+    initialSynced: initial,
   });
+
+  harness.apply({
+    synced: initial,
+  });
+
   assert.deepEqual(harness.calls, []);
+  harness.service.stop();
 });
 
-void test('runtime workspace observed events handles active-conversation removal with fallback activation', () => {
+void test(
+  'runtime workspace observed events handles active-conversation removal with fallback activation',
+  async () => {
   const harness = createHarness({
-    reduction: {
-      changed: true,
-      removedConversationIds: ['session-1'],
-      removedDirectoryIds: ['directory-removed'],
-    },
+    initialSynced: createSyncedState({
+      directoryIds: ['directory-live', 'directory-removed'],
+      conversationDirectoryById: {
+        'session-1': 'directory-x',
+        'session-2': 'directory-x',
+      },
+    }),
     activeConversationId: 'session-1',
     orderedConversationIds: ['session-1', 'session-2'],
-    conversationDirectoryById: {
-      'session-1': 'directory-x',
-      'session-2': 'directory-x',
-    },
-    existingDirectories: new Set(['directory-live']),
     activeDirectoryId: 'directory-missing',
     resolvedActiveDirectoryId: 'directory-live',
     conversationTitleEditId: 'session-1',
     projectPaneSnapshotDirectoryId: 'directory-removed',
-    orderedConversationIdsAfterApply: ['session-2'],
   });
 
-  harness.service.apply({
-    id: 'event-2',
+  harness.apply({
+    synced: createSyncedState({
+      directoryIds: ['directory-live'],
+      conversationDirectoryById: {
+        'session-2': 'directory-x',
+      },
+    }),
+    orderedConversationIds: ['session-2'],
   });
+  await harness.drainQueuedReactions();
 
   assert.equal(harness.workspace.projectPaneSnapshot, null);
   assert.equal(harness.workspace.projectPaneScrollTop, 0);
   assert.equal(harness.workspace.activeDirectoryId, 'directory-live');
   assert.equal(harness.getActiveConversationId(), null);
   assert.deepEqual(harness.calls, [
-    'unsubscribeConversationEvents:session-1',
     'stopConversationTitleEdit:false',
     'setActiveConversationId:null',
-    'queueControlPlaneOp:observed-active-conversation-removed',
-    'activateConversation:session-2',
+    'enqueueQueuedReaction:observed-unsubscribe-conversation:session-1',
+    'enqueueQueuedReaction:observed-active-conversation-removed',
     'markDirty',
+    'unsubscribeConversationEvents:session-1',
+    'activateConversation:session-2',
   ]);
-});
+  harness.service.stop();
+  },
+);
 
-void test('runtime workspace observed events keeps active-conversation archive fallback scoped to the same project', () => {
+void test(
+  'runtime workspace observed events keeps active-conversation archive fallback scoped to the same project',
+  async () => {
   const harness = createHarness({
-    reduction: {
-      changed: true,
-      removedConversationIds: ['session-1'],
-      removedDirectoryIds: [],
-    },
+    initialSynced: createSyncedState({
+      directoryIds: ['directory-a', 'directory-b'],
+      conversationDirectoryById: {
+        'session-1': 'directory-a',
+        'session-2': 'directory-b',
+      },
+    }),
     activeConversationId: 'session-1',
     orderedConversationIds: ['session-1', 'session-2'],
-    conversationDirectoryById: {
-      'session-1': 'directory-a',
-      'session-2': 'directory-b',
-    },
-    existingDirectories: new Set(['directory-a', 'directory-b']),
     activeDirectoryId: 'directory-a',
     resolvedActiveDirectoryId: 'directory-a',
-    orderedConversationIdsAfterApply: ['session-2'],
   });
 
-  harness.service.apply({
-    id: 'event-2b',
+  harness.apply({
+    synced: createSyncedState({
+      directoryIds: ['directory-a', 'directory-b'],
+      conversationDirectoryById: {
+        'session-2': 'directory-b',
+      },
+    }),
+    orderedConversationIds: ['session-2'],
   });
+  await harness.drainQueuedReactions();
 
   assert.deepEqual(harness.calls, [
-    'unsubscribeConversationEvents:session-1',
     'setActiveConversationId:null',
     'enterProjectPane:directory-a',
+    'enqueueQueuedReaction:observed-unsubscribe-conversation:session-1',
     'markDirty',
+    'unsubscribeConversationEvents:session-1',
   ]);
-});
+  harness.service.stop();
+  },
+);
 
-void test('runtime workspace observed events falls back to home when active conversation is removed with no replacement', () => {
+void test(
+  'runtime workspace observed events falls back to home when active conversation is removed with no replacement',
+  async () => {
   const harness = createHarness({
-    reduction: {
-      changed: true,
-      removedConversationIds: ['session-1'],
-      removedDirectoryIds: [],
-    },
+    initialSynced: createSyncedState({
+      conversationDirectoryById: {
+        'session-1': 'directory-x',
+      },
+    }),
     activeConversationId: 'session-1',
     orderedConversationIds: ['session-1'],
-    conversationDirectoryById: {
-      'session-1': 'directory-x',
-    },
-    existingDirectories: new Set(),
     activeDirectoryId: null,
     resolvedActiveDirectoryId: null,
   });
-  harness.setOrderedConversationIds([]);
 
-  harness.service.apply({
-    id: 'event-3',
+  harness.apply({
+    synced: createSyncedState({}),
+    orderedConversationIds: [],
   });
+  await harness.drainQueuedReactions();
 
   assert.deepEqual(harness.calls, [
-    'unsubscribeConversationEvents:session-1',
     'setActiveConversationId:null',
     'enterHomePane',
+    'enqueueQueuedReaction:observed-unsubscribe-conversation:session-1',
     'markDirty',
+    'unsubscribeConversationEvents:session-1',
   ]);
-});
+  harness.service.stop();
+  },
+);
 
-void test('runtime workspace observed events keeps left-nav selection on current active conversation when previous selection is removed', () => {
+void test(
+  'runtime workspace observed events keeps left-nav selection on current active conversation when previous selection is removed',
+  async () => {
   const harness = createHarness({
-    reduction: {
-      changed: true,
-      removedConversationIds: ['session-1'],
-      removedDirectoryIds: [],
-    },
+    initialSynced: createSyncedState({
+      conversationDirectoryById: {
+        'session-1': 'directory-a',
+        'session-2': 'directory-b',
+      },
+    }),
     activeConversationId: 'session-2',
     orderedConversationIds: ['session-1', 'session-2'],
-    conversationDirectoryById: {
-      'session-1': 'directory-a',
-      'session-2': 'directory-b',
-    },
-    existingConversations: new Set(['session-2']),
     leftNavSelection: {
       kind: 'conversation',
       sessionId: 'session-1',
     },
   });
 
-  harness.service.apply({
-    id: 'event-4',
+  harness.apply({
+    synced: createSyncedState({
+      conversationDirectoryById: {
+        'session-2': 'directory-b',
+      },
+    }),
+    orderedConversationIds: ['session-2'],
   });
+  await harness.drainQueuedReactions();
 
   assert.deepEqual(harness.calls, [
-    'unsubscribeConversationEvents:session-1',
     'selectLeftNavConversation:session-2',
+    'enqueueQueuedReaction:observed-unsubscribe-conversation:session-1',
     'markDirty',
+    'unsubscribeConversationEvents:session-1',
   ]);
-});
+  harness.service.stop();
+  },
+);
 
-void test('runtime workspace observed events handles removed left-nav conversation with queued fallback activation', () => {
+void test(
+  'runtime workspace observed events handles removed left-nav conversation with queued fallback activation',
+  async () => {
   const harness = createHarness({
-    reduction: {
-      changed: true,
-      removedConversationIds: ['session-1'],
-      removedDirectoryIds: [],
-    },
+    initialSynced: createSyncedState({
+      conversationDirectoryById: {
+        'session-1': 'directory-a',
+        'session-3': 'directory-a',
+      },
+    }),
     activeConversationId: null,
     orderedConversationIds: ['session-1', 'session-3'],
-    conversationDirectoryById: {
-      'session-1': 'directory-a',
-      'session-3': 'directory-a',
-    },
-    existingConversations: new Set(),
     leftNavSelection: {
       kind: 'conversation',
       sessionId: 'session-1',
     },
-    orderedConversationIdsAfterApply: ['session-3'],
   });
 
-  harness.service.apply({
-    id: 'event-5',
+  harness.apply({
+    synced: createSyncedState({
+      conversationDirectoryById: {
+        'session-3': 'directory-a',
+      },
+    }),
+    orderedConversationIds: ['session-3'],
   });
+  await harness.drainQueuedReactions();
 
   assert.deepEqual(harness.calls, [
-    'unsubscribeConversationEvents:session-1',
-    'queueControlPlaneOp:observed-selected-conversation-removed',
-    'activateConversation:session-3',
+    'enqueueQueuedReaction:observed-unsubscribe-conversation:session-1',
+    'enqueueQueuedReaction:observed-selected-conversation-removed',
     'markDirty',
+    'unsubscribeConversationEvents:session-1',
+    'activateConversation:session-3',
   ]);
-});
+  harness.service.stop();
+  },
+);
 
-void test('runtime workspace observed events keeps selected-conversation archive fallback scoped to the same project', () => {
+void test(
+  'runtime workspace observed events keeps selected-conversation archive fallback scoped to the same project',
+  async () => {
   const harness = createHarness({
-    reduction: {
-      changed: true,
-      removedConversationIds: ['session-1'],
-      removedDirectoryIds: [],
-    },
+    initialSynced: createSyncedState({
+      conversationDirectoryById: {
+        'session-1': 'directory-a',
+        'session-2': 'directory-b',
+      },
+    }),
     activeConversationId: null,
     orderedConversationIds: ['session-1', 'session-2'],
-    conversationDirectoryById: {
-      'session-1': 'directory-a',
-      'session-2': 'directory-b',
-    },
-    existingConversations: new Set(),
     leftNavSelection: {
       kind: 'conversation',
       sessionId: 'session-1',
     },
     resolvedActiveDirectoryId: 'directory-a',
-    orderedConversationIdsAfterApply: ['session-2'],
   });
 
-  harness.service.apply({
-    id: 'event-5b',
+  harness.apply({
+    synced: createSyncedState({
+      conversationDirectoryById: {
+        'session-2': 'directory-b',
+      },
+    }),
+    orderedConversationIds: ['session-2'],
   });
+  await harness.drainQueuedReactions();
 
   assert.deepEqual(harness.calls, [
-    'unsubscribeConversationEvents:session-1',
     'enterProjectPane:directory-a',
+    'enqueueQueuedReaction:observed-unsubscribe-conversation:session-1',
     'markDirty',
+    'unsubscribeConversationEvents:session-1',
   ]);
-});
+  harness.service.stop();
+  },
+);
 
 void test('runtime workspace observed events repairs invalid project selection and supports project/home fallback branches', () => {
   const harness = createHarness({
-    reduction: {
-      changed: true,
-      removedConversationIds: [],
-      removedDirectoryIds: [],
-    },
+    initialSynced: createSyncedState({
+      directoryIds: ['directory-fallback'],
+    }),
     leftNavSelection: {
       kind: 'project',
       directoryId: 'directory-missing',
     },
-    existingDirectories: new Set(),
     resolvedActiveDirectoryId: 'directory-fallback',
   });
 
-  harness.service.apply({
-    id: 'event-6',
+  harness.apply({
+    synced: createSyncedState({}),
+    orderedConversationIds: [],
   });
 
-  harness.setReduction({
-    changed: true,
-    removedConversationIds: [],
-    removedDirectoryIds: [],
-  });
   harness.setResolvedActiveDirectoryId(null);
-  harness.setExistingDirectories([]);
-  harness.service.apply({
-    id: 'event-7',
+  harness.apply({
+    synced: createSyncedState({}),
+    orderedConversationIds: [],
   });
 
   assert.deepEqual(harness.calls, [
@@ -414,4 +484,40 @@ void test('runtime workspace observed events repairs invalid project selection a
     'enterHomePane',
     'markDirty',
   ]);
+  harness.service.stop();
+});
+
+void test('runtime workspace observed events keeps store subscriber path non-reentrant when reactions are queued', async () => {
+  const harness = createHarness({
+    initialSynced: createSyncedState({
+      conversationDirectoryById: {
+        'session-1': 'directory-a',
+      },
+    }),
+    activeConversationId: 'session-1',
+    orderedConversationIds: ['session-1'],
+  });
+
+  harness.apply({
+    synced: createSyncedState({}),
+    orderedConversationIds: [],
+  });
+
+  assert.deepEqual(harness.calls, [
+    'setActiveConversationId:null',
+    'enterHomePane',
+    'enqueueQueuedReaction:observed-unsubscribe-conversation:session-1',
+    'markDirty',
+  ]);
+
+  await harness.drainQueuedReactions();
+
+  assert.deepEqual(harness.calls, [
+    'setActiveConversationId:null',
+    'enterHomePane',
+    'enqueueQueuedReaction:observed-unsubscribe-conversation:session-1',
+    'markDirty',
+    'unsubscribeConversationEvents:session-1',
+  ]);
+  harness.service.stop();
 });

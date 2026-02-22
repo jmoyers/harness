@@ -60,6 +60,9 @@ function buildService(options?: {
     removeEnvelopeListener: () => {
       calls.push('removeEnvelopeListener');
     },
+    stopWorkspaceObservedEvents: () => {
+      calls.push('stopWorkspaceObservedEvents');
+    },
     unsubscribeTaskPlanningEvents: async () => {
       calls.push('unsubscribeTaskPlanningEvents');
     },
@@ -148,6 +151,7 @@ void test('runtime shutdown service finalizes dependencies in order and forwards
     'clearRenderScheduled',
     'detachProcessListeners',
     'removeEnvelopeListener',
+    'stopWorkspaceObservedEvents',
     'unsubscribeTaskPlanningEvents',
     'closeKeyEventSubscription',
     'clearRuntimeFatalExitTimer',
@@ -188,6 +192,7 @@ void test('runtime shutdown service tolerates control-plane close failures and s
     'clearRenderScheduled',
     'detachProcessListeners',
     'removeEnvelopeListener',
+    'stopWorkspaceObservedEvents',
     'unsubscribeTaskPlanningEvents',
     'closeKeyEventSubscription',
     'clearRuntimeFatalExitTimer',

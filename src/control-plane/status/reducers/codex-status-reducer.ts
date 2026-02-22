@@ -14,19 +14,19 @@ export class CodexStatusReducer extends BaseAgentStatusReducer {
 
   protected override projectFromTelemetry(
     telemetry: StreamTelemetrySummary,
-  ): { text: string | null; phaseHint: 'needs-action' | 'working' | 'idle' | null } | null {
+  ): { text: string | null; activityHint: 'needs-action' | 'working' | 'idle' | null } | null {
     const eventName = normalize(telemetry.eventName);
     const summary = normalize(telemetry.summary);
     if (eventName === 'codex.user_prompt') {
       return {
         text: 'active',
-        phaseHint: 'working',
+        activityHint: 'working',
       };
     }
     if (eventName === 'codex.turn.e2e_duration_ms') {
       return {
         text: 'inactive',
-        phaseHint: 'idle',
+        activityHint: 'idle',
       };
     }
     if (eventName === 'codex.sse_event') {
@@ -39,7 +39,7 @@ export class CodexStatusReducer extends BaseAgentStatusReducer {
       ) {
         return {
           text: 'active',
-          phaseHint: 'working',
+          activityHint: 'working',
         };
       }
     }

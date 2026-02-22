@@ -59,7 +59,7 @@ function normalizeConversationFixture(
     phase,
     lastKnownWork,
     lastKnownWorkAt,
-    phaseHint: phase === 'needs-action' || phase === 'working' || phase === 'idle' ? phase : null,
+    activityHint: phase === 'needs-action' || phase === 'working' || phase === 'idle' ? phase : null,
   };
   if (lastKnownWork !== null || attentionReason !== null) {
     modelOptions.detailText = (lastKnownWork ?? attentionReason) as string;
@@ -2099,7 +2099,7 @@ void test('workspace rail model renders fixed terminal and critique glyphs while
           statusModel: statusModelFor('running', {
             phase: 'working',
             detailText: 'active',
-            phaseHint: 'working',
+            activityHint: 'working',
           }),
           lastKnownWork: 'active',
           lastKnownWorkAt: '2026-01-01T00:00:01.000Z',
@@ -2118,7 +2118,7 @@ void test('workspace rail model renders fixed terminal and critique glyphs while
           statusModel: statusModelFor('running', {
             phase: 'working',
             detailText: 'active',
-            phaseHint: 'working',
+            activityHint: 'working',
           }),
           lastKnownWork: 'active',
           lastKnownWorkAt: '2026-01-01T00:00:01.000Z',

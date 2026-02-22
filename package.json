@@ -108,7 +108,8 @@
     "@linear/sdk": "^75.0.0",
     "@napi-rs/canvas": "^0.1.92",
     "@oclif/core": "^4.8.0",
-    "gifenc": "^1.0.3"
+    "gifenc": "^1.0.3",
+    "zustand": "^5.0.11"
   },
   "devDependencies": {
     "@ai-sdk/anthropic": "^3.0.45",

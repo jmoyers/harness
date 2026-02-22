@@ -89,7 +89,7 @@ void test('runtime left-rail renderer refreshes selector snapshot and delegates 
           ProcessUsageRecord,
           readonly string[]
         >['render']
-      >[0]
+      >[0]['layout']
     | null = null;
 
   const service = new RuntimeLeftRailRender<
@@ -120,28 +120,32 @@ void test('runtime left-rail renderer refreshes selector snapshot and delegates 
     },
     workspace,
     repositoryManager,
-    repositories,
     repositoryAssociationByDirectoryId,
     directoryRepositorySnapshotByDirectoryId,
-    directories,
-    conversations,
     gitSummaryByDirectoryId,
-    processUsageBySessionId: () => processUsageBySessionId,
     loadingGitSummary: {
       branch: '(loading)',
     },
     showTasksEntry: true,
-    activeConversationId: () => 'session-1',
-    orderedConversationIds: () => orderedConversationIds,
   });
 
   const result = service.render({
-    cols: 100,
-    paneRows: 20,
-    leftCols: 30,
-    rightCols: 69,
-    separatorCol: 31,
-    rightStartCol: 32,
+    layout: {
+      cols: 100,
+      paneRows: 20,
+      leftCols: 30,
+      rightCols: 69,
+      separatorCol: 31,
+      rightStartCol: 32,
+    },
+    snapshot: {
+      repositories,
+      directories,
+      conversations,
+      orderedConversationIds,
+      processUsageBySessionId,
+      activeConversationId: 'session-1',
+    },
   });
 
   assert.deepEqual(result, {

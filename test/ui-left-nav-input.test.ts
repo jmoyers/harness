@@ -23,7 +23,9 @@ function createInjectedHarness(): Harness {
   const calls: string[] = [];
   const input = new LeftNavInput(
     {
-      latestRailRows: () => [] as never,
+      railViewState: {
+        readLatestRows: () => [] as never,
+      },
       currentSelection: () => selection,
     },
     {
@@ -110,7 +112,9 @@ void test('left-nav input default dependencies cover activation and empty cycle 
   let enteredHome = 0;
   const input = new LeftNavInput(
     {
-      latestRailRows: () => [] as never,
+      railViewState: {
+        readLatestRows: () => [] as never,
+      },
       currentSelection: () => selection,
     },
     {

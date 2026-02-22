@@ -226,7 +226,7 @@ void test('session status engine handles runtime-only branches for agent reducer
     detailText: 'active',
     lastKnownWork: null,
     lastKnownWorkAt: null,
-    phaseHint: 'working',
+    activityHint: 'working',
     observedAt: '2026-02-18T00:00:02.000Z',
   });
   const defaultWorkingText = expectStatusModel(
@@ -347,7 +347,7 @@ void test('base reducer default projection covers idle and exited default detail
     detailText: 'starting',
     lastKnownWork: null,
     lastKnownWorkAt: '2026-02-18T00:00:10.000Z',
-    phaseHint: null,
+    activityHint: null,
     observedAt: '2026-02-18T00:00:10.000Z',
   });
 
@@ -386,7 +386,7 @@ void test('base reducer default projection covers idle and exited default detail
     detailText: 'approval required',
     lastKnownWork: 'approval required',
     lastKnownWorkAt: '2026-02-18T00:00:12.000Z',
-    phaseHint: 'needs-action',
+    activityHint: 'needs-action',
     observedAt: '2026-02-18T00:00:12.000Z',
   });
   const runningNeedsAction = expectStatusModel(

@@ -277,6 +277,10 @@ import {
 } from '../../mux/live-mux/release-notes.ts';
 import { createTuiLeftRailInteractions } from '../../clients/tui/left-rail-interactions.ts';
 import { createTuiMainPaneInteractions } from '../../clients/tui/main-pane-interactions.ts';
+import {
+  routeTuiModalInput,
+  TuiModalInputRemainderState,
+} from '../../clients/tui/modal-input-routing.ts';
 import { TuiRenderSnapshotAdapter } from '../../clients/tui/render-snapshot-adapter.ts';
 import {
   getActiveMuxTheme,
@@ -1735,7 +1739,7 @@ class CodexLiveMuxRuntimeApplication {
     const projectPane = new ProjectPane();
     const leftRailPane = new LeftRailPane();
     let stop = false;
-    let inputRemainder = '';
+    const modalInputRemainderState = new TuiModalInputRemainderState();
     const debugFooterNotice = new DebugFooterNotice({
       ttlMs: DEBUG_FOOTER_NOTICE_TTL_MS,
     });
@@ -2502,27 +2506,6 @@ class CodexLiveMuxRuntimeApplication {
         return releaseNotesOverlay;
       }
       return modalManager.buildCurrentOverlay(layout.cols, layout.rows);
-    };
-
-    const dismissModalOnOutsideClick = (
-      input: Buffer,
-      dismiss: () => void,
-      onInsidePointerPress?: (col: number, row: number) => boolean,
-    ): boolean => {
-      const result = modalManager.dismissOnOutsideClick({
-        input,
-        inputRemainder,
-        layoutCols: layout.cols,
-        viewportRows: layout.rows,
-        dismiss,
-        ...(onInsidePointerPress === undefined
-          ? {}
-          : {
-              onInsidePointerPress,
-            }),
-      });
-      inputRemainder = result.inputRemainder;
-      return result.handled;
     };
 
     const attachConversation = async (sessionId: string): Promise<void> => {
@@ -4452,7 +4435,18 @@ class CodexLiveMuxRuntimeApplication {
         isQuitShortcut: (rawInput) =>
           detectMuxGlobalShortcut(rawInput, modalDismissShortcutBindings) === 'mux.app.quit',
         dismissOnOutsideClick: (rawInput, dismiss, onInsidePointerPress) =>
-          dismissModalOnOutsideClick(rawInput, dismiss, onInsidePointerPress),
+          modalInputRemainderState.dismissModalOnOutsideClick({
+            modalManager,
+            layoutCols: layout.cols,
+            viewportRows: layout.rows,
+            input: rawInput,
+            dismiss,
+            ...(onInsidePointerPress === undefined
+              ? {}
+              : {
+                  onInsidePointerPress,
+                }),
+          }),
         buildReleaseNotesModalOverlay: () => buildReleaseNotesModalOverlay(layout.rows),
         setPrompt: (next) => {
           releaseNotesPrompt = next;
@@ -4491,7 +4485,18 @@ class CodexLiveMuxRuntimeApplication {
         },
         overlays: {
           dismissOnOutsideClick: (rawInput, dismiss, onInsidePointerPress) =>
-            dismissModalOnOutsideClick(rawInput, dismiss, onInsidePointerPress),
+            modalInputRemainderState.dismissModalOnOutsideClick({
+              modalManager,
+              layoutCols: layout.cols,
+              viewportRows: layout.rows,
+              input: rawInput,
+              dismiss,
+              ...(onInsidePointerPress === undefined
+                ? {}
+                : {
+                    onInsidePointerPress,
+                  }),
+            }),
           buildCommandMenuModalOverlay: () => buildCommandMenuModalOverlay(layout.rows),
           buildConversationTitleModalOverlay: () => buildConversationTitleModalOverlay(layout.rows),
           buildNewThreadModalOverlay: () => buildNewThreadModalOverlay(layout.rows),
@@ -4614,19 +4619,20 @@ class CodexLiveMuxRuntimeApplication {
       });
 
     const routeModalInput = (input: Buffer): boolean => {
-      if (routeReleaseNotesModalInput(input)) {
-        return true;
-      }
-      return modalInputRouter.routeModalInput(input);
+      return routeTuiModalInput({
+        input,
+        routeReleaseNotesModalInput,
+        routeModalInput: (modalInput) => modalInputRouter.routeModalInput(modalInput),
+      });
     };
     const { handleInput } = createTuiMainPaneInteractions({
       workspace,
       controllerId: muxControllerId,
       getLayout: () => layout,
       noteGitActivity,
-      getInputRemainder: () => inputRemainder,
+      getInputRemainder: () => modalInputRemainderState.getInputRemainder(),
       setInputRemainder: (next) => {
-        inputRemainder = next;
+        modalInputRemainderState.setInputRemainder(next);
       },
       leftRailPointerInput,
       project: {

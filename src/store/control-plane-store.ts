@@ -59,7 +59,7 @@ const DEFAULT_RUNTIME_STATUS_MODEL_JSON = JSON.stringify({
   attentionReason: null,
   lastKnownWork: null,
   lastKnownWorkAt: null,
-  phaseHint: null,
+  activityHint: null,
   observedAt: new Date(0).toISOString(),
 } satisfies StreamSessionStatusModel | null);
 
@@ -84,7 +84,7 @@ function initialRuntimeStatusModel(
     attentionReason: null,
     lastKnownWork: null,
     lastKnownWorkAt: null,
-    phaseHint: null,
+    activityHint: null,
     observedAt,
   };
 }

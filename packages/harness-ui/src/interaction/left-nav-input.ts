@@ -19,7 +19,9 @@ export type LeftNavSelection =
     };
 
 export interface LeftNavState {
-  readonly latestRailRows: () => unknown;
+  readonly railViewState: {
+    readLatestRows(): unknown;
+  };
   readonly currentSelection: () => LeftNavSelection;
 }
 
@@ -95,7 +97,7 @@ export class LeftNavInput {
   ) {}
 
   visibleTargets(): readonly LeftNavSelection[] {
-    return this.strategies.visibleTargets(this.state.latestRailRows());
+    return this.strategies.visibleTargets(this.state.railViewState.readLatestRows());
   }
 
   activateTarget(target: LeftNavSelection, direction: 'next' | 'previous'): void {

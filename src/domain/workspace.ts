@@ -6,7 +6,6 @@ import type { PaneSelection, PaneSelectionDrag } from '../mux/live-mux/selection
 import type { createNewThreadPromptState } from '../mux/new-thread-prompt.ts';
 import type { TaskComposerBuffer } from '../mux/task-composer.ts';
 import type { TaskFocusedPaneView } from '../mux/task-focused-pane.ts';
-import type { buildWorkspaceRailViewRows } from '../mux/workspace-rail-model.ts';
 
 type MainPaneMode = 'conversation' | 'project' | 'home';
 
@@ -100,7 +99,6 @@ export class WorkspaceModel {
   conversationTitleEditClickState: { conversationId: string; atMs: number } | null = null;
   paneDividerDragActive = false;
   previousSelectionRows: readonly number[] = [];
-  latestRailViewRows: ReturnType<typeof buildWorkspaceRailViewRows> = [];
 
   repositoriesCollapsed: boolean;
   shortcutsCollapsed: boolean;

@@ -5,55 +5,45 @@ import type {
   TaskFocusedPaneTaskRecord,
 } from '../mux/task-focused-pane.ts';
 import type { TerminalSnapshotFrameCore } from '../terminal/snapshot-oracle.ts';
-import { RuntimeLeftRailRender } from './runtime-left-rail-render.ts';
-import { RuntimeRenderFlush } from './runtime-render-flush.ts';
+import {
+  RuntimeLeftRailRender,
+  type RuntimeLeftRailRenderOptions,
+  type RuntimeLeftRailRenderSnapshot,
+} from './runtime-left-rail-render.ts';
+import {
+  RuntimeRenderFlush,
+  type RuntimeRenderFlushOptions,
+} from './runtime-render-flush.ts';
 import { RuntimeRenderOrchestrator } from './runtime-render-orchestrator.ts';
-import { RuntimeRenderState } from './runtime-render-state.ts';
-import { RuntimeRightPaneRender } from './runtime-right-pane-render.ts';
+import {
+  RuntimeRenderState,
+  type RuntimeRenderStateOptions,
+} from './runtime-render-state.ts';
+import {
+  RuntimeRightPaneRender,
+  type RuntimeRightPaneRenderOptions,
+  type RuntimeRightPaneRenderSnapshot,
+} from './runtime-right-pane-render.ts';
 
 type RuntimeLayout = ReturnType<typeof computeDualPaneLayout>;
 
-type RuntimeRenderFlushOptions<TConversation, TModalOverlay, TStatusRow> = ConstructorParameters<
-  typeof RuntimeRenderFlush<
-    TConversation,
-    TerminalSnapshotFrameCore,
-    PaneSelection,
-    RuntimeLayout,
-    TModalOverlay,
-    TStatusRow
-  >
->[0];
-
-type RuntimeRightPaneRenderOptions<
-  TRepositoryRecord extends TaskFocusedPaneRepositoryRecord,
-  TTaskRecord extends TaskFocusedPaneTaskRecord,
-> = ConstructorParameters<typeof RuntimeRightPaneRender<TRepositoryRecord, TTaskRecord>>[0];
-
-type RuntimeLeftRailRenderOptions<
+export interface RuntimeRenderPipelineSnapshot<
   TDirectoryRecord,
   TConversation,
-  TRepositoryRecord,
-  TRepositorySnapshot,
-  TGitSummary,
+  TRepositoryRecord extends TaskFocusedPaneRepositoryRecord,
+  TTaskRecord extends TaskFocusedPaneTaskRecord,
   TProcessUsage,
-  TRailViewRows,
-> = ConstructorParameters<
-  typeof RuntimeLeftRailRender<
+> {
+  readonly leftRail: RuntimeLeftRailRenderSnapshot<
     TDirectoryRecord,
     TConversation,
     TRepositoryRecord,
-    TRepositorySnapshot,
-    TGitSummary,
-    TProcessUsage,
-    TRailViewRows
-  >
->[0];
+    TProcessUsage
+  >;
+  readonly rightPane: RuntimeRightPaneRenderSnapshot<TRepositoryRecord, TTaskRecord>;
+}
 
-type RuntimeRenderStateOptions<TConversation> = ConstructorParameters<
-  typeof RuntimeRenderState<TConversation, TerminalSnapshotFrameCore>
->[0];
-
-interface RuntimeRenderPipelineOptions<
+export interface RuntimeRenderPipelineOptions<
   TConversation,
   TRepositoryRecord extends TaskFocusedPaneRepositoryRecord,
   TTaskRecord extends TaskFocusedPaneTaskRecord,
@@ -65,7 +55,14 @@ interface RuntimeRenderPipelineOptions<
   TModalOverlay,
   TStatusRow,
 > {
-  readonly renderFlush: RuntimeRenderFlushOptions<TConversation, TModalOverlay, TStatusRow>;
+  readonly renderFlush: RuntimeRenderFlushOptions<
+    TConversation,
+    TerminalSnapshotFrameCore,
+    PaneSelection,
+    RuntimeLayout,
+    TModalOverlay,
+    TStatusRow
+  >;
   readonly rightPaneRender: RuntimeRightPaneRenderOptions<TRepositoryRecord, TTaskRecord>;
   readonly leftRailRender: RuntimeLeftRailRenderOptions<
     TDirectoryRecord,
@@ -76,9 +73,17 @@ interface RuntimeRenderPipelineOptions<
     TProcessUsage,
     TRailViewRows
   >;
-  readonly renderState: RuntimeRenderStateOptions<TConversation>;
+  readonly renderState: RuntimeRenderStateOptions<TConversation, TerminalSnapshotFrameCore>;
   readonly isScreenDirty: () => boolean;
   readonly clearDirty: () => void;
+  // Frame-local TUI snapshot read. React/web adapters should consume store selectors directly.
+  readonly readRenderSnapshot: () => RuntimeRenderPipelineSnapshot<
+    TDirectoryRecord,
+    TConversation,
+    TRepositoryRecord,
+    TTaskRecord,
+    TProcessUsage
+  >;
   readonly setLatestRailViewRows: (rows: TRailViewRows) => void;
   readonly activeDirectoryId: () => string | null;
 }
@@ -90,6 +95,7 @@ type RuntimeRenderPipelineInput = Parameters<
     TerminalSnapshotFrameCore,
     PaneSelection,
     PaneSelectionDrag,
+    unknown,
     unknown
   >['render']
 >[0];
@@ -112,7 +118,14 @@ export class RuntimeRenderPipeline<
     TerminalSnapshotFrameCore,
     PaneSelection,
     PaneSelectionDrag,
-    TRailViewRows
+    TRailViewRows,
+    RuntimeRenderPipelineSnapshot<
+      TDirectoryRecord,
+      TConversation,
+      TRepositoryRecord,
+      TTaskRecord,
+      TProcessUsage
+    >
   >;
 
   constructor(
@@ -136,9 +149,14 @@ export class RuntimeRenderPipeline<
     this.renderOrchestrator = new RuntimeRenderOrchestrator({
       isScreenDirty: options.isScreenDirty,
       clearDirty: options.clearDirty,
+      readRenderSnapshot: options.readRenderSnapshot,
       prepareRenderState: (selection, selectionDrag) =>
         renderState.prepareRenderState(selection, selectionDrag),
-      renderLeftRail: (layout) => leftRailRender.render(layout),
+      renderLeftRail: (layout, snapshot) =>
+        leftRailRender.render({
+          layout,
+          snapshot: snapshot.leftRail,
+        }),
       setLatestRailViewRows: options.setLatestRailViewRows,
       renderRightRows: (input) =>
         rightPaneRender.renderRightRows({
@@ -147,6 +165,7 @@ export class RuntimeRenderPipeline<
           homePaneActive: input.homePaneActive,
           projectPaneActive: input.projectPaneActive,
           activeDirectoryId: input.activeDirectoryId,
+          snapshot: input.snapshot.rightPane,
         }),
       flushRender: (input) => {
         renderFlush.flushRender(input);

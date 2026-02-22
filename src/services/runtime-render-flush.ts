@@ -1,10 +1,10 @@
-interface RuntimeRenderFlushResult {
+export interface RuntimeRenderFlushResult {
   readonly changedRowCount: number;
   readonly wroteOutput: boolean;
   readonly shouldShowCursor: boolean;
 }
 
-interface RuntimeRenderFlushInput<TConversation, TFrame, TSelection, TLayout> {
+export interface RuntimeRenderFlushInput<TConversation, TFrame, TSelection, TLayout> {
   readonly layout: TLayout;
   readonly projectPaneActive: boolean;
   readonly homePaneActive: boolean;
@@ -16,7 +16,7 @@ interface RuntimeRenderFlushInput<TConversation, TFrame, TSelection, TLayout> {
   readonly rightRows: readonly string[];
 }
 
-interface RuntimeRenderFlushOptions<
+export interface RuntimeRenderFlushOptions<
   TConversation,
   TFrame,
   TSelection,

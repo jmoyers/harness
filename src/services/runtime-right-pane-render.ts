@@ -1,5 +1,4 @@
 import type { WorkspaceModel } from '../domain/workspace.ts';
-import type { TaskManager } from '../domain/tasks.ts';
 import type { ProjectPaneSnapshot } from '../mux/harness-core-ui.ts';
 import type { TaskComposerBuffer } from '../mux/task-composer.ts';
 import type {
@@ -9,7 +8,7 @@ import type {
 } from '../mux/task-focused-pane.ts';
 import type { TerminalSnapshotFrameCore } from '../terminal/snapshot-oracle.ts';
 
-interface RuntimeRightPaneLayout {
+export interface RuntimeRightPaneLayout {
   readonly rightCols: number;
   readonly paneRows: number;
 }
@@ -53,22 +52,33 @@ interface ProjectPaneLike {
   };
 }
 
-interface RuntimeRightPaneRenderInput {
+export interface RuntimeRightPaneRenderInput<
+  TRepositoryRecord extends TaskFocusedPaneRepositoryRecord,
+  TTaskRecord extends TaskFocusedPaneTaskRecord,
+> {
   readonly layout: RuntimeRightPaneLayout;
   readonly rightFrame: TerminalSnapshotFrameCore | null;
   readonly homePaneActive: boolean;
   readonly projectPaneActive: boolean;
   readonly activeDirectoryId: string | null;
+  readonly snapshot: RuntimeRightPaneRenderSnapshot<TRepositoryRecord, TTaskRecord>;
 }
 
-interface RuntimeRightPaneRenderOptions<
+export interface RuntimeRightPaneRenderSnapshot<
+  TRepositoryRecord extends TaskFocusedPaneRepositoryRecord,
+  TTaskRecord extends TaskFocusedPaneTaskRecord,
+> {
+  readonly repositories: ReadonlyMap<string, TRepositoryRecord>;
+  readonly tasks: ReadonlyMap<string, TTaskRecord>;
+  readonly taskComposers: ReadonlyMap<string, TaskComposerBuffer>;
+}
+
+export interface RuntimeRightPaneRenderOptions<
   TRepositoryRecord extends TaskFocusedPaneRepositoryRecord,
   TTaskRecord extends TaskFocusedPaneTaskRecord,
 > {
   readonly workspace: WorkspaceModel;
   readonly showTasks?: boolean;
-  readonly repositories: ReadonlyMap<string, TRepositoryRecord>;
-  readonly taskManager: TaskManager<TTaskRecord, TaskComposerBuffer, NodeJS.Timeout>;
   readonly conversationPane: ConversationPaneLike;
   readonly homePane: HomePaneLike<TRepositoryRecord, TTaskRecord>;
   readonly projectPane: ProjectPaneLike;
@@ -84,7 +94,7 @@ export class RuntimeRightPaneRender<
     private readonly options: RuntimeRightPaneRenderOptions<TRepositoryRecord, TTaskRecord>,
   ) {}
 
-  renderRightRows(input: RuntimeRightPaneRenderInput): readonly string[] {
+  renderRightRows(input: RuntimeRightPaneRenderInput<TRepositoryRecord, TTaskRecord>): readonly string[] {
     const workspace = this.options.workspace;
     workspace.latestTaskPaneView = this.options.emptyTaskPaneView();
 
@@ -95,15 +105,15 @@ export class RuntimeRightPaneRender<
     if (input.homePaneActive) {
       const view = this.options.homePane.render({
         layout: input.layout,
-        repositories: this.options.repositories,
-        tasks: this.options.taskManager.readonlyTasks(),
+        repositories: input.snapshot.repositories,
+        tasks: input.snapshot.tasks,
         showTaskPlanningUi:
           (this.options.showTasks ?? true) && workspace.leftNavSelection.kind === 'tasks',
         selectedRepositoryId: workspace.taskPaneSelectedRepositoryId,
         repositoryDropdownOpen: workspace.taskRepositoryDropdownOpen,
         editorTarget: workspace.taskEditorTarget,
         draftBuffer: workspace.taskDraftComposer,
-        taskBufferById: this.options.taskManager.readonlyTaskComposers(),
+        taskBufferById: input.snapshot.taskComposers,
         notice: workspace.taskPaneNotice,
         scrollTop: workspace.taskPaneScrollTop,
       });

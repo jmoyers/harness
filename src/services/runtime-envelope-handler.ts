@@ -18,6 +18,12 @@ interface RuntimeEnvelopeOutputIngestResult<TConversation extends RuntimeEnvelop
   readonly previousCursor: number;
 }
 
+interface RuntimeObservedEventEnvelopeInput {
+  readonly subscriptionId: string;
+  readonly cursor: number;
+  readonly event: StreamObservedEvent;
+}
+
 interface RuntimeEnvelopeHandlerOptions<
   TConversation extends RuntimeEnvelopeConversationLike,
   TNormalizedEvent extends { ts: string },
@@ -73,9 +79,7 @@ interface RuntimeEnvelopeHandlerOptions<
   readonly nowIso: () => string;
   readonly recordOutputHandled: (durationMs: number) => void;
   readonly conversationById: (sessionId: string) => TConversation | undefined;
-  readonly applyObservedWorkspaceEvent: (event: StreamObservedEvent) => void;
-  readonly applyObservedGitStatusEvent: (event: StreamObservedEvent) => void;
-  readonly applyObservedTaskPlanningEvent: (event: StreamObservedEvent) => void;
+  readonly applyObservedEvent: (input: RuntimeObservedEventEnvelopeInput) => void;
   readonly idFactory: () => string;
 }
 
@@ -190,9 +194,11 @@ export class RuntimeEnvelopeHandler<
     }
 
     if (envelope.kind === 'stream.event') {
-      this.options.applyObservedWorkspaceEvent(envelope.event);
-      this.options.applyObservedGitStatusEvent(envelope.event);
-      this.options.applyObservedTaskPlanningEvent(envelope.event);
+      this.options.applyObservedEvent({
+        subscriptionId: envelope.subscriptionId,
+        cursor: envelope.cursor,
+        event: envelope.event,
+      });
     }
   }
 }

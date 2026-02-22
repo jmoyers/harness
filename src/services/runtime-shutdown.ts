@@ -18,6 +18,7 @@ interface RuntimeShutdownServiceOptions {
   readonly clearRenderScheduled: () => void;
   readonly detachProcessListeners: () => void;
   readonly removeEnvelopeListener: () => void;
+  readonly stopWorkspaceObservedEvents: () => void;
   readonly unsubscribeTaskPlanningEvents: () => Promise<void>;
   readonly closeKeyEventSubscription: () => Promise<void>;
   readonly clearRuntimeFatalExitTimer: () => void;
@@ -59,6 +60,7 @@ export class RuntimeShutdownService {
     this.options.clearRenderScheduled();
     this.options.detachProcessListeners();
     this.options.removeEnvelopeListener();
+    this.options.stopWorkspaceObservedEvents();
     await this.options.unsubscribeTaskPlanningEvents();
     await this.options.closeKeyEventSubscription();
     this.options.clearRuntimeFatalExitTimer();

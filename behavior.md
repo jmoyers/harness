@@ -153,6 +153,8 @@ Test anchors:
 Behavior fragments:
 
 - Provider/runtime events projected into canonical status model.
+- `runtimeStatus` is process/runtime truth; `phase` is interpreted client-facing state.
+- `activityHint` is optional telemetry metadata and does not supersede `phase`.
 - Attention hints and completion/inactivity transitions.
 - Rail/status line text from normalized event timelines.
 
@@ -195,12 +197,16 @@ Behavior fragments:
 - Parser/dispatch command parity.
 - Typed command wrappers for agent clients.
 - Observed-event subscription filtering and replay semantics.
+- Observed stream-event envelopes are applied with per-subscription monotonic cursor guards (duplicate/regressed cursors are ignored).
+- Synced directory/conversation/repository/task projection is reduced through `src/core/state/synced-observed-state.ts` and persisted in `src/core/store/harness-synced-store.ts`.
+- TUI workspace and task collections consume synced reducer deltas through domain projections (`src/services/workspace-observed-events.ts`, `src/services/task-planning-observed-events.ts`) instead of parsing observed payloads a second time.
 
 Owners:
 
-- `src/control-plane-stream-command-parser.ts`
-- `src/control-plane-stream-server.ts`
-- `src/control-plane-agent-realtime-api.ts`
+- `src/control-plane/stream-command-parser.ts`
+- `src/control-plane/stream-server.ts`
+- `src/control-plane/agent-realtime-api.ts`
+- `src/core/contracts/records.ts`
 
 Test anchors:
 

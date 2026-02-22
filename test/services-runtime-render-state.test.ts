@@ -53,9 +53,13 @@ void test('runtime render state returns null when no pane is active and no activ
 
   const service = new RuntimeRenderState<ConversationRecord, FrameRecord>({
     workspace,
-    hasDirectory: () => true,
-    activeConversationId: () => null,
-    activeConversation: () => ({ id: 'unused' }),
+    directories: {
+      hasDirectory: () => true,
+    },
+    conversations: {
+      activeConversationId: null,
+      getActiveConversation: () => ({ id: 'unused' }),
+    },
     snapshotFrame: () => ({ id: 'frame-1' }),
     selectionVisibleRows: () => [0],
   });
@@ -69,9 +73,13 @@ void test('runtime render state returns null when active conversation id exists 
 
   const service = new RuntimeRenderState<ConversationRecord, FrameRecord>({
     workspace,
-    hasDirectory: () => true,
-    activeConversationId: () => 'session-1',
-    activeConversation: () => null,
+    directories: {
+      hasDirectory: () => true,
+    },
+    conversations: {
+      activeConversationId: 'session-1',
+      getActiveConversation: () => null,
+    },
     snapshotFrame: () => ({ id: 'frame-1' }),
     selectionVisibleRows: () => [0],
   });
@@ -86,9 +94,13 @@ void test('runtime render state builds dragged selection payload when drag is ac
 
   const service = new RuntimeRenderState<ConversationRecord, FrameRecord>({
     workspace,
-    hasDirectory: () => true,
-    activeConversationId: () => 'session-1',
-    activeConversation: () => ({ id: 'session-1' }),
+    directories: {
+      hasDirectory: () => true,
+    },
+    conversations: {
+      activeConversationId: 'session-1',
+      getActiveConversation: () => ({ id: 'session-1' }),
+    },
     snapshotFrame: () => ({ id: 'frame-1' }),
     selectionVisibleRows: (_frame, selection) => {
       if (selection !== null) {
@@ -128,9 +140,13 @@ void test('runtime render state uses existing selection when no drag is active',
 
   const service = new RuntimeRenderState<ConversationRecord, FrameRecord>({
     workspace,
-    hasDirectory: () => true,
-    activeConversationId: () => 'session-1',
-    activeConversation: () => ({ id: 'session-1' }),
+    directories: {
+      hasDirectory: () => true,
+    },
+    conversations: {
+      activeConversationId: 'session-1',
+      getActiveConversation: () => ({ id: 'session-1' }),
+    },
     snapshotFrame: () => ({ id: 'frame-1' }),
     selectionVisibleRows: (_frame, selection) => {
       if (selection !== null) {
@@ -156,9 +172,13 @@ void test('runtime render state allows project-pane rendering without active con
 
   const service = new RuntimeRenderState<ConversationRecord, FrameRecord>({
     workspace,
-    hasDirectory: () => true,
-    activeConversationId: () => null,
-    activeConversation: () => null,
+    directories: {
+      hasDirectory: () => true,
+    },
+    conversations: {
+      activeConversationId: null,
+      getActiveConversation: () => null,
+    },
     snapshotFrame: () => ({ id: 'frame-1' }),
     selectionVisibleRows: () => [9],
   });

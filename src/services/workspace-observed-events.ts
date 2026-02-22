@@ -1,5 +1,3 @@
-import type { StreamObservedEvent } from '../control-plane/stream-protocol.ts';
-
 interface DirectoryRecordLike {
   readonly directoryId: string;
 }
@@ -15,99 +13,101 @@ interface WorkspaceObservedApplyResult {
   readonly removedDirectoryIds: readonly string[];
 }
 
-interface WorkspaceObservedEventsOptions<
+interface WorkspaceSyncedProjectionState<
   TDirectoryRecord extends DirectoryRecordLike,
   TConversationRecord extends ConversationRecordLike,
 > {
-  readonly parseDirectoryRecord: (value: unknown) => TDirectoryRecord | null;
-  readonly parseConversationRecord: (value: unknown) => TConversationRecord | null;
+  readonly directoriesById: Readonly<Record<string, TDirectoryRecord>>;
+  readonly conversationsById: Readonly<Record<string, TConversationRecord>>;
+}
+
+interface WorkspaceSyncedProjectionInput<
+  TDirectoryRecord extends DirectoryRecordLike,
+  TConversationRecord extends ConversationRecordLike,
+> {
+  readonly changed: boolean;
+  readonly state: WorkspaceSyncedProjectionState<TDirectoryRecord, TConversationRecord>;
+  readonly removedConversationIds: readonly string[];
+  readonly removedDirectoryIds: readonly string[];
+  readonly upsertedDirectoryIds: readonly string[];
+  readonly upsertedConversationIds: readonly string[];
+}
+
+interface WorkspaceSyncedProjectionOptions<
+  TDirectoryRecord extends DirectoryRecordLike,
+  TConversationRecord extends ConversationRecordLike,
+> {
   readonly setDirectory: (directoryId: string, directory: TDirectoryRecord) => void;
   readonly deleteDirectory: (directoryId: string) => boolean;
   readonly deleteDirectoryGitState: (directoryId: string) => void;
   readonly syncGitStateWithDirectories: () => void;
   readonly upsertConversationFromPersistedRecord: (record: TConversationRecord) => void;
   readonly removeConversation: (sessionId: string) => boolean;
-  readonly orderedConversationIds: () => readonly string[];
-  readonly conversationDirectoryId: (sessionId: string) => string | null;
 }
 
-export class WorkspaceObservedEvents<
+export class WorkspaceSyncedProjection<
   TDirectoryRecord extends DirectoryRecordLike,
   TConversationRecord extends ConversationRecordLike,
 > {
   constructor(
-    private readonly options: WorkspaceObservedEventsOptions<TDirectoryRecord, TConversationRecord>,
+    private readonly options: WorkspaceSyncedProjectionOptions<TDirectoryRecord, TConversationRecord>,
   ) {}
 
-  apply(observed: StreamObservedEvent): WorkspaceObservedApplyResult {
-    if (observed.type === 'directory-upserted') {
-      const directory = this.options.parseDirectoryRecord(observed.directory);
-      if (directory === null) {
-        return {
-          changed: false,
-          removedConversationIds: [],
-          removedDirectoryIds: [],
-        };
-      }
-      this.options.setDirectory(directory.directoryId, directory);
-      this.options.syncGitStateWithDirectories();
+  apply(
+    reduction: WorkspaceSyncedProjectionInput<TDirectoryRecord, TConversationRecord>,
+  ): WorkspaceObservedApplyResult {
+    if (!reduction.changed) {
       return {
-        changed: true,
+        changed: false,
         removedConversationIds: [],
         removedDirectoryIds: [],
       };
     }
 
-    if (observed.type === 'directory-archived') {
-      const removedConversationIds: string[] = [];
-      for (const sessionId of this.options.orderedConversationIds()) {
-        if (this.options.conversationDirectoryId(sessionId) !== observed.directoryId) {
-          continue;
-        }
-        if (this.options.removeConversation(sessionId)) {
-          removedConversationIds.push(sessionId);
-        }
-      }
-      const removedDirectory = this.options.deleteDirectory(observed.directoryId);
-      this.options.deleteDirectoryGitState(observed.directoryId);
-      this.options.syncGitStateWithDirectories();
-      return {
-        changed: removedDirectory || removedConversationIds.length > 0,
-        removedConversationIds,
-        removedDirectoryIds: removedDirectory ? [observed.directoryId] : [],
-      };
-    }
+    let changed = false;
+    const removedConversationIds: string[] = [];
+    const removedDirectoryIds: string[] = [];
 
-    if (observed.type === 'conversation-created' || observed.type === 'conversation-updated') {
-      const conversation = this.options.parseConversationRecord(observed.conversation);
-      if (conversation === null) {
-        return {
-          changed: false,
-          removedConversationIds: [],
-          removedDirectoryIds: [],
-        };
+    for (const directoryId of reduction.upsertedDirectoryIds) {
+      const directory = reduction.state.directoriesById[directoryId];
+      if (directory === undefined) {
+        continue;
+      }
+      this.options.setDirectory(directoryId, directory);
+      changed = true;
+    }
+    for (const conversationId of reduction.upsertedConversationIds) {
+      const conversation = reduction.state.conversationsById[conversationId];
+      if (conversation === undefined) {
+        continue;
       }
       this.options.upsertConversationFromPersistedRecord(conversation);
-      return {
-        changed: true,
-        removedConversationIds: [],
-        removedDirectoryIds: [],
-      };
+      changed = true;
     }
 
-    if (observed.type === 'conversation-archived' || observed.type === 'conversation-deleted') {
-      const removed = this.options.removeConversation(observed.conversationId);
-      return {
-        changed: removed,
-        removedConversationIds: removed ? [observed.conversationId] : [],
-        removedDirectoryIds: [],
-      };
+    for (const sessionId of reduction.removedConversationIds) {
+      if (!this.options.removeConversation(sessionId)) {
+        continue;
+      }
+      removedConversationIds.push(sessionId);
+      changed = true;
+    }
+
+    for (const directoryId of reduction.removedDirectoryIds) {
+      if (this.options.deleteDirectory(directoryId)) {
+        removedDirectoryIds.push(directoryId);
+        changed = true;
+      }
+      this.options.deleteDirectoryGitState(directoryId);
+    }
+    if (reduction.upsertedDirectoryIds.length > 0 || reduction.removedDirectoryIds.length > 0) {
+      this.options.syncGitStateWithDirectories();
     }
 
     return {
-      changed: false,
-      removedConversationIds: [],
-      removedDirectoryIds: [],
+      changed,
+      removedConversationIds,
+      removedDirectoryIds,
     };
   }
 }
