@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { StartupPersistedConversationQueueService } from '../src/services/startup-persisted-conversation-queue.ts';
+import { createStartupPersistedConversationQueueService } from '../src/services/startup-persisted-conversation-queue.ts';
 
 interface ConversationRecord {
   live: boolean;
@@ -15,7 +15,7 @@ void test('startup persisted conversation queue service enqueues only non-live n
   ]);
   const calls: string[] = [];
   const tasks: Array<() => Promise<void>> = [];
-  const service = new StartupPersistedConversationQueueService<ConversationRecord>({
+  const service = createStartupPersistedConversationQueueService<ConversationRecord>({
     orderedConversationIds: () => [
       'session-active',
       'session-live',
@@ -62,7 +62,7 @@ void test('startup persisted conversation queue service rechecks live state befo
   ]);
   const calls: string[] = [];
   let queuedTask: (() => Promise<void>) | null = null;
-  const service = new StartupPersistedConversationQueueService<ConversationRecord>({
+  const service = createStartupPersistedConversationQueueService<ConversationRecord>({
     orderedConversationIds: () => ['session-background'],
     conversationById: (sessionId) => conversations.get(sessionId),
     queueBackgroundOp: (task, label) => {
@@ -89,7 +89,7 @@ void test('startup persisted conversation queue service rechecks live state befo
 });
 
 void test('startup persisted conversation queue service returns zero when nothing is queueable', () => {
-  const service = new StartupPersistedConversationQueueService<ConversationRecord>({
+  const service = createStartupPersistedConversationQueueService<ConversationRecord>({
     orderedConversationIds: () => [],
     conversationById: () => undefined,
     queueBackgroundOp: () => {},

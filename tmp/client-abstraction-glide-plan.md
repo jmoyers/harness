@@ -3,6 +3,7 @@
 ## Current State
 - Branch: `jm/client-abstraction`
 - Latest checkpoints:
+  - `52e1160` Flatten conversation lifecycle runtime service wrappers
   - `3b58734` Flatten runtime stream subscriptions wrapper
   - `5baa136` Remove runtime directory action bridge layer
   - `0d5f2d2` Flatten runtime conversation and git state action wrappers
@@ -35,13 +36,19 @@
 - Preserve explicit option contracts and timer behavior.
 
 ### Slice 4 (in progress)
-- Keep only true state engines and avoid new compatibility bridges:
+- Completed in-progress cleanup:
+  - Flattened non-state orchestration wrappers:
+    - `conversation-lifecycle`
+    - `conversation-startup-hydration`
+    - `startup-persisted-conversation-queue`
+    - `runtime-task-composer-persistence`
+- Keep only true state engines:
   - `runtime-layout-resize`
   - `runtime-project-pane-github-review-cache`
   - `runtime-command-menu-agent-tools`
-  - `runtime-task-composer-persistence`
 - Rename survivors to reflect state ownership (engine/controller semantics) where useful.
-- Remove duplicated parser paths where one canonical contracts parser can be used.
+- Optional hardening pass:
+  - remove duplicated parser paths where one canonical contracts parser can be used.
 
 ## Validation Gates Per Slice
 - `bun run lint`

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { RuntimeTaskComposerPersistenceService } from '../src/services/runtime-task-composer-persistence.ts';
+import { createRuntimeTaskComposerPersistenceService } from '../src/services/runtime-task-composer-persistence.ts';
 
 interface TaskRecord {
   readonly taskId: string;
@@ -50,7 +50,7 @@ void test('runtime task composer persistence service resolves composer lookup an
     ],
   ]);
   const setCalls: Array<{ taskId: string; buffer: TaskComposerBuffer }> = [];
-  const service = new RuntimeTaskComposerPersistenceService<
+  const service = createRuntimeTaskComposerPersistenceService<
     TaskRecord,
     TaskComposerBuffer,
     FakeTimer
@@ -143,7 +143,7 @@ void test('runtime task composer persistence service clears autosave timers and 
   let scheduledDelay = 0;
   let unrefCount = 0;
 
-  const service = new RuntimeTaskComposerPersistenceService<
+  const service = createRuntimeTaskComposerPersistenceService<
     TaskRecord,
     TaskComposerBuffer,
     FakeTimer
@@ -237,7 +237,7 @@ void test('runtime task composer persistence service queues persist operations a
     body: string;
   }> = [];
 
-  const service = new RuntimeTaskComposerPersistenceService<
+  const service = createRuntimeTaskComposerPersistenceService<
     TaskRecord,
     TaskComposerBuffer,
     FakeTimer
@@ -350,7 +350,7 @@ void test('runtime task composer persistence service clears timer before flush p
   const cleared: string[] = [];
   const queued: string[] = [];
 
-  const service = new RuntimeTaskComposerPersistenceService<
+  const service = createRuntimeTaskComposerPersistenceService<
     TaskRecord,
     TaskComposerBuffer,
     FakeTimer
@@ -419,7 +419,7 @@ void test('runtime task composer persistence service default timer fallbacks sch
   ]);
   const queued: string[] = [];
 
-  const service = new RuntimeTaskComposerPersistenceService<TaskRecord, TaskComposerBuffer>({
+  const service = createRuntimeTaskComposerPersistenceService<TaskRecord, TaskComposerBuffer>({
     getTask: (taskId) => (taskId === task.taskId ? task : undefined),
     getTaskComposer: (taskId) => composers.get(taskId),
     setTaskComposer: () => {},

@@ -188,7 +188,7 @@ import { RepositoryManager } from '../../domain/repositories.ts';
 import { DirectoryManager } from '../../domain/directories.ts';
 import { TaskManager } from '../../domain/tasks.ts';
 import { ControlPlaneService } from '../../services/control-plane.ts';
-import { ConversationLifecycle } from '../../services/conversation-lifecycle.ts';
+import { createConversationLifecycle } from '../../services/conversation-lifecycle.ts';
 import { DirectoryHydrationService } from '../../services/directory-hydration.ts';
 import { EventPersistence } from '../../services/event-persistence.ts';
 import { MuxUiStatePersistence } from '../../services/mux-ui-state-persistence.ts';
@@ -215,7 +215,7 @@ import { RuntimeLayoutResize } from '../../services/runtime-layout-resize.ts';
 import { createRuntimeRenderLifecycle } from '../../services/runtime-render-lifecycle.ts';
 import { finalizeRuntimeShutdown } from '../../services/runtime-shutdown.ts';
 import { createRuntimeTaskEditorActions } from '../../services/runtime-task-editor-actions.ts';
-import { RuntimeTaskComposerPersistenceService } from '../../services/runtime-task-composer-persistence.ts';
+import { createRuntimeTaskComposerPersistenceService } from '../../services/runtime-task-composer-persistence.ts';
 import { createRuntimeTaskPaneActions } from '../../services/runtime-task-pane-actions.ts';
 import { createRuntimeTaskPaneShortcuts } from '../../services/runtime-task-pane-shortcuts.ts';
 import { RuntimeProjectPaneGitHubReviewCache } from '../../services/runtime-project-pane-github-review-cache.ts';
@@ -1388,7 +1388,7 @@ class CodexLiveMuxRuntimeApplication {
       return persistedRows.length;
     };
 
-    const conversationLifecycle = new ConversationLifecycle<
+    const conversationLifecycle = createConversationLifecycle<
       ConversationState,
       ControlPlaneSessionSummary,
       ConversationState['controller']
@@ -2668,7 +2668,7 @@ class CodexLiveMuxRuntimeApplication {
       return task;
     };
 
-    const taskComposerPersistence = new RuntimeTaskComposerPersistenceService<
+    const taskComposerPersistence = createRuntimeTaskComposerPersistenceService<
       ControlPlaneTaskRecord,
       TaskComposerBuffer
     >({

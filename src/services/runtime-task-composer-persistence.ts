@@ -44,95 +44,108 @@ interface RuntimeTaskComposerPersistenceOptions<
   readonly clearTimeoutFn?: (timer: TTaskAutosaveTimer) => void;
 }
 
-export class RuntimeTaskComposerPersistenceService<
+export interface RuntimeTaskComposerPersistenceService<
+  TTaskComposerBuffer extends TaskComposerBufferShape,
+> {
+  taskComposerForTask(taskId: string): TTaskComposerBuffer | null;
+  setTaskComposerForTask(taskId: string, buffer: TTaskComposerBuffer): void;
+  clearTaskAutosaveTimer(taskId: string): void;
+  scheduleTaskComposerPersist(taskId: string): void;
+  flushTaskComposerPersist(taskId: string): void;
+}
+
+export function createRuntimeTaskComposerPersistenceService<
   TTaskRecord extends TaskRecordShape,
   TTaskComposerBuffer extends TaskComposerBufferShape,
   TTaskAutosaveTimer extends { unref?: () => void } = NodeJS.Timeout,
-> {
-  private readonly setTimeoutFn: (callback: () => void, ms: number) => TTaskAutosaveTimer;
-  private readonly clearTimeoutFn: (timer: TTaskAutosaveTimer) => void;
+>(
+  options: RuntimeTaskComposerPersistenceOptions<
+    TTaskRecord,
+    TTaskComposerBuffer,
+    TTaskAutosaveTimer
+  >,
+): RuntimeTaskComposerPersistenceService<TTaskComposerBuffer> {
+  const setTimeoutFn =
+    options.setTimeoutFn ??
+    ((callback, ms) => setTimeout(callback, ms) as unknown as TTaskAutosaveTimer);
+  const clearTimeoutFn =
+    options.clearTimeoutFn ?? ((timer) => clearTimeout(timer as unknown as NodeJS.Timeout));
 
-  constructor(
-    private readonly options: RuntimeTaskComposerPersistenceOptions<
-      TTaskRecord,
-      TTaskComposerBuffer,
-      TTaskAutosaveTimer
-    >,
-  ) {
-    this.setTimeoutFn =
-      options.setTimeoutFn ??
-      ((callback, ms) => setTimeout(callback, ms) as unknown as TTaskAutosaveTimer);
-    this.clearTimeoutFn =
-      options.clearTimeoutFn ?? ((timer) => clearTimeout(timer as unknown as NodeJS.Timeout));
-  }
-
-  taskComposerForTask(taskId: string): TTaskComposerBuffer | null {
-    const existing = this.options.getTaskComposer(taskId);
+  function taskComposerForTask(taskId: string): TTaskComposerBuffer | null {
+    const existing = options.getTaskComposer(taskId);
     if (existing !== undefined) {
       return existing;
     }
-    const task = this.options.getTask(taskId);
+    const task = options.getTask(taskId);
     if (task === undefined) {
       return null;
     }
-    return this.options.buildComposerFromTask(task);
+    return options.buildComposerFromTask(task);
   }
 
-  setTaskComposerForTask(taskId: string, buffer: TTaskComposerBuffer): void {
-    this.options.setTaskComposer(taskId, this.options.normalizeTaskComposerBuffer(buffer));
+  function setTaskComposerForTask(taskId: string, buffer: TTaskComposerBuffer): void {
+    options.setTaskComposer(taskId, options.normalizeTaskComposerBuffer(buffer));
   }
 
-  clearTaskAutosaveTimer(taskId: string): void {
-    const timer = this.options.getTaskAutosaveTimer(taskId);
+  function clearTaskAutosaveTimer(taskId: string): void {
+    const timer = options.getTaskAutosaveTimer(taskId);
     if (timer !== undefined) {
-      this.clearTimeoutFn(timer);
-      this.options.deleteTaskAutosaveTimer(taskId);
+      clearTimeoutFn(timer);
+      options.deleteTaskAutosaveTimer(taskId);
     }
   }
 
-  scheduleTaskComposerPersist(taskId: string): void {
-    this.clearTaskAutosaveTimer(taskId);
-    const timer = this.setTimeoutFn(() => {
-      this.options.deleteTaskAutosaveTimer(taskId);
-      this.queuePersistTaskComposer(taskId, 'debounced');
-    }, this.options.autosaveDebounceMs);
+  function scheduleTaskComposerPersist(taskId: string): void {
+    clearTaskAutosaveTimer(taskId);
+    const timer = setTimeoutFn(() => {
+      options.deleteTaskAutosaveTimer(taskId);
+      queuePersistTaskComposer(taskId, 'debounced');
+    }, options.autosaveDebounceMs);
     timer.unref?.();
-    this.options.setTaskAutosaveTimer(taskId, timer);
+    options.setTaskAutosaveTimer(taskId, timer);
   }
 
-  flushTaskComposerPersist(taskId: string): void {
-    this.clearTaskAutosaveTimer(taskId);
-    this.queuePersistTaskComposer(taskId, 'flush');
+  function flushTaskComposerPersist(taskId: string): void {
+    clearTaskAutosaveTimer(taskId);
+    queuePersistTaskComposer(taskId, 'flush');
   }
 
-  private queuePersistTaskComposer(taskId: string, reason: 'debounced' | 'flush'): void {
-    const task = this.options.getTask(taskId);
-    const buffer = this.options.getTaskComposer(taskId);
+  function queuePersistTaskComposer(taskId: string, reason: 'debounced' | 'flush'): void {
+    const task = options.getTask(taskId);
+    const buffer = options.getTaskComposer(taskId);
     if (task === undefined || buffer === undefined) {
       return;
     }
-    const fields = this.options.taskFieldsFromComposerText(buffer.text);
+    const fields = options.taskFieldsFromComposerText(buffer.text);
     if (fields.body.trim().length === 0) {
-      this.options.setTaskPaneNotice('task body is required');
-      this.options.markDirty();
+      options.setTaskPaneNotice('task body is required');
+      options.markDirty();
       return;
     }
     if (fields.title === task.title && fields.body === task.body) {
       return;
     }
-    this.options.queueControlPlaneOp(async () => {
-      const parsed = await this.options.updateTask({
+    options.queueControlPlaneOp(async () => {
+      const parsed = await options.updateTask({
         taskId,
         repositoryId: task.repositoryId,
         title: fields.title ?? '',
         body: fields.body,
       });
-      this.options.applyTaskRecord(parsed);
+      options.applyTaskRecord(parsed);
       const persistedText = parsed.body.length === 0 ? parsed.title : parsed.body;
-      const latestBuffer = this.options.getTaskComposer(taskId);
+      const latestBuffer = options.getTaskComposer(taskId);
       if (latestBuffer !== undefined && latestBuffer.text === persistedText) {
-        this.options.deleteTaskComposer(taskId);
+        options.deleteTaskComposer(taskId);
       }
     }, `task-editor-save:${reason}:${taskId}`);
   }
+
+  return {
+    taskComposerForTask,
+    setTaskComposerForTask,
+    clearTaskAutosaveTimer,
+    scheduleTaskComposerPersist,
+    flushTaskComposerPersist,
+  };
 }

@@ -12,34 +12,40 @@ export interface StartupPersistedConversationQueueServiceOptions<
   readonly markDirty: () => void;
 }
 
-export class StartupPersistedConversationQueueService<
-  TConversation extends StartupQueueConversationRecord,
-> {
-  constructor(
-    private readonly options: StartupPersistedConversationQueueServiceOptions<TConversation>,
-  ) {}
+export interface StartupPersistedConversationQueueService {
+  queuePersistedConversationsInBackground(activeSessionId: string | null): number;
+}
 
-  queuePersistedConversationsInBackground(activeSessionId: string | null): number {
-    const ordered = this.options.orderedConversationIds();
+export function createStartupPersistedConversationQueueService<
+  TConversation extends StartupQueueConversationRecord,
+>(
+  options: StartupPersistedConversationQueueServiceOptions<TConversation>,
+): StartupPersistedConversationQueueService {
+  function queuePersistedConversationsInBackground(activeSessionId: string | null): number {
+    const ordered = options.orderedConversationIds();
     let queued = 0;
     for (const sessionId of ordered) {
       if (activeSessionId !== null && sessionId === activeSessionId) {
         continue;
       }
-      const conversation = this.options.conversationById(sessionId);
+      const conversation = options.conversationById(sessionId);
       if (conversation === undefined || conversation.live) {
         continue;
       }
-      this.options.queueBackgroundOp(async () => {
-        const latest = this.options.conversationById(sessionId);
+      options.queueBackgroundOp(async () => {
+        const latest = options.conversationById(sessionId);
         if (latest === undefined || latest.live) {
           return;
         }
-        await this.options.startConversation(sessionId);
-        this.options.markDirty();
+        await options.startConversation(sessionId);
+        options.markDirty();
       }, `background-start:${sessionId}`);
       queued += 1;
     }
     return queued;
   }
+
+  return {
+    queuePersistedConversationsInBackground,
+  };
 }

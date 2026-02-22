@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import type { WorkspaceModel } from '../src/domain/workspace.ts';
-import { ConversationLifecycle } from '../src/services/conversation-lifecycle.ts';
+import { createConversationLifecycle } from '../src/services/conversation-lifecycle.ts';
 
 interface TestConversation {
   sessionId: string;
@@ -51,7 +51,7 @@ void test('conversation lifecycle composes subscriptions starter hydration and b
     launchCommand: null,
   });
 
-  const lifecycle = new ConversationLifecycle<
+  const lifecycle = createConversationLifecycle<
     TestConversation,
     TestSessionSummary,
     { controllerId: string }
@@ -294,7 +294,7 @@ void test('conversation lifecycle delegates activation and conversation actions 
   ]);
   let activeSessionId: string | null = null;
 
-  const lifecycle = new ConversationLifecycle<
+  const lifecycle = createConversationLifecycle<
     TestConversation,
     TestSessionSummary,
     { controllerId: string }
