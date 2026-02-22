@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import { createHarnessSyncedStore } from '../src/core/store/harness-synced-store.ts';
-import { createRuntimeObservedEventProjectionPipeline } from '../src/services/runtime-observed-event-projection-pipeline.ts';
+import {
+  applyRuntimeObservedEventProjection,
+  type RuntimeObservedEventProjectionPipelineOptions,
+} from '../src/services/runtime-observed-event-projection-pipeline.ts';
 
 void test('runtime observed event projection pipeline short-circuits when cursor is duplicate/regressed', () => {
   const store = createHarnessSyncedStore();
   const calls: string[] = [];
-  const pipeline = createRuntimeObservedEventProjectionPipeline({
+  const options: RuntimeObservedEventProjectionPipelineOptions = {
     syncedStore: store,
     applyWorkspaceProjection: () => {
       calls.push('workspace');
@@ -17,7 +20,7 @@ void test('runtime observed event projection pipeline short-circuits when cursor
     applyTaskPlanningProjection: () => {
       calls.push('task');
     },
-  });
+  };
 
   const event = {
     type: 'directory-archived',
@@ -25,16 +28,16 @@ void test('runtime observed event projection pipeline short-circuits when cursor
     ts: new Date(0).toISOString(),
   } as const;
 
-  const first = pipeline.apply({
+  const first = applyRuntimeObservedEventProjection({
     subscriptionId: 'subscription-1',
     cursor: 5,
     event,
-  });
-  const second = pipeline.apply({
+  }, options);
+  const second = applyRuntimeObservedEventProjection({
     subscriptionId: 'subscription-1',
     cursor: 5,
     event,
-  });
+  }, options);
 
   assert.equal(first.cursorAccepted, true);
   assert.equal(first.previousCursor, null);
@@ -50,7 +53,7 @@ void test('runtime observed event projection pipeline applies projections in can
   let taskChanged = false;
   let sawGitEventType: string | null = null;
 
-  const pipeline = createRuntimeObservedEventProjectionPipeline({
+  const options: RuntimeObservedEventProjectionPipelineOptions = {
     syncedStore: store,
     applyWorkspaceProjection: (reduction) => {
       workspaceChanged = reduction.changed;
@@ -64,9 +67,9 @@ void test('runtime observed event projection pipeline applies projections in can
       taskChanged = reduction.changed;
       calls.push('task');
     },
-  });
+  };
 
-  const result = pipeline.apply({
+  const result = applyRuntimeObservedEventProjection({
     subscriptionId: 'subscription-2',
     cursor: 10,
     event: {
@@ -85,7 +88,7 @@ void test('runtime observed event projection pipeline applies projections in can
         runtimeLive: true,
       },
     },
-  });
+  }, options);
 
   assert.equal(result.cursorAccepted, true);
   assert.equal(result.previousCursor, null);

@@ -197,7 +197,10 @@ import { RuntimeControlPlaneOps } from '../../services/runtime-control-plane-ops
 import { RuntimeControlActions } from '../../services/runtime-control-actions.ts';
 import { createRuntimeDirectoryActions } from '../../services/runtime-directory-actions.ts';
 import { RuntimeEnvelopeHandler } from '../../services/runtime-envelope-handler.ts';
-import { createRuntimeObservedEventProjectionPipeline } from '../../services/runtime-observed-event-projection-pipeline.ts';
+import {
+  applyRuntimeObservedEventProjection,
+  type RuntimeObservedEventProjectionPipelineOptions,
+} from '../../services/runtime-observed-event-projection-pipeline.ts';
 import { RuntimeRenderPipeline } from '../../services/runtime-render-pipeline.ts';
 import { RuntimeRepositoryActions } from '../../services/runtime-repository-actions.ts';
 import { RuntimeGitState } from '../../services/runtime-git-state.ts';
@@ -217,9 +220,7 @@ import {
   type InstallableAgentType,
 } from '../../services/runtime-command-menu-agent-tools.ts';
 import { WorkspaceSyncedProjection } from '../../services/workspace-observed-events.ts';
-import { RuntimeWorkspaceObservedEvents } from '../../services/runtime-workspace-observed-events.ts';
-import { RuntimeWorkspaceObservedEffectQueue } from '../../services/runtime-workspace-observed-effect-queue.ts';
-import { RuntimeWorkspaceObservedTransitionPolicy } from '../../services/runtime-workspace-observed-transition-policy.ts';
+import { subscribeRuntimeWorkspaceObservedEvents } from '../../services/runtime-workspace-observed-events.ts';
 import { RuntimeRailViewState } from '../../services/runtime-rail-view-state.ts';
 import { StartupStateHydrationService } from '../../services/startup-state-hydration.ts';
 import {
@@ -281,7 +282,7 @@ import {
   routeTuiModalInput,
   TuiModalInputRemainderState,
 } from '../../clients/tui/modal-input-routing.ts';
-import { TuiRenderSnapshotAdapter } from '../../clients/tui/render-snapshot-adapter.ts';
+import { readTuiRenderSnapshot } from '../../clients/tui/render-snapshot-adapter.ts';
 import {
   getActiveMuxTheme,
   muxThemePresetNames,
@@ -2863,50 +2864,46 @@ class CodexLiveMuxRuntimeApplication {
       },
     });
 
-    const runtimeWorkspaceObservedTransitionPolicy = new RuntimeWorkspaceObservedTransitionPolicy({
-      workspace,
-      getActiveConversationId: () => conversationManager.activeConversationId,
-      setActiveConversationId: (sessionId) => {
-        conversationManager.setActiveConversationId(sessionId);
-      },
-      resolveActiveDirectoryId,
-      stopConversationTitleEdit: (persistPending) => {
-        stopConversationTitleEdit(persistPending);
-      },
-      enterProjectPane,
-      enterHomePane,
-    });
-    const runtimeWorkspaceObservedEffectQueue = new RuntimeWorkspaceObservedEffectQueue({
-      enqueueQueuedReaction: queueControlPlaneOp,
-      unsubscribeConversationEvents: async (sessionId) => {
-        await conversationLifecycle.unsubscribeConversationEvents(sessionId);
-      },
-      activateConversation: async (sessionId) => {
-        await conversationLifecycle.activateConversation(sessionId);
-      },
-    });
-    const runtimeWorkspaceObservedEvents = new RuntimeWorkspaceObservedEvents({
+    const stopWorkspaceObservedEvents = subscribeRuntimeWorkspaceObservedEvents({
       store: harnessSyncedStore,
       orderedConversationIds: () => conversationManager.orderedIds(),
-      transitionPolicy: runtimeWorkspaceObservedTransitionPolicy,
-      effectQueue: runtimeWorkspaceObservedEffectQueue,
+      transitionPolicy: {
+        workspace,
+        getActiveConversationId: () => conversationManager.activeConversationId,
+        setActiveConversationId: (sessionId) => {
+          conversationManager.setActiveConversationId(sessionId);
+        },
+        resolveActiveDirectoryId,
+        stopConversationTitleEdit: (persistPending) => {
+          stopConversationTitleEdit(persistPending);
+        },
+        enterProjectPane,
+        enterHomePane,
+      },
+      effectQueue: {
+        enqueueQueuedReaction: queueControlPlaneOp,
+        unsubscribeConversationEvents: async (sessionId) => {
+          await conversationLifecycle.unsubscribeConversationEvents(sessionId);
+        },
+        activateConversation: async (sessionId) => {
+          await conversationLifecycle.activateConversation(sessionId);
+        },
+      },
       markDirty,
     });
-    runtimeWorkspaceObservedEvents.start();
 
-    const runtimeObservedEventProjectionPipeline =
-      createRuntimeObservedEventProjectionPipeline({
-        syncedStore: harnessSyncedStore,
-        applyWorkspaceProjection: (reduction) => {
-          workspaceSyncedProjection.apply(reduction);
-        },
-        applyDirectoryGitProjection: (event) => {
-          runtimeGitState.applyObservedGitStatusEvent(event);
-        },
-        applyTaskPlanningProjection: (reduction) => {
-          taskPlanningSyncedProjection.apply(reduction);
-        },
-      });
+    const runtimeObservedEventProjection: RuntimeObservedEventProjectionPipelineOptions = {
+      syncedStore: harnessSyncedStore,
+      applyWorkspaceProjection: (reduction) => {
+        workspaceSyncedProjection.apply(reduction);
+      },
+      applyDirectoryGitProjection: (event) => {
+        runtimeGitState.applyObservedGitStatusEvent(event);
+      },
+      applyTaskPlanningProjection: (reduction) => {
+        taskPlanningSyncedProjection.apply(reduction);
+      },
+    };
 
     activateConversationForStartupOrchestrator = async (sessionId: string): Promise<void> => {
       await conversationLifecycle.activateConversation(sessionId);
@@ -4110,20 +4107,6 @@ class CodexLiveMuxRuntimeApplication {
 
     const runtimeRailViewState =
       new RuntimeRailViewState<ReturnType<typeof buildWorkspaceRailViewRows>>([]);
-    const tuiRenderSnapshotAdapter = new TuiRenderSnapshotAdapter<
-      ControlPlaneDirectoryRecord,
-      ConversationState,
-      ControlPlaneRepositoryRecord,
-      ControlPlaneTaskRecord,
-      ProcessUsageSample
-    >({
-      directories: directoryManager,
-      conversations: conversationManager,
-      repositories: repositoryManager,
-      tasks: taskManager,
-      processUsage: processUsageRefreshService,
-    });
-
     const runtimeRenderPipeline = new RuntimeRenderPipeline<
       ConversationState,
       ControlPlaneRepositoryRecord,
@@ -4263,7 +4246,20 @@ class CodexLiveMuxRuntimeApplication {
       clearDirty: () => {
         screen.clearDirty();
       },
-      readRenderSnapshot: () => tuiRenderSnapshotAdapter.readSnapshot(),
+      readRenderSnapshot: () =>
+        readTuiRenderSnapshot<
+          ControlPlaneDirectoryRecord,
+          ConversationState,
+          ControlPlaneRepositoryRecord,
+          ControlPlaneTaskRecord,
+          ProcessUsageSample
+        >({
+          directories: directoryManager,
+          conversations: conversationManager,
+          repositories: repositoryManager,
+          tasks: taskManager,
+          processUsage: processUsageRefreshService,
+        }),
       setLatestRailViewRows: (rows) => {
         runtimeRailViewState.setLatestRows(rows);
       },
@@ -4340,7 +4336,7 @@ class CodexLiveMuxRuntimeApplication {
       },
       conversationById: (sessionId) => conversationManager.get(sessionId),
       applyObservedEvent: (input) => {
-        runtimeObservedEventProjectionPipeline.apply(input);
+        applyRuntimeObservedEventProjection(input, runtimeObservedEventProjection);
       },
       idFactory,
     });
@@ -4765,7 +4761,7 @@ class CodexLiveMuxRuntimeApplication {
       },
       removeEnvelopeListener,
       stopWorkspaceObservedEvents: () => {
-        runtimeWorkspaceObservedEvents.stop();
+        stopWorkspaceObservedEvents();
       },
       unsubscribeTaskPlanningEvents: async () => {
         await conversationLifecycle.unsubscribeTaskPlanningEvents();

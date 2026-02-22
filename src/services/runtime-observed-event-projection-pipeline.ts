@@ -23,30 +23,23 @@ export interface RuntimeObservedEventProjectionPipelineOptions {
   readonly applyDirectoryGitProjection: (event: StreamObservedEvent) => void;
 }
 
-export interface RuntimeObservedEventProjectionPipeline {
-  apply(input: RuntimeObservedEventProjectionInput): RuntimeObservedEventProjectionResult;
-}
-
-export function createRuntimeObservedEventProjectionPipeline(
+export function applyRuntimeObservedEventProjection(
+  input: RuntimeObservedEventProjectionInput,
   options: RuntimeObservedEventProjectionPipelineOptions,
-): RuntimeObservedEventProjectionPipeline {
+): RuntimeObservedEventProjectionResult {
+  const reduced = applyObservedEventToHarnessSyncedStore(options.syncedStore, input);
+  if (!reduced.cursorAccepted) {
+    return {
+      cursorAccepted: false,
+      previousCursor: reduced.previousCursor,
+    };
+  }
+  options.applyWorkspaceProjection(reduced);
+  // Directory git status updates remain an explicit non-synced projection boundary.
+  options.applyDirectoryGitProjection(input.event);
+  options.applyTaskPlanningProjection(reduced);
   return {
-    apply: (input): RuntimeObservedEventProjectionResult => {
-      const reduced = applyObservedEventToHarnessSyncedStore(options.syncedStore, input);
-      if (!reduced.cursorAccepted) {
-        return {
-          cursorAccepted: false,
-          previousCursor: reduced.previousCursor,
-        };
-      }
-      options.applyWorkspaceProjection(reduced);
-      // Directory git status updates remain an explicit non-synced projection boundary.
-      options.applyDirectoryGitProjection(input.event);
-      options.applyTaskPlanningProjection(reduced);
-      return {
-        cursorAccepted: true,
-        previousCursor: reduced.previousCursor,
-      };
-    },
+    cursorAccepted: true,
+    previousCursor: reduced.previousCursor,
   };
 }

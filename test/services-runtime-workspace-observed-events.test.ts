@@ -2,9 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import { createHarnessSyncedStore } from '../src/core/store/harness-synced-store.ts';
 import type { HarnessSyncedState } from '../src/core/state/synced-observed-state.ts';
-import { RuntimeWorkspaceObservedEvents } from '../src/services/runtime-workspace-observed-events.ts';
-import { RuntimeWorkspaceObservedEffectQueue } from '../src/services/runtime-workspace-observed-effect-queue.ts';
-import { RuntimeWorkspaceObservedTransitionPolicy } from '../src/services/runtime-workspace-observed-transition-policy.ts';
+import { subscribeRuntimeWorkspaceObservedEvents } from '../src/services/runtime-workspace-observed-events.ts';
 
 function createSyncedState(input: {
   readonly directoryIds?: readonly string[];
@@ -71,7 +69,7 @@ const createHarness = (input?: {
   conversationTitleEditId?: string | null;
   projectPaneSnapshotDirectoryId?: string | null;
 }): {
-  readonly service: RuntimeWorkspaceObservedEvents;
+  readonly stop: () => void;
   readonly calls: string[];
   readonly workspace: {
     leftNavSelection:
@@ -140,49 +138,46 @@ const createHarness = (input?: {
     synced: input?.initialSynced ?? createSyncedState({}),
   });
 
-  const transitionPolicy = new RuntimeWorkspaceObservedTransitionPolicy({
-    workspace,
-    getActiveConversationId: () => activeConversationId,
-    setActiveConversationId: (sessionId) => {
-      activeConversationId = sessionId;
-      calls.push(`setActiveConversationId:${sessionId}`);
-    },
-    resolveActiveDirectoryId: () => resolvedActiveDirectoryId,
-    stopConversationTitleEdit: (persistPending) => {
-      calls.push(`stopConversationTitleEdit:${persistPending ? 'true' : 'false'}`);
-    },
-    enterProjectPane: (directoryId) => {
-      calls.push(`enterProjectPane:${directoryId}`);
-    },
-    enterHomePane: () => {
-      calls.push('enterHomePane');
-    },
-  });
-  const effectQueue = new RuntimeWorkspaceObservedEffectQueue({
-    enqueueQueuedReaction: (task, label) => {
-      calls.push(`enqueueQueuedReaction:${label}`);
-      queuedReactions.push(task);
-    },
-    unsubscribeConversationEvents: async (sessionId) => {
-      calls.push(`unsubscribeConversationEvents:${sessionId}`);
-    },
-    activateConversation: async (sessionId) => {
-      calls.push(`activateConversation:${sessionId}`);
-    },
-  });
-  const service = new RuntimeWorkspaceObservedEvents({
+  const stop = subscribeRuntimeWorkspaceObservedEvents({
     store,
     orderedConversationIds: () => orderedConversationIds,
-    transitionPolicy,
-    effectQueue,
+    transitionPolicy: {
+      workspace,
+      getActiveConversationId: () => activeConversationId,
+      setActiveConversationId: (sessionId) => {
+        activeConversationId = sessionId;
+        calls.push(`setActiveConversationId:${sessionId}`);
+      },
+      resolveActiveDirectoryId: () => resolvedActiveDirectoryId,
+      stopConversationTitleEdit: (persistPending) => {
+        calls.push(`stopConversationTitleEdit:${persistPending ? 'true' : 'false'}`);
+      },
+      enterProjectPane: (directoryId) => {
+        calls.push(`enterProjectPane:${directoryId}`);
+      },
+      enterHomePane: () => {
+        calls.push('enterHomePane');
+      },
+    },
+    effectQueue: {
+      enqueueQueuedReaction: (task, label) => {
+        calls.push(`enqueueQueuedReaction:${label}`);
+        queuedReactions.push(task);
+      },
+      unsubscribeConversationEvents: async (sessionId) => {
+        calls.push(`unsubscribeConversationEvents:${sessionId}`);
+      },
+      activateConversation: async (sessionId) => {
+        calls.push(`activateConversation:${sessionId}`);
+      },
+    },
     markDirty: () => {
       calls.push('markDirty');
     },
   });
-  service.start();
 
   return {
-    service,
+    stop,
     calls,
     workspace,
     setResolvedActiveDirectoryId: (directoryId) => {
@@ -218,7 +213,7 @@ void test('runtime workspace observed events returns early when synced state is 
   });
 
   assert.deepEqual(harness.calls, []);
-  harness.service.stop();
+  harness.stop();
 });
 
 void test(
@@ -264,7 +259,7 @@ void test(
     'unsubscribeConversationEvents:session-1',
     'activateConversation:session-2',
   ]);
-  harness.service.stop();
+  harness.stop();
   },
 );
 
@@ -303,7 +298,7 @@ void test(
     'markDirty',
     'unsubscribeConversationEvents:session-1',
   ]);
-  harness.service.stop();
+  harness.stop();
   },
 );
 
@@ -335,7 +330,7 @@ void test(
     'markDirty',
     'unsubscribeConversationEvents:session-1',
   ]);
-  harness.service.stop();
+  harness.stop();
   },
 );
 
@@ -373,7 +368,7 @@ void test(
     'markDirty',
     'unsubscribeConversationEvents:session-1',
   ]);
-  harness.service.stop();
+  harness.stop();
   },
 );
 
@@ -412,7 +407,7 @@ void test(
     'unsubscribeConversationEvents:session-1',
     'activateConversation:session-3',
   ]);
-  harness.service.stop();
+  harness.stop();
   },
 );
 
@@ -451,7 +446,7 @@ void test(
     'markDirty',
     'unsubscribeConversationEvents:session-1',
   ]);
-  harness.service.stop();
+  harness.stop();
   },
 );
 
@@ -484,7 +479,7 @@ void test('runtime workspace observed events repairs invalid project selection a
     'enterHomePane',
     'markDirty',
   ]);
-  harness.service.stop();
+  harness.stop();
 });
 
 void test('runtime workspace observed events keeps store subscriber path non-reentrant when reactions are queued', async () => {
@@ -519,5 +514,5 @@ void test('runtime workspace observed events keeps store subscriber path non-ree
     'markDirty',
     'unsubscribeConversationEvents:session-1',
   ]);
-  harness.service.stop();
+  harness.stop();
 });

@@ -7,24 +7,19 @@ export interface RuntimeWorkspaceObservedEffectQueueOptions {
   readonly activateConversation: (sessionId: string) => Promise<void>;
 }
 
-export class RuntimeWorkspaceObservedEffectQueue {
-  constructor(private readonly options: RuntimeWorkspaceObservedEffectQueueOptions) {}
-
-  enqueueAll(reactions: readonly RuntimeWorkspaceObservedQueuedReaction[]): void {
-    for (const reaction of reactions) {
-      this.enqueueReaction(reaction);
-    }
-  }
-
-  private enqueueReaction(reaction: RuntimeWorkspaceObservedQueuedReaction): void {
+export function enqueueRuntimeWorkspaceObservedReactions(input: {
+  readonly reactions: readonly RuntimeWorkspaceObservedQueuedReaction[];
+  readonly options: RuntimeWorkspaceObservedEffectQueueOptions;
+}): void {
+  for (const reaction of input.reactions) {
     if (reaction.kind === 'unsubscribe-conversation') {
-      this.options.enqueueQueuedReaction(async () => {
-        await this.options.unsubscribeConversationEvents(reaction.sessionId);
+      input.options.enqueueQueuedReaction(async () => {
+        await input.options.unsubscribeConversationEvents(reaction.sessionId);
       }, reaction.label);
-      return;
+      continue;
     }
-    this.options.enqueueQueuedReaction(async () => {
-      await this.options.activateConversation(reaction.sessionId);
+    input.options.enqueueQueuedReaction(async () => {
+      await input.options.activateConversation(reaction.sessionId);
     }, reaction.label);
   }
 }

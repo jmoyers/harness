@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { TuiRenderSnapshotAdapter } from '../src/clients/tui/render-snapshot-adapter.ts';
+import { readTuiRenderSnapshot } from '../src/clients/tui/render-snapshot-adapter.ts';
 import type { TaskComposerBuffer } from '../src/mux/task-composer.ts';
 import type {
   TaskFocusedPaneRepositoryRecord,
@@ -77,7 +77,7 @@ void test('tui render snapshot adapter reads current domain maps', () => {
       },
     ],
   ]);
-  const adapter = new TuiRenderSnapshotAdapter<
+  const snapshot = readTuiRenderSnapshot<
     DirectoryRecord,
     ConversationRecord,
     TaskFocusedPaneRepositoryRecord,
@@ -103,8 +103,6 @@ void test('tui render snapshot adapter reads current domain maps', () => {
       readonlyUsage: () => processUsage,
     },
   });
-
-  const snapshot = adapter.readSnapshot();
   assert.equal(snapshot.leftRail.directories, directories);
   assert.equal(snapshot.leftRail.conversations, conversations);
   assert.equal(snapshot.leftRail.repositories, repositories);
@@ -125,7 +123,7 @@ void test('tui render snapshot adapter snapshots task composer values by default
       },
     ],
   ]);
-  const adapter = new TuiRenderSnapshotAdapter<
+  const snapshot = readTuiRenderSnapshot<
     DirectoryRecord,
     ConversationRecord,
     TaskFocusedPaneRepositoryRecord,
@@ -151,8 +149,6 @@ void test('tui render snapshot adapter snapshots task composer values by default
       readonlyUsage: () => new Map(),
     },
   });
-
-  const snapshot = adapter.readSnapshot();
   const snapshotComposer = snapshot.rightPane.taskComposers.get('task-a');
   assert.deepEqual(snapshotComposer, {
     text: 'draft',

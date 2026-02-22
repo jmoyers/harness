@@ -50,50 +50,41 @@ export interface TuiRenderSnapshotAdapterOptions<
   ) => ReadonlyMap<string, TaskComposerBuffer>;
 }
 
-export class TuiRenderSnapshotAdapter<
+export function readTuiRenderSnapshot<
   TDirectoryRecord,
   TConversation,
   TRepositoryRecord extends TaskFocusedPaneRepositoryRecord,
   TTaskRecord extends TaskFocusedPaneTaskRecord,
   TProcessUsage,
-> {
-  private readonly snapshotTaskComposers: (
-    taskComposers: ReadonlyMap<string, TaskComposerBuffer>,
-  ) => ReadonlyMap<string, TaskComposerBuffer>;
-
-  constructor(
-    private readonly options: TuiRenderSnapshotAdapterOptions<
-      TDirectoryRecord,
-      TConversation,
-      TRepositoryRecord,
-      TTaskRecord,
-      TProcessUsage
-    >,
-  ) {
-    this.snapshotTaskComposers = options.snapshotTaskComposers ?? snapshotTaskComposerBuffers;
-  }
-
-  readSnapshot(): RuntimeRenderPipelineSnapshot<
+>(
+  options: TuiRenderSnapshotAdapterOptions<
     TDirectoryRecord,
     TConversation,
     TRepositoryRecord,
     TTaskRecord,
     TProcessUsage
-  > {
-    return {
-      leftRail: {
-        repositories: this.options.repositories.readonlyRepositories(),
-        directories: this.options.directories.readonlyDirectories(),
-        conversations: this.options.conversations.readonlyConversations(),
-        orderedConversationIds: this.options.conversations.orderedIds(),
-        processUsageBySessionId: this.options.processUsage.readonlyUsage(),
-        activeConversationId: this.options.conversations.activeConversationId,
-      },
-      rightPane: {
-        repositories: this.options.repositories.readonlyRepositories(),
-        tasks: this.options.tasks.readonlyTasks(),
-        taskComposers: this.snapshotTaskComposers(this.options.tasks.readonlyTaskComposers()),
-      },
-    };
-  }
+  >,
+): RuntimeRenderPipelineSnapshot<
+  TDirectoryRecord,
+  TConversation,
+  TRepositoryRecord,
+  TTaskRecord,
+  TProcessUsage
+> {
+  const snapshotTaskComposers = options.snapshotTaskComposers ?? snapshotTaskComposerBuffers;
+  return {
+    leftRail: {
+      repositories: options.repositories.readonlyRepositories(),
+      directories: options.directories.readonlyDirectories(),
+      conversations: options.conversations.readonlyConversations(),
+      orderedConversationIds: options.conversations.orderedIds(),
+      processUsageBySessionId: options.processUsage.readonlyUsage(),
+      activeConversationId: options.conversations.activeConversationId,
+    },
+    rightPane: {
+      repositories: options.repositories.readonlyRepositories(),
+      tasks: options.tasks.readonlyTasks(),
+      taskComposers: snapshotTaskComposers(options.tasks.readonlyTaskComposers()),
+    },
+  };
 }

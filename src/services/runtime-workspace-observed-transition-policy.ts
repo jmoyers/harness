@@ -83,140 +83,133 @@ function removedIds(
   return removed;
 }
 
-export class RuntimeWorkspaceObservedTransitionPolicy {
-  constructor(private readonly options: RuntimeWorkspaceObservedTransitionPolicyOptions) {}
+export function planRuntimeWorkspaceObservedTransition(input: {
+  readonly transition: RuntimeWorkspaceObservedTransition;
+  readonly options: RuntimeWorkspaceObservedTransitionPolicyOptions;
+}): RuntimeWorkspaceObservedTransitionPolicyResult {
+  const reactions: RuntimeWorkspaceObservedQueuedReaction[] = [];
+  const removedConversationIds = removedIds(
+    input.transition.previous.conversationsById,
+    input.transition.current.conversationsById,
+  );
+  const removedDirectoryIds = removedIds(
+    input.transition.previous.directoriesById,
+    input.transition.current.directoriesById,
+  );
+  const activeConversationIdBefore = input.options.getActiveConversationId();
+  const leftNavConversationIdBefore =
+    input.options.workspace.leftNavSelection.kind === 'conversation'
+      ? input.options.workspace.leftNavSelection.sessionId
+      : null;
 
-  apply(transition: RuntimeWorkspaceObservedTransition): RuntimeWorkspaceObservedTransitionPolicyResult {
-    const reactions: RuntimeWorkspaceObservedQueuedReaction[] = [];
-    const removedConversationIds = removedIds(
-      transition.previous.conversationsById,
-      transition.current.conversationsById,
+  for (const sessionId of removedConversationIds) {
+    reactions.push({
+      kind: 'unsubscribe-conversation',
+      sessionId,
+      label: `observed-unsubscribe-conversation:${sessionId}`,
+    });
+    if (input.options.workspace.conversationTitleEdit?.conversationId === sessionId) {
+      input.options.stopConversationTitleEdit(false);
+    }
+  }
+
+  for (const directoryId of removedDirectoryIds) {
+    if (input.options.workspace.projectPaneSnapshot?.directoryId === directoryId) {
+      input.options.workspace.projectPaneSnapshot = null;
+      input.options.workspace.projectPaneScrollTop = 0;
+    }
+  }
+
+  if (
+    input.options.workspace.activeDirectoryId !== null &&
+    !hasDirectory(input.transition.current, input.options.workspace.activeDirectoryId)
+  ) {
+    input.options.workspace.activeDirectoryId = input.options.resolveActiveDirectoryId();
+  }
+
+  const removedConversationIdSet = new Set(removedConversationIds);
+  const activateFallbackConversationInDirectory = (
+    preferredDirectoryId: string | null,
+    label: string,
+  ): boolean => {
+    if (preferredDirectoryId === null) {
+      return false;
+    }
+    const fallbackConversationId =
+      input.transition.orderedConversationIds.find(
+        (sessionId) =>
+          conversationDirectoryIdOf(input.transition.current, sessionId) === preferredDirectoryId,
+      ) ?? null;
+    if (fallbackConversationId === null) {
+      return false;
+    }
+    reactions.push({
+      kind: 'activate-conversation',
+      sessionId: fallbackConversationId,
+      label,
+    });
+    return true;
+  };
+
+  const fallbackToDirectoryOrHome = (): void => {
+    const fallbackDirectoryId = input.options.resolveActiveDirectoryId();
+    if (fallbackDirectoryId !== null) {
+      input.options.enterProjectPane(fallbackDirectoryId);
+      return;
+    }
+    input.options.enterHomePane();
+  };
+
+  if (activeConversationIdBefore !== null && removedConversationIdSet.has(activeConversationIdBefore)) {
+    input.options.setActiveConversationId(null);
+    const preferredDirectoryId = conversationDirectoryIdOf(
+      input.transition.previous,
+      activeConversationIdBefore,
     );
-    const removedDirectoryIds = removedIds(
-      transition.previous.directoriesById,
-      transition.current.directoriesById,
-    );
-    const activeConversationIdBefore = this.options.getActiveConversationId();
-    const leftNavConversationIdBefore =
-      this.options.workspace.leftNavSelection.kind === 'conversation'
-        ? this.options.workspace.leftNavSelection.sessionId
-        : null;
-
-    for (const sessionId of removedConversationIds) {
-      reactions.push({
-        kind: 'unsubscribe-conversation',
-        sessionId,
-        label: `observed-unsubscribe-conversation:${sessionId}`,
-      });
-      if (this.options.workspace.conversationTitleEdit?.conversationId === sessionId) {
-        this.options.stopConversationTitleEdit(false);
-      }
-    }
-
-    for (const directoryId of removedDirectoryIds) {
-      if (this.options.workspace.projectPaneSnapshot?.directoryId === directoryId) {
-        this.options.workspace.projectPaneSnapshot = null;
-        this.options.workspace.projectPaneScrollTop = 0;
-      }
-    }
-
     if (
-      this.options.workspace.activeDirectoryId !== null &&
-      !hasDirectory(transition.current, this.options.workspace.activeDirectoryId)
+      !activateFallbackConversationInDirectory(
+        preferredDirectoryId,
+        'observed-active-conversation-removed',
+      )
     ) {
-      this.options.workspace.activeDirectoryId = this.options.resolveActiveDirectoryId();
+      fallbackToDirectoryOrHome();
     }
-
-    const removedConversationIdSet = new Set(removedConversationIds);
-    const activateFallbackConversationInDirectory = (
-      preferredDirectoryId: string | null,
-      label: string,
-    ): boolean => {
-      if (preferredDirectoryId === null) {
-        return false;
-      }
-      const fallbackConversationId =
-        transition.orderedConversationIds.find(
-          (sessionId) =>
-            conversationDirectoryIdOf(transition.current, sessionId) === preferredDirectoryId,
-        ) ?? null;
-      if (fallbackConversationId === null) {
-        return false;
-      }
-      reactions.push({
-        kind: 'activate-conversation',
-        sessionId: fallbackConversationId,
-        label,
-      });
-      return true;
-    };
-
-    const fallbackToDirectoryOrHome = (): void => {
-      const fallbackDirectoryId = this.options.resolveActiveDirectoryId();
-      if (fallbackDirectoryId !== null) {
-        this.options.enterProjectPane(fallbackDirectoryId);
-        return;
-      }
-      this.options.enterHomePane();
-    };
-
-    if (
-      activeConversationIdBefore !== null &&
-      removedConversationIdSet.has(activeConversationIdBefore)
-    ) {
-      this.options.setActiveConversationId(null);
-      const preferredDirectoryId = conversationDirectoryIdOf(
-        transition.previous,
-        activeConversationIdBefore,
-      );
-      if (
-        !activateFallbackConversationInDirectory(
-          preferredDirectoryId,
-          'observed-active-conversation-removed',
-        )
-      ) {
-        fallbackToDirectoryOrHome();
-      }
-      return { reactions };
-    }
-
-    if (
-      leftNavConversationIdBefore !== null &&
-      removedConversationIdSet.has(leftNavConversationIdBefore)
-    ) {
-      const currentActiveId = this.options.getActiveConversationId();
-      if (currentActiveId !== null && hasConversation(transition.current, currentActiveId)) {
-        this.options.workspace.selectLeftNavConversation(currentActiveId);
-        return { reactions };
-      }
-      const preferredDirectoryId = conversationDirectoryIdOf(
-        transition.previous,
-        leftNavConversationIdBefore,
-      );
-      if (
-        !activateFallbackConversationInDirectory(
-          preferredDirectoryId,
-          'observed-selected-conversation-removed',
-        )
-      ) {
-        fallbackToDirectoryOrHome();
-      }
-      return { reactions };
-    }
-
-    if (
-      this.options.workspace.leftNavSelection.kind === 'project' &&
-      !hasDirectory(transition.current, this.options.workspace.leftNavSelection.directoryId)
-    ) {
-      const fallbackDirectoryId = this.options.resolveActiveDirectoryId();
-      if (fallbackDirectoryId !== null) {
-        this.options.enterProjectPane(fallbackDirectoryId);
-      } else {
-        this.options.enterHomePane();
-      }
-      return { reactions };
-    }
-
     return { reactions };
   }
+
+  if (leftNavConversationIdBefore !== null && removedConversationIdSet.has(leftNavConversationIdBefore)) {
+    const currentActiveId = input.options.getActiveConversationId();
+    if (currentActiveId !== null && hasConversation(input.transition.current, currentActiveId)) {
+      input.options.workspace.selectLeftNavConversation(currentActiveId);
+      return { reactions };
+    }
+    const preferredDirectoryId = conversationDirectoryIdOf(
+      input.transition.previous,
+      leftNavConversationIdBefore,
+    );
+    if (
+      !activateFallbackConversationInDirectory(
+        preferredDirectoryId,
+        'observed-selected-conversation-removed',
+      )
+    ) {
+      fallbackToDirectoryOrHome();
+    }
+    return { reactions };
+  }
+
+  if (
+    input.options.workspace.leftNavSelection.kind === 'project' &&
+    !hasDirectory(input.transition.current, input.options.workspace.leftNavSelection.directoryId)
+  ) {
+    const fallbackDirectoryId = input.options.resolveActiveDirectoryId();
+    if (fallbackDirectoryId !== null) {
+      input.options.enterProjectPane(fallbackDirectoryId);
+    } else {
+      input.options.enterHomePane();
+    }
+    return { reactions };
+  }
+
+  return { reactions };
 }

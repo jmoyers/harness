@@ -1,54 +1,40 @@
 import type { HarnessSyncedStore } from '../core/store/harness-synced-store.ts';
-import type { RuntimeWorkspaceObservedEffectQueue } from './runtime-workspace-observed-effect-queue.ts';
 import {
-  RuntimeWorkspaceObservedTransitionPolicy,
+  enqueueRuntimeWorkspaceObservedReactions,
+  type RuntimeWorkspaceObservedEffectQueueOptions,
+} from './runtime-workspace-observed-effect-queue.ts';
+import {
+  planRuntimeWorkspaceObservedTransition,
   type RuntimeWorkspaceObservedTransitionPolicyOptions,
 } from './runtime-workspace-observed-transition-policy.ts';
 
-interface RuntimeWorkspaceObservedEventsOptions {
+export interface RuntimeWorkspaceObservedEventsOptions {
   readonly store: HarnessSyncedStore;
   readonly orderedConversationIds: () => readonly string[];
-  readonly transitionPolicy:
-    | RuntimeWorkspaceObservedTransitionPolicy
-    | RuntimeWorkspaceObservedTransitionPolicyOptions;
-  readonly effectQueue: RuntimeWorkspaceObservedEffectQueue;
+  readonly transitionPolicy: RuntimeWorkspaceObservedTransitionPolicyOptions;
+  readonly effectQueue: RuntimeWorkspaceObservedEffectQueueOptions;
   readonly markDirty: () => void;
 }
 
-export class RuntimeWorkspaceObservedEvents {
-  private unsubscribeStore: (() => void) | null = null;
-  private readonly transitionPolicy: RuntimeWorkspaceObservedTransitionPolicy;
-
-  constructor(private readonly options: RuntimeWorkspaceObservedEventsOptions) {
-    this.transitionPolicy =
-      options.transitionPolicy instanceof RuntimeWorkspaceObservedTransitionPolicy
-        ? options.transitionPolicy
-        : new RuntimeWorkspaceObservedTransitionPolicy(options.transitionPolicy);
-  }
-
-  start(): void {
-    if (this.unsubscribeStore !== null) {
+export function subscribeRuntimeWorkspaceObservedEvents(
+  options: RuntimeWorkspaceObservedEventsOptions,
+): () => void {
+  return options.store.subscribe((state, previousState) => {
+    if (state.synced === previousState.synced) {
       return;
     }
-    this.unsubscribeStore = this.options.store.subscribe((state, previousState) => {
-      if (state.synced === previousState.synced) {
-        return;
-      }
-      const planned = this.transitionPolicy.apply({
+    const planned = planRuntimeWorkspaceObservedTransition({
+      transition: {
         previous: previousState.synced,
         current: state.synced,
-        orderedConversationIds: this.options.orderedConversationIds(),
-      });
-      this.options.effectQueue.enqueueAll(planned.reactions);
-      this.options.markDirty();
+        orderedConversationIds: options.orderedConversationIds(),
+      },
+      options: options.transitionPolicy,
     });
-  }
-
-  stop(): void {
-    if (this.unsubscribeStore === null) {
-      return;
-    }
-    this.unsubscribeStore();
-    this.unsubscribeStore = null;
-  }
+    enqueueRuntimeWorkspaceObservedReactions({
+      reactions: planned.reactions,
+      options: options.effectQueue,
+    });
+    options.markDirty();
+  });
 }
