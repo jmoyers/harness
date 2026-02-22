@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { createServer as createNetServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'bun:test';
@@ -110,6 +111,38 @@ function parseRuntimeArgValue(runtimeArgs: readonly string[], flag: string): str
   return value;
 }
 
+async function listenOnRandomPort(
+  host = '127.0.0.1',
+): Promise<{ readonly host: string; readonly port: number; close(): Promise<void> }> {
+  const server = createNetServer();
+  await new Promise<void>((resolveListen, rejectListen) => {
+    server.once('error', rejectListen);
+    server.listen(0, host, () => {
+      resolveListen();
+    });
+  });
+  const address = server.address();
+  if (address === null || typeof address === 'string') {
+    server.close();
+    throw new Error('failed to resolve bound port');
+  }
+  return {
+    host,
+    port: address.port,
+    close: async () => {
+      await new Promise<void>((resolveClose, rejectClose) => {
+        server.close((error) => {
+          if (error !== undefined) {
+            rejectClose(error);
+            return;
+          }
+          resolveClose();
+        });
+      });
+    },
+  };
+}
+
 test('workflow runtime status timeline lifecycle writes and clears active state', async () => {
   const workspace = createWorkspace();
   const runtime = createRuntimeContext(workspace);
@@ -204,6 +237,48 @@ test('workflow runtime default client routes through gateway start + mux run', a
   assert.equal(exitCode, 7);
   assert.deepEqual(runMuxArgs, ['--example']);
   assert.equal(stdout.join('').includes('gateway started pid='), true);
+});
+
+test('workflow runtime default client disables inspect runtime arg when inspector port is busy', async () => {
+  const workspace = createWorkspace();
+  const runtime = createRuntimeContext(workspace);
+  const busyPort = await listenOnRandomPort();
+  const runtimeWithInspect: HarnessRuntimeContext = {
+    ...runtime,
+    runtimeOptions: {
+      gatewayRuntimeArgs: [],
+      clientRuntimeArgs: [`--inspect=${busyPort.host}:${String(busyPort.port)}/harness-client`],
+    },
+  };
+  const stdout: string[] = [];
+  let observedRuntimeArgs: readonly string[] = [];
+  const gateway = {
+    ...createGatewayStub(workspace),
+    runMuxClient: async (
+      _record: GatewayRecord,
+      _args: readonly string[],
+      runtimeArgs: readonly string[] = [],
+    ): Promise<number> => {
+      observedRuntimeArgs = runtimeArgs;
+      return 0;
+    },
+  };
+  const service = new WorkflowRuntimeService(
+    runtimeWithInspect,
+    gateway as never,
+    undefined,
+    (text) => {
+      stdout.push(text);
+    },
+  );
+  try {
+    const exitCode = await service.runDefaultClient([]);
+    assert.equal(exitCode, 0);
+  } finally {
+    await busyPort.close();
+  }
+  assert.deepEqual(observedRuntimeArgs, []);
+  assert.equal(stdout.join('').includes('continuing without inspector'), true);
 });
 
 test('workflow runtime profile run command orchestrates profile artifacts end-to-end', async () => {

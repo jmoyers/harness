@@ -1,5 +1,5 @@
 import { DatabaseSync } from './sqlite.ts';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, statSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { NormalizedEventEnvelope } from '../events/normalized-events.ts';
 
@@ -39,6 +39,7 @@ interface OnlineCopyForwardCompactionStepResult {
 const EVENT_STORE_SCHEMA_VERSION = 1;
 const EVENT_COMPACTION_SHADOW_TABLE = 'events_compaction_shadow';
 const EVENT_COMPACTION_OLD_TABLE = 'events_compaction_old';
+const EVENT_STORE_AUTO_VACUUM_MIGRATION_MAX_FILE_BYTES = 64 * 1024 * 1024;
 
 function sqliteStatementChanges(value: unknown): number {
   if (typeof value !== 'object' || value === null) {
@@ -114,12 +115,14 @@ export function normalizeStoredRow(value: unknown): {
 export class SqliteEventStore {
   private readonly db: DatabaseSync;
   private readonly inMemory: boolean;
+  private readonly dbPath: string;
   private copyForwardRequested = false;
   private copyForwardActive = false;
   private copyForwardCursorRowId = 0;
 
   constructor(filePath = ':memory:') {
     const dbPath = this.preparePath(filePath);
+    this.dbPath = dbPath;
     this.inMemory = dbPath === ':memory:';
     this.db = new DatabaseSync(dbPath);
     this.configureConnection();
@@ -359,24 +362,82 @@ export class SqliteEventStore {
   }
 
   private initializeSchema(): void {
+    const initialVersion = this.readSchemaVersion();
+    this.assertSchemaVersionSupported(initialVersion);
+    if (
+      initialVersion === EVENT_STORE_SCHEMA_VERSION &&
+      this.hasSchemaV1Table() &&
+      this.hasSchemaV1Index()
+    ) {
+      return;
+    }
+
     this.db.exec('BEGIN IMMEDIATE TRANSACTION');
     try {
       const currentVersion = this.readSchemaVersion();
-      if (currentVersion > EVENT_STORE_SCHEMA_VERSION) {
-        throw new Error(
-          `event store schema version ${String(currentVersion)} is newer than supported version ${String(EVENT_STORE_SCHEMA_VERSION)}`,
-        );
-      }
+      this.assertSchemaVersionSupported(currentVersion);
       this.applySchemaV1();
       this.writeSchemaVersion(EVENT_STORE_SCHEMA_VERSION);
       this.db.exec('COMMIT');
     } catch (error) {
       this.db.exec('ROLLBACK');
+      if (
+        this.isBusyLockError(error) &&
+        this.readSchemaVersion() === EVENT_STORE_SCHEMA_VERSION &&
+        this.hasSchemaV1Table() &&
+        this.hasSchemaV1Index()
+      ) {
+        return;
+      }
       throw error;
     }
   }
 
+  private assertSchemaVersionSupported(currentVersion: number): void {
+    if (currentVersion > EVENT_STORE_SCHEMA_VERSION) {
+      throw new Error(
+        `event store schema version ${String(currentVersion)} is newer than supported version ${String(EVENT_STORE_SCHEMA_VERSION)}`,
+      );
+    }
+  }
+
+  private hasSchemaV1Table(): boolean {
+    const row = this.db
+      .prepare(
+        `
+        SELECT 1 AS present
+        FROM sqlite_master
+        WHERE type = 'table' AND name = 'events'
+        LIMIT 1
+      `,
+      )
+      .get();
+    return row !== undefined;
+  }
+
+  private hasSchemaV1Index(): boolean {
+    const row = this.db
+      .prepare(
+        `
+        SELECT 1 AS present
+        FROM sqlite_master
+        WHERE type = 'index' AND name = 'idx_events_scope_cursor'
+        LIMIT 1
+      `,
+      )
+      .get();
+    return row !== undefined;
+  }
+
+  private isBusyLockError(error: unknown): boolean {
+    if (!(error instanceof Error)) {
+      return false;
+    }
+    return error.message.toLowerCase().includes('database is locked');
+  }
+
   private applySchemaV1(): void {
+    this.db.exec('PRAGMA auto_vacuum = INCREMENTAL;');
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS events (
         row_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -416,14 +477,16 @@ export class SqliteEventStore {
   }
 
   private configureConnection(): void {
-    this.db.exec('PRAGMA auto_vacuum = INCREMENTAL;');
+    this.db.exec('PRAGMA busy_timeout = 2000;');
     this.db.exec('PRAGMA journal_mode = WAL;');
     this.db.exec('PRAGMA synchronous = NORMAL;');
-    this.db.exec('PRAGMA busy_timeout = 2000;');
   }
 
   private ensureIncrementalAutoVacuumMode(): void {
     if (this.inMemory) {
+      return;
+    }
+    if (!this.shouldAttemptAutoVacuumModeMigration()) {
       return;
     }
     const modeRow = this.db.prepare('PRAGMA auto_vacuum;').get();
@@ -436,6 +499,14 @@ export class SqliteEventStore {
       this.db.exec('VACUUM;');
     } catch {
       // Best-effort migration only; maintenance can still run without mode flip.
+    }
+  }
+
+  private shouldAttemptAutoVacuumModeMigration(): boolean {
+    try {
+      return statSync(this.dbPath).size <= EVENT_STORE_AUTO_VACUUM_MIGRATION_MAX_FILE_BYTES;
+    } catch {
+      return true;
     }
   }
 

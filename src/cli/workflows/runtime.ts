@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { createServer as createNetServer } from 'node:net';
 import { dirname, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { GatewayRecord } from '../gateway-record.ts';
@@ -357,6 +358,80 @@ export class WorkflowRuntimeService {
     },
   ) {}
 
+  private parseInspectRuntimeArg(
+    runtimeArg: string,
+  ): { host: string; port: number; flag: '--inspect' | '--inspect-brk' } | null {
+    const match = runtimeArg.match(
+      /^--(?<flag>inspect|inspect-brk)=(?<host>[^:]+):(?<port>\d+)(?:\/.*)?$/u,
+    );
+    if (!match?.groups) {
+      return null;
+    }
+    const host = match.groups['host'];
+    const portRaw = match.groups['port'];
+    const flag = match.groups['flag'];
+    if (host === undefined || portRaw === undefined || flag === undefined) {
+      return null;
+    }
+    const port = Number.parseInt(portRaw, 10);
+    if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+      return null;
+    }
+    if (flag !== 'inspect' && flag !== 'inspect-brk') {
+      return null;
+    }
+    return {
+      host,
+      port,
+      flag: `--${flag}`,
+    };
+  }
+
+  private async canBindPort(host: string, port: number): Promise<boolean> {
+    return await new Promise<boolean>((resolveCanBind, rejectCanBind) => {
+      const server = createNetServer();
+      server.unref();
+      server.once('error', (error: unknown) => {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === 'EADDRINUSE') {
+          resolveCanBind(false);
+          return;
+        }
+        rejectCanBind(error);
+      });
+      server.listen(port, host, () => {
+        server.close((error) => {
+          if (error !== undefined) {
+            rejectCanBind(error);
+            return;
+          }
+          resolveCanBind(true);
+        });
+      });
+    });
+  }
+
+  private async resolveClientRuntimeArgs(
+    runtimeArgs: readonly string[],
+  ): Promise<readonly string[]> {
+    const inspectArg = runtimeArgs.findLast((arg) => this.parseInspectRuntimeArg(arg) !== null);
+    if (inspectArg === undefined) {
+      return runtimeArgs;
+    }
+    const inspect = this.parseInspectRuntimeArg(inspectArg);
+    if (inspect === null) {
+      return runtimeArgs;
+    }
+    const canBind = await this.canBindPort(inspect.host, inspect.port);
+    if (canBind) {
+      return runtimeArgs;
+    }
+    this.writeStdout(
+      `warning: client inspector ${inspect.host}:${String(inspect.port)} is already in use; continuing without inspector\n`,
+    );
+    return runtimeArgs.filter((arg) => this.parseInspectRuntimeArg(arg) === null);
+  }
+
   public async runDefaultClient(args: readonly string[]): Promise<number> {
     const ensured = await this.gatewayService.withLock(
       async () => await this.gatewayService.ensureGatewayRunning({}),
@@ -366,7 +441,11 @@ export class WorkflowRuntimeService {
         `gateway started pid=${String(ensured.record.pid)} host=${ensured.record.host} port=${String(ensured.record.port)}\n`,
       );
     }
-    return await this.gatewayService.runMuxClient(ensured.record, args);
+    return await this.gatewayService.runMuxClient(
+      ensured.record,
+      args,
+      await this.resolveClientRuntimeArgs(this.runtime.runtimeOptions.clientRuntimeArgs),
+    );
   }
 
   public async runProfileCli(args: readonly string[]): Promise<number> {
@@ -602,8 +681,11 @@ export class WorkflowRuntimeService {
     let clientExitCode = 1;
     let clientError: Error | null = null;
     try {
+      const clientRuntimeArgs = await this.resolveClientRuntimeArgs(
+        this.runtime.runtimeOptions.clientRuntimeArgs,
+      );
       clientExitCode = await this.gatewayService.runMuxClient(gateway, command.muxArgs, [
-        ...this.runtime.runtimeOptions.clientRuntimeArgs,
+        ...clientRuntimeArgs,
         ...buildCpuProfileRuntimeArgs({
           cpuProfileDir: profileDir,
           cpuProfileName: PROFILE_CLIENT_FILE_NAME,

@@ -920,6 +920,30 @@ void test('control-plane store normalization helpers validate row shapes and fie
     runtime_status_model_json: JSON.stringify(legacyStatusModelWithoutActivityHint),
   });
   assert.equal(parsedLegacyStatusModel.runtimeStatusModel?.activityHint, null);
+  const parsedLegacyStatusModelWithLegacyActivityHintObject = normalizeStoredConversationRow({
+    ...conversationRowBase,
+    runtime_status_model_json: JSON.stringify({
+      ...statusModelFor('running'),
+      activityHint: {
+        kind: 'working',
+      },
+    }),
+  });
+  assert.equal(
+    parsedLegacyStatusModelWithLegacyActivityHintObject.runtimeStatusModel?.activityHint,
+    'working',
+  );
+  const parsedLegacyStatusModelWithNonStringActivityHint = normalizeStoredConversationRow({
+    ...conversationRowBase,
+    runtime_status_model_json: JSON.stringify({
+      ...statusModelFor('running'),
+      activityHint: 1,
+    }),
+  });
+  assert.equal(
+    parsedLegacyStatusModelWithNonStringActivityHint.runtimeStatusModel?.activityHint,
+    null,
+  );
   assert.throws(
     () =>
       normalizeStoredConversationRow({

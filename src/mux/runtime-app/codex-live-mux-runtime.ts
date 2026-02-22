@@ -2,6 +2,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { execFileSync, spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { startCodexLiveSession } from '../../codex/live-session.ts';
 import {
   openCodexControlPlaneClient,
@@ -188,6 +189,10 @@ import { createDirectoryHydrationService } from '../../services/directory-hydrat
 import { EventPersistence } from '../../services/event-persistence.ts';
 import { MuxUiStatePersistence } from '../../services/mux-ui-state-persistence.ts';
 import { OutputLoadSampler } from '../../services/output-load-sampler.ts';
+import {
+  EventStoreMaintenanceSupervisor,
+  type EventStoreMaintenanceDaemonMessage,
+} from '../../services/event-store-maintenance-supervisor.ts';
 import { ProcessUsageRefreshService } from '../../services/process-usage-refresh.ts';
 import { createRecordingService } from '../../services/recording.ts';
 import { SessionProjectionInstrumentation } from '../../services/session-projection-instrumentation.ts';
@@ -2062,7 +2067,8 @@ class CodexLiveMuxRuntimeApplication {
       );
     let modalManager = createModalManager();
     let homePaneBackgroundTimer: ReturnType<typeof setInterval> | null = null;
-    let storageLifecycleTimer: ReturnType<typeof setInterval> | null = null;
+    let storageLifecycleSupervisor: EventStoreMaintenanceSupervisor | null = null;
+    let lastMaintenancePercentLeft: number | null = null;
     const ptySizeByConversationId = new Map<string, { cols: number; rows: number }>();
 
     const requestStop = (): void => {
@@ -2539,13 +2545,100 @@ class CodexLiveMuxRuntimeApplication {
       markDirty();
     }, HOME_PANE_BACKGROUND_INTERVAL_MS);
     homePaneBackgroundTimer.unref?.();
-    storageLifecycleTimer = setInterval(() => {
+    const handleStorageMaintenanceMessage = (message: EventStoreMaintenanceDaemonMessage): void => {
       if (shuttingDown) {
         return;
       }
-      storageLifecycle.runMaintenanceTick();
-    }, storageLifecycle.policy().maintenanceIntervalMs);
-    storageLifecycleTimer.unref?.();
+      if (message.type === 'daemon.started') {
+        recordPerfEvent('mux.storage.maintenance.daemon', {
+          event: 'daemon.started',
+          maintenanceIntervalMs: message.maintenanceIntervalMs,
+        });
+        setCommandNotice('event maintenance daemon started');
+        return;
+      }
+      if (message.type === 'daemon.stopped') {
+        recordPerfEvent('mux.storage.maintenance.daemon', {
+          event: 'daemon.stopped',
+          reason: message.reason,
+        });
+        setCommandNotice(`event maintenance daemon stopped (${message.reason})`);
+        return;
+      }
+      if (message.type === 'maintenance.started') {
+        recordPerfEvent('mux.storage.maintenance.daemon', {
+          event: message.type,
+          runId: message.runId,
+          eligibleRows: message.eligibleRows,
+          percentLeft: message.percentLeft,
+        });
+        if (message.eligibleRows > 0) {
+          lastMaintenancePercentLeft = message.percentLeft;
+          setCommandNotice(
+            `event maintenance started: ${message.percentLeft.toFixed(1)}% left (${String(message.eligibleRows)} rows)`,
+          );
+        }
+        return;
+      }
+      if (message.type === 'maintenance.progress') {
+        recordPerfEvent('mux.storage.maintenance.daemon', {
+          event: message.type,
+          runId: message.runId,
+          eligibleRows: message.eligibleRows,
+          prunedRows: message.prunedRows,
+          remainingRows: message.remainingRows,
+          percentLeft: message.percentLeft,
+        });
+        if (
+          message.eligibleRows > 0 &&
+          (lastMaintenancePercentLeft === null ||
+            lastMaintenancePercentLeft !== message.percentLeft)
+        ) {
+          lastMaintenancePercentLeft = message.percentLeft;
+          setCommandNotice(
+            `event maintenance progress: ${message.percentLeft.toFixed(1)}% left (${String(message.remainingRows)} rows)`,
+          );
+        }
+        return;
+      }
+      if (message.type === 'maintenance.completed') {
+        recordPerfEvent('mux.storage.maintenance.daemon', {
+          event: message.type,
+          runId: message.runId,
+          eligibleRows: message.eligibleRows,
+          prunedRows: message.prunedRows,
+          remainingRows: message.remainingRows,
+          percentLeft: message.percentLeft,
+          durationMs: message.durationMs,
+        });
+        if (message.eligibleRows > 0) {
+          setCommandNotice(
+            `event maintenance complete: ${message.percentLeft.toFixed(1)}% left (${String(message.remainingRows)} rows)`,
+          );
+        }
+        return;
+      }
+      recordPerfEvent('mux.storage.maintenance.daemon', {
+        event: message.type,
+        runId: message.runId,
+        phase: message.phase,
+      });
+      setCommandNotice(`event maintenance failed (${message.phase}): ${message.message}`);
+    };
+    storageLifecycleSupervisor = new EventStoreMaintenanceSupervisor({
+      daemonScriptPath: fileURLToPath(
+        new URL('../../../scripts/event-store-maintenance-daemon.ts', import.meta.url),
+      ),
+      daemonOptions: {
+        storePath: options.storePath,
+        policy: storageLifecycle.policy(),
+      },
+      onMessage: (message) => {
+        handleStorageMaintenanceMessage(message);
+      },
+      writeStderr: (text) => process.stderr.write(text),
+    });
+    storageLifecycleSupervisor.start();
 
     const runtimeLayoutResize = new RuntimeLayoutResizeEngine<ConversationState>({
       getSize: () => size,
@@ -4959,9 +5052,9 @@ class CodexLiveMuxRuntimeApplication {
         }
       },
       clearStorageLifecycleTimer: () => {
-        if (storageLifecycleTimer !== null) {
-          clearInterval(storageLifecycleTimer);
-          storageLifecycleTimer = null;
+        if (storageLifecycleSupervisor !== null) {
+          storageLifecycleSupervisor.stop();
+          storageLifecycleSupervisor = null;
         }
       },
       clearProjectPaneGitHubReviewRefreshTimer: () => {

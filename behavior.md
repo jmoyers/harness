@@ -285,6 +285,8 @@ Behavior fragments:
 - Rolling-window pruning runs online on a maintenance tick while sessions remain live.
 - Rolling-window compaction runs online in bounded copy-forward steps after prune churn.
 - Storage lifecycle policy values are configured under `storage.lifecycle` and applied to both mux event storage and control-plane telemetry storage.
+- Mux event-store maintenance runs in a managed background daemon process; the interactive TUI process receives daemon lifecycle/progress events (started, progress with percent left, completed) and does not run SQLite maintenance work on the render thread.
+- The maintenance daemon is parent-bound and interruptable: it self-terminates if the mux client parent PID disappears, and supervisor shutdown sends `SIGTERM` with a forced `SIGKILL` fallback if needed.
 - Control-plane storage lifecycle policy is hot-reloaded from config while the server is live.
 - `harness gateway gc` also runs storage lifecycle maintenance for retained offline session databases.
 - Event and telemetry storage maintenance is coordinated through one module.

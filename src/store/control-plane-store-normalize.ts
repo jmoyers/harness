@@ -146,17 +146,8 @@ function normalizeRuntimeStatusModel(value: unknown): StreamSessionStatusModel |
   const attentionReason = asStringOrNull(model.attentionReason, 'attentionReason');
   const lastKnownWork = asStringOrNull(model.lastKnownWork, 'lastKnownWork');
   const lastKnownWorkAt = asStringOrNull(model.lastKnownWorkAt, 'lastKnownWorkAt');
-  const activityHintRaw =
-    model.activityHint === undefined ? null : asStringOrNull(model.activityHint, 'activityHint');
+  const activityHintRaw = normalizeLegacyActivityHint(model.activityHint);
   const observedAt = asString(model.observedAt, 'observedAt');
-  if (
-    activityHintRaw !== null &&
-    activityHintRaw !== 'needs-action' &&
-    activityHintRaw !== 'working' &&
-    activityHintRaw !== 'idle'
-  ) {
-    throw new Error('expected activityHint enum value');
-  }
   return {
     runtimeStatus: runtimeStatusRaw,
     phase: phaseRaw,
@@ -169,6 +160,35 @@ function normalizeRuntimeStatusModel(value: unknown): StreamSessionStatusModel |
     activityHint: activityHintRaw,
     observedAt,
   };
+}
+
+function normalizeLegacyActivityHint(value: unknown): StreamSessionStatusModel['activityHint'] {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  if (typeof value === 'string') {
+    if (value === 'needs-action' || value === 'working' || value === 'idle') {
+      return value;
+    }
+    throw new Error('expected activityHint enum value');
+  }
+  if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    const legacy = value as Record<string, unknown>;
+    const legacyCandidate =
+      typeof legacy.kind === 'string'
+        ? legacy.kind
+        : typeof legacy.value === 'string'
+          ? legacy.value
+          : null;
+    if (
+      legacyCandidate === 'needs-action' ||
+      legacyCandidate === 'working' ||
+      legacyCandidate === 'idle'
+    ) {
+      return legacyCandidate;
+    }
+  }
+  return null;
 }
 
 export function normalizeStoredDirectoryRow(value: unknown): ControlPlaneDirectoryRecord {

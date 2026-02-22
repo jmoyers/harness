@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, truncateSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'bun:test';
@@ -49,6 +49,24 @@ void test('event store stamps schema version during initialization', () => {
   }
 });
 
+void test('event store startup tolerates a transient write lock when schema is already current', () => {
+  const dirPath = mkdtempSync(join(tmpdir(), 'harness-event-schema-lock-'));
+  const dbPath = join(dirPath, 'events.sqlite');
+  const bootstrap = new SqliteEventStore(dbPath);
+  bootstrap.close();
+
+  const lock = new DatabaseSync(dbPath);
+  lock.exec('BEGIN IMMEDIATE TRANSACTION;');
+  try {
+    const store = new SqliteEventStore(dbPath);
+    store.close();
+  } finally {
+    lock.exec('ROLLBACK;');
+    lock.close();
+    rmSync(dirPath, { recursive: true, force: true });
+  }
+});
+
 void test('event store upgrades legacy sqlite file to incremental auto-vacuum', () => {
   const dirPath = mkdtempSync(join(tmpdir(), 'harness-event-auto-vacuum-migrate-'));
   const dbPath = join(dirPath, 'events.sqlite');
@@ -71,6 +89,36 @@ void test('event store upgrades legacy sqlite file to incremental auto-vacuum', 
   try {
     const autoVacuum = verification.prepare('PRAGMA auto_vacuum;').get() as Record<string, unknown>;
     assert.equal(autoVacuum['auto_vacuum'], 2);
+  } finally {
+    verification.close();
+    rmSync(dirPath, { recursive: true, force: true });
+  }
+});
+
+void test('event store skips auto-vacuum migration for large legacy sqlite files', () => {
+  const dirPath = mkdtempSync(join(tmpdir(), 'harness-event-auto-vacuum-skip-large-'));
+  const dbPath = join(dirPath, 'events.sqlite');
+  const bootstrap = new DatabaseSync(dbPath);
+  bootstrap.exec(`
+    CREATE TABLE legacy_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      value TEXT NOT NULL
+    );
+  `);
+  bootstrap.exec(`INSERT INTO legacy_records (value) VALUES ('legacy');`);
+  const before = bootstrap.prepare('PRAGMA auto_vacuum;').get() as Record<string, unknown>;
+  assert.equal(before['auto_vacuum'], 0);
+  bootstrap.close();
+
+  truncateSync(dbPath, 80 * 1024 * 1024);
+
+  const store = new SqliteEventStore(dbPath);
+  store.close();
+
+  const verification = new DatabaseSync(dbPath);
+  try {
+    const autoVacuum = verification.prepare('PRAGMA auto_vacuum;').get() as Record<string, unknown>;
+    assert.equal(autoVacuum['auto_vacuum'], 0);
   } finally {
     verification.close();
     rmSync(dirPath, { recursive: true, force: true });
