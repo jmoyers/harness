@@ -221,7 +221,6 @@ import {
 } from '../../services/runtime-command-menu-agent-tools.ts';
 import { WorkspaceSyncedProjection } from '../../services/workspace-observed-events.ts';
 import { subscribeRuntimeWorkspaceObservedEvents } from '../../services/runtime-workspace-observed-events.ts';
-import { RuntimeRailViewState } from '../../services/runtime-rail-view-state.ts';
 import { StartupStateHydrationService } from '../../services/startup-state-hydration.ts';
 import {
   StatusTimelineRecorder,
@@ -4105,8 +4104,7 @@ class CodexLiveMuxRuntimeApplication {
       }
     };
 
-    const runtimeRailViewState =
-      new RuntimeRailViewState<ReturnType<typeof buildWorkspaceRailViewRows>>([]);
+    let latestRailViewRows = [] as ReturnType<typeof buildWorkspaceRailViewRows>;
     const runtimeRenderPipeline = new RuntimeRenderPipeline<
       ConversationState,
       ControlPlaneRepositoryRecord,
@@ -4261,7 +4259,7 @@ class CodexLiveMuxRuntimeApplication {
           processUsage: processUsageRefreshService,
         }),
       setLatestRailViewRows: (rows) => {
-        runtimeRailViewState.setLatestRows(rows);
+        latestRailViewRows = rows;
       },
       activeDirectoryId: () => workspace.activeDirectoryId,
     });
@@ -4583,7 +4581,9 @@ class CodexLiveMuxRuntimeApplication {
     const { handleRepositoryFoldInput, handleGlobalShortcutInput, leftRailPointerInput } =
       createTuiLeftRailInteractions({
         workspace,
-        railViewState: runtimeRailViewState,
+        railViewState: {
+          readLatestRows: () => latestRailViewRows,
+        },
         directories: directoryRecords,
         conversationRecords,
         repositories,
