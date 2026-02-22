@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import type { ProjectPaneGitHubReviewSummary } from '../src/mux/project-pane-github-review.ts';
-import { RuntimeProjectPaneGitHubReviewCacheEngine } from '../src/services/runtime-project-pane-github-review-cache.ts';
+import type { ProjectPaneGitHubReviewSummary } from '../../../../src/mux/project-pane-github-review.ts';
+import { RuntimeProjectPaneGitHubReviewCacheEngine } from '../../../../src/services/runtime-project-pane-github-review-cache.ts';
 
 interface QueuedLatestOp {
   readonly key: string;

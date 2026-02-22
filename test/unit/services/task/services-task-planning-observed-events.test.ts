@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { TaskPlanningSyncedProjection } from '../src/services/task-planning-observed-events.ts';
+import { TaskPlanningSyncedProjection } from '../../../../src/services/task-planning-observed-events.ts';
 
 interface RepositoryRecord {
   readonly repositoryId: string;

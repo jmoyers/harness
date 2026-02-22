@@ -85,7 +85,9 @@ export function createRuntimeConversationActions<TControllerRecord>(
     });
   };
 
-  const openOrCreateCritiqueConversationInDirectory = async (directoryId: string): Promise<void> => {
+  const openOrCreateCritiqueConversationInDirectory = async (
+    directoryId: string,
+  ): Promise<void> => {
     await openOrCreateCritiqueConversationInDirectoryFn({
       directoryId,
       orderedConversationIds: options.orderedConversationIds,

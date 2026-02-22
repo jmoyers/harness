@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { WorkspaceModel } from '../src/domain/workspace.ts';
+import { WorkspaceModel } from '../../../../src/domain/workspace.ts';
 import {
   createTaskPaneSelectionActions,
   type TaskPaneSelectionActions,
-} from '../src/services/task-pane-selection-actions.ts';
+} from '../../../../src/services/task-pane-selection-actions.ts';
 
 interface TaskRecord {
   readonly taskId: string;

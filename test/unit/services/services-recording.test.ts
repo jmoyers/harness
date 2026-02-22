@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { createRecordingService } from '../src/services/recording.ts';
+import { createRecordingService } from '../../../src/services/recording.ts';
 
 void test('recording service closes writer when available', async () => {
   let closed = false;

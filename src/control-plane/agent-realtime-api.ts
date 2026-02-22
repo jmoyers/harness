@@ -611,8 +611,7 @@ function parseProjectGitStatusRecord(value: unknown): AgentProjectGitStatus | nu
   if (parsed === null) {
     return null;
   }
-  const repository =
-    parsed.repository === null ? null : toAgentRepository(parsed.repository);
+  const repository = parsed.repository === null ? null : toAgentRepository(parsed.repository);
   if (parsed.repository !== null && repository === null) {
     return null;
   }

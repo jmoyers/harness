@@ -22,9 +22,7 @@ interface TuiRenderSnapshotRepositoryLookup<
   readonlyRepositories(): ReadonlyMap<string, TRepositoryRecord>;
 }
 
-interface TuiRenderSnapshotTaskLookup<
-  TTaskRecord extends TaskFocusedPaneTaskRecord,
-> {
+interface TuiRenderSnapshotTaskLookup<TTaskRecord extends TaskFocusedPaneTaskRecord> {
   readonlyTasks(): ReadonlyMap<string, TTaskRecord>;
   readonlyTaskComposers(): ReadonlyMap<string, TaskComposerBuffer>;
 }

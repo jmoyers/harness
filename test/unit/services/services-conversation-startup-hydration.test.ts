@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { createConversationStartupHydrationService } from '../src/services/conversation-startup-hydration.ts';
+import { createConversationStartupHydrationService } from '../../../src/services/conversation-startup-hydration.ts';
 
 interface SessionSummary {
   readonly sessionId: string;

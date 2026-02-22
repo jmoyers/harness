@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { createStartupPersistedConversationQueueService } from '../src/services/startup-persisted-conversation-queue.ts';
+import { createStartupPersistedConversationQueueService } from '../../../../src/services/startup-persisted-conversation-queue.ts';
 
 interface ConversationRecord {
   live: boolean;

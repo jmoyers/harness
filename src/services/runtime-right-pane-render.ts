@@ -115,7 +115,8 @@ export function renderRuntimeRightPaneRows<
       layout: input.layout,
       repositories: input.snapshot.repositories,
       tasks: input.snapshot.tasks,
-      showTaskPlanningUi: (options.showTasks ?? true) && workspace.leftNavSelection.kind === 'tasks',
+      showTaskPlanningUi:
+        (options.showTasks ?? true) && workspace.leftNavSelection.kind === 'tasks',
       selectedRepositoryId: workspace.taskPaneSelectedRepositoryId,
       repositoryDropdownOpen: workspace.taskRepositoryDropdownOpen,
       editorTarget: workspace.taskEditorTarget,

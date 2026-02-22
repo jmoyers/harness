@@ -28,7 +28,9 @@ interface RuntimeConversationTitleRefreshResult {
 
 const THREAD_TITLE_AGENT_TYPES = new Set(['codex', 'claude', 'cursor']);
 
-export interface RuntimeControlActionsOptions<TConversation extends RuntimeConversationControlState> {
+export interface RuntimeControlActionsOptions<
+  TConversation extends RuntimeConversationControlState,
+> {
   readonly conversationById: (sessionId: string) => TConversation | undefined;
   readonly interruptSession: (sessionId: string) => Promise<RuntimeInterruptResult>;
   readonly nowIso: () => string;
@@ -184,7 +186,9 @@ export function createRuntimeControlActions<TConversation extends RuntimeConvers
       } catch {
         skipped += 1;
       }
-      setNotices(scopeMessage('thread-title', `refreshing names ${String(index + 1)}/${String(total)}`));
+      setNotices(
+        scopeMessage('thread-title', `refreshing names ${String(index + 1)}/${String(total)}`),
+      );
       options.markDirty();
     }
     setNotices(

@@ -4,8 +4,12 @@ import {
   DEFAULT_UI_MODAL_THEME,
   SINGLE_LINE_UI_BOX_GLYPHS,
   UiKit,
-} from '../packages/harness-ui/src/kit.ts';
-import { DEFAULT_UI_STYLE, SurfaceBuffer, type UiStyle } from '../packages/harness-ui/src/surface.ts';
+} from '../../../packages/harness-ui/src/kit.ts';
+import {
+  DEFAULT_UI_STYLE,
+  SurfaceBuffer,
+  type UiStyle,
+} from '../../../packages/harness-ui/src/surface.ts';
 
 const UI_KIT = new UiKit();
 

@@ -12,14 +12,9 @@ export type StreamSessionControllerType = 'human' | 'agent' | 'automation';
 export type StreamSessionDisplayPhase = 'needs-action' | 'starting' | 'working' | 'idle' | 'exited';
 export type StreamSessionActivityHint = 'needs-action' | 'working' | 'idle';
 
-export function isStreamSessionRuntimeStatus(
-  value: unknown,
-): value is StreamSessionRuntimeStatus {
+export function isStreamSessionRuntimeStatus(value: unknown): value is StreamSessionRuntimeStatus {
   return (
-    value === 'running' ||
-    value === 'needs-input' ||
-    value === 'completed' ||
-    value === 'exited'
+    value === 'running' || value === 'needs-input' || value === 'completed' || value === 'exited'
   );
 }
 
@@ -1112,9 +1107,7 @@ function parsePromptConfidence(value: unknown): StreamPromptConfidence | null {
   return null;
 }
 
-function parseSessionActivityHint(
-  value: unknown,
-): StreamSessionActivityHint | undefined {
+function parseSessionActivityHint(value: unknown): StreamSessionActivityHint | undefined {
   if (value === 'needs-action' || value === 'working' || value === 'idle') {
     return value;
   }

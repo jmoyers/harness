@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { computeDualPaneLayout } from '../src/mux/dual-pane-core.ts';
-import { RuntimeLayoutResizeEngine } from '../src/services/runtime-layout-resize.ts';
+import { computeDualPaneLayout } from '../../../../src/mux/dual-pane-core.ts';
+import { RuntimeLayoutResizeEngine } from '../../../../src/services/runtime-layout-resize.ts';
 
 interface ConversationRecord {
   readonly sessionId: string;

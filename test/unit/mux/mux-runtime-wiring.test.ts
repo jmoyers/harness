@@ -45,7 +45,8 @@ function createConversationState(
     phase,
     lastKnownWork,
     lastKnownWorkAt,
-    activityHint: phase === 'needs-action' || phase === 'working' || phase === 'idle' ? phase : null,
+    activityHint:
+      phase === 'needs-action' || phase === 'working' || phase === 'idle' ? phase : null,
   };
   if (lastKnownWork !== null) {
     statusModelOptions.detailText = lastKnownWork;

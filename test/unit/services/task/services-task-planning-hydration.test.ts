@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { createTaskPlanningHydrationService } from '../src/services/task-planning-hydration.ts';
+import { createTaskPlanningHydrationService } from '../../../../src/services/task-planning-hydration.ts';
 
 interface RepositoryRecord {
   readonly repositoryId: string;

@@ -236,7 +236,11 @@ test('anthropic nim provider driver supports custom tool execution bridge', asyn
     streamTextFn: (input) => {
       const tools = input.tools as ToolSet | undefined;
       const bridgeTool = tools?.['bridge.tool'];
-      if (bridgeTool !== undefined) {
+      if (
+        bridgeTool !== undefined &&
+        bridgeTool.type !== 'provider' &&
+        typeof bridgeTool.execute === 'function'
+      ) {
         toolExecutionOutput = bridgeTool.execute({
           sample: true,
         });

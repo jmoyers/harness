@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { WorkspaceModel } from '../src/domain/workspace.ts';
-import type { ProjectPaneSnapshot } from '../src/mux/harness-core-ui.ts';
-import type { TaskComposerBuffer } from '../src/mux/task-composer.ts';
+import { WorkspaceModel } from '../../../../src/domain/workspace.ts';
+import type { ProjectPaneSnapshot } from '../../../../src/mux/harness-core-ui.ts';
+import type { TaskComposerBuffer } from '../../../../src/mux/task-composer.ts';
 import {
   renderRuntimeRightPaneRows,
   type RuntimeRightPaneRenderInput,
   type RuntimeRightPaneRenderOptions,
-} from '../src/services/runtime-right-pane-render.ts';
+} from '../../../../src/services/runtime-right-pane-render.ts';
 
 interface RepoRecord {
   readonly repositoryId: string;
@@ -480,12 +480,9 @@ void test('runtime right-pane renderer falls back to blank rows when no pane bra
 
 void test('runtime right-pane renderer delegates nim-pane render when nim pane is active', () => {
   const workspace = createWorkspace();
-  const taskManager = new TaskManager<TaskRecord, TaskComposerBuffer, NodeJS.Timeout>();
-  const render = new RuntimeRightPaneRender<RepoRecord, TaskRecord>({
+  const options: RuntimeRightPaneRenderOptions<RepoRecord, TaskRecord> = {
     workspace,
     showTasks: true,
-    repositories: new Map(),
-    taskManager,
     conversationPane: {
       render: () => {
         throw new Error('conversationPane.render should not run for nim render');
@@ -517,9 +514,9 @@ void test('runtime right-pane renderer delegates nim-pane render when nim pane i
     }),
     refreshProjectPaneSnapshot: () => null,
     emptyTaskPaneView,
-  });
+  };
 
-  const rows = render.renderRightRows({
+  const rows = renderRuntimeRightPaneRows(options, {
     layout: {
       rightCols: 20,
       paneRows: 4,
@@ -529,6 +526,7 @@ void test('runtime right-pane renderer delegates nim-pane render when nim pane i
     nimPaneActive: true,
     projectPaneActive: false,
     activeDirectoryId: null,
+    snapshot: emptyRightPaneSnapshot(),
   });
 
   assert.deepEqual(rows, ['nim-row']);

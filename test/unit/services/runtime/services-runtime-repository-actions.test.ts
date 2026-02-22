@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { WorkspaceModel, type ConversationTitleEditState } from '../src/domain/workspace.ts';
-import { createNewThreadPromptState } from '../src/mux/new-thread-prompt.ts';
-import { createRuntimeRepositoryActions } from '../src/services/runtime-repository-actions.ts';
+import {
+  WorkspaceModel,
+  type ConversationTitleEditState,
+} from '../../../../src/domain/workspace.ts';
+import { createNewThreadPromptState } from '../../../../src/mux/new-thread-prompt.ts';
+import { createRuntimeRepositoryActions } from '../../../../src/services/runtime-repository-actions.ts';
 
 interface RepositoryRecord {
   readonly repositoryId: string;

@@ -8,10 +8,7 @@ import {
 import { StartupOutputTracker } from './startup-output-tracker.ts';
 import { createStartupPaintTracker, type StartupPaintTracker } from './startup-paint-tracker.ts';
 import { createStartupSettledGate } from './startup-settled-gate.ts';
-import {
-  finalizeStartupShutdown,
-  type StartupShutdownServiceOptions,
-} from './startup-shutdown.ts';
+import { finalizeStartupShutdown, type StartupShutdownServiceOptions } from './startup-shutdown.ts';
 import { StartupSpanTracker } from './startup-span-tracker.ts';
 import { createStartupVisibility } from './startup-visibility.ts';
 

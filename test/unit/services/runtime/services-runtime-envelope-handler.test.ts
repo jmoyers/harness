@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import type { StreamServerEnvelope } from '../src/control-plane/stream-protocol.ts';
+import type { StreamServerEnvelope } from '../../../../src/control-plane/stream-protocol.ts';
 import {
   handleRuntimeEnvelope,
   type RuntimeEnvelopeHandlerOptions,
-} from '../src/services/runtime-envelope-handler.ts';
+} from '../../../../src/services/runtime-envelope-handler.ts';
 
 interface ConversationRecord {
   directoryId: string | null;

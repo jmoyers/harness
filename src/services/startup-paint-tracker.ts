@@ -46,7 +46,9 @@ export interface StartupPaintTracker {
   onOutputChunk(sessionId: string): void;
 }
 
-export function createStartupPaintTracker(options: StartupPaintTrackerOptions): StartupPaintTracker {
+export function createStartupPaintTracker(
+  options: StartupPaintTrackerOptions,
+): StartupPaintTracker {
   function onRenderFlush(input: StartupRenderFlushInput): void {
     const targetSessionId = options.startupSpanTracker.firstPaintTargetSessionId;
     if (targetSessionId === null) {
@@ -92,7 +94,10 @@ export function createStartupPaintTracker(options: StartupPaintTrackerOptions): 
         glyphCells,
       });
     }
-    const selectedGate = options.startupSequencer.maybeSelectSettleGate(targetSessionId, glyphCells);
+    const selectedGate = options.startupSequencer.maybeSelectSettleGate(
+      targetSessionId,
+      glyphCells,
+    );
     if (selectedGate !== null) {
       options.recordPerfEvent('mux.startup.active-settle-gate', {
         sessionId: targetSessionId,

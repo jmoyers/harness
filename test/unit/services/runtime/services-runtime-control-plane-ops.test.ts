@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { createRuntimeControlPlaneOps } from '../src/services/runtime-control-plane-ops.ts';
+import { createRuntimeControlPlaneOps } from '../../../../src/services/runtime-control-plane-ops.ts';
 
 async function flushManualSchedule(queue: Array<() => void>): Promise<void> {
   while (queue.length > 0) {

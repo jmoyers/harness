@@ -87,7 +87,10 @@ function toUiModeLabel(mode: NimUiMode): 'debug' | 'user' {
   return mode === 'debug' ? 'debug' : 'user';
 }
 
-function parseCompactTranscriptLine(text: string): { readonly base: string; readonly count: number } {
+function parseCompactTranscriptLine(text: string): {
+  readonly base: string;
+  readonly count: number;
+} {
   const match = /^(.*) \(x(\d+)\)$/u.exec(text);
   if (match === null) {
     return {
@@ -462,9 +465,7 @@ export class RuntimeNimSession {
   private async runCommand(commandText: string): Promise<void> {
     const trimmed = commandText.trim();
     if (trimmed === '/help') {
-      this.pushSystemLine(
-        '[help] /help /mode <debug|user> /state /clear /abort use-tool <tool>',
-      );
+      this.pushSystemLine('[help] /help /mode <debug|user> /state /clear /abort use-tool <tool>');
       return;
     }
     if (trimmed === '/state') {
@@ -488,7 +489,11 @@ export class RuntimeNimSession {
     if (trimmed.startsWith('/mode ')) {
       const rawMode = trimmed.slice('/mode '.length).trim();
       const resolvedMode =
-        rawMode === 'debug' ? 'debug' : rawMode === 'user' || rawMode === 'seamless' ? 'seamless' : null;
+        rawMode === 'debug'
+          ? 'debug'
+          : rawMode === 'user' || rawMode === 'seamless'
+            ? 'seamless'
+            : null;
       if (resolvedMode === null) {
         this.pushSystemLine(`[error] invalid mode: ${rawMode}`);
         return;
@@ -686,7 +691,8 @@ export class RuntimeNimSession {
     if (typeof lastLine === 'string') {
       const parsed = parseCompactTranscriptLine(lastLine);
       if (parsed.base === text) {
-        this.transcriptLines[this.transcriptLines.length - 1] = `${text} (x${String(parsed.count + 1)})`;
+        this.transcriptLines[this.transcriptLines.length - 1] =
+          `${text} (x${String(parsed.count + 1)})`;
         return;
       }
     }

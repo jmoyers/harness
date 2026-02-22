@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { measureDisplayWidth } from '../src/terminal/snapshot-oracle.ts';
-import { DEFAULT_UI_STYLE, SurfaceBuffer, type UiStyle } from '../packages/harness-ui/src/surface.ts';
+import { measureDisplayWidth } from '../../../src/terminal/snapshot-oracle.ts';
+import {
+  DEFAULT_UI_STYLE,
+  SurfaceBuffer,
+  type UiStyle,
+} from '../../../packages/harness-ui/src/surface.ts';
 
 function createUiSurface(
   cols: number,

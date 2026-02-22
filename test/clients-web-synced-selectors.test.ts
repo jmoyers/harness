@@ -159,7 +159,10 @@ void test('web directory and by-id selectors read synced state consistently', ()
     directories.map((entry) => entry.directoryId),
     ['directory-a', 'directory-b'],
   );
-  assert.equal(selectWebConversationById(store.getState(), 'session-a')?.conversationId, 'session-a');
+  assert.equal(
+    selectWebConversationById(store.getState(), 'session-a')?.conversationId,
+    'session-a',
+  );
   assert.equal(selectWebConversationById(store.getState(), 'session-missing'), null);
 });
 
@@ -167,16 +170,12 @@ void test('web selector subscription only emits when selected result changes', (
   const store = createHarnessSyncedStore();
   const selector = createWebConversationListSelector();
   const changes: Array<{ nextSize: number; previousSize: number }> = [];
-  const unsubscribe = subscribeStoreSelector(
-    store,
-    selector,
-    (next, previous) => {
-      changes.push({
-        nextSize: next.length,
-        previousSize: previous.length,
-      });
-    },
-  );
+  const unsubscribe = subscribeStoreSelector(store, selector, (next, previous) => {
+    changes.push({
+      nextSize: next.length,
+      previousSize: previous.length,
+    });
+  });
 
   applyObservedEventToHarnessSyncedStore(store, {
     subscriptionId: 'sub-1',

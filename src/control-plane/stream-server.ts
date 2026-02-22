@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { LinearClient } from '@linear/sdk';
 import { type CodexLiveEvent, type LiveSessionNotifyMode } from '../codex/live-session.ts';
 import type { PtyExit } from '../pty/pty_host.ts';
-import type { TerminalBufferTail, TerminalSnapshotFrame } from '../terminal/snapshot-oracle.ts';
+import type { TerminalSnapshotFrame } from '../terminal/snapshot-oracle.ts';
 import {
   encodeStreamEnvelope,
   type StreamObservedEvent,
@@ -102,29 +102,7 @@ import {
 import type { HarnessLifecycleHooksConfig } from '../config/config-core.ts';
 import { LifecycleHooksRuntime } from './lifecycle-hooks.ts';
 import { readGitDirectorySnapshot } from '../mux/live-mux/git-snapshot.ts';
-
-interface SessionDataEvent {
-  cursor: number;
-  chunk: Buffer;
-}
-
-interface SessionAttachHandlers {
-  onData: (event: SessionDataEvent) => void;
-  onExit: (exit: PtyExit) => void;
-}
-
-interface LiveSessionLike {
-  attach(handlers: SessionAttachHandlers, sinceCursor?: number): string;
-  detach(attachmentId: string): void;
-  latestCursorValue(): number;
-  processId(): number | null;
-  write(data: string | Uint8Array): void;
-  resize(cols: number, rows: number): void;
-  snapshot(): TerminalSnapshotFrame;
-  bufferTail?(tailLines?: number): TerminalBufferTail;
-  close(): void;
-  onEvent(listener: (event: CodexLiveEvent) => void): () => void;
-}
+import type { LiveSessionLike, StartSessionRuntimeInput } from './stream-session-runtime-types.ts';
 
 export interface StartControlPlaneSessionInput {
   command?: string;
@@ -139,21 +117,6 @@ export interface StartControlPlaneSessionInput {
   initialRows: number;
   terminalForegroundHex?: string;
   terminalBackgroundHex?: string;
-}
-
-interface StartSessionRuntimeInput {
-  readonly sessionId: string;
-  readonly args: readonly string[];
-  readonly initialCols: number;
-  readonly initialRows: number;
-  readonly env?: Record<string, string>;
-  readonly cwd?: string;
-  readonly tenantId?: string;
-  readonly userId?: string;
-  readonly workspaceId?: string;
-  readonly worktreeId?: string;
-  readonly terminalForegroundHex?: string;
-  readonly terminalBackgroundHex?: string;
 }
 
 type StartControlPlaneSession = (input: StartControlPlaneSessionInput) => LiveSessionLike;

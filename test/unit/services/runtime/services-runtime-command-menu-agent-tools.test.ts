@@ -3,7 +3,7 @@ import { test } from 'bun:test';
 import {
   parseAgentToolStatusList,
   RuntimeCommandMenuAgentToolsCache,
-} from '../src/services/runtime-command-menu-agent-tools.ts';
+} from '../../../../src/services/runtime-command-menu-agent-tools.ts';
 
 void test('parseAgentToolStatusList keeps only valid agent tool status rows', () => {
   const parsed = parseAgentToolStatusList({

@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import type { StreamObservedEvent } from '../src/control-plane/stream-protocol.ts';
-import { DirectoryManager } from '../src/domain/directories.ts';
-import type { GitRepositorySnapshot, GitSummary } from '../src/mux/live-mux/git-state.ts';
-import { createRuntimeGitState } from '../src/services/runtime-git-state.ts';
+import type { StreamObservedEvent } from '../../../../src/control-plane/stream-protocol.ts';
+import { DirectoryManager } from '../../../../src/domain/directories.ts';
+import type { GitRepositorySnapshot, GitSummary } from '../../../../src/mux/live-mux/git-state.ts';
+import { createRuntimeGitState } from '../../../../src/services/runtime-git-state.ts';
 
 interface RepositoryRecord {
   readonly repositoryId: string;

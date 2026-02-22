@@ -151,7 +151,7 @@ export function renderRuntimeLeftRail<
     input.snapshot.conversations,
     input.snapshot.orderedConversationIds,
   );
-  return options.leftRailPane.render({
+  const renderInput = {
     layout: input.layout,
     repositories: input.snapshot.repositories,
     repositoryAssociationByDirectoryId: options.repositoryAssociationByDirectoryId,
@@ -169,8 +169,6 @@ export function renderRuntimeLeftRail<
     tasksSelectionEnabled: options.workspace.leftNavSelection.kind === 'tasks',
     showTasksEntry: options.showTasksEntry ?? true,
     showGitHubIntegration: options.showGitHubIntegration ?? false,
-    visibleGitHubDirectoryIds: options.visibleGitHubDirectoryIds,
-    expandedGitHubDirectoryIds: options.expandedGitHubDirectoryIds,
     githubReviewByDirectoryId: options.githubReviewByDirectoryId ?? new Map(),
     githubSelectionEnabled: options.workspace.leftNavSelection.kind === 'github',
     activeGitHubProjectId:
@@ -182,5 +180,16 @@ export function renderRuntimeLeftRail<
     gitSummaryByDirectoryId: options.gitSummaryByDirectoryId,
     processUsageBySessionId: input.snapshot.processUsageBySessionId,
     loadingGitSummary: options.loadingGitSummary,
-  });
+    ...(options.visibleGitHubDirectoryIds !== undefined
+      ? {
+          visibleGitHubDirectoryIds: options.visibleGitHubDirectoryIds,
+        }
+      : {}),
+    ...(options.expandedGitHubDirectoryIds !== undefined
+      ? {
+          expandedGitHubDirectoryIds: options.expandedGitHubDirectoryIds,
+        }
+      : {}),
+  };
+  return options.leftRailPane.render(renderInput);
 }

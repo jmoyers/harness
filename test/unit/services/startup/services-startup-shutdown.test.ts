@@ -3,7 +3,7 @@ import { test } from 'bun:test';
 import {
   finalizeStartupShutdown,
   type StartupShutdownServiceOptions,
-} from '../src/services/startup-shutdown.ts';
+} from '../../../../src/services/startup-shutdown.ts';
 
 void test('startup shutdown service finalizes startup spans and settled gate', () => {
   const calls: string[] = [];

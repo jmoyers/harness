@@ -163,7 +163,11 @@ export function createRuntimeRepositoryActions<TRepository extends RepositoryRec
     targetRepositoryId: string,
     orderedRepositoryIds: readonly string[],
   ): void => {
-    const reordered = reorderIdsByMove(orderedRepositoryIds, draggedRepositoryId, targetRepositoryId);
+    const reordered = reorderIdsByMove(
+      orderedRepositoryIds,
+      draggedRepositoryId,
+      targetRepositoryId,
+    );
     if (reordered === null) {
       return;
     }

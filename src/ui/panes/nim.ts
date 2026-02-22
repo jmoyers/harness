@@ -47,7 +47,10 @@ export class NimPane {
       );
     }
     if (rows.length > 2) {
-      rows[2] = padOrTrimDisplay(' enter=send/steer tab=queue esc=abort /mode debug|user', input.layout.rightCols);
+      rows[2] = padOrTrimDisplay(
+        ' enter=send/steer tab=queue esc=abort /mode debug|user',
+        input.layout.rightCols,
+      );
     }
     if (rows.length > 3) {
       rows[3] = padOrTrimDisplay(' ─ transcript ─', input.layout.rightCols);

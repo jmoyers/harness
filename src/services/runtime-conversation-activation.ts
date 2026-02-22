@@ -25,10 +25,7 @@ export interface RuntimeConversationActivationOptions {
 }
 
 export interface RuntimeConversationActivation {
-  activateConversation(
-    sessionId: string,
-    input?: { readonly signal?: AbortSignal },
-  ): Promise<void>;
+  activateConversation(sessionId: string, input?: { readonly signal?: AbortSignal }): Promise<void>;
 }
 
 export function createRuntimeConversationActivation(

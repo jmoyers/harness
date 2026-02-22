@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { WorkspaceModel } from '../src/domain/workspace.ts';
-import { createRuntimeConversationTitleEditService } from '../src/services/runtime-conversation-title-edit.ts';
+import { WorkspaceModel } from '../../../../src/domain/workspace.ts';
+import { createRuntimeConversationTitleEditService } from '../../../../src/services/runtime-conversation-title-edit.ts';
 
 interface ConversationRecord {
   title: string;

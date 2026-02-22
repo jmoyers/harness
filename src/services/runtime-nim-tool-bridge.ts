@@ -108,8 +108,8 @@ function resolvePositiveLimit(argumentsText: string, fallback: number): number {
 }
 
 function resolveTaskListLimit(input: {
-  readonly argumentsText?: string;
-  readonly argumentsValue?: unknown;
+  readonly argumentsText: string | undefined;
+  readonly argumentsValue: unknown;
   readonly fallback: number;
 }): number {
   const value = input.argumentsValue;

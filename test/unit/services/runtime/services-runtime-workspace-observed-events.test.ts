@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { createHarnessSyncedStore } from '../src/core/store/harness-synced-store.ts';
-import type { HarnessSyncedState } from '../src/core/state/synced-observed-state.ts';
-import { subscribeRuntimeWorkspaceObservedEvents } from '../src/services/runtime-workspace-observed-events.ts';
+import { createHarnessSyncedStore } from '../../../../src/core/store/harness-synced-store.ts';
+import type { HarnessSyncedState } from '../../../../src/core/state/synced-observed-state.ts';
+import { subscribeRuntimeWorkspaceObservedEvents } from '../../../../src/services/runtime-workspace-observed-events.ts';
 
 function createSyncedState(input: {
   readonly directoryIds?: readonly string[];
@@ -61,10 +61,6 @@ const createHarness = (input?: {
         directoryId: string;
       }
     | {
-        kind: 'github';
-        directoryId: string;
-      }
-    | {
         kind: 'conversation';
         sessionId: string;
       };
@@ -79,10 +75,6 @@ const createHarness = (input?: {
     leftNavSelection:
       | {
           kind: 'project';
-          directoryId: string;
-        }
-      | {
-          kind: 'github';
           directoryId: string;
         }
       | {
@@ -224,9 +216,7 @@ void test('runtime workspace observed events returns early when synced state is 
   harness.stop();
 });
 
-void test(
-  'runtime workspace observed events handles active-conversation removal with fallback activation',
-  async () => {
+void test('runtime workspace observed events handles active-conversation removal with fallback activation', async () => {
   const harness = createHarness({
     initialSynced: createSyncedState({
       directoryIds: ['directory-live', 'directory-removed'],
@@ -268,12 +258,9 @@ void test(
     'activateConversation:session-2',
   ]);
   harness.stop();
-  },
-);
+});
 
-void test(
-  'runtime workspace observed events keeps active-conversation archive fallback scoped to the same project',
-  async () => {
+void test('runtime workspace observed events keeps active-conversation archive fallback scoped to the same project', async () => {
   const harness = createHarness({
     initialSynced: createSyncedState({
       directoryIds: ['directory-a', 'directory-b'],
@@ -307,12 +294,9 @@ void test(
     'unsubscribeConversationEvents:session-1',
   ]);
   harness.stop();
-  },
-);
+});
 
-void test(
-  'runtime workspace observed events falls back to home when active conversation is removed with no replacement',
-  async () => {
+void test('runtime workspace observed events falls back to home when active conversation is removed with no replacement', async () => {
   const harness = createHarness({
     initialSynced: createSyncedState({
       conversationDirectoryById: {
@@ -339,12 +323,9 @@ void test(
     'unsubscribeConversationEvents:session-1',
   ]);
   harness.stop();
-  },
-);
+});
 
-void test(
-  'runtime workspace observed events keeps left-nav selection on current active conversation when previous selection is removed',
-  async () => {
+void test('runtime workspace observed events keeps left-nav selection on current active conversation when previous selection is removed', async () => {
   const harness = createHarness({
     initialSynced: createSyncedState({
       conversationDirectoryById: {
@@ -377,12 +358,9 @@ void test(
     'unsubscribeConversationEvents:session-1',
   ]);
   harness.stop();
-  },
-);
+});
 
-void test(
-  'runtime workspace observed events handles removed left-nav conversation with queued fallback activation',
-  async () => {
+void test('runtime workspace observed events handles removed left-nav conversation with queued fallback activation', async () => {
   const harness = createHarness({
     initialSynced: createSyncedState({
       conversationDirectoryById: {
@@ -416,12 +394,9 @@ void test(
     'activateConversation:session-3',
   ]);
   harness.stop();
-  },
-);
+});
 
-void test(
-  'runtime workspace observed events keeps selected-conversation archive fallback scoped to the same project',
-  async () => {
+void test('runtime workspace observed events keeps selected-conversation archive fallback scoped to the same project', async () => {
   const harness = createHarness({
     initialSynced: createSyncedState({
       conversationDirectoryById: {
@@ -455,8 +430,7 @@ void test(
     'unsubscribeConversationEvents:session-1',
   ]);
   harness.stop();
-  },
-);
+});
 
 void test('runtime workspace observed events repairs invalid project selection and supports project/home fallback branches', () => {
   const harness = createHarness({
@@ -523,26 +497,4 @@ void test('runtime workspace observed events keeps store subscriber path non-ree
     'unsubscribeConversationEvents:session-1',
   ]);
   harness.stop();
-});
-
-void test('runtime workspace observed events repairs invalid github selection with project fallback', () => {
-  const harness = createHarness({
-    reduction: {
-      changed: true,
-      removedConversationIds: [],
-      removedDirectoryIds: [],
-    },
-    leftNavSelection: {
-      kind: 'github',
-      directoryId: 'directory-missing',
-    },
-    existingDirectories: new Set(['directory-fallback']),
-    resolvedActiveDirectoryId: 'directory-fallback',
-  });
-
-  harness.service.apply({
-    id: 'event-8',
-  });
-
-  assert.deepEqual(harness.calls, ['enterProjectPane:directory-fallback', 'markDirty']);
 });

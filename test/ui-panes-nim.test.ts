@@ -27,8 +27,14 @@ void test('nim pane renders shell rows with transcript and composer sections', (
   assert.equal(result.rows[1]?.includes('queued:1'), true);
   assert.equal(result.rows[2]?.includes('enter=send/steer'), true);
   assert.equal(result.rows[3]?.includes('transcript'), true);
-  assert.equal(result.rows.some((row) => row.includes('nim> hi there')), true);
-  assert.equal(result.rows.some((row) => row.includes('nim> working')), true);
+  assert.equal(
+    result.rows.some((row) => row.includes('nim> hi there')),
+    true,
+  );
+  assert.equal(
+    result.rows.some((row) => row.includes('nim> working')),
+    true,
+  );
   assert.equal(result.rows[6]?.includes('composer'), true);
   assert.equal(result.rows[7]?.trimStart().startsWith('nim> ship it'), true);
 });

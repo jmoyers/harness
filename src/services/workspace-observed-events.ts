@@ -50,7 +50,10 @@ export class WorkspaceSyncedProjection<
   TConversationRecord extends ConversationRecordLike,
 > {
   constructor(
-    private readonly options: WorkspaceSyncedProjectionOptions<TDirectoryRecord, TConversationRecord>,
+    private readonly options: WorkspaceSyncedProjectionOptions<
+      TDirectoryRecord,
+      TConversationRecord
+    >,
   ) {}
 
   apply(

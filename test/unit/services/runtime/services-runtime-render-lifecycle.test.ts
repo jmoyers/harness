@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { createRuntimeRenderLifecycle } from '../src/services/runtime-render-lifecycle.ts';
+import { createRuntimeRenderLifecycle } from '../../../../src/services/runtime-render-lifecycle.ts';
 
 void test('runtime render lifecycle marks dirty and schedules render until clean', () => {
   let shuttingDown = false;

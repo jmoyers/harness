@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { WorkspaceModel } from '../src/domain/workspace.ts';
+import { WorkspaceModel } from '../../../../src/domain/workspace.ts';
 import {
   createRuntimeTaskPaneActions,
   type RuntimeTaskPaneActionsOptions,
-} from '../src/services/runtime-task-pane-actions.ts';
+} from '../../../../src/services/runtime-task-pane-actions.ts';
 
 interface TaskRecord {
   readonly taskId: string;
@@ -303,6 +303,99 @@ void test('runtime task pane actions runTaskPaneAction default repository edit f
   assert.equal(harness.workspace.taskPaneSelectionFocus, 'repository');
   assert.equal(harness.workspace.taskPaneNotice, null);
   assert.deepEqual(harness.calls, ['openRepositoryPromptForEdit:repo-1']);
+});
+
+void test('runtime task pane actions repository edit requires selected repository', () => {
+  const harness = createHarness();
+  harness.workspace.taskPaneSelectedRepositoryId = 'repo-missing';
+
+  harness.service.runTaskPaneAction('repository.edit');
+
+  assert.equal(harness.workspace.taskPaneNotice, 'select a repository first');
+  assert.deepEqual(harness.calls, ['markDirty']);
+});
+
+void test('runtime task pane actions task/repository create routes through prompt open flows', () => {
+  const harness = createHarness();
+  harness.workspace.taskPaneSelectedRepositoryId = 'repo-1';
+
+  harness.service.runTaskPaneAction('task.create');
+  harness.service.runTaskPaneAction('repository.create');
+
+  assert.equal(harness.workspace.taskPaneNotice, null);
+  assert.deepEqual(harness.calls, [
+    'focusDraftComposer',
+    'markDirty',
+    'openRepositoryPromptForCreate',
+  ]);
+});
+
+void test('runtime task pane actions task edit requires selected task', () => {
+  const harness = createHarness();
+
+  harness.service.runTaskPaneAction('task.edit');
+
+  assert.equal(harness.workspace.taskPaneNotice, 'select a task first');
+  assert.deepEqual(harness.calls, ['markDirty']);
+});
+
+void test('runtime task pane actions task edit routes through openTaskEditPrompt for selected task', () => {
+  const harness = createHarness({
+    selectedTask: () => ({
+      taskId: 'task-1',
+      repositoryId: 'repo-1',
+      status: 'ready',
+    }),
+  });
+  harness.tasksById.set('task-1', {
+    taskId: 'task-1',
+    repositoryId: 'repo-1',
+    status: 'ready',
+  });
+
+  harness.service.runTaskPaneAction('task.edit');
+
+  assert.equal(harness.workspace.taskPaneSelectionFocus, 'task');
+  assert.deepEqual(harness.calls, ['focusTaskComposer:task-1', 'markDirty']);
+});
+
+void test('runtime task pane actions task reorder reports guard failures and no-op bounds', async () => {
+  const missingSelection = createHarness({
+    selectedTask: () => ({
+      taskId: 'task-missing',
+      repositoryId: 'repo-1',
+      status: 'ready',
+    }),
+    orderedTaskRecords: () => [
+      {
+        taskId: 'task-1',
+        repositoryId: 'repo-1',
+        status: 'ready',
+      },
+    ],
+  });
+  missingSelection.service.runTaskPaneAction('task.reorder-up');
+  await missingSelection.flushQueued();
+  assert.equal(missingSelection.workspace.taskPaneNotice, 'cannot reorder completed tasks');
+  assert.deepEqual(missingSelection.calls, ['markDirty']);
+
+  const atBounds = createHarness({
+    selectedTask: () => ({
+      taskId: 'task-1',
+      repositoryId: 'repo-1',
+      status: 'ready',
+    }),
+    orderedTaskRecords: () => [
+      {
+        taskId: 'task-1',
+        repositoryId: 'repo-1',
+        status: 'ready',
+      },
+    ],
+  });
+  atBounds.service.runTaskPaneAction('task.reorder-up');
+  await atBounds.flushQueued();
+  assert.deepEqual(atBounds.calls, []);
 });
 
 void test('runtime task pane actions runTaskPaneAction default task reorder flow uses ordered task records', async () => {

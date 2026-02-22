@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { createStartupSettledGate } from '../src/services/startup-settled-gate.ts';
-import type { ConversationState } from '../src/mux/live-mux/conversation-state.ts';
+import { createStartupSettledGate } from '../../../../src/services/startup-settled-gate.ts';
+import type { ConversationState } from '../../../../src/mux/live-mux/conversation-state.ts';
 
 function createConversation(): ConversationState {
   return {} as ConversationState;

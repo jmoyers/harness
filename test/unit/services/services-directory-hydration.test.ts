@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { createDirectoryHydrationService } from '../src/services/directory-hydration.ts';
+import { createDirectoryHydrationService } from '../../../src/services/directory-hydration.ts';
 
 interface DirectoryRecord {
   readonly directoryId: string;

@@ -187,9 +187,7 @@ export function createRuntimeTaskPaneActions<TTaskRecord extends TaskRecordShape
   };
 
   const reorderSelectedTask = (selectedTaskId: string, direction: 'up' | 'down'): void => {
-    const activeTasks = options
-      .orderedTaskRecords()
-      .filter((task) => task.status !== 'completed');
+    const activeTasks = options.orderedTaskRecords().filter((task) => task.status !== 'completed');
     const selectedIndex = activeTasks.findIndex((task) => task.taskId === selectedTaskId);
     if (selectedIndex < 0) {
       options.workspace.taskPaneNotice = 'cannot reorder completed tasks';

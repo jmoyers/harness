@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { flushRuntimeRender } from '../src/services/runtime-render-flush.ts';
+import { flushRuntimeRender } from '../../../../src/services/runtime-render-flush.ts';
 
 interface ConversationRecord {
   readonly id: string;

@@ -3,7 +3,7 @@ import { test } from 'bun:test';
 import {
   finalizeRuntimeShutdown,
   type RuntimeShutdownServiceOptions,
-} from '../src/services/runtime-shutdown.ts';
+} from '../../../../src/services/runtime-shutdown.ts';
 
 interface BuildResult {
   readonly calls: string[];

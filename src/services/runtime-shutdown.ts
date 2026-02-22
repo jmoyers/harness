@@ -43,7 +43,9 @@ export interface RuntimeShutdownServiceOptions {
   readonly shutdownPerfCore: () => void;
 }
 
-export async function finalizeRuntimeShutdown(options: RuntimeShutdownServiceOptions): Promise<void> {
+export async function finalizeRuntimeShutdown(
+  options: RuntimeShutdownServiceOptions,
+): Promise<void> {
   options.screen.clearDirty();
   options.outputLoadSampler.stop();
   options.startupBackgroundProbeService.stop();

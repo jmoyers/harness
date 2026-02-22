@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { createStartupBackgroundResumeService } from '../src/services/startup-background-resume.ts';
+import { createStartupBackgroundResumeService } from '../../../../src/services/startup-background-resume.ts';
 
 type TimeoutHandle = ReturnType<typeof setTimeout>;
 

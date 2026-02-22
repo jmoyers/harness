@@ -28,16 +28,22 @@ void test('runtime observed event projection pipeline short-circuits when cursor
     ts: new Date(0).toISOString(),
   } as const;
 
-  const first = applyRuntimeObservedEventProjection({
-    subscriptionId: 'subscription-1',
-    cursor: 5,
-    event,
-  }, options);
-  const second = applyRuntimeObservedEventProjection({
-    subscriptionId: 'subscription-1',
-    cursor: 5,
-    event,
-  }, options);
+  const first = applyRuntimeObservedEventProjection(
+    {
+      subscriptionId: 'subscription-1',
+      cursor: 5,
+      event,
+    },
+    options,
+  );
+  const second = applyRuntimeObservedEventProjection(
+    {
+      subscriptionId: 'subscription-1',
+      cursor: 5,
+      event,
+    },
+    options,
+  );
 
   assert.equal(first.cursorAccepted, true);
   assert.equal(first.previousCursor, null);
@@ -69,26 +75,29 @@ void test('runtime observed event projection pipeline applies projections in can
     },
   };
 
-  const result = applyRuntimeObservedEventProjection({
-    subscriptionId: 'subscription-2',
-    cursor: 10,
-    event: {
-      type: 'conversation-created',
-      conversation: {
-        conversationId: 'conversation-1',
-        directoryId: 'directory-1',
-        tenantId: 'tenant-1',
-        userId: 'user-1',
-        workspaceId: 'workspace-1',
-        title: 'Conversation',
-        agentType: 'codex',
-        adapterState: {},
-        runtimeStatus: 'running',
-        runtimeStatusModel: null,
-        runtimeLive: true,
+  const result = applyRuntimeObservedEventProjection(
+    {
+      subscriptionId: 'subscription-2',
+      cursor: 10,
+      event: {
+        type: 'conversation-created',
+        conversation: {
+          conversationId: 'conversation-1',
+          directoryId: 'directory-1',
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          workspaceId: 'workspace-1',
+          title: 'Conversation',
+          agentType: 'codex',
+          adapterState: {},
+          runtimeStatus: 'running',
+          runtimeStatusModel: null,
+          runtimeLive: true,
+        },
       },
     },
-  }, options);
+    options,
+  );
 
   assert.equal(result.cursorAccepted, true);
   assert.equal(result.previousCursor, null);

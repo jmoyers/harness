@@ -6,6 +6,7 @@ interface CliOptions {
   maxLoc: number;
   json: boolean;
   enforce: boolean;
+  baselinePath: string | null;
 }
 
 interface FileLoc {
@@ -20,6 +21,16 @@ interface VerifyReport {
   checkedFiles: number;
   violations: FileLoc[];
   enforce: boolean;
+}
+
+interface LocBaseline {
+  allow: Record<string, number>;
+}
+
+interface BaselineEvaluation {
+  effectiveViolations: FileLoc[];
+  toleratedViolations: FileLoc[];
+  baselinePath: string | null;
 }
 
 const DEFAULT_MAX_LOC = 2000;
@@ -78,10 +89,11 @@ const SUPPORTED_EXTENSIONS = new Set<string>([
 
 function usage(): string {
   return [
-    'Usage: bun scripts/check-max-loc.ts [--max-loc <number>] [--root <path>] [--json] [--enforce]',
+    'Usage: bun scripts/check-max-loc.ts [--max-loc <number>] [--root <path>] [--json] [--enforce] [--baseline <path>]',
     '',
     'Reports files with LOC strictly greater than --max-loc.',
     'Use --enforce to fail when violations are present.',
+    'Use --baseline with --enforce to allow a frozen set of known violations while preventing new ones and LOC growth.',
     'LOC is counted as non-empty lines.',
   ].join('\n');
 }
@@ -99,6 +111,7 @@ function parseArgs(argv: readonly string[]): CliOptions {
   let maxLoc = DEFAULT_MAX_LOC;
   let json = false;
   let enforce = false;
+  let baselinePath: string | null = null;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -132,6 +145,15 @@ function parseArgs(argv: readonly string[]): CliOptions {
       enforce = true;
       continue;
     }
+    if (arg === '--baseline') {
+      const value = argv[index + 1];
+      if (value === undefined) {
+        throw new Error('missing value for --baseline');
+      }
+      baselinePath = resolve(value);
+      index += 1;
+      continue;
+    }
     throw new Error(`unknown argument: ${arg}`);
   }
 
@@ -140,6 +162,72 @@ function parseArgs(argv: readonly string[]): CliOptions {
     maxLoc,
     json,
     enforce,
+    baselinePath,
+  };
+}
+
+function readBaseline(baselinePath: string): LocBaseline {
+  const raw = readFileSync(baselinePath, 'utf8');
+  const parsed = JSON.parse(raw) as unknown;
+  if (typeof parsed !== 'object' || parsed === null) {
+    throw new Error(`invalid baseline file: ${baselinePath}`);
+  }
+  const allowValue = (parsed as { allow?: unknown }).allow;
+  if (typeof allowValue !== 'object' || allowValue === null || Array.isArray(allowValue)) {
+    throw new Error(`invalid baseline file (missing allow object): ${baselinePath}`);
+  }
+
+  const allow: Record<string, number> = {};
+  for (const [rawPath, rawMaxLoc] of Object.entries(allowValue)) {
+    if (rawPath.trim().length === 0) {
+      throw new Error(`invalid baseline file (empty path): ${baselinePath}`);
+    }
+    if (
+      typeof rawMaxLoc !== 'number' ||
+      !Number.isFinite(rawMaxLoc) ||
+      !Number.isInteger(rawMaxLoc) ||
+      rawMaxLoc < 1
+    ) {
+      throw new Error(
+        `invalid baseline file (max LOC must be a positive integer for "${rawPath}"): ${baselinePath}`,
+      );
+    }
+    const normalizedPath = rawPath.replaceAll('\\', '/');
+    allow[normalizedPath] = rawMaxLoc;
+  }
+
+  return { allow };
+}
+
+function evaluateViolationsAgainstBaseline(
+  violations: readonly FileLoc[],
+  baselinePath: string | null,
+): BaselineEvaluation {
+  if (baselinePath === null) {
+    return {
+      effectiveViolations: [...violations],
+      toleratedViolations: [],
+      baselinePath: null,
+    };
+  }
+
+  const baseline = readBaseline(baselinePath);
+  const effectiveViolations: FileLoc[] = [];
+  const toleratedViolations: FileLoc[] = [];
+
+  for (const violation of violations) {
+    const allowedLoc = baseline.allow[violation.path];
+    if (allowedLoc !== undefined && violation.loc <= allowedLoc) {
+      toleratedViolations.push(violation);
+      continue;
+    }
+    effectiveViolations.push(violation);
+  }
+
+  return {
+    effectiveViolations,
+    toleratedViolations,
+    baselinePath,
   };
 }
 
@@ -224,8 +312,11 @@ function buildVerifyReport(rootPath: string, maxLoc: number, enforce: boolean): 
   };
 }
 
-function renderSuccess(report: VerifyReport): string {
+function renderSuccess(report: VerifyReport, evaluation?: BaselineEvaluation): string {
   const mode = report.enforce ? 'enforced' : 'advisory';
+  if (evaluation !== undefined && evaluation.toleratedViolations.length > 0) {
+    return `LOC verify (${mode}) passed: ${evaluation.toleratedViolations.length} baseline violation(s) tolerated; no new violations or LOC growth (checked ${report.checkedFiles} files).\n`;
+  }
   return `LOC verify (${mode}) passed: ${report.checkedFiles} source files are <= ${report.maxLoc} non-empty LOC.\n`;
 }
 
@@ -295,20 +386,45 @@ function main(): number {
   }
 
   const report = buildVerifyReport(options.root, options.maxLoc, options.enforce);
+  let evaluation: BaselineEvaluation;
+  try {
+    evaluation = evaluateViolationsAgainstBaseline(report.violations, options.baselinePath);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`${message}\n`);
+    return 1;
+  }
+
+  const effectiveReport: VerifyReport = {
+    ...report,
+    violations: evaluation.effectiveViolations,
+  };
+
   if (options.json) {
-    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
-  } else if (report.violations.length === 0) {
-    process.stdout.write(renderSuccess(report));
-  } else if (report.enforce) {
-    process.stderr.write(renderFailure(report));
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          ...report,
+          baselinePath: evaluation.baselinePath,
+          toleratedViolations: evaluation.toleratedViolations,
+          effectiveViolations: evaluation.effectiveViolations,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  } else if (effectiveReport.violations.length === 0) {
+    process.stdout.write(renderSuccess(report, evaluation));
+  } else if (effectiveReport.enforce) {
+    process.stderr.write(renderFailure(effectiveReport));
   } else {
     process.stdout.write(renderAdvisory(report));
   }
 
-  if (report.violations.length === 0) {
+  if (effectiveReport.violations.length === 0) {
     return 0;
   }
-  return report.enforce ? 1 : 0;
+  return effectiveReport.enforce ? 1 : 0;
 }
 
 process.exitCode = main();

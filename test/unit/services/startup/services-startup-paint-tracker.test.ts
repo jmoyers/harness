@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { createStartupPaintTracker } from '../src/services/startup-paint-tracker.ts';
-import type { ConversationState } from '../src/mux/live-mux/conversation-state.ts';
+import { createStartupPaintTracker } from '../../../../src/services/startup-paint-tracker.ts';
+import type { ConversationState } from '../../../../src/mux/live-mux/conversation-state.ts';
 
 function createConversation(): ConversationState {
   return {} as ConversationState;

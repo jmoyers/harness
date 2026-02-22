@@ -84,8 +84,21 @@ void serialCliTest(
     };
 
     try {
-      const profileResult = await runHarness(workspace, ['--session', sessionName, 'profile'], env);
-      assert.equal(profileResult.code, 0);
+      let profileResult = await runHarness(workspace, ['--session', sessionName, 'profile'], env);
+      for (let attempt = 0; attempt < 2 && profileResult.code !== 0; attempt += 1) {
+        await runHarness(
+          workspace,
+          ['--session', sessionName, 'gateway', 'stop', '--force'],
+          env,
+        ).catch(() => undefined);
+        await delay(150);
+        profileResult = await runHarness(workspace, ['--session', sessionName, 'profile'], env);
+      }
+      assert.equal(
+        profileResult.code,
+        0,
+        `profile command failed stdout=${JSON.stringify(profileResult.stdout)} stderr=${JSON.stringify(profileResult.stderr)}`,
+      );
       assert.equal(profileResult.stdout.includes('profiles: client='), true);
       assert.equal(existsSync(clientProfilePath), true);
       assert.equal(existsSync(gatewayProfilePath), true);

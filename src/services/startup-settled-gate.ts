@@ -51,7 +51,8 @@ export function createStartupSettledGate(options: StartupSettledGateOptions): St
         return;
       }
       const conversation = options.getConversation(event.sessionId);
-      const glyphCells = conversation === undefined ? 0 : options.visibleGlyphCellCount(conversation);
+      const glyphCells =
+        conversation === undefined ? 0 : options.visibleGlyphCellCount(conversation);
       options.recordPerfEvent('mux.startup.active-settled', {
         sessionId: event.sessionId,
         gate: event.gate,

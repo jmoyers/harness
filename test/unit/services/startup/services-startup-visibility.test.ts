@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { createStartupVisibility } from '../src/services/startup-visibility.ts';
-import type { ConversationState } from '../src/mux/live-mux/conversation-state.ts';
+import { createStartupVisibility } from '../../../../src/services/startup-visibility.ts';
+import type { ConversationState } from '../../../../src/mux/live-mux/conversation-state.ts';
 
 function createConversation(
   rows: Array<Array<{ readonly glyph: string; readonly continued?: boolean }>>,

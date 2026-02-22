@@ -20,6 +20,7 @@ import type {
 } from '../store/control-plane-store.ts';
 import type { TerminalBufferTail, TerminalSnapshotFrame } from '../terminal/snapshot-oracle.ts';
 import type { PtyExit } from '../pty/pty_host.ts';
+import type { StartSessionRuntimeInput } from './stream-session-runtime-types.ts';
 
 const DEFAULT_TENANT_ID = 'tenant-local';
 const DEFAULT_USER_ID = 'user-local';
@@ -52,21 +53,6 @@ interface StreamJournalEntry {
 
 interface SessionControllerState extends StreamSessionController {
   connectionId: string;
-}
-
-interface StartSessionRuntimeInput {
-  readonly sessionId: string;
-  readonly args: readonly string[];
-  readonly initialCols: number;
-  readonly initialRows: number;
-  readonly env?: Record<string, string>;
-  readonly cwd?: string;
-  readonly tenantId?: string;
-  readonly userId?: string;
-  readonly workspaceId?: string;
-  readonly worktreeId?: string;
-  readonly terminalForegroundHex?: string;
-  readonly terminalBackgroundHex?: string;
 }
 
 interface LiveSessionLike {

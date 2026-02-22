@@ -45,11 +45,11 @@ export function createTuiModalInputRemainderState(
         layoutCols: input.layoutCols,
         viewportRows: input.viewportRows,
         dismiss: input.dismiss,
-      ...(input.onInsidePointerPress === undefined
-        ? {}
-        : {
-            onInsidePointerPress: input.onInsidePointerPress,
-          }),
+        ...(input.onInsidePointerPress === undefined
+          ? {}
+          : {
+              onInsidePointerPress: input.onInsidePointerPress,
+            }),
       });
       inputRemainder = result.inputRemainder;
       return result.handled;

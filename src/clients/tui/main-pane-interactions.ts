@@ -1,4 +1,8 @@
-import { classifyPaneAt, parseMuxInputChunk, type computeDualPaneLayout } from '../../mux/dual-pane-core.ts';
+import {
+  classifyPaneAt,
+  parseMuxInputChunk,
+  type computeDualPaneLayout,
+} from '../../mux/dual-pane-core.ts';
 import { routeInputTokensForConversation } from '../../mux/live-mux/input-forwarding.ts';
 import { normalizeMuxKeyboardInputForPty } from '../../mux/input-shortcuts.ts';
 import { handleHomePaneDragRelease } from '../../mux/live-mux/home-pane-drop.ts';
@@ -238,7 +242,8 @@ export function createTuiMainPaneInteractions<TConversation extends ActiveConver
         taskFocusedPaneTaskIdAtRow(options.workspace.latestTaskPaneView, rowIndex),
       repositoryIdAtRow: (rowIndex) =>
         taskFocusedPaneRepositoryIdAtRow(options.workspace.latestTaskPaneView, rowIndex),
-      rowTextAtRow: (rowIndex) => options.workspace.latestTaskPaneView.plainRows?.[rowIndex] ?? null,
+      rowTextAtRow: (rowIndex) =>
+        options.workspace.latestTaskPaneView.plainRows?.[rowIndex] ?? null,
       selectTaskById: options.task.selectTaskById,
       selectRepositoryById: options.task.selectRepositoryById,
       runTaskPaneAction: options.task.runTaskPaneAction,
@@ -298,16 +303,23 @@ export function createTuiMainPaneInteractions<TConversation extends ActiveConver
         options.workspace.homePaneDragState = next;
       },
       getMainPaneMode: () => options.workspace.mainPaneMode,
-      taskIdAtRow: (index) => taskFocusedPaneTaskIdAtRow(options.workspace.latestTaskPaneView, index),
+      taskIdAtRow: (index) =>
+        taskFocusedPaneTaskIdAtRow(options.workspace.latestTaskPaneView, index),
       repositoryIdAtRow: (index) =>
         taskFocusedPaneRepositoryIdAtRow(options.workspace.latestTaskPaneView, index),
       reorderTaskByDrop: options.task.reorderTaskByDrop,
       reorderRepositoryByDrop: options.task.reorderRepositoryByDrop,
       onProjectWheel: (delta) => {
-        options.workspace.projectPaneScrollTop = Math.max(0, options.workspace.projectPaneScrollTop + delta);
+        options.workspace.projectPaneScrollTop = Math.max(
+          0,
+          options.workspace.projectPaneScrollTop + delta,
+        );
       },
       onHomeWheel: (delta) => {
-        options.workspace.taskPaneScrollTop = Math.max(0, options.workspace.taskPaneScrollTop + delta);
+        options.workspace.taskPaneScrollTop = Math.max(
+          0,
+          options.workspace.taskPaneScrollTop + delta,
+        );
       },
       onNimWheel: (_delta) => {
         // Nim pane currently has no independent scroll state in the TUI adapter.
@@ -349,7 +361,8 @@ export function createTuiMainPaneInteractions<TConversation extends ActiveConver
       getMainPaneMode: () => options.workspace.mainPaneMode,
       getHomePaneSelectionContext: () => {
         const plainRows =
-          options.workspace.latestTaskPaneView.plainRows ?? options.workspace.latestTaskPaneView.rows;
+          options.workspace.latestTaskPaneView.plainRows ??
+          options.workspace.latestTaskPaneView.rows;
         const rows = plainRows.map((row) => stripAnsiSgr(row));
         const viewportTop = Math.max(0, options.workspace.latestTaskPaneView.top);
         return {
@@ -403,7 +416,10 @@ export function createTuiMainPaneInteractions<TConversation extends ActiveConver
       handleGlobalShortcutInput: options.shortcuts.handleGlobalShortcutInput,
       handleTaskPaneShortcutInput: (input) => {
         const handled = options.task.handleShortcutInput(input);
-        if (handled && (options.workspace.selection !== null || options.workspace.selectionDrag !== null)) {
+        if (
+          handled &&
+          (options.workspace.selection !== null || options.workspace.selectionDrag !== null)
+        ) {
           options.workspace.selection = null;
           options.workspace.selectionDrag = null;
           options.selection.releaseViewportPinForSelection();

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { createStartupStateHydrationService } from '../src/services/startup-state-hydration.ts';
+import { createStartupStateHydrationService } from '../../../../src/services/startup-state-hydration.ts';
 
 interface RepositoryRecord {
   readonly repositoryId: string;

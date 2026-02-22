@@ -5,12 +5,12 @@ import {
   hasAltModifier,
   isLeftButtonPress,
   isMotionMouseCode,
-} from '../src/mux/live-mux/selection.ts';
-import type { TerminalSnapshotFrameCore } from '../src/terminal/snapshot-oracle.ts';
+} from '../../../src/mux/live-mux/selection.ts';
+import type { TerminalSnapshotFrameCore } from '../../../src/terminal/snapshot-oracle.ts';
 import {
   InputTokenRouter,
   type InputTokenRouterStrategies,
-} from '../packages/harness-ui/src/interaction/input-token-router.ts';
+} from '../../../packages/harness-ui/src/interaction/input-token-router.ts';
 
 function createFrame(label: string): TerminalSnapshotFrameCore {
   return {

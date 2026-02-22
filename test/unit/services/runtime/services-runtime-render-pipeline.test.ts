@@ -5,8 +5,8 @@ import { computeDualPaneLayout } from '../../../../src/mux/dual-pane-core.ts';
 import type {
   TaskFocusedPaneRepositoryRecord,
   TaskFocusedPaneTaskRecord,
-} from '../src/mux/task-focused-pane.ts';
-import { createRuntimeRenderPipeline } from '../src/services/runtime-render-pipeline.ts';
+} from '../../../../src/mux/task-focused-pane.ts';
+import { createRuntimeRenderPipeline } from '../../../../src/services/runtime-render-pipeline.ts';
 
 interface TestConversation {
   readonly conversationId: string;

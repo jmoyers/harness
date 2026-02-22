@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { attachRuntimeProcessWiring } from '../src/services/runtime-process-wiring.ts';
+import { attachRuntimeProcessWiring } from '../../../../src/services/runtime-process-wiring.ts';
 
 class FakeInputStream {
   private listener: ((chunk: Buffer) => void) | null = null;

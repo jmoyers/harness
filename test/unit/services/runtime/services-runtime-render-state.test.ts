@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { WorkspaceModel } from '../src/domain/workspace.ts';
-import type { PaneSelection, PaneSelectionDrag } from '../src/mux/live-mux/selection.ts';
+import { WorkspaceModel } from '../../../../src/domain/workspace.ts';
+import type { PaneSelection, PaneSelectionDrag } from '../../../../src/mux/live-mux/selection.ts';
 import {
   prepareRuntimeRenderState,
   type RuntimeRenderStateOptions,
-} from '../src/services/runtime-render-state.ts';
+} from '../../../../src/services/runtime-render-state.ts';
 
 interface ConversationRecord {
   readonly id: string;
@@ -204,16 +204,20 @@ void test('runtime render state allows nim-pane rendering without active convers
   const workspace = createWorkspace();
   workspace.mainPaneMode = 'nim';
 
-  const service = new RuntimeRenderState<ConversationRecord, FrameRecord>({
+  const options: RuntimeRenderStateOptions<ConversationRecord, FrameRecord> = {
     workspace,
-    hasDirectory: () => true,
-    activeConversationId: () => null,
-    activeConversation: () => null,
+    directories: {
+      hasDirectory: () => true,
+    },
+    conversations: {
+      activeConversationId: null,
+      getActiveConversation: () => null,
+    },
     snapshotFrame: () => ({ id: 'frame-1' }),
     selectionVisibleRows: () => [2],
-  });
+  };
 
-  const state = service.prepareRenderState(baseSelection, null);
+  const state = prepareRuntimeRenderState(options, baseSelection, null);
   if (state === null) {
     throw new Error('expected render state');
   }

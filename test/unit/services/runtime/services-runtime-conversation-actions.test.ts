@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { createRuntimeConversationActions } from '../src/services/runtime-conversation-actions.ts';
+import { createRuntimeConversationActions } from '../../../../src/services/runtime-conversation-actions.ts';
 
 interface ControllerRecord {
   readonly controllerId: string;

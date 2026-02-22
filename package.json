@@ -80,7 +80,7 @@
     "perf:codex:startup:loop": "bun scripts/perf-codex-startup-loop.ts",
     "loc": "bun scripts/loc-report.ts",
     "loc:verify": "bun scripts/check-max-loc.ts --max-loc 2000",
-    "loc:verify:enforce": "bun scripts/check-max-loc.ts --max-loc 2000 --enforce",
+    "loc:verify:enforce": "bun scripts/check-max-loc.ts --max-loc 2000 --enforce --baseline harness.max-loc-baseline.json",
     "deadcode": "bun scripts/check-dead-code.ts",
     "coverage:check": "bun scripts/check-coverage.ts --lcov .harness/coverage-bun/lcov.info --config harness.coverage.jsonc",
     "release": "bun scripts/release.ts",

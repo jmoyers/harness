@@ -10,10 +10,7 @@ import {
   type RuntimeLeftRailRenderOptions,
   type RuntimeLeftRailRenderSnapshot,
 } from './runtime-left-rail-render.ts';
-import {
-  flushRuntimeRender,
-  type RuntimeRenderFlushOptions,
-} from './runtime-render-flush.ts';
+import { flushRuntimeRender, type RuntimeRenderFlushOptions } from './runtime-render-flush.ts';
 import {
   orchestrateRuntimeRender,
   type RuntimeRenderOrchestratorInput,

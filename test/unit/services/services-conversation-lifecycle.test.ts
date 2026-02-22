@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import type { WorkspaceModel } from '../src/domain/workspace.ts';
-import { createConversationLifecycle } from '../src/services/conversation-lifecycle.ts';
+import type { WorkspaceModel } from '../../../src/domain/workspace.ts';
+import { createConversationLifecycle } from '../../../src/services/conversation-lifecycle.ts';
 
 interface TestConversation {
   sessionId: string;

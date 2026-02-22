@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { WorkspaceModel } from '../src/domain/workspace.ts';
-import { RepositoryManager } from '../src/domain/repositories.ts';
+import { WorkspaceModel } from '../../../../src/domain/workspace.ts';
+import { RepositoryManager } from '../../../../src/domain/repositories.ts';
 import {
   renderRuntimeLeftRail,
   type RuntimeLeftRailRenderLayout,
   type RuntimeLeftRailRenderOptions,
-} from '../src/services/runtime-left-rail-render.ts';
+} from '../../../../src/services/runtime-left-rail-render.ts';
 
 interface DirectoryRecord {
   readonly directoryId: string;
@@ -94,9 +94,7 @@ void test('runtime left-rail renderer refreshes selector snapshot and delegates 
     readonly string[]
   > = {
     leftRailPane: {
-      render: (input: {
-        layout: RuntimeLeftRailRenderLayout;
-      }) => {
+      render: (input: { layout: RuntimeLeftRailRenderLayout }) => {
         leftRailRenderInput = input.layout;
         return {
           ansiRows: ['ansi-row'],
@@ -159,5 +157,91 @@ void test('runtime left-rail renderer refreshes selector snapshot and delegates 
     rightCols: 69,
     separatorCol: 31,
     rightStartCol: 32,
+  });
+});
+
+void test('runtime left-rail renderer forwards optional github visibility sets when configured', () => {
+  const workspace = new WorkspaceModel({
+    activeDirectoryId: 'dir-1',
+    leftNavSelection: {
+      kind: 'github',
+      directoryId: 'dir-1',
+    },
+    latestTaskPaneView: emptyTaskPaneView(),
+    taskDraftComposer: {
+      text: '',
+      cursor: 0,
+    },
+    repositoriesCollapsed: false,
+  });
+
+  const repositoryManager = new RepositoryManager<RepositoryRecord, RepositorySnapshot>();
+  const visibleGitHubDirectoryIds = new Set<string>(['dir-1']);
+  const expandedGitHubDirectoryIds = new Set<string>(['dir-1']);
+
+  let capturedInput: {
+    visibleGitHubDirectoryIds: ReadonlySet<string> | undefined;
+    expandedGitHubDirectoryIds: ReadonlySet<string> | undefined;
+    githubSelectionEnabled: boolean;
+    activeGitHubProjectId: string | null;
+  } | null = null;
+
+  const result = renderRuntimeLeftRail(
+    {
+      leftRailPane: {
+        render: (input) => {
+          capturedInput = {
+            visibleGitHubDirectoryIds: input.visibleGitHubDirectoryIds,
+            expandedGitHubDirectoryIds: input.expandedGitHubDirectoryIds,
+            githubSelectionEnabled: input.githubSelectionEnabled,
+            activeGitHubProjectId: input.activeGitHubProjectId,
+          };
+          return {
+            ansiRows: [],
+            viewRows: [],
+          };
+        },
+      },
+      sessionProjectionInstrumentation: {
+        refreshSelectorSnapshot: () => {},
+      },
+      workspace,
+      repositoryManager,
+      repositoryAssociationByDirectoryId: new Map([['dir-1', 'repo-1']]),
+      directoryRepositorySnapshotByDirectoryId: new Map([['dir-1', { kind: 'git' }]]),
+      gitSummaryByDirectoryId: new Map([['dir-1', { branch: 'main' }]]),
+      loadingGitSummary: { branch: '(loading)' },
+      visibleGitHubDirectoryIds,
+      expandedGitHubDirectoryIds,
+    },
+    {
+      layout: {
+        cols: 80,
+        paneRows: 20,
+        leftCols: 24,
+        rightCols: 55,
+        separatorCol: 24,
+        rightStartCol: 25,
+      },
+      snapshot: {
+        repositories: new Map([['repo-1', { repositoryId: 'repo-1' }]]),
+        directories: new Map([['dir-1', { directoryId: 'dir-1' }]]),
+        conversations: new Map([['session-1', { sessionId: 'session-1' }]]),
+        orderedConversationIds: ['session-1'],
+        processUsageBySessionId: new Map([['session-1', { pid: 1 }]]),
+        activeConversationId: 'session-1',
+      },
+    },
+  );
+
+  assert.deepEqual(result, {
+    ansiRows: [],
+    viewRows: [],
+  });
+  assert.deepEqual(capturedInput, {
+    visibleGitHubDirectoryIds,
+    expandedGitHubDirectoryIds,
+    githubSelectionEnabled: true,
+    activeGitHubProjectId: 'dir-1',
   });
 });

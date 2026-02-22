@@ -69,7 +69,9 @@ export function createRuntimeRenderLifecycle(
     options.setShuttingDown(true);
     options.setStop(true);
     options.screen.clearDirty();
-    options.writeStderr(`[mux] fatal runtime error (${origin}): ${options.formatErrorMessage(error)}\n`);
+    options.writeStderr(
+      `[mux] fatal runtime error (${origin}): ${options.formatErrorMessage(error)}\n`,
+    );
     options.restoreTerminalState();
     runtimeFatalExitTimer = setTimeoutFn(() => {
       options.writeStderr('[mux] fatal runtime error forced exit\n');

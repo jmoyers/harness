@@ -6,10 +6,17 @@ interface RuntimeWorkspaceStateLike {
         kind: 'home';
       }
     | {
+        kind: 'nim';
+      }
+    | {
         kind: 'tasks';
       }
     | {
         kind: 'project';
+        directoryId: string;
+      }
+    | {
+        kind: 'github';
         directoryId: string;
       }
     | {
@@ -160,7 +167,10 @@ export function planRuntimeWorkspaceObservedTransition(input: {
     input.options.enterHomePane();
   };
 
-  if (activeConversationIdBefore !== null && removedConversationIdSet.has(activeConversationIdBefore)) {
+  if (
+    activeConversationIdBefore !== null &&
+    removedConversationIdSet.has(activeConversationIdBefore)
+  ) {
     input.options.setActiveConversationId(null);
     const preferredDirectoryId = conversationDirectoryIdOf(
       input.transition.previous,
@@ -177,7 +187,10 @@ export function planRuntimeWorkspaceObservedTransition(input: {
     return { reactions };
   }
 
-  if (leftNavConversationIdBefore !== null && removedConversationIdSet.has(leftNavConversationIdBefore)) {
+  if (
+    leftNavConversationIdBefore !== null &&
+    removedConversationIdSet.has(leftNavConversationIdBefore)
+  ) {
     const currentActiveId = input.options.getActiveConversationId();
     if (currentActiveId !== null && hasConversation(input.transition.current, currentActiveId)) {
       input.options.workspace.selectLeftNavConversation(currentActiveId);

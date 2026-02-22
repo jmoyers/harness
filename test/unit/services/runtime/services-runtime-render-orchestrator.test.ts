@@ -3,7 +3,7 @@ import { test } from 'bun:test';
 import {
   orchestrateRuntimeRender,
   type RuntimeRenderOrchestratorOptions,
-} from '../src/services/runtime-render-orchestrator.ts';
+} from '../../../../src/services/runtime-render-orchestrator.ts';
 
 interface LayoutRecord {
   readonly id: string;

@@ -41,10 +41,7 @@ export function createDirectoryHydrationService<TDirectoryRecord extends Directo
       options.setDirectory(row.directoryId, row);
     }
     if (!options.hasDirectory(options.persistedDirectory.directoryId)) {
-      options.setDirectory(
-        options.persistedDirectory.directoryId,
-        options.persistedDirectory,
-      );
+      options.setDirectory(options.persistedDirectory.directoryId, options.persistedDirectory);
     }
     if (options.resolveActiveDirectoryId() === null) {
       throw new Error('no active directory available after hydrate');

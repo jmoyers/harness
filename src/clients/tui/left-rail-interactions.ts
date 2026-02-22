@@ -154,11 +154,7 @@ export function createTuiLeftRailInteractions<
   TDirectoryRecord extends DirectoryRecordLike,
   TConversationRecord extends ConversationRecordLike,
 >(
-  options: TuiLeftRailInteractionOptions<
-    TShortcutBindings,
-    TDirectoryRecord,
-    TConversationRecord
-  >,
+  options: TuiLeftRailInteractionOptions<TShortcutBindings, TDirectoryRecord, TConversationRecord>,
 ): TuiLeftRailInteractions {
   const nowMs = options.nowMs ?? (() => Date.now());
   const conversationTitleEditDoubleClickWindowMs =
@@ -170,7 +166,9 @@ export function createTuiLeftRailInteractions<
     options.repositoryCollapseAllChordPrefix ?? DEFAULT_REPOSITORY_COLLAPSE_ALL_CHORD_PREFIX;
 
   const selectLeftNavRepository = options.workspace.selectLeftNavRepository.bind(options.workspace);
-  const selectLeftNavConversation = options.workspace.selectLeftNavConversation.bind(options.workspace);
+  const selectLeftNavConversation = options.workspace.selectLeftNavConversation.bind(
+    options.workspace,
+  );
   const repositoryGroupIdForDirectory = (directoryId: string): string => {
     return options.repositoryManager.repositoryGroupIdForDirectory(
       directoryId,
@@ -205,7 +203,8 @@ export function createTuiLeftRailInteractions<
     );
   };
   const collapseAllRepositoryGroups = (): void => {
-    options.workspace.repositoriesCollapsed = options.repositoryManager.collapseAllRepositoryGroups();
+    options.workspace.repositoriesCollapsed =
+      options.repositoryManager.collapseAllRepositoryGroups();
     options.navigation.queuePersistMuxUiState();
   };
   const expandAllRepositoryGroups = (): void => {
@@ -309,7 +308,9 @@ export function createTuiLeftRailInteractions<
       openNewThreadPrompt: options.navigation.openNewThreadPrompt,
       toggleCommandMenu: options.navigation.toggleCommandMenu,
       openOrCreateCritiqueConversationInDirectory: async (directoryId) => {
-        await options.conversationLifecycle.openOrCreateCritiqueConversationInDirectory(directoryId);
+        await options.conversationLifecycle.openOrCreateCritiqueConversationInDirectory(
+          directoryId,
+        );
       },
       toggleGatewayProfile: async () => {
         await options.runtimeControlActions.toggleGatewayProfiler();
@@ -478,7 +479,8 @@ export function createTuiLeftRailInteractions<
       },
     },
     {
-      hasSelection: () => options.workspace.selection !== null || options.workspace.selectionDrag !== null,
+      hasSelection: () =>
+        options.workspace.selection !== null || options.workspace.selectionDrag !== null,
       clearSelection: () => {
         options.workspace.selection = null;
         options.workspace.selectionDrag = null;

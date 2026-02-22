@@ -2,7 +2,6 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { execFileSync, spawn } from 'node:child_process';
-import { homedir } from 'node:os';
 import { startCodexLiveSession } from '../../codex/live-session.ts';
 import {
   openCodexControlPlaneClient,
@@ -10,9 +9,7 @@ import {
   type ControlPlaneKeyEvent,
 } from '../../control-plane/codex-session-stream.ts';
 import { startControlPlaneStreamServer } from '../../control-plane/stream-server.ts';
-import type {
-  StreamServerEnvelope,
-} from '../../control-plane/stream-protocol.ts';
+import type { StreamServerEnvelope } from '../../control-plane/stream-protocol.ts';
 import { SqliteEventStore } from '../../store/event-store.ts';
 import { TerminalSnapshotOracle } from '../../terminal/snapshot-oracle.ts';
 import type { PtyExit } from '../../pty/pty_host.ts';
@@ -26,10 +23,7 @@ import {
 import { resolveHarnessRuntimePath } from '../../config/harness-paths.ts';
 import { migrateLegacyHarnessLayout } from '../../config/harness-runtime-migration.ts';
 import { loadHarnessSecrets, upsertHarnessSecret } from '../../config/secrets-core.ts';
-import {
-  detectMuxGlobalShortcut,
-  resolveMuxShortcutBindings,
-} from '../../mux/input-shortcuts.ts';
+import { detectMuxGlobalShortcut, resolveMuxShortcutBindings } from '../../mux/input-shortcuts.ts';
 import { createMuxInputModeManager } from '../../mux/terminal-input-modes.ts';
 import type { buildWorkspaceRailViewRows } from '../../mux/workspace-rail-model.ts';
 import {
@@ -52,7 +46,6 @@ import {
   type ResolvedCommandMenuOpenInTarget,
 } from '../../mux/live-mux/command-menu-open-in.ts';
 import {
-  buildGitHubReviewPaneSnapshot,
   buildProjectPaneSnapshotWithOptions,
   projectPaneActionAtRow,
   sortedRepositoryList,
@@ -103,9 +96,7 @@ import {
   type ControlPlaneTaskRecord,
   parseRepositoryRecord,
 } from '../../core/contracts/records.ts';
-import {
-  createHarnessSyncedStore,
-} from '../../core/store/harness-synced-store.ts';
+import { createHarnessSyncedStore } from '../../core/store/harness-synced-store.ts';
 import {
   leftColsFromPaneWidthPercent,
   paneWidthPercentFromLayout,
@@ -142,13 +133,7 @@ import {
   sanitizeProcessEnv,
   terminalSize,
 } from '../../mux/live-mux/startup-utils.ts';
-import {
-  buildFileLinkPathArgumentForTarget,
-  prioritizeOpenInTargetsForFileLinks,
-  resolveFileLinkPath,
-  resolveLinkCommandFromTemplate,
-  resolveTerminalLinkTargetAtCell,
-} from '../../mux/live-mux/link-click.ts';
+import { resolveLinkCommandFromTemplate } from '../../mux/live-mux/link-click.ts';
 import {
   normalizeExitCode,
   isSessionNotFoundError,
@@ -738,25 +723,6 @@ function openUrlInBrowser(url: string, browserCommand: readonly string[] | null)
   return launchDetachedCommand('xdg-open', [target]);
 }
 
-function commandModifierPressed(code: number): boolean {
-  return (code & 0b0000_1000) !== 0;
-}
-
-function wheelMouseCode(code: number): boolean {
-  return (code & 0b0100_0000) !== 0;
-}
-
-function motionMouseCode(code: number): boolean {
-  return (code & 0b0010_0000) !== 0;
-}
-
-function leftMouseButtonPress(code: number, final: 'M' | 'm'): boolean {
-  if (final !== 'M' || wheelMouseCode(code) || motionMouseCode(code)) {
-    return false;
-  }
-  return (code & 0b0000_0011) === 0;
-}
-
 function isMacApplicationInstalled(appName: string): boolean {
   const target = appName.trim();
   if (target.length === 0 || process.platform !== 'darwin') {
@@ -907,8 +873,6 @@ class CodexLiveMuxRuntimeApplication {
       isMacApplicationInstalled,
     });
     const linkOpenConfig = loadedConfig.config.mux.openIn.links;
-    const fileLinkOpenTargets = prioritizeOpenInTargetsForFileLinks(commandMenuOpenInTargets);
-    const userHomeDirectory = homedir();
     let runtimeThemeConfig: HarnessMuxThemeConfig | null = configuredMuxUi.theme;
     const resolveAndApplyRuntimeTheme = (
       nextThemeConfig: HarnessMuxThemeConfig | null,
@@ -2159,7 +2123,9 @@ class CodexLiveMuxRuntimeApplication {
       userId: options.scope.userId,
       markDirty,
       model: runtimeNimModel,
-      ...(runtimeNimProviderDriver === undefined ? {} : { providerDriver: runtimeNimProviderDriver }),
+      ...(runtimeNimProviderDriver === undefined
+        ? {}
+        : { providerDriver: runtimeNimProviderDriver }),
       toolBridge: runtimeNimToolBridge,
     });
     const controlPlaneOps = createRuntimeControlPlaneOps({
@@ -2206,107 +2172,6 @@ class CodexLiveMuxRuntimeApplication {
       workspace.taskPaneNotice = message;
       debugFooterNotice.set(message);
       markDirty();
-    };
-    const openFileLink = (target: {
-      path: string;
-      line: number | null;
-      column: number | null;
-    }): boolean => {
-      const activeConversation = conversationManager.getActiveConversation();
-      const activeDirectoryPath =
-        activeConversation?.directoryId === null || activeConversation?.directoryId === undefined
-          ? null
-          : (directoryRecords.get(activeConversation.directoryId)?.path ?? null);
-      const resolvedPath = resolveFileLinkPath({
-        path: target.path,
-        directoryPath: activeDirectoryPath,
-        homeDirectory: userHomeDirectory,
-      });
-      if (linkOpenConfig.fileCommand !== null) {
-        const resolvedCustom = resolveLinkCommandFromTemplate({
-          template: linkOpenConfig.fileCommand,
-          values: {
-            path: resolvedPath,
-            line: target.line,
-            column: target.column,
-          },
-          appendPrimaryPlaceholder: '{path}',
-        });
-        if (resolvedCustom === null) {
-          return false;
-        }
-        return launchDetachedCommand(resolvedCustom.command, resolvedCustom.args);
-      }
-      for (const openTarget of fileLinkOpenTargets) {
-        const pathArgument = buildFileLinkPathArgumentForTarget({
-          targetId: openTarget.id,
-          path: resolvedPath,
-          line: target.line,
-          column: target.column,
-        });
-        const resolvedCommand = resolveCommandMenuOpenInCommand(openTarget, pathArgument);
-        if (resolvedCommand === null) {
-          continue;
-        }
-        if (launchDetachedCommand(resolvedCommand.command, resolvedCommand.args)) {
-          return true;
-        }
-      }
-      if (process.platform === 'darwin') {
-        return launchDetachedCommand('open', [resolvedPath]);
-      }
-      if (process.platform === 'win32') {
-        return launchDetachedCommand('cmd', ['/c', 'start', '', resolvedPath]);
-      }
-      return launchDetachedCommand('xdg-open', [resolvedPath]);
-    };
-    const handleConversationCommandClick = (input: {
-      event: {
-        col: number;
-        row: number;
-      };
-      layout: {
-        paneRows: number;
-        rightCols: number;
-        rightStartCol: number;
-      };
-      snapshotForInput: {
-        lines?: readonly string[];
-      } | null;
-    }): boolean => {
-      const lines = input.snapshotForInput?.lines;
-      if (lines === undefined) {
-        return false;
-      }
-      const sessionCol = Math.max(
-        1,
-        Math.min(input.layout.rightCols, input.event.col - input.layout.rightStartCol + 1),
-      );
-      const sessionRow = Math.max(1, Math.min(input.layout.paneRows, input.event.row));
-      const linkTarget = resolveTerminalLinkTargetAtCell({
-        lines,
-        row: sessionRow,
-        col: sessionCol,
-      });
-      if (linkTarget === null) {
-        return false;
-      }
-      if (linkTarget.kind === 'url') {
-        const opened = openUrlInBrowser(linkTarget.url, linkOpenConfig.browserCommand);
-        setCommandNotice(opened ? 'opened url in browser' : `open url: ${linkTarget.url}`);
-        return true;
-      }
-      const opened = openFileLink(linkTarget);
-      const locationSuffix =
-        linkTarget.line === null
-          ? ''
-          : linkTarget.column === null
-            ? `:${String(linkTarget.line)}`
-            : `:${String(linkTarget.line)}:${String(linkTarget.column)}`;
-      setCommandNotice(
-        opened ? 'opened file link' : `open file link: ${linkTarget.path}${locationSuffix}`,
-      );
-      return true;
     };
     const openDirectoryInCommandMenuTarget = (
       target: ResolvedCommandMenuOpenInTarget,
@@ -2858,23 +2723,6 @@ class CodexLiveMuxRuntimeApplication {
       screen.resetFrameCache();
     };
 
-    const toggleGitHubProjectExpanded = (directoryId: string): void => {
-      if (!directoryManager.hasDirectory(directoryId)) {
-        return;
-      }
-      if (workspace.expandedGitHubDirectoryIds.has(directoryId)) {
-        workspace.expandedGitHubDirectoryIds.delete(directoryId);
-      } else {
-        workspace.expandedGitHubDirectoryIds.add(directoryId);
-        workspace.visibleGitHubDirectoryIds.add(directoryId);
-      }
-      noteGitActivity(directoryId);
-      if (workspace.expandedGitHubDirectoryIds.has(directoryId)) {
-        refreshProjectPaneGitHubReviewState(directoryId);
-      }
-      screen.resetFrameCache();
-    };
-
     const toggleProjectPaneGitHubNode = (directoryId: string, nodeId: string): boolean => {
       if (!directoryManager.hasDirectory(directoryId)) {
         return false;
@@ -3032,16 +2880,6 @@ class CodexLiveMuxRuntimeApplication {
       releaseViewportPinForSelection();
       syncTaskPaneSelection();
       syncTaskPaneRepositorySelection();
-      screen.resetFrameCache();
-      markDirty();
-    };
-
-    const enterNimPane = (): void => {
-      workspace.enterNimPane();
-      queuePersistMuxUiState();
-      workspace.selection = null;
-      workspace.selectionDrag = null;
-      releaseViewportPinForSelection();
       screen.resetFrameCache();
       markDirty();
     };
@@ -3324,7 +3162,8 @@ class CodexLiveMuxRuntimeApplication {
           conversationManager.setActiveConversationId(conversationId);
         },
         orderedConversationIds: () => conversationManager.orderedIds(),
-        conversationDirectoryId: (conversationId) => conversationManager.directoryIdOf(conversationId),
+        conversationDirectoryId: (conversationId) =>
+          conversationManager.directoryIdOf(conversationId),
         resolveActiveDirectoryId,
         enterProjectPane,
         activateConversation: async (conversationId) => {
@@ -3356,7 +3195,10 @@ class CodexLiveMuxRuntimeApplication {
         noteGitActivity,
         hydratePersistedConversationsForDirectory: hydratePersistedConversationsForDirectory,
         findConversationIdByDirectory: (directoryId) =>
-          conversationManager.findConversationIdByDirectory(directoryId, conversationManager.orderedIds()),
+          conversationManager.findConversationIdByDirectory(
+            directoryId,
+            conversationManager.orderedIds(),
+          ),
         activateConversation: async (conversationId) => {
           await conversationLifecycle.activateConversation(conversationId);
         },
@@ -3368,9 +3210,11 @@ class CodexLiveMuxRuntimeApplication {
     const closeDirectoryById = async (directoryId: string): Promise<void> => {
       await closeDirectoryAction({
         directoryId,
-        directoriesHas: (candidateDirectoryId) => directoryManager.hasDirectory(candidateDirectoryId),
+        directoriesHas: (candidateDirectoryId) =>
+          directoryManager.hasDirectory(candidateDirectoryId),
         orderedConversationIds: () => conversationManager.orderedIds(),
-        conversationDirectoryId: (conversationId) => conversationManager.directoryIdOf(conversationId),
+        conversationDirectoryId: (conversationId) =>
+          conversationManager.directoryIdOf(conversationId),
         conversationLive: (conversationId) => conversationManager.isLive(conversationId),
         closePtySession: controlPlaneService.closePtySession,
         archiveConversationRecord: controlPlaneService.archiveConversation,

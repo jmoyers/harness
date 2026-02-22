@@ -26,7 +26,17 @@ interface PendingCommand {
   reject: (error: Error) => void;
 }
 
-export class ControlPlaneStreamClient {
+export interface ControlPlaneStreamClient {
+  onEnvelope(listener: (envelope: StreamServerEnvelope) => void): () => void;
+  sendCommand(command: StreamCommand): Promise<Record<string, unknown>>;
+  authenticate(token: string): Promise<void>;
+  sendInput(sessionId: string, data: Buffer): void;
+  sendResize(sessionId: string, cols: number, rows: number): void;
+  sendSignal(sessionId: string, signal: StreamSignal): void;
+  close(): void;
+}
+
+class ControlPlaneStreamClientImpl implements ControlPlaneStreamClient {
   private readonly socket: Socket;
   private readonly listeners = new Set<(envelope: StreamServerEnvelope) => void>();
   private readonly pending = new Map<string, PendingCommand>();
@@ -380,7 +390,7 @@ export async function connectControlPlaneStreamClient(
     }
   }
 
-  const client = new ControlPlaneStreamClient(socket);
+  const client = new ControlPlaneStreamClientImpl(socket);
   if (typeof options.authToken === 'string') {
     await client.authenticate(options.authToken);
   }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { createRuntimeConversationActivation } from '../src/services/runtime-conversation-activation.ts';
+import { createRuntimeConversationActivation } from '../../../../src/services/runtime-conversation-activation.ts';
 
 interface ConversationRecord {
   readonly directoryId: string | null;

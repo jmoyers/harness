@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { createRuntimeStreamSubscriptions } from '../src/services/runtime-stream-subscriptions.ts';
+import { createRuntimeStreamSubscriptions } from '../../../../src/services/runtime-stream-subscriptions.ts';
 
 void test('runtime stream subscriptions swallows recoverable conversation subscribe/unsubscribe errors', async () => {
   const calls: string[] = [];

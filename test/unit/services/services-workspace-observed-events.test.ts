@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { WorkspaceSyncedProjection } from '../src/services/workspace-observed-events.ts';
+import { WorkspaceSyncedProjection } from '../../../src/services/workspace-observed-events.ts';
 
 interface DirectoryRecord {
   readonly directoryId: string;

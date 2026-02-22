@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { createRuntimeTaskComposerPersistenceService } from '../src/services/runtime-task-composer-persistence.ts';
+import { createRuntimeTaskComposerPersistenceService } from '../../../../src/services/runtime-task-composer-persistence.ts';
 
 interface TaskRecord {
   readonly taskId: string;

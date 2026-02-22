@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { createRuntimeControlActions } from '../src/services/runtime-control-actions.ts';
+import { createRuntimeControlActions } from '../../../../src/services/runtime-control-actions.ts';
 
 interface TestConversationState {
   live: boolean;
