@@ -26,6 +26,7 @@ void test('runtime nim session supports compose edit submit and streamed assista
   });
   try {
     await session.start();
+    assert.equal(session.snapshot().uiMode, 'debug');
     session.handleInputChunk('hello');
     await waitFor(() => session.snapshot().composerText === 'hello');
 
@@ -84,6 +85,64 @@ void test('runtime nim session queues follow-up and handles escape abort request
       const snapshot = session.snapshot();
       return snapshot.activeRunId === null && snapshot.queuedCount === 0;
     });
+  } finally {
+    await session.dispose();
+  }
+});
+
+void test('runtime nim session handles slash commands and mode changes', async () => {
+  const session = new RuntimeNimSession({
+    tenantId: 'tenant-c',
+    userId: 'user-c',
+    markDirty: () => {},
+    responseChunkDelayMs: 0,
+    sleep: async () => {},
+  });
+  try {
+    await session.start();
+    session.handleInputChunk('/state\r');
+    await waitFor(() =>
+      session
+        .snapshot()
+        .transcriptLines.some((line) => line.includes('[state] status:idle mode:debug queued:0')),
+    );
+
+    session.handleInputChunk('/mode seamless\r');
+    await waitFor(() => session.snapshot().uiMode === 'seamless');
+    await waitFor(() =>
+      session.snapshot().transcriptLines.some((line) => line.includes('ui mode set to seamless')),
+    );
+
+    session.handleInputChunk('/mode nope\r');
+    await waitFor(() =>
+      session.snapshot().transcriptLines.some((line) => line.includes('[error] invalid mode: nope')),
+    );
+
+    session.handleInputChunk('/abort\r');
+    await waitFor(() =>
+      session.snapshot().transcriptLines.some((line) => line.includes('no active run')),
+    );
+
+    session.handleInputChunk('/clear\r');
+    await waitFor(() => {
+      const snapshot = session.snapshot();
+      return (
+        snapshot.transcriptLines.length === 1 &&
+        snapshot.transcriptLines[0]?.includes('transcript cleared') === true
+      );
+    });
+
+    session.handleInputChunk('/help\r');
+    await waitFor(() =>
+      session.snapshot().transcriptLines.some((line) => line.includes('[help] /help /mode')),
+    );
+
+    session.handleInputChunk('/unknown\r');
+    await waitFor(() =>
+      session
+        .snapshot()
+        .transcriptLines.some((line) => line.includes('[error] unknown command: /unknown')),
+    );
   } finally {
     await session.dispose();
   }

@@ -80,6 +80,7 @@ void test('runtime right-pane renderer resets task view and renders conversation
     getNimViewModel: () => ({
       sessionId: null,
       status: 'idle',
+      uiMode: 'debug',
       composerText: '',
       queuedCount: 0,
       transcriptLines: [],
@@ -152,6 +153,7 @@ void test('runtime right-pane renderer delegates home-pane render and updates wo
     getNimViewModel: () => ({
       sessionId: null,
       status: 'idle',
+      uiMode: 'debug',
       composerText: '',
       queuedCount: 0,
       transcriptLines: [],
@@ -224,6 +226,7 @@ void test('runtime right-pane renderer enables task-planning view only when task
     getNimViewModel: () => ({
       sessionId: null,
       status: 'idle',
+      uiMode: 'debug',
       composerText: '',
       queuedCount: 0,
       transcriptLines: [],
@@ -293,6 +296,7 @@ void test('runtime right-pane renderer keeps task-planning hidden when tasks are
     getNimViewModel: () => ({
       sessionId: null,
       status: 'idle',
+      uiMode: 'debug',
       composerText: '',
       queuedCount: 0,
       transcriptLines: [],
@@ -365,6 +369,7 @@ void test('runtime right-pane renderer refreshes project snapshot once and reuse
     getNimViewModel: () => ({
       sessionId: null,
       status: 'idle',
+      uiMode: 'debug',
       composerText: '',
       queuedCount: 0,
       transcriptLines: [],
@@ -444,6 +449,7 @@ void test('runtime right-pane renderer falls back to blank rows when no pane bra
     getNimViewModel: () => ({
       sessionId: null,
       status: 'idle',
+      uiMode: 'debug',
       composerText: '',
       queuedCount: 0,
       transcriptLines: [],
@@ -499,6 +505,7 @@ void test('runtime right-pane renderer delegates nim-pane render when nim pane i
     getNimViewModel: () => ({
       sessionId: 'session-nim',
       status: 'responding',
+      uiMode: 'debug',
       composerText: 'draft',
       queuedCount: 1,
       transcriptLines: ['nim> hi'],

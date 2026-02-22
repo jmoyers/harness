@@ -12,6 +12,7 @@ void test('nim pane renders shell rows with transcript and composer sections', (
     viewModel: {
       sessionId: 'session-12345678',
       status: 'responding',
+      uiMode: 'debug',
       composerText: 'ship it',
       queuedCount: 1,
       transcriptLines: ['you> hello', 'nim> hi there'],
@@ -22,6 +23,7 @@ void test('nim pane renders shell rows with transcript and composer sections', (
   assert.equal(result.rows.length, 8);
   assert.equal(result.rows[0]?.includes('NIM'), true);
   assert.equal(result.rows[1]?.includes('status:responding'), true);
+  assert.equal(result.rows[1]?.includes('mode:debug'), true);
   assert.equal(result.rows[1]?.includes('queued:1'), true);
   assert.equal(result.rows[3]?.includes('transcript'), true);
   assert.equal(result.rows.some((row) => row.includes('nim> hi there')), true);
@@ -40,6 +42,7 @@ void test('nim pane supports zero-row layouts', () => {
     viewModel: {
       sessionId: null,
       status: 'idle',
+      uiMode: 'seamless',
       composerText: '',
       queuedCount: 0,
       transcriptLines: [],

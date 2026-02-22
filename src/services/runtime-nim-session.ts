@@ -2,15 +2,21 @@ import { randomUUID } from 'node:crypto';
 import {
   InMemoryNimRuntime,
   type NimModelRef,
+  type NimEventEnvelope,
   type NimProviderDriver,
   type NimUiEvent,
 } from '../../packages/nim-core/src/index.ts';
+import {
+  projectEventToUiEvents,
+  type NimUiMode,
+} from '../../packages/nim-ui-core/src/projection.ts';
 
 type NimSessionStatus = 'thinking' | 'tool-calling' | 'responding' | 'idle';
 
 export interface RuntimeNimViewModel {
   readonly sessionId: string | null;
   readonly status: NimSessionStatus;
+  readonly uiMode: NimUiMode;
   readonly composerText: string;
   readonly queuedCount: number;
   readonly activeRunId: string | null;
@@ -30,6 +36,7 @@ interface RuntimeNimSessionOptions {
 }
 
 const DEFAULT_MODEL: NimModelRef = 'mock/echo-v1';
+const DEFAULT_UI_MODE: NimUiMode = 'debug';
 const DEFAULT_RESPONSE_CHUNK_DELAY_MS = 10;
 const DEFAULT_MAX_TRANSCRIPT_LINES = 200;
 
@@ -102,6 +109,7 @@ export class RuntimeNimSession {
   private disposed = false;
   private sessionId: string | null = null;
   private status: NimSessionStatus = 'idle';
+  private uiMode: NimUiMode = DEFAULT_UI_MODE;
   private composerText = '';
   private assistantDraftText = '';
   private transcriptLines: string[] = [];
@@ -109,7 +117,7 @@ export class RuntimeNimSession {
   private activeRunId: string | null = null;
   private runSequence = 0;
   private inputLane: Promise<void> = Promise.resolve();
-  private uiIterator: AsyncIterator<NimUiEvent> | null = null;
+  private uiIterator: AsyncIterator<NimEventEnvelope> | null = null;
   private uiPump: Promise<void> | null = null;
 
   constructor(private readonly options: RuntimeNimSessionOptions) {
@@ -169,6 +177,7 @@ export class RuntimeNimSession {
     return {
       sessionId: this.sessionId,
       status: this.status,
+      uiMode: this.uiMode,
       composerText: this.composerText,
       queuedCount: this.queuedInputs.length,
       activeRunId: this.activeRunId,
@@ -192,14 +201,7 @@ export class RuntimeNimSession {
       return;
     }
     this.enqueueInput(async () => {
-      if (this.activeRunId === null) {
-        return;
-      }
-      await this.runtime.abortTurn({
-        runId: this.activeRunId,
-        reason: 'manual',
-      });
-      this.pushSystemLine('[notice] abort requested');
+      await this.requestAbort();
       this.options.markDirty();
     });
   }
@@ -216,10 +218,10 @@ export class RuntimeNimSession {
   }
 
   private startUiPump(sessionId: string): void {
-    const stream = this.runtime.streamUi({
+    const stream = this.runtime.streamEvents({
       tenantId: this.options.tenantId,
       sessionId,
-      mode: 'debug',
+      fidelity: 'semantic',
     });
     const iterator = stream[Symbol.asyncIterator]();
     this.uiIterator = iterator;
@@ -230,7 +232,7 @@ export class RuntimeNimSession {
           if (next.done) {
             break;
           }
-          this.applyUiEvent(next.value);
+          this.applyEventEnvelope(next.value);
           this.options.markDirty();
         }
       } catch (error: unknown) {
@@ -241,6 +243,13 @@ export class RuntimeNimSession {
         this.options.markDirty();
       }
     })();
+  }
+
+  private applyEventEnvelope(event: NimEventEnvelope): void {
+    const projected = projectEventToUiEvents(event, this.uiMode);
+    for (const uiEvent of projected) {
+      this.applyUiEvent(uiEvent);
+    }
   }
 
   private applyUiEvent(event: NimUiEvent): void {
@@ -308,6 +317,10 @@ export class RuntimeNimSession {
     if (text.length === 0) {
       return;
     }
+    if (text.startsWith('/')) {
+      await this.runCommand(text);
+      return;
+    }
     if (this.activeRunId === null) {
       await this.startTurn(text);
       return;
@@ -322,6 +335,57 @@ export class RuntimeNimSession {
       this.queuedInputs.push(text);
       this.pushSystemLine(`[notice] steer rejected (${result.reason ?? 'unknown'}), queued`);
     }
+  }
+
+  private async runCommand(commandText: string): Promise<void> {
+    const trimmed = commandText.trim();
+    if (trimmed === '/help') {
+      this.pushSystemLine('[help] /help /mode <debug|seamless> /state /clear /abort');
+      return;
+    }
+    if (trimmed === '/state') {
+      this.pushSystemLine(
+        `[state] status:${this.status} mode:${this.uiMode} queued:${String(this.queuedInputs.length)} active:${this.activeRunId === null ? 'none' : 'yes'}`,
+      );
+      return;
+    }
+    if (trimmed === '/clear') {
+      this.transcriptLines = [];
+      this.assistantDraftText = '';
+      this.pushSystemLine('[notice] transcript cleared');
+      return;
+    }
+    if (trimmed === '/abort') {
+      await this.requestAbort();
+      return;
+    }
+    if (trimmed.startsWith('/mode ')) {
+      const rawMode = trimmed.slice('/mode '.length).trim();
+      if (rawMode !== 'debug' && rawMode !== 'seamless') {
+        this.pushSystemLine(`[error] invalid mode: ${rawMode}`);
+        return;
+      }
+      if (this.uiMode === rawMode) {
+        this.pushSystemLine(`[notice] ui mode already ${rawMode}`);
+        return;
+      }
+      this.uiMode = rawMode;
+      this.pushSystemLine(`[notice] ui mode set to ${rawMode}`);
+      return;
+    }
+    this.pushSystemLine(`[error] unknown command: ${trimmed}`);
+  }
+
+  private async requestAbort(): Promise<void> {
+    if (this.activeRunId === null) {
+      this.pushSystemLine('[notice] no active run');
+      return;
+    }
+    await this.runtime.abortTurn({
+      runId: this.activeRunId,
+      reason: 'manual',
+    });
+    this.pushSystemLine('[notice] abort requested');
   }
 
   private async queueComposer(): Promise<void> {

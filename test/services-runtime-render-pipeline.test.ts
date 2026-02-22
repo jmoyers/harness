@@ -135,6 +135,7 @@ void test('runtime render pipeline composes underlying render services and deleg
       getNimViewModel: () => ({
         sessionId: null,
         status: 'idle',
+        uiMode: 'debug',
         composerText: '',
         queuedCount: 0,
         transcriptLines: [],
@@ -288,6 +289,7 @@ void test('runtime render pipeline renders right pane and flushes when render st
       getNimViewModel: () => ({
         sessionId: null,
         status: 'idle',
+        uiMode: 'debug',
         composerText: '',
         queuedCount: 0,
         transcriptLines: [],
