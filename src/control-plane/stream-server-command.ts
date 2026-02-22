@@ -1394,6 +1394,7 @@ export async function executeStreamServerCommand(
             isDraft: storedPr.isDraft,
             mergedAt: null,
             closedAt: storedPr.closedAt,
+            ciRollup: storedPr.ciRollup,
             updatedAt: storedPr.updatedAt,
             createdAt: storedPr.createdAt,
             observedAt: storedPr.observedAt,
@@ -1438,12 +1439,19 @@ export async function executeStreamServerCommand(
         resolvedThreads: [],
       };
     }
+    const reviewPr =
+      reviewCache.pr === null
+        ? storedPrView
+        : {
+            ...reviewCache.pr,
+            ciRollup: storedPrView?.ciRollup ?? null,
+          };
     return {
       directoryId: resolved.directory.directoryId,
       repositoryId: resolved.repository.repositoryId,
       branchName: resolved.trackedBranch,
       branchSource: resolved.trackedBranchSource,
-      pr: reviewCache.pr ?? storedPrView,
+      pr: reviewPr,
       openThreads: reviewCache.openThreads,
       resolvedThreads: reviewCache.resolvedThreads,
     };

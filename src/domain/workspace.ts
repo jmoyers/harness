@@ -101,6 +101,8 @@ export class WorkspaceModel {
   paneDividerDragActive = false;
   previousSelectionRows: readonly number[] = [];
   latestRailViewRows: ReturnType<typeof buildWorkspaceRailViewRows> = [];
+  visibleGitHubDirectoryIds = new Set<string>();
+  expandedGitHubDirectoryIds = new Set<string>();
 
   repositoriesCollapsed: boolean;
   shortcutsCollapsed: boolean;
@@ -150,6 +152,14 @@ export class WorkspaceModel {
     };
   }
 
+  selectLeftNavGitHub(directoryId: string, repositoryGroupId: string): void {
+    this.activeRepositorySelectionId = repositoryGroupId;
+    this.leftNavSelection = {
+      kind: 'github',
+      directoryId,
+    };
+  }
+
   selectLeftNavConversation(sessionId: string): void {
     this.leftNavSelection = {
       kind: 'conversation',
@@ -160,6 +170,16 @@ export class WorkspaceModel {
   enterProjectPane(directoryId: string, repositoryGroupId: string): void {
     this.activeDirectoryId = directoryId;
     this.selectLeftNavProject(directoryId, repositoryGroupId);
+    this.mainPaneMode = 'project';
+    this.homePaneDragState = null;
+    this.taskPaneTaskEditClickState = null;
+    this.taskPaneRepositoryEditClickState = null;
+    this.projectPaneScrollTop = 0;
+  }
+
+  enterGitHubPane(directoryId: string, repositoryGroupId: string): void {
+    this.activeDirectoryId = directoryId;
+    this.selectLeftNavGitHub(directoryId, repositoryGroupId);
     this.mainPaneMode = 'project';
     this.homePaneDragState = null;
     this.taskPaneTaskEditClickState = null;

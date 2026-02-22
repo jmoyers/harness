@@ -2,6 +2,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { execFileSync, spawn } from 'node:child_process';
+import { homedir } from 'node:os';
 import { startCodexLiveSession } from '../../codex/live-session.ts';
 import {
   openCodexControlPlaneClient,
@@ -57,6 +58,7 @@ import {
   type ResolvedCommandMenuOpenInTarget,
 } from '../../mux/live-mux/command-menu-open-in.ts';
 import {
+  buildGitHubReviewPaneSnapshot,
   buildProjectPaneSnapshotWithOptions,
   projectPaneActionAtRow,
   sortedRepositoryList,
@@ -161,6 +163,13 @@ import {
   terminalSize,
 } from '../../mux/live-mux/startup-utils.ts';
 import { routeInputTokensForConversation } from '../../mux/live-mux/input-forwarding.ts';
+import {
+  buildFileLinkPathArgumentForTarget,
+  prioritizeOpenInTargetsForFileLinks,
+  resolveFileLinkPath,
+  resolveLinkCommandFromTemplate,
+  resolveTerminalLinkTargetAtCell,
+} from '../../mux/live-mux/link-click.ts';
 import {
   normalizeExitCode,
   isSessionNotFoundError,
@@ -539,6 +548,22 @@ function parseGitHubReviewPrState(
   return null;
 }
 
+function parseGitHubReviewCiRollup(
+  value: unknown,
+): NonNullable<ProjectPaneGitHubPullRequestSummary['ciRollup']> | null {
+  if (
+    value === 'pending' ||
+    value === 'success' ||
+    value === 'failure' ||
+    value === 'cancelled' ||
+    value === 'neutral' ||
+    value === 'none'
+  ) {
+    return value;
+  }
+  return null;
+}
+
 function parseGitHubReviewPullRequest(value: unknown): ProjectPaneGitHubPullRequestSummary | null {
   const record = asRecord(value);
   if (record === null) {
@@ -553,6 +578,7 @@ function parseGitHubReviewPullRequest(value: unknown): ProjectPaneGitHubPullRequ
   const isDraft = record['isDraft'];
   const updatedAt = asStringOrNull(record['updatedAt']);
   const createdAt = asStringOrNull(record['createdAt']);
+  const ciRollup = parseGitHubReviewCiRollup(record['ciRollup']);
   if (
     typeof number !== 'number' ||
     title === null ||
@@ -577,6 +603,7 @@ function parseGitHubReviewPullRequest(value: unknown): ProjectPaneGitHubPullRequ
     isDraft,
     mergedAt: asStringOrNull(record['mergedAt']),
     closedAt: asStringOrNull(record['closedAt']),
+    ciRollup,
     updatedAt,
     createdAt,
   };
@@ -703,38 +730,72 @@ function commandMenuProjectPathTail(path: string): string {
   return `…/${segments.slice(-2).join('/')}`;
 }
 
-function openUrlInBrowser(url: string): boolean {
-  const target = url.trim();
-  if (target.length === 0) {
+function launchDetachedCommand(command: string, args: readonly string[]): boolean {
+  const normalizedCommand = command.trim();
+  if (normalizedCommand.length === 0) {
     return false;
   }
   try {
-    if (process.platform === 'darwin') {
-      const child = spawn('open', [target], {
-        detached: true,
-        stdio: 'ignore',
-      });
-      child.unref();
-      return true;
-    }
-    if (process.platform === 'win32') {
-      const child = spawn('cmd', ['/c', 'start', '', target], {
-        detached: true,
-        stdio: 'ignore',
-        windowsHide: true,
-      });
-      child.unref();
-      return true;
-    }
-    const child = spawn('xdg-open', [target], {
+    const child = spawn(normalizedCommand, [...args], {
       detached: true,
       stdio: 'ignore',
+      ...(process.platform === 'win32'
+        ? {
+            windowsHide: true,
+          }
+        : {}),
     });
     child.unref();
     return true;
   } catch {
     return false;
   }
+}
+
+function openUrlInBrowser(url: string, browserCommand: readonly string[] | null): boolean {
+  const target = url.trim();
+  if (target.length === 0) {
+    return false;
+  }
+  if (browserCommand !== null) {
+    const resolved = resolveLinkCommandFromTemplate({
+      template: browserCommand,
+      values: {
+        url: target,
+      },
+      appendPrimaryPlaceholder: '{url}',
+    });
+    if (resolved === null) {
+      return false;
+    }
+    return launchDetachedCommand(resolved.command, resolved.args);
+  }
+  if (process.platform === 'darwin') {
+    return launchDetachedCommand('open', [target]);
+  }
+  if (process.platform === 'win32') {
+    return launchDetachedCommand('cmd', ['/c', 'start', '', target]);
+  }
+  return launchDetachedCommand('xdg-open', [target]);
+}
+
+function commandModifierPressed(code: number): boolean {
+  return (code & 0b0000_1000) !== 0;
+}
+
+function wheelMouseCode(code: number): boolean {
+  return (code & 0b0100_0000) !== 0;
+}
+
+function motionMouseCode(code: number): boolean {
+  return (code & 0b0010_0000) !== 0;
+}
+
+function leftMouseButtonPress(code: number, final: 'M' | 'm'): boolean {
+  if (final !== 'M' || wheelMouseCode(code) || motionMouseCode(code)) {
+    return false;
+  }
+  return (code & 0b0000_0011) === 0;
 }
 
 function isMacApplicationInstalled(appName: string): boolean {
@@ -886,6 +947,9 @@ class CodexLiveMuxRuntimeApplication {
       isCommandAvailable: commandExistsOnPath,
       isMacApplicationInstalled,
     });
+    const linkOpenConfig = loadedConfig.config.mux.openIn.links;
+    const fileLinkOpenTargets = prioritizeOpenInTargetsForFileLinks(commandMenuOpenInTargets);
+    const userHomeDirectory = homedir();
     let runtimeThemeConfig: HarnessMuxThemeConfig | null = configuredMuxUi.theme;
     const resolveAndApplyRuntimeTheme = (
       nextThemeConfig: HarnessMuxThemeConfig | null,
@@ -1843,7 +1907,6 @@ class CodexLiveMuxRuntimeApplication {
     const commandMenuRegistry = new CommandMenuRegistry<RuntimeCommandMenuContext>();
     let commandMenuGitHubProjectPrState: CommandMenuGitHubProjectPrState | null = null;
     const projectPaneGitHubReviewByDirectoryId = new Map<string, ProjectPaneGitHubReviewSummary>();
-    const projectPaneGitHubExpandedNodeIdsByDirectoryId = new Map<string, Set<string>>();
     let commandMenuScopedDirectoryId: string | null = null;
     let themePickerSession: ThemePickerSessionState | null = null;
     const isThreadScopedCommandActionId = (actionId: string): boolean =>
@@ -2217,6 +2280,107 @@ class CodexLiveMuxRuntimeApplication {
       debugFooterNotice.set(message);
       markDirty();
     };
+    const openFileLink = (target: {
+      path: string;
+      line: number | null;
+      column: number | null;
+    }): boolean => {
+      const activeConversation = conversationManager.getActiveConversation();
+      const activeDirectoryPath =
+        activeConversation?.directoryId === null || activeConversation?.directoryId === undefined
+          ? null
+          : (directoryRecords.get(activeConversation.directoryId)?.path ?? null);
+      const resolvedPath = resolveFileLinkPath({
+        path: target.path,
+        directoryPath: activeDirectoryPath,
+        homeDirectory: userHomeDirectory,
+      });
+      if (linkOpenConfig.fileCommand !== null) {
+        const resolvedCustom = resolveLinkCommandFromTemplate({
+          template: linkOpenConfig.fileCommand,
+          values: {
+            path: resolvedPath,
+            line: target.line,
+            column: target.column,
+          },
+          appendPrimaryPlaceholder: '{path}',
+        });
+        if (resolvedCustom === null) {
+          return false;
+        }
+        return launchDetachedCommand(resolvedCustom.command, resolvedCustom.args);
+      }
+      for (const openTarget of fileLinkOpenTargets) {
+        const pathArgument = buildFileLinkPathArgumentForTarget({
+          targetId: openTarget.id,
+          path: resolvedPath,
+          line: target.line,
+          column: target.column,
+        });
+        const resolvedCommand = resolveCommandMenuOpenInCommand(openTarget, pathArgument);
+        if (resolvedCommand === null) {
+          continue;
+        }
+        if (launchDetachedCommand(resolvedCommand.command, resolvedCommand.args)) {
+          return true;
+        }
+      }
+      if (process.platform === 'darwin') {
+        return launchDetachedCommand('open', [resolvedPath]);
+      }
+      if (process.platform === 'win32') {
+        return launchDetachedCommand('cmd', ['/c', 'start', '', resolvedPath]);
+      }
+      return launchDetachedCommand('xdg-open', [resolvedPath]);
+    };
+    const handleConversationCommandClick = (input: {
+      event: {
+        col: number;
+        row: number;
+      };
+      layout: {
+        paneRows: number;
+        rightCols: number;
+        rightStartCol: number;
+      };
+      snapshotForInput: {
+        lines?: readonly string[];
+      } | null;
+    }): boolean => {
+      const lines = input.snapshotForInput?.lines;
+      if (lines === undefined) {
+        return false;
+      }
+      const sessionCol = Math.max(
+        1,
+        Math.min(input.layout.rightCols, input.event.col - input.layout.rightStartCol + 1),
+      );
+      const sessionRow = Math.max(1, Math.min(input.layout.paneRows, input.event.row));
+      const linkTarget = resolveTerminalLinkTargetAtCell({
+        lines,
+        row: sessionRow,
+        col: sessionCol,
+      });
+      if (linkTarget === null) {
+        return false;
+      }
+      if (linkTarget.kind === 'url') {
+        const opened = openUrlInBrowser(linkTarget.url, linkOpenConfig.browserCommand);
+        setCommandNotice(opened ? 'opened url in browser' : `open url: ${linkTarget.url}`);
+        return true;
+      }
+      const opened = openFileLink(linkTarget);
+      const locationSuffix =
+        linkTarget.line === null
+          ? ''
+          : linkTarget.column === null
+            ? `:${String(linkTarget.line)}`
+            : `:${String(linkTarget.line)}:${String(linkTarget.column)}`;
+      setCommandNotice(
+        opened ? 'opened file link' : `open file link: ${linkTarget.path}${locationSuffix}`,
+      );
+      return true;
+    };
     const openDirectoryInCommandMenuTarget = (
       target: ResolvedCommandMenuOpenInTarget,
       directoryPath: string,
@@ -2225,21 +2389,7 @@ class CodexLiveMuxRuntimeApplication {
       if (resolved === null) {
         return false;
       }
-      try {
-        const child = spawn(resolved.command, [...resolved.args], {
-          detached: true,
-          stdio: 'ignore',
-          ...(process.platform === 'win32'
-            ? {
-                windowsHide: true,
-              }
-            : {}),
-        });
-        child.unref();
-        return true;
-      } catch {
-        return false;
-      }
+      return launchDetachedCommand(resolved.command, resolved.args);
     };
     const persistReleaseNotesState = (nextState: ReleaseNotesState): void => {
       try {
@@ -2716,7 +2866,7 @@ class CodexLiveMuxRuntimeApplication {
       }
     };
 
-    const refreshProjectPaneSnapshot = (directoryId: string): void => {
+    const refreshProjectTreePaneSnapshot = (directoryId: string): void => {
       const directory = directoryManager.getDirectory(directoryId);
       if (directory === undefined) {
         workspace.projectPaneSnapshot = null;
@@ -2725,12 +2875,31 @@ class CodexLiveMuxRuntimeApplication {
       workspace.projectPaneSnapshot = buildProjectPaneSnapshotWithOptions(
         directory.directoryId,
         directory.path,
-        {
-          githubReview: projectPaneGitHubReviewByDirectoryId.get(directory.directoryId) ?? null,
-          expandedNodeIds:
-            projectPaneGitHubExpandedNodeIdsByDirectoryId.get(directory.directoryId) ?? new Set(),
-        },
       );
+    };
+
+    const refreshGitHubPaneSnapshot = (directoryId: string): void => {
+      const directory = directoryManager.getDirectory(directoryId);
+      if (directory === undefined) {
+        workspace.projectPaneSnapshot = null;
+        return;
+      }
+      workspace.projectPaneSnapshot = buildGitHubReviewPaneSnapshot(
+        directory.directoryId,
+        directory.path,
+        projectPaneGitHubReviewByDirectoryId.get(directory.directoryId) ?? null,
+      );
+    };
+
+    const refreshProjectPaneSnapshot = (directoryId: string): void => {
+      if (
+        workspace.leftNavSelection.kind === 'github' &&
+        workspace.leftNavSelection.directoryId === directoryId
+      ) {
+        refreshGitHubPaneSnapshot(directoryId);
+        return;
+      }
+      refreshProjectTreePaneSnapshot(directoryId);
     };
 
     const projectPaneGitHubReviewCache = new RuntimeProjectPaneGitHubReviewCache({
@@ -2759,10 +2928,14 @@ class CodexLiveMuxRuntimeApplication {
       },
       onUpdate: (directoryId, review) => {
         projectPaneGitHubReviewByDirectoryId.set(directoryId, review);
-        if (workspace.mainPaneMode === 'project' && workspace.activeDirectoryId === directoryId) {
+        if (
+          workspace.mainPaneMode === 'project' &&
+          workspace.leftNavSelection.kind === 'github' &&
+          workspace.activeDirectoryId === directoryId
+        ) {
           refreshProjectPaneSnapshot(directoryId);
-          markDirty();
         }
+        markDirty();
       },
       formatErrorMessage,
     });
@@ -2782,22 +2955,6 @@ class CodexLiveMuxRuntimeApplication {
       projectPaneGitHubReviewCache.request(directoryId, options);
     };
 
-    const toggleProjectPaneGitHubNode = (directoryId: string, nodeId: string): boolean => {
-      if (!directoryManager.hasDirectory(directoryId)) {
-        return false;
-      }
-      const expanded =
-        projectPaneGitHubExpandedNodeIdsByDirectoryId.get(directoryId) ?? new Set<string>();
-      if (expanded.has(nodeId)) {
-        expanded.delete(nodeId);
-      } else {
-        expanded.add(nodeId);
-      }
-      projectPaneGitHubExpandedNodeIdsByDirectoryId.set(directoryId, expanded);
-      refreshProjectPaneSnapshot(directoryId);
-      return true;
-    };
-
     const enterProjectPane = (directoryId: string): void => {
       if (!directoryManager.hasDirectory(directoryId)) {
         return;
@@ -2806,6 +2963,36 @@ class CodexLiveMuxRuntimeApplication {
       queuePersistMuxUiState();
       noteGitActivity(directoryId);
       refreshProjectPaneSnapshot(directoryId);
+      screen.resetFrameCache();
+    };
+
+    const enterGitHubPane = (directoryId: string): void => {
+      if (!directoryManager.hasDirectory(directoryId)) {
+        return;
+      }
+      const forceRefresh = !workspace.visibleGitHubDirectoryIds.has(directoryId);
+      workspace.visibleGitHubDirectoryIds.add(directoryId);
+      workspace.enterGitHubPane(directoryId, repositoryGroupIdForDirectory(directoryId));
+      noteGitActivity(directoryId);
+      refreshProjectPaneGitHubReviewState(directoryId, forceRefresh ? { forceRefresh: true } : {});
+      refreshProjectPaneSnapshot(directoryId);
+      screen.resetFrameCache();
+    };
+
+    const toggleGitHubProjectExpanded = (directoryId: string): void => {
+      if (!directoryManager.hasDirectory(directoryId)) {
+        return;
+      }
+      if (workspace.expandedGitHubDirectoryIds.has(directoryId)) {
+        workspace.expandedGitHubDirectoryIds.delete(directoryId);
+      } else {
+        workspace.expandedGitHubDirectoryIds.add(directoryId);
+        workspace.visibleGitHubDirectoryIds.add(directoryId);
+      }
+      noteGitActivity(directoryId);
+      if (workspace.expandedGitHubDirectoryIds.has(directoryId)) {
+        refreshProjectPaneGitHubReviewState(directoryId);
+      }
       screen.resetFrameCache();
     };
 
@@ -4016,6 +4203,30 @@ class CodexLiveMuxRuntimeApplication {
       setNotice: setCommandNotice,
     });
 
+    commandMenuRegistry.registerProvider('github.thread.open', (context) => {
+      const directoryId = context.activeDirectoryId;
+      if (directoryId === null || context.githubRepositoryUrl === null) {
+        return [];
+      }
+      return [
+        {
+          id: 'github.thread.open',
+          title: 'Open GitHub Thread (git)',
+          aliases: [
+            'github thread',
+            'open github thread',
+            'open github review thread',
+            'show github thread',
+          ],
+          keywords: ['github', 'thread', 'review', 'pr', 'open'],
+          detail: context.githubTrackedBranch ?? 'current project',
+          run: () => {
+            enterGitHubPane(directoryId);
+          },
+        },
+      ];
+    });
+
     commandMenuRegistry.registerProvider('github.repo.open', (context) => {
       const repositoryUrl = context.githubRepositoryUrl;
       if (repositoryUrl === null) {
@@ -4029,7 +4240,7 @@ class CodexLiveMuxRuntimeApplication {
           keywords: ['github', 'repository', 'repo', 'open'],
           detail: repositoryUrl,
           run: () => {
-            const opened = openUrlInBrowser(repositoryUrl);
+            const opened = openUrlInBrowser(repositoryUrl, linkOpenConfig.browserCommand);
             setCommandNotice(
               opened
                 ? 'opened github repository in browser'
@@ -4062,7 +4273,7 @@ class CodexLiveMuxRuntimeApplication {
                 setCommandNotice('github my open pull requests url unavailable');
                 return;
               }
-              const opened = openUrlInBrowser(myPrsUrl);
+              const opened = openUrlInBrowser(myPrsUrl, linkOpenConfig.browserCommand);
               setCommandNotice(
                 opened
                   ? 'opened my open pull requests in browser'
@@ -4137,7 +4348,7 @@ class CodexLiveMuxRuntimeApplication {
                   setCommandNotice('no open pull request for tracked branch');
                   return;
                 }
-                const opened = openUrlInBrowser(state.openPrUrl);
+                const opened = openUrlInBrowser(state.openPrUrl, linkOpenConfig.browserCommand);
                 setCommandNotice(
                   opened
                     ? 'opened pull request in browser'
@@ -4191,7 +4402,7 @@ class CodexLiveMuxRuntimeApplication {
                   projectPr: 'ok',
                 });
                 refreshCommandMenuGitHubProjectPrState(directoryId);
-                const opened = openUrlInBrowser(prUrl);
+                const opened = openUrlInBrowser(prUrl, linkOpenConfig.browserCommand);
                 setCommandNotice(
                   opened ? 'opened pull request in browser' : `open pull request: ${prUrl}`,
                 );
@@ -4330,7 +4541,14 @@ class CodexLiveMuxRuntimeApplication {
           });
         },
         buildRenderRows: (renderLayout, railRows, rightRows, statusRow, statusFooter) =>
-          buildRenderRows(renderLayout, railRows, rightRows, statusRow, statusFooter),
+          buildRenderRows(
+            renderLayout,
+            railRows,
+            rightRows,
+            statusRow,
+            statusFooter,
+            workspace.showDebugBar,
+          ),
         buildModalOverlay: () => buildCurrentModalOverlay(),
         applyModalOverlay: (rows, overlay) => {
           applyModalOverlay(rows, overlay);
@@ -4417,6 +4635,10 @@ class CodexLiveMuxRuntimeApplication {
         gitSummaryByDirectoryId: gitSummaryByDirectoryId,
         processUsageBySessionId: () => processUsageRefreshService.readonlyUsage(),
         loadingGitSummary: GIT_SUMMARY_LOADING,
+        showGitHubIntegration: loadedConfig.config.github.enabled,
+        visibleGitHubDirectoryIds: workspace.visibleGitHubDirectoryIds,
+        expandedGitHubDirectoryIds: workspace.expandedGitHubDirectoryIds,
+        githubReviewByDirectoryId: projectPaneGitHubReviewByDirectoryId,
         showTasksEntry,
         activeConversationId: () => conversationManager.activeConversationId,
         orderedConversationIds: () => conversationManager.orderedIds(),
@@ -4626,7 +4848,7 @@ class CodexLiveMuxRuntimeApplication {
         },
         onOpenLatest: (prompt) => {
           const releaseUrl = prompt.releases[0]?.url ?? prompt.releasesPageUrl;
-          const opened = openUrlInBrowser(releaseUrl);
+          const opened = openUrlInBrowser(releaseUrl, linkOpenConfig.browserCommand);
           setCommandNotice(
             opened ? 'opened release notes in browser' : `open release notes: ${releaseUrl}`,
           );
@@ -4752,6 +4974,7 @@ class CodexLiveMuxRuntimeApplication {
         enterNimPane,
         firstDirectoryForRepositoryGroup,
         enterProjectPane,
+        enterGitHubPane,
         setMainPaneProjectMode: () => {
           workspace.mainPaneMode = 'project';
           queuePersistMuxUiState();
@@ -4819,6 +5042,29 @@ class CodexLiveMuxRuntimeApplication {
             return null;
           }
           return conversationRecords.get(activeConversationId)?.agentType ?? null;
+        },
+        resolveConversationForAction: () => {
+          if (workspace.mainPaneMode === 'conversation') {
+            return conversationManager.activeConversationId;
+          }
+          if (workspace.leftNavSelection.kind !== 'github') {
+            return null;
+          }
+          const targetDirectoryId = workspace.leftNavSelection.directoryId;
+          const activeConversationId = conversationManager.activeConversationId;
+          if (
+            activeConversationId !== null &&
+            conversationManager.directoryIdOf(activeConversationId) === targetDirectoryId
+          ) {
+            return activeConversationId;
+          }
+          return (
+            conversationManager
+              .orderedIds()
+              .find(
+                (sessionId) => conversationManager.directoryIdOf(sessionId) === targetDirectoryId,
+              ) ?? null
+          );
         },
         conversationsHas: (sessionId) => conversationManager.has(sessionId),
         activeDirectoryId: () => workspace.activeDirectoryId,
@@ -4979,6 +5225,8 @@ class CodexLiveMuxRuntimeApplication {
           );
         },
         enterProjectPane,
+        enterGitHubPane,
+        toggleGitHubProjectExpanded,
         markDirty,
       },
       {
@@ -5136,15 +5384,7 @@ class CodexLiveMuxRuntimeApplication {
                 });
                 return true;
               }
-              const togglePrefix = 'project.github.toggle:';
-              if (!action.startsWith(togglePrefix)) {
-                return false;
-              }
-              const nodeId = action.slice(togglePrefix.length).trim();
-              if (nodeId.length === 0) {
-                return false;
-              }
-              return toggleProjectPaneGitHubNode(directoryId, nodeId);
+              return false;
             },
           }),
         handleHomePanePointerClick,
@@ -5336,7 +5576,24 @@ class CodexLiveMuxRuntimeApplication {
       },
       noteGitActivity,
       parseMuxInputChunk,
-      routeInputTokensForConversation,
+      routeInputTokensForConversation: (input) =>
+        routeInputTokensForConversation({
+          ...input,
+          hasMetaModifier: commandModifierPressed,
+          handleMetaClick: ({ event, layout, snapshotForInput }) => {
+            if (!leftMouseButtonPress(event.code, event.final)) {
+              return false;
+            }
+            return handleConversationCommandClick({
+              event: {
+                col: event.col,
+                row: event.row,
+              },
+              layout,
+              snapshotForInput,
+            });
+          },
+        }),
       classifyPaneAt,
       normalizeMuxKeyboardInputForPty,
       handlePassthroughTextInMainPaneMode: (input) => {

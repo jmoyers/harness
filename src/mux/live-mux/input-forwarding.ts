@@ -27,8 +27,31 @@ interface RouteInputTokensForConversationOptions {
     rightCols: number;
     rightStartCol: number;
   };
-  snapshotForInput: Pick<TerminalSnapshotFrameCore, 'activeScreen' | 'viewport'> | null;
+  snapshotForInput:
+    | (Pick<TerminalSnapshotFrameCore, 'activeScreen' | 'viewport'> & {
+        lines?: readonly string[];
+      })
+    | null;
   appMouseTrackingEnabled: boolean;
+  hasMetaModifier?: (code: number) => boolean;
+  handleMetaClick?: (input: {
+    event: {
+      col: number;
+      row: number;
+      code: number;
+      final: 'M' | 'm';
+    };
+    layout: {
+      paneRows: number;
+      rightCols: number;
+      rightStartCol: number;
+    };
+    snapshotForInput:
+      | (Pick<TerminalSnapshotFrameCore, 'activeScreen' | 'viewport'> & {
+          lines?: readonly string[];
+        })
+      | null;
+  }) => boolean;
 }
 
 interface RouteInputTokensForConversationResult {
@@ -38,6 +61,28 @@ interface RouteInputTokensForConversationResult {
 
 function encodeSgrMouseEvent(code: number, col: number, row: number, final: 'M' | 'm'): Buffer {
   return Buffer.from(`\u001b[<${String(code)};${String(col)};${String(row)}${final}`, 'utf8');
+}
+
+function isWheelMouseCode(code: number): boolean {
+  return (code & 0b0100_0000) !== 0;
+}
+
+function isMotionMouseCode(code: number): boolean {
+  return (code & 0b0010_0000) !== 0;
+}
+
+function isLeftButtonPress(code: number, final: 'M' | 'm'): boolean {
+  if (final !== 'M') {
+    return false;
+  }
+  if (isWheelMouseCode(code) || isMotionMouseCode(code)) {
+    return false;
+  }
+  return (code & 0b0000_0011) === 0;
+}
+
+function hasMetaModifier(code: number): boolean {
+  return (code & 0b0000_1000) !== 0;
 }
 
 function shouldPassThroughMouseToConversation(
@@ -84,6 +129,18 @@ export function routeInputTokensForConversation(
     }
     if (options.mainPaneMode !== 'conversation') {
       continue;
+    }
+    if (
+      options.handleMetaClick !== undefined &&
+      isLeftButtonPress(token.event.code, token.event.final) &&
+      (options.hasMetaModifier ?? hasMetaModifier)(token.event.code)
+    ) {
+      const handled = options.handleMetaClick({
+        event: token.event,
+        layout: options.layout,
+        snapshotForInput: options.snapshotForInput,
+      });
+      if (handled) continue;
     }
     if (shouldPassThroughMouseToConversation(options, token.event.code)) {
       const sessionCol = Math.max(

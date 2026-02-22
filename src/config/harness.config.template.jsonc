@@ -22,6 +22,10 @@
     },
     "openIn": {
       "targets": {},
+      "links": {
+        "browserCommand": null,
+        "fileCommand": null,
+      },
     },
   },
   "github": {

@@ -24,6 +24,10 @@ interface RuntimeWorkspaceStateLike {
         directoryId: string;
       }
     | {
+        kind: 'github';
+        directoryId: string;
+      }
+    | {
         kind: 'repository';
         repositoryId: string;
       }
@@ -39,6 +43,8 @@ interface RuntimeWorkspaceStateLike {
   } | null;
   projectPaneScrollTop: number;
   activeDirectoryId: string | null;
+  visibleGitHubDirectoryIds?: Set<string>;
+  expandedGitHubDirectoryIds?: Set<string>;
   selectLeftNavConversation(sessionId: string): void;
 }
 
@@ -91,6 +97,8 @@ export class RuntimeWorkspaceObservedEvents<TObservedEvent> {
     }
 
     for (const directoryId of reduced.removedDirectoryIds) {
+      this.options.workspace.visibleGitHubDirectoryIds?.delete(directoryId);
+      this.options.workspace.expandedGitHubDirectoryIds?.delete(directoryId);
       if (this.options.workspace.projectPaneSnapshot?.directoryId === directoryId) {
         this.options.workspace.projectPaneSnapshot = null;
         this.options.workspace.projectPaneScrollTop = 0;
@@ -179,7 +187,8 @@ export class RuntimeWorkspaceObservedEvents<TObservedEvent> {
     }
 
     if (
-      this.options.workspace.leftNavSelection.kind === 'project' &&
+      (this.options.workspace.leftNavSelection.kind === 'project' ||
+        this.options.workspace.leftNavSelection.kind === 'github') &&
       !this.options.hasDirectory(this.options.workspace.leftNavSelection.directoryId)
     ) {
       const fallbackDirectoryId = this.options.resolveActiveDirectoryId();
