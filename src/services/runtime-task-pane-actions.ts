@@ -15,7 +15,7 @@ interface RuntimeTaskPaneActionService<TTaskRecord extends TaskRecordShape> {
   taskComplete(taskId: string): Promise<TTaskRecord>;
 }
 
-interface RuntimeTaskPaneActionsOptions<TTaskRecord extends TaskRecordShape> {
+export interface RuntimeTaskPaneActionsOptions<TTaskRecord extends TaskRecordShape> {
   readonly workspace: WorkspaceModel;
   readonly controlPlaneService: RuntimeTaskPaneActionService<TTaskRecord>;
   readonly repositoriesHas: (repositoryId: string) => boolean;

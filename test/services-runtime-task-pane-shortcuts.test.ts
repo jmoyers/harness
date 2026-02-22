@@ -3,7 +3,10 @@ import { test } from 'bun:test';
 import { WorkspaceModel } from '../src/domain/workspace.ts';
 import type { TaskComposerBuffer } from '../src/mux/task-composer.ts';
 import { resolveTaskScreenKeybindings } from '../src/mux/task-screen-keybindings.ts';
-import { RuntimeTaskPaneShortcuts } from '../src/services/runtime-task-pane-shortcuts.ts';
+import {
+  RuntimeTaskPaneShortcuts,
+  type RuntimeTaskPaneShortcutsOptions,
+} from '../src/services/runtime-task-pane-shortcuts.ts';
 
 interface TaskRecord {
   readonly taskId: string;
@@ -12,7 +15,7 @@ interface TaskRecord {
   readonly body: string;
 }
 
-type ShortcutsOptions = ConstructorParameters<typeof RuntimeTaskPaneShortcuts<TaskRecord>>[0];
+type ShortcutsOptions = RuntimeTaskPaneShortcutsOptions<TaskRecord>;
 
 function createWorkspace(): WorkspaceModel {
   return new WorkspaceModel({

@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import { WorkspaceModel } from '../src/domain/workspace.ts';
-import { RuntimeTaskPaneActions } from '../src/services/runtime-task-pane-actions.ts';
+import {
+  RuntimeTaskPaneActions,
+  type RuntimeTaskPaneActionsOptions,
+} from '../src/services/runtime-task-pane-actions.ts';
 
 interface TaskRecord {
   readonly taskId: string;
@@ -9,9 +12,7 @@ interface TaskRecord {
   readonly status: string;
 }
 
-type RuntimeTaskPaneActionsOptions = ConstructorParameters<
-  typeof RuntimeTaskPaneActions<TaskRecord>
->[0];
+type TaskPaneActionsOptions = RuntimeTaskPaneActionsOptions<TaskRecord>;
 
 function createWorkspace(): WorkspaceModel {
   return new WorkspaceModel({
@@ -36,14 +37,14 @@ function createWorkspace(): WorkspaceModel {
   });
 }
 
-function createHarness(overrides: Partial<RuntimeTaskPaneActionsOptions> = {}) {
+function createHarness(overrides: Partial<TaskPaneActionsOptions> = {}) {
   const workspace = createWorkspace();
   const tasksById = new Map<string, TaskRecord>();
   const calls: string[] = [];
   const reorderPayloads: Array<readonly string[]> = [];
   const queuedOps: Promise<void>[] = [];
 
-  const options: RuntimeTaskPaneActionsOptions = {
+  const options: TaskPaneActionsOptions = {
     workspace,
     controlPlaneService: {
       reorderTasks: async (orderedTaskIds) => {

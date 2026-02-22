@@ -40,7 +40,7 @@ interface TaskRecordShape {
   readonly body: string;
 }
 
-interface RuntimeTaskPaneShortcutsOptions<TTaskRecord extends TaskRecordShape> {
+export interface RuntimeTaskPaneShortcutsOptions<TTaskRecord extends TaskRecordShape> {
   readonly workspace: WorkspaceModel;
   readonly taskScreenKeybindings: ResolvedTaskScreenKeybindings;
   readonly repositoriesHas: (repositoryId: string) => boolean;
