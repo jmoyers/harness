@@ -12,7 +12,10 @@ import { type StreamServerEnvelope } from '../../../src/control-plane/stream-pro
 import type { CodexLiveEvent } from '../../../src/codex/live-session.ts';
 import type { PtyExit } from '../../../src/pty/pty_host.ts';
 import { SqliteControlPlaneStore } from '../../../src/store/control-plane-store.ts';
-import { FakeLiveSession, collectEnvelopes } from '../../helpers/control-plane-stream-server-test-helpers.ts';
+import {
+  FakeLiveSession,
+  collectEnvelopes,
+} from '../../helpers/control-plane-stream-server-test-helpers.ts';
 
 interface SessionStatusClient {
   sendCommand(command: never): Promise<Record<string, unknown>>;
@@ -27,12 +30,10 @@ async function waitForSessionStatus(
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
     try {
-      const status = await client.sendCommand(
-        {
-          type: 'session.status',
-          sessionId,
-        } as never,
-      );
+      const status = await client.sendCommand({
+        type: 'session.status',
+        sessionId,
+      } as never);
       if (status['status'] === expectedStatus) {
         return status;
       }
@@ -41,9 +42,7 @@ async function waitForSessionStatus(
     }
     await delay(10);
   }
-  throw new Error(
-    `timed out waiting for session ${sessionId} to reach status ${expectedStatus}`,
-  );
+  throw new Error(`timed out waiting for session ${sessionId} to reach status ${expectedStatus}`);
 }
 
 async function waitForSessionMissing(
@@ -54,12 +53,10 @@ async function waitForSessionMissing(
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
     try {
-      await client.sendCommand(
-        {
-          type: 'session.status',
-          sessionId,
-        } as never,
-      );
+      await client.sendCommand({
+        type: 'session.status',
+        sessionId,
+      } as never);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       if (message.includes('session not found')) {

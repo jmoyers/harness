@@ -537,7 +537,6 @@ function runGit(cwd: string, args: readonly string[]): void {
   });
 }
 
-
 export type { CaptureMuxBootOutputOptions, StartInteractiveMuxOptions };
 export {
   StartupTestLiveSession,

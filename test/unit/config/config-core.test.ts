@@ -89,7 +89,10 @@ void test('parseHarnessConfigText rejects invalid and unsupported configVersion 
 });
 
 void test('checked-in config template exists and matches default config snapshot', () => {
-  const templatePath = resolve(TEST_MODULE_DIR, '../../../src/config/harness.config.template.jsonc');
+  const templatePath = resolve(
+    TEST_MODULE_DIR,
+    '../../../src/config/harness.config.template.jsonc',
+  );
   assert.equal(existsSync(templatePath), true);
   const parsedTemplate = parseHarnessConfigText(readFileSync(templatePath, 'utf8'));
   assert.deepEqual(parsedTemplate, DEFAULT_HARNESS_CONFIG);
@@ -265,6 +268,10 @@ void test('parseHarnessConfigText normalizes mux open-in target overrides', () =
     {
       "mux": {
         "openIn": {
+          "links": {
+            "browserCommand": [" open ", "{url}"],
+            "fileCommand": " zed "
+          },
           "targets": {
             "iterm2": {
               "enabled": true,
@@ -299,17 +306,60 @@ void test('parseHarnessConfigText normalizes mux open-in target overrides', () =
       launchCommand: ['code-insiders'],
     },
   });
+  assert.deepEqual(parsed.mux.openIn.links, {
+    browserCommand: ['open', '{url}'],
+    fileCommand: ['zed'],
+  });
 
   const invalid = parseHarnessConfigText(`
     {
       "mux": {
         "openIn": {
+          "links": {
+            "browserCommand": [],
+            "fileCommand": [1]
+          },
           "targets": "nope"
         }
       }
     }
   `);
-  assert.deepEqual(invalid.mux.openIn, DEFAULT_OPEN_IN);
+  assert.deepEqual(invalid.mux.openIn.targets, DEFAULT_OPEN_IN.targets);
+  assert.deepEqual(invalid.mux.openIn.links, DEFAULT_OPEN_IN.links);
+
+  const invalidTypeFallback = parseHarnessConfigText(`
+    {
+      "mux": {
+        "openIn": {
+          "links": {
+            "browserCommand": 42,
+            "fileCommand": { "bad": true }
+          }
+        }
+      }
+    }
+  `);
+  assert.deepEqual(invalidTypeFallback.mux.openIn.links, DEFAULT_OPEN_IN.links);
+
+  const linksOnly = parseHarnessConfigText(`
+    {
+      "mux": {
+        "openIn": {
+          "links": {
+            "browserCommand": "open",
+            "fileCommand": ["open", "-a", "Zed", "{path}"]
+          }
+        }
+      }
+    }
+  `);
+  assert.deepEqual(linksOnly.mux.openIn, {
+    targets: {},
+    links: {
+      browserCommand: ['open'],
+      fileCommand: ['open', '-a', 'Zed', '{path}'],
+    },
+  });
 });
 
 void test('parseHarnessConfigText falls back for invalid root shapes', () => {

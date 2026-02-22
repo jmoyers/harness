@@ -514,8 +514,7 @@ function buildContentRows(
         (githubSelectionEnabled && directory.key === activeGitHubProjectId);
       if (showGitHubIntegration && group.tracked && githubVisibleForDirectory) {
         const githubReview = githubReviewByDirectoryKey.get(directory.key) ?? null;
-        const githubSelected =
-          githubSelectionEnabled && directory.key === activeGitHubProjectId;
+        const githubSelected = githubSelectionEnabled && directory.key === activeGitHubProjectId;
         const githubTreePrefix = `${projectChildPrefix}├─ `;
         const githubDetailPrefix = `${projectChildPrefix}│  `;
         pushRow(

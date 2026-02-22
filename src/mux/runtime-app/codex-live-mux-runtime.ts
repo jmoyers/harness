@@ -2,6 +2,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { execFileSync, spawn } from 'node:child_process';
+import { homedir } from 'node:os';
 import { startCodexLiveSession } from '../../codex/live-session.ts';
 import {
   openCodexControlPlaneClient,
@@ -162,6 +163,13 @@ import {
   terminalSize,
 } from '../../mux/live-mux/startup-utils.ts';
 import { routeInputTokensForConversation } from '../../mux/live-mux/input-forwarding.ts';
+import {
+  buildFileLinkPathArgumentForTarget,
+  prioritizeOpenInTargetsForFileLinks,
+  resolveFileLinkPath,
+  resolveLinkCommandFromTemplate,
+  resolveTerminalLinkTargetAtCell,
+} from '../../mux/live-mux/link-click.ts';
 import {
   normalizeExitCode,
   isSessionNotFoundError,
@@ -696,38 +704,72 @@ function commandMenuProjectPathTail(path: string): string {
   return `…/${segments.slice(-2).join('/')}`;
 }
 
-function openUrlInBrowser(url: string): boolean {
-  const target = url.trim();
-  if (target.length === 0) {
+function launchDetachedCommand(command: string, args: readonly string[]): boolean {
+  const normalizedCommand = command.trim();
+  if (normalizedCommand.length === 0) {
     return false;
   }
   try {
-    if (process.platform === 'darwin') {
-      const child = spawn('open', [target], {
-        detached: true,
-        stdio: 'ignore',
-      });
-      child.unref();
-      return true;
-    }
-    if (process.platform === 'win32') {
-      const child = spawn('cmd', ['/c', 'start', '', target], {
-        detached: true,
-        stdio: 'ignore',
-        windowsHide: true,
-      });
-      child.unref();
-      return true;
-    }
-    const child = spawn('xdg-open', [target], {
+    const child = spawn(normalizedCommand, [...args], {
       detached: true,
       stdio: 'ignore',
+      ...(process.platform === 'win32'
+        ? {
+            windowsHide: true,
+          }
+        : {}),
     });
     child.unref();
     return true;
   } catch {
     return false;
   }
+}
+
+function openUrlInBrowser(url: string, browserCommand: readonly string[] | null): boolean {
+  const target = url.trim();
+  if (target.length === 0) {
+    return false;
+  }
+  if (browserCommand !== null) {
+    const resolved = resolveLinkCommandFromTemplate({
+      template: browserCommand,
+      values: {
+        url: target,
+      },
+      appendPrimaryPlaceholder: '{url}',
+    });
+    if (resolved === null) {
+      return false;
+    }
+    return launchDetachedCommand(resolved.command, resolved.args);
+  }
+  if (process.platform === 'darwin') {
+    return launchDetachedCommand('open', [target]);
+  }
+  if (process.platform === 'win32') {
+    return launchDetachedCommand('cmd', ['/c', 'start', '', target]);
+  }
+  return launchDetachedCommand('xdg-open', [target]);
+}
+
+function commandModifierPressed(code: number): boolean {
+  return (code & 0b0000_1000) !== 0;
+}
+
+function wheelMouseCode(code: number): boolean {
+  return (code & 0b0100_0000) !== 0;
+}
+
+function motionMouseCode(code: number): boolean {
+  return (code & 0b0010_0000) !== 0;
+}
+
+function leftMouseButtonPress(code: number, final: 'M' | 'm'): boolean {
+  if (final !== 'M' || wheelMouseCode(code) || motionMouseCode(code)) {
+    return false;
+  }
+  return (code & 0b0000_0011) === 0;
 }
 
 function isMacApplicationInstalled(appName: string): boolean {
@@ -879,6 +921,9 @@ class CodexLiveMuxRuntimeApplication {
       isCommandAvailable: commandExistsOnPath,
       isMacApplicationInstalled,
     });
+    const linkOpenConfig = loadedConfig.config.mux.openIn.links;
+    const fileLinkOpenTargets = prioritizeOpenInTargetsForFileLinks(commandMenuOpenInTargets);
+    const userHomeDirectory = homedir();
     let runtimeThemeConfig: HarnessMuxThemeConfig | null = configuredMuxUi.theme;
     const resolveAndApplyRuntimeTheme = (
       nextThemeConfig: HarnessMuxThemeConfig | null,
@@ -2151,6 +2196,107 @@ class CodexLiveMuxRuntimeApplication {
       debugFooterNotice.set(message);
       markDirty();
     };
+    const openFileLink = (target: {
+      path: string;
+      line: number | null;
+      column: number | null;
+    }): boolean => {
+      const activeConversation = conversationManager.getActiveConversation();
+      const activeDirectoryPath =
+        activeConversation?.directoryId === null || activeConversation?.directoryId === undefined
+          ? null
+          : (directoryRecords.get(activeConversation.directoryId)?.path ?? null);
+      const resolvedPath = resolveFileLinkPath({
+        path: target.path,
+        directoryPath: activeDirectoryPath,
+        homeDirectory: userHomeDirectory,
+      });
+      if (linkOpenConfig.fileCommand !== null) {
+        const resolvedCustom = resolveLinkCommandFromTemplate({
+          template: linkOpenConfig.fileCommand,
+          values: {
+            path: resolvedPath,
+            line: target.line,
+            column: target.column,
+          },
+          appendPrimaryPlaceholder: '{path}',
+        });
+        if (resolvedCustom === null) {
+          return false;
+        }
+        return launchDetachedCommand(resolvedCustom.command, resolvedCustom.args);
+      }
+      for (const openTarget of fileLinkOpenTargets) {
+        const pathArgument = buildFileLinkPathArgumentForTarget({
+          targetId: openTarget.id,
+          path: resolvedPath,
+          line: target.line,
+          column: target.column,
+        });
+        const resolvedCommand = resolveCommandMenuOpenInCommand(openTarget, pathArgument);
+        if (resolvedCommand === null) {
+          continue;
+        }
+        if (launchDetachedCommand(resolvedCommand.command, resolvedCommand.args)) {
+          return true;
+        }
+      }
+      if (process.platform === 'darwin') {
+        return launchDetachedCommand('open', [resolvedPath]);
+      }
+      if (process.platform === 'win32') {
+        return launchDetachedCommand('cmd', ['/c', 'start', '', resolvedPath]);
+      }
+      return launchDetachedCommand('xdg-open', [resolvedPath]);
+    };
+    const handleConversationCommandClick = (input: {
+      event: {
+        col: number;
+        row: number;
+      };
+      layout: {
+        paneRows: number;
+        rightCols: number;
+        rightStartCol: number;
+      };
+      snapshotForInput: {
+        lines?: readonly string[];
+      } | null;
+    }): boolean => {
+      const lines = input.snapshotForInput?.lines;
+      if (lines === undefined) {
+        return false;
+      }
+      const sessionCol = Math.max(
+        1,
+        Math.min(input.layout.rightCols, input.event.col - input.layout.rightStartCol + 1),
+      );
+      const sessionRow = Math.max(1, Math.min(input.layout.paneRows, input.event.row));
+      const linkTarget = resolveTerminalLinkTargetAtCell({
+        lines,
+        row: sessionRow,
+        col: sessionCol,
+      });
+      if (linkTarget === null) {
+        return false;
+      }
+      if (linkTarget.kind === 'url') {
+        const opened = openUrlInBrowser(linkTarget.url, linkOpenConfig.browserCommand);
+        setCommandNotice(opened ? 'opened url in browser' : `open url: ${linkTarget.url}`);
+        return true;
+      }
+      const opened = openFileLink(linkTarget);
+      const locationSuffix =
+        linkTarget.line === null
+          ? ''
+          : linkTarget.column === null
+            ? `:${String(linkTarget.line)}`
+            : `:${String(linkTarget.line)}:${String(linkTarget.column)}`;
+      setCommandNotice(
+        opened ? 'opened file link' : `open file link: ${linkTarget.path}${locationSuffix}`,
+      );
+      return true;
+    };
     const openDirectoryInCommandMenuTarget = (
       target: ResolvedCommandMenuOpenInTarget,
       directoryPath: string,
@@ -2159,21 +2305,7 @@ class CodexLiveMuxRuntimeApplication {
       if (resolved === null) {
         return false;
       }
-      try {
-        const child = spawn(resolved.command, [...resolved.args], {
-          detached: true,
-          stdio: 'ignore',
-          ...(process.platform === 'win32'
-            ? {
-                windowsHide: true,
-              }
-            : {}),
-        });
-        child.unref();
-        return true;
-      } catch {
-        return false;
-      }
+      return launchDetachedCommand(resolved.command, resolved.args);
     };
     const persistReleaseNotesState = (nextState: ReleaseNotesState): void => {
       try {
@@ -3991,7 +4123,7 @@ class CodexLiveMuxRuntimeApplication {
           keywords: ['github', 'repository', 'repo', 'open'],
           detail: repositoryUrl,
           run: () => {
-            const opened = openUrlInBrowser(repositoryUrl);
+            const opened = openUrlInBrowser(repositoryUrl, linkOpenConfig.browserCommand);
             setCommandNotice(
               opened
                 ? 'opened github repository in browser'
@@ -4024,7 +4156,7 @@ class CodexLiveMuxRuntimeApplication {
                 setCommandNotice('github my open pull requests url unavailable');
                 return;
               }
-              const opened = openUrlInBrowser(myPrsUrl);
+              const opened = openUrlInBrowser(myPrsUrl, linkOpenConfig.browserCommand);
               setCommandNotice(
                 opened
                   ? 'opened my open pull requests in browser'
@@ -4099,7 +4231,7 @@ class CodexLiveMuxRuntimeApplication {
                   setCommandNotice('no open pull request for tracked branch');
                   return;
                 }
-                const opened = openUrlInBrowser(state.openPrUrl);
+                const opened = openUrlInBrowser(state.openPrUrl, linkOpenConfig.browserCommand);
                 setCommandNotice(
                   opened
                     ? 'opened pull request in browser'
@@ -4153,7 +4285,7 @@ class CodexLiveMuxRuntimeApplication {
                   projectPr: 'ok',
                 });
                 refreshCommandMenuGitHubProjectPrState(directoryId);
-                const opened = openUrlInBrowser(prUrl);
+                const opened = openUrlInBrowser(prUrl, linkOpenConfig.browserCommand);
                 setCommandNotice(
                   opened ? 'opened pull request in browser' : `open pull request: ${prUrl}`,
                 );
@@ -4589,7 +4721,7 @@ class CodexLiveMuxRuntimeApplication {
         },
         onOpenLatest: (prompt) => {
           const releaseUrl = prompt.releases[0]?.url ?? prompt.releasesPageUrl;
-          const opened = openUrlInBrowser(releaseUrl);
+          const opened = openUrlInBrowser(releaseUrl, linkOpenConfig.browserCommand);
           setCommandNotice(
             opened ? 'opened release notes in browser' : `open release notes: ${releaseUrl}`,
           );
@@ -4800,8 +4932,9 @@ class CodexLiveMuxRuntimeApplication {
           return (
             conversationManager
               .orderedIds()
-              .find((sessionId) => conversationManager.directoryIdOf(sessionId) === targetDirectoryId) ??
-            null
+              .find(
+                (sessionId) => conversationManager.directoryIdOf(sessionId) === targetDirectoryId,
+              ) ?? null
           );
         },
         conversationsHas: (sessionId) => conversationManager.has(sessionId),
@@ -5306,7 +5439,24 @@ class CodexLiveMuxRuntimeApplication {
       },
       noteGitActivity,
       parseMuxInputChunk,
-      routeInputTokensForConversation,
+      routeInputTokensForConversation: (input) =>
+        routeInputTokensForConversation({
+          ...input,
+          hasMetaModifier: commandModifierPressed,
+          handleMetaClick: ({ event, layout, snapshotForInput }) => {
+            if (!leftMouseButtonPress(event.code, event.final)) {
+              return false;
+            }
+            return handleConversationCommandClick({
+              event: {
+                col: event.col,
+                row: event.row,
+              },
+              layout,
+              snapshotForInput,
+            });
+          },
+        }),
       classifyPaneAt,
       normalizeMuxKeyboardInputForPty,
     });

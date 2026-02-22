@@ -361,6 +361,67 @@ test('gateway runtime probe and call command paths work with a stream-compatible
   );
 });
 
+test('gateway runtime list session parser normalizes malformed optional fields', async () => {
+  const { service } = createRuntimeHarness();
+  const internal = internals(service);
+  const server = await withMockStreamServer(() => ({
+    sessions: [
+      {
+        sessionId: 'session-malformed',
+        live: 'yes',
+        status: 42,
+        statusModel: {
+          phase: 42,
+          detailText: 42,
+        },
+        processId: 'not-a-number',
+        controller: {
+          id: 42,
+        },
+      },
+      {
+        sessionId: 'session-valid',
+        live: true,
+        status: 'running',
+        statusModel: {
+          phase: 'working',
+          detailText: 'streaming',
+        },
+        processId: 321,
+        controller: {
+          controllerLabel: 'human',
+        },
+      },
+    ],
+  }));
+  try {
+    const result = await internal.listGatewaySessionsForEndpoint(server.host, server.port, null);
+    assert.equal(result.connected, true);
+    assert.equal(result.totalSessions, 2);
+    assert.equal(result.liveSessions, 1);
+    assert.deepEqual(result.sessions[0], {
+      sessionId: 'session-malformed',
+      live: false,
+      status: null,
+      phase: null,
+      detail: null,
+      processId: null,
+      controller: null,
+    });
+    assert.deepEqual(result.sessions[1], {
+      sessionId: 'session-valid',
+      live: true,
+      status: 'running',
+      phase: 'working',
+      detail: 'streaming',
+      processId: 321,
+      controller: 'human',
+    });
+  } finally {
+    await server.close();
+  }
+});
+
 test('gateway runtime run dispatcher covers status/list/start/stop/restart/run/call/gc flows', async () => {
   const harness = createRuntimeHarness();
   const { service, stdout, stderr } = harness;

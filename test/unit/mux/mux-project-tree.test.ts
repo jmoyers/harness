@@ -5,7 +5,10 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { runInNewContext } from 'node:vm';
 import { test } from 'bun:test';
-import { buildProjectTreeLines, type ProjectTreeDirectoryEntry } from '../../../src/mux/project-tree.ts';
+import {
+  buildProjectTreeLines,
+  type ProjectTreeDirectoryEntry,
+} from '../../../src/mux/project-tree.ts';
 
 void test('project tree builds sorted hierarchy from git ls-files output', () => {
   let capturedArgs: readonly string[] | null = null;

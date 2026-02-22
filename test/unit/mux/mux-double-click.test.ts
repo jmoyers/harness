@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { detectConversationDoubleClick, detectEntityDoubleClick } from '../../../src/mux/double-click.ts';
+import {
+  detectConversationDoubleClick,
+  detectEntityDoubleClick,
+} from '../../../src/mux/double-click.ts';
 
 void test('entity double click detector requires same entity id within window', () => {
   const first = detectEntityDoubleClick(null, 'task-a', 1_000, 350);

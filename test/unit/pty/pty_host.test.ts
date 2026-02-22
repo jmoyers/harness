@@ -332,24 +332,27 @@ void serialPtyTest('pty-host close command exits default interactive shell sessi
   assert.notEqual(exit.code, null);
 });
 
-void serialPtyTest('pty-host resolves helper path from preferred defaults and explicit overrides', () => {
-  const resolvedDefault = resolvePtyHelperPath(
-    undefined,
-    ['/missing/helper', '/preferred/helper'],
-    (path) => path === '/preferred/helper',
-  );
-  assert.equal(resolvedDefault, '/preferred/helper');
+void serialPtyTest(
+  'pty-host resolves helper path from preferred defaults and explicit overrides',
+  () => {
+    const resolvedDefault = resolvePtyHelperPath(
+      undefined,
+      ['/missing/helper', '/preferred/helper'],
+      (path) => path === '/preferred/helper',
+    );
+    assert.equal(resolvedDefault, '/preferred/helper');
 
-  const resolvedFallback = resolvePtyHelperPath(
-    undefined,
-    ['/fallback/helper', '/missing/helper'],
-    () => false,
-  );
-  assert.equal(resolvedFallback, '/fallback/helper');
+    const resolvedFallback = resolvePtyHelperPath(
+      undefined,
+      ['/fallback/helper', '/missing/helper'],
+      () => false,
+    );
+    assert.equal(resolvedFallback, '/fallback/helper');
 
-  const resolvedExplicit = resolvePtyHelperPath('/explicit/helper', ['/unused'], () => false);
-  assert.equal(resolvedExplicit, '/explicit/helper');
-});
+    const resolvedExplicit = resolvePtyHelperPath('/explicit/helper', ['/unused'], () => false);
+    assert.equal(resolvedExplicit, '/explicit/helper');
+  },
+);
 
 void serialPtyTest('pty-host helper path resolver rejects empty candidate lists', () => {
   assert.throws(

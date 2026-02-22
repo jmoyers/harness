@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import { test } from 'bun:test';
 import fc from 'fast-check';
 import { TaskManager } from '../../../src/domain/tasks.ts';
-import { detectMuxGlobalShortcut, resolveMuxShortcutBindings } from '../../../src/mux/input-shortcuts.ts';
+import {
+  detectMuxGlobalShortcut,
+  resolveMuxShortcutBindings,
+} from '../../../src/mux/input-shortcuts.ts';
 import {
   buildLeftNavSelectorEntries,
   buildSelectorIndexEntries,

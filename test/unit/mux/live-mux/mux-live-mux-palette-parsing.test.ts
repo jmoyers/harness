@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { extractOscColorReplies, parseOscRgbHex } from '../../../../src/mux/live-mux/palette-parsing.ts';
+import {
+  extractOscColorReplies,
+  parseOscRgbHex,
+} from '../../../../src/mux/live-mux/palette-parsing.ts';
 
 void test('parseOscRgbHex validates and normalizes rgb payloads', () => {
   assert.equal(parseOscRgbHex('nope'), null);

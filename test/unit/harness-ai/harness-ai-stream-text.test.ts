@@ -6,7 +6,11 @@ import type {
   StreamTextPart,
   ToolSet,
 } from '../../../packages/harness-ai/src/types.ts';
-import { collectStream, createAnthropicResponse, createByteStream } from '../../support/harness-ai.ts';
+import {
+  collectStream,
+  createAnthropicResponse,
+  createByteStream,
+} from '../../support/harness-ai.ts';
 
 function createQueuedModel(responses: Array<Response | (() => Response | Promise<Response>)>): {
   readonly model: HarnessAnthropicModel;

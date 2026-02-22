@@ -60,10 +60,16 @@ export interface HarnessMuxOpenInTargetOverrideConfig {
   readonly launchCommand?: readonly string[];
 }
 
+interface HarnessMuxOpenInLinkConfig {
+  readonly browserCommand: readonly string[] | null;
+  readonly fileCommand: readonly string[] | null;
+}
+
 interface HarnessMuxOpenInConfig {
   readonly targets: Readonly<
     Partial<Record<HarnessMuxOpenInTargetId, HarnessMuxOpenInTargetOverrideConfig>>
   >;
+  readonly links: HarnessMuxOpenInLinkConfig;
 }
 
 interface HarnessMuxConfig {
@@ -298,6 +304,10 @@ export const DEFAULT_HARNESS_CONFIG: HarnessConfig = {
     },
     openIn: {
       targets: {},
+      links: {
+        browserCommand: null,
+        fileCommand: null,
+      },
     },
   },
   github: {
@@ -740,27 +750,63 @@ function normalizeMuxOpenInTargetOverride(
   };
 }
 
+function normalizeOpenInLinkCommand(
+  input: unknown,
+  fallback: readonly string[] | null,
+): readonly string[] | null {
+  if (input === null) {
+    return null;
+  }
+  if (Array.isArray(input)) {
+    const normalized = input
+      .flatMap((entry) => (typeof entry === 'string' ? [entry.trim()] : []))
+      .filter((entry) => entry.length > 0);
+    return normalized.length > 0 ? normalized : null;
+  }
+  if (typeof input === 'string' && input.trim().length > 0) {
+    return [input.trim()];
+  }
+  return fallback;
+}
+
+function normalizeMuxOpenInLinksConfig(input: unknown): HarnessMuxOpenInLinkConfig {
+  const record = asRecord(input);
+  if (record === null) {
+    return DEFAULT_HARNESS_CONFIG.mux.openIn.links;
+  }
+  return {
+    browserCommand: normalizeOpenInLinkCommand(
+      record['browserCommand'],
+      DEFAULT_HARNESS_CONFIG.mux.openIn.links.browserCommand,
+    ),
+    fileCommand: normalizeOpenInLinkCommand(
+      record['fileCommand'],
+      DEFAULT_HARNESS_CONFIG.mux.openIn.links.fileCommand,
+    ),
+  };
+}
+
 function normalizeMuxOpenInConfig(input: unknown): HarnessMuxOpenInConfig {
   const record = asRecord(input);
   if (record === null) {
     return DEFAULT_HARNESS_CONFIG.mux.openIn;
   }
   const targetsRecord = asRecord(record['targets']);
-  if (targetsRecord === null) {
-    return DEFAULT_HARNESS_CONFIG.mux.openIn;
-  }
   const normalizedTargets: Partial<
     Record<HarnessMuxOpenInTargetId, HarnessMuxOpenInTargetOverrideConfig>
   > = {};
-  for (const targetId of HARNESS_MUX_OPEN_IN_TARGET_IDS) {
-    const raw = targetsRecord[targetId];
-    const normalized = normalizeMuxOpenInTargetOverride(raw);
-    if (normalized !== null) {
-      normalizedTargets[targetId] = normalized;
+  if (targetsRecord !== null) {
+    for (const targetId of HARNESS_MUX_OPEN_IN_TARGET_IDS) {
+      const raw = targetsRecord[targetId];
+      const normalized = normalizeMuxOpenInTargetOverride(raw);
+      if (normalized !== null) {
+        normalizedTargets[targetId] = normalized;
+      }
     }
   }
   return {
     targets: normalizedTargets,
+    links: normalizeMuxOpenInLinksConfig(record['links']),
   };
 }
 

@@ -806,6 +806,120 @@ void test('routeInputTokensForConversation forwards keyboard input and accumulat
   assert.equal(routedProject.forwardToSession.length, 0);
 });
 
+void test('routeInputTokensForConversation consumes command-click mouse events through meta click handler', () => {
+  const calls: string[] = [];
+  const routed = routeInputTokensForConversation({
+    tokens: [
+      {
+        kind: 'mouse',
+        event: {
+          col: 12,
+          row: 5,
+          code: 0b0000_1000,
+          final: 'M',
+        },
+      },
+      {
+        kind: 'mouse',
+        event: {
+          col: 12,
+          row: 5,
+          code: 0,
+          final: 'M',
+        },
+      },
+    ],
+    mainPaneMode: 'conversation',
+    normalizeMuxKeyboardInputForPty: (input) => input,
+    classifyPaneAt: () => 'right',
+    wheelDeltaRowsFromCode: () => null,
+    hasShiftModifier: () => false,
+    hasMetaModifier: (code) => (code & 0b0000_1000) !== 0,
+    handleMetaClick: ({ event }) => {
+      calls.push(`meta-click:${event.col}:${event.row}`);
+      return true;
+    },
+    layout: {
+      paneRows: 20,
+      rightCols: 40,
+      rightStartCol: 10,
+    },
+    snapshotForInput: {
+      activeScreen: 'primary',
+      viewport: {
+        top: 0,
+        totalRows: 20,
+        followOutput: true,
+      },
+    },
+    appMouseTrackingEnabled: false,
+  });
+  assert.deepEqual(calls, ['meta-click:12:5']);
+  assert.equal(routed.mainPaneScrollRows, 0);
+  assert.equal(routed.forwardToSession.length, 0);
+});
+
+void test('routeInputTokensForConversation covers meta-click button guard branches', () => {
+  const calls: string[] = [];
+  const routed = routeInputTokensForConversation({
+    tokens: [
+      {
+        kind: 'mouse',
+        event: {
+          col: 12,
+          row: 5,
+          code: 0b0000_1000,
+          final: 'M',
+        },
+      },
+      {
+        kind: 'mouse',
+        event: {
+          col: 12,
+          row: 5,
+          code: 0b0100_1000,
+          final: 'M',
+        },
+      },
+      {
+        kind: 'mouse',
+        event: {
+          col: 12,
+          row: 5,
+          code: 0b0000_1000,
+          final: 'm',
+        },
+      },
+    ],
+    mainPaneMode: 'conversation',
+    normalizeMuxKeyboardInputForPty: (input) => input,
+    classifyPaneAt: () => 'right',
+    wheelDeltaRowsFromCode: () => null,
+    hasShiftModifier: () => false,
+    handleMetaClick: ({ event }) => {
+      calls.push(`meta-click:${event.code}:${event.final}`);
+      return true;
+    },
+    layout: {
+      paneRows: 20,
+      rightCols: 40,
+      rightStartCol: 10,
+    },
+    snapshotForInput: {
+      activeScreen: 'primary',
+      viewport: {
+        top: 0,
+        totalRows: 20,
+        followOutput: true,
+      },
+    },
+    appMouseTrackingEnabled: false,
+  });
+  assert.deepEqual(calls, ['meta-click:8:M']);
+  assert.equal(routed.mainPaneScrollRows, 0);
+  assert.equal(routed.forwardToSession.length, 0);
+});
+
 void test('routeInputTokensForConversation forwards right-pane mouse input when app mouse mode is active', () => {
   const routed = routeInputTokensForConversation({
     tokens: [

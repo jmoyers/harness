@@ -2450,7 +2450,10 @@ void test('workspace rail model keeps github project row hidden until explicitly
     },
     24,
   );
-  assert.equal(rows.some((row) => row.kind === 'github-header' && row.directoryKey === 'dir'), false);
+  assert.equal(
+    rows.some((row) => row.kind === 'github-header' && row.directoryKey === 'dir'),
+    false,
+  );
 });
 
 void test('workspace rail model github row covers loading, error, missing review, and no-pr detail states', () => {
@@ -2575,7 +2578,8 @@ void test('workspace rail model github row covers loading, error, missing review
   );
   assert.equal(
     noPr.some(
-      (row) => row.kind === 'github-detail' && row.text.includes('no pull request for tracked branch'),
+      (row) =>
+        row.kind === 'github-detail' && row.text.includes('no pull request for tracked branch'),
     ),
     true,
   );
@@ -2650,7 +2654,16 @@ void test('workspace rail model github summary labels draft, merged, and closed 
   const draft = buildRows('open', true);
   const merged = buildRows('merged', false);
   const closed = buildRows('closed', false);
-  assert.equal(draft.some((row) => row.text.includes('(#55 draft)')), true);
-  assert.equal(merged.some((row) => row.text.includes('(#55 merged)')), true);
-  assert.equal(closed.some((row) => row.text.includes('(#55 closed)')), true);
+  assert.equal(
+    draft.some((row) => row.text.includes('(#55 draft)')),
+    true,
+  );
+  assert.equal(
+    merged.some((row) => row.text.includes('(#55 merged)')),
+    true,
+  );
+  assert.equal(
+    closed.some((row) => row.text.includes('(#55 closed)')),
+    true,
+  );
 });

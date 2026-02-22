@@ -61,12 +61,7 @@ test('auth runtime parser validates command shapes and options', () => {
   assert.equal(service.parseCommand([]).type, 'status');
   assert.equal(service.parseCommand(['status']).type, 'status');
   assert.equal(service.parseCommand(['login', 'github']).type, 'login');
-  const linearWithCallbackPort = service.parseCommand([
-    'login',
-    'linear',
-    '--callback-port',
-    '0',
-  ]);
+  const linearWithCallbackPort = service.parseCommand(['login', 'linear', '--callback-port', '0']);
   assert.equal(linearWithCallbackPort.type, 'login');
   if (linearWithCallbackPort.type !== 'login') {
     throw new Error('expected login command');
@@ -255,48 +250,39 @@ test('auth runtime helper internals cover scope parsing, token timing, and URL r
   );
   assert.equal(callInternal<string>('resolveLinearTokenUrl'), 'https://override.linear/token');
   assert.equal(
-    callInternal<number>(
-      'resolveLinearOauthCallbackPort',
-      {
-        type: 'login',
-        provider: 'linear',
-        noBrowser: true,
-        timeoutMs: 1,
-        scopes: null,
-        callbackPort: 9321,
-      },
-    ),
+    callInternal<number>('resolveLinearOauthCallbackPort', {
+      type: 'login',
+      provider: 'linear',
+      noBrowser: true,
+      timeoutMs: 1,
+      scopes: null,
+      callbackPort: 9321,
+    }),
     9321,
   );
   env.HARNESS_LINEAR_OAUTH_CALLBACK_PORT = '3010';
   assert.equal(
-    callInternal<number>(
-      'resolveLinearOauthCallbackPort',
-      {
+    callInternal<number>('resolveLinearOauthCallbackPort', {
+      type: 'login',
+      provider: 'linear',
+      noBrowser: true,
+      timeoutMs: 1,
+      scopes: null,
+      callbackPort: null,
+    }),
+    3010,
+  );
+  env.HARNESS_LINEAR_OAUTH_CALLBACK_PORT = 'bad-port';
+  assert.throws(
+    () =>
+      callInternal<number>('resolveLinearOauthCallbackPort', {
         type: 'login',
         provider: 'linear',
         noBrowser: true,
         timeoutMs: 1,
         scopes: null,
         callbackPort: null,
-      },
-    ),
-    3010,
-  );
-  env.HARNESS_LINEAR_OAUTH_CALLBACK_PORT = 'bad-port';
-  assert.throws(
-    () =>
-      callInternal<number>(
-        'resolveLinearOauthCallbackPort',
-        {
-          type: 'login',
-          provider: 'linear',
-          noBrowser: true,
-          timeoutMs: 1,
-          scopes: null,
-          callbackPort: null,
-        },
-      ),
+      }),
     /invalid HARNESS_LINEAR_OAUTH_CALLBACK_PORT value/u,
   );
   delete env.HARNESS_LINEAR_OAUTH_CALLBACK_PORT;
@@ -694,10 +680,7 @@ test('auth runtime linear oauth callback helper falls back to a dynamic port whe
     assert.equal(callbackResponse.status, 200);
     const callbackResult = await callbackPromise;
     assert.equal(callbackResult.code, 'dynamic-port-code');
-    assert.equal(
-      stdout.join('').includes('retrying with dynamic port'),
-      true,
-    );
+    assert.equal(stdout.join('').includes('retrying with dynamic port'), true);
   } finally {
     await new Promise<void>((resolveClose) => occupiedServer.close(() => resolveClose()));
   }

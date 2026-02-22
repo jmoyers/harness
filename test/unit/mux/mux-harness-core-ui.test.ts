@@ -595,7 +595,10 @@ void test('buildGitHubReviewPaneSnapshot covers status and lifecycle edge branch
   const workspace = mkdtempSync(join(tmpdir(), 'harness-core-ui-project-github-pane-edges-'));
   try {
     const notLoaded = buildGitHubReviewPaneSnapshot('dir-gh', workspace, null);
-    assert.equal(notLoaded.lines.some((line) => line.includes('status not loaded')), true);
+    assert.equal(
+      notLoaded.lines.some((line) => line.includes('status not loaded')),
+      true,
+    );
     assert.equal(
       notLoaded.lines.some((line) => line.includes('select refresh review to load latest state')),
       true,
@@ -624,7 +627,10 @@ void test('buildGitHubReviewPaneSnapshot covers status and lifecycle edge branch
       resolvedThreads: [],
       errorMessage: '  bad   gateway  ',
     });
-    assert.equal(errored.lines.some((line) => line.includes('status error bad gateway')), true);
+    assert.equal(
+      errored.lines.some((line) => line.includes('status error bad gateway')),
+      true,
+    );
 
     const noPr = buildGitHubReviewPaneSnapshot('dir-gh', workspace, {
       status: 'ready',
@@ -635,7 +641,10 @@ void test('buildGitHubReviewPaneSnapshot covers status and lifecycle edge branch
       resolvedThreads: [],
       errorMessage: null,
     });
-    assert.equal(noPr.lines.some((line) => line.includes('pr none for tracked branch')), true);
+    assert.equal(
+      noPr.lines.some((line) => line.includes('pr none for tracked branch')),
+      true,
+    );
 
     const merged = buildGitHubReviewPaneSnapshot('dir-gh', workspace, {
       status: 'ready',
@@ -659,11 +668,26 @@ void test('buildGitHubReviewPaneSnapshot covers status and lifecycle edge branch
       resolvedThreads: [],
       errorMessage: null,
     });
-    assert.equal(merged.lines.some((line) => line.includes('pr #10 merged Merged PR')), true);
-    assert.equal(merged.lines.some((line) => line.includes('merged 2026-02-21T10:30:00.000Z')), true);
-    assert.equal(merged.lines.some((line) => line.includes('closed 2026-02-21T10:31:00.000Z')), true);
-    assert.equal(merged.lines.some((line) => line.includes('open threads (0)')), true);
-    assert.equal(merged.lines.some((line) => line.includes('  (none)')), true);
+    assert.equal(
+      merged.lines.some((line) => line.includes('pr #10 merged Merged PR')),
+      true,
+    );
+    assert.equal(
+      merged.lines.some((line) => line.includes('merged 2026-02-21T10:30:00.000Z')),
+      true,
+    );
+    assert.equal(
+      merged.lines.some((line) => line.includes('closed 2026-02-21T10:31:00.000Z')),
+      true,
+    );
+    assert.equal(
+      merged.lines.some((line) => line.includes('open threads (0)')),
+      true,
+    );
+    assert.equal(
+      merged.lines.some((line) => line.includes('  (none)')),
+      true,
+    );
 
     const closedWithEmptyComment = buildGitHubReviewPaneSnapshot('dir-gh', workspace, {
       status: 'ready',
@@ -717,15 +741,23 @@ void test('buildGitHubReviewPaneSnapshot covers status and lifecycle edge branch
       true,
     );
     assert.equal(
-      closedWithEmptyComment.lines.some((line) => line.includes('[thread open-no-comments] open, outdated')),
+      closedWithEmptyComment.lines.some((line) =>
+        line.includes('[thread open-no-comments] open, outdated'),
+      ),
       true,
     );
-    assert.equal(closedWithEmptyComment.lines.some((line) => line.includes('  (no comments)')), true);
+    assert.equal(
+      closedWithEmptyComment.lines.some((line) => line.includes('  (no comments)')),
+      true,
+    );
     assert.equal(
       closedWithEmptyComment.lines.some((line) => line.includes('resolved by @reviewer')),
       true,
     );
-    assert.equal(closedWithEmptyComment.lines.some((line) => line.includes('(empty)')), true);
+    assert.equal(
+      closedWithEmptyComment.lines.some((line) => line.includes('(empty)')),
+      true,
+    );
 
     const draft = buildGitHubReviewPaneSnapshot('dir-gh', workspace, {
       status: 'ready',
@@ -749,7 +781,10 @@ void test('buildGitHubReviewPaneSnapshot covers status and lifecycle edge branch
       resolvedThreads: [],
       errorMessage: null,
     });
-    assert.equal(draft.lines.some((line) => line.includes('pr #12 draft Draft PR')), true);
+    assert.equal(
+      draft.lines.some((line) => line.includes('pr #12 draft Draft PR')),
+      true,
+    );
   } finally {
     rmSync(workspace, { recursive: true, force: true });
   }

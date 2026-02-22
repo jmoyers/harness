@@ -53,47 +53,63 @@ import {
 
 const serialCliTest = createConcurrentCliTest();
 
-void serialCliTest('harness profile start fails when target session gateway is not running', async () => {
-  const workspace = createWorkspace();
-  const sessionName = 'profile-start-missing-gateway';
-  try {
-    const startResult = await runHarness(workspace, ['--session', sessionName, 'profile', 'start']);
-    assert.equal(startResult.code, 1);
-    assert.equal(
-      startResult.stderr.includes(
-        'profile start requires the target session gateway to be running',
-      ),
-      true,
-    );
-  } finally {
-    rmSync(workspace, { recursive: true, force: true });
-  }
-});
+void serialCliTest(
+  'harness profile start fails when target session gateway is not running',
+  async () => {
+    const workspace = createWorkspace();
+    const sessionName = 'profile-start-missing-gateway';
+    try {
+      const startResult = await runHarness(workspace, [
+        '--session',
+        sessionName,
+        'profile',
+        'start',
+      ]);
+      assert.equal(startResult.code, 1);
+      assert.equal(
+        startResult.stderr.includes(
+          'profile start requires the target session gateway to be running',
+        ),
+        true,
+      );
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  },
+);
 
-void serialCliTest('harness profile start fails when gateway inspector endpoint is unavailable', async () => {
-  const workspace = createWorkspace();
-  const sessionName = 'profile-start-no-inspect';
-  const gatewayPort = await reservePort();
-  try {
-    const gatewayStart = await runHarness(workspace, [
-      '--session',
-      sessionName,
-      'gateway',
-      'start',
-      '--port',
-      String(gatewayPort),
-    ]);
-    assert.equal(gatewayStart.code, 0);
-    const startResult = await runHarness(workspace, ['--session', sessionName, 'profile', 'start']);
-    assert.equal(startResult.code, 1);
-    assert.equal(startResult.stderr.includes('gateway inspector endpoint unavailable'), true);
-  } finally {
-    void runHarness(workspace, ['--session', sessionName, 'gateway', 'stop', '--force']).catch(
-      () => undefined,
-    );
-    rmSync(workspace, { recursive: true, force: true });
-  }
-});
+void serialCliTest(
+  'harness profile start fails when gateway inspector endpoint is unavailable',
+  async () => {
+    const workspace = createWorkspace();
+    const sessionName = 'profile-start-no-inspect';
+    const gatewayPort = await reservePort();
+    try {
+      const gatewayStart = await runHarness(workspace, [
+        '--session',
+        sessionName,
+        'gateway',
+        'start',
+        '--port',
+        String(gatewayPort),
+      ]);
+      assert.equal(gatewayStart.code, 0);
+      const startResult = await runHarness(workspace, [
+        '--session',
+        sessionName,
+        'profile',
+        'start',
+      ]);
+      assert.equal(startResult.code, 1);
+      assert.equal(startResult.stderr.includes('gateway inspector endpoint unavailable'), true);
+    } finally {
+      void runHarness(workspace, ['--session', sessionName, 'gateway', 'stop', '--force']).catch(
+        () => undefined,
+      );
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  },
+);
 
 void serialCliTest('harness profile stop fails when there is no active profile state', async () => {
   const workspace = createWorkspace();
@@ -107,101 +123,117 @@ void serialCliTest('harness profile stop fails when there is no active profile s
   }
 });
 
-void serialCliTest('harness status-timeline start/stop writes and clears active state for the target session', async () => {
-  const workspace = createWorkspace();
-  const sessionName = 'status-timeline-start-stop-a';
-  const statusTimelineStatePath = join(
-    workspaceRuntimeRoot(workspace),
-    `sessions/${sessionName}/active-status-timeline.json`,
-  );
-  const statusTimelineOutputPath = join(
-    workspaceRuntimeRoot(workspace),
-    `status-timelines/${sessionName}/status-timeline.log`,
-  );
-  try {
-    const startResult = await runHarness(workspace, ['--session', sessionName, 'status-timeline']);
-    assert.equal(startResult.code, 0);
-    assert.equal(startResult.stdout.includes('status timeline started'), true);
-    assert.equal(
-      startResult.stdout.includes(`status-timeline-target: ${statusTimelineOutputPath}`),
-      true,
+void serialCliTest(
+  'harness status-timeline start/stop writes and clears active state for the target session',
+  async () => {
+    const workspace = createWorkspace();
+    const sessionName = 'status-timeline-start-stop-a';
+    const statusTimelineStatePath = join(
+      workspaceRuntimeRoot(workspace),
+      `sessions/${sessionName}/active-status-timeline.json`,
     );
-    assert.equal(existsSync(statusTimelineStatePath), true);
-    assert.equal(existsSync(statusTimelineOutputPath), true);
-    assert.equal(readFileSync(statusTimelineOutputPath, 'utf8'), '');
+    const statusTimelineOutputPath = join(
+      workspaceRuntimeRoot(workspace),
+      `status-timelines/${sessionName}/status-timeline.log`,
+    );
+    try {
+      const startResult = await runHarness(workspace, [
+        '--session',
+        sessionName,
+        'status-timeline',
+      ]);
+      assert.equal(startResult.code, 0);
+      assert.equal(startResult.stdout.includes('status timeline started'), true);
+      assert.equal(
+        startResult.stdout.includes(`status-timeline-target: ${statusTimelineOutputPath}`),
+        true,
+      );
+      assert.equal(existsSync(statusTimelineStatePath), true);
+      assert.equal(existsSync(statusTimelineOutputPath), true);
+      assert.equal(readFileSync(statusTimelineOutputPath, 'utf8'), '');
 
-    const stopResult = await runHarness(workspace, [
-      '--session',
-      sessionName,
-      'status-timeline',
-      'stop',
-    ]);
-    assert.equal(stopResult.code, 0);
-    assert.equal(
-      stopResult.stdout.includes(`status timeline stopped: ${statusTimelineOutputPath}`),
-      true,
-    );
-    assert.equal(existsSync(statusTimelineStatePath), false);
-  } finally {
-    rmSync(workspace, { recursive: true, force: true });
-  }
-});
+      const stopResult = await runHarness(workspace, [
+        '--session',
+        sessionName,
+        'status-timeline',
+        'stop',
+      ]);
+      assert.equal(stopResult.code, 0);
+      assert.equal(
+        stopResult.stdout.includes(`status timeline stopped: ${statusTimelineOutputPath}`),
+        true,
+      );
+      assert.equal(existsSync(statusTimelineStatePath), false);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  },
+);
 
-void serialCliTest('harness status-timeline start supports custom output path and rejects duplicate active runs', async () => {
-  const workspace = createWorkspace();
-  const sessionName = 'status-timeline-custom-output-a';
-  const customOutputPath = join(workspace, 'custom', 'status.log');
-  try {
-    const startResult = await runHarness(workspace, [
-      '--session',
-      sessionName,
-      'status-timeline',
-      'start',
-      '--output-path',
-      './custom/status.log',
-    ]);
-    assert.equal(startResult.code, 0);
-    assert.equal(startResult.stdout.includes(`status-timeline-target: ${customOutputPath}`), true);
-    assert.equal(existsSync(customOutputPath), true);
+void serialCliTest(
+  'harness status-timeline start supports custom output path and rejects duplicate active runs',
+  async () => {
+    const workspace = createWorkspace();
+    const sessionName = 'status-timeline-custom-output-a';
+    const customOutputPath = join(workspace, 'custom', 'status.log');
+    try {
+      const startResult = await runHarness(workspace, [
+        '--session',
+        sessionName,
+        'status-timeline',
+        'start',
+        '--output-path',
+        './custom/status.log',
+      ]);
+      assert.equal(startResult.code, 0);
+      assert.equal(
+        startResult.stdout.includes(`status-timeline-target: ${customOutputPath}`),
+        true,
+      );
+      assert.equal(existsSync(customOutputPath), true);
 
-    const duplicateStartResult = await runHarness(workspace, [
-      '--session',
-      sessionName,
-      'status-timeline',
-      'start',
-    ]);
-    assert.equal(duplicateStartResult.code, 1);
-    assert.equal(
-      duplicateStartResult.stderr.includes('status timeline already running; stop it first'),
-      true,
-    );
-  } finally {
-    void runHarness(workspace, ['--session', sessionName, 'status-timeline', 'stop']).catch(
-      () => undefined,
-    );
-    rmSync(workspace, { recursive: true, force: true });
-  }
-});
+      const duplicateStartResult = await runHarness(workspace, [
+        '--session',
+        sessionName,
+        'status-timeline',
+        'start',
+      ]);
+      assert.equal(duplicateStartResult.code, 1);
+      assert.equal(
+        duplicateStartResult.stderr.includes('status timeline already running; stop it first'),
+        true,
+      );
+    } finally {
+      void runHarness(workspace, ['--session', sessionName, 'status-timeline', 'stop']).catch(
+        () => undefined,
+      );
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  },
+);
 
-void serialCliTest('harness status-timeline stop fails when there is no active status timeline state', async () => {
-  const workspace = createWorkspace();
-  const sessionName = 'status-timeline-stop-missing';
-  try {
-    const stopResult = await runHarness(workspace, [
-      '--session',
-      sessionName,
-      'status-timeline',
-      'stop',
-    ]);
-    assert.equal(stopResult.code, 1);
-    assert.equal(
-      stopResult.stderr.includes('no active status timeline run for this session'),
-      true,
-    );
-  } finally {
-    rmSync(workspace, { recursive: true, force: true });
-  }
-});
+void serialCliTest(
+  'harness status-timeline stop fails when there is no active status timeline state',
+  async () => {
+    const workspace = createWorkspace();
+    const sessionName = 'status-timeline-stop-missing';
+    try {
+      const stopResult = await runHarness(workspace, [
+        '--session',
+        sessionName,
+        'status-timeline',
+        'stop',
+      ]);
+      assert.equal(stopResult.code, 1);
+      assert.equal(
+        stopResult.stderr.includes('no active status timeline run for this session'),
+        true,
+      );
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  },
+);
 
 void serialCliTest('harness status-timeline rejects unknown subcommands', async () => {
   const workspace = createWorkspace();
@@ -236,124 +268,133 @@ void serialCliTest('harness status-timeline start rejects unknown options', asyn
   }
 });
 
-void serialCliTest('harness render-trace start/stop writes and clears active state for the target session', async () => {
-  const workspace = createWorkspace();
-  const sessionName = 'render-trace-start-stop-a';
-  const renderTraceStatePath = join(
-    workspaceRuntimeRoot(workspace),
-    `sessions/${sessionName}/active-render-trace.json`,
-  );
-  const renderTraceOutputPath = join(
-    workspaceRuntimeRoot(workspace),
-    `render-traces/${sessionName}/render-trace.log`,
-  );
-  try {
-    const startResult = await runHarness(workspace, [
-      '--session',
-      sessionName,
-      'render-trace',
-      '--conversation-id',
-      'session-1',
-    ]);
-    assert.equal(startResult.code, 0);
-    assert.equal(startResult.stdout.includes('render trace started'), true);
-    assert.equal(
-      startResult.stdout.includes(`render-trace-target: ${renderTraceOutputPath}`),
-      true,
+void serialCliTest(
+  'harness render-trace start/stop writes and clears active state for the target session',
+  async () => {
+    const workspace = createWorkspace();
+    const sessionName = 'render-trace-start-stop-a';
+    const renderTraceStatePath = join(
+      workspaceRuntimeRoot(workspace),
+      `sessions/${sessionName}/active-render-trace.json`,
     );
-    assert.equal(startResult.stdout.includes('render-trace-conversation-id: session-1'), true);
-    assert.equal(existsSync(renderTraceStatePath), true);
-    assert.equal(existsSync(renderTraceOutputPath), true);
-    assert.equal(readFileSync(renderTraceOutputPath, 'utf8'), '');
-
-    const stopResult = await runHarness(workspace, [
-      '--session',
-      sessionName,
-      'render-trace',
-      'stop',
-    ]);
-    assert.equal(stopResult.code, 0);
-    assert.equal(
-      stopResult.stdout.includes(`render trace stopped: ${renderTraceOutputPath}`),
-      true,
+    const renderTraceOutputPath = join(
+      workspaceRuntimeRoot(workspace),
+      `render-traces/${sessionName}/render-trace.log`,
     );
-    assert.equal(existsSync(renderTraceStatePath), false);
-  } finally {
-    rmSync(workspace, { recursive: true, force: true });
-  }
-});
+    try {
+      const startResult = await runHarness(workspace, [
+        '--session',
+        sessionName,
+        'render-trace',
+        '--conversation-id',
+        'session-1',
+      ]);
+      assert.equal(startResult.code, 0);
+      assert.equal(startResult.stdout.includes('render trace started'), true);
+      assert.equal(
+        startResult.stdout.includes(`render-trace-target: ${renderTraceOutputPath}`),
+        true,
+      );
+      assert.equal(startResult.stdout.includes('render-trace-conversation-id: session-1'), true);
+      assert.equal(existsSync(renderTraceStatePath), true);
+      assert.equal(existsSync(renderTraceOutputPath), true);
+      assert.equal(readFileSync(renderTraceOutputPath, 'utf8'), '');
 
-void serialCliTest('harness render-trace rejects duplicate start and validates stop/options', async () => {
-  const workspace = createWorkspace();
-  const sessionName = 'render-trace-validation-a';
-  try {
-    const startResult = await runHarness(workspace, ['--session', sessionName, 'render-trace']);
-    assert.equal(startResult.code, 0);
+      const stopResult = await runHarness(workspace, [
+        '--session',
+        sessionName,
+        'render-trace',
+        'stop',
+      ]);
+      assert.equal(stopResult.code, 0);
+      assert.equal(
+        stopResult.stdout.includes(`render trace stopped: ${renderTraceOutputPath}`),
+        true,
+      );
+      assert.equal(existsSync(renderTraceStatePath), false);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  },
+);
 
-    const duplicateStartResult = await runHarness(workspace, [
-      '--session',
-      sessionName,
-      'render-trace',
-      'start',
-    ]);
-    assert.equal(duplicateStartResult.code, 1);
-    assert.equal(
-      duplicateStartResult.stderr.includes('render trace already running; stop it first'),
-      true,
-    );
+void serialCliTest(
+  'harness render-trace rejects duplicate start and validates stop/options',
+  async () => {
+    const workspace = createWorkspace();
+    const sessionName = 'render-trace-validation-a';
+    try {
+      const startResult = await runHarness(workspace, ['--session', sessionName, 'render-trace']);
+      assert.equal(startResult.code, 0);
 
-    const stopResult = await runHarness(workspace, [
-      '--session',
-      sessionName,
-      'render-trace',
-      'stop',
-      '--bad',
-    ]);
-    assert.equal(stopResult.code, 1);
-    assert.equal(stopResult.stderr.includes('unknown render-trace option: --bad'), true);
-  } finally {
-    void runHarness(workspace, ['--session', sessionName, 'render-trace', 'stop']).catch(
-      () => undefined,
-    );
-    rmSync(workspace, { recursive: true, force: true });
-  }
-});
+      const duplicateStartResult = await runHarness(workspace, [
+        '--session',
+        sessionName,
+        'render-trace',
+        'start',
+      ]);
+      assert.equal(duplicateStartResult.code, 1);
+      assert.equal(
+        duplicateStartResult.stderr.includes('render trace already running; stop it first'),
+        true,
+      );
 
-void serialCliTest('harness render-trace stop and subcommand validation errors are explicit', async () => {
-  const workspace = createWorkspace();
-  const sessionName = 'render-trace-stop-missing';
-  try {
-    const stopResult = await runHarness(workspace, [
-      '--session',
-      sessionName,
-      'render-trace',
-      'stop',
-    ]);
-    assert.equal(stopResult.code, 1);
-    assert.equal(stopResult.stderr.includes('no active render trace run for this session'), true);
+      const stopResult = await runHarness(workspace, [
+        '--session',
+        sessionName,
+        'render-trace',
+        'stop',
+        '--bad',
+      ]);
+      assert.equal(stopResult.code, 1);
+      assert.equal(stopResult.stderr.includes('unknown render-trace option: --bad'), true);
+    } finally {
+      void runHarness(workspace, ['--session', sessionName, 'render-trace', 'stop']).catch(
+        () => undefined,
+      );
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  },
+);
 
-    const badSubcommandResult = await runHarness(workspace, ['render-trace', 'bogus']);
-    assert.equal(badSubcommandResult.code, 1);
-    assert.equal(
-      badSubcommandResult.stderr.includes('unknown render-trace subcommand: bogus'),
-      true,
-    );
+void serialCliTest(
+  'harness render-trace stop and subcommand validation errors are explicit',
+  async () => {
+    const workspace = createWorkspace();
+    const sessionName = 'render-trace-stop-missing';
+    try {
+      const stopResult = await runHarness(workspace, [
+        '--session',
+        sessionName,
+        'render-trace',
+        'stop',
+      ]);
+      assert.equal(stopResult.code, 1);
+      assert.equal(stopResult.stderr.includes('no active render trace run for this session'), true);
 
-    const badOptionResult = await runHarness(workspace, [
-      'render-trace',
-      'start',
-      '--conversation-id',
-      '',
-    ]);
-    assert.equal(badOptionResult.code, 1);
-    assert.equal(
-      badOptionResult.stderr.includes('invalid --conversation-id value: empty string'),
-      true,
-    );
-  } finally {
-    rmSync(workspace, { recursive: true, force: true });
-  }
-});
+      const badSubcommandResult = await runHarness(workspace, ['render-trace', 'bogus']);
+      assert.equal(badSubcommandResult.code, 1);
+      assert.equal(
+        badSubcommandResult.stderr.includes('unknown render-trace subcommand: bogus'),
+        true,
+      );
+
+      const badOptionResult = await runHarness(workspace, [
+        'render-trace',
+        'start',
+        '--conversation-id',
+        '',
+      ]);
+      assert.equal(badOptionResult.code, 1);
+      assert.equal(
+        badOptionResult.stderr.includes('invalid --conversation-id value: empty string'),
+        true,
+      );
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  },
+);
 
 void serialCliTest(
   'named session can run two terminal threads that execute harness animate for throughput load',

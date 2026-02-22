@@ -12,7 +12,10 @@ import {
 } from '../../../src/control-plane/stream-server.ts';
 import { connectControlPlaneStreamClient } from '../../../src/control-plane/stream-client.ts';
 import type { SqliteControlPlaneStore } from '../../../src/store/control-plane-store.ts';
-import { FakeLiveSession, collectEnvelopes } from '../../helpers/control-plane-stream-server-test-helpers.ts';
+import {
+  FakeLiveSession,
+  collectEnvelopes,
+} from '../../helpers/control-plane-stream-server-test-helpers.ts';
 
 void test('resolveTerminalCommandForEnvironment prefers shell then ComSpec then platform fallback', () => {
   assert.equal(

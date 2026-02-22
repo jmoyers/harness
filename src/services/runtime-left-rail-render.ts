@@ -153,7 +153,11 @@ export class RuntimeLeftRailRender<
       tasksSelectionEnabled: this.options.workspace.leftNavSelection.kind === 'tasks',
       showTasksEntry: this.options.showTasksEntry ?? true,
       showGitHubIntegration: this.options.showGitHubIntegration ?? false,
-      visibleGitHubDirectoryIds: this.options.visibleGitHubDirectoryIds,
+      ...(this.options.visibleGitHubDirectoryIds === undefined
+        ? {}
+        : {
+            visibleGitHubDirectoryIds: this.options.visibleGitHubDirectoryIds,
+          }),
       githubReviewByDirectoryId: this.options.githubReviewByDirectoryId ?? new Map(),
       githubSelectionEnabled: this.options.workspace.leftNavSelection.kind === 'github',
       activeGitHubProjectId:

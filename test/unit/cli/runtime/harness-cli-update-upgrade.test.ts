@@ -58,38 +58,41 @@ void concurrentCliTest('harness update runs global latest install command via bu
   }
 });
 
-void concurrentCliTest('harness upgrade aliases harness update and honors HARNESS_UPDATE_PACKAGE override', async () => {
-  const workspace = createWorkspace();
-  const commandDir = join(workspace, 'bin');
-  mkdirSync(commandDir, { recursive: true });
-  const bunArgsPath = join(workspace, 'bun-args.txt');
-  createStubCommand(
-    commandDir,
-    'bun',
-    [
-      'if [ -n "${HARNESS_TEST_BUN_ARGS_PATH:-}" ]; then',
-      '  printf "%s\\n" "$@" > "$HARNESS_TEST_BUN_ARGS_PATH"',
-      'fi',
-      'exit 0',
-    ].join('\n'),
-  );
-  try {
-    const result = await runHarness(workspace, ['upgrade'], {
-      PATH: commandDir,
-      HARNESS_TEST_BUN_ARGS_PATH: bunArgsPath,
-      HARNESS_UPDATE_PACKAGE: '@jmoyers/harness@next',
-    });
-    assert.equal(result.code, 0);
-    assert.equal(result.stdout.includes('updating Harness package: @jmoyers/harness@next'), true);
-    assert.equal(result.stdout.includes('harness update complete: @jmoyers/harness@next'), true);
-    assert.equal(
-      readFileSync(bunArgsPath, 'utf8'),
-      ['add', '-g', '--trust', '@jmoyers/harness@next'].join('\n') + '\n',
+void concurrentCliTest(
+  'harness upgrade aliases harness update and honors HARNESS_UPDATE_PACKAGE override',
+  async () => {
+    const workspace = createWorkspace();
+    const commandDir = join(workspace, 'bin');
+    mkdirSync(commandDir, { recursive: true });
+    const bunArgsPath = join(workspace, 'bun-args.txt');
+    createStubCommand(
+      commandDir,
+      'bun',
+      [
+        'if [ -n "${HARNESS_TEST_BUN_ARGS_PATH:-}" ]; then',
+        '  printf "%s\\n" "$@" > "$HARNESS_TEST_BUN_ARGS_PATH"',
+        'fi',
+        'exit 0',
+      ].join('\n'),
     );
-  } finally {
-    rmSync(workspace, { recursive: true, force: true });
-  }
-});
+    try {
+      const result = await runHarness(workspace, ['upgrade'], {
+        PATH: commandDir,
+        HARNESS_TEST_BUN_ARGS_PATH: bunArgsPath,
+        HARNESS_UPDATE_PACKAGE: '@jmoyers/harness@next',
+      });
+      assert.equal(result.code, 0);
+      assert.equal(result.stdout.includes('updating Harness package: @jmoyers/harness@next'), true);
+      assert.equal(result.stdout.includes('harness update complete: @jmoyers/harness@next'), true);
+      assert.equal(
+        readFileSync(bunArgsPath, 'utf8'),
+        ['add', '-g', '--trust', '@jmoyers/harness@next'].join('\n') + '\n',
+      );
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  },
+);
 
 void concurrentCliTest('harness update rejects unknown options', async () => {
   const workspace = createWorkspace();

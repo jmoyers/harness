@@ -287,7 +287,14 @@ void test('live-mux rail model forwards github review map only when provided', (
     loadingGitSummary: LOADING_GIT_SUMMARY,
   });
   assert.equal(withReview.showGitHubIntegration, true);
-  assert.equal(withReview.visibleGitHubDirectoryKeys?.includes('dir-1'), true);
+  const visibleKeys = withReview.visibleGitHubDirectoryKeys;
+  const hasDirectory =
+    visibleKeys instanceof Set
+      ? visibleKeys.has('dir-1')
+      : Array.isArray(visibleKeys)
+        ? visibleKeys.includes('dir-1')
+        : false;
+  assert.equal(hasDirectory, true);
   assert.equal(withReview.githubReviewByDirectoryKey?.get('dir-1')?.branchName, 'feature/rail');
   assert.equal(withReview.githubSelectionEnabled, true);
   assert.equal(withReview.activeGitHubProjectId, 'dir-1');

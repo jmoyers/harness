@@ -909,7 +909,10 @@ void test('workspace rail row renderer paints github header/detail rows with act
     },
     64,
   );
-  assert.equal(stripAnsi(activeGithubDetailRowAnsi).includes('status loading GitHub review data…'), true);
+  assert.equal(
+    stripAnsi(activeGithubDetailRowAnsi).includes('status loading GitHub review data…'),
+    true,
+  );
   assert.equal(activeGithubDetailRowAnsi.includes('48;5;237m'), true);
 });
 

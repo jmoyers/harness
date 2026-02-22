@@ -22,7 +22,10 @@ import {
   handleSeparatorPointerPress,
 } from '../../../../src/mux/live-mux/pointer-routing.ts';
 import type { LeftNavSelection } from '../../../../src/mux/live-mux/left-nav.ts';
-import type { StreamCommand, StreamObservedEvent } from '../../../../src/control-plane/stream-protocol.ts';
+import type {
+  StreamCommand,
+  StreamObservedEvent,
+} from '../../../../src/control-plane/stream-protocol.ts';
 import { LeftRailPointerHandler } from '../../../../src/services/left-rail-pointer-handler.ts';
 
 interface HandleLeftRailActionClickOptions {

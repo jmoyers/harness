@@ -94,6 +94,25 @@ Test anchors:
 - `test/ui-left-nav-fast-cycle.integration.test.ts`
 - `test/services-runtime-conversation-activation.test.ts`
 
+## Conversation Link Clicks
+
+Behavior fragments:
+
+- Command-click in conversation VTE resolves the token under the pointer as either URL or file-like path.
+- URL targets open through the configured browser command override when set, otherwise platform default browser opener.
+- File targets prefer configured pinned file command override; otherwise they use detected `open in` targets with `zed` priority, then platform default file opener fallback.
+
+Owners:
+
+- `src/mux/live-mux/input-forwarding.ts`
+- `src/mux/live-mux/link-click.ts`
+- `src/mux/runtime-app/codex-live-mux-runtime.ts`
+
+Test anchors:
+
+- `test/mux-live-mux-link-click.test.ts`
+- `test/mux-live-mux-uncovered-small.test.ts`
+
 ## Pane Rendering and Navigation
 
 Behavior fragments:

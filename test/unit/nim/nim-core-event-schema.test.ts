@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { nimEventEnvelopeSchema, parseNimEventEnvelope } from '../../../packages/nim-core/src/events.ts';
+import {
+  nimEventEnvelopeSchema,
+  parseNimEventEnvelope,
+} from '../../../packages/nim-core/src/events.ts';
 
 function buildValidEvent() {
   return {

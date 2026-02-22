@@ -74,9 +74,11 @@ void serialCliTest(
       assert.equal(existsSync(namedRecordPath), false);
       assert.equal(existsSync(namedLogPath), false);
     } finally {
-      void runHarness(workspace, ['--session', sessionName, 'gateway', 'stop', '--force'], env).catch(
-        () => undefined,
-      );
+      void runHarness(
+        workspace,
+        ['--session', sessionName, 'gateway', 'stop', '--force'],
+        env,
+      ).catch(() => undefined);
       void runHarness(workspace, ['gateway', 'stop', '--force'], env).catch(() => undefined);
       rmSync(workspace, { recursive: true, force: true });
     }

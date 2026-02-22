@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'bun:test';
-import { detectMuxGlobalShortcut, resolveMuxShortcutBindings } from '../../../src/mux/input-shortcuts.ts';
+import {
+  detectMuxGlobalShortcut,
+  resolveMuxShortcutBindings,
+} from '../../../src/mux/input-shortcuts.ts';
 import { handleGlobalShortcut } from '../../../src/mux/live-mux/global-shortcut-handlers.ts';
 import {
   GlobalShortcutInput,
