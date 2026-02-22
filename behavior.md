@@ -150,20 +150,20 @@ Test anchors:
 - `test/services-runtime-left-rail-render.test.ts`
 - `test/mux-live-mux-rail-layout.test.ts`
 
-## NIM Pane Runtime
+## nim Pane Runtime
 
 Behavior fragments:
 
-- Left rail includes a persistent top-level `nim` entry that routes to a dedicated NIM pane.
-- NIM pane renders a themed header band, transcript viewport, and pinned bottom composer in the existing main-pane layout.
-- In mux, NIM is hosted as a standalone PTY subprocess (`harness nim`) and is started/stopped with runtime lifecycle.
-- NIM runtime artifacts are session-scoped when mux runs under `--session` (`.harness/sessions/<name>/nim/*`).
-- NIM subprocess state remains active across pane switches during a live mux session.
-- Keyboard semantics in NIM pane are fixed:
+- Left rail includes a persistent top-level `nim` entry that routes to a dedicated nim pane.
+- nim pane renders a themed header band, transcript viewport, and pinned bottom composer in the existing main-pane layout.
+- In mux, nim is hosted as a standalone PTY subprocess (`harness nim`) and is started/stopped with runtime lifecycle.
+- nim runtime artifacts are session-scoped when mux runs under `--session` (`.harness/sessions/<name>/nim/*`).
+- nim subprocess state remains active across pane switches during a live mux session.
+- Keyboard semantics in nim pane are fixed:
 - `Enter`: submit when idle, steer when a run is active.
 - `Tab`: queue a follow-up message.
 - `Esc`: request abort for active run and stay silent when already idle.
-- NIM supports `debug` and `user` output modes.
+- nim supports `debug` and `user` output modes.
 - `debug` shows explicit lifecycle/tool activity timeline rows.
 - `user` suppresses debug timeline noise while preserving user/assistant transcript flow.
 - `/mode` accepts `debug|user` and keeps `seamless` as a compatibility alias mapped to `user`.
