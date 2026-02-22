@@ -220,6 +220,10 @@ async function main(): Promise<number> {
     },
     lifecycleHooks: loadedConfig.config.hooks.lifecycle,
     storageLifecyclePolicy: loadedConfig.config.storage.lifecycle,
+    storageLifecyclePolicyReload: {
+      cwd: invocationDirectory,
+      env: process.env,
+    },
     startSession: (input) => {
       const sessionOptions: Parameters<typeof startCodexLiveSession>[0] = {
         command: options.fixtureCommand,

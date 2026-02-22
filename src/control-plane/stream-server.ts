@@ -104,7 +104,11 @@ import {
   eventIncludesTaskId as filterEventIncludesTaskId,
   matchesObservedFilter as matchesStreamObservedFilter,
 } from './stream-server-observed-filter.ts';
-import type { HarnessLifecycleHooksConfig } from '../config/config-core.ts';
+import {
+  DEFAULT_HARNESS_CONFIG,
+  loadHarnessConfig,
+  type HarnessLifecycleHooksConfig,
+} from '../config/config-core.ts';
 import { LifecycleHooksRuntime } from './lifecycle-hooks.ts';
 import { readGitDirectorySnapshot } from '../mux/live-mux/git-snapshot.ts';
 import type { LiveSessionLike, StartSessionRuntimeInput } from './stream-session-runtime-types.ts';
@@ -324,6 +328,19 @@ interface StartControlPlaneStreamServerOptions {
   threadTitle?: Partial<ThreadTitleConfig>;
   threadTitleNamer?: ThreadTitleNamer;
   storageLifecyclePolicy?: Partial<StorageLifecyclePolicy>;
+  storageLifecyclePolicyReload?: {
+    cwd: string;
+    filePath?: string;
+    env?: NodeJS.ProcessEnv;
+    pollMs?: number;
+  };
+}
+
+interface StorageLifecyclePolicyReloadConfig {
+  readonly cwd: string;
+  readonly filePath?: string;
+  readonly env?: NodeJS.ProcessEnv;
+  readonly pollMs: number;
 }
 
 interface ConnectionState {
@@ -466,12 +483,16 @@ function asTelemetryLifecycleStore(value: unknown): StorageLifecycleTelemetrySto
   }
   return {
     pruneTelemetryOlderThan: (cutoffIngestedAt, limit) =>
-      (prune as (cutoffIngestedAt: string, limit: number) => number)(cutoffIngestedAt, limit),
+      (prune as (cutoffIngestedAt: string, limit: number) => number).call(
+        value,
+        cutoffIngestedAt,
+        limit,
+      ),
     checkpointWalTruncate: () => {
-      (checkpoint as () => void)();
+      (checkpoint as () => void).call(value);
     },
     compactFreelistPages: (maxPages) => {
-      (compact as (maxPages: number) => void)(maxPages);
+      (compact as (maxPages: number) => void).call(value, maxPages);
     },
     ...(typeof copyForward !== 'function'
       ? {}
@@ -485,7 +506,7 @@ function asTelemetryLifecycleStore(value: unknown): StorageLifecycleTelemetrySto
                 readonly state: 'idle' | 'copying' | 'finalized';
                 readonly copiedRows: number;
               }
-            )(batchSize, finalizeTailRows),
+            ).call(value, batchSize, finalizeTailRows),
         }),
   };
 }
@@ -504,6 +525,7 @@ const DEFAULT_SESSION_EXIT_TOMBSTONE_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_MAX_STREAM_JOURNAL_ENTRIES = 10000;
 const DEFAULT_GIT_STATUS_POLL_MS = 1200;
 const DEFAULT_GITHUB_POLL_MS = 15_000;
+const DEFAULT_STORAGE_LIFECYCLE_POLICY_RELOAD_POLL_MS = 5000;
 const DEFAULT_GITHUB_PROJECT_REVIEW_PREWARM_INTERVAL_MS = 5 * 60 * 1000;
 const DEFAULT_LINEAR_API_BASE_URL = 'https://api.linear.app/graphql';
 const GITHUB_OAUTH_ACCESS_TOKEN_ENV_VAR = 'HARNESS_GITHUB_OAUTH_ACCESS_TOKEN';
@@ -661,6 +683,23 @@ function normalizeCodexHistoryConfig(
     enabled: input?.enabled ?? false,
     filePath: input?.filePath ?? '~/.codex/history.jsonl',
     pollMs: Math.max(25, input?.pollMs ?? 500),
+  };
+}
+
+function normalizeStorageLifecyclePolicyReloadConfig(
+  input: StartControlPlaneStreamServerOptions['storageLifecyclePolicyReload'],
+): StorageLifecyclePolicyReloadConfig | null {
+  if (input === undefined) {
+    return null;
+  }
+  return {
+    cwd: input.cwd,
+    ...(input.filePath === undefined ? {} : { filePath: input.filePath }),
+    ...(input.env === undefined ? {} : { env: input.env }),
+    pollMs: Math.max(
+      250,
+      Math.floor(input.pollMs ?? DEFAULT_STORAGE_LIFECYCLE_POLICY_RELOAD_POLL_MS),
+    ),
   };
 }
 
@@ -1254,6 +1293,7 @@ export class ControlPlaneStreamServer {
   private readonly telemetryTokenToSessionId = new Map<string, string>();
   private readonly lifecycleHooks: LifecycleHooksRuntime;
   private readonly storageLifecycle: StorageLifecycleCore;
+  private readonly storageLifecyclePolicyReload: StorageLifecyclePolicyReloadConfig | null;
   private historyPollTimer: NodeJS.Timeout | null = null;
   private historyPollInFlight = false;
   private historyIdleStreak = 0;
@@ -1268,6 +1308,9 @@ export class ControlPlaneStreamServer {
   private githubPollInFlight = false;
   private githubPollPromise: Promise<void> | null = null;
   private storageLifecycleTimer: NodeJS.Timeout | null = null;
+  private storageLifecyclePolicyReloadTimer: NodeJS.Timeout | null = null;
+  private storageLifecyclePolicyLastKnownGood = DEFAULT_HARNESS_CONFIG;
+  private storageLifecyclePolicyLastError: string | null = null;
   private readonly gitStatusRefreshInFlightDirectoryIds = new Set<string>();
   private readonly gitStatusByDirectoryId = new Map<string, DirectoryGitStatusCacheEntry>();
   private readonly gitStatusDirectoriesById = new Map<string, ControlPlaneDirectoryRecord>();
@@ -1380,6 +1423,9 @@ export class ControlPlaneStreamServer {
           }),
       writeStderr: (text) => process.stderr.write(text),
     });
+    this.storageLifecyclePolicyReload = normalizeStorageLifecyclePolicyReloadConfig(
+      options.storageLifecyclePolicyReload,
+    );
   }
 
   async start(): Promise<void> {
@@ -1411,6 +1457,7 @@ export class ControlPlaneStreamServer {
     this.startGitStatusPollingIfEnabled();
     this.startGitHubPollingIfEnabled();
     this.startStorageLifecyclePolling();
+    this.startStorageLifecyclePolicyReloadPolling();
   }
 
   address(): AddressInfo {
@@ -1438,6 +1485,7 @@ export class ControlPlaneStreamServer {
     this.stopGitStatusPolling();
     this.stopGitHubPolling();
     this.stopStorageLifecyclePolling();
+    this.stopStorageLifecyclePolicyReloadPolling();
     await this.waitForGitHubPollingToSettle();
 
     for (const sessionId of [...this.sessions.keys()]) {
@@ -1549,6 +1597,15 @@ export class ControlPlaneStreamServer {
     this.historyNextAllowedPollAtMs = 0;
   }
 
+  updateStorageLifecyclePolicy(policy: Partial<StorageLifecyclePolicy>): void {
+    const update = this.storageLifecycle.updatePolicy(policy);
+    if (!update.maintenanceIntervalChanged || this.storageLifecycleTimer === null) {
+      return;
+    }
+    this.stopStorageLifecyclePolling();
+    this.startStorageLifecyclePolling();
+  }
+
   private startStorageLifecyclePolling(): void {
     if (this.storageLifecycleTimer !== null) {
       return;
@@ -1569,6 +1626,54 @@ export class ControlPlaneStreamServer {
     }
     clearInterval(this.storageLifecycleTimer);
     this.storageLifecycleTimer = null;
+  }
+
+  private startStorageLifecyclePolicyReloadPolling(): void {
+    if (
+      this.storageLifecyclePolicyReload === null ||
+      this.storageLifecyclePolicyReloadTimer !== null
+    ) {
+      return;
+    }
+    const intervalMs = this.storageLifecyclePolicyReload.pollMs;
+    this.storageLifecyclePolicyReloadTimer = setInterval(() => {
+      this.reloadStorageLifecyclePolicyFromConfig();
+    }, intervalMs);
+    this.storageLifecyclePolicyReloadTimer.unref();
+  }
+
+  private stopStorageLifecyclePolicyReloadPolling(): void {
+    if (this.storageLifecyclePolicyReloadTimer === null) {
+      return;
+    }
+    clearInterval(this.storageLifecyclePolicyReloadTimer);
+    this.storageLifecyclePolicyReloadTimer = null;
+  }
+
+  private reloadStorageLifecyclePolicyFromConfig(): void {
+    if (this.storageLifecyclePolicyReload === null) {
+      return;
+    }
+    const loaded = loadHarnessConfig({
+      cwd: this.storageLifecyclePolicyReload.cwd,
+      ...(this.storageLifecyclePolicyReload.filePath === undefined
+        ? {}
+        : { filePath: this.storageLifecyclePolicyReload.filePath }),
+      ...(this.storageLifecyclePolicyReload.env === undefined
+        ? {}
+        : { env: this.storageLifecyclePolicyReload.env }),
+      lastKnownGood: this.storageLifecyclePolicyLastKnownGood,
+    });
+    this.storageLifecyclePolicyLastKnownGood = loaded.config;
+    if (loaded.fromLastKnownGood && loaded.error !== null) {
+      if (loaded.error !== this.storageLifecyclePolicyLastError) {
+        process.stderr.write(`[config] storage lifecycle policy reload skipped: ${loaded.error}\n`);
+        this.storageLifecyclePolicyLastError = loaded.error;
+      }
+      return;
+    }
+    this.storageLifecyclePolicyLastError = null;
+    this.updateStorageLifecyclePolicy(loaded.config.storage.lifecycle);
   }
 
   private startGitStatusPollingIfEnabled(): void {

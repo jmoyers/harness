@@ -144,6 +144,7 @@ Related entities (repositories, tasks, project settings, runtime/session metadat
   - `$XDG_CONFIG_HOME/harness/workspaces/<workspace-slug>/...`, else
   - `~/.harness/workspaces/<workspace-slug>/...`
 - Config reload is atomic with last-known-good fallback.
+- Live storage lifecycle policy reloads use the same config abstraction + last-known-good behavior.
 
 ## Observability Model
 

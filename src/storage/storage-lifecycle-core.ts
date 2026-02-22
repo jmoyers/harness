@@ -131,6 +131,48 @@ function normalizePolicy(
   };
 }
 
+function normalizePolicyWithFallback(
+  policy: Partial<StorageLifecyclePolicy> | undefined,
+  fallback: StorageLifecyclePolicy,
+): StorageLifecyclePolicy {
+  return {
+    eventRetentionMs: normalizePositiveInt(policy?.eventRetentionMs, fallback.eventRetentionMs),
+    telemetryRetentionMs: normalizePositiveInt(
+      policy?.telemetryRetentionMs,
+      fallback.telemetryRetentionMs,
+    ),
+    maintenanceIntervalMs: normalizePositiveInt(
+      policy?.maintenanceIntervalMs,
+      fallback.maintenanceIntervalMs,
+    ),
+    pruneBatchSize: normalizePositiveInt(policy?.pruneBatchSize, fallback.pruneBatchSize),
+    compactFreelistPages: normalizePositiveInt(
+      policy?.compactFreelistPages,
+      fallback.compactFreelistPages,
+    ),
+    copyForwardBatchSize: normalizePositiveInt(
+      policy?.copyForwardBatchSize,
+      fallback.copyForwardBatchSize,
+    ),
+    copyForwardFinalizeTailRows: normalizePositiveInt(
+      policy?.copyForwardFinalizeTailRows,
+      fallback.copyForwardFinalizeTailRows,
+    ),
+    telemetryPayloadMaxBytes: normalizePositiveInt(
+      policy?.telemetryPayloadMaxBytes,
+      fallback.telemetryPayloadMaxBytes,
+    ),
+    textDeltaPayloadMaxBytes: normalizePositiveInt(
+      policy?.textDeltaPayloadMaxBytes,
+      fallback.textDeltaPayloadMaxBytes,
+    ),
+    textDeltaCoalesceWindowMs: normalizePositiveInt(
+      policy?.textDeltaCoalesceWindowMs,
+      fallback.textDeltaCoalesceWindowMs,
+    ),
+  };
+}
+
 function parseIsoMs(value: string): number | null {
   const parsed = Date.parse(value);
   if (!Number.isFinite(parsed)) {
@@ -198,7 +240,7 @@ function sameEventScope(left: NormalizedEventEnvelope, right: NormalizedEventEnv
 export class StorageLifecycleCore {
   private readonly eventStore: StorageLifecycleEventStore | null;
   private readonly telemetryStore: StorageLifecycleTelemetryStore | null;
-  private readonly policyValues: StorageLifecyclePolicy;
+  private policyValues: StorageLifecyclePolicy;
   private readonly nowMs: () => number;
   private readonly writeStderr: (text: string) => void;
   private nextMaintenanceAtMs = 0;
@@ -213,6 +255,27 @@ export class StorageLifecycleCore {
 
   policy(): StorageLifecyclePolicy {
     return this.policyValues;
+  }
+
+  updatePolicy(policy: Partial<StorageLifecyclePolicy>): {
+    readonly previous: StorageLifecyclePolicy;
+    readonly current: StorageLifecyclePolicy;
+    readonly maintenanceIntervalChanged: boolean;
+  } {
+    const previous = this.policyValues;
+    const next = normalizePolicyWithFallback(policy, previous);
+    this.policyValues = next;
+    if (next.maintenanceIntervalMs < previous.maintenanceIntervalMs) {
+      this.nextMaintenanceAtMs = Math.min(
+        this.nextMaintenanceAtMs,
+        this.nowMs() + next.maintenanceIntervalMs,
+      );
+    }
+    return {
+      previous,
+      current: next,
+      maintenanceIntervalChanged: previous.maintenanceIntervalMs !== next.maintenanceIntervalMs,
+    };
   }
 
   prepareEventBatch(

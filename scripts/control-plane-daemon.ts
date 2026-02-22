@@ -238,6 +238,11 @@ async function main(): Promise<number> {
     },
     lifecycleHooks: loadedConfig.config.hooks.lifecycle,
     storageLifecyclePolicy: loadedConfig.config.storage.lifecycle,
+    storageLifecyclePolicyReload: {
+      cwd: invocationDirectory,
+      filePath: configPath,
+      env: process.env,
+    },
     startSession: (input) => {
       const sessionOptions: Parameters<typeof startCodexLiveSession>[0] = {
         args: input.args,

@@ -308,3 +308,69 @@ test('storage lifecycle checkpoints when online compaction finalizes even withou
     'telemetry-compact:11',
   ]);
 });
+
+test('storage lifecycle updatePolicy merges with current values and reports interval changes', () => {
+  const core = new StorageLifecycleCore({
+    policy: {
+      maintenanceIntervalMs: 4000,
+      pruneBatchSize: 77,
+      telemetryPayloadMaxBytes: 2048,
+    },
+  });
+
+  const first = core.updatePolicy({
+    maintenanceIntervalMs: 2000,
+  });
+  assert.equal(first.maintenanceIntervalChanged, true);
+  assert.equal(first.previous.maintenanceIntervalMs, 4000);
+  assert.equal(first.current.maintenanceIntervalMs, 2000);
+  assert.equal(first.current.pruneBatchSize, 77);
+  assert.equal(first.current.telemetryPayloadMaxBytes, 2048);
+  assert.equal(core.policy().maintenanceIntervalMs, 2000);
+  assert.equal(core.policy().pruneBatchSize, 77);
+
+  const second = core.updatePolicy({
+    telemetryPayloadMaxBytes: 4096,
+  });
+  assert.equal(second.maintenanceIntervalChanged, false);
+  assert.equal(second.current.maintenanceIntervalMs, 2000);
+  assert.equal(second.current.telemetryPayloadMaxBytes, 4096);
+});
+
+test('storage lifecycle updatePolicy accelerates next tick when interval shrinks', () => {
+  let nowMs = Date.parse('2026-02-22T00:00:00.000Z');
+  let pruneCalls = 0;
+  const core = new StorageLifecycleCore({
+    telemetryStore: {
+      pruneTelemetryOlderThan: () => {
+        pruneCalls += 1;
+        return 0;
+      },
+      checkpointWalTruncate: () => {},
+      compactFreelistPages: () => {},
+    },
+    nowMs: () => nowMs,
+    policy: {
+      maintenanceIntervalMs: 10_000,
+      telemetryRetentionMs: 1,
+      pruneBatchSize: 1,
+    },
+  });
+
+  const first = core.runMaintenanceTick();
+  assert.equal(first.ran, true);
+  assert.equal(pruneCalls, 1);
+
+  nowMs += 5000;
+  const second = core.runMaintenanceTick();
+  assert.equal(second.ran, false);
+  assert.equal(pruneCalls, 1);
+
+  core.updatePolicy({
+    maintenanceIntervalMs: 1000,
+  });
+  nowMs += 1000;
+  const third = core.runMaintenanceTick();
+  assert.equal(third.ran, true);
+  assert.equal(pruneCalls, 2);
+});

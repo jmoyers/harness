@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { connect, type Socket } from 'node:net';
 import { createServer } from 'node:http';
 import { setTimeout as delay } from 'node:timers/promises';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
@@ -431,6 +431,19 @@ void test('stream server marks state store closed and halts background polling o
 void test('stream server runs storage lifecycle maintenance ticks while server is live', async () => {
   const storePath = makeTempStateStorePath();
   const stateStore = new SqliteControlPlaneStore(storePath);
+  const storeInternals = stateStore as unknown as {
+    runOnlineCopyForwardCompactionStep: (
+      batchSize: number,
+      finalizeTailRows: number,
+    ) => {
+      state: 'idle' | 'copying' | 'finalized';
+      copiedRows: number;
+    };
+  };
+  const originalCopyForwardStore =
+    storeInternals.runOnlineCopyForwardCompactionStep.bind(storeInternals);
+  storeInternals.runOnlineCopyForwardCompactionStep = (batchSize, finalizeTailRows) =>
+    originalCopyForwardStore(batchSize, finalizeTailRows);
   const internals = stateStore as unknown as {
     pruneTelemetryOlderThan: (cutoffIngestedAt: string, limit: number) => number;
     checkpointWalTruncate: () => void;
@@ -499,6 +512,172 @@ void test('stream server runs storage lifecycle maintenance ticks while server i
     await server.close();
     stateStore.close();
     rmSync(dirname(storePath), { recursive: true, force: true });
+  }
+});
+
+void test('stream server updates storage lifecycle policy while running without restart', async () => {
+  const storePath = makeTempStateStorePath();
+  const stateStore = new SqliteControlPlaneStore(storePath);
+  const internals = stateStore as unknown as {
+    pruneTelemetryOlderThan: (cutoffIngestedAt: string, limit: number) => number;
+    runOnlineCopyForwardCompactionStep: (
+      batchSize: number,
+      finalizeTailRows: number,
+    ) => {
+      state: 'idle' | 'copying' | 'finalized';
+      copiedRows: number;
+    };
+  };
+  const originalPrune = internals.pruneTelemetryOlderThan.bind(internals);
+  const originalCopyForward = internals.runOnlineCopyForwardCompactionStep.bind(internals);
+  let pruneCalls = 0;
+  internals.pruneTelemetryOlderThan = (cutoffIngestedAt, limit) => {
+    pruneCalls += 1;
+    return originalPrune(cutoffIngestedAt, limit);
+  };
+  internals.runOnlineCopyForwardCompactionStep = (batchSize, finalizeTailRows) =>
+    originalCopyForward(batchSize, finalizeTailRows);
+
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input),
+    stateStore,
+    storageLifecyclePolicy: {
+      maintenanceIntervalMs: 60_000,
+      telemetryRetentionMs: 1,
+      pruneBatchSize: 10,
+    },
+  });
+
+  try {
+    stateStore.appendTelemetry({
+      source: 'otlp-log',
+      sessionId: 'session-storage-lifecycle-live-update',
+      providerThreadId: null,
+      eventName: 'maintenance-candidate',
+      severity: null,
+      summary: null,
+      observedAt: '2026-02-21T00:00:00.000Z',
+      payload: {},
+      fingerprint: 'stream-server-live-update-telemetry',
+    });
+    await delay(120);
+    assert.equal(pruneCalls, 0);
+
+    server.updateStorageLifecyclePolicy({
+      maintenanceIntervalMs: 25,
+      telemetryRetentionMs: 1,
+      pruneBatchSize: 10,
+    });
+    server.updateStorageLifecyclePolicy({
+      maintenanceIntervalMs: 25,
+    });
+    await delay(120);
+    assert.equal(pruneCalls > 0, true);
+  } finally {
+    await server.close();
+    server.updateStorageLifecyclePolicy({
+      maintenanceIntervalMs: 10,
+    });
+    stateStore.close();
+    rmSync(dirname(storePath), { recursive: true, force: true });
+  }
+});
+
+void test('stream server reloads storage lifecycle policy from config and tolerates parse failures', async () => {
+  const workspace = mkdtempSync(join(tmpdir(), 'harness-storage-policy-reload-'));
+  const configPath = join(workspace, 'harness.config.jsonc');
+  writeFileSync(
+    configPath,
+    JSON.stringify({
+      configVersion: 1,
+      storage: {
+        lifecycle: {
+          maintenanceIntervalMs: 25,
+          telemetryRetentionMs: 1,
+          pruneBatchSize: 10,
+        },
+      },
+    }),
+    'utf8',
+  );
+  const storePath = makeTempStateStorePath();
+  const stateStore = new SqliteControlPlaneStore(storePath);
+  const storeInternals = stateStore as unknown as {
+    runOnlineCopyForwardCompactionStep: (
+      batchSize: number,
+      finalizeTailRows: number,
+    ) => {
+      state: 'idle' | 'copying' | 'finalized';
+      copiedRows: number;
+    };
+  };
+  const originalCopyForward =
+    storeInternals.runOnlineCopyForwardCompactionStep.bind(storeInternals);
+  storeInternals.runOnlineCopyForwardCompactionStep = (batchSize, finalizeTailRows) =>
+    originalCopyForward(batchSize, finalizeTailRows);
+
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input),
+    stateStore,
+    storageLifecyclePolicy: {
+      maintenanceIntervalMs: 60_000,
+      telemetryRetentionMs: 1,
+      pruneBatchSize: 10,
+    },
+    storageLifecyclePolicyReload: {
+      cwd: workspace,
+      filePath: configPath,
+      pollMs: 25,
+      env: process.env,
+    },
+  });
+  const serverInternals = server as unknown as {
+    startStorageLifecyclePolicyReloadPolling: () => void;
+    stopStorageLifecyclePolicyReloadPolling: () => void;
+    storageLifecyclePolicyLastError: string | null;
+    storageLifecycle: {
+      policy: () => {
+        maintenanceIntervalMs: number;
+      };
+    };
+  };
+
+  try {
+    serverInternals.startStorageLifecyclePolicyReloadPolling();
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      if (serverInternals.storageLifecycle.policy().maintenanceIntervalMs === 25) {
+        break;
+      }
+      await delay(25);
+    }
+    assert.equal(serverInternals.storageLifecycle.policy().maintenanceIntervalMs, 25);
+
+    writeFileSync(configPath, '{broken-json', 'utf8');
+    await delay(350);
+    assert.equal(serverInternals.storageLifecyclePolicyLastError !== null, true);
+
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        configVersion: 1,
+        storage: {
+          lifecycle: {
+            maintenanceIntervalMs: 30,
+            telemetryRetentionMs: 1,
+            pruneBatchSize: 10,
+          },
+        },
+      }),
+      'utf8',
+    );
+    await delay(350);
+    assert.equal(serverInternals.storageLifecyclePolicyLastError, null);
+  } finally {
+    await server.close();
+    serverInternals.stopStorageLifecyclePolicyReloadPolling();
+    stateStore.close();
+    rmSync(dirname(storePath), { recursive: true, force: true });
+    rmSync(workspace, { recursive: true, force: true });
   }
 });
 
