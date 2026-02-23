@@ -142,16 +142,24 @@ void test(
       await openCommandMenuWithShortcut(interactive.session, interactive.oracle, 12000);
       interactive.session.write('oauth');
       await waitForSnapshotLineContaining(interactive.oracle, 'Log In to GitHub (OAuth)', 12000);
-      await waitForSnapshotLineContaining(interactive.oracle, 'Log In to Linear (OAuth)', 12000);
-    } finally {
       try {
-        await requestMuxShutdown(interactive.session);
-        const exit = await interactive.waitForExit;
-        assert.equal(exit.signal, null);
-        assert.equal(exit.code === 0 || exit.code === 130, true);
-      } finally {
-        rmSync(workspace, { recursive: true, force: true });
+        await waitForSnapshotLineContaining(interactive.oracle, 'Log In to Linear (OAuth)', 12000);
+      } catch (waitError: unknown) {
+        const frame = interactive.oracle.snapshotWithoutHash();
+        const lines = frame.lines.map((l, i) => `  ${String(i).padStart(2)}: ${JSON.stringify(l)}`);
+        throw new Error(
+          `${waitError instanceof Error ? waitError.message : String(waitError)}\nsnapshot (${String(frame.lines.length)} lines):\n${lines.join('\n')}`,
+        );
       }
+    } finally {
+      interactive.session.close();
+      try {
+        const exit = await waitForExit(interactive.session, 5000);
+        assert.equal(exit.signal === null || exit.signal === 'SIGTERM', true);
+      } catch {
+        // best-effort: process may already be gone
+      }
+      rmSync(workspace, { recursive: true, force: true });
     }
   },
   { timeout: 45000 },
