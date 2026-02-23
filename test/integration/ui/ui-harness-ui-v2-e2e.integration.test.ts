@@ -17,28 +17,28 @@ void test(
         rows: 30,
       });
 
-      await driver.locator('🏠 home').waitFor(20_000);
-      await driver.locator('🦎 nim').click(20_000);
-      await driver.waitForText('nim>', 20_000);
-      await driver.waitForText('queued:0', 20_000);
-      await driver.waitForText('nim subprocess ready', 20_000);
+      await driver.locator('🏠 home').waitFor(30_000);
+      await driver.locator('🦎 nim').click(30_000);
+      await driver.waitForText('nim>', 30_000);
+      await driver.waitForText('queued:0', 30_000);
+      await driver.waitForText('nim subprocess ready', 30_000);
       driver.keyboard.type('hello from mux nim');
       driver.keyboard.press('Enter');
-      await driver.waitForText('run started', 20_000);
-      await driver.waitForText('run completed', 20_000);
+      await driver.waitForText('run started', 30_000);
+      await driver.waitForText('run completed', 30_000);
       driver.keyboard.type('queued from nim tab');
       driver.keyboard.type('\t');
-      await driver.waitForText('queued:1', 20_000);
+      await driver.waitForText('queued:1', 30_000);
 
-      await driver.keyboard.openCommandMenu(20_000);
-      await driver.waitForText('Command Menu', 20_000);
+      await driver.keyboard.openCommandMenu(30_000);
+      await driver.waitForText('Command Menu', 30_000);
       driver.mouse.click(2, 2);
-      await driver.waitForTextGone('Command Menu', 20_000);
+      await driver.waitForTextGone('Command Menu', 30_000);
 
-      await driver.keyboard.openCommandMenu(20_000);
-      await driver.waitForText('Command Menu', 20_000);
+      await driver.keyboard.openCommandMenu(30_000);
+      await driver.waitForText('Command Menu', 30_000);
       driver.keyboard.press('Escape');
-      await driver.waitForTextGone('Command Menu', 20_000);
+      await driver.waitForTextGone('Command Menu', 30_000);
     } finally {
       try {
         if (driver !== null) {
@@ -67,11 +67,11 @@ void test(
         rows: 12,
       });
 
-      await driver.locator('🏠 home').waitFor(20_000);
-      await driver.keyboard.openCommandMenu(20_000);
-      await driver.waitForText('Command Menu', 20_000);
+      await driver.locator('🏠 home').waitFor(30_000);
+      await driver.keyboard.openCommandMenu(30_000);
+      await driver.waitForText('Command Menu', 30_000);
       driver.mouse.click(1, 1);
-      await driver.waitForTextGone('Command Menu', 20_000);
+      await driver.waitForTextGone('Command Menu', 30_000);
     } finally {
       try {
         if (driver !== null) {

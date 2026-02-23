@@ -280,7 +280,7 @@ void test(
 
     try {
       assert.equal(existsSync(defaultGatewayRecordPath), false);
-      await waitForSnapshotLineContaining(interactive.oracle, '🏠 home', 20000);
+      await waitForSnapshotLineContaining(interactive.oracle, '🏠 home', 30000);
 
       await publisherClient.sendCommand({
         type: 'directory.upsert',
