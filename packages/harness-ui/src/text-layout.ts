@@ -1,47 +1,48 @@
 function isCombiningMark(codePoint: number): boolean {
   if (codePoint < 0x0300) return false;
-  if (codePoint <= 0x036f) return true;  // Combining Diacritical Marks
+  if (codePoint <= 0x036f) return true; // Combining Diacritical Marks
   if (codePoint < 0x0483) return false;
-  if (codePoint <= 0x0489) return true;  // Cyrillic combining marks
+  if (codePoint <= 0x0489) return true; // Cyrillic combining marks
   if (codePoint < 0x0591) return false;
-  if (codePoint <= 0x05bd) return true;  // Hebrew combining marks
+  if (codePoint <= 0x05bd) return true; // Hebrew combining marks
   if (codePoint === 0x05bf) return true;
   if (codePoint === 0x05c1 || codePoint === 0x05c2) return true;
   if (codePoint === 0x05c4 || codePoint === 0x05c5) return true;
   if (codePoint === 0x05c7) return true;
   if (codePoint < 0x0610) return false;
-  if (codePoint <= 0x061a) return true;  // Arabic combining marks
+  if (codePoint <= 0x061a) return true; // Arabic combining marks
   if (codePoint < 0x064b) return false;
-  if (codePoint <= 0x065f) return true;  // Arabic combining marks (extended)
+  if (codePoint <= 0x065f) return true; // Arabic combining marks (extended)
   if (codePoint === 0x0670) return true;
   if (codePoint < 0x06d6) return false;
   if (codePoint <= 0x06dc) return true;
   if (codePoint < 0x06df) return false;
   if (codePoint <= 0x06e4) return true;
   if (codePoint === 0x06e7 || codePoint === 0x06e8) return true;
-  if (codePoint === 0x06ea || codePoint === 0x06eb || codePoint === 0x06ec || codePoint === 0x06ed) return true;
+  if (codePoint === 0x06ea || codePoint === 0x06eb || codePoint === 0x06ec || codePoint === 0x06ed)
+    return true;
   if (codePoint < 0x0730) return false;
-  if (codePoint <= 0x074a) return true;  // Syriac combining marks
+  if (codePoint <= 0x074a) return true; // Syriac combining marks
   if (codePoint < 0x0900) return false;
-  if (codePoint <= 0x0903) return true;  // Devanagari
+  if (codePoint <= 0x0903) return true; // Devanagari
   if (codePoint < 0x093a) return false;
   if (codePoint <= 0x094f) return true;
   if (codePoint < 0x0951) return false;
   if (codePoint <= 0x0957) return true;
   if (codePoint < 0x0e31) return false;
-  if (codePoint === 0x0e31) return true;  // Thai
+  if (codePoint === 0x0e31) return true; // Thai
   if (codePoint >= 0x0e34 && codePoint <= 0x0e3a) return true;
   if (codePoint >= 0x0e47 && codePoint <= 0x0e4e) return true;
   if (codePoint < 0x1ab0) return false;
-  if (codePoint <= 0x1aff) return true;  // Combining Diacritical Marks Extended
+  if (codePoint <= 0x1aff) return true; // Combining Diacritical Marks Extended
   if (codePoint < 0x1dc0) return false;
-  if (codePoint <= 0x1dff) return true;  // Combining Diacritical Marks Supplement
+  if (codePoint <= 0x1dff) return true; // Combining Diacritical Marks Supplement
   if (codePoint < 0x20d0) return false;
-  if (codePoint <= 0x20ff) return true;  // Combining Diacritical Marks for Symbols
+  if (codePoint <= 0x20ff) return true; // Combining Diacritical Marks for Symbols
   if (codePoint < 0xfe00) return false;
-  if (codePoint <= 0xfe0f) return true;  // Variation Selectors
+  if (codePoint <= 0xfe0f) return true; // Variation Selectors
   if (codePoint < 0xfe20) return false;
-  if (codePoint <= 0xfe2f) return true;  // Combining Half Marks
+  if (codePoint <= 0xfe2f) return true; // Combining Half Marks
   if (codePoint < 0xe0100) return false;
   if (codePoint <= 0xe01ef) return true; // Variation Selectors Supplement
   return false;

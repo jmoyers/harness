@@ -142,7 +142,7 @@ void serialCliTest('harness gateway gc rejects unknown options', async () => {
 });
 
 void serialCliTest(
-  'harness gateway gc runs storage lifecycle maintenance for retained offline session dbs',
+  'harness gateway gc keeps retained offline session dbs and runs manual storage maintenance',
   async () => {
     const workspace = createWorkspace();
     const runtimeRoot = workspaceRuntimeRoot(workspace);

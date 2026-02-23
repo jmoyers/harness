@@ -2548,22 +2548,10 @@ class CodexLiveMuxRuntimeApplication {
     }, HOME_PANE_BACKGROUND_INTERVAL_MS);
     homePaneBackgroundTimer.unref?.();
     const maintenancePolicy: StorageLifecyclePolicy = storageLifecycle.policy();
-    storageLifecycleTimer = setInterval(() => {
-      if (shuttingDown) {
-        return;
-      }
-      const tickStart = performance.now();
-      const result = storageLifecycle.runMaintenanceTick();
-      const tickMs = performance.now() - tickStart;
-      if (result.ran) {
-        recordPerfEvent('mux.storage.maintenance.tick', {
-          eventsPruned: result.eventsPruned,
-          telemetryPruned: result.telemetryPruned,
-          durationMs: Math.round(tickMs * 100) / 100,
-        });
-      }
-    }, maintenancePolicy.maintenanceIntervalMs);
-    storageLifecycleTimer.unref?.();
+    recordPerfEvent('mux.storage.maintenance.disabled', {
+      maintenanceIntervalMs: maintenancePolicy.maintenanceIntervalMs,
+      reason: 'backed-out',
+    });
 
     const runtimeLayoutResize = new RuntimeLayoutResizeEngine<ConversationState>({
       getSize: () => size,

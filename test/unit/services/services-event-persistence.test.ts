@@ -6,7 +6,31 @@ import {
 } from '../../../src/events/normalized-events.ts';
 import { EventPersistence } from '../../../src/services/event-persistence.ts';
 
-function createEvent(suffix: string): NormalizedEventEnvelope {
+function createMetaEvent(suffix: string): NormalizedEventEnvelope {
+  return createNormalizedEvent(
+    'meta',
+    'meta-attention-cleared',
+    {
+      tenantId: 'tenant',
+      userId: 'user',
+      workspaceId: 'workspace',
+      worktreeId: 'worktree',
+      conversationId: 'conversation',
+      turnId: 'turn',
+    },
+    {
+      kind: 'attention',
+      threadId: 'thread',
+      turnId: 'turn',
+      reason: 'stalled',
+      detail: suffix,
+    },
+    () => new Date('2026-02-18T00:00:00.000Z'),
+    () => `event-${suffix}`,
+  );
+}
+
+function createProviderTextDeltaEvent(suffix: string): NormalizedEventEnvelope {
   return createNormalizedEvent(
     'provider',
     'provider-text-delta',
@@ -25,7 +49,7 @@ function createEvent(suffix: string): NormalizedEventEnvelope {
       delta: suffix,
     },
     () => new Date('2026-02-18T00:00:00.000Z'),
-    () => `event-${suffix}`,
+    () => `provider-event-${suffix}`,
   );
 }
 
@@ -49,7 +73,7 @@ void test('event persistence flushes on timer and emits success span', () => {
     clearTimeoutFn: () => {},
   });
 
-  eventPersistence.enqueue(createEvent('a'));
+  eventPersistence.enqueue(createMetaEvent('a'));
   assert.equal(eventPersistence.pendingCount(), 1);
   if (scheduledCallback === null) {
     throw new Error('expected scheduled callback');
@@ -84,8 +108,8 @@ void test('event persistence flushes immediately at max batch and clears timer',
     },
   });
 
-  eventPersistence.enqueue(createEvent('a'));
-  eventPersistence.enqueue(createEvent('b'));
+  eventPersistence.enqueue(createMetaEvent('a'));
+  eventPersistence.enqueue(createMetaEvent('b'));
 
   assert.equal(eventPersistence.pendingCount(), 0);
   assert.deepEqual(appended, [['event-a', 'event-b']]);
@@ -109,9 +133,9 @@ void test('event persistence keeps one scheduled timer across multiple under-lim
     clearTimeoutFn: () => {},
   });
 
-  eventPersistence.enqueue(createEvent('a'));
-  eventPersistence.enqueue(createEvent('b'));
-  eventPersistence.enqueue(createEvent('c'));
+  eventPersistence.enqueue(createMetaEvent('a'));
+  eventPersistence.enqueue(createMetaEvent('b'));
+  eventPersistence.enqueue(createMetaEvent('c'));
 
   assert.equal(eventPersistence.pendingCount(), 3);
   assert.deepEqual(scheduled, [1]);
@@ -130,7 +154,7 @@ void test('event persistence flush reports append errors and writes stderr', () 
     writeStderr: (text) => stderr.push(text),
   });
 
-  eventPersistence.enqueue(createEvent('a'));
+  eventPersistence.enqueue(createMetaEvent('a'));
   eventPersistence.flush('shutdown');
 
   assert.deepEqual(spanEndCalls, [
@@ -154,7 +178,7 @@ void test('event persistence handles non-error throw values and empty flush call
   });
 
   eventPersistence.flush('shutdown');
-  eventPersistence.enqueue(createEvent('z'));
+  eventPersistence.enqueue(createMetaEvent('z'));
   eventPersistence.flush('immediate');
   eventPersistence.flush('shutdown');
 
@@ -162,4 +186,21 @@ void test('event persistence handles non-error throw values and empty flush call
     '{"reason":"immediate","status":"error","count":1,"message":"bad"}',
   ]);
   assert.deepEqual(stderr, ['[mux] event-store error bad\n']);
+});
+
+void test('event persistence drops provider text-delta events before queueing', () => {
+  const appended: string[][] = [];
+  const eventPersistence = new EventPersistence({
+    appendEvents: (events) => appended.push(events.map((event) => event.eventId)),
+    startPerfSpan: () => ({
+      end: () => {},
+    }),
+    writeStderr: () => {},
+  });
+
+  eventPersistence.enqueue(createProviderTextDeltaEvent('a'));
+  eventPersistence.flush('shutdown');
+
+  assert.equal(eventPersistence.pendingCount(), 0);
+  assert.deepEqual(appended, []);
 });

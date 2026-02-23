@@ -428,7 +428,7 @@ void test('stream server marks state store closed and halts background polling o
   }
 });
 
-void test('stream server runs storage lifecycle maintenance ticks while server is live', async () => {
+void test('stream server keeps storage lifecycle maintenance polling disabled while live', async () => {
   const storePath = makeTempStateStorePath();
   const stateStore = new SqliteControlPlaneStore(storePath);
   const internals = stateStore as unknown as {
@@ -478,8 +478,8 @@ void test('stream server runs storage lifecycle maintenance ticks while server i
       fingerprint: 'stream-server-maintenance-telemetry',
     });
     await delay(120);
-    assert.equal(pruneCalls > 0, true);
-    assert.equal(checkpointCalls > 0, true);
+    assert.equal(pruneCalls, 0);
+    assert.equal(checkpointCalls, 0);
     assert.equal(compactCalls, 0);
   } finally {
     await server.close();
@@ -488,7 +488,7 @@ void test('stream server runs storage lifecycle maintenance ticks while server i
   }
 });
 
-void test('stream server updates storage lifecycle policy while running without restart', async () => {
+void test('stream server updates storage lifecycle policy without enabling maintenance polling', async () => {
   const storePath = makeTempStateStorePath();
   const stateStore = new SqliteControlPlaneStore(storePath);
   const internals = stateStore as unknown as {
@@ -545,12 +545,145 @@ void test('stream server updates storage lifecycle policy while running without 
       maintenanceIntervalMs: 25,
     });
     await delay(120);
-    assert.equal(pruneCalls > 0, true);
+    assert.equal(pruneCalls, 0);
   } finally {
     await server.close();
     server.updateStorageLifecyclePolicy({
       maintenanceIntervalMs: 10,
     });
+    stateStore.close();
+    rmSync(dirname(storePath), { recursive: true, force: true });
+  }
+});
+
+void test('stream server telemetry lifecycle adapter preserves state-store method context', async () => {
+  const storePath = makeTempStateStorePath();
+  const stateStore = new SqliteControlPlaneStore(storePath);
+  const storeInternals = stateStore as unknown as {
+    pruneTelemetryOlderThan: (cutoffIngestedAt: string, limit: number) => number;
+    checkpointWal: (mode?: 'PASSIVE' | 'TRUNCATE') => void;
+    compactFreelistPages: (maxPages: number) => void;
+    runOnlineCopyForwardCompactionStep: (
+      batchSize: number,
+      finalizeTailRows: number,
+    ) => {
+      state: 'idle' | 'copying' | 'finalized';
+      copiedRows: number;
+    };
+  };
+  let pruneThis: unknown = null;
+  let checkpointThis: unknown = null;
+  let compactThis: unknown = null;
+  let copyForwardThis: unknown = null;
+  storeInternals.pruneTelemetryOlderThan = function (
+    this: unknown,
+    _cutoffIngestedAt: string,
+    _limit: number,
+  ): number {
+    pruneThis = this;
+    return 0;
+  };
+  storeInternals.checkpointWal = function (
+    this: unknown,
+    _mode?: 'PASSIVE' | 'TRUNCATE',
+  ): void {
+    checkpointThis = this;
+  };
+  storeInternals.compactFreelistPages = function (this: unknown, _maxPages: number): void {
+    compactThis = this;
+  };
+  storeInternals.runOnlineCopyForwardCompactionStep = function (
+    this: unknown,
+    _batchSize: number,
+    _finalizeTailRows: number,
+  ): {
+    state: 'idle' | 'copying' | 'finalized';
+    copiedRows: number;
+  } {
+    copyForwardThis = this;
+    return {
+      state: 'idle',
+      copiedRows: 0,
+    };
+  };
+
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input),
+    stateStore,
+  });
+  const serverInternals = server as unknown as {
+    storageLifecycle: {
+      telemetryStore: {
+        pruneTelemetryOlderThan: (cutoffIngestedAt: string, limit: number) => number;
+        checkpointWal: (mode?: 'PASSIVE' | 'TRUNCATE') => void;
+        compactFreelistPages: (maxPages: number) => void;
+        runOnlineCopyForwardCompactionStep?: (
+          batchSize: number,
+          finalizeTailRows: number,
+        ) => {
+          state: 'idle' | 'copying' | 'finalized';
+          copiedRows: number;
+        };
+      } | null;
+    };
+  };
+
+  try {
+    const telemetryStore = serverInternals.storageLifecycle.telemetryStore;
+    assert.notEqual(telemetryStore, null);
+    if (telemetryStore === null) {
+      throw new Error('expected telemetry lifecycle adapter');
+    }
+
+    assert.equal(
+      telemetryStore.pruneTelemetryOlderThan('2026-02-23T00:00:00.000Z', 5),
+      0,
+    );
+    telemetryStore.checkpointWal('PASSIVE');
+    telemetryStore.compactFreelistPages(8);
+    const copyForwardStep = telemetryStore.runOnlineCopyForwardCompactionStep?.(2, 4);
+    assert.deepEqual(copyForwardStep, {
+      state: 'idle',
+      copiedRows: 0,
+    });
+    assert.equal(pruneThis, stateStore);
+    assert.equal(checkpointThis, stateStore);
+    assert.equal(compactThis, stateStore);
+    assert.equal(copyForwardThis, stateStore);
+  } finally {
+    await server.close();
+    stateStore.close();
+    rmSync(dirname(storePath), { recursive: true, force: true });
+  }
+});
+
+void test('stream server telemetry lifecycle adapter omits copy-forward when missing on state store', async () => {
+  const storePath = makeTempStateStorePath();
+  const stateStore = new SqliteControlPlaneStore(storePath);
+  const storeInternals = stateStore as unknown as Record<string, unknown>;
+  storeInternals['runOnlineCopyForwardCompactionStep'] = null;
+
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => new FakeLiveSession(input),
+    stateStore,
+  });
+  const serverInternals = server as unknown as {
+    storageLifecycle: {
+      telemetryStore: {
+        runOnlineCopyForwardCompactionStep?: unknown;
+      } | null;
+    };
+  };
+
+  try {
+    const telemetryStore = serverInternals.storageLifecycle.telemetryStore;
+    assert.notEqual(telemetryStore, null);
+    if (telemetryStore === null) {
+      throw new Error('expected telemetry lifecycle adapter');
+    }
+    assert.equal('runOnlineCopyForwardCompactionStep' in telemetryStore, false);
+  } finally {
+    await server.close();
     stateStore.close();
     rmSync(dirname(storePath), { recursive: true, force: true });
   }

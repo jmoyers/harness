@@ -184,14 +184,15 @@ function defaultCellStyle(): TerminalCellStyle {
 }
 
 function isDefaultStyle(style: TerminalCellStyle): boolean {
-  return style === DEFAULT_CELL_STYLE || (
-    !style.bold &&
-    !style.dim &&
-    !style.italic &&
-    !style.underline &&
-    !style.inverse &&
-    style.fg.kind === 'default' &&
-    style.bg.kind === 'default'
+  return (
+    style === DEFAULT_CELL_STYLE ||
+    (!style.bold &&
+      !style.dim &&
+      !style.italic &&
+      !style.underline &&
+      !style.inverse &&
+      style.fg.kind === 'default' &&
+      style.bg.kind === 'default')
   );
 }
 

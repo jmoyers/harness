@@ -32,7 +32,6 @@ import {
   resolveHarnessWorkspaceDirectory,
 } from '../../config/harness-paths.ts';
 import { parsePortFlag, parsePositiveIntFlag, readCliValue } from '../parsing/flags.ts';
-import { StorageLifecycleCore } from '../../storage/storage-lifecycle-core.ts';
 import { SqliteControlPlaneStore } from '../../store/control-plane-store.ts';
 import {
   GatewayControlInfra,
@@ -44,6 +43,8 @@ const DEFAULT_GATEWAY_START_RETRY_DELAY_MS = 40;
 export const DEFAULT_GATEWAY_STOP_TIMEOUT_MS = 5000;
 const DEFAULT_GATEWAY_GC_OLDER_THAN_DAYS = 7;
 const DEFAULT_SESSION_ROOT_PATH = 'sessions';
+const GATEWAY_GC_MAX_PRUNE_PASSES = 10_000;
+const GATEWAY_GC_MAX_COMPACTION_STEPS = 10_000;
 
 export interface GatewayStartOptions {
   host?: string;
@@ -1162,27 +1163,48 @@ export class GatewayRuntimeService {
     if (!existsSync(stateDbPath)) {
       return { status: 'missing' };
     }
-    const stateStore = new SqliteControlPlaneStore(stateDbPath, {
-      busyTimeoutMs: policy.busyTimeoutMs,
-    });
+    const cutoffIngestedAt = new Date(Date.now() - policy.telemetryRetentionMs).toISOString();
+    let stateStore: SqliteControlPlaneStore | null = null;
     try {
-      const lifecycle = new StorageLifecycleCore({
-        telemetryStore: {
-          pruneTelemetryOlderThan: (cutoffIngestedAt, limit) =>
-            stateStore.pruneTelemetryOlderThan(cutoffIngestedAt, limit),
-          checkpointWal: (mode) => {
-            stateStore.checkpointWal(mode ?? 'PASSIVE');
-          },
-          compactFreelistPages: (maxPages) => {
-            stateStore.compactFreelistPages(maxPages);
-          },
-          runOnlineCopyForwardCompactionStep: (batchSize, finalizeTailRows) =>
-            stateStore.runOnlineCopyForwardCompactionStep(batchSize, finalizeTailRows),
-        },
-        policy,
-        writeStderr: (text) => this.writeStderr(text),
+      stateStore = new SqliteControlPlaneStore(stateDbPath, {
+        busyTimeoutMs: policy.busyTimeoutMs,
       });
-      lifecycle.runMaintenanceTick();
+      let prunePasses = 0;
+      while (prunePasses < GATEWAY_GC_MAX_PRUNE_PASSES) {
+        const deleted = stateStore.pruneTelemetryOlderThan(cutoffIngestedAt, policy.pruneBatchSize);
+        prunePasses += 1;
+        if (deleted === 0) {
+          break;
+        }
+      }
+      if (prunePasses >= GATEWAY_GC_MAX_PRUNE_PASSES) {
+        return {
+          status: 'error',
+          error: `telemetry prune exceeded ${String(GATEWAY_GC_MAX_PRUNE_PASSES)} passes`,
+        };
+      }
+
+      let compactionSteps = 0;
+      while (compactionSteps < GATEWAY_GC_MAX_COMPACTION_STEPS) {
+        const step = stateStore.runOnlineCopyForwardCompactionStep(
+          policy.copyForwardBatchSize,
+          policy.copyForwardFinalizeTailRows,
+        );
+        compactionSteps += 1;
+        if (step.state === 'idle' || step.state === 'finalized') {
+          break;
+        }
+      }
+      if (compactionSteps >= GATEWAY_GC_MAX_COMPACTION_STEPS) {
+        return {
+          status: 'error',
+          error: `telemetry compaction exceeded ${String(GATEWAY_GC_MAX_COMPACTION_STEPS)} steps`,
+        };
+      }
+
+      stateStore.checkpointWal('TRUNCATE');
+      stateStore.compactFreelistPages(Number.MAX_SAFE_INTEGER);
+      stateStore.checkpointWal('TRUNCATE');
       return { status: 'applied' };
     } catch (error: unknown) {
       return {
@@ -1190,7 +1212,7 @@ export class GatewayRuntimeService {
         error: error instanceof Error ? error.message : String(error),
       };
     } finally {
-      stateStore.close();
+      stateStore?.close();
     }
   }
 
@@ -1246,6 +1268,8 @@ export class GatewayRuntimeService {
             storageMaintenanceErrors.push(
               `${candidateSessionName}: ${maintenance.error ?? 'unknown maintenance error'}`,
             );
+          } else if (maintenance.status === 'missing') {
+            // No state db present for this offline session.
           }
           continue;
         }
@@ -1275,6 +1299,8 @@ export class GatewayRuntimeService {
           storageMaintenanceErrors.push(
             `default: ${maintenance.error ?? 'unknown maintenance error'}`,
           );
+        } else if (maintenance.status === 'missing') {
+          // No default state db present.
         }
       }
     }

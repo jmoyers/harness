@@ -67,6 +67,19 @@ void test('event store startup tolerates a transient write lock when schema is a
   }
 });
 
+void test('event store busy lock matcher only accepts Error instances', () => {
+  const store = new SqliteEventStore(':memory:');
+  const internals = store as unknown as {
+    isBusyLockError: (error: unknown) => boolean;
+  };
+  try {
+    assert.equal(internals.isBusyLockError('database is locked'), false);
+    assert.equal(internals.isBusyLockError(new Error('DATABASE IS LOCKED')), true);
+  } finally {
+    store.close();
+  }
+});
+
 void test('event store upgrades legacy sqlite file to incremental auto-vacuum', () => {
   const dirPath = mkdtempSync(join(tmpdir(), 'harness-event-auto-vacuum-migrate-'));
   const dbPath = join(dirPath, 'events.sqlite');

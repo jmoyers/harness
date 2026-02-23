@@ -28,10 +28,7 @@ function makeScope() {
   };
 }
 
-function makeEvent(
-  scope: ReturnType<typeof makeScope>,
-  ts: Date,
-): NormalizedEventEnvelope {
+function makeEvent(scope: ReturnType<typeof makeScope>, ts: Date): NormalizedEventEnvelope {
   return createNormalizedEvent(
     'provider',
     'provider-text-delta',
@@ -64,10 +61,7 @@ interface ScenarioResult {
   idleDurations: number[];
 }
 
-function runScenario(
-  copyForwardBatchSize: number,
-  pruneBatchSize: number,
-): ScenarioResult {
+function runScenario(copyForwardBatchSize: number, pruneBatchSize: number): ScenarioResult {
   const dir = mkdtempSync(join(tmpdir(), 'harness-bench-lifecycle-'));
   const dbPath = join(dir, 'events.sqlite');
   const store = new SqliteEventStore(dbPath);
@@ -77,8 +71,7 @@ function runScenario(
 
   const lifecycle = new StorageLifecycleCore({
     eventStore: {
-      pruneEventsOlderThan: (cutoffTs, limit) =>
-        store.pruneEventsOlderThan(cutoffTs, limit),
+      pruneEventsOlderThan: (cutoffTs, limit) => store.pruneEventsOlderThan(cutoffTs, limit),
       checkpointWal: (mode) => {
         store.checkpointWal(mode);
       },
@@ -167,11 +160,11 @@ function runScenario(
 function run() {
   const configs = [
     { copyForward: 500, prune: 2000, label: 'copy=500  prune=2000' },
-    { copyForward: 500, prune: 500,  label: 'copy=500  prune=500 ' },
-    { copyForward: 250, prune: 500,  label: 'copy=250  prune=500 ' },
-    { copyForward: 250, prune: 250,  label: 'copy=250  prune=250 ' },
-    { copyForward: 100, prune: 250,  label: 'copy=100  prune=250 ' },
-    { copyForward: 100, prune: 100,  label: 'copy=100  prune=100 ' },
+    { copyForward: 500, prune: 500, label: 'copy=500  prune=500 ' },
+    { copyForward: 250, prune: 500, label: 'copy=250  prune=500 ' },
+    { copyForward: 250, prune: 250, label: 'copy=250  prune=250 ' },
+    { copyForward: 100, prune: 250, label: 'copy=100  prune=250 ' },
+    { copyForward: 100, prune: 100, label: 'copy=100  prune=100 ' },
   ];
 
   // Warmup run (discard)
@@ -190,7 +183,9 @@ function run() {
   }
 
   console.log(`\n${'═'.repeat(105)}`);
-  console.log(`  Maintenance Tick Duration vs Batch Size (${EVENT_COUNT} expired events, ${STEADY_STATE_EVENTS_PER_TICK} events/tick steady state)`);
+  console.log(
+    `  Maintenance Tick Duration vs Batch Size (${EVENT_COUNT} expired events, ${STEADY_STATE_EVENTS_PER_TICK} events/tick steady state)`,
+  );
   console.log(`${'═'.repeat(105)}\n`);
 
   console.log(`  ┌─ BACKLOG DRAIN ${'─'.repeat(87)}`);
@@ -209,7 +204,9 @@ function run() {
   }
   console.log(`  └${'─'.repeat(103)}\n`);
 
-  console.log(`  ┌─ STEADY STATE (${STEADY_STATE_EVENTS_PER_TICK} events added between each 5 s tick) ${'─'.repeat(47)}`);
+  console.log(
+    `  ┌─ STEADY STATE (${STEADY_STATE_EVENTS_PER_TICK} events added between each 5 s tick) ${'─'.repeat(47)}`,
+  );
   console.log(
     `  │ ${'config'.padEnd(22)} │ ${'p50 ms'.padStart(8)} │ ${'p95 ms'.padStart(8)} │ ${'max ms'.padStart(8)} │`,
   );
@@ -223,9 +220,7 @@ function run() {
   console.log(`  └${'─'.repeat(54)}\n`);
 
   console.log(`  ┌─ IDLE ${'─'.repeat(45)}`);
-  console.log(
-    `  │ ${'config'.padEnd(22)} │ ${'p50 ms'.padStart(8)} │ ${'max ms'.padStart(8)} │`,
-  );
+  console.log(`  │ ${'config'.padEnd(22)} │ ${'p50 ms'.padStart(8)} │ ${'max ms'.padStart(8)} │`);
   console.log(`  │${'─'.repeat(23)}┼${'─'.repeat(10)}┼${'─'.repeat(10)}│`);
   for (const { label, r } of results) {
     const d = [...r.idleDurations].sort((a, b) => a - b);

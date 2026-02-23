@@ -899,7 +899,7 @@ test('gateway runtime session gc and root helpers cover session-selection branch
   assert.equal(typeof newest, 'number');
 });
 
-test('gateway runtime session gc applies storage lifecycle maintenance for retained offline sessions', async () => {
+test('gateway runtime session gc records retained-session manual maintenance results', async () => {
   const harness = createRuntimeHarness();
   const { service, workspaceRoot } = harness;
   const internal = internals(service);
@@ -1510,23 +1510,11 @@ test('gateway runtime storage maintenance helper returns missing, applied, and e
   const policy = internal.resolveStorageLifecyclePolicyForGc();
   const missingPath = resolve(harness.workspaceRoot, 'missing-control-plane.sqlite');
   const presentPath = resolve(harness.workspaceRoot, 'present-control-plane.sqlite');
+  const brokenPath = resolve(harness.workspaceRoot, 'broken-control-plane.sqlite');
 
-  const seeded = new SqliteControlPlaneStore(presentPath);
-  seeded.appendTelemetry({
-    source: 'history',
-    sessionId: null,
-    providerThreadId: null,
-    eventName: 'event',
-    severity: 'info',
-    summary: 'summary',
-    observedAt: new Date().toISOString(),
-    payload: { ok: true },
-    fingerprint: 'maintenance-test-1',
-  });
-  await new Promise<void>((resolveDelay) => {
-    setTimeout(resolveDelay, 10);
-  });
-  seeded.close();
+  const presentStore = new SqliteControlPlaneStore(presentPath);
+  presentStore.close();
+  mkdirSync(brokenPath, { recursive: true });
 
   const missing = internal.runStorageLifecycleMaintenanceForStateDbPath(missingPath, policy);
   assert.deepEqual(missing, { status: 'missing' });
@@ -1539,16 +1527,7 @@ test('gateway runtime storage maintenance helper returns missing, applied, and e
   });
   assert.deepEqual(applied, { status: 'applied' });
 
-  const throwingPolicy: Record<string, unknown> = {};
-  Object.defineProperty(throwingPolicy, 'telemetryRetentionMs', {
-    get: () => {
-      throw new Error('policy exploded');
-    },
-  });
-  const errored = internal.runStorageLifecycleMaintenanceForStateDbPath(
-    presentPath,
-    throwingPolicy,
-  );
-  assert.equal(errored.status, 'error');
-  assert.match(errored.error ?? '', /policy exploded/u);
+  const failed = internal.runStorageLifecycleMaintenanceForStateDbPath(brokenPath, policy);
+  assert.equal(failed.status, 'error');
+  assert.equal(typeof failed.error === 'string' && failed.error.length > 0, true);
 });

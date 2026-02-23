@@ -125,11 +125,11 @@ Related entities (repositories, tasks, project settings, runtime/session metadat
 
 - One shared tenanted SQLite store.
 - `events` table is append-only source of truth for event history.
+- High-volume provider terminal text deltas are treated as ephemeral stream output and are not persisted in the event store.
 - State+event writes are transactional.
 - Write guardrails and rolling-window maintenance are centralized in `storage-lifecycle-core`.
-- Rolling-window maintenance must run online (while sessions are live) with bounded per-tick work.
-- In-process rolling-window maintenance currently runs prune + checkpoint only; online copy-forward compaction is temporarily disabled.
-- Mux client storage lifecycle execution runs in-process on the same SQLite connection as event writes, eliminating cross-process lock contention; bounded batch sizes keep per-tick latency negligible.
+- Rolling-window maintenance execution is temporarily disabled in interactive/runtime server processes while maintenance is moved out of hot paths; manual offline maintenance is available through `harness gateway gc`.
+- Payload guardrails (for event/telemetry shaping and truncation) remain active through `storage-lifecycle-core`.
 - Storage lifecycle policy knobs are configured through `storage.lifecycle` in `harness.config.jsonc`.
 - Migrations are explicit, transactional, versioned (`PRAGMA user_version`).
 - Unknown newer schema versions fail closed.
@@ -145,7 +145,7 @@ Related entities (repositories, tasks, project settings, runtime/session metadat
   - `$XDG_CONFIG_HOME/harness/workspaces/<workspace-slug>/...`, else
   - `~/.harness/workspaces/<workspace-slug>/...`
 - Config reload is atomic with last-known-good fallback.
-- Live storage lifecycle policy reloads use the same config abstraction + last-known-good behavior.
+- Live storage lifecycle policy reloads continue to update policy state without executing maintenance ticks in server hot paths.
 
 ## Observability Model
 

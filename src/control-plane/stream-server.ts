@@ -1621,26 +1621,11 @@ export class ControlPlaneStreamServer {
   }
 
   updateStorageLifecyclePolicy(policy: Partial<StorageLifecyclePolicy>): void {
-    const update = this.storageLifecycle.updatePolicy(policy);
-    if (!update.maintenanceIntervalChanged || this.storageLifecycleTimer === null) {
-      return;
-    }
-    this.stopStorageLifecyclePolling();
-    this.startStorageLifecyclePolling();
+    this.storageLifecycle.updatePolicy(policy);
   }
 
   private startStorageLifecyclePolling(): void {
-    if (this.storageLifecycleTimer !== null) {
-      return;
-    }
-    const intervalMs = this.storageLifecycle.policy().maintenanceIntervalMs;
-    this.storageLifecycleTimer = setInterval(() => {
-      if (this.shouldSkipStateStoreWork()) {
-        return;
-      }
-      this.storageLifecycle.runMaintenanceTick();
-    }, intervalMs);
-    this.storageLifecycleTimer.unref();
+    // Temporarily disabled while maintenance is moved out of interactive/server hot paths.
   }
 
   private stopStorageLifecyclePolling(): void {

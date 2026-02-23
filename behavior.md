@@ -282,15 +282,15 @@ Test anchors:
 Behavior fragments:
 
 - Event/telemetry write guardrails run before persistence.
-- Rolling-window pruning runs online on a maintenance tick while sessions remain live.
-- In-process maintenance currently skips online copy-forward compaction; prune + checkpoint remain enabled.
-- WAL checkpoints use explicit PASSIVE mode in all maintenance paths (online ticks and GC) to avoid exclusive locks that block concurrent writers.
-- Incremental vacuum is currently deferred with in-process compaction disabled.
+- Rolling-window maintenance execution is temporarily disabled in mux runtime and control-plane server polling; manual maintenance runs only when explicitly invoked through `harness gateway gc`.
+- Provider `provider-text-delta` events are streamed to the UI but dropped before event-store persistence.
+- WAL checkpoints remain available for explicit/offline maintenance workflows.
+- Incremental vacuum remains deferred for live paths while maintenance execution is disabled.
 - SQLite `busy_timeout` is configurable via `storage.lifecycle.busyTimeoutMs` (default 5 000 ms) and propagated to every store connection opened by the gateway and mux processes.
 - Storage lifecycle policy values are configured under `storage.lifecycle` and applied to both mux event storage and control-plane telemetry storage.
-- Mux event-store maintenance runs in-process on the same connection as event writes, eliminating cross-process SQLite lock contention; bounded batch sizes keep per-tick work under 1 ms at steady state.
-- Control-plane storage lifecycle policy is hot-reloaded from config while the server is live.
-- `harness gateway gc` also runs storage lifecycle maintenance for retained offline session databases.
+- Mux event-store maintenance ticks are currently disabled; event writes continue through the append-only store path.
+- Control-plane storage lifecycle policy is hot-reloaded from config while the server is live, but hot-path maintenance execution remains disabled.
+- `harness gateway gc` runs manual offline telemetry truncation/compaction for retained session/default control-plane databases that are not live.
 - Event and telemetry storage maintenance is coordinated through one module.
 - Existing SQLite files are upgraded on open to incremental auto-vacuum mode (best-effort).
 

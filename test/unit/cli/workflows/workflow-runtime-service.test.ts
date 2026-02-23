@@ -281,6 +281,22 @@ test('workflow runtime default client disables inspect runtime arg when inspecto
   assert.equal(stdout.join('').includes('continuing without inspector'), true);
 });
 
+test('workflow runtime canBindPort resolves true for an ephemeral bind', async () => {
+  const workspace = createWorkspace();
+  const runtime = createRuntimeContext(workspace);
+  const service = new WorkflowRuntimeService(
+    runtime,
+    createGatewayStub(workspace) as never,
+    undefined,
+    () => undefined,
+  );
+  const internals = service as unknown as {
+    canBindPort: (host: string, port: number) => Promise<boolean>;
+  };
+
+  assert.equal(await internals.canBindPort('127.0.0.1', 0), true);
+});
+
 test('workflow runtime profile run command orchestrates profile artifacts end-to-end', async () => {
   const workspace = createWorkspace();
   const runtime = createRuntimeContext(workspace);

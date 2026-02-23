@@ -23,6 +23,10 @@ interface EventPersistenceOptions {
 const DEFAULT_FLUSH_DELAY_MS = 12;
 const DEFAULT_FLUSH_MAX_BATCH = 64;
 
+function shouldPersistEvent(event: NormalizedEventEnvelope): boolean {
+  return !(event.source === 'provider' && event.type === 'provider-text-delta');
+}
+
 export class EventPersistence {
   private readonly flushDelayMs: number;
   private readonly flushMaxBatch: number;
@@ -46,6 +50,9 @@ export class EventPersistence {
   }
 
   enqueue(event: NormalizedEventEnvelope): void {
+    if (!shouldPersistEvent(event)) {
+      return;
+    }
     this.pendingEvents.push(event);
     if (this.pendingEvents.length >= this.flushMaxBatch) {
       this.flush('immediate');
