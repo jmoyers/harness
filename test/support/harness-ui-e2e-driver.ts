@@ -170,8 +170,8 @@ export class HarnessUiE2EDriver {
     isVisible: () => boolean;
   } {
     return {
-      waitFor: async (timeoutMs = 30_000) => await this.waitForText(text, timeoutMs),
-      click: async (timeoutMs = 30_000) => {
+      waitFor: async (timeoutMs = 12_000) => await this.waitForText(text, timeoutMs),
+      click: async (timeoutMs = 12_000) => {
         const cell = await this.waitForText(text, timeoutMs);
         this.mouse.click(cell.col, cell.row);
       },

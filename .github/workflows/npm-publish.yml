@@ -39,7 +39,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Verify quality gate
-        run: bun run verify
+        run: bun run verify:ci
 
       - name: Verify tag matches package version
         env:

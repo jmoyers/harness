@@ -32,7 +32,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Verify quality gate
-        run: bun run verify
+        run: bun run verify:ci
 
   github-release:
     runs-on: ubuntu-latest

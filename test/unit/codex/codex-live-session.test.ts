@@ -1055,16 +1055,16 @@ void test(
       throw new Error(`timed out waiting for line: ${String(pattern)}`);
     };
 
-    await waitForLine(/^29 91$/, 10_000);
+    await waitForLine(/^29 91$/, 5000);
 
     session.resize(73, 21);
     session.write('size\n');
-    await waitForLine(/^21 73$/, 10_000);
+    await waitForLine(/^21 73$/, 5000);
 
     session.detach(attachmentId);
     session.close();
   },
-  { timeout: 30_000 },
+  { timeout: 15_000 },
 );
 
 void test('codex live session supports default dependency paths', async () => {

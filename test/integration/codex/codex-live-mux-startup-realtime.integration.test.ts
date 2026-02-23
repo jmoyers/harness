@@ -110,7 +110,7 @@ void test(
         12000,
       );
       writeLeftMouseClick(interactive.session, betaThreadButtonCell.col, betaThreadButtonCell.row);
-      await waitForSnapshotLineContaining(interactive.oracle, 'Start Codex thread', 20000);
+      await waitForSnapshotLineContaining(interactive.oracle, 'Start Codex thread', 12000);
 
       interactive.session.write('\r');
 
@@ -280,7 +280,7 @@ void test(
 
     try {
       assert.equal(existsSync(defaultGatewayRecordPath), false);
-      await waitForSnapshotLineContaining(interactive.oracle, '🏠 home', 45000);
+      await waitForSnapshotLineContaining(interactive.oracle, '🏠 home', 12000);
 
       await publisherClient.sendCommand({
         type: 'directory.upsert',
