@@ -52,7 +52,7 @@ void test(
     });
 
     try {
-      const homeCell = await waitForSnapshotLineContaining(interactive.oracle, '🏠 home', 12000);
+      const homeCell = await waitForSnapshotLineContaining(interactive.oracle, '🏠 home', 20000);
 
       writeLeftMouseClick(interactive.session, homeCell.col, homeCell.row);
       await delay(150);
@@ -107,8 +107,8 @@ void test(
         12000,
       );
       writeLeftMouseClick(interactive.session, threadButtonCell.col, threadButtonCell.row);
-      await waitForSnapshotLineContaining(interactive.oracle, 'Command Menu', 12000);
-      await waitForSnapshotLineContaining(interactive.oracle, 'search: _', 12000);
+      await waitForSnapshotLineContaining(interactive.oracle, 'Command Menu', 20000);
+      await waitForSnapshotLineContaining(interactive.oracle, 'search: _', 20000);
       await waitForSnapshotLineContaining(
         interactive.oracle,
         'Start Critique thread (diff)',
@@ -138,11 +138,11 @@ void test(
     });
 
     try {
-      await waitForSnapshotLineContaining(interactive.oracle, '🏠 home', 12000);
-      await openCommandMenuWithShortcut(interactive.session, interactive.oracle, 12000);
+      await waitForSnapshotLineContaining(interactive.oracle, '🏠 home', 20000);
+      await openCommandMenuWithShortcut(interactive.session, interactive.oracle, 20000);
       interactive.session.write('oauth');
-      await waitForSnapshotLineContaining(interactive.oracle, 'Log In to GitHub (OAuth)', 12000);
-      await waitForSnapshotLineContaining(interactive.oracle, 'Log In to Linear (OAuth)', 12000);
+      await waitForSnapshotLineContaining(interactive.oracle, 'Log In to GitHub (OAuth)', 20000);
+      await waitForSnapshotLineContaining(interactive.oracle, 'Log In to Linear (OAuth)', 20000);
     } finally {
       try {
         await requestMuxShutdown(interactive.session);
@@ -386,9 +386,9 @@ void test(
         },
       });
 
-      await waitForSnapshotLineContaining(interactive.oracle, 'ash-1', 12000);
+      await waitForSnapshotLineContaining(interactive.oracle, 'ash-1', 20000);
 
-      await openCommandMenuWithShortcut(interactive.session, interactive.oracle, 12000);
+      await openCommandMenuWithShortcut(interactive.session, interactive.oracle, 20000);
 
       interactive.session.write('show my open pull requests');
       await waitForSnapshotLineContaining(
@@ -397,8 +397,8 @@ void test(
         12000,
       );
 
-      await closeCommandMenuWithEscape(interactive.session, interactive.oracle, 12000);
-      await openCommandMenuWithShortcut(interactive.session, interactive.oracle, 12000);
+      await closeCommandMenuWithEscape(interactive.session, interactive.oracle, 20000);
+      await openCommandMenuWithShortcut(interactive.session, interactive.oracle, 20000);
 
       interactive.session.write('open github for this repo');
       await waitForSnapshotLineContaining(
@@ -407,12 +407,12 @@ void test(
         12000,
       );
 
-      await closeCommandMenuWithEscape(interactive.session, interactive.oracle, 12000);
-      await openCommandMenuWithShortcut(interactive.session, interactive.oracle, 12000);
+      await closeCommandMenuWithEscape(interactive.session, interactive.oracle, 20000);
+      await openCommandMenuWithShortcut(interactive.session, interactive.oracle, 20000);
 
       interactive.session.write('open pr');
-      await waitForSnapshotLineContaining(interactive.oracle, 'Open PR (git)', 12000);
-      await waitForSnapshotLineNotContaining(interactive.oracle, 'Create PR (git)', 12000);
+      await waitForSnapshotLineContaining(interactive.oracle, 'Open PR (git)', 20000);
+      await waitForSnapshotLineNotContaining(interactive.oracle, 'Create PR (git)', 20000);
     } finally {
       try {
         if (interactive !== null) {

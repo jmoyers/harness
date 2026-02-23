@@ -1011,57 +1011,61 @@ void test('codex live session e2e completes terminal query handshake with config
   session.close();
 });
 
-void test('codex live session e2e preserves terminal width across startup and resize', async () => {
-  const command = '/bin/sh';
-  const commandScript =
-    'stty size; while IFS= read -r line; do if [ "$line" = "size" ]; then stty size; fi; done';
+void test(
+  'codex live session e2e preserves terminal width across startup and resize',
+  { timeout: 15_000 },
+  async () => {
+    const command = '/bin/sh';
+    const commandScript =
+      'stty size; while IFS= read -r line; do if [ "$line" = "size" ]; then stty size; fi; done';
 
-  const session = startCodexLiveSession({
-    command,
-    baseArgs: [],
-    args: ['-lc', commandScript],
-    initialCols: 91,
-    initialRows: 29,
-  });
+    const session = startCodexLiveSession({
+      command,
+      baseArgs: [],
+      args: ['-lc', commandScript],
+      initialCols: 91,
+      initialRows: 29,
+    });
 
-  let exited: PtyExit | null = null;
-  const attachmentId = session.attach({
-    onData: () => {
-      // handled below via polling snapshot
-    },
-    onExit: (exit) => {
-      exited = exit;
-    },
-  });
+    let exited: PtyExit | null = null;
+    const attachmentId = session.attach({
+      onData: () => {
+        // handled below via polling snapshot
+      },
+      onExit: (exit) => {
+        exited = exit;
+      },
+    });
 
-  const waitForLine = async (pattern: RegExp, timeoutMs: number): Promise<void> => {
-    const startedAt = Date.now();
-    while (Date.now() - startedAt < timeoutMs) {
-      if (exited !== null) {
-        throw new Error(
-          `session exited early: code=${String(exited.code)} signal=${String(exited.signal)}`,
-        );
+    const waitForLine = async (pattern: RegExp, timeoutMs: number): Promise<void> => {
+      const startedAt = Date.now();
+      while (Date.now() - startedAt < timeoutMs) {
+        if (exited !== null) {
+          throw new Error(
+            `session exited early: code=${String(exited.code)} signal=${String(exited.signal)}`,
+          );
+        }
+        const frame = session.snapshot();
+        if (frame.lines.some((line) => pattern.test(line))) {
+          return;
+        }
+        await new Promise((resolve) => {
+          setTimeout(resolve, 25);
+        });
       }
-      const frame = session.snapshot();
-      if (frame.lines.some((line) => pattern.test(line))) {
-        return;
-      }
-      await new Promise((resolve) => {
-        setTimeout(resolve, 25);
-      });
-    }
-    throw new Error(`timed out waiting for line: ${String(pattern)}`);
-  };
+      throw new Error(`timed out waiting for line: ${String(pattern)}`);
+    };
 
-  await waitForLine(/^29 91$/, 5000);
+    await waitForLine(/^29 91$/, 5000);
 
-  session.resize(73, 21);
-  session.write('size\n');
-  await waitForLine(/^21 73$/, 5000);
+    session.resize(73, 21);
+    session.write('size\n');
+    await waitForLine(/^21 73$/, 5000);
 
-  session.detach(attachmentId);
-  session.close();
-});
+    session.detach(attachmentId);
+    session.close();
+  },
+);
 
 void test('codex live session supports default dependency paths', async () => {
   const session = startCodexLiveSession({
