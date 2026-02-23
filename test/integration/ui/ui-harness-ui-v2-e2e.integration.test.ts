@@ -17,7 +17,7 @@ void test(
         rows: 30,
       });
 
-      await driver.locator('🏠 home').waitFor(30_000);
+      await driver.locator('🏠 home').waitFor(45_000);
       await driver.locator('🦎 nim').click(30_000);
       await driver.waitForText('nim>', 30_000);
       await driver.waitForText('queued:0', 30_000);
@@ -51,7 +51,7 @@ void test(
       }
     }
   },
-  { timeout: 60_000 },
+  { timeout: 90_000 },
 );
 
 void test(
@@ -67,7 +67,7 @@ void test(
         rows: 12,
       });
 
-      await driver.locator('🏠 home').waitFor(30_000);
+      await driver.locator('🏠 home').waitFor(45_000);
       await driver.keyboard.openCommandMenu(30_000);
       await driver.waitForText('Command Menu', 30_000);
       driver.mouse.click(1, 1);

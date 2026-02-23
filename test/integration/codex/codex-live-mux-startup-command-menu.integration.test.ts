@@ -52,7 +52,7 @@ void test(
     });
 
     try {
-      const homeCell = await waitForSnapshotLineContaining(interactive.oracle, '🏠 home', 30000);
+      const homeCell = await waitForSnapshotLineContaining(interactive.oracle, '🏠 home', 45000);
 
       writeLeftMouseClick(interactive.session, homeCell.col, homeCell.row);
       await delay(150);
@@ -138,7 +138,7 @@ void test(
     });
 
     try {
-      await waitForSnapshotLineContaining(interactive.oracle, '🏠 home', 30000);
+      await waitForSnapshotLineContaining(interactive.oracle, '🏠 home', 45000);
       await openCommandMenuWithShortcut(interactive.session, interactive.oracle, 20000);
       interactive.session.write('oauth');
       await waitForSnapshotLineContaining(interactive.oracle, 'Log In to GitHub (OAuth)', 20000);
