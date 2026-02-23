@@ -571,26 +571,20 @@ void test('stream server telemetry lifecycle adapter preserves state-store metho
       copiedRows: number;
     };
   };
-  let pruneThis: unknown = null;
-  let checkpointThis: unknown = null;
-  let compactThis: unknown = null;
-  let copyForwardThis: unknown = null;
+  const captured: Record<string, unknown> = {};
   storeInternals.pruneTelemetryOlderThan = function (
     this: unknown,
     _cutoffIngestedAt: string,
     _limit: number,
   ): number {
-    pruneThis = this;
+    captured.prune = this;
     return 0;
   };
-  storeInternals.checkpointWal = function (
-    this: unknown,
-    _mode?: 'PASSIVE' | 'TRUNCATE',
-  ): void {
-    checkpointThis = this;
+  storeInternals.checkpointWal = function (this: unknown, _mode?: 'PASSIVE' | 'TRUNCATE'): void {
+    captured.checkpoint = this;
   };
   storeInternals.compactFreelistPages = function (this: unknown, _maxPages: number): void {
-    compactThis = this;
+    captured.compact = this;
   };
   storeInternals.runOnlineCopyForwardCompactionStep = function (
     this: unknown,
@@ -600,7 +594,7 @@ void test('stream server telemetry lifecycle adapter preserves state-store metho
     state: 'idle' | 'copying' | 'finalized';
     copiedRows: number;
   } {
-    copyForwardThis = this;
+    captured.copyForward = this;
     return {
       state: 'idle',
       copiedRows: 0,
@@ -635,10 +629,7 @@ void test('stream server telemetry lifecycle adapter preserves state-store metho
       throw new Error('expected telemetry lifecycle adapter');
     }
 
-    assert.equal(
-      telemetryStore.pruneTelemetryOlderThan('2026-02-23T00:00:00.000Z', 5),
-      0,
-    );
+    assert.equal(telemetryStore.pruneTelemetryOlderThan('2026-02-23T00:00:00.000Z', 5), 0);
     telemetryStore.checkpointWal('PASSIVE');
     telemetryStore.compactFreelistPages(8);
     const copyForwardStep = telemetryStore.runOnlineCopyForwardCompactionStep?.(2, 4);
@@ -646,10 +637,10 @@ void test('stream server telemetry lifecycle adapter preserves state-store metho
       state: 'idle',
       copiedRows: 0,
     });
-    assert.equal(pruneThis, stateStore);
-    assert.equal(checkpointThis, stateStore);
-    assert.equal(compactThis, stateStore);
-    assert.equal(copyForwardThis, stateStore);
+    assert.equal(captured.prune, stateStore);
+    assert.equal(captured.checkpoint, stateStore);
+    assert.equal(captured.compact, stateStore);
+    assert.equal(captured.copyForward, stateStore);
   } finally {
     await server.close();
     stateStore.close();

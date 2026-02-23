@@ -9,6 +9,8 @@ void test('render trace analysis escapes control bytes in preview and truncates 
   const preview = renderTraceChunkPreview('\u001b[31mhello\nworld\r', 80);
   assert.equal(preview.includes('\\u001b[31mhello\\n'), true);
   assert.equal(preview.includes('\\r'), true);
+  const tabPreview = renderTraceChunkPreview('a\tb', 80);
+  assert.equal(tabPreview, 'a\\tb');
   const c0Preview = renderTraceChunkPreview(`x${String.fromCharCode(1)}y`, 80);
   assert.equal(c0Preview, 'x\\u0001y');
 

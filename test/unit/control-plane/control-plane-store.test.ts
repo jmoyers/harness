@@ -942,7 +942,10 @@ void test('control-plane store normalization helpers validate row shapes and fie
       },
     }),
   });
-  assert.equal(parsedLegacyStatusModelWithLegacyActivityHintValue.runtimeStatusModel?.activityHint, 'idle');
+  assert.equal(
+    parsedLegacyStatusModelWithLegacyActivityHintValue.runtimeStatusModel?.activityHint,
+    'idle',
+  );
   const parsedLegacyStatusModelWithInvalidLegacyActivityHintValue = normalizeStoredConversationRow({
     ...conversationRowBase,
     runtime_status_model_json: JSON.stringify({
