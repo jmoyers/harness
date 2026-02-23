@@ -234,10 +234,8 @@ test('storage lifecycle maintenance failures are isolated and reported', () => {
   );
 });
 
-test('storage lifecycle checkpoints when online compaction finalizes even without prune deletes', () => {
+test('storage lifecycle does not invoke compaction when prune deletes are zero', () => {
   const calls: string[] = [];
-  let eventCompactionCalls = 0;
-  let telemetryCompactionCalls = 0;
   let nowMs = Date.parse('2026-02-22T00:00:00.000Z');
   const core = new StorageLifecycleCore({
     eventStore: {
@@ -248,13 +246,6 @@ test('storage lifecycle checkpoints when online compaction finalizes even withou
       compactFreelistPages: (maxPages) => {
         calls.push(`event-compact:${String(maxPages)}`);
       },
-      runOnlineCopyForwardCompactionStep: () => {
-        eventCompactionCalls += 1;
-        return {
-          state: eventCompactionCalls < 2 ? 'copying' : 'finalized',
-          copiedRows: eventCompactionCalls < 2 ? 250 : 40,
-        };
-      },
     },
     telemetryStore: {
       pruneTelemetryOlderThan: () => 0,
@@ -263,13 +254,6 @@ test('storage lifecycle checkpoints when online compaction finalizes even withou
       },
       compactFreelistPages: (maxPages) => {
         calls.push(`telemetry-compact:${String(maxPages)}`);
-      },
-      runOnlineCopyForwardCompactionStep: () => {
-        telemetryCompactionCalls += 1;
-        return {
-          state: telemetryCompactionCalls < 2 ? 'copying' : 'finalized',
-          copiedRows: telemetryCompactionCalls < 2 ? 120 : 15,
-        };
       },
     },
     nowMs: () => nowMs,
@@ -297,12 +281,7 @@ test('storage lifecycle checkpoints when online compaction finalizes even withou
     eventsPruned: 0,
     telemetryPruned: 0,
   });
-  assert.deepEqual(calls, [
-    'event-checkpoint',
-    'event-compact:11',
-    'telemetry-checkpoint',
-    'telemetry-compact:11',
-  ]);
+  assert.deepEqual(calls, []);
 });
 
 test('storage lifecycle updatePolicy merges with current values and reports interval changes', () => {

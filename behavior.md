@@ -283,10 +283,9 @@ Behavior fragments:
 
 - Event/telemetry write guardrails run before persistence.
 - Rolling-window pruning runs online on a maintenance tick while sessions remain live.
-- Rolling-window compaction runs online in bounded copy-forward steps after prune churn.
-- Copy-forward compaction uses separate transactions for initialization, batch copy, and finalization to minimize write-lock hold time and avoid blocking concurrent writers.
+- In-process maintenance currently skips online copy-forward compaction; prune + checkpoint remain enabled.
 - WAL checkpoints use explicit PASSIVE mode in all maintenance paths (online ticks and GC) to avoid exclusive locks that block concurrent writers.
-- Incremental vacuum runs only after compaction finalization, not after every prune tick, to reduce write-lock frequency during steady-state maintenance.
+- Incremental vacuum is currently deferred with in-process compaction disabled.
 - SQLite `busy_timeout` is configurable via `storage.lifecycle.busyTimeoutMs` (default 5 000 ms) and propagated to every store connection opened by the gateway and mux processes.
 - Storage lifecycle policy values are configured under `storage.lifecycle` and applied to both mux event storage and control-plane telemetry storage.
 - Mux event-store maintenance runs in-process on the same connection as event writes, eliminating cross-process SQLite lock contention; bounded batch sizes keep per-tick work under 1 ms at steady state.

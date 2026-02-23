@@ -431,39 +431,17 @@ void test('stream server marks state store closed and halts background polling o
 void test('stream server runs storage lifecycle maintenance ticks while server is live', async () => {
   const storePath = makeTempStateStorePath();
   const stateStore = new SqliteControlPlaneStore(storePath);
-  const storeInternals = stateStore as unknown as {
-    runOnlineCopyForwardCompactionStep: (
-      batchSize: number,
-      finalizeTailRows: number,
-    ) => {
-      state: 'idle' | 'copying' | 'finalized';
-      copiedRows: number;
-    };
-  };
-  const originalCopyForwardStore =
-    storeInternals.runOnlineCopyForwardCompactionStep.bind(storeInternals);
-  storeInternals.runOnlineCopyForwardCompactionStep = (batchSize, finalizeTailRows) =>
-    originalCopyForwardStore(batchSize, finalizeTailRows);
   const internals = stateStore as unknown as {
     pruneTelemetryOlderThan: (cutoffIngestedAt: string, limit: number) => number;
     checkpointWal: (mode?: 'PASSIVE' | 'TRUNCATE') => void;
     compactFreelistPages: (maxPages: number) => void;
-    runOnlineCopyForwardCompactionStep: (
-      batchSize: number,
-      finalizeTailRows: number,
-    ) => {
-      state: 'idle' | 'copying' | 'finalized';
-      copiedRows: number;
-    };
   };
   const originalPrune = internals.pruneTelemetryOlderThan.bind(internals);
   const originalCheckpoint = internals.checkpointWal.bind(internals);
   const originalCompact = internals.compactFreelistPages.bind(internals);
-  const originalCopyForward = internals.runOnlineCopyForwardCompactionStep.bind(internals);
   let pruneCalls = 0;
   let checkpointCalls = 0;
   let compactCalls = 0;
-  let copyForwardCalls = 0;
   internals.pruneTelemetryOlderThan = (cutoffIngestedAt, limit) => {
     pruneCalls += 1;
     return originalPrune(cutoffIngestedAt, limit);
@@ -475,10 +453,6 @@ void test('stream server runs storage lifecycle maintenance ticks while server i
   internals.compactFreelistPages = (maxPages) => {
     compactCalls += 1;
     originalCompact(maxPages);
-  };
-  internals.runOnlineCopyForwardCompactionStep = (batchSize, finalizeTailRows) => {
-    copyForwardCalls += 1;
-    return originalCopyForward(batchSize, finalizeTailRows);
   };
 
   const server = await startControlPlaneStreamServer({
@@ -506,7 +480,7 @@ void test('stream server runs storage lifecycle maintenance ticks while server i
     await delay(120);
     assert.equal(pruneCalls > 0, true);
     assert.equal(checkpointCalls > 0, true);
-    assert.equal(copyForwardCalls > 0, true);
+    assert.equal(compactCalls, 0);
   } finally {
     await server.close();
     stateStore.close();

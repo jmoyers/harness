@@ -128,7 +128,7 @@ Related entities (repositories, tasks, project settings, runtime/session metadat
 - State+event writes are transactional.
 - Write guardrails and rolling-window maintenance are centralized in `storage-lifecycle-core`.
 - Rolling-window maintenance must run online (while sessions are live) with bounded per-tick work.
-- Rolling-window maintenance includes bounded online copy-forward compaction of retained rows after prune churn.
+- In-process rolling-window maintenance currently runs prune + checkpoint only; online copy-forward compaction is temporarily disabled.
 - Mux client storage lifecycle execution runs in-process on the same SQLite connection as event writes, eliminating cross-process lock contention; bounded batch sizes keep per-tick latency negligible.
 - Storage lifecycle policy knobs are configured through `storage.lifecycle` in `harness.config.jsonc`.
 - Migrations are explicit, transactional, versioned (`PRAGMA user_version`).

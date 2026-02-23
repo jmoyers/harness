@@ -404,15 +404,8 @@ export class StorageLifecycleCore {
           cutoff,
           this.policyValues.pruneBatchSize,
         );
-        const compaction = this.eventStore.runOnlineCopyForwardCompactionStep?.(
-          this.policyValues.copyForwardBatchSize,
-          this.policyValues.copyForwardFinalizeTailRows,
-        );
-        if (eventsPruned > 0 || compaction?.state === 'finalized') {
+        if (eventsPruned > 0) {
           this.eventStore.checkpointWal('PASSIVE');
-        }
-        if (compaction?.state === 'finalized') {
-          this.eventStore.compactFreelistPages(this.policyValues.compactFreelistPages);
         }
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
@@ -427,15 +420,8 @@ export class StorageLifecycleCore {
           cutoff,
           this.policyValues.pruneBatchSize,
         );
-        const compaction = this.telemetryStore.runOnlineCopyForwardCompactionStep?.(
-          this.policyValues.copyForwardBatchSize,
-          this.policyValues.copyForwardFinalizeTailRows,
-        );
-        if (telemetryPruned > 0 || compaction?.state === 'finalized') {
+        if (telemetryPruned > 0) {
           this.telemetryStore.checkpointWal('PASSIVE');
-        }
-        if (compaction?.state === 'finalized') {
-          this.telemetryStore.compactFreelistPages(this.policyValues.compactFreelistPages);
         }
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
