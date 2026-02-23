@@ -1,6 +1,7 @@
 const ESC = '\u001b';
 
 const SUPPORTED_ESC_SINGLE = new Set(['7', '8', 'D', 'E', 'M', 'H', 'c']);
+const SUPPORTED_C0 = new Set(['\b', '\t', '\n', '\r']);
 const SUPPORTED_CSI_FINALS = new Set([
   'm',
   'A',
@@ -27,14 +28,49 @@ const SUPPORTED_PRIVATE_MODE_PARAMS = new Set([
   6, 25, 1000, 1002, 1003, 1004, 1005, 1006, 1015, 2004, 1047, 1048, 1049,
 ]);
 
-type RenderTraceControlIssueKind = 'unsupported-esc' | 'unsupported-csi' | 'unsupported-dcs';
+export type RenderTraceControlIssueKind =
+  | 'unsupported-c0'
+  | 'unsupported-esc'
+  | 'unsupported-csi'
+  | 'unsupported-dcs';
 
-interface RenderTraceControlIssue {
+export interface RenderTraceControlIssue {
   readonly kind: RenderTraceControlIssueKind;
   readonly offset: number;
   readonly sequence: string;
   readonly finalByte?: string;
   readonly rawParams?: string;
+}
+
+function isUnsupportedControlCharacter(char: string): boolean {
+  if (char === ESC || SUPPORTED_C0.has(char)) {
+    return false;
+  }
+  const code = char.charCodeAt(0);
+  if (code < 0x20) {
+    return true;
+  }
+  return code === 0x7f || (code >= 0x80 && code < 0xa0);
+}
+
+function escapeCharForPreview(char: string): string {
+  if (char === '\r') {
+    return '\\r';
+  }
+  if (char === '\n') {
+    return '\\n';
+  }
+  if (char === '\t') {
+    return '\\t';
+  }
+  if (char === ESC) {
+    return '\\u001b';
+  }
+  const code = char.charCodeAt(0);
+  if (code < 0x20 || code === 0x7f || (code >= 0x80 && code < 0xa0)) {
+    return `\\u${code.toString(16).padStart(4, '0')}`;
+  }
+  return char;
 }
 
 function isLikelyCsiQueryPayload(payload: string): boolean {
@@ -88,11 +124,10 @@ function csiSupported(rawParams: string, finalByte: string): boolean {
 
 export function renderTraceChunkPreview(chunk: Buffer | string, maxChars = 200): string {
   const text = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
-  const replaced = text
-    .replaceAll('\r', '\\r')
-    .replaceAll('\n', '\\n')
-    .replaceAll('\t', '\\t')
-    .replaceAll(ESC, '\\u001b');
+  let replaced = '';
+  for (const char of text) {
+    replaced += escapeCharForPreview(char);
+  }
   if (replaced.length <= maxChars) {
     return replaced;
   }
@@ -108,6 +143,16 @@ export function findRenderTraceControlIssues(
 
   let index = 0;
   while (index < text.length && issues.length < maxIssues) {
+    const current = text[index]!;
+    if (isUnsupportedControlCharacter(current)) {
+      issues.push({
+        kind: 'unsupported-c0',
+        offset: index,
+        sequence: current,
+      });
+      index += 1;
+      continue;
+    }
     if (text[index] !== ESC) {
       index += 1;
       continue;

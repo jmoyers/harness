@@ -171,6 +171,7 @@ import { toggleGatewayStatusTimeline as toggleGatewayStatusTimelineFn } from '..
 import { toggleGatewayRenderTrace as toggleGatewayRenderTraceFn } from '../../mux/live-mux/gateway-render-trace.ts';
 import { resolveStatusTimelineStatePath } from '../../mux/live-mux/status-timeline-state.ts';
 import { resolveRenderTraceStatePath } from '../../mux/live-mux/render-trace-state.ts';
+import { resolveSessionDiagnosticsDirectory } from '../../mux/live-mux/session-diagnostics-paths.ts';
 import {
   findRenderTraceControlIssues,
   renderTraceChunkPreview,
@@ -236,6 +237,10 @@ import {
   RenderTraceRecorder,
   type RenderTraceLabels,
 } from '../../services/render-trace-recorder.ts';
+import {
+  SessionDiagnosticsStore,
+  type SessionStatusSnapshot,
+} from '../../services/session-diagnostics-store.ts';
 import {
   ProcessScreenWriter,
   Screen,
@@ -1256,6 +1261,76 @@ class CodexLiveMuxRuntimeApplication {
     const renderTraceRecorder = new RenderTraceRecorder({
       statePath: resolveRenderTraceStatePath(options.invocationDirectory, muxSessionName),
     });
+    const sessionDiagnosticsStore = new SessionDiagnosticsStore({
+      diagnosticsDirectory: resolveSessionDiagnosticsDirectory(
+        options.invocationDirectory,
+        muxSessionName,
+      ),
+    });
+    const statusSnapshotForConversation = (
+      conversation: ConversationState,
+    ): SessionStatusSnapshot => {
+      const statusModel = conversation.statusModel;
+      return {
+        status: conversation.status,
+        attentionReason: conversation.attentionReason,
+        live: conversation.live,
+        phase: statusModel?.phase ?? null,
+        detailText: statusModel?.detailText ?? null,
+        lastKnownWork: conversation.lastKnownWork,
+        lastKnownWorkAt: conversation.lastKnownWorkAt,
+        telemetrySource: conversation.lastTelemetrySource,
+      };
+    };
+    const statusSnapshotsEqual = (
+      left: SessionStatusSnapshot | null,
+      right: SessionStatusSnapshot,
+    ): boolean => {
+      if (left === null) {
+        return false;
+      }
+      return (
+        left.status === right.status &&
+        left.attentionReason === right.attentionReason &&
+        left.live === right.live &&
+        left.phase === right.phase &&
+        left.detailText === right.detailText &&
+        left.lastKnownWork === right.lastKnownWork &&
+        left.lastKnownWorkAt === right.lastKnownWorkAt &&
+        left.telemetrySource === right.telemetrySource
+      );
+    };
+    const recordConversationStatusTransition = (input: {
+      readonly conversation: ConversationState;
+      readonly before: SessionStatusSnapshot | null;
+      readonly observedAt: string;
+      readonly source: string;
+      readonly metadata?: Record<string, unknown>;
+    }): void => {
+      const after = statusSnapshotForConversation(input.conversation);
+      if (statusSnapshotsEqual(input.before, after)) {
+        return;
+      }
+      sessionDiagnosticsStore.recordStatusTransition({
+        conversationId: input.conversation.sessionId,
+        observedAt: input.observedAt,
+        source: input.source,
+        from:
+          input.before ??
+          ({
+            status: '',
+            attentionReason: null,
+            live: false,
+            phase: null,
+            detailText: null,
+            lastKnownWork: null,
+            lastKnownWorkAt: null,
+            telemetrySource: null,
+          } as const),
+        to: after,
+        ...(input.metadata === undefined ? {} : { metadata: input.metadata }),
+      });
+    };
     const resolveTraceLabels = (input: {
       sessionId: string | null;
       directoryId: string | null;
@@ -1420,6 +1495,7 @@ class CodexLiveMuxRuntimeApplication {
         existing === undefined
           ? null
           : sessionProjectionInstrumentation.snapshotForConversation(existing);
+      const statusBefore = existing === undefined ? null : statusSnapshotForConversation(existing);
       const updated = applyMuxControlPlaneKeyEvent(event, {
         removedConversationIds: conversationManager.removedConversationIds,
         ensureConversation,
@@ -1427,6 +1503,22 @@ class CodexLiveMuxRuntimeApplication {
       if (updated === null) {
         return;
       }
+      const observedAt = event.type === 'session-telemetry' ? event.keyEvent.observedAt : event.ts;
+      recordConversationStatusTransition({
+        conversation: updated,
+        before: statusBefore,
+        observedAt,
+        source: `control-plane-key:${event.type}`,
+        metadata: {
+          cursor: event.cursor,
+          ...(event.type === 'session-status'
+            ? {
+                status: event.status,
+                live: event.live,
+              }
+            : {}),
+        },
+      });
       if (event.type === 'session-status') {
         if (event.live) {
           void conversationLifecycle.subscribeConversationEvents(event.sessionId).catch(() => {});
@@ -1655,7 +1747,18 @@ class CodexLiveMuxRuntimeApplication {
         isSessionNotFoundError,
         isSessionNotLiveError,
         markSessionUnavailable: (sessionId) => {
-          conversationManager.markSessionUnavailable(sessionId);
+          const conversation = conversationManager.get(sessionId);
+          const statusBefore =
+            conversation === undefined ? null : statusSnapshotForConversation(conversation);
+          const updated = conversationManager.markSessionUnavailable(sessionId);
+          if (updated !== null) {
+            recordConversationStatusTransition({
+              conversation: updated,
+              before: statusBefore,
+              observedAt: new Date().toISOString(),
+              source: 'conversation-activation:session-unavailable',
+            });
+          }
         },
         schedulePtyResizeImmediate: () => {
           schedulePtyResize(
@@ -3049,6 +3152,7 @@ class CodexLiveMuxRuntimeApplication {
         stopConversationTitleEdit(false);
       }
       conversationManager.remove(sessionId);
+      sessionDiagnosticsStore.clearConversation(sessionId);
       ptySizeByConversationId.delete(sessionId);
       processUsageRefreshService.deleteSession(sessionId);
     };
@@ -4538,7 +4642,22 @@ class CodexLiveMuxRuntimeApplication {
       },
       activeConversationId: () => conversationManager.activeConversationId,
       markSessionExited: (input) => {
-        conversationManager.markSessionExited(input);
+        const conversation = conversationManager.get(input.sessionId);
+        const statusBefore =
+          conversation === undefined ? null : statusSnapshotForConversation(conversation);
+        const updated = conversationManager.markSessionExited(input);
+        if (updated !== null) {
+          recordConversationStatusTransition({
+            conversation: updated,
+            before: statusBefore,
+            observedAt: input.exitedAt,
+            source: 'runtime-envelope:session-exit',
+            metadata: {
+              exitCode: input.exit.code,
+              signal: input.exit.signal,
+            },
+          });
+        }
       },
       deletePtySize: (sessionId) => {
         ptySizeByConversationId.delete(sessionId);
@@ -4565,10 +4684,18 @@ class CodexLiveMuxRuntimeApplication {
           directoryId: conversation?.directoryId ?? null,
           conversationId: envelope.sessionId,
         });
-        if (renderTraceRecorder.shouldCaptureConversation(labels.conversationId)) {
-          const chunk = Buffer.from(envelope.chunkBase64, 'base64');
-          const issues = findRenderTraceControlIssues(chunk);
-          if (issues.length > 0) {
+        const chunk = Buffer.from(envelope.chunkBase64, 'base64');
+        const issues = findRenderTraceControlIssues(chunk);
+        if (issues.length > 0) {
+          sessionDiagnosticsStore.recordUnsupportedControlSequences({
+            conversationId: envelope.sessionId,
+            observedAt: new Date().toISOString(),
+            source: 'runtime-envelope:pty-output',
+            cursor: envelope.cursor,
+            chunkPreview: renderTraceChunkPreview(chunk, 320),
+            issues,
+          });
+          if (renderTraceRecorder.shouldCaptureConversation(labels.conversationId)) {
             const issueSignature = issues
               .map((issue) => `${issue.kind}:${issue.sequence}`)
               .join('|');
@@ -5032,6 +5159,7 @@ class CodexLiveMuxRuntimeApplication {
       shuttingDown = true;
       statusTimelineRecorder.close();
       renderTraceRecorder.close();
+      sessionDiagnosticsStore.close();
       await runtimeNimSession.dispose();
       await finalizeRuntimeShutdown(runtimeShutdownOptions);
     }

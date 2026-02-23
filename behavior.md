@@ -220,6 +220,7 @@ Behavior fragments:
 - `activityHint` is optional telemetry metadata and does not supersede `phase`.
 - Attention hints and completion/inactivity transitions.
 - Rail/status line text from normalized event timelines.
+- Each live thread writes per-conversation diagnostics (`status-transition`, unsupported control sequence observations) to session-scoped JSONL files and deletes that file when the thread is archived/removed.
 
 Owners:
 

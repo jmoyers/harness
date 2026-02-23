@@ -9,6 +9,8 @@ void test('render trace analysis escapes control bytes in preview and truncates 
   const preview = renderTraceChunkPreview('\u001b[31mhello\nworld\r', 80);
   assert.equal(preview.includes('\\u001b[31mhello\\n'), true);
   assert.equal(preview.includes('\\r'), true);
+  const c0Preview = renderTraceChunkPreview(`x${String.fromCharCode(1)}y`, 80);
+  assert.equal(c0Preview, 'x\\u0001y');
 
   const longPreview = renderTraceChunkPreview('x'.repeat(100), 10);
   assert.equal(longPreview.endsWith('…'), true);
@@ -50,6 +52,12 @@ void test('render trace analysis surfaces unsupported CSI, ESC, and DCS sequence
   assert.equal(issues[0]?.kind, 'unsupported-csi');
   assert.equal(issues[1]?.kind, 'unsupported-esc');
   assert.equal(issues[2]?.kind, 'unsupported-dcs');
+});
+
+void test('render trace analysis surfaces unsupported C0 controls outside escape sequences', () => {
+  const issues = findRenderTraceControlIssues(`a${String.fromCharCode(1)}b`);
+  assert.equal(issues.length, 1);
+  assert.equal(issues[0]?.kind, 'unsupported-c0');
 });
 
 void test('render trace analysis marks empty private mode params as unsupported CSI', () => {
