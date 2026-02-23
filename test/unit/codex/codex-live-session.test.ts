@@ -1013,7 +1013,6 @@ void test('codex live session e2e completes terminal query handshake with config
 
 void test(
   'codex live session e2e preserves terminal width across startup and resize',
-  { timeout: 15_000 },
   async () => {
     const command = '/bin/sh';
     const commandScript =
@@ -1065,6 +1064,7 @@ void test(
     session.detach(attachmentId);
     session.close();
   },
+  { timeout: 15_000 },
 );
 
 void test('codex live session supports default dependency paths', async () => {
