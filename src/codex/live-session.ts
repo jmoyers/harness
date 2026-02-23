@@ -172,6 +172,68 @@ const DEFAULT_DA2_REPLY = '\u001b[>1;10;0c';
 const CELL_PIXEL_HEIGHT = 16;
 const CELL_PIXEL_WIDTH = 8;
 
+function isAsciiDigits(value: string, allowEmpty = false): boolean {
+  if (!allowEmpty && value.length === 0) {
+    return false;
+  }
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code < 0x30 || code > 0x39) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function isAsciiDigitsOrSemicolons(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code === 0x3b) {
+      continue;
+    }
+    if (code < 0x30 || code > 0x39) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function parseAsciiInt(value: string): number | null {
+  if (!isAsciiDigits(value, false)) {
+    return null;
+  }
+  let parsed = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    parsed = parsed * 10 + (value.charCodeAt(index) - 0x30);
+  }
+  return parsed;
+}
+
+function parseKittyKeyboardFlags(payload: string): number | null {
+  if (!payload.startsWith('>') || !payload.endsWith('u')) {
+    return null;
+  }
+  return parseAsciiInt(payload.slice(1, -1));
+}
+
+function parseModifyOtherKeysLevel(payload: string): number | null {
+  if (payload === '>4m') {
+    return 0;
+  }
+  if (!payload.startsWith('>4;') || !payload.endsWith('m')) {
+    return null;
+  }
+  const rawLevel = payload.slice(3, -1);
+  if (!isAsciiDigits(rawLevel, false)) {
+    return null;
+  }
+  const parsedLevel = parseAsciiInt(rawLevel);
+  if (parsedLevel === null) {
+    return null;
+  }
+  return Math.max(0, Math.min(2, parsedLevel));
+}
+
 function tsRuntimeArgs(scriptPath: string, args: readonly string[] = []): string[] {
   return [scriptPath, ...args];
 }
@@ -381,8 +443,7 @@ class TerminalQueryResponder {
     };
     let handled = false;
 
-    const modifyOtherKeysQueryMatch = payload.match(/^>4;\?m$/u);
-    if (!handled && modifyOtherKeysQueryMatch !== null) {
+    if (!handled && payload === '>4;?m') {
       this.writeReply(`\u001b[>4;${String(this.modifyOtherKeysLevel)}m`);
       handled = true;
     }
@@ -446,29 +507,15 @@ class TerminalQueryResponder {
   }
 
   private observeCsiCommand(payload: string): void {
-    const kittyKeyboardMatch = payload.match(/^>(\d+)u$/u);
-    if (kittyKeyboardMatch !== null) {
-      const nextFlags = Number.parseInt(kittyKeyboardMatch[1]!, 10);
-      if (Number.isFinite(nextFlags)) {
-        this.kittyKeyboardFlags = Math.max(0, nextFlags);
-      }
+    const nextFlags = parseKittyKeyboardFlags(payload);
+    if (nextFlags !== null) {
+      this.kittyKeyboardFlags = Math.max(0, nextFlags);
       return;
     }
 
-    const modifyOtherKeysMatch = payload.match(/^>4(?:;(\d+))?m$/u);
-    if (modifyOtherKeysMatch !== null) {
-      const rawLevel = modifyOtherKeysMatch[1];
-      if (rawLevel === undefined) {
-        this.modifyOtherKeysLevel = 0;
-        return;
-      }
-
-      const parsedLevel = Number.parseInt(rawLevel, 10);
-      if (!Number.isFinite(parsedLevel)) {
-        return;
-      }
-
-      this.modifyOtherKeysLevel = Math.max(0, Math.min(2, parsedLevel));
+    const modifyOtherKeysLevel = parseModifyOtherKeysLevel(payload);
+    if (modifyOtherKeysLevel !== null) {
+      this.modifyOtherKeysLevel = modifyOtherKeysLevel;
     }
   }
 
@@ -491,22 +538,28 @@ class TerminalQueryResponder {
   }
 
   private isLikelyCsiQueryPayload(payload: string): boolean {
-    if (/^(?:c|0c|>c|>0c)$/.test(payload)) {
+    if (payload === 'c' || payload === '0c' || payload === '>c' || payload === '>0c') {
       return true;
     }
-    if (/^[0-9]*n$/.test(payload)) {
+    if (payload.endsWith('n') && isAsciiDigits(payload.slice(0, -1), true)) {
       return true;
     }
-    if (/^(?:14|16|18)t$/.test(payload)) {
+    if (payload === '14t' || payload === '16t' || payload === '18t') {
       return true;
     }
-    if (/^>0q$/.test(payload)) {
+    if (payload === '>0q') {
       return true;
     }
-    if (/^>4;\?m$/.test(payload)) {
+    if (payload === '>4;?m') {
       return true;
     }
-    if (/^\?[0-9;]*\$p$/.test(payload)) {
+    if (
+      payload.length >= 3 &&
+      payload.startsWith('?') &&
+      payload.endsWith('p') &&
+      payload.charCodeAt(payload.length - 2) === 0x24 &&
+      isAsciiDigitsOrSemicolons(payload.slice(1, -2))
+    ) {
       return true;
     }
     if (payload === '?u') {

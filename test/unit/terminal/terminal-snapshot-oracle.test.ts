@@ -71,6 +71,27 @@ void test('snapshot row renderer handles wide glyph continuation cells', () => {
   assert.equal(ansi.includes('a'), true);
 });
 
+void test('snapshot oracle only emits CSI hooks for query and negotiation payloads', () => {
+  const csiPayloads: string[] = [];
+  const oracle = new TerminalSnapshotOracle(8, 2, 64, {
+    onCsiQuery: (payload) => {
+      csiPayloads.push(payload);
+    },
+  });
+
+  oracle.ingest('\u001b[31m');
+  oracle.ingest('\u001b[1;1H');
+  oracle.ingest('\u001b[>4m');
+  oracle.ingest('\u001b[>7u');
+  oracle.ingest('\u001b[6n');
+  oracle.ingest('\u001b[?25$p');
+  oracle.ingest('\u001b[>0q');
+  oracle.ingest('\u001b[14t');
+  oracle.ingest('\u001b[?u');
+
+  assert.deepEqual(csiPayloads, ['>4m', '>7u', '6n', '?25$p', '>0q', '14t', '?u']);
+});
+
 void test('snapshot oracle can emit frame data without hash for hot-path rendering', () => {
   const oracle = new TerminalSnapshotOracle(8, 2);
   oracle.ingest('hello\nworld');

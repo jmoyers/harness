@@ -979,13 +979,103 @@ function mutableCloneStyle(style: TerminalCellStyle): TerminalCellStyle {
   };
 }
 
+function parseCsiParamToken(rawParams: string, start: number, end: number): number {
+  if (start >= end) {
+    return Number.NaN;
+  }
+  let value = 0;
+  for (let index = start; index < end; index += 1) {
+    const code = rawParams.charCodeAt(index);
+    if (code < 0x30 || code > 0x39) {
+      return Number(rawParams.slice(start, end));
+    }
+    value = value * 10 + (code - 0x30);
+  }
+  return value;
+}
+
+function parseCsiParams(rawParams: string, startIndex = 0): number[] {
+  if (startIndex >= rawParams.length) {
+    return [];
+  }
+  const params: number[] = [];
+  let tokenStart = startIndex;
+  for (let index = startIndex; index <= rawParams.length; index += 1) {
+    if (index < rawParams.length && rawParams.charCodeAt(index) !== 0x3b) {
+      continue;
+    }
+    params.push(parseCsiParamToken(rawParams, tokenStart, index));
+    tokenStart = index + 1;
+  }
+  return params;
+}
+
+function isDigitsOnly(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code < 0x30 || code > 0x39) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function isDigitsOrSemicolons(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code === 0x3b) {
+      continue;
+    }
+    if (code < 0x30 || code > 0x39) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function shouldDispatchCsiHook(rawParams: string, finalByte: string): boolean {
+  if (finalByte === 'c') {
+    return rawParams === '' || rawParams === '0' || rawParams === '>' || rawParams === '>0';
+  }
+  if (finalByte === 'n') {
+    return isDigitsOnly(rawParams);
+  }
+  if (finalByte === 't') {
+    return rawParams === '14' || rawParams === '16' || rawParams === '18';
+  }
+  if (finalByte === 'p') {
+    return (
+      rawParams.length >= 2 &&
+      rawParams.charCodeAt(0) === 0x3f &&
+      rawParams.endsWith('$') &&
+      isDigitsOrSemicolons(rawParams.slice(1, -1))
+    );
+  }
+  if (finalByte === 'q') {
+    return rawParams === '>0';
+  }
+  if (finalByte === 'm') {
+    if (rawParams === '>4' || rawParams === '>4;?') {
+      return true;
+    }
+    return rawParams.startsWith('>4;') && isDigitsOnly(rawParams.slice(3));
+  }
+  if (finalByte === 'u') {
+    if (rawParams === '?') {
+      return true;
+    }
+    return rawParams.startsWith('>') && rawParams.length > 1 && isDigitsOnly(rawParams.slice(1));
+  }
+  return false;
+}
+
 function applySgrParams(
   style: TerminalCellStyle,
   params: number[],
   indexedPaletteOverrides: ReadonlyMap<number, { r: number; g: number; b: number }>,
 ): TerminalCellStyle {
   let nextStyle = mutableCloneStyle(style);
-  const queue = params.length === 0 ? [0] : [...params];
+  const queue = params.length === 0 ? [0] : params;
 
   for (let idx = 0; idx < queue.length; idx += 1) {
     const param = queue[idx]!;
@@ -1438,7 +1528,7 @@ export class TerminalSnapshotOracle {
       const rawParams = this.csiBuffer;
       this.mode = 'normal';
       this.csiBuffer = '';
-      this.emitCsiQuery(`${rawParams}${finalByte}`);
+      this.emitCsiQuery(rawParams, finalByte);
       this.applyCsi(rawParams, finalByte);
       return;
     }
@@ -1497,15 +1587,10 @@ export class TerminalSnapshotOracle {
   private applyCsi(rawParams: string, finalByte: string): void {
     const privateMode = rawParams.startsWith('?');
     const privateKeyboardMode = rawParams.startsWith('>');
-    const params = (privateMode ? rawParams.slice(1) : rawParams).split(';').map((part) => {
-      if (part.length === 0) {
-        return NaN;
-      }
-      return Number(part);
-    });
-    const first = Number.isFinite(params[0]) ? (params[0] as number) : 1;
+    const paramsStart = privateMode || privateKeyboardMode ? 1 : 0;
 
     if (privateMode) {
+      const params = parseCsiParams(rawParams, paramsStart);
       if (finalByte === 'h') {
         this.applyPrivateMode(params, true);
         return;
@@ -1529,9 +1614,11 @@ export class TerminalSnapshotOracle {
       return;
     }
 
+    const params = parseCsiParams(rawParams, paramsStart);
+    const first = Number.isFinite(params[0]) ? (params[0] as number) : 1;
+
     if (finalByte === 'm') {
-      const cleaned = params.filter((value) => Number.isFinite(value));
-      this.style = applySgrParams(this.style, cleaned, this.indexedPaletteOverrides);
+      this.style = applySgrParams(this.style, params, this.indexedPaletteOverrides);
       return;
     }
 
@@ -1645,8 +1732,15 @@ export class TerminalSnapshotOracle {
     }
   }
 
-  private emitCsiQuery(payload: string): void {
-    this.queryHooks?.onCsiQuery?.(payload, () => this.queryState());
+  private emitCsiQuery(rawParams: string, finalByte: string): void {
+    const onCsiQuery = this.queryHooks?.onCsiQuery;
+    if (onCsiQuery === undefined) {
+      return;
+    }
+    if (!shouldDispatchCsiHook(rawParams, finalByte)) {
+      return;
+    }
+    onCsiQuery(`${rawParams}${finalByte}`, () => this.queryState());
   }
 
   private emitOscQuery(useBellTerminator: boolean): void {
