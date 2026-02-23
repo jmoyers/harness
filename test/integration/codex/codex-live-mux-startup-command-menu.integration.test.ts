@@ -101,6 +101,7 @@ void test(
     });
 
     try {
+      await waitForSnapshotLineContaining(interactive.oracle, '🏠 home', 12000);
       const threadButtonCell = await waitForSnapshotLineContaining(
         interactive.oracle,
         '[+ thread]',

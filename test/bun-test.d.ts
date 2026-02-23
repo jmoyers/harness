@@ -21,6 +21,7 @@ declare module 'bun:test' {
 
   export const test: Test;
   export const it: Test;
+  export const describe: Test;
 
   export function beforeAll(fn: TestCallback): void;
   export function afterAll(fn: TestCallback): void;

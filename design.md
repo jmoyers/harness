@@ -31,6 +31,7 @@ Build a high-performance, terminal-first harness for running and supervising man
 - Durable session continuity (pause/resume/fork/archive).
 - One control surface for both human and agent clients.
 - Deterministic, replayable event/state history.
+- Deterministic visual + interaction contract harness coverage for look/feel and e2e workflows.
 
 ## Non-Goals
 

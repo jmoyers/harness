@@ -1,0 +1,227 @@
+{
+  "schemaVersion": 1,
+  "name": "terminal/ansi-color-and-wide-glyph",
+  "viewport": {
+    "cols": 40,
+    "rows": 8
+  },
+  "metadata": {
+    "cursorRow": 2,
+    "cursorCol": 6,
+    "cursorVisible": true
+  },
+  "styles": {
+    "s1": {
+      "fg": "default",
+      "bg": "default",
+      "bold": false,
+      "dim": false,
+      "italic": false,
+      "underline": false,
+      "inverse": false
+    },
+    "s2": {
+      "fg": "default",
+      "bg": "default",
+      "bold": true,
+      "dim": false,
+      "italic": false,
+      "underline": false,
+      "inverse": false
+    },
+    "s3": {
+      "fg": "rgb:255,0,0",
+      "bg": "default",
+      "bold": false,
+      "dim": false,
+      "italic": false,
+      "underline": false,
+      "inverse": false
+    }
+  },
+  "rows": [
+    {
+      "text": "plain                                   ",
+      "ansi": "\u001b[0;39;49mplain                                   \u001b[0m",
+      "baseStyle": "s1",
+      "decoratedCells": [
+        {
+          "col": 0,
+          "glyph": "p",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 1,
+          "glyph": "l",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 2,
+          "glyph": "a",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 3,
+          "glyph": "i",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 4,
+          "glyph": "n",
+          "continued": false,
+          "style": "s1"
+        }
+      ]
+    },
+    {
+      "text": "bold red 你好                           ",
+      "ansi": "\u001b[0;1;39;49mbold\u001b[0;39;49m \u001b[0;38;2;255;0;0;49mred\u001b[0;39;49m 你好                           \u001b[0m",
+      "baseStyle": "s1",
+      "decoratedCells": [
+        {
+          "col": 0,
+          "glyph": "b",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 1,
+          "glyph": "o",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 2,
+          "glyph": "l",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 3,
+          "glyph": "d",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 5,
+          "glyph": "r",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 6,
+          "glyph": "e",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 7,
+          "glyph": "d",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 9,
+          "glyph": "你",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 10,
+          "glyph": "",
+          "continued": true,
+          "style": "s1"
+        },
+        {
+          "col": 11,
+          "glyph": "好",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 12,
+          "glyph": "",
+          "continued": true,
+          "style": "s1"
+        }
+      ]
+    },
+    {
+      "text": "line-3                                  ",
+      "ansi": "\u001b[0;39;49mline-3                                  \u001b[0m",
+      "baseStyle": "s1",
+      "decoratedCells": [
+        {
+          "col": 0,
+          "glyph": "l",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 1,
+          "glyph": "i",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 2,
+          "glyph": "n",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 3,
+          "glyph": "e",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 4,
+          "glyph": "-",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 5,
+          "glyph": "3",
+          "continued": false,
+          "style": "s1"
+        }
+      ]
+    },
+    {
+      "text": "                                        ",
+      "ansi": "\u001b[0;39;49m                                        \u001b[0m",
+      "baseStyle": "s1",
+      "decoratedCells": []
+    },
+    {
+      "text": "                                        ",
+      "ansi": "\u001b[0;39;49m                                        \u001b[0m",
+      "baseStyle": "s1",
+      "decoratedCells": []
+    },
+    {
+      "text": "                                        ",
+      "ansi": "\u001b[0;39;49m                                        \u001b[0m",
+      "baseStyle": "s1",
+      "decoratedCells": []
+    },
+    {
+      "text": "                                        ",
+      "ansi": "\u001b[0;39;49m                                        \u001b[0m",
+      "baseStyle": "s1",
+      "decoratedCells": []
+    },
+    {
+      "text": "                                        ",
+      "ansi": "\u001b[0;39;49m                                        \u001b[0m",
+      "baseStyle": "s1",
+      "decoratedCells": []
+    }
+  ]
+}

@@ -43,7 +43,7 @@ void test('mux render frame builds pane rows with status footer and fallback pad
 
 void test('mux render frame applies modal overlays with clipping and sparse rows', () => {
   const rows = ['row0', 'row1', 'row2'];
-  const overlayRows = new Array<string>(4);
+  const overlayRows = Array<string>(4);
   overlayRows[1] = 'A';
   overlayRows[3] = 'B';
   applyModalOverlay(rows, {
@@ -150,7 +150,7 @@ void test('mux render frame handles defined right rows and sparse target rows', 
   );
   assert.equal((combined[0] ?? '').includes('RIGHT'), true);
 
-  const sparseRows = new Array<string>(2);
+  const sparseRows = Array<string>(2);
   applyModalOverlay(sparseRows, {
     left: 0,
     top: 0,
@@ -199,7 +199,7 @@ void test('mux render frame renders canonical output with visible and hidden cur
   assert.equal(hidden.includes('\u001b[5 q'), true);
   assert.equal(hidden.endsWith('\u001b[?25l'), true);
 
-  const sparse = new Array<string>(1);
+  const sparse = Array<string>(1);
   const sparseOutput = renderCanonicalFrameAnsi(
     sparse,
     { shape: 'block', blinking: true },

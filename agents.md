@@ -26,6 +26,9 @@ This project has three core docs:
 - Lint must pass with zero warnings and zero errors.
 - Dead code is prohibited and must be verified by tooling.
 - No skipped/quarantined/only tests.
+- UI visual contract fixtures under `test/fixtures/ui-contracts/*` are required for look-and-feel-critical behavior.
+- Regenerate UI contract fixtures only via `HARNESS_UPDATE_UI_CONTRACTS=1 bun run test:ui:contracts`.
+- `test:ui:contracts` and `test:ui:e2e:matrix` are required quality gates in verify flows.
 
 ## Commit Discipline
 

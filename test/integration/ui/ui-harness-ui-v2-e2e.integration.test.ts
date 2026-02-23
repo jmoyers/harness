@@ -4,6 +4,8 @@ import { test } from 'bun:test';
 import { createWorkspace } from '../../helpers/harness-cli-test-helpers.ts';
 import { HarnessUiE2EDriver } from '../../support/harness-ui-e2e-driver.ts';
 
+const MOCK_ENV = { ANTHROPIC_API_KEY: undefined } as const;
+
 void test(
   'harness-ui v2 e2e driver exercises locator keyboard and mouse flows across nim + command menu',
   async () => {
@@ -15,17 +17,18 @@ void test(
         args: ['--session', 'ui-v2-e2e', 'client'],
         cols: 100,
         rows: 30,
+        env: MOCK_ENV,
       });
 
       await driver.locator('🏠 home').waitFor(12_000);
       await driver.locator('🦎 nim').click(12_000);
       await driver.waitForText('nim>', 12_000);
       await driver.waitForText('queued:0', 12_000);
-      await driver.waitForText('nim subprocess ready', 12_000);
+      await driver.waitForOutputText('nim subprocess ready', 12_000);
       driver.keyboard.type('hello from mux nim');
       driver.keyboard.press('Enter');
-      await driver.waitForText('run started', 12_000);
-      await driver.waitForText('run completed', 12_000);
+      await driver.waitForOutputText('run started', 12_000);
+      await driver.waitForOutputText('run completed', 12_000);
       driver.keyboard.type('queued from nim tab');
       driver.keyboard.type('\t');
       await driver.waitForText('queued:1', 12_000);
@@ -65,6 +68,7 @@ void test(
         args: ['--session', 'ui-v2-e2e-small', 'client'],
         cols: 52,
         rows: 12,
+        env: MOCK_ENV,
       });
 
       await driver.locator('🏠 home').waitFor(12_000);

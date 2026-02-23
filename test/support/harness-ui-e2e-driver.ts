@@ -22,6 +22,19 @@ function tsRuntimeArgs(scriptPath: string, args: readonly string[] = []): string
   return [scriptPath, ...args];
 }
 
+function normalizeTerminalOutput(value: string): string {
+  const ESC = String.fromCharCode(27);
+  const BEL = String.fromCharCode(7);
+  const oscPattern = new RegExp(`${ESC}\\][^${BEL}]*${BEL}`, 'gu');
+  const csiPattern = new RegExp(`${ESC}\\[[0-?]*[ -/]*[@-~]`, 'gu');
+  const escPattern = new RegExp(`${ESC}[@-_]`, 'gu');
+  return value
+    .replace(oscPattern, '')
+    .replace(csiPattern, '')
+    .replace(escPattern, '')
+    .replace(/\r/gu, '');
+}
+
 function isPtyExit(value: unknown): value is PtyExit {
   if (typeof value !== 'object' || value === null) {
     return false;
@@ -65,7 +78,7 @@ function mergeDriverEnv(
 ): NodeJS.ProcessEnv {
   const merged = {
     ...defaultEnv(workspace),
-    ...(overrides ?? {}),
+    ...overrides,
   };
   if (overrides !== undefined) {
     for (const [key, value] of Object.entries(overrides)) {
@@ -82,6 +95,7 @@ export class HarnessUiE2EDriver {
   private readonly session: ReturnType<typeof startPtySession>;
   private readonly waitForSessionExit: Promise<PtyExit>;
   private closed = false;
+  private outputHistory = '';
 
   public readonly keyboard: {
     type: (text: string) => void;
@@ -108,6 +122,10 @@ export class HarnessUiE2EDriver {
     this.waitForSessionExit = waitForExit(this.session, 60_000);
     this.session.on('data', (chunk: Buffer) => {
       this.oracle.ingest(chunk);
+      this.outputHistory += normalizeTerminalOutput(chunk.toString('utf8'));
+      if (this.outputHistory.length > 200_000) {
+        this.outputHistory = this.outputHistory.slice(-200_000);
+      }
     });
 
     this.keyboard = {
@@ -205,6 +223,17 @@ export class HarnessUiE2EDriver {
       await delay(40);
     }
     throw new Error(`timed out waiting for snapshot text removal: ${text}`);
+  }
+
+  public async waitForOutputText(text: string, timeoutMs: number): Promise<void> {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+      if (this.outputHistory.includes(text)) {
+        return;
+      }
+      await delay(40);
+    }
+    throw new Error(`timed out waiting for output text: ${text}`);
   }
 
   public async close(timeoutMs = 15_000): Promise<PtyExit> {

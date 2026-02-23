@@ -1326,7 +1326,7 @@ void test('left-nav helpers build stable target keys and dedupe visible targets'
     { kind: 'conversation', sessionId: 'session-a' },
   ]);
 
-  const sparseRows = new Array(1) as unknown as RailRows;
+  const sparseRows = Array(1) as unknown as RailRows;
   assert.deepEqual(visibleLeftNavTargets(sparseRows), []);
 });
 

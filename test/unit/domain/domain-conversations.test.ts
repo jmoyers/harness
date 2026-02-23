@@ -100,7 +100,7 @@ void test('conversation manager ensure lifecycle and start-in-flight semantics a
     resolveDefaultDirectoryId: () => 'dir-default',
     normalizeAdapterState: (value) => ({
       normalized: true,
-      ...(value ?? {}),
+      ...value,
     }),
     createConversation: (input) => {
       createdInputs.push({

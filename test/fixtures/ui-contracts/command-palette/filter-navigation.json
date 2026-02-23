@@ -1,0 +1,1823 @@
+{
+  "schemaVersion": 1,
+  "name": "command-palette/filter-navigation",
+  "viewport": {
+    "cols": 56,
+    "rows": 14
+  },
+  "metadata": {
+    "query": "file",
+    "selectedIndex": 1,
+    "filteredCount": 3
+  },
+  "styles": {
+    "s1": {
+      "fg": "default",
+      "bg": "default",
+      "bold": false,
+      "dim": false,
+      "italic": false,
+      "underline": false,
+      "inverse": false
+    },
+    "s2": {
+      "fg": "rgb:59,130,246",
+      "bg": "rgb:15,23,42",
+      "bold": false,
+      "dim": false,
+      "italic": false,
+      "underline": false,
+      "inverse": false
+    },
+    "s3": {
+      "fg": "rgb:248,250,252",
+      "bg": "rgb:15,23,42",
+      "bold": false,
+      "dim": false,
+      "italic": false,
+      "underline": false,
+      "inverse": false
+    },
+    "s4": {
+      "fg": "default",
+      "bg": "rgb:15,23,42",
+      "bold": false,
+      "dim": false,
+      "italic": false,
+      "underline": false,
+      "inverse": false
+    },
+    "s5": {
+      "fg": "idx:252",
+      "bg": "rgb:15,23,42",
+      "bold": false,
+      "dim": false,
+      "italic": false,
+      "underline": false,
+      "inverse": false
+    },
+    "s6": {
+      "fg": "idx:244",
+      "bg": "rgb:15,23,42",
+      "bold": false,
+      "dim": false,
+      "italic": false,
+      "underline": false,
+      "inverse": false
+    },
+    "s7": {
+      "fg": "idx:255",
+      "bg": "rgb:29,78,216",
+      "bold": true,
+      "dim": false,
+      "italic": false,
+      "underline": false,
+      "inverse": false
+    },
+    "s8": {
+      "fg": "idx:244",
+      "bg": "rgb:29,78,216",
+      "bold": false,
+      "dim": false,
+      "italic": false,
+      "underline": false,
+      "inverse": false
+    }
+  },
+  "rows": [
+    {
+      "text": "                                                        ",
+      "ansi": "\u001b[0;39;49m                                                        \u001b[0m",
+      "baseStyle": "s1",
+      "decoratedCells": []
+    },
+    {
+      "text": "                                                        ",
+      "ansi": "\u001b[0;39;49m                                                        \u001b[0m",
+      "baseStyle": "s1",
+      "decoratedCells": []
+    },
+    {
+      "text": "  ┌──────────────────────────────────────────────────┐  ",
+      "ansi": "\u001b[0;39;49m  \u001b[0;38;2;59;130;246;48;2;15;23;42m┌──────────────────────────────────────────────────┐\u001b[0;39;49m  \u001b[0m",
+      "baseStyle": "s2",
+      "decoratedCells": [
+        {
+          "col": 0,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 1,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 2,
+          "glyph": "┌",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 3,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 4,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 5,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 6,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 7,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 8,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 9,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 10,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 11,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 12,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 13,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 14,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 15,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 16,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 17,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 18,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 19,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 20,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 21,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 22,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 23,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 24,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 25,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 26,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 27,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 28,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 29,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 30,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 31,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 32,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 33,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 34,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 35,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 36,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 37,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 38,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 39,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 40,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 41,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 42,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 43,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 44,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 45,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 46,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 47,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 48,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 49,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 50,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 51,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 52,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 53,
+          "glyph": "┐",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 54,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 55,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        }
+      ]
+    },
+    {
+      "text": "  │> file                                            │  ",
+      "ansi": "\u001b[0;39;49m  \u001b[0;38;2;59;130;246;48;2;15;23;42m│\u001b[0;38;2;248;250;252;48;2;15;23;42m> file\u001b[0;39;48;2;15;23;42m                                            \u001b[0;38;2;59;130;246;48;2;15;23;42m│\u001b[0;39;49m  \u001b[0m",
+      "baseStyle": "s4",
+      "decoratedCells": [
+        {
+          "col": 0,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 1,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 2,
+          "glyph": "│",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 3,
+          "glyph": ">",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 4,
+          "glyph": " ",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 5,
+          "glyph": "f",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 6,
+          "glyph": "i",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 7,
+          "glyph": "l",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 8,
+          "glyph": "e",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 53,
+          "glyph": "│",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 54,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 55,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        }
+      ]
+    },
+    {
+      "text": "  │──────────────────────────────────────────────────│  ",
+      "ansi": "\u001b[0;39;49m  \u001b[0;38;2;59;130;246;48;2;15;23;42m│──────────────────────────────────────────────────│\u001b[0;39;49m  \u001b[0m",
+      "baseStyle": "s2",
+      "decoratedCells": [
+        {
+          "col": 0,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 1,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 2,
+          "glyph": "│",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 3,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 4,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 5,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 6,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 7,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 8,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 9,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 10,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 11,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 12,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 13,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 14,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 15,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 16,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 17,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 18,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 19,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 20,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 21,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 22,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 23,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 24,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 25,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 26,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 27,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 28,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 29,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 30,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 31,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 32,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 33,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 34,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 35,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 36,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 37,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 38,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 39,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 40,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 41,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 42,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 43,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 44,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 45,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 46,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 47,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 48,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 49,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 50,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 51,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 52,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 53,
+          "glyph": "│",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 54,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 55,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        }
+      ]
+    },
+    {
+      "text": "  │ Open File                                 ctrl+o │  ",
+      "ansi": "\u001b[0;39;49m  \u001b[0;38;2;59;130;246;48;2;15;23;42m│\u001b[0;38;5;252;48;2;15;23;42m Open File\u001b[0;39;48;2;15;23;42m                                 \u001b[0;38;5;244;48;2;15;23;42mctrl+o\u001b[0;39;48;2;15;23;42m \u001b[0;38;2;59;130;246;48;2;15;23;42m│\u001b[0;39;49m  \u001b[0m",
+      "baseStyle": "s4",
+      "decoratedCells": [
+        {
+          "col": 0,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 1,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 2,
+          "glyph": "│",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 3,
+          "glyph": " ",
+          "continued": false,
+          "style": "s5"
+        },
+        {
+          "col": 4,
+          "glyph": "O",
+          "continued": false,
+          "style": "s5"
+        },
+        {
+          "col": 5,
+          "glyph": "p",
+          "continued": false,
+          "style": "s5"
+        },
+        {
+          "col": 6,
+          "glyph": "e",
+          "continued": false,
+          "style": "s5"
+        },
+        {
+          "col": 7,
+          "glyph": "n",
+          "continued": false,
+          "style": "s5"
+        },
+        {
+          "col": 8,
+          "glyph": " ",
+          "continued": false,
+          "style": "s5"
+        },
+        {
+          "col": 9,
+          "glyph": "F",
+          "continued": false,
+          "style": "s5"
+        },
+        {
+          "col": 10,
+          "glyph": "i",
+          "continued": false,
+          "style": "s5"
+        },
+        {
+          "col": 11,
+          "glyph": "l",
+          "continued": false,
+          "style": "s5"
+        },
+        {
+          "col": 12,
+          "glyph": "e",
+          "continued": false,
+          "style": "s5"
+        },
+        {
+          "col": 46,
+          "glyph": "c",
+          "continued": false,
+          "style": "s6"
+        },
+        {
+          "col": 47,
+          "glyph": "t",
+          "continued": false,
+          "style": "s6"
+        },
+        {
+          "col": 48,
+          "glyph": "r",
+          "continued": false,
+          "style": "s6"
+        },
+        {
+          "col": 49,
+          "glyph": "l",
+          "continued": false,
+          "style": "s6"
+        },
+        {
+          "col": 50,
+          "glyph": "+",
+          "continued": false,
+          "style": "s6"
+        },
+        {
+          "col": 51,
+          "glyph": "o",
+          "continued": false,
+          "style": "s6"
+        },
+        {
+          "col": 53,
+          "glyph": "│",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 54,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 55,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        }
+      ]
+    },
+    {
+      "text": "    Save File                                 ctrl+s    ",
+      "ansi": "\u001b[0;39;49m  \u001b[0;1;38;5;255;48;2;29;78;216m  Save File                                 \u001b[0;38;5;244;48;2;29;78;216mctrl+s\u001b[0;1;38;5;255;48;2;29;78;216m  \u001b[0;39;49m  \u001b[0m",
+      "baseStyle": "s7",
+      "decoratedCells": [
+        {
+          "col": 0,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 1,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 4,
+          "glyph": "S",
+          "continued": false,
+          "style": "s7"
+        },
+        {
+          "col": 5,
+          "glyph": "a",
+          "continued": false,
+          "style": "s7"
+        },
+        {
+          "col": 6,
+          "glyph": "v",
+          "continued": false,
+          "style": "s7"
+        },
+        {
+          "col": 7,
+          "glyph": "e",
+          "continued": false,
+          "style": "s7"
+        },
+        {
+          "col": 9,
+          "glyph": "F",
+          "continued": false,
+          "style": "s7"
+        },
+        {
+          "col": 10,
+          "glyph": "i",
+          "continued": false,
+          "style": "s7"
+        },
+        {
+          "col": 11,
+          "glyph": "l",
+          "continued": false,
+          "style": "s7"
+        },
+        {
+          "col": 12,
+          "glyph": "e",
+          "continued": false,
+          "style": "s7"
+        },
+        {
+          "col": 46,
+          "glyph": "c",
+          "continued": false,
+          "style": "s8"
+        },
+        {
+          "col": 47,
+          "glyph": "t",
+          "continued": false,
+          "style": "s8"
+        },
+        {
+          "col": 48,
+          "glyph": "r",
+          "continued": false,
+          "style": "s8"
+        },
+        {
+          "col": 49,
+          "glyph": "l",
+          "continued": false,
+          "style": "s8"
+        },
+        {
+          "col": 50,
+          "glyph": "+",
+          "continued": false,
+          "style": "s8"
+        },
+        {
+          "col": 51,
+          "glyph": "s",
+          "continued": false,
+          "style": "s8"
+        },
+        {
+          "col": 54,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 55,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        }
+      ]
+    },
+    {
+      "text": "  │ Close File                                ctrl+w │  ",
+      "ansi": "\u001b[0;39;49m  \u001b[0;38;2;59;130;246;48;2;15;23;42m│\u001b[0;38;5;252;48;2;15;23;42m Close File\u001b[0;39;48;2;15;23;42m                                \u001b[0;38;5;244;48;2;15;23;42mctrl+w\u001b[0;39;48;2;15;23;42m \u001b[0;38;2;59;130;246;48;2;15;23;42m│\u001b[0;39;49m  \u001b[0m",
+      "baseStyle": "s4",
+      "decoratedCells": [
+        {
+          "col": 0,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 1,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 2,
+          "glyph": "│",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 3,
+          "glyph": " ",
+          "continued": false,
+          "style": "s5"
+        },
+        {
+          "col": 4,
+          "glyph": "C",
+          "continued": false,
+          "style": "s5"
+        },
+        {
+          "col": 5,
+          "glyph": "l",
+          "continued": false,
+          "style": "s5"
+        },
+        {
+          "col": 6,
+          "glyph": "o",
+          "continued": false,
+          "style": "s5"
+        },
+        {
+          "col": 7,
+          "glyph": "s",
+          "continued": false,
+          "style": "s5"
+        },
+        {
+          "col": 8,
+          "glyph": "e",
+          "continued": false,
+          "style": "s5"
+        },
+        {
+          "col": 9,
+          "glyph": " ",
+          "continued": false,
+          "style": "s5"
+        },
+        {
+          "col": 10,
+          "glyph": "F",
+          "continued": false,
+          "style": "s5"
+        },
+        {
+          "col": 11,
+          "glyph": "i",
+          "continued": false,
+          "style": "s5"
+        },
+        {
+          "col": 12,
+          "glyph": "l",
+          "continued": false,
+          "style": "s5"
+        },
+        {
+          "col": 13,
+          "glyph": "e",
+          "continued": false,
+          "style": "s5"
+        },
+        {
+          "col": 46,
+          "glyph": "c",
+          "continued": false,
+          "style": "s6"
+        },
+        {
+          "col": 47,
+          "glyph": "t",
+          "continued": false,
+          "style": "s6"
+        },
+        {
+          "col": 48,
+          "glyph": "r",
+          "continued": false,
+          "style": "s6"
+        },
+        {
+          "col": 49,
+          "glyph": "l",
+          "continued": false,
+          "style": "s6"
+        },
+        {
+          "col": 50,
+          "glyph": "+",
+          "continued": false,
+          "style": "s6"
+        },
+        {
+          "col": 51,
+          "glyph": "w",
+          "continued": false,
+          "style": "s6"
+        },
+        {
+          "col": 53,
+          "glyph": "│",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 54,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 55,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        }
+      ]
+    },
+    {
+      "text": "  │                                                  │  ",
+      "ansi": "\u001b[0;39;49m  \u001b[0;38;2;59;130;246;48;2;15;23;42m│\u001b[0;39;48;2;15;23;42m                                                  \u001b[0;38;2;59;130;246;48;2;15;23;42m│\u001b[0;39;49m  \u001b[0m",
+      "baseStyle": "s4",
+      "decoratedCells": [
+        {
+          "col": 0,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 1,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 2,
+          "glyph": "│",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 53,
+          "glyph": "│",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 54,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 55,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        }
+      ]
+    },
+    {
+      "text": "  │                                                  │  ",
+      "ansi": "\u001b[0;39;49m  \u001b[0;38;2;59;130;246;48;2;15;23;42m│\u001b[0;39;48;2;15;23;42m                                                  \u001b[0;38;2;59;130;246;48;2;15;23;42m│\u001b[0;39;49m  \u001b[0m",
+      "baseStyle": "s4",
+      "decoratedCells": [
+        {
+          "col": 0,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 1,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 2,
+          "glyph": "│",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 53,
+          "glyph": "│",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 54,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 55,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        }
+      ]
+    },
+    {
+      "text": "  │                                                  │  ",
+      "ansi": "\u001b[0;39;49m  \u001b[0;38;2;59;130;246;48;2;15;23;42m│\u001b[0;39;48;2;15;23;42m                                                  \u001b[0;38;2;59;130;246;48;2;15;23;42m│\u001b[0;39;49m  \u001b[0m",
+      "baseStyle": "s4",
+      "decoratedCells": [
+        {
+          "col": 0,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 1,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 2,
+          "glyph": "│",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 53,
+          "glyph": "│",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 54,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 55,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        }
+      ]
+    },
+    {
+      "text": "  │                                                  │  ",
+      "ansi": "\u001b[0;39;49m  \u001b[0;38;2;59;130;246;48;2;15;23;42m│\u001b[0;39;48;2;15;23;42m                                                  \u001b[0;38;2;59;130;246;48;2;15;23;42m│\u001b[0;39;49m  \u001b[0m",
+      "baseStyle": "s4",
+      "decoratedCells": [
+        {
+          "col": 0,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 1,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 2,
+          "glyph": "│",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 53,
+          "glyph": "│",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 54,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 55,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        }
+      ]
+    },
+    {
+      "text": "  │                                                  │  ",
+      "ansi": "\u001b[0;39;49m  \u001b[0;38;2;59;130;246;48;2;15;23;42m│\u001b[0;39;48;2;15;23;42m                                                  \u001b[0;38;2;59;130;246;48;2;15;23;42m│\u001b[0;39;49m  \u001b[0m",
+      "baseStyle": "s4",
+      "decoratedCells": [
+        {
+          "col": 0,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 1,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 2,
+          "glyph": "│",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 53,
+          "glyph": "│",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 54,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 55,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        }
+      ]
+    },
+    {
+      "text": "  └──────────────────────────────────────────────────┘  ",
+      "ansi": "\u001b[0;39;49m  \u001b[0;38;2;59;130;246;48;2;15;23;42m└──────────────────────────────────────────────────┘\u001b[0;39;49m  \u001b[0m",
+      "baseStyle": "s2",
+      "decoratedCells": [
+        {
+          "col": 0,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 1,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 2,
+          "glyph": "└",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 3,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 4,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 5,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 6,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 7,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 8,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 9,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 10,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 11,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 12,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 13,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 14,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 15,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 16,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 17,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 18,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 19,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 20,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 21,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 22,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 23,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 24,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 25,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 26,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 27,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 28,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 29,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 30,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 31,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 32,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 33,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 34,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 35,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 36,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 37,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 38,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 39,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 40,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 41,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 42,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 43,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 44,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 45,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 46,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 47,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 48,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 49,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 50,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 51,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 52,
+          "glyph": "─",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 53,
+          "glyph": "┘",
+          "continued": false,
+          "style": "s2"
+        },
+        {
+          "col": 54,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 55,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        }
+      ]
+    }
+  ]
+}

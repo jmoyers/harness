@@ -14,6 +14,7 @@ import type { CodexLiveEvent } from '../../src/codex/live-session.ts';
 import { startPtySession, type PtyExit } from '../../src/pty/pty_host.ts';
 import { SqliteControlPlaneStore } from '../../src/store/control-plane-store.ts';
 import { TerminalSnapshotOracle } from '../../src/terminal/snapshot-oracle.ts';
+import { measureDisplayWidth } from '../../packages/harness-ui/src/text-layout.ts';
 
 interface SessionDataEvent {
   cursor: number;
@@ -290,7 +291,7 @@ async function captureMuxBootOutput(
       ...process.env,
       HARNESS_INVOKE_CWD: workspace,
       XDG_CONFIG_HOME: workspaceXdgConfigHome(workspace),
-      ...(options.extraEnv ?? {}),
+      ...options.extraEnv,
     },
   });
   let exitResult: PtyExit | null = null;
@@ -349,7 +350,7 @@ function startInteractiveMuxSession(
       ...process.env,
       HARNESS_INVOKE_CWD: workspace,
       XDG_CONFIG_HOME: workspaceXdgConfigHome(workspace),
-      ...(options.extraEnv ?? {}),
+      ...options.extraEnv,
     },
     initialCols: cols,
     initialRows: rows,
@@ -377,12 +378,44 @@ async function waitForSnapshotLineContaining(
       const colIndex = frame.lines[rowIndex]!.indexOf(text);
       return {
         row: rowIndex + 1,
-        col: colIndex + 1,
+        col: displayColumnFromIndex(frame.lines[rowIndex]!, colIndex),
       };
     }
     await delay(40);
   }
   throw new Error(`timed out waiting for snapshot text: ${text}`);
+}
+
+function displayColumnFromIndex(line: string, index: number): number {
+  return measureDisplayWidth(line.slice(0, Math.max(0, index))) + 1;
+}
+
+async function waitForProjectRowCell(
+  oracle: TerminalSnapshotOracle,
+  projectName: string,
+  timeoutMs: number,
+): Promise<{ row: number; col: number }> {
+  const buttonLabel = '[+ thread]';
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const frame = oracle.snapshotWithoutHash();
+    for (let rowIndex = 0; rowIndex < frame.lines.length; rowIndex += 1) {
+      const line = frame.lines[rowIndex]!;
+      if (!line.includes(projectName) || !line.includes(buttonLabel)) {
+        continue;
+      }
+      const projectIndex = line.indexOf(projectName);
+      if (projectIndex < 0) {
+        continue;
+      }
+      return {
+        row: rowIndex + 1,
+        col: displayColumnFromIndex(line, projectIndex),
+      };
+    }
+    await delay(40);
+  }
+  throw new Error(`timed out waiting for project row: ${projectName}`);
 }
 
 async function waitForProjectThreadButtonCell(
@@ -400,13 +433,12 @@ async function waitForProjectThreadButtonCell(
         continue;
       }
       const buttonIndex = line.indexOf(buttonLabel);
-      if (buttonIndex < 0) {
-        continue;
+      if (buttonIndex >= 0) {
+        return {
+          row: rowIndex + 1,
+          col: displayColumnFromIndex(line, buttonIndex),
+        };
       }
-      return {
-        row: rowIndex + 1,
-        col: buttonIndex + 1,
-      };
     }
     await delay(40);
   }
@@ -554,6 +586,7 @@ export {
   captureMuxBootOutput,
   startInteractiveMuxSession,
   waitForSnapshotLineContaining,
+  waitForProjectRowCell,
   waitForProjectThreadButtonCell,
   waitForSnapshotLineNotContaining,
   waitForDirectoryConversationCountAtLeast,

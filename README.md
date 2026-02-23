@@ -12,8 +12,10 @@ Programmable, agent-agnostic, threaded, ergonomic, and fast.
 - Codex, Claude Code, and Cursor together in one workspace.
 - Diff with Critique, with integrated terminals (`harness diff` + critique actions).
 - Detached gateway sessions keep long-running work alive through reconnects.
-- Storage lifecycle maintenance remains paused in interactive runtime paths; use `harness gateway gc` as a manual offline truncation/compaction escape hatch.
-- Storage lifecycle policy updates from `harness.config.jsonc` still apply without restart.
+- Rolling storage lifecycle policy keeps event/telemetry data bounded during long-lived sessions.
+- Mux event-store maintenance runs in a managed background daemon with progress updates so cleanup does not block UI navigation.
+- Gateway storage lifecycle policy updates from `harness.config.jsonc` apply without restarting the server.
+- Deterministic visual-contract fixtures and viewport/input matrix e2e checks keep UI look-and-feel stable release-to-release.
 - Command palette can open a GitHub thread entry in the left rail for the active project, then show full tracked-branch PR/review details in the main panel.
 - Open the active project directly in local tools (`iTerm2`, `Ghostty`, `Zed`, `Cursor`, `VSCode`, `Warp`, `Finder`) or copy its path from the palette.
 - Command-click links inside conversation terminal output: URLs open in browser, file-like paths open in your configured editor/open-in command.

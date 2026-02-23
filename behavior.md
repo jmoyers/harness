@@ -254,6 +254,26 @@ Test anchors:
 - `test/services-startup-*.test.ts`
 - `test/services-runtime-shutdown.test.ts`
 
+## UI Contract Harness
+
+Behavior fragments:
+
+- UI look-and-feel contracts are captured as deterministic fixtures from rendered rows plus per-cell style projection.
+- Visual contracts use fixture approval mode (`HARNESS_UPDATE_UI_CONTRACTS=1`) and fail closed on unapproved drift.
+- Contract snapshots include viewport, ANSI rows, and style dictionaries so diffs are reviewable.
+- Live harness matrix e2e validates command menu + nim pane behavior across constrained and standard viewports with keyboard and pointer dismissal flows.
+
+Owners:
+
+- `test/support/ui-contract.ts`
+- `test/support/harness-ui-e2e-driver.ts`
+- `packages/harness-ui/src/testing/pilot.ts`
+
+Test anchors:
+
+- `test/contracts/ui/ui-look-and-feel.contract.test.ts`
+- `test/integration/ui/ui-harness-ui-v2-matrix.integration.test.ts`
+
 ## Control Plane Command Surface
 
 Behavior fragments:

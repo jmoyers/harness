@@ -33,6 +33,7 @@ import {
   waitForDirectoryGitStatus,
   waitForExit,
   waitForPidExit,
+  waitForProjectRowCell,
   waitForProjectThreadButtonCell,
   waitForRepositoryRows,
   waitForSnapshotLineContaining,
@@ -41,6 +42,8 @@ import {
   workspaceXdgConfigHome,
   writeLeftMouseClick,
 } from '../../helpers/codex-live-mux-startup-test-helpers.ts';
+
+const WAIT_MS = 12_000;
 
 void test(
   'codex-live-mux starts a thread in the clicked project from left-rail [+ thread]',
@@ -96,21 +99,18 @@ void test(
         path: projectBetaPath,
       });
 
-      const alphaProjectCell = await waitForSnapshotLineContaining(
-        interactive.oracle,
-        'alpha',
-        12000,
-      );
-      writeLeftMouseClick(interactive.session, alphaProjectCell.col, alphaProjectCell.row);
+      await waitForSnapshotLineContaining(interactive.oracle, '🏠 home', WAIT_MS);
+      const betaProjectCell = await waitForProjectRowCell(interactive.oracle, 'beta', WAIT_MS);
+      writeLeftMouseClick(interactive.session, betaProjectCell.col, betaProjectCell.row);
       await delay(150);
 
       const betaThreadButtonCell = await waitForProjectThreadButtonCell(
         interactive.oracle,
         'beta',
-        12000,
+        WAIT_MS,
       );
       writeLeftMouseClick(interactive.session, betaThreadButtonCell.col, betaThreadButtonCell.row);
-      await waitForSnapshotLineContaining(interactive.oracle, 'Start Codex thread', 12000);
+      await waitForSnapshotLineContaining(interactive.oracle, 'Start Codex thread', WAIT_MS);
 
       interactive.session.write('\r');
 
@@ -123,7 +123,7 @@ void test(
           directoryId: 'directory-beta',
         },
         1,
-        12000,
+        WAIT_MS,
       );
       assert.equal(betaConversations.length >= 1, true);
 
@@ -151,7 +151,7 @@ void test(
       }
     }
   },
-  { timeout: 30000 },
+  { timeout: 30_000 },
 );
 
 void test(
@@ -236,7 +236,7 @@ void test(
       }
     }
   },
-  { timeout: 30000 },
+  { timeout: 30_000 },
 );
 
 void test(
@@ -280,7 +280,7 @@ void test(
 
     try {
       assert.equal(existsSync(defaultGatewayRecordPath), false);
-      await waitForSnapshotLineContaining(interactive.oracle, '🏠 home', 12000);
+      await waitForSnapshotLineContaining(interactive.oracle, '🏠 home', WAIT_MS);
 
       await publisherClient.sendCommand({
         type: 'directory.upsert',
@@ -330,5 +330,5 @@ void test(
       }
     }
   },
-  { timeout: 30000 },
+  { timeout: 30_000 },
 );

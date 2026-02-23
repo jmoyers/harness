@@ -128,6 +128,7 @@ export type StreamEventsInput = {
   readonly fidelity?: 'raw' | 'semantic';
   readonly includeThoughtDeltas?: boolean;
   readonly includeToolArgumentDeltas?: boolean;
+  readonly liveOnly?: boolean;
 };
 
 export type StreamUiInput = {
@@ -135,6 +136,7 @@ export type StreamUiInput = {
   readonly sessionId?: string;
   readonly runId?: string;
   readonly mode: 'debug' | 'seamless';
+  readonly liveOnly?: boolean;
 };
 
 export type ReplayEventsInput = {

@@ -673,16 +673,18 @@ export class InMemoryNimRuntime implements NimRuntime {
 
     this.subscribers.set(id, subscriber);
 
-    const initialEvents = this.eventStore.list({
-      tenantId: input.tenantId,
-      ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
-      ...(input.runId !== undefined ? { runId: input.runId } : {}),
-    });
-    for (const event of initialEvents) {
-      if (!this.shouldDeliverEvent(input, event, fromEvent)) {
-        continue;
+    if (input.liveOnly !== true) {
+      const initialEvents = this.eventStore.list({
+        tenantId: input.tenantId,
+        ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
+        ...(input.runId !== undefined ? { runId: input.runId } : {}),
+      });
+      for (const event of initialEvents) {
+        if (!this.shouldDeliverEvent(input, event, fromEvent)) {
+          continue;
+        }
+        queue.push(event);
       }
-      queue.push(event);
     }
 
     return {
@@ -706,6 +708,7 @@ export class InMemoryNimRuntime implements NimRuntime {
       tenantId: input.tenantId,
       ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
       ...(input.runId !== undefined ? { runId: input.runId } : {}),
+      ...(input.liveOnly !== undefined ? { liveOnly: input.liveOnly } : {}),
       fidelity: 'semantic',
     });
     const mode = input.mode;

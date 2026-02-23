@@ -1,0 +1,958 @@
+{
+  "schemaVersion": 1,
+  "name": "markdown/mixed-rich-content",
+  "viewport": {
+    "cols": 54,
+    "rows": 12
+  },
+  "metadata": {},
+  "styles": {
+    "s1": {
+      "fg": "rgb:56,189,248",
+      "bg": "default",
+      "bold": true,
+      "dim": false,
+      "italic": false,
+      "underline": false,
+      "inverse": false
+    },
+    "s2": {
+      "fg": "default",
+      "bg": "default",
+      "bold": false,
+      "dim": false,
+      "italic": false,
+      "underline": false,
+      "inverse": false
+    },
+    "s3": {
+      "fg": "rgb:226,232,240",
+      "bg": "default",
+      "bold": false,
+      "dim": false,
+      "italic": false,
+      "underline": false,
+      "inverse": false
+    },
+    "s4": {
+      "fg": "rgb:245,158,11",
+      "bg": "default",
+      "bold": true,
+      "dim": false,
+      "italic": false,
+      "underline": false,
+      "inverse": false
+    },
+    "s5": {
+      "fg": "rgb:251,113,133",
+      "bg": "default",
+      "bold": false,
+      "dim": false,
+      "italic": true,
+      "underline": false,
+      "inverse": false
+    },
+    "s6": {
+      "fg": "rgb:134,239,172",
+      "bg": "default",
+      "bold": false,
+      "dim": false,
+      "italic": false,
+      "underline": false,
+      "inverse": false
+    },
+    "s7": {
+      "fg": "rgb:34,211,238",
+      "bg": "default",
+      "bold": false,
+      "dim": false,
+      "italic": false,
+      "underline": false,
+      "inverse": false
+    },
+    "s8": {
+      "fg": "rgb:203,213,225",
+      "bg": "default",
+      "bold": false,
+      "dim": true,
+      "italic": false,
+      "underline": false,
+      "inverse": false
+    },
+    "s9": {
+      "fg": "rgb:100,116,139",
+      "bg": "default",
+      "bold": false,
+      "dim": true,
+      "italic": false,
+      "underline": false,
+      "inverse": false
+    }
+  },
+  "rows": [
+    {
+      "text": "# Harness UI                                          ",
+      "ansi": "\u001b[0;1;38;2;56;189;248;49m# Harness UI\u001b[0;39;49m                                          \u001b[0m",
+      "baseStyle": "s2",
+      "decoratedCells": [
+        {
+          "col": 0,
+          "glyph": "#",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 1,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 2,
+          "glyph": "H",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 3,
+          "glyph": "a",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 4,
+          "glyph": "r",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 5,
+          "glyph": "n",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 6,
+          "glyph": "e",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 7,
+          "glyph": "s",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 8,
+          "glyph": "s",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 9,
+          "glyph": " ",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 10,
+          "glyph": "U",
+          "continued": false,
+          "style": "s1"
+        },
+        {
+          "col": 11,
+          "glyph": "I",
+          "continued": false,
+          "style": "s1"
+        }
+      ]
+    },
+    {
+      "text": "                                                      ",
+      "ansi": "\u001b[0;39;49m                                                      \u001b[0m",
+      "baseStyle": "s2",
+      "decoratedCells": []
+    },
+    {
+      "text": "Mix bold, italic, and code text.                      ",
+      "ansi": "\u001b[0;38;2;226;232;240;49mMix \u001b[0;1;38;2;245;158;11;49mbold\u001b[0;38;2;226;232;240;49m, \u001b[0;3;38;2;251;113;133;49mitalic\u001b[0;38;2;226;232;240;49m, and \u001b[0;38;2;134;239;172;49mcode\u001b[0;38;2;226;232;240;49m text.\u001b[0;39;49m                      \u001b[0m",
+      "baseStyle": "s2",
+      "decoratedCells": [
+        {
+          "col": 0,
+          "glyph": "M",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 1,
+          "glyph": "i",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 2,
+          "glyph": "x",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 3,
+          "glyph": " ",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 4,
+          "glyph": "b",
+          "continued": false,
+          "style": "s4"
+        },
+        {
+          "col": 5,
+          "glyph": "o",
+          "continued": false,
+          "style": "s4"
+        },
+        {
+          "col": 6,
+          "glyph": "l",
+          "continued": false,
+          "style": "s4"
+        },
+        {
+          "col": 7,
+          "glyph": "d",
+          "continued": false,
+          "style": "s4"
+        },
+        {
+          "col": 8,
+          "glyph": ",",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 9,
+          "glyph": " ",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 10,
+          "glyph": "i",
+          "continued": false,
+          "style": "s5"
+        },
+        {
+          "col": 11,
+          "glyph": "t",
+          "continued": false,
+          "style": "s5"
+        },
+        {
+          "col": 12,
+          "glyph": "a",
+          "continued": false,
+          "style": "s5"
+        },
+        {
+          "col": 13,
+          "glyph": "l",
+          "continued": false,
+          "style": "s5"
+        },
+        {
+          "col": 14,
+          "glyph": "i",
+          "continued": false,
+          "style": "s5"
+        },
+        {
+          "col": 15,
+          "glyph": "c",
+          "continued": false,
+          "style": "s5"
+        },
+        {
+          "col": 16,
+          "glyph": ",",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 17,
+          "glyph": " ",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 18,
+          "glyph": "a",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 19,
+          "glyph": "n",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 20,
+          "glyph": "d",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 21,
+          "glyph": " ",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 22,
+          "glyph": "c",
+          "continued": false,
+          "style": "s6"
+        },
+        {
+          "col": 23,
+          "glyph": "o",
+          "continued": false,
+          "style": "s6"
+        },
+        {
+          "col": 24,
+          "glyph": "d",
+          "continued": false,
+          "style": "s6"
+        },
+        {
+          "col": 25,
+          "glyph": "e",
+          "continued": false,
+          "style": "s6"
+        },
+        {
+          "col": 26,
+          "glyph": " ",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 27,
+          "glyph": "t",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 28,
+          "glyph": "e",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 29,
+          "glyph": "x",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 30,
+          "glyph": "t",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 31,
+          "glyph": ".",
+          "continued": false,
+          "style": "s3"
+        }
+      ]
+    },
+    {
+      "text": "                                                      ",
+      "ansi": "\u001b[0;39;49m                                                      \u001b[0m",
+      "baseStyle": "s2",
+      "decoratedCells": []
+    },
+    {
+      "text": "• item one                                            ",
+      "ansi": "\u001b[0;38;2;34;211;238;49m• \u001b[0;38;2;226;232;240;49mitem one\u001b[0;39;49m                                            \u001b[0m",
+      "baseStyle": "s2",
+      "decoratedCells": [
+        {
+          "col": 0,
+          "glyph": "•",
+          "continued": false,
+          "style": "s7"
+        },
+        {
+          "col": 1,
+          "glyph": " ",
+          "continued": false,
+          "style": "s7"
+        },
+        {
+          "col": 2,
+          "glyph": "i",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 3,
+          "glyph": "t",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 4,
+          "glyph": "e",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 5,
+          "glyph": "m",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 6,
+          "glyph": " ",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 7,
+          "glyph": "o",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 8,
+          "glyph": "n",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 9,
+          "glyph": "e",
+          "continued": false,
+          "style": "s3"
+        }
+      ]
+    },
+    {
+      "text": "• item two                                            ",
+      "ansi": "\u001b[0;38;2;34;211;238;49m• \u001b[0;38;2;226;232;240;49mitem two\u001b[0;39;49m                                            \u001b[0m",
+      "baseStyle": "s2",
+      "decoratedCells": [
+        {
+          "col": 0,
+          "glyph": "•",
+          "continued": false,
+          "style": "s7"
+        },
+        {
+          "col": 1,
+          "glyph": " ",
+          "continued": false,
+          "style": "s7"
+        },
+        {
+          "col": 2,
+          "glyph": "i",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 3,
+          "glyph": "t",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 4,
+          "glyph": "e",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 5,
+          "glyph": "m",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 6,
+          "glyph": " ",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 7,
+          "glyph": "t",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 8,
+          "glyph": "w",
+          "continued": false,
+          "style": "s3"
+        },
+        {
+          "col": 9,
+          "glyph": "o",
+          "continued": false,
+          "style": "s3"
+        }
+      ]
+    },
+    {
+      "text": "                                                      ",
+      "ansi": "\u001b[0;39;49m                                                      \u001b[0m",
+      "baseStyle": "s2",
+      "decoratedCells": []
+    },
+    {
+      "text": "▌ callout row                                         ",
+      "ansi": "\u001b[0;2;38;2;203;213;225;49m▌ callout row\u001b[0;39;49m                                         \u001b[0m",
+      "baseStyle": "s2",
+      "decoratedCells": [
+        {
+          "col": 0,
+          "glyph": "▌",
+          "continued": false,
+          "style": "s8"
+        },
+        {
+          "col": 1,
+          "glyph": " ",
+          "continued": false,
+          "style": "s8"
+        },
+        {
+          "col": 2,
+          "glyph": "c",
+          "continued": false,
+          "style": "s8"
+        },
+        {
+          "col": 3,
+          "glyph": "a",
+          "continued": false,
+          "style": "s8"
+        },
+        {
+          "col": 4,
+          "glyph": "l",
+          "continued": false,
+          "style": "s8"
+        },
+        {
+          "col": 5,
+          "glyph": "l",
+          "continued": false,
+          "style": "s8"
+        },
+        {
+          "col": 6,
+          "glyph": "o",
+          "continued": false,
+          "style": "s8"
+        },
+        {
+          "col": 7,
+          "glyph": "u",
+          "continued": false,
+          "style": "s8"
+        },
+        {
+          "col": 8,
+          "glyph": "t",
+          "continued": false,
+          "style": "s8"
+        },
+        {
+          "col": 9,
+          "glyph": " ",
+          "continued": false,
+          "style": "s8"
+        },
+        {
+          "col": 10,
+          "glyph": "r",
+          "continued": false,
+          "style": "s8"
+        },
+        {
+          "col": 11,
+          "glyph": "o",
+          "continued": false,
+          "style": "s8"
+        },
+        {
+          "col": 12,
+          "glyph": "w",
+          "continued": false,
+          "style": "s8"
+        }
+      ]
+    },
+    {
+      "text": "                                                      ",
+      "ansi": "\u001b[0;39;49m                                                      \u001b[0m",
+      "baseStyle": "s2",
+      "decoratedCells": []
+    },
+    {
+      "text": "──────────────────────────────────────────────────────",
+      "ansi": "\u001b[0;2;38;2;100;116;139;49m──────────────────────────────────────────────────────\u001b[0m",
+      "baseStyle": "s9",
+      "decoratedCells": [
+        {
+          "col": 0,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 1,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 2,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 3,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 4,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 5,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 6,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 7,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 8,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 9,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 10,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 11,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 12,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 13,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 14,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 15,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 16,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 17,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 18,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 19,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 20,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 21,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 22,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 23,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 24,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 25,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 26,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 27,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 28,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 29,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 30,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 31,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 32,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 33,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 34,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 35,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 36,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 37,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 38,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 39,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 40,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 41,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 42,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 43,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 44,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 45,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 46,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 47,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 48,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 49,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 50,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 51,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 52,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        },
+        {
+          "col": 53,
+          "glyph": "─",
+          "continued": false,
+          "style": "s9"
+        }
+      ]
+    },
+    {
+      "text": "                                                      ",
+      "ansi": "\u001b[0;39;49m                                                      \u001b[0m",
+      "baseStyle": "s2",
+      "decoratedCells": []
+    },
+    {
+      "text": "                                                      ",
+      "ansi": "\u001b[0;39;49m                                                      \u001b[0m",
+      "baseStyle": "s2",
+      "decoratedCells": []
+    }
+  ]
+}

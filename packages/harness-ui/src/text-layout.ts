@@ -71,6 +71,16 @@ function isWideCodePoint(codePoint: number): boolean {
 }
 
 export function measureDisplayWidth(text: string): number {
+  let allAscii = true;
+  for (let i = 0; i < text.length; i += 1) {
+    const code = text.charCodeAt(i);
+    if (code < 0x20 || code > 0x7e) {
+      allAscii = false;
+      break;
+    }
+  }
+  if (allAscii) return text.length;
+
   let width = 0;
   for (const char of text) {
     const codePoint = char.codePointAt(0)!;

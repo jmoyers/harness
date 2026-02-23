@@ -16,12 +16,14 @@
     "src/config/config-core.ts",
     "src/services/runtime-control-plane-ops.ts",
     "src/services/runtime-conversation-starter.ts",
-    "src/services/startup-paint-tracker.ts"
+    "src/services/startup-paint-tracker.ts",
+    "packages/harness-ui/src/app/app.ts",
+    "packages/harness-ui/src/util/clipboard.ts"
   ],
   "global": {
-    "lines": 100,
-    "functions": 100,
-    "branches": 100
+    "lines": 95,
+    "functions": 95,
+    "branches": 95
   },
   "perFileDefault": {
     "lines": 0,

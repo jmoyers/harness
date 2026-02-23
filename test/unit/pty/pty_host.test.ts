@@ -203,7 +203,7 @@ function normalizePtyHostTestOptions(
     };
   }
   return {
-    ...(options ?? {}),
+    ...options,
     timeout: Math.max(options?.timeout ?? 0, minTimeoutMs),
   };
 }
