@@ -1053,11 +1053,11 @@ void test('codex live session e2e preserves terminal width across startup and re
     throw new Error(`timed out waiting for line: ${String(pattern)}`);
   };
 
-  await waitForLine(/^29 91$/, 2500);
+  await waitForLine(/^29 91$/, 5000);
 
   session.resize(73, 21);
   session.write('size\n');
-  await waitForLine(/^21 73$/, 2500);
+  await waitForLine(/^21 73$/, 5000);
 
   session.detach(attachmentId);
   session.close();

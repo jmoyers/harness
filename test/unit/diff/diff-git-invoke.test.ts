@@ -33,7 +33,7 @@ function createTempRepository(prefix: string): string {
 function createLargeRepositoryForTimeout(prefix: string): string {
   const repo = createTempRepository(prefix);
   // Mutate a tracked file so `git diff --patch` emits a large patch payload.
-  const largePayload = `${'a'.repeat(1024)}\n`.repeat(8_000);
+  const largePayload = `${'a'.repeat(4096)}\n`.repeat(16_000);
   writeFileSync(join(repo, 'file.txt'), largePayload, 'utf8');
   return repo;
 }

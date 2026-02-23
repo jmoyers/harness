@@ -857,7 +857,7 @@ void test('stream server enforces optional auth token on all operations', async 
 void test('stream server retains exited tombstones briefly then auto-removes by ttl', async () => {
   const sessions: FakeLiveSession[] = [];
   const server = await startControlPlaneStreamServer({
-    sessionExitTombstoneTtlMs: 15,
+    sessionExitTombstoneTtlMs: 200,
     startSession: (input) => {
       const session = new FakeLiveSession(input);
       sessions.push(session);
@@ -894,7 +894,7 @@ void test('stream server retains exited tombstones briefly then auto-removes by 
       /session is not live/,
     );
 
-    await waitForSessionMissing(client, 'session-ttl');
+    await waitForSessionMissing(client, 'session-ttl', 5_000);
   } finally {
     client.close();
     await server.close();

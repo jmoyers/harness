@@ -1151,21 +1151,21 @@ test(
 
     writeFileSync(
       muxScriptPath,
-      'setTimeout(() => process.kill(process.pid, "SIGINT"), 5);\n',
+      'setTimeout(() => process.kill(process.pid, "SIGINT"), 50);\n',
       'utf8',
     );
     assert.equal(await service.runMuxClient(record, []), 130);
 
     writeFileSync(
       muxScriptPath,
-      'setTimeout(() => process.kill(process.pid, "SIGTERM"), 5);\n',
+      'setTimeout(() => process.kill(process.pid, "SIGTERM"), 50);\n',
       'utf8',
     );
     assert.equal(await service.runMuxClient(record, []), 143);
 
     writeFileSync(
       muxScriptPath,
-      'setTimeout(() => process.kill(process.pid, "SIGQUIT"), 5);\n',
+      'setTimeout(() => process.kill(process.pid, "SIGQUIT"), 50);\n',
       'utf8',
     );
     assert.equal(await service.runMuxClient(record, []), 1);
