@@ -22,17 +22,11 @@ export interface RuntimeNimControlPlaneApi {
     agentType: string;
     adapterState?: Record<string, unknown>;
   }): Promise<AgentThread>;
-  updateThread(input: {
-    threadId: string;
-    title: string;
-  }): Promise<AgentThread>;
+  updateThread(input: { threadId: string; title: string }): Promise<AgentThread>;
   archiveThread(threadId: string): Promise<AgentThread>;
   deleteThread(threadId: string): Promise<{ deleted: boolean }>;
   threadStatus(threadId: string): Promise<AgentSessionSummary>;
-  threadSnapshot(input: {
-    threadId: string;
-    tailLines?: number;
-  }): Promise<AgentSessionSnapshot>;
+  threadSnapshot(input: { threadId: string; tailLines?: number }): Promise<AgentSessionSnapshot>;
   threadRespond(input: { threadId: string; text: string }): Promise<{
     responded: boolean;
     sentBytes: number;
@@ -49,7 +43,10 @@ export interface RuntimeNimControlPlaneApi {
     initialRows?: number;
     worktreeId?: string;
   }): Promise<{ sessionId: string }>;
-  threadAttach(input: { threadId: string; sinceCursor?: number }): Promise<{ latestCursor: number }>;
+  threadAttach(input: {
+    threadId: string;
+    sinceCursor?: number;
+  }): Promise<{ latestCursor: number }>;
   threadDetach(threadId: string): Promise<{ detached: boolean }>;
   threadSubscribeEvents(threadId: string): Promise<{ subscribed: boolean }>;
   threadUnsubscribeEvents(threadId: string): Promise<{ subscribed: boolean }>;
@@ -138,9 +135,7 @@ export function createRuntimeNimControlPlaneApi(
         userId: options.userId,
         workspaceId: options.workspaceId,
         ...(query.projectId === undefined ? {} : { projectId: query.projectId }),
-        ...(query.includeArchived === undefined
-          ? {}
-          : { includeArchived: query.includeArchived }),
+        ...(query.includeArchived === undefined ? {} : { includeArchived: query.includeArchived }),
         ...(query.limit === undefined ? {} : { limit: query.limit }),
       });
     },
@@ -160,10 +155,7 @@ export function createRuntimeNimControlPlaneApi(
         ...(input.adapterState === undefined ? {} : { adapterState: input.adapterState }),
       });
     },
-    updateThread: async (input: {
-      threadId: string;
-      title: string;
-    }): Promise<AgentThread> => {
+    updateThread: async (input: { threadId: string; title: string }): Promise<AgentThread> => {
       const client = await getClient();
       return await client.threads.update(input.threadId, {
         title: input.title,
@@ -188,7 +180,10 @@ export function createRuntimeNimControlPlaneApi(
       const client = await getClient();
       return await client.sessions.snapshot(input.threadId, input.tailLines);
     },
-    threadRespond: async (input: { threadId: string; text: string }): Promise<{
+    threadRespond: async (input: {
+      threadId: string;
+      text: string;
+    }): Promise<{
       responded: boolean;
       sentBytes: number;
     }> => {

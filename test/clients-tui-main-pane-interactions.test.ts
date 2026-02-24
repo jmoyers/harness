@@ -215,6 +215,180 @@ void test('main-pane preflight handles copy shortcut for home selection', () => 
   assert.equal(markDirtyCalls, 1);
 });
 
+void test('main-pane preflight handles copy shortcut for nim selection via active frame extraction', () => {
+  const workspace = createWorkspace();
+  workspace.enterNimPane();
+  workspace.selection = {
+    anchor: { rowAbs: 0, col: 0 },
+    focus: { rowAbs: 0, col: 2 },
+    text: '',
+  };
+
+  let copiedText: string | null = null;
+  let markDirtyCalls = 0;
+
+  const interactions = createTuiMainPaneInteractions({
+    workspace,
+    controllerId: 'controller-1',
+    getLayout: () => ({
+      cols: 100,
+      rows: 40,
+      paneRows: 39,
+      statusRow: 40,
+      leftCols: 30,
+      rightCols: 69,
+      separatorCol: 31,
+      rightStartCol: 32,
+    }),
+    noteGitActivity: () => {},
+    getInputRemainder: () => '',
+    setInputRemainder: () => {},
+    leftRailPointerInput: {
+      handlePointerClick: () => false,
+    },
+    project: {
+      projectPaneActionAtRow: () => null,
+      refreshGitHubReview: () => {},
+      toggleGitHubNode: () => false,
+      openNewThreadPrompt: () => {},
+      queueCloseDirectory: () => {},
+    },
+    task: {
+      selectTaskById: () => {},
+      selectRepositoryById: () => {},
+      runTaskPaneAction: () => {},
+      openTaskEditPrompt: () => {},
+      reorderTaskByDrop: () => {},
+      reorderRepositoryByDrop: () => {},
+      handleShortcutInput: () => false,
+    },
+    repository: {
+      openRepositoryPromptForEdit: () => {},
+    },
+    selection: {
+      pinViewportForSelection: () => {},
+      releaseViewportPinForSelection: () => {},
+    },
+    runtime: {
+      isShuttingDown: () => false,
+      getActiveConversation: () => ({
+        sessionId: 'nim-session-1',
+        directoryId: 'dir-1',
+        controller: null,
+        oracle: {
+          snapshotWithoutHash: () => ({
+            rows: 1,
+            cols: 3,
+            activeScreen: 'primary',
+            modes: {
+              bracketedPaste: false,
+              decMouseX10: false,
+              decMouseButtonEvent: false,
+              decMouseAnyEvent: false,
+              decFocusTracking: false,
+              decMouseSgrEncoding: false,
+            },
+            cursor: {
+              row: 0,
+              col: 0,
+              visible: false,
+              style: {
+                shape: 'block',
+                blinking: false,
+              },
+            },
+            viewport: {
+              top: 0,
+              totalRows: 1,
+              followOutput: true,
+            },
+            lines: ['nim'],
+            richLines: [
+              {
+                wrapped: false,
+                text: 'nim',
+                cells: [
+                  {
+                    glyph: 'n',
+                    width: 1,
+                    continued: false,
+                    style: {
+                      fg: { kind: 'default' },
+                      bg: { kind: 'default' },
+                      bold: false,
+                      dim: false,
+                      italic: false,
+                      underline: false,
+                      inverse: false,
+                    },
+                  },
+                  {
+                    glyph: 'i',
+                    width: 1,
+                    continued: false,
+                    style: {
+                      fg: { kind: 'default' },
+                      bg: { kind: 'default' },
+                      bold: false,
+                      dim: false,
+                      italic: false,
+                      underline: false,
+                      inverse: false,
+                    },
+                  },
+                  {
+                    glyph: 'm',
+                    width: 1,
+                    continued: false,
+                    style: {
+                      fg: { kind: 'default' },
+                      bg: { kind: 'default' },
+                      bold: false,
+                      dim: false,
+                      italic: false,
+                      underline: false,
+                      inverse: false,
+                    },
+                  },
+                ],
+              },
+            ],
+          }),
+          isMouseTrackingEnabled: () => false,
+          scrollViewport: () => {},
+          selectionText: () => '',
+        },
+      }),
+      sendInputToSession: () => {},
+      isControlledByLocalHuman: () => true,
+      enableInputMode: () => {},
+    },
+    modal: {
+      routeModalInput: () => false,
+    },
+    shortcuts: {
+      handleRepositoryFoldInput: () => false,
+      handleGlobalShortcutInput: () => false,
+    },
+    layout: {
+      applyPaneDividerAtCol: () => {},
+    },
+    markDirty: () => {
+      markDirtyCalls += 1;
+    },
+    writeTextToClipboard: (text) => {
+      copiedText = text;
+      return true;
+    },
+  });
+
+  const sanitized = interactions.inputPreflight.nextInput(Buffer.from([0x03]));
+
+  assert.equal(sanitized, null);
+  assert.equal(copiedText, 'nim');
+  assert.equal(markDirtyCalls, 1);
+});
+
 void test('main-pane interactions forward sanitized text input to active conversation session', () => {
   const workspace = createWorkspace();
   let inputRemainder = '';

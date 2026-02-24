@@ -78,7 +78,6 @@ export async function runNimCli(
   args: readonly string[],
   sessionName: string | null,
 ): Promise<number> {
-  const argsWithSession =
-    sessionName === null ? [...args] : ['--session-id', sessionName, ...args];
+  const argsWithSession = sessionName === null ? [...args] : ['--session-id', sessionName, ...args];
   return await runStandaloneNimCli(argsWithSession);
 }

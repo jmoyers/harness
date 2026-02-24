@@ -28,7 +28,12 @@ export class PromptShell extends Widget {
 
     if (this.busy) {
       const status = '⣾ nim is thinking...';
-      buf.drawText(Math.max(2, buf.cols - status.length - 2), Math.max(0, buf.rows - 1), status, TH.panelMuted);
+      buf.drawText(
+        Math.max(2, buf.cols - status.length - 2),
+        Math.max(0, buf.rows - 1),
+        status,
+        TH.panelMuted,
+      );
       return;
     }
 

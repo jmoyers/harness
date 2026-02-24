@@ -39,11 +39,7 @@ import type {
 
 async function* emptyAsyncIterable<T>(): AsyncIterable<T> {}
 
-async function waitFor(
-  predicate: () => boolean,
-  timeoutMs = 2000,
-  pollMs = 10,
-): Promise<void> {
+async function waitFor(predicate: () => boolean, timeoutMs = 2000, pollMs = 10): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (predicate()) {

@@ -321,7 +321,8 @@ export const TERMINAL_COMPAT_MATRIX: readonly TerminalCompatEntry[] = [
       'test/terminal-snapshot-oracle.test.ts',
       'test/unit/services/runtime/services-runtime-envelope-handler.test.ts',
     ],
-    notes: 'Tracks mode state and defers active-thread renders while synchronized output is enabled.',
+    notes:
+      'Tracks mode state and defers active-thread renders while synchronized output is enabled.',
   },
   {
     id: 'graphics-protocols',

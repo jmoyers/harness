@@ -4,9 +4,7 @@ import { Composer } from '../../../harness-ui/src/widgets/composer.ts';
 import type { ComposerSubmitted } from '../../../harness-ui/src/widgets/composer.ts';
 import { Toast } from '../../../harness-ui/src/widgets/toast.ts';
 import { PaneDivider } from '../../../harness-ui/src/widgets/pane-divider.ts';
-import {
-  CommandPalette,
-} from '../../../harness-ui/src/widgets/command-palette.ts';
+import { CommandPalette } from '../../../harness-ui/src/widgets/command-palette.ts';
 import type {
   CommandExecuted,
   CommandPaletteDismissed,
@@ -38,7 +36,10 @@ export interface NimAppRuntime {
   readonly requiredApiKey?: RequiredApiKeyConfig | null;
   readonly hasRequiredApiKey?: () => boolean;
   readonly configureRequiredApiKey?: (apiKey: string) => void;
-  readonly saveRequiredApiKey?: (input: { readonly envVar: string; readonly value: string }) => void;
+  readonly saveRequiredApiKey?: (input: {
+    readonly envVar: string;
+    readonly value: string;
+  }) => void;
 }
 
 export class NimApp extends Widget {
@@ -54,7 +55,9 @@ export class NimApp extends Widget {
   private readonly requiredApiKey: RequiredApiKeyConfig | null;
   private readonly hasRequiredApiKey: () => boolean;
   private readonly configureRequiredApiKey: ((apiKey: string) => void) | null;
-  private readonly saveRequiredApiKey: ((input: { readonly envVar: string; readonly value: string }) => void) | null;
+  private readonly saveRequiredApiKey:
+    | ((input: { readonly envVar: string; readonly value: string }) => void)
+    | null;
 
   private landing: LandingView;
   private conv: ConversationView;
@@ -221,7 +224,9 @@ export class NimApp extends Widget {
       this.toast.info(`${requiredApiKey.displayName} saved`);
       this.requestRender?.();
     } catch (error: unknown) {
-      this.toast.error(`Failed to save key: ${error instanceof Error ? error.message : String(error)}`);
+      this.toast.error(
+        `Failed to save key: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
@@ -294,7 +299,10 @@ export class NimApp extends Widget {
       this.transitionToChat();
     }
 
-    this.conv.messages = [...this.conv.messages, { role: 'user', text: message.value, tools: [], ts: Date.now() }];
+    this.conv.messages = [
+      ...this.conv.messages,
+      { role: 'user', text: message.value, tools: [], ts: Date.now() },
+    ];
     this.conv.scrollToBottom();
     this.syncSidebarMetrics();
     this.requestRender?.();
@@ -347,7 +355,10 @@ export class NimApp extends Widget {
           current.text = event.text;
         } else if (event.type === 'tool.activity') {
           if (event.phase === 'start') {
-            current.tools = [...current.tools, { name: event.toolName, args: '', status: 'pending' }];
+            current.tools = [
+              ...current.tools,
+              { name: event.toolName, args: '', status: 'pending' },
+            ];
           } else if (event.phase === 'end') {
             current.tools = current.tools.map((tool) =>
               tool.name === event.toolName && tool.status === 'pending'
@@ -485,10 +496,7 @@ export class NimApp extends Widget {
   }
 }
 
-export function createDefaultNimAppRuntime(
-  runtime: NimRuntime,
-  model: NimModelRef,
-): NimAppRuntime {
+export function createDefaultNimAppRuntime(runtime: NimRuntime, model: NimModelRef): NimAppRuntime {
   return {
     runtime,
     model,

@@ -34,7 +34,10 @@ export class ConversationView extends Widget {
   }
 
   actionPageUp(): void {
-    this.scrollTop = Math.max(0, this.scrollTop - Math.max(1, (this.computedRect.height || 10) - 2));
+    this.scrollTop = Math.max(
+      0,
+      this.scrollTop - Math.max(1, (this.computedRect.height || 10) - 2),
+    );
   }
 
   actionPageDown(): void {
@@ -180,7 +183,9 @@ export class ConversationView extends Widget {
     if (lines.length > buf.rows) {
       const trackHeight = buf.rows;
       const thumbHeight = Math.max(1, Math.round((buf.rows / lines.length) * trackHeight));
-      const thumbY = Math.round((this.scrollTop / Math.max(1, maxScroll)) * (trackHeight - thumbHeight));
+      const thumbY = Math.round(
+        (this.scrollTop / Math.max(1, maxScroll)) * (trackHeight - thumbHeight),
+      );
       for (let row = 0; row < trackHeight; row += 1) {
         const active = row >= thumbY && row < thumbY + thumbHeight;
         buf.drawText(buf.cols - 1, row, active ? '┃' : '│', active ? TH.border : TH.borderSubtle);

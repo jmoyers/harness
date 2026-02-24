@@ -22,12 +22,10 @@ export interface NimRuntimeHandle {
   readonly tenantId: string;
   readonly userId: string;
   readonly workspaceId: string;
-  readonly requiredApiKey:
-    | {
-        readonly envVar: 'ANTHROPIC_API_KEY';
-        readonly displayName: 'Anthropic API Key';
-      }
-    | null;
+  readonly requiredApiKey: {
+    readonly envVar: 'ANTHROPIC_API_KEY';
+    readonly displayName: 'Anthropic API Key';
+  } | null;
   hasRequiredApiKey(): boolean;
   configureRequiredApiKey(apiKey: string): void;
   close(): void;
@@ -98,7 +96,10 @@ function resolveRuntimePaths(
   };
 }
 
-function resolveRuntimeModel(input: CreateRuntimeFromEnvInput, env: NodeJS.ProcessEnv): NimModelRef {
+function resolveRuntimeModel(
+  input: CreateRuntimeFromEnvInput,
+  env: NodeJS.ProcessEnv,
+): NimModelRef {
   if (input.model !== undefined) {
     return input.model;
   }
@@ -139,9 +140,7 @@ function parsePositivePortFromString(value: string | null): number | null {
   return parsePositivePort(parsed);
 }
 
-function resolveRuntimeScope(
-  input: CreateRuntimeFromEnvInput,
-): {
+function resolveRuntimeScope(input: CreateRuntimeFromEnvInput): {
   tenantId: string;
   userId: string;
   workspaceId: string;
@@ -171,7 +170,7 @@ function resolveControlPlaneConfig(
   const authToken =
     input.controlPlaneAuthToken === null
       ? null
-      : input.controlPlaneAuthToken ?? readEnvString(env, NIM_CONTROL_PLANE_AUTH_TOKEN_ENV);
+      : (input.controlPlaneAuthToken ?? readEnvString(env, NIM_CONTROL_PLANE_AUTH_TOKEN_ENV));
   return {
     host,
     port,
@@ -318,13 +317,12 @@ export function createRuntimeFromEnv(input: CreateRuntimeFromEnvInput = {}): Nim
     tenantId: runtimeScope.tenantId,
     userId: runtimeScope.userId,
     workspaceId: runtimeScope.workspaceId,
-    requiredApiKey:
-      requiresAnthropicApiKey
-        ? {
-            envVar: 'ANTHROPIC_API_KEY',
-            displayName: 'Anthropic API Key',
-          }
-        : null,
+    requiredApiKey: requiresAnthropicApiKey
+      ? {
+          envVar: 'ANTHROPIC_API_KEY',
+          displayName: 'Anthropic API Key',
+        }
+      : null,
     hasRequiredApiKey: () => requiredApiKeyConfigured,
     configureRequiredApiKey: (apiKey) => {
       if (!requiresAnthropicApiKey) {

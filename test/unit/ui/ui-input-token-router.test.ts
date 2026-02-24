@@ -443,3 +443,67 @@ void test('input token router routes home-pane mouse selection through shared se
   assert.deepEqual(result.routedTokens, []);
   assert.equal(result.snapshotForInput, null);
 });
+
+void test('input token router routes nim-pane mouse selection through conversation selection reducer', () => {
+  const layout = computeDualPaneLayout(100, 24);
+  const rightCol = layout.rightStartCol + 2;
+  const frame = createFrame('nim');
+  const calls: string[] = [];
+  const router = new InputTokenRouter(
+    {
+      getMainPaneMode: () => 'nim',
+      pointerRoutingInput: {
+        handlePaneDividerDrag: () => false,
+        handleHomePaneDragRelease: () => false,
+        handleSeparatorPointerPress: () => false,
+        handleMainPaneWheel: () => false,
+        handleHomePaneDragMove: () => false,
+      },
+      mainPanePointerInput: {
+        handleProjectPanePointerClick: () => false,
+        handleHomePanePointerClick: () => false,
+      },
+      leftRailPointerInput: {
+        handlePointerClick: () => false,
+      },
+      conversationSelectionInput: {
+        clearSelectionOnTextToken: () => false,
+        handleMouseSelection: ({ frame: routedFrame, event, resolveSelectionText }) => {
+          calls.push(`selection:${event.code}:${event.final}:${routedFrame.lines[0] ?? ''}`);
+          const text =
+            resolveSelectionText?.({
+              anchor: { rowAbs: 0, col: 0 },
+              focus: { rowAbs: 0, col: 3 },
+              text: '',
+            }) ?? '';
+          calls.push(`text:${text}`);
+          return true;
+        },
+      },
+    },
+    defaultStrategies(),
+  );
+
+  const result = router.routeTokens({
+    tokens: [mouseToken(0, rightCol, 2), mouseTokenWithFinal(0, rightCol, 2, 'm')],
+    layout,
+    conversation: {
+      oracle: {
+        isMouseTrackingEnabled: () => false,
+        scrollViewport: () => {},
+        snapshotWithoutHash: () => frame,
+        selectionText: () => 'nim-copy',
+      },
+    },
+    snapshotForInput: frame,
+  });
+
+  assert.deepEqual(calls, [
+    'selection:0:M:nim',
+    'text:nim-copy',
+    'selection:0:m:nim',
+    'text:nim-copy',
+  ]);
+  assert.deepEqual(result.routedTokens, []);
+  assert.equal(result.snapshotForInput, frame);
+});

@@ -37,7 +37,12 @@ export class LandingView extends Widget {
       if (!child.visible) {
         continue;
       }
-      const composerBuf = buf.clip({ x: boxX, y: promptY, width: boxWidth, height: composerHeight });
+      const composerBuf = buf.clip({
+        x: boxX,
+        y: promptY,
+        width: boxWidth,
+        height: composerHeight,
+      });
       child.render(composerBuf);
     }
     return {
@@ -89,16 +94,15 @@ export class LandingView extends Widget {
     for (let index = 0; index < body.length; index += 1) {
       drawCentered(buf, headerY + 5 + index, body[index]!, TH.text);
     }
-    const cta =
-      this.apiKeyEntryActive
-        ? UI_KIT.formatButton({
-            label: `Paste ${this.apiKeyEnvVar}`,
-            prefixIcon: '>',
-          })
-        : UI_KIT.formatButton({
-            label: `Add ${this.apiKeyDisplayName}`,
-            prefixIcon: '+',
-          });
+    const cta = this.apiKeyEntryActive
+      ? UI_KIT.formatButton({
+          label: `Paste ${this.apiKeyEnvVar}`,
+          prefixIcon: '>',
+        })
+      : UI_KIT.formatButton({
+          label: `Add ${this.apiKeyDisplayName}`,
+          prefixIcon: '+',
+        });
     drawCentered(buf, headerY + 7 + body.length, cta, TH.panelAccent);
     drawCentered(buf, headerY + 8 + body.length, 'Press Enter to save key', TH.tipText);
     drawCentered(buf, headerY + 9 + body.length, 'Ctrl+P -> Set Anthropic API Key', TH.muted);

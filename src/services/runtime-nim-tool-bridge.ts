@@ -116,10 +116,7 @@ export interface RuntimeNimToolBridgeOptions {
     agentType: string;
     adapterState?: Record<string, unknown>;
   }) => Promise<unknown>;
-  readonly updateThread: (input: {
-    threadId: string;
-    title: string;
-  }) => Promise<unknown>;
+  readonly updateThread: (input: { threadId: string; title: string }) => Promise<unknown>;
   readonly archiveThread: (threadId: string) => Promise<unknown>;
   readonly deleteThread: (threadId: string) => Promise<unknown>;
   readonly threadStatus: (threadId: string) => Promise<unknown>;
@@ -350,7 +347,10 @@ function readOptionalBoolean(record: Record<string, unknown>, key: string): bool
   return typeof value === 'boolean' ? value : undefined;
 }
 
-function readOptionalStringArray(record: Record<string, unknown>, key: string): string[] | undefined {
+function readOptionalStringArray(
+  record: Record<string, unknown>,
+  key: string,
+): string[] | undefined {
   const value = record[key];
   if (value === undefined) {
     return undefined;
@@ -523,10 +523,12 @@ function parseThreadListArguments(
     throw new Error('invalid thread.list arguments');
   }
   const limit = parsePositiveInteger(record['limit']) ?? fallbackLimit;
-  const projectId = readOptionalString(record, 'projectId') ?? readOptionalString(record, 'directoryId');
+  const projectId =
+    readOptionalString(record, 'projectId') ?? readOptionalString(record, 'directoryId');
   const includeArchived = readOptionalBoolean(record, 'includeArchived');
   const agentType = readOptionalString(record, 'agentType');
-  const runtimeStatusRaw = readOptionalString(record, 'runtimeStatus') ?? readOptionalString(record, 'status');
+  const runtimeStatusRaw =
+    readOptionalString(record, 'runtimeStatus') ?? readOptionalString(record, 'status');
   let runtimeStatus: RuntimeNimThreadRuntimeStatus | undefined;
   if (runtimeStatusRaw !== undefined) {
     if (
@@ -560,7 +562,8 @@ function parseThreadCreateArguments(input: RuntimeNimToolBridgeInvokeInput): {
   if (record === null) {
     throw new Error('invalid thread.create arguments');
   }
-  const projectId = readOptionalString(record, 'projectId') ?? readOptionalString(record, 'directoryId');
+  const projectId =
+    readOptionalString(record, 'projectId') ?? readOptionalString(record, 'directoryId');
   const title = readOptionalString(record, 'title');
   const agentType = readOptionalString(record, 'agentType') ?? 'codex';
   const threadId = readThreadIdFromRecord(record) ?? undefined;
@@ -647,9 +650,7 @@ function parseThreadSnapshotArguments(
   };
 }
 
-function parseThreadRespondArguments(
-  input: RuntimeNimToolBridgeInvokeInput,
-): {
+function parseThreadRespondArguments(input: RuntimeNimToolBridgeInvokeInput): {
   threadId: string;
   text: string;
 } {
@@ -700,12 +701,15 @@ function parseThreadClaimArguments(
   const controllerType: StreamSessionControllerType =
     rawControllerType === undefined
       ? 'agent'
-      : rawControllerType === 'human' || rawControllerType === 'agent' || rawControllerType === 'automation'
+      : rawControllerType === 'human' ||
+          rawControllerType === 'agent' ||
+          rawControllerType === 'automation'
         ? rawControllerType
         : (() => {
             throw new Error(`invalid thread.claim controllerType: ${rawControllerType}`);
           })();
-  const controllerLabel = readOptionalString(record, 'controllerLabel') ?? defaults.defaultControllerLabel;
+  const controllerLabel =
+    readOptionalString(record, 'controllerLabel') ?? defaults.defaultControllerLabel;
   const reason = readOptionalString(record, 'reason');
   const takeover = readOptionalBoolean(record, 'takeover');
   return {
@@ -718,9 +722,7 @@ function parseThreadClaimArguments(
   };
 }
 
-function parseThreadReleaseArguments(
-  input: RuntimeNimToolBridgeInvokeInput,
-): {
+function parseThreadReleaseArguments(input: RuntimeNimToolBridgeInvokeInput): {
   threadId: string;
   reason?: string;
 } {
@@ -740,9 +742,7 @@ function parseThreadReleaseArguments(
   };
 }
 
-function parseThreadStartArguments(
-  input: RuntimeNimToolBridgeInvokeInput,
-): {
+function parseThreadStartArguments(input: RuntimeNimToolBridgeInvokeInput): {
   threadId: string;
   args?: readonly string[];
   env?: Record<string, string>;
@@ -795,9 +795,7 @@ function parseThreadStartArguments(
   };
 }
 
-function parseThreadAttachArguments(
-  input: RuntimeNimToolBridgeInvokeInput,
-): {
+function parseThreadAttachArguments(input: RuntimeNimToolBridgeInvokeInput): {
   threadId: string;
   sinceCursor?: number;
 } {

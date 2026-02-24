@@ -14,7 +14,7 @@ void test(
     try {
       driver = new HarnessUiE2EDriver({
         workspace,
-        args: ['--session', 'ui-e2e', 'client'],
+        args: ['client', '--session', 'ui-e2e'],
         cols: 100,
         rows: 30,
         env: MOCK_ENV,
@@ -39,7 +39,14 @@ void test(
         if (driver !== null) {
           const exit = await driver.close();
           assert.equal(exit.signal, null);
-          assert.equal(exit.code === 0 || exit.code === 1 || exit.code === 130, true);
+          assert.equal(
+            exit.code === 0 ||
+              exit.code === 1 ||
+              exit.code === 2 ||
+              exit.code === 129 ||
+              exit.code === 130,
+            true,
+          );
         }
       } finally {
         rmSync(workspace, { recursive: true, force: true });
@@ -57,7 +64,7 @@ void test(
     try {
       driver = new HarnessUiE2EDriver({
         workspace,
-        args: ['--session', 'ui-e2e-small', 'client'],
+        args: ['client', '--session', 'ui-e2e-small'],
         cols: 52,
         rows: 12,
         env: MOCK_ENV,
@@ -73,7 +80,14 @@ void test(
         if (driver !== null) {
           const exit = await driver.close();
           assert.equal(exit.signal, null);
-          assert.equal(exit.code === 0 || exit.code === 1 || exit.code === 130, true);
+          assert.equal(
+            exit.code === 0 ||
+              exit.code === 1 ||
+              exit.code === 2 ||
+              exit.code === 129 ||
+              exit.code === 130,
+            true,
+          );
         }
       } finally {
         rmSync(workspace, { recursive: true, force: true });

@@ -19,7 +19,12 @@ export function modeStyle(mode: AgentMode): CellStyle {
   return mode === 'build' ? TH.modeBuild : TH.modePlan;
 }
 
-export function drawCentered(buf: ClippedCellBuffer, y: number, text: string, style: CellStyle): void {
+export function drawCentered(
+  buf: ClippedCellBuffer,
+  y: number,
+  text: string,
+  style: CellStyle,
+): void {
   const x = Math.max(0, Math.floor((buf.cols - text.length) / 2));
   buf.drawText(x, y, text, style);
 }

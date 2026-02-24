@@ -121,6 +121,10 @@ interface TuiLeftRailPointerInput {
 type RuntimeLayout = ReturnType<typeof computeDualPaneLayout>;
 type NonConversationMainPaneMode = Exclude<WorkspaceModel['mainPaneMode'], 'conversation'>;
 
+function isConversationLikeMainPaneMode(mode: WorkspaceModel['mainPaneMode']): boolean {
+  return mode === 'conversation' || mode === 'nim';
+}
+
 export interface TuiMainPaneInteractionsOptions<TConversation extends ActiveConversationLike> {
   readonly workspace: WorkspaceModel;
   readonly controllerId: string;
@@ -444,7 +448,7 @@ export function createTuiMainPaneInteractions<TConversation extends ActiveConver
           return false;
         }
         let textToCopy = options.workspace.selection.text;
-        if (options.workspace.mainPaneMode === 'conversation') {
+        if (isConversationLikeMainPaneMode(options.workspace.mainPaneMode)) {
           const active = options.runtime.getActiveConversation();
           if (active === null) {
             return true;

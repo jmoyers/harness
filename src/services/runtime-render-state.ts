@@ -54,7 +54,12 @@ export function prepareRuntimeRenderState<TConversation, TFrame>(
   }
 
   const activeConversation = options.conversations.getActiveConversation();
-  if (!projectPaneActive && !homePaneActive && !conversationPaneVisible && activeConversation === null) {
+  if (
+    !projectPaneActive &&
+    !homePaneActive &&
+    !conversationPaneVisible &&
+    activeConversation === null
+  ) {
     return null;
   }
 

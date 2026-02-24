@@ -15,7 +15,7 @@ import { resolveHarnessWorkspaceDirectory } from '../../../src/config/harness-pa
 import type { CodexLiveEvent } from '../../../src/codex/live-session.ts';
 import { startPtySession, type PtyExit } from '../../../src/pty/pty_host.ts';
 import { SqliteControlPlaneStore } from '../../../src/store/control-plane-store.ts';
-import { TerminalSnapshotOracle } from '../../../src/terminal/snapshot-oracle.ts';
+import type { TerminalSnapshotOracle } from '../../../src/terminal/snapshot-oracle.ts';
 
 import {
   StartupTestLiveSession,
@@ -42,6 +42,27 @@ import {
   workspaceXdgConfigHome,
   writeLeftMouseClick,
 } from '../../helpers/codex-live-mux-startup-test-helpers.ts';
+
+const NIM_LANDING_MARKERS = ['[Build]', '[Setup]'] as const;
+
+async function waitForAnyNimLandingSnapshotText(
+  oracle: TerminalSnapshotOracle,
+  timeoutMs: number,
+): Promise<void> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const frame = oracle.snapshotWithoutHash();
+    for (const marker of NIM_LANDING_MARKERS) {
+      if (frame.lines.some((line) => line.includes(marker))) {
+        return;
+      }
+    }
+    await delay(40);
+  }
+  throw new Error(
+    `timed out waiting for any nim landing marker: ${NIM_LANDING_MARKERS.join(', ')}`,
+  );
+}
 
 void test(
   'codex-live-mux default startup is home-first, stable, and avoids implicit conversation creation',
@@ -102,10 +123,14 @@ void test(
         'utf8',
       );
 
-      const result = await captureMuxBootOutput(workspace, 1800);
-      assertExpectedBootTeardownExit(result.exit);
-      assert.equal(result.output.includes('nim'), true);
-      assert.equal(result.output.includes('nim - nim'), true);
+      const interactive = startInteractiveMuxSession(workspace);
+      try {
+        await waitForAnyNimLandingSnapshotText(interactive.oracle, 12_000);
+      } finally {
+        await requestMuxShutdown(interactive.session);
+      }
+      const exit = await interactive.waitForExit;
+      assertExpectedBootTeardownExit(exit);
     } finally {
       rmSync(workspace, { recursive: true, force: true });
     }

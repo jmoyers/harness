@@ -26,6 +26,23 @@ interface SessionParseResult {
 
 abstract class HarnessCommandBase extends Command {
   static override strict = false;
+  private argvParsed = false;
+
+  protected async readArgv(): Promise<readonly string[]> {
+    if (!this.argvParsed) {
+      const ctor = this.constructor as typeof Command;
+      await this.parse({
+        flags: ctor.flags,
+        baseFlags: ctor.baseFlags,
+        args: ctor.args,
+        enableJsonFlag: ctor.enableJsonFlag,
+        strict: false,
+        '--': false,
+      });
+      this.argvParsed = true;
+    }
+    return this.argv;
+  }
 
   protected extractSessionArg(argv: readonly string[]): SessionParseResult {
     const passthrough: string[] = [];
@@ -72,7 +89,7 @@ class ClientCommand extends HarnessCommandBase {
   };
 
   override async run(): Promise<void> {
-    const parsed = this.extractSessionArg(this.argv);
+    const parsed = this.extractSessionArg(await this.readArgv());
     const code = await runClientCli(parsed.argv, parsed.sessionName);
     this.exitIfNeeded(code);
   }
@@ -97,7 +114,7 @@ class GatewayCommand extends HarnessCommandBase {
   };
 
   override async run(): Promise<void> {
-    const parsed = this.extractSessionArg(this.argv);
+    const parsed = this.extractSessionArg(await this.readArgv());
     if (parsed.argv.length === 0) {
       this.error('missing gateway subcommand', { exit: 2 });
     }
@@ -123,7 +140,7 @@ class ProfileCommand extends HarnessCommandBase {
   };
 
   override async run(): Promise<void> {
-    const parsed = this.extractSessionArg(this.argv);
+    const parsed = this.extractSessionArg(await this.readArgv());
     const code = await runProfileCli(parsed.argv, parsed.sessionName);
     this.exitIfNeeded(code);
   }
@@ -144,7 +161,7 @@ class StatusTimelineCommand extends HarnessCommandBase {
   };
 
   override async run(): Promise<void> {
-    const parsed = this.extractSessionArg(this.argv);
+    const parsed = this.extractSessionArg(await this.readArgv());
     const code = await runStatusTimelineCli(parsed.argv, parsed.sessionName);
     this.exitIfNeeded(code);
   }
@@ -165,7 +182,7 @@ class RenderTraceCommand extends HarnessCommandBase {
   };
 
   override async run(): Promise<void> {
-    const parsed = this.extractSessionArg(this.argv);
+    const parsed = this.extractSessionArg(await this.readArgv());
     const code = await runRenderTraceCli(parsed.argv, parsed.sessionName);
     this.exitIfNeeded(code);
   }
@@ -186,7 +203,7 @@ class AuthCommand extends HarnessCommandBase {
   };
 
   override async run(): Promise<void> {
-    const parsed = this.extractSessionArg(this.argv);
+    const parsed = this.extractSessionArg(await this.readArgv());
     const code = await runAuthCli(parsed.argv, parsed.sessionName);
     this.exitIfNeeded(code);
   }
@@ -205,7 +222,7 @@ class UpdateCommand extends HarnessCommandBase {
   };
 
   override async run(): Promise<void> {
-    const parsed = this.extractSessionArg(this.argv);
+    const parsed = this.extractSessionArg(await this.readArgv());
     const code = runUpdateCli(parsed.argv, parsed.sessionName);
     this.exitIfNeeded(code);
   }
@@ -225,7 +242,7 @@ class CursorHooksCommand extends HarnessCommandBase {
   };
 
   override async run(): Promise<void> {
-    const parsed = this.extractSessionArg(this.argv);
+    const parsed = this.extractSessionArg(await this.readArgv());
     const code = await runCursorHooksCli(parsed.argv, parsed.sessionName);
     this.exitIfNeeded(code);
   }
@@ -244,7 +261,7 @@ class AnimateCommand extends HarnessCommandBase {
   };
 
   override async run(): Promise<void> {
-    const parsed = this.extractSessionArg(this.argv);
+    const parsed = this.extractSessionArg(await this.readArgv());
     const code = await runAnimateCli(parsed.argv);
     this.exitIfNeeded(code);
   }
@@ -261,7 +278,7 @@ class NimCommand extends HarnessCommandBase {
   };
 
   override async run(): Promise<void> {
-    const parsed = this.extractSessionArg(this.argv);
+    const parsed = this.extractSessionArg(await this.readArgv());
     const code = await runNimCli(parsed.argv, parsed.sessionName);
     this.exitIfNeeded(code);
   }
@@ -277,7 +294,7 @@ class DiffCommand extends HarnessCommandBase {
   };
 
   override async run(): Promise<void> {
-    const parsed = this.extractSessionArg(this.argv);
+    const parsed = this.extractSessionArg(await this.readArgv());
     const code = await runDiffCli(parsed.argv, parsed.sessionName);
     this.exitIfNeeded(code);
   }

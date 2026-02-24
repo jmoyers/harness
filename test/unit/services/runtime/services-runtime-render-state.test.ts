@@ -50,9 +50,7 @@ function createWorkspace(): WorkspaceModel {
   });
 }
 
-void test(
-  'runtime render state keeps conversation pane renderable when no active conversation id exists',
-  () => {
+void test('runtime render state keeps conversation pane renderable when no active conversation id exists', () => {
   const workspace = createWorkspace();
   workspace.mainPaneMode = 'conversation';
 
@@ -69,23 +67,20 @@ void test(
     selectionVisibleRows: () => [0],
   };
 
-    const state = prepareRuntimeRenderState(options, baseSelection, null);
-    if (state === null) {
-      throw new Error('expected render state');
-    }
-    assert.equal(state.projectPaneActive, false);
-    assert.equal(state.homePaneActive, false);
-    assert.equal(state.nimPaneActive, false);
-    assert.deepEqual(state.activeConversation, { id: 'unused' });
-    assert.deepEqual(state.rightFrame, { id: 'frame-1' });
-    assert.deepEqual(state.renderSelection, baseSelection);
-    assert.deepEqual(state.selectionRows, [0]);
-  },
-);
+  const state = prepareRuntimeRenderState(options, baseSelection, null);
+  if (state === null) {
+    throw new Error('expected render state');
+  }
+  assert.equal(state.projectPaneActive, false);
+  assert.equal(state.homePaneActive, false);
+  assert.equal(state.nimPaneActive, false);
+  assert.deepEqual(state.activeConversation, { id: 'unused' });
+  assert.deepEqual(state.rightFrame, { id: 'frame-1' });
+  assert.deepEqual(state.renderSelection, baseSelection);
+  assert.deepEqual(state.selectionRows, [0]);
+});
 
-void test(
-  'runtime render state keeps pane active when active conversation id exists but conversation is missing',
-  () => {
+void test('runtime render state keeps pane active when active conversation id exists but conversation is missing', () => {
   const workspace = createWorkspace();
   workspace.mainPaneMode = 'conversation';
 
@@ -102,19 +97,18 @@ void test(
     selectionVisibleRows: () => [0],
   };
 
-    const state = prepareRuntimeRenderState(options, baseSelection, null);
-    if (state === null) {
-      throw new Error('expected render state');
-    }
-    assert.equal(state.projectPaneActive, false);
-    assert.equal(state.homePaneActive, false);
-    assert.equal(state.nimPaneActive, false);
-    assert.equal(state.activeConversation, null);
-    assert.equal(state.rightFrame, null);
-    assert.equal(state.renderSelection, null);
-    assert.deepEqual(state.selectionRows, []);
-  },
-);
+  const state = prepareRuntimeRenderState(options, baseSelection, null);
+  if (state === null) {
+    throw new Error('expected render state');
+  }
+  assert.equal(state.projectPaneActive, false);
+  assert.equal(state.homePaneActive, false);
+  assert.equal(state.nimPaneActive, false);
+  assert.equal(state.activeConversation, null);
+  assert.equal(state.rightFrame, null);
+  assert.equal(state.renderSelection, null);
+  assert.deepEqual(state.selectionRows, []);
+});
 
 void test('runtime render state builds dragged selection payload when drag is active', () => {
   const workspace = createWorkspace();

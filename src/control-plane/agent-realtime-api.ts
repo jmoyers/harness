@@ -1115,10 +1115,8 @@ export class HarnessAgentRealtimeClient {
     ): Promise<readonly AgentSessionSummary[]> => await this.listSessions(query),
     status: async (sessionId: string): Promise<AgentSessionSummary> =>
       await this.sessionStatus(sessionId),
-    snapshot: async (
-      sessionId: string,
-      tailLines?: number,
-    ): Promise<AgentSessionSnapshot> => await this.sessionSnapshot(sessionId, tailLines),
+    snapshot: async (sessionId: string, tailLines?: number): Promise<AgentSessionSnapshot> =>
+      await this.sessionSnapshot(sessionId, tailLines),
     claim: async (input: AgentClaimSessionInput): Promise<AgentSessionClaimResult> =>
       await this.claimSession(input),
     takeover: async (

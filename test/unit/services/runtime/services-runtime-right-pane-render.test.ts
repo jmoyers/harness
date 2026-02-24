@@ -431,5 +431,8 @@ void test('runtime right-pane renderer falls back to blank rows when nim pane is
     snapshot: emptyRightPaneSnapshot(),
   });
 
-  assert.deepEqual(rows, Array.from({ length: 4 }, () => ' '.repeat(20)));
+  assert.deepEqual(
+    rows,
+    Array.from({ length: 4 }, () => ' '.repeat(20)),
+  );
 });

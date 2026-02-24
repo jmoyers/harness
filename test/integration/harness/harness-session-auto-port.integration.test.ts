@@ -128,83 +128,89 @@ async function waitForPidExit(pid: number, timeoutMs: number): Promise<boolean> 
   return !isPidRunning(pid);
 }
 
-void test('harness named-session gateway start auto-resolves occupied preferred port and stops without process leaks', async () => {
-  const workspace = createWorkspace();
-  const sessionName = 'secondary-int-explicit-a';
-  const preferredPort = await reservePort();
-  const runtimeRoot = workspaceRuntimeRoot(workspace);
-  const defaultRecordPath = join(runtimeRoot, 'gateway.json');
-  const namedRecordPath = join(runtimeRoot, `sessions/${sessionName}/gateway.json`);
-  const namedLogPath = join(runtimeRoot, `sessions/${sessionName}/gateway.log`);
-  const env = {
-    HARNESS_CONTROL_PLANE_PORT: String(preferredPort),
-  };
+void test(
+  'harness named-session gateway start auto-resolves occupied preferred port and stops without process leaks',
+  async () => {
+    const workspace = createWorkspace();
+    const sessionName = 'secondary-int-explicit-a';
+    const preferredPort = await reservePort();
+    const runtimeRoot = workspaceRuntimeRoot(workspace);
+    const defaultRecordPath = join(runtimeRoot, 'gateway.json');
+    const namedRecordPath = join(runtimeRoot, `sessions/${sessionName}/gateway.json`);
+    const namedLogPath = join(runtimeRoot, `sessions/${sessionName}/gateway.log`);
+    const env = {
+      HARNESS_CONTROL_PLANE_PORT: String(preferredPort),
+    };
 
-  let defaultGatewayPid: number | null = null;
-  let namedGatewayPid: number | null = null;
-  try {
-    const defaultStart = await runHarness(workspace, ['gateway', 'start'], env);
-    assert.equal(defaultStart.code, 0, defaultStart.stderr);
-    const defaultRecord = parseGatewayRecordText(readFileSync(defaultRecordPath, 'utf8'));
-    if (defaultRecord === null) {
-      throw new Error('expected default gateway record');
+    let defaultGatewayPid: number | null = null;
+    let namedGatewayPid: number | null = null;
+    try {
+      const defaultStart = await runHarness(workspace, ['gateway', 'start'], env);
+      assert.equal(defaultStart.code, 0, defaultStart.stderr);
+      const defaultRecord = parseGatewayRecordText(readFileSync(defaultRecordPath, 'utf8'));
+      if (defaultRecord === null) {
+        throw new Error('expected default gateway record');
+      }
+      defaultGatewayPid = defaultRecord.pid;
+      assert.equal(defaultRecord.port, preferredPort);
+      assert.equal(isPidRunning(defaultGatewayPid), true);
+
+      const namedStart = await runHarness(
+        workspace,
+        ['--session', sessionName, 'gateway', 'start'],
+        env,
+      );
+      assert.equal(namedStart.code, 0, namedStart.stderr);
+      const namedRecord = parseGatewayRecordText(readFileSync(namedRecordPath, 'utf8'));
+      if (namedRecord === null) {
+        throw new Error('expected named-session gateway record');
+      }
+      namedGatewayPid = namedRecord.pid;
+      assert.notEqual(namedRecord.port, preferredPort);
+      assert.equal(isPidRunning(namedGatewayPid), true);
+
+      const namedStatus = await runHarness(
+        workspace,
+        ['--session', sessionName, 'gateway', 'status'],
+        env,
+      );
+      assert.equal(namedStatus.code, 0, namedStatus.stderr);
+      assert.equal(namedStatus.stdout.includes('gateway status: running'), true);
+
+      const namedStop = await runHarness(
+        workspace,
+        ['--session', sessionName, 'gateway', 'stop', '--force'],
+        env,
+      );
+      assert.equal(namedStop.code, 0, namedStop.stderr);
+      assert.equal(await waitForPidExit(namedGatewayPid, 5000), true);
+      assert.equal(existsSync(namedRecordPath), false);
+      assert.equal(existsSync(namedLogPath), false);
+      assert.equal(isPidRunning(namedGatewayPid), false);
+      namedGatewayPid = null;
+
+      const defaultStop = await runHarness(workspace, ['gateway', 'stop', '--force'], env);
+      assert.equal(defaultStop.code, 0, defaultStop.stderr);
+      assert.equal(await waitForPidExit(defaultGatewayPid, 5000), true);
+      assert.equal(isPidRunning(defaultGatewayPid), false);
+      defaultGatewayPid = null;
+    } finally {
+      void runHarness(
+        workspace,
+        ['--session', sessionName, 'gateway', 'stop', '--force'],
+        env,
+      ).catch(() => undefined);
+      void runHarness(workspace, ['gateway', 'stop', '--force'], env).catch(() => undefined);
+      if (namedGatewayPid !== null && isPidRunning(namedGatewayPid)) {
+        process.kill(namedGatewayPid, 'SIGKILL');
+        await waitForPidExit(namedGatewayPid, 5000);
+      }
+      if (defaultGatewayPid !== null && isPidRunning(defaultGatewayPid)) {
+        process.kill(defaultGatewayPid, 'SIGKILL');
+        await waitForPidExit(defaultGatewayPid, 5000);
+      }
+      rmSync(workspace, { recursive: true, force: true });
     }
-    defaultGatewayPid = defaultRecord.pid;
-    assert.equal(defaultRecord.port, preferredPort);
-    assert.equal(isPidRunning(defaultGatewayPid), true);
-
-    const namedStart = await runHarness(
-      workspace,
-      ['--session', sessionName, 'gateway', 'start'],
-      env,
-    );
-    assert.equal(namedStart.code, 0, namedStart.stderr);
-    const namedRecord = parseGatewayRecordText(readFileSync(namedRecordPath, 'utf8'));
-    if (namedRecord === null) {
-      throw new Error('expected named-session gateway record');
-    }
-    namedGatewayPid = namedRecord.pid;
-    assert.notEqual(namedRecord.port, preferredPort);
-    assert.equal(isPidRunning(namedGatewayPid), true);
-
-    const namedStatus = await runHarness(
-      workspace,
-      ['--session', sessionName, 'gateway', 'status'],
-      env,
-    );
-    assert.equal(namedStatus.code, 0, namedStatus.stderr);
-    assert.equal(namedStatus.stdout.includes('gateway status: running'), true);
-
-    const namedStop = await runHarness(
-      workspace,
-      ['--session', sessionName, 'gateway', 'stop', '--force'],
-      env,
-    );
-    assert.equal(namedStop.code, 0, namedStop.stderr);
-    assert.equal(await waitForPidExit(namedGatewayPid, 5000), true);
-    assert.equal(existsSync(namedRecordPath), false);
-    assert.equal(existsSync(namedLogPath), false);
-    assert.equal(isPidRunning(namedGatewayPid), false);
-    namedGatewayPid = null;
-
-    const defaultStop = await runHarness(workspace, ['gateway', 'stop', '--force'], env);
-    assert.equal(defaultStop.code, 0, defaultStop.stderr);
-    assert.equal(await waitForPidExit(defaultGatewayPid, 5000), true);
-    assert.equal(isPidRunning(defaultGatewayPid), false);
-    defaultGatewayPid = null;
-  } finally {
-    void runHarness(workspace, ['--session', sessionName, 'gateway', 'stop', '--force'], env).catch(
-      () => undefined,
-    );
-    void runHarness(workspace, ['gateway', 'stop', '--force'], env).catch(() => undefined);
-    if (namedGatewayPid !== null && isPidRunning(namedGatewayPid)) {
-      process.kill(namedGatewayPid, 'SIGKILL');
-      await waitForPidExit(namedGatewayPid, 5000);
-    }
-    if (defaultGatewayPid !== null && isPidRunning(defaultGatewayPid)) {
-      process.kill(defaultGatewayPid, 'SIGKILL');
-      await waitForPidExit(defaultGatewayPid, 5000);
-    }
-    rmSync(workspace, { recursive: true, force: true });
-  }
-});
+  },
+  { timeout: 20000 },
+);

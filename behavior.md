@@ -162,6 +162,7 @@ Behavior fragments:
 - When `ANTHROPIC_API_KEY` is missing, nim boots into an onboarding empty state (`Anthropic API Key required`) and routes composer submit to secure key setup instead of agent turns.
 - Key setup is available from onboarding and command palette (`Set Anthropic API Key`), persists through `~/.harness/secrets.env`, confirms save, and transitions back to regular nim landing/chat flow without restarting mux.
 - Main-pane input routing in nim mode forwards text directly to the active nim session stream input for normal runtime behavior, and raw `Esc` is passed through for runtime handling.
+- Main-pane selection and copy behavior in nim mode follows the same mouse-selection and copy-shortcut flow used by conversation mode.
 - nim process status is projected into the same status model pipeline used for other agent sessions and is persisted/restored with conversation runtime state.
 - nim provider stream contract is fail-closed: successful provider completions must include streamed assistant text deltas and a terminal `provider.turn.finished` signal; violations emit turn-failure notices into the nim UI stream.
 - nim launches with workspace/session scope args and control-plane connection env injected by the stream server, then resolves tool calls through `runtime-nim-tool-bridge -> runtime-nim-control-plane-api -> control-plane stream commands`.

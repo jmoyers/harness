@@ -2135,7 +2135,8 @@ export class ControlPlaneStreamServer {
 
     const persistedConversation = this.stateStore.getConversation(command.sessionId);
     const agentType = persistedConversation?.agentType ?? 'codex';
-    const resolvedTenantId = persistedConversation?.tenantId ?? command.tenantId ?? DEFAULT_TENANT_ID;
+    const resolvedTenantId =
+      persistedConversation?.tenantId ?? command.tenantId ?? DEFAULT_TENANT_ID;
     const resolvedUserId = persistedConversation?.userId ?? command.userId ?? DEFAULT_USER_ID;
     const resolvedWorkspaceId =
       persistedConversation?.workspaceId ?? command.workspaceId ?? DEFAULT_WORKSPACE_ID;

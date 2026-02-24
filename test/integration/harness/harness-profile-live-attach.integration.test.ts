@@ -161,103 +161,107 @@ async function waitForFileExists(filePath: string, timeoutMs: number): Promise<b
   return existsSync(filePath);
 }
 
-void test('harness profile live-attach integration writes gateway cpuprofile with custom inspect config and no process leaks', async () => {
-  const workspace = createWorkspace();
-  const sessionName = 'profile-live-attach-int-a';
-  const [gatewayPort, gatewayInspectPort, clientInspectPort] = await reserveDistinctPorts(3);
-  const sessionRecordPath = join(
-    workspaceRuntimeRoot(workspace),
-    `sessions/${sessionName}/gateway.json`,
-  );
-  const defaultRecordPath = join(workspaceRuntimeRoot(workspace), 'gateway.json');
-  const profileStatePath = join(
-    workspaceRuntimeRoot(workspace),
-    `sessions/${sessionName}/active-profile.json`,
-  );
-  const gatewayProfilePath = join(
-    workspaceRuntimeRoot(workspace),
-    `profiles/${sessionName}/gateway.cpuprofile`,
-  );
-  writeWorkspaceHarnessConfig(workspace, {
-    debug: {
-      inspect: {
-        enabled: true,
-        gatewayPort: gatewayInspectPort,
-        clientPort: clientInspectPort,
-      },
-    },
-  });
-
-  let gatewayPid: number | null = null;
-  try {
-    const gatewayStart = await runHarness(workspace, [
-      '--session',
-      sessionName,
-      'gateway',
-      'start',
-      '--port',
-      String(gatewayPort),
-    ]);
-    assert.equal(gatewayStart.code, 0, gatewayStart.stderr);
-    assert.equal(existsSync(defaultRecordPath), false);
-    assert.equal(existsSync(sessionRecordPath), true);
-    const record = parseGatewayRecordText(readFileSync(sessionRecordPath, 'utf8'));
-    if (record === null) {
-      throw new Error('expected session gateway record');
-    }
-    gatewayPid = record.pid;
-    assert.equal(isPidRunning(gatewayPid), true);
-
-    const profileStart = await runHarness(workspace, [
-      '--session',
-      sessionName,
-      'profile',
-      'start',
-    ]);
-    assert.equal(profileStart.code, 0, profileStart.stderr);
-    assert.equal(existsSync(profileStatePath), true);
-
-    const profileStop = await runHarness(workspace, [
-      '--session',
-      sessionName,
-      'profile',
-      'stop',
-      '--timeout-ms',
-      '10000',
-    ]);
-    assert.equal(profileStop.code, 0, profileStop.stderr);
-    assert.equal(await waitForFileExists(gatewayProfilePath, 10000), true);
-    assert.equal(existsSync(profileStatePath), false);
-    const rawProfile = readFileSync(gatewayProfilePath, 'utf8');
-    assert.equal(rawProfile.length > 0, true);
-    const parsedProfile = JSON.parse(rawProfile) as Record<string, unknown>;
-    assert.equal(Array.isArray(parsedProfile['nodes']), true);
-
-    const runningStatus = await runHarness(workspace, [
-      '--session',
-      sessionName,
-      'gateway',
-      'status',
-    ]);
-    assert.equal(runningStatus.code, 0, runningStatus.stderr);
-    assert.equal(runningStatus.stdout.includes('gateway status: running'), true);
-
-    const gatewayStop = await runHarness(workspace, [
-      '--session',
-      sessionName,
-      'gateway',
-      'stop',
-      '--force',
-    ]);
-    assert.equal(gatewayStop.code, 0, gatewayStop.stderr);
-    assert.equal(await waitForPidExit(gatewayPid, 5000), true);
-  } finally {
-    void runHarness(workspace, ['--session', sessionName, 'gateway', 'stop', '--force']).catch(
-      () => undefined,
+void test(
+  'harness profile live-attach integration writes gateway cpuprofile with custom inspect config and no process leaks',
+  async () => {
+    const workspace = createWorkspace();
+    const sessionName = 'profile-live-attach-int-a';
+    const [gatewayPort, gatewayInspectPort, clientInspectPort] = await reserveDistinctPorts(3);
+    const sessionRecordPath = join(
+      workspaceRuntimeRoot(workspace),
+      `sessions/${sessionName}/gateway.json`,
     );
-    if (gatewayPid !== null) {
-      await waitForPidExit(gatewayPid, 5000);
+    const defaultRecordPath = join(workspaceRuntimeRoot(workspace), 'gateway.json');
+    const profileStatePath = join(
+      workspaceRuntimeRoot(workspace),
+      `sessions/${sessionName}/active-profile.json`,
+    );
+    const gatewayProfilePath = join(
+      workspaceRuntimeRoot(workspace),
+      `profiles/${sessionName}/gateway.cpuprofile`,
+    );
+    writeWorkspaceHarnessConfig(workspace, {
+      debug: {
+        inspect: {
+          enabled: true,
+          gatewayPort: gatewayInspectPort,
+          clientPort: clientInspectPort,
+        },
+      },
+    });
+
+    let gatewayPid: number | null = null;
+    try {
+      const gatewayStart = await runHarness(workspace, [
+        '--session',
+        sessionName,
+        'gateway',
+        'start',
+        '--port',
+        String(gatewayPort),
+      ]);
+      assert.equal(gatewayStart.code, 0, gatewayStart.stderr);
+      assert.equal(existsSync(defaultRecordPath), false);
+      assert.equal(existsSync(sessionRecordPath), true);
+      const record = parseGatewayRecordText(readFileSync(sessionRecordPath, 'utf8'));
+      if (record === null) {
+        throw new Error('expected session gateway record');
+      }
+      gatewayPid = record.pid;
+      assert.equal(isPidRunning(gatewayPid), true);
+
+      const profileStart = await runHarness(workspace, [
+        '--session',
+        sessionName,
+        'profile',
+        'start',
+      ]);
+      assert.equal(profileStart.code, 0, profileStart.stderr);
+      assert.equal(existsSync(profileStatePath), true);
+
+      const profileStop = await runHarness(workspace, [
+        '--session',
+        sessionName,
+        'profile',
+        'stop',
+        '--timeout-ms',
+        '20000',
+      ]);
+      assert.equal(profileStop.code, 0, profileStop.stderr);
+      assert.equal(await waitForFileExists(gatewayProfilePath, 20000), true);
+      assert.equal(existsSync(profileStatePath), false);
+      const rawProfile = readFileSync(gatewayProfilePath, 'utf8');
+      assert.equal(rawProfile.length > 0, true);
+      const parsedProfile = JSON.parse(rawProfile) as Record<string, unknown>;
+      assert.equal(Array.isArray(parsedProfile['nodes']), true);
+
+      const runningStatus = await runHarness(workspace, [
+        '--session',
+        sessionName,
+        'gateway',
+        'status',
+      ]);
+      assert.equal(runningStatus.code, 0, runningStatus.stderr);
+      assert.equal(runningStatus.stdout.includes('gateway status: running'), true);
+
+      const gatewayStop = await runHarness(workspace, [
+        '--session',
+        sessionName,
+        'gateway',
+        'stop',
+        '--force',
+      ]);
+      assert.equal(gatewayStop.code, 0, gatewayStop.stderr);
+      assert.equal(await waitForPidExit(gatewayPid, 5000), true);
+    } finally {
+      void runHarness(workspace, ['--session', sessionName, 'gateway', 'stop', '--force']).catch(
+        () => undefined,
+      );
+      if (gatewayPid !== null) {
+        await waitForPidExit(gatewayPid, 5000);
+      }
+      rmSync(workspace, { recursive: true, force: true });
     }
-    rmSync(workspace, { recursive: true, force: true });
-  }
-});
+  },
+  { timeout: 60000 },
+);

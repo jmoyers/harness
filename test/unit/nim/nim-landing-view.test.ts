@@ -39,7 +39,10 @@ function renderView(view: LandingView, cols: number, rows: number): readonly str
 test('nim landing view renders default welcome copy', () => {
   const view = new LandingView();
   const rows = renderView(view, 80, 24);
-  assert.equal(rows.some((row) => row.includes('harness coordination agent')), true);
+  assert.equal(
+    rows.some((row) => row.includes('harness coordination agent')),
+    true,
+  );
 });
 
 test('nim landing view renders API key onboarding copy when required', () => {
@@ -49,7 +52,16 @@ test('nim landing view renders API key onboarding copy when required', () => {
   view.apiKeyEnvVar = 'ANTHROPIC_API_KEY';
   view.apiKeyEntryActive = true;
   const rows = renderView(view, 84, 28);
-  assert.equal(rows.some((row) => row.includes('Anthropic API Key required')), true);
-  assert.equal(rows.some((row) => row.includes('Press Enter to save key')), true);
-  assert.equal(rows.some((row) => row.includes('ANTHROPIC_API_KEY')), true);
+  assert.equal(
+    rows.some((row) => row.includes('Anthropic API Key required')),
+    true,
+  );
+  assert.equal(
+    rows.some((row) => row.includes('Press Enter to save key')),
+    true,
+  );
+  assert.equal(
+    rows.some((row) => row.includes('ANTHROPIC_API_KEY')),
+    true,
+  );
 });

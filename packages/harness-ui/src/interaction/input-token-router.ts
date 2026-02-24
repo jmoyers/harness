@@ -6,6 +6,10 @@ import type {
 type MainPaneMode = 'conversation' | 'project' | 'home' | 'nim';
 type PointerTarget = 'left' | 'right' | 'separator' | 'status' | 'outside';
 
+function usesConversationSelection(mainPaneMode: MainPaneMode): boolean {
+  return mainPaneMode === 'conversation' || mainPaneMode === 'nim';
+}
+
 interface MouseSelectionEvent {
   readonly sequence: string;
   readonly col: number;
@@ -324,14 +328,12 @@ export class InputTokenRouter {
       const mainPaneMode = this.options.getMainPaneMode();
       const homeSelectionContext =
         mainPaneMode === 'home' ? (this.options.getHomePaneSelectionContext?.() ?? null) : null;
-      const selectionFrame =
-        mainPaneMode === 'conversation'
-          ? snapshotForInput
-          : this.buildHomeSelectionFrame(input.layout, homeSelectionContext);
-      const selectionResolver =
-        mainPaneMode === 'conversation'
-          ? resolveSelectionText
-          : (homeSelectionContext?.resolveSelectionText ?? null);
+      const selectionFrame = usesConversationSelection(mainPaneMode)
+        ? snapshotForInput
+        : this.buildHomeSelectionFrame(input.layout, homeSelectionContext);
+      const selectionResolver = usesConversationSelection(mainPaneMode)
+        ? resolveSelectionText
+        : (homeSelectionContext?.resolveSelectionText ?? null);
       if (selectionFrame !== null) {
         const mouseSelectionInput =
           selectionResolver === null

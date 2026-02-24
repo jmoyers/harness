@@ -431,7 +431,10 @@ function asStringOrNull(value: unknown): string | null {
 }
 
 function workspaceScopedNimSessionId(workspaceId: string): string {
-  const normalized = workspaceId.trim().toLowerCase().replace(/[^a-z0-9_-]+/gu, '-');
+  const normalized = workspaceId
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/gu, '-');
   const suffix = normalized.length > 0 ? normalized : 'default';
   return `${WORKSPACE_NIM_SESSION_PREFIX}${suffix}`;
 }
@@ -2994,15 +2997,13 @@ class CodexLiveMuxRuntimeApplication {
         return workspaceNimSessionId;
       }
       const existing =
-        conversationManager
-          .orderedIds()
-          .find((sessionId) => {
-            const conversation = conversationManager.get(sessionId);
-            if (conversation === undefined) {
-              return false;
-            }
-            return conversation.agentType.trim().toLowerCase() === 'nim';
-          }) ?? null;
+        conversationManager.orderedIds().find((sessionId) => {
+          const conversation = conversationManager.get(sessionId);
+          if (conversation === undefined) {
+            return false;
+          }
+          return conversation.agentType.trim().toLowerCase() === 'nim';
+        }) ?? null;
       if (existing !== null) {
         workspaceNimSessionId = existing;
       }

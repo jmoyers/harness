@@ -89,7 +89,7 @@ test('anthropic nim provider driver maps stream parts to canonical provider even
       toolName: 'ping',
       output: { ok: true },
     },
-    { type: 'text-delta', id: 'txt-1', text: 'NIM' },
+    { type: 'text-delta', id: 'txt-1', text: 'nim' },
     { type: 'text-end', id: 'txt-1' },
     {
       type: 'finish',
