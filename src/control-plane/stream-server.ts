@@ -112,6 +112,11 @@ import {
 import { LifecycleHooksRuntime } from './lifecycle-hooks.ts';
 import { readGitDirectorySnapshot } from '../mux/live-mux/git-snapshot.ts';
 import type { LiveSessionLike, StartSessionRuntimeInput } from './stream-session-runtime-types.ts';
+import {
+  NIM_CONTROL_PLANE_AUTH_TOKEN_ENV,
+  NIM_CONTROL_PLANE_HOST_ENV,
+  NIM_CONTROL_PLANE_PORT_ENV,
+} from '../contracts/nim-control-plane.ts';
 
 export interface StartControlPlaneSessionInput {
   command?: string;
@@ -580,6 +585,38 @@ function shellEscape(value: string): string {
     return "''";
   }
   return `'${value.replaceAll("'", "'\"'\"'")}'`;
+}
+
+function copyProcessEnv(overrides?: Record<string, string>): Record<string, string> {
+  const next: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (typeof value !== 'string') {
+      continue;
+    }
+    next[key] = value;
+  }
+  if (overrides !== undefined) {
+    for (const [key, value] of Object.entries(overrides)) {
+      next[key] = value;
+    }
+  }
+  return next;
+}
+
+function hasCliFlag(args: readonly string[], flag: string): boolean {
+  for (const arg of args) {
+    if (arg === flag || arg.startsWith(`${flag}=`)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function appendCliFlag(args: string[], flag: string, value: string): void {
+  if (hasCliFlag(args, flag)) {
+    return;
+  }
+  args.push(flag, value);
 }
 
 function compareIsoDesc(left: string | null, right: string | null): number {
@@ -2098,6 +2135,10 @@ export class ControlPlaneStreamServer {
 
     const persistedConversation = this.stateStore.getConversation(command.sessionId);
     const agentType = persistedConversation?.agentType ?? 'codex';
+    const resolvedTenantId = persistedConversation?.tenantId ?? command.tenantId ?? DEFAULT_TENANT_ID;
+    const resolvedUserId = persistedConversation?.userId ?? command.userId ?? DEFAULT_USER_ID;
+    const resolvedWorkspaceId =
+      persistedConversation?.workspaceId ?? command.workspaceId ?? DEFAULT_WORKSPACE_ID;
     const baseSessionArgs =
       agentType === 'critique' && command.args.length === 0
         ? [...this.critique.launch.defaultArgs]
@@ -2118,6 +2159,11 @@ export class ControlPlaneStreamServer {
       ...(claudeHookLaunchConfig?.args ?? []),
       ...baseSessionArgs,
     ];
+    if (agentType === 'nim') {
+      appendCliFlag(launchArgs, '--tenant-id', resolvedTenantId);
+      appendCliFlag(launchArgs, '--user-id', resolvedUserId);
+      appendCliFlag(launchArgs, '--workspace-id', resolvedWorkspaceId);
+    }
     const launchCommand = formatLaunchCommand(launchCommandName, [
       ...(launchProfile.baseArgs ?? []),
       ...launchArgs,
@@ -2163,6 +2209,18 @@ export class ControlPlaneStreamServer {
     }
     if (command.env !== undefined && cursorHookLaunchConfig === null) {
       startInput.env = command.env;
+    }
+    if (agentType === 'nim') {
+      const address = this.address();
+      const mergedEnv = copyProcessEnv(command.env);
+      mergedEnv[NIM_CONTROL_PLANE_HOST_ENV] = address.address;
+      mergedEnv[NIM_CONTROL_PLANE_PORT_ENV] = String(address.port);
+      if (this.authToken === null) {
+        delete mergedEnv[NIM_CONTROL_PLANE_AUTH_TOKEN_ENV];
+      } else {
+        mergedEnv[NIM_CONTROL_PLANE_AUTH_TOKEN_ENV] = this.authToken;
+      }
+      startInput.env = mergedEnv;
     }
     if (command.cwd !== undefined) {
       startInput.cwd = command.cwd;
@@ -2210,10 +2268,9 @@ export class ControlPlaneStreamServer {
       directoryId: persistedConversation?.directoryId ?? null,
       agentType,
       adapterState: normalizeAdapterState(persistedConversation?.adapterState ?? {}),
-      tenantId: persistedConversation?.tenantId ?? command.tenantId ?? DEFAULT_TENANT_ID,
-      userId: persistedConversation?.userId ?? command.userId ?? DEFAULT_USER_ID,
-      workspaceId:
-        persistedConversation?.workspaceId ?? command.workspaceId ?? DEFAULT_WORKSPACE_ID,
+      tenantId: resolvedTenantId,
+      userId: resolvedUserId,
+      workspaceId: resolvedWorkspaceId,
       worktreeId: command.worktreeId ?? DEFAULT_WORKTREE_ID,
       session,
       eventSubscriberConnectionIds: new Set<string>(),

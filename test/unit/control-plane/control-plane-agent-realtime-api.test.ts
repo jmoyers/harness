@@ -1024,15 +1024,31 @@ void test('agent realtime client covers dispatch mapping command wrappers and ma
   });
   mockClient.queueResult('pty.close', {});
   mockClient.queueResult('session.snapshot', {
-    passthrough: true,
+    sessionId: 'conversation-1',
+    snapshot: {
+      frameHash: 'frame-a',
+    },
+    stale: false,
+    buffer: {
+      totalRows: 10,
+      startRow: 8,
+      lines: ['line-a', 'line-b'],
+    },
+  });
+  mockClient.queueResult('session.snapshot', {
+    sessionId: 'conversation-1',
+    snapshot: null,
+    stale: false,
   });
   mockClient.queueError('stream.unsubscribe', new Error('unsubscribe failed'));
 
-  const passthroughResult = await realtime.client.sendCommand({
-    type: 'session.snapshot',
-    sessionId: 'conversation-1',
-  });
-  assert.equal(passthroughResult['passthrough'], true);
+  const sessionSnapshot = await realtime.client.sessionSnapshot('conversation-1', 2);
+  assert.equal(sessionSnapshot.sessionId, 'conversation-1');
+  assert.equal(sessionSnapshot.buffer?.lines.length, 2);
+  await assert.rejects(
+    realtime.client.sessions.snapshot('conversation-1'),
+    /session\.snapshot returned malformed response/,
+  );
 
   const sessions = await realtime.client.listSessions({
     status: 'running',

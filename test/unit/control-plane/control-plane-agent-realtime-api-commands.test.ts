@@ -1511,6 +1511,13 @@ void test('agent realtime sessions aliases and draft task helper issue expected 
     sessionId: 'conversation-1',
     released: true,
   });
+  mockClient.queueResult('session.snapshot', {
+    sessionId: 'conversation-1',
+    snapshot: {
+      frameHash: 'frame-1',
+    },
+    stale: false,
+  });
   mockClient.queueResult('session.respond', {
     responded: true,
     sentBytes: 3,
@@ -1565,6 +1572,9 @@ void test('agent realtime sessions aliases and draft task helper issue expected 
     sessionId: 'conversation-1',
   });
   assert.equal(released.released, true);
+  const snapshot = await realtime.client.sessions.snapshot('conversation-1');
+  assert.equal(snapshot.sessionId, 'conversation-1');
+  assert.equal(snapshot.stale, false);
   const responded = await realtime.client.sessions.respond('conversation-1', 'ack');
   assert.equal(responded.sentBytes, 3);
   const interrupted = await realtime.client.sessions.interrupt('conversation-1');
@@ -1591,6 +1601,7 @@ void test('agent realtime sessions aliases and draft task helper issue expected 
 
   const sentTypes = mockClient.commands.map((command) => command.type);
   assert.equal(sentTypes.includes('task.draft'), true);
+  assert.equal(sentTypes.includes('session.snapshot'), true);
   assert.equal(sentTypes.includes('pty.subscribe-events'), true);
   assert.equal(sentTypes.includes('pty.unsubscribe-events'), true);
 

@@ -4,6 +4,7 @@ import type { NimModelRef } from '../../../nim-core/src/contracts.ts';
 const SUPPORTED_FLAGS = new Set([
   '--tenant-id',
   '--user-id',
+  '--workspace-id',
   '--model',
   '--ui-mode',
   '--live-anthropic',
@@ -20,6 +21,7 @@ const SUPPORTED_FLAGS = new Set([
 const VALUE_FLAGS = new Set([
   '--tenant-id',
   '--user-id',
+  '--workspace-id',
   '--model',
   '--ui-mode',
   '--session-id',
@@ -33,6 +35,7 @@ const VALUE_FLAGS = new Set([
 interface ParsedNimCliArgs {
   readonly tenantId: string;
   readonly userId: string;
+  readonly workspaceId: string;
   readonly model?: NimModelRef;
   readonly sessionName: string | null;
   readonly liveAnthropic: boolean;
@@ -52,6 +55,7 @@ function printUsage(): void {
       'options:',
       '  --tenant-id <id>',
       '  --user-id <id>',
+      '  --workspace-id <id>',
       '  --model <provider/model>',
       '  --ui-mode <debug|user>',
       '  --live-anthropic',
@@ -86,6 +90,7 @@ function parseModelRef(value: string): NimModelRef {
 function parseArgs(args: readonly string[]): ParsedNimCliArgs {
   let tenantId = 'nim-standalone';
   let userId = 'user';
+  let workspaceId = 'workspace-local';
   let model: NimModelRef | undefined;
   let sessionName: string | null = null;
   let liveAnthropic = true;
@@ -110,6 +115,11 @@ function parseArgs(args: readonly string[]): ParsedNimCliArgs {
     }
     if (arg === '--user-id') {
       userId = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg === '--workspace-id') {
+      workspaceId = requireValue(args, index, arg);
       index += 1;
       continue;
     }
@@ -173,6 +183,7 @@ function parseArgs(args: readonly string[]): ParsedNimCliArgs {
   return {
     tenantId,
     userId,
+    workspaceId,
     ...(model === undefined ? {} : { model }),
     sessionName,
     liveAnthropic,
@@ -207,6 +218,7 @@ export async function runNimCli(args: readonly string[]): Promise<number> {
       liveAnthropic: parsed.liveAnthropic,
       tenantId: parsed.tenantId,
       userId: parsed.userId,
+      workspaceId: parsed.workspaceId,
       ...(parsed.model === undefined ? {} : { model: parsed.model }),
       ...(parsed.eventStorePath === undefined ? {} : { eventStorePath: parsed.eventStorePath }),
       ...(parsed.sessionStorePath === undefined

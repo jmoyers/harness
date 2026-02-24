@@ -112,6 +112,19 @@ export interface AgentSessionReleaseResult {
 
 export type AgentSessionSummary = NonNullable<ReturnType<typeof parseSessionSummaryRecord>>;
 
+export interface AgentSessionSnapshotBuffer {
+  totalRows: number;
+  startRow: number;
+  lines: readonly string[];
+}
+
+export interface AgentSessionSnapshot {
+  sessionId: string;
+  snapshot: Record<string, unknown>;
+  stale: boolean;
+  buffer: AgentSessionSnapshotBuffer | null;
+}
+
 export interface AgentScopeQuery {
   tenantId?: string;
   userId?: string;
@@ -354,6 +367,10 @@ function readString(value: unknown): string | null {
 
 function readBoolean(value: unknown): boolean | null {
   return typeof value === 'boolean' ? value : null;
+}
+
+function readNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 function readNullableString(value: unknown): string | null | undefined {
@@ -751,6 +768,52 @@ function parseSessionController(value: unknown): StreamSessionController | null 
   };
 }
 
+function parseSessionSnapshotBuffer(value: unknown): AgentSessionSnapshotBuffer | null | undefined {
+  if (value === undefined) {
+    return null;
+  }
+  const record = asRecord(value);
+  if (record === null) {
+    return undefined;
+  }
+  const totalRows = readNumber(record['totalRows']);
+  const startRow = readNumber(record['startRow']);
+  const lines = record['lines'];
+  if (
+    totalRows === null ||
+    startRow === null ||
+    !Number.isInteger(totalRows) ||
+    !Number.isInteger(startRow) ||
+    totalRows < 0 ||
+    startRow < 0 ||
+    !Array.isArray(lines) ||
+    !lines.every((entry) => typeof entry === 'string')
+  ) {
+    return undefined;
+  }
+  return {
+    totalRows,
+    startRow,
+    lines,
+  };
+}
+
+function parseSessionSnapshotResult(result: Record<string, unknown>): AgentSessionSnapshot {
+  const sessionId = readString(result['sessionId']);
+  const snapshot = asRecord(result['snapshot']);
+  const stale = readBoolean(result['stale']);
+  const buffer = parseSessionSnapshotBuffer(result['buffer']);
+  if (sessionId === null || snapshot === null || stale === null || buffer === undefined) {
+    throw new Error('control-plane session.snapshot returned malformed response');
+  }
+  return {
+    sessionId,
+    snapshot,
+    stale,
+    buffer,
+  };
+}
+
 function mapObservedEventType(observed: StreamObservedEvent): AgentRealtimeEventType {
   if (observed.type === 'directory-upserted') {
     return 'directory.upserted';
@@ -1052,6 +1115,10 @@ export class HarnessAgentRealtimeClient {
     ): Promise<readonly AgentSessionSummary[]> => await this.listSessions(query),
     status: async (sessionId: string): Promise<AgentSessionSummary> =>
       await this.sessionStatus(sessionId),
+    snapshot: async (
+      sessionId: string,
+      tailLines?: number,
+    ): Promise<AgentSessionSnapshot> => await this.sessionSnapshot(sessionId, tailLines),
     claim: async (input: AgentClaimSessionInput): Promise<AgentSessionClaimResult> =>
       await this.claimSession(input),
     takeover: async (
@@ -1823,6 +1890,15 @@ export class HarnessAgentRealtimeClient {
       throw new Error('control-plane session.status returned malformed summary');
     }
     return parsed;
+  }
+
+  async sessionSnapshot(sessionId: string, tailLines?: number): Promise<AgentSessionSnapshot> {
+    const result = await this.client.sendCommand({
+      type: 'session.snapshot',
+      sessionId,
+      ...optionalField('tailLines', tailLines),
+    });
+    return parseSessionSnapshotResult(result);
   }
 
   async claimSession(input: AgentClaimSessionInput): Promise<AgentSessionClaimResult> {

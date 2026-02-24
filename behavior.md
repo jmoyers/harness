@@ -161,6 +161,8 @@ Behavior fragments:
 - nim pane rendering in mux is conversation-frame based (same stream snapshot model as threads); if no frame is available yet, the pane renders blank rows.
 - Main-pane input routing in nim mode forwards text directly to the active nim session stream input, and raw `Esc` is passed through for runtime handling.
 - nim process status is projected into the same status model pipeline used for other agent sessions and is persisted/restored with conversation runtime state.
+- nim launches with workspace/session scope args and control-plane connection env injected by the stream server, then resolves tool calls through `runtime-nim-tool-bridge -> runtime-nim-control-plane-api -> control-plane stream commands`.
+- nim control-plane tool surface includes workspace inspection (`directory.list`, `repository.list`, `task.list`, `session.list`) plus thread lifecycle/runtime control (`thread.list`, `thread.create`, `thread.update`, `thread.archive`, `thread.delete`, `thread.status`, `thread.snapshot`, `thread.respond`, `thread.interrupt`, `thread.claim`, `thread.release`, `thread.start`, `thread.attach`, `thread.detach`, `thread.events.subscribe`, `thread.events.unsubscribe`, `thread.close`, `thread.remove`).
 
 Owners:
 
@@ -172,6 +174,8 @@ Owners:
 - `src/store/control-plane-store.ts`
 - `src/services/runtime-render-state.ts`
 - `src/services/runtime-right-pane-render.ts`
+- `src/services/runtime-nim-tool-bridge.ts`
+- `src/services/runtime-nim-control-plane-api.ts`
 - `packages/nim/src/*`
 
 Test anchors:
