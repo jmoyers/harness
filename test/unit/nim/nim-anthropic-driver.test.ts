@@ -272,6 +272,7 @@ test('anthropic nim provider driver synthesizes thinking lifecycle when provider
 
 test('anthropic nim provider driver supports custom tool execution bridge', async () => {
   let toolExecutionOutput: unknown = undefined;
+  let observedToolNames: string[] = [];
   const parts: StreamTextPart<ToolSet>[] = [
     { type: 'text-delta', id: 'txt-1', text: 'done' },
     { type: 'text-end', id: 'txt-1' },
@@ -295,7 +296,9 @@ test('anthropic nim provider driver supports custom tool execution bridge', asyn
     }),
     streamTextFn: (input) => {
       const tools = input.tools as ToolSet | undefined;
-      const bridgeTool = tools?.['bridge.tool'];
+      observedToolNames = Object.keys(tools ?? {});
+      const bridgeToolName = observedToolNames[0];
+      const bridgeTool = bridgeToolName === undefined ? undefined : tools?.[bridgeToolName];
       if (
         bridgeTool !== undefined &&
         typeof bridgeTool === 'object' &&
@@ -325,9 +328,67 @@ test('anthropic nim provider driver supports custom tool execution bridge', asyn
     // consume stream
   }
 
+  assert.equal(observedToolNames.length, 1);
+  assert.equal(observedToolNames.includes('bridge.tool'), false);
+  assert.match(observedToolNames[0] ?? '', /^[A-Za-z0-9_-]{1,128}$/u);
   assert.deepEqual(await Promise.resolve(toolExecutionOutput), {
     source: 'bridge',
     toolName: 'bridge.tool',
     toolInput: { sample: true },
   });
+});
+
+test('anthropic nim provider driver sanitizes and deduplicates Anthropic tool names', async () => {
+  let observedToolNames: string[] = [];
+  const parts: StreamTextPart<ToolSet>[] = [
+    { type: 'text-delta', id: 'txt-1', text: 'ok' },
+    {
+      type: 'finish',
+      finishReason: 'stop',
+      totalUsage: {
+        inputTokens: 1,
+        outputTokens: 1,
+        totalTokens: 2,
+      },
+    },
+  ];
+
+  const driver = createAnthropicNimProviderDriver({
+    apiKey: 'test-key',
+    createAnthropicFn: () => anthropicFactory(),
+    streamTextFn: (input) => {
+      observedToolNames = Object.keys((input.tools as ToolSet | undefined) ?? {});
+      return mockStreamResult(parts, 'stop');
+    },
+  });
+
+  for await (const _event of driver.runTurn({
+    modelRef: 'anthropic/claude-3-haiku-20240307',
+    providerModelId: 'claude-3-haiku-20240307',
+    input: 'hello',
+    tools: [
+      {
+        name: 'bridge.tool',
+        description: 'bridge',
+      },
+      {
+        name: 'bridge/tool',
+        description: 'bridge',
+      },
+      {
+        name: 'bridge_tool',
+        description: 'bridge',
+      },
+    ],
+  })) {
+    // consume stream
+  }
+
+  assert.equal(observedToolNames.length, 3);
+  assert.equal(new Set(observedToolNames).size, 3);
+  for (const name of observedToolNames) {
+    assert.match(name, /^[A-Za-z0-9_-]{1,128}$/u);
+  }
+  assert.equal(observedToolNames.includes('bridge.tool'), false);
+  assert.equal(observedToolNames.includes('bridge/tool'), false);
 });

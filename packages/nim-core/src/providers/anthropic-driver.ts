@@ -28,8 +28,63 @@ export type AnthropicNimProviderDriverOptions = CreateAnthropicOptions & {
   }) => Promise<unknown> | unknown;
 };
 
+interface AnthropicToolNameAliases {
+  readonly originalToAnthropic: Map<string, string>;
+  readonly anthropicToOriginal: Map<string, string>;
+}
+
+function isAnthropicToolNameChar(char: string): boolean {
+  const code = char.charCodeAt(0);
+  const isUpper = code >= 65 && code <= 90;
+  const isLower = code >= 97 && code <= 122;
+  const isDigit = code >= 48 && code <= 57;
+  return isUpper || isLower || isDigit || code === 95 || code === 45;
+}
+
+function sanitizeAnthropicToolName(name: string): string {
+  let sanitized = '';
+  for (const char of name.trim()) {
+    sanitized += isAnthropicToolNameChar(char) ? char : '_';
+  }
+  if (sanitized.length === 0) {
+    sanitized = 'tool';
+  }
+  if (sanitized.length > 128) {
+    sanitized = sanitized.slice(0, 128);
+  }
+  return sanitized;
+}
+
+function withAnthropicToolNameSuffix(base: string, suffix: string): string {
+  const baseLimit = Math.max(1, 128 - suffix.length);
+  return `${base.slice(0, baseLimit)}${suffix}`;
+}
+
+function createAnthropicToolNameAliases(
+  tools: readonly NimProviderTurnInput['tools'],
+): AnthropicToolNameAliases {
+  const originalToAnthropic = new Map<string, string>();
+  const anthropicToOriginal = new Map<string, string>();
+  for (const tool of tools) {
+    if (originalToAnthropic.has(tool.name)) {
+      continue;
+    }
+    const base = sanitizeAnthropicToolName(tool.name);
+    let candidate = base;
+    let suffix = 2;
+    while (anthropicToOriginal.has(candidate)) {
+      candidate = withAnthropicToolNameSuffix(base, `_${suffix}`);
+      suffix += 1;
+    }
+    originalToAnthropic.set(tool.name, candidate);
+    anthropicToOriginal.set(candidate, tool.name);
+  }
+  return { originalToAnthropic, anthropicToOriginal };
+}
+
 function toToolSet(
   input: NimProviderTurnInput,
+  aliases: AnthropicToolNameAliases,
   executeTool?: (input: {
     readonly toolName: string;
     readonly toolInput: unknown;
@@ -37,7 +92,8 @@ function toToolSet(
 ): ToolSet {
   const tools: ToolSet = {};
   for (const tool of input.tools) {
-    tools[tool.name] = {
+    const anthropicToolName = aliases.originalToAnthropic.get(tool.name) ?? tool.name;
+    tools[anthropicToolName] = {
       description: tool.description,
       inputSchema: {
         type: 'object',
@@ -91,7 +147,11 @@ export function createAnthropicNimProviderDriver(
     providerId,
     async *runTurn(input: NimProviderTurnInput): AsyncIterable<NimProviderTurnEvent> {
       const model = anthropicFactory(input.providerModelId);
-      const toolSet = toToolSet(input, options.executeTool);
+      const toolNameAliases = createAnthropicToolNameAliases(input.tools);
+      const resolveOriginalToolName = (toolName: string): string => {
+        return toolNameAliases.anthropicToOriginal.get(toolName) ?? toolName;
+      };
+      const toolSet = toToolSet(input, toolNameAliases, options.executeTool);
       const result: StreamTextResult<ToolSet> = streamTextFn({
         model,
         prompt: input.input,
@@ -152,13 +212,14 @@ export function createAnthropicNimProviderDriver(
             yield { type: 'provider.thinking.completed' };
           }
 
-          toolNamesById.set(part.id, String(part.toolName));
+          const toolName = resolveOriginalToolName(String(part.toolName));
+          toolNamesById.set(part.id, toolName);
           if (!seenToolStarts.has(part.id)) {
             seenToolStarts.add(part.id);
             yield {
               type: 'tool.call.started',
               toolCallId: part.id,
-              toolName: String(part.toolName),
+              toolName,
             };
           }
           continue;
@@ -187,7 +248,7 @@ export function createAnthropicNimProviderDriver(
           }
 
           const toolCallId = part.toolCallId;
-          const toolName = String(part.toolName);
+          const toolName = resolveOriginalToolName(String(part.toolName));
           toolNamesById.set(toolCallId, toolName);
           if (!seenToolStarts.has(toolCallId)) {
             seenToolStarts.add(toolCallId);
@@ -211,7 +272,7 @@ export function createAnthropicNimProviderDriver(
           }
 
           const toolCallId = part.toolCallId;
-          const toolName = extractToolName(part);
+          const toolName = resolveOriginalToolName(extractToolName(part));
           if (!seenToolStarts.has(toolCallId)) {
             seenToolStarts.add(toolCallId);
             yield {
@@ -245,7 +306,7 @@ export function createAnthropicNimProviderDriver(
           }
 
           const toolCallId = part.toolCallId;
-          const toolName = extractToolName(part);
+          const toolName = resolveOriginalToolName(extractToolName(part));
           yield {
             type: 'tool.call.failed',
             toolCallId,
