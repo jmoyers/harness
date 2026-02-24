@@ -194,3 +194,99 @@ test('nim runtime marks run failed when provider driver reports error', async ()
   const result = await turn.done;
   assert.equal(result.terminalState, 'failed');
 });
+
+test('nim runtime fails closed when provider driver omits provider.turn.finished', async () => {
+  const runtime = new InMemoryNimRuntime();
+  runtime.registerProvider({
+    id: 'anthropic',
+    displayName: 'Anthropic',
+    models: ['anthropic/claude-3-haiku-20240307'],
+  });
+
+  runtime.registerProviderDriver({
+    providerId: 'anthropic',
+    async *runTurn() {
+      yield {
+        type: 'assistant.output.delta',
+        text: 'hello',
+      };
+    },
+  });
+
+  const session = await runtime.startSession({
+    tenantId: 'tenant-a',
+    userId: 'user-a',
+    model: 'anthropic/claude-3-haiku-20240307',
+  });
+
+  const turn = await runtime.sendTurn({
+    sessionId: session.sessionId,
+    input: 'hello',
+    idempotencyKey: 'idem-provider-missing-finish',
+  });
+
+  const result = await turn.done;
+  assert.equal(result.terminalState, 'failed');
+
+  const replay = await runtime.replayEvents({
+    tenantId: 'tenant-a',
+    sessionId: session.sessionId,
+    runId: turn.runId,
+  });
+  assert.equal(
+    replay.events.some(
+      (event) =>
+        event.type === 'turn.failed' &&
+        String(event.data?.['message'] ?? '').includes('missing provider.turn.finished'),
+    ),
+    true,
+  );
+});
+
+test('nim runtime fails when provider completes without streamed assistant output', async () => {
+  const runtime = new InMemoryNimRuntime();
+  runtime.registerProvider({
+    id: 'anthropic',
+    displayName: 'Anthropic',
+    models: ['anthropic/claude-3-haiku-20240307'],
+  });
+
+  runtime.registerProviderDriver({
+    providerId: 'anthropic',
+    async *runTurn() {
+      yield {
+        type: 'provider.turn.finished',
+        finishReason: 'stop',
+      };
+    },
+  });
+
+  const session = await runtime.startSession({
+    tenantId: 'tenant-a',
+    userId: 'user-a',
+    model: 'anthropic/claude-3-haiku-20240307',
+  });
+
+  const turn = await runtime.sendTurn({
+    sessionId: session.sessionId,
+    input: 'hello',
+    idempotencyKey: 'idem-provider-no-output',
+  });
+
+  const result = await turn.done;
+  assert.equal(result.terminalState, 'failed');
+
+  const replay = await runtime.replayEvents({
+    tenantId: 'tenant-a',
+    sessionId: session.sessionId,
+    runId: turn.runId,
+  });
+  assert.equal(
+    replay.events.some(
+      (event) =>
+        event.type === 'turn.failed' &&
+        String(event.data?.['message'] ?? '').includes('missing assistant output delta'),
+    ),
+    true,
+  );
+});

@@ -156,9 +156,6 @@ export function createRuntimeNimControlPlaneApi(
         projectId: input.projectId,
         title: input.title,
         agentType: input.agentType,
-        tenantId: options.tenantId,
-        userId: options.userId,
-        workspaceId: options.workspaceId,
         ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
         ...(input.adapterState === undefined ? {} : { adapterState: input.adapterState }),
       });

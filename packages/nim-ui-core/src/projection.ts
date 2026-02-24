@@ -41,6 +41,14 @@ export function projectEventToUiEvents(
     return [{ type: 'assistant.text.message', text }];
   }
 
+  if (event.type === 'turn.failed') {
+    const text =
+      typeof event.data?.['message'] === 'string' && event.data['message'].length > 0
+        ? event.data['message']
+        : 'turn failed';
+    return [{ type: 'system.notice', text }];
+  }
+
   if (event.type === 'tool.call.started') {
     if (mode === 'seamless') {
       return [toStateEvent('tool-calling')];

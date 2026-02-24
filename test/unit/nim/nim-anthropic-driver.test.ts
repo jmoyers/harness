@@ -172,6 +172,66 @@ test('anthropic nim provider driver emits provider.turn.error and error finish r
   assert.deepEqual(events, ['provider.turn.error', 'provider.turn.finished']);
 });
 
+test('anthropic nim provider driver fails closed when provider stream omits finish event', async () => {
+  const parts: StreamTextPart<ToolSet>[] = [{ type: 'text-delta', id: 'txt-1', text: 'hello' }];
+
+  const driver = createAnthropicNimProviderDriver({
+    apiKey: 'test-key',
+    createAnthropicFn: () => anthropicFactory(),
+    streamTextFn: () => mockStreamResult(parts, 'stop'),
+  });
+
+  const events = [] as string[];
+  for await (const event of driver.runTurn({
+    modelRef: 'anthropic/claude-3-haiku-20240307',
+    providerModelId: 'claude-3-haiku-20240307',
+    input: 'hello',
+    tools: [],
+  })) {
+    events.push(event.type);
+  }
+
+  assert.deepEqual(events, [
+    'provider.thinking.started',
+    'provider.thinking.completed',
+    'assistant.output.delta',
+    'provider.turn.error',
+    'provider.turn.finished',
+  ]);
+});
+
+test('anthropic nim provider driver requires assistant output delta for successful finish', async () => {
+  const parts: StreamTextPart<ToolSet>[] = [
+    {
+      type: 'finish',
+      finishReason: 'stop',
+      totalUsage: {
+        inputTokens: 1,
+        outputTokens: 0,
+        totalTokens: 1,
+      },
+    },
+  ];
+
+  const driver = createAnthropicNimProviderDriver({
+    apiKey: 'test-key',
+    createAnthropicFn: () => anthropicFactory(),
+    streamTextFn: () => mockStreamResult(parts, 'stop'),
+  });
+
+  const events = [] as string[];
+  for await (const event of driver.runTurn({
+    modelRef: 'anthropic/claude-3-haiku-20240307',
+    providerModelId: 'claude-3-haiku-20240307',
+    input: 'hello',
+    tools: [],
+  })) {
+    events.push(event.type);
+  }
+
+  assert.deepEqual(events, ['provider.turn.error', 'provider.turn.finished']);
+});
+
 test('anthropic nim provider driver synthesizes thinking lifecycle when provider omits reasoning deltas', async () => {
   const parts: StreamTextPart<ToolSet>[] = [
     { type: 'text-delta', id: 'txt-1', text: 'hello' },

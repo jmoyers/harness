@@ -28,6 +28,7 @@ import type {
   NimToolPolicy,
   NimProvider,
   NimTelemetrySink,
+  NimUiEvent,
   SoulSource,
   SkillSource,
   MemoryStore,
@@ -37,6 +38,21 @@ import type {
 } from '../../../packages/nim-core/src/contracts.ts';
 
 async function* emptyAsyncIterable<T>(): AsyncIterable<T> {}
+
+async function waitFor(
+  predicate: () => boolean,
+  timeoutMs = 2000,
+  pollMs = 10,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+  }
+  throw new Error('timed out waiting for condition');
+}
 
 function createRuntimeStub(): NimRuntime {
   return {
@@ -129,4 +145,59 @@ test('nim app API key onboarding saves key and exits setup mode', () => {
   assert.deepEqual(saved, ['ANTHROPIC_API_KEY:sk-ant-test']);
   assert.deepEqual(configuredKeys, ['sk-ant-test']);
   assert.equal(composer?.placeholder, 'Ask anything...');
+});
+
+test('nim app streams assistant response deltas into a single visible message', async () => {
+  const streamedUiEvents: readonly NimUiEvent[] = [
+    { type: 'assistant.state', state: 'responding' },
+    { type: 'assistant.text.delta', text: 'Hel' },
+    { type: 'assistant.text.delta', text: 'lo' },
+    { type: 'assistant.text.message', text: 'Hello' },
+    { type: 'assistant.state', state: 'idle' },
+  ];
+  const runtime = createRuntimeStub();
+  runtime.sendTurn = async (_input: SendTurnInput): Promise<TurnHandle> => {
+    return {
+      runId: 'run-stream',
+      sessionId: 'session-1',
+      idempotencyKey: 'turn-1',
+      done: Promise.resolve({
+        runId: 'run-stream',
+        terminalState: 'completed',
+      }),
+    };
+  };
+  runtime.streamUi = (_input: StreamUiInput): AsyncIterable<NimUiEvent> => {
+    return {
+      async *[Symbol.asyncIterator]() {
+        for (const event of streamedUiEvents) {
+          yield event;
+        }
+      },
+    };
+  };
+
+  const app = new NimApp({
+    runtime,
+    model: 'anthropic/claude-sonnet-4-20250514' as NimModelRef,
+    tenantId: 'tenant-1',
+    userId: 'user-1',
+  });
+
+  app.onComposerSubmitted(new ComposerSubmitted('hello'));
+
+  const conversation = app.queryOne('#conv') as { messages?: Array<{ text: string }> } | null;
+  await waitFor(() => {
+    const messages = conversation?.messages;
+    if (messages === undefined) {
+      return false;
+    }
+    return messages.length === 2 && messages[1]?.text === 'Hello';
+  });
+
+  assert.equal(conversation === null, false);
+  const messages = conversation?.messages ?? [];
+  assert.equal(messages.length, 2);
+  assert.equal(messages[0]?.text, 'hello');
+  assert.equal(messages[1]?.text, 'Hello');
 });

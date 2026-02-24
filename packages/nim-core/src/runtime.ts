@@ -934,6 +934,8 @@ export class InMemoryNimRuntime implements NimRuntime {
     providerModelId: string,
     exposedTools: readonly NimToolDefinition[],
   ): Promise<'completed' | 'aborted' | 'failed'> {
+    let sawProviderTurnFinished = false;
+    let sawAssistantOutputDelta = false;
     let terminalState: 'completed' | 'aborted' | 'failed' = 'completed';
     for await (const providerEvent of driver.runTurn({
       modelRef: session.model,
@@ -945,10 +947,58 @@ export class InMemoryNimRuntime implements NimRuntime {
       if (run.aborted) {
         return 'aborted';
       }
+
+      if (sawProviderTurnFinished) {
+        this.appendRunEvent(session, run, {
+          type: 'turn.failed',
+          source: 'system',
+          state: 'idle',
+          data: {
+            message:
+              'provider stream contract violation: emitted events after provider.turn.finished',
+          },
+        });
+        return 'failed';
+      }
+
+      if (providerEvent.type === 'assistant.output.delta' && providerEvent.text.length > 0) {
+        sawAssistantOutputDelta = true;
+      }
+      if (providerEvent.type === 'provider.turn.finished') {
+        sawProviderTurnFinished = true;
+        if (
+          providerEvent.finishReason !== 'error' &&
+          providerEvent.finishReason !== 'tool-calls' &&
+          !sawAssistantOutputDelta
+        ) {
+          this.appendRunEvent(session, run, {
+            type: 'turn.failed',
+            source: 'system',
+            state: 'idle',
+            data: {
+              message:
+                'provider stream contract violation: missing assistant output delta before completion',
+            },
+          });
+          return 'failed';
+        }
+      }
+
       terminalState = this.appendProviderTurnEvent(session, run, providerEvent);
       if (terminalState === 'failed') {
         return terminalState;
       }
+    }
+    if (!run.aborted && !sawProviderTurnFinished) {
+      this.appendRunEvent(session, run, {
+        type: 'turn.failed',
+        source: 'system',
+        state: 'idle',
+        data: {
+          message: 'provider stream contract violation: missing provider.turn.finished event',
+        },
+      });
+      return 'failed';
     }
     return run.aborted ? 'aborted' : terminalState;
   }

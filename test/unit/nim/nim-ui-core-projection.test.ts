@@ -68,6 +68,22 @@ test('nim-ui-core projection ignores unknown events', () => {
   assert.deepEqual(projectEventToUiEvents(raw, 'debug'), []);
 });
 
+test('nim-ui-core projection maps turn failures to system notices', () => {
+  const raw = makeEvent({
+    source: 'system',
+    type: 'turn.failed',
+    data: {
+      message: 'provider stream contract violation',
+    },
+  });
+  assert.deepEqual(projectEventToUiEvents(raw, 'seamless'), [
+    {
+      type: 'system.notice',
+      text: 'provider stream contract violation',
+    },
+  ]);
+});
+
 test('nim-ui-core projection ignores empty output deltas', () => {
   const raw = makeEvent({
     type: 'assistant.output.delta',

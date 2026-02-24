@@ -2,6 +2,7 @@ import { createAnthropic, streamText } from '../../../harness-ai/src/index.ts';
 import type {
   AnthropicModelFactory,
   CreateAnthropicOptions,
+  FinishReason,
   StreamTextPart,
   StreamTextResult,
   ToolSet,
@@ -104,8 +105,19 @@ export function createAnthropicNimProviderDriver(
       const toolNamesById = new Map<string, string>();
       let sawThinkingStart = false;
       let sawThinkingComplete = false;
+      let sawAssistantOutputDelta = false;
+      let sawFinishPart = false;
+      let finishReasonFromStream: FinishReason | null = null;
 
       for await (const part of result.fullStream as AsyncIterable<StreamTextPart<ToolSet>>) {
+        if (sawFinishPart) {
+          yield {
+            type: 'provider.turn.error',
+            message: 'provider stream contract violation: emitted events after finish',
+          };
+          break;
+        }
+
         if (part.type === 'reasoning-start') {
           if (!sawThinkingStart) {
             sawThinkingStart = true;
@@ -254,6 +266,7 @@ export function createAnthropicNimProviderDriver(
           }
 
           if (part.text.length > 0) {
+            sawAssistantOutputDelta = true;
             yield {
               type: 'assistant.output.delta',
               text: part.text,
@@ -265,6 +278,24 @@ export function createAnthropicNimProviderDriver(
         if (part.type === 'text-end') {
           yield {
             type: 'assistant.output.completed',
+          };
+          continue;
+        }
+
+        if (part.type === 'finish') {
+          sawFinishPart = true;
+          finishReasonFromStream = part.finishReason;
+          continue;
+        }
+
+        if (part.type === 'abort') {
+          const reason =
+            typeof part.reason === 'string' && part.reason.trim().length > 0
+              ? `: ${part.reason}`
+              : '';
+          yield {
+            type: 'provider.turn.error',
+            message: `provider stream aborted${reason}`,
           };
           continue;
         }
@@ -281,7 +312,31 @@ export function createAnthropicNimProviderDriver(
         yield { type: 'provider.thinking.completed' };
       }
 
-      const finishReason = await result.finishReason;
+      if (!sawFinishPart) {
+        yield {
+          type: 'provider.turn.error',
+          message: 'provider stream contract violation: missing finish event',
+        };
+        yield {
+          type: 'provider.turn.finished',
+          finishReason: 'error',
+        };
+        return;
+      }
+
+      const finishReason = finishReasonFromStream as FinishReason;
+      if (finishReason !== 'error' && finishReason !== 'tool-calls' && !sawAssistantOutputDelta) {
+        yield {
+          type: 'provider.turn.error',
+          message: 'provider stream contract violation: missing assistant text-delta emission',
+        };
+        yield {
+          type: 'provider.turn.finished',
+          finishReason: 'error',
+        };
+        return;
+      }
+
       yield {
         type: 'provider.turn.finished',
         finishReason,
