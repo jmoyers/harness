@@ -227,6 +227,10 @@ function statusVisibleForAgent(agentLabel: string): boolean {
   return normalized !== 'terminal' && normalized !== 'critique';
 }
 
+function renderInProjectConversationList(agentLabel: string): boolean {
+  return agentLabel.trim().toLowerCase() !== 'nim';
+}
+
 export function projectWorkspaceRailConversation(
   conversation: WorkspaceRailConversationSummary,
   _options: {
@@ -440,6 +444,9 @@ function buildContentRows(
 
   const activeConversationCountByDirectoryId = new Map<string, number>();
   for (const conversation of model.conversations) {
+    if (!renderInProjectConversationList(conversation.agentLabel)) {
+      continue;
+    }
     const projection = projectWorkspaceRailConversation(conversation, {
       nowMs,
     });
@@ -529,7 +536,9 @@ function buildContentRows(
       );
 
       const conversations = model.conversations.filter(
-        (conversation) => conversation.directoryKey === directory.key,
+        (conversation) =>
+          conversation.directoryKey === directory.key &&
+          renderInProjectConversationList(conversation.agentLabel),
       );
       const processes = model.processes.filter((process) => process.directoryKey === directory.key);
 

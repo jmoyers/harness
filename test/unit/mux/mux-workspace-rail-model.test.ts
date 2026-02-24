@@ -855,6 +855,64 @@ void test('workspace rail model renders home as a selectable directory-style blo
   assert.equal(firstProjectHeaderIndex - homeHeaderIndex > 1, true);
 });
 
+void test('workspace rail model keeps nim conversation only in fixed rail and out of project rows', () => {
+  const rows = buildWorkspaceRailViewRows(
+    {
+      directories: [
+        {
+          key: 'dir-a',
+          workspaceId: 'alpha',
+          worktreeId: 'none',
+          git: {
+            branch: 'main',
+            additions: 0,
+            deletions: 0,
+            changedFiles: 0,
+          },
+        },
+      ],
+      conversations: [
+        {
+          sessionId: 'nim-thread',
+          directoryKey: 'dir-a',
+          title: 'nim',
+          agentLabel: 'nim',
+          cpuPercent: 0,
+          memoryMb: 0,
+          lastKnownWork: null,
+          status: 'running',
+          attentionReason: null,
+          startedAt: '2026-01-01T00:00:00.000Z',
+          lastEventAt: '2026-01-01T00:00:01.000Z',
+        },
+      ],
+      processes: [],
+      activeProjectId: null,
+      activeConversationId: 'nim-thread',
+      nimSelectionEnabled: true,
+      nowMs: Date.parse('2026-01-01T00:00:05.000Z'),
+    },
+    24,
+  );
+
+  assert.equal(
+    rows.some((row) => row.kind === 'dir-header' && row.text.includes('🦎 nim')),
+    true,
+  );
+  assert.equal(
+    rows.some(
+      (row) => row.kind === 'conversation-title' && row.conversationSessionId === 'nim-thread',
+    ),
+    false,
+  );
+  assert.equal(
+    rows.some(
+      (row) => row.kind === 'repository-header' && row.text.includes('(1 projects, 0 active)'),
+    ),
+    true,
+  );
+});
+
 void test('workspace rail model does not mark conversation active while tasks selection is enabled', () => {
   const rows = buildWorkspaceRailViewRows(
     {
