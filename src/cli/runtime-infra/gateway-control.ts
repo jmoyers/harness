@@ -540,6 +540,7 @@ export class GatewayControlInfra {
   private findOrphanGatewayDaemonPids(
     stateDbPath: string,
     daemonScriptPath: string,
+    includeScriptPathFallback = true,
   ): readonly number[] {
     const normalizedDbPath = resolve(stateDbPath);
     const normalizedDaemonScriptPath = resolve(daemonScriptPath);
@@ -549,7 +550,7 @@ export class GatewayControlInfra {
         .filter((entry) => entry.pid !== process.pid)
         .filter((entry) => entry.command.includes('--state-db-path'))
         .filter((entry) => {
-          if (entry.command.includes(normalizedDaemonScriptPath)) {
+          if (includeScriptPathFallback && entry.command.includes(normalizedDaemonScriptPath)) {
             return true;
           }
           return (
@@ -679,7 +680,7 @@ export class GatewayControlInfra {
   ): Promise<OrphanProcessCleanupResult> {
     let matchedPids: readonly number[] = [];
     try {
-      matchedPids = this.findOrphanGatewayDaemonPids(stateDbPath, daemonScriptPath);
+      matchedPids = this.findOrphanGatewayDaemonPids(stateDbPath, daemonScriptPath, options.force);
     } catch (error: unknown) {
       return {
         matchedPids: [],

@@ -165,6 +165,41 @@ void serialCliTest(
 );
 
 void serialCliTest(
+  'harness gateway stop without force does not match script-path-only orphan daemon processes',
+  async () => {
+    const workspace = createWorkspace();
+    const daemonScriptPath = join(workspace, 'control-plane-daemon.js');
+    const nonDefaultDbPath = join(workspaceRuntimeRoot(workspace), 'custom-gateway.sqlite');
+    writeFileSync(
+      daemonScriptPath,
+      ['process.on("SIGTERM", () => {});', 'setInterval(() => {}, 1000);'].join('\n'),
+      'utf8',
+    );
+
+    let orphanPid: number | null = null;
+    try {
+      orphanPid = await spawnOrphanGatewayDaemonProcess(daemonScriptPath, nonDefaultDbPath);
+      assert.equal(await waitForParentPid(orphanPid, 1, 2000), true);
+      assert.equal(isPidRunning(orphanPid), true);
+
+      const stopResult = await runHarness(workspace, ['gateway', 'stop', '--timeout-ms', '25'], {
+        HARNESS_DAEMON_SCRIPT_PATH: daemonScriptPath,
+      });
+      assert.equal(stopResult.code, 1);
+      assert.equal(stopResult.stdout.includes('gateway not running (no record)'), true);
+      assert.equal(stopResult.stdout.includes('orphan gateway daemon cleanup: none found'), true);
+      assert.equal(isPidRunning(orphanPid), true);
+    } finally {
+      if (orphanPid !== null && isPidRunning(orphanPid)) {
+        process.kill(orphanPid, 'SIGKILL');
+      }
+      void runHarness(workspace, ['gateway', 'stop', '--force']).catch(() => undefined);
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  },
+);
+
+void serialCliTest(
   'harness gateway stop --force cleans up orphan workspace pty helper processes',
   async () => {
     const workspace = createWorkspace();
