@@ -22,6 +22,14 @@ export interface NimRuntimeHandle {
   readonly tenantId: string;
   readonly userId: string;
   readonly workspaceId: string;
+  readonly requiredApiKey:
+    | {
+        readonly envVar: 'ANTHROPIC_API_KEY';
+        readonly displayName: 'Anthropic API Key';
+      }
+    | null;
+  hasRequiredApiKey(): boolean;
+  configureRequiredApiKey(apiKey: string): void;
   close(): void;
 }
 
@@ -177,6 +185,7 @@ export function createRuntimeFromEnv(input: CreateRuntimeFromEnvInput = {}): Nim
   const runtimeScope = resolveRuntimeScope(input);
   const model = resolveRuntimeModel(input, env);
   const providerId = providerIdFromModel(model);
+  const requiresAnthropicApiKey = providerId === 'anthropic';
 
   if (liveAnthropic && providerId !== 'anthropic') {
     throw new Error(
@@ -241,17 +250,11 @@ export function createRuntimeFromEnv(input: CreateRuntimeFromEnvInput = {}): Nim
         });
 
   const providerRouter = new NimProviderRouter();
-  if (liveAnthropic) {
-    const apiKey = env.ANTHROPIC_API_KEY;
-    if (apiKey === undefined || apiKey.trim().length === 0) {
-      throw new Error(
-        'ANTHROPIC_API_KEY not found in ~/.harness/secrets.env or environment. ' +
-          'Run: echo "ANTHROPIC_API_KEY=sk-ant-..." >> ~/.harness/secrets.env',
-      );
-    }
+  let requiredApiKeyConfigured = !requiresAnthropicApiKey;
+  const registerAnthropicDriver = (apiKey: string): void => {
     providerRouter.registerDriver(
       createAnthropicNimProviderDriver({
-        apiKey: apiKey.trim(),
+        apiKey,
         ...(input.baseUrl === undefined
           ? {}
           : {
@@ -268,6 +271,15 @@ export function createRuntimeFromEnv(input: CreateRuntimeFromEnvInput = {}): Nim
             }),
       }),
     );
+    requiredApiKeyConfigured = true;
+  };
+  if (requiresAnthropicApiKey) {
+    const apiKey = env.ANTHROPIC_API_KEY;
+    if (apiKey === undefined || apiKey.trim().length === 0) {
+      requiredApiKeyConfigured = false;
+    } else {
+      registerAnthropicDriver(apiKey.trim());
+    }
   }
 
   const paths = resolveRuntimePaths(input, env);
@@ -306,6 +318,24 @@ export function createRuntimeFromEnv(input: CreateRuntimeFromEnvInput = {}): Nim
     tenantId: runtimeScope.tenantId,
     userId: runtimeScope.userId,
     workspaceId: runtimeScope.workspaceId,
+    requiredApiKey:
+      requiresAnthropicApiKey
+        ? {
+            envVar: 'ANTHROPIC_API_KEY',
+            displayName: 'Anthropic API Key',
+          }
+        : null,
+    hasRequiredApiKey: () => requiredApiKeyConfigured,
+    configureRequiredApiKey: (apiKey) => {
+      if (!requiresAnthropicApiKey) {
+        return;
+      }
+      const trimmed = apiKey.trim();
+      if (trimmed.length === 0) {
+        throw new Error('API key is required');
+      }
+      registerAnthropicDriver(trimmed);
+    },
     close: () => {
       runtimeHandle.close();
       if (controlPlaneApi !== null) {

@@ -25,11 +25,20 @@ import { SidebarView } from '../ui/views/sidebar-view.ts';
 import { ConversationView } from '../ui/views/conversation-view.ts';
 import { NIM_COLORS, TH } from '../ui/theme.ts';
 
+interface RequiredApiKeyConfig {
+  readonly envVar: string;
+  readonly displayName: string;
+}
+
 export interface NimAppRuntime {
   readonly runtime: NimRuntime;
   readonly model: NimModelRef;
   readonly tenantId: string;
   readonly userId: string;
+  readonly requiredApiKey?: RequiredApiKeyConfig | null;
+  readonly hasRequiredApiKey?: () => boolean;
+  readonly configureRequiredApiKey?: (apiKey: string) => void;
+  readonly saveRequiredApiKey?: (input: { readonly envVar: string; readonly value: string }) => void;
 }
 
 export class NimApp extends Widget {
@@ -42,6 +51,10 @@ export class NimApp extends Widget {
   private readonly runtimeModel: NimModelRef;
   private readonly runtimeTenantId: string;
   private readonly runtimeUserId: string;
+  private readonly requiredApiKey: RequiredApiKeyConfig | null;
+  private readonly hasRequiredApiKey: () => boolean;
+  private readonly configureRequiredApiKey: ((apiKey: string) => void) | null;
+  private readonly saveRequiredApiKey: ((input: { readonly envVar: string; readonly value: string }) => void) | null;
 
   private landing: LandingView;
   private conv: ConversationView;
@@ -59,6 +72,7 @@ export class NimApp extends Widget {
   private mode = reactive<AgentMode>('build');
   private uiState = reactive<UiState>('landing');
   private streaming = reactive(false);
+  private apiKeyEntryMode = reactive(false);
   private session: SessionHandle | null = null;
   private turnCounter = 0;
 
@@ -68,6 +82,10 @@ export class NimApp extends Widget {
     this.runtimeModel = runtime.model;
     this.runtimeTenantId = runtime.tenantId;
     this.runtimeUserId = runtime.userId;
+    this.requiredApiKey = runtime.requiredApiKey ?? null;
+    this.hasRequiredApiKey = runtime.hasRequiredApiKey ?? (() => true);
+    this.configureRequiredApiKey = runtime.configureRequiredApiKey ?? null;
+    this.saveRequiredApiKey = runtime.saveRequiredApiKey ?? null;
 
     this.width = '100%';
     this.height = '100%';
@@ -124,6 +142,7 @@ export class NimApp extends Widget {
 
     this.add(mainArea, this.promptShell, this.footer, this.toast);
     this.syncModeUi();
+    this.syncApiKeySetupUi();
   }
 
   setFocusManager(focusManager: { focus: (widget: Widget) => void }): void {
@@ -132,6 +151,78 @@ export class NimApp extends Widget {
 
   setRequestRender(callback: () => void): void {
     this.requestRender = callback;
+  }
+
+  private apiKeySetupRequired(): boolean {
+    if (this.requiredApiKey === null) {
+      return false;
+    }
+    return !this.hasRequiredApiKey();
+  }
+
+  private syncApiKeySetupUi(): void {
+    const required = this.apiKeySetupRequired();
+    this.landing.apiKeyRequired = required;
+    this.landing.apiKeyEntryActive = required || this.apiKeyEntryMode;
+    if (this.requiredApiKey !== null) {
+      this.landing.apiKeyDisplayName = this.requiredApiKey.displayName;
+      this.landing.apiKeyEnvVar = this.requiredApiKey.envVar;
+    }
+    if (required || this.apiKeyEntryMode) {
+      const envVar = this.requiredApiKey?.envVar ?? 'ANTHROPIC_API_KEY';
+      this.composer.placeholder = `Paste ${envVar} and press Enter`;
+      this.composer.modeIndicator = '[Setup]';
+      if (this.uiState !== 'landing') {
+        this.transitionToLanding();
+      }
+      return;
+    }
+    this.composer.placeholder = 'Ask anything...';
+    this.syncModeUi();
+  }
+
+  private startApiKeyEntryMode(): void {
+    if (this.requiredApiKey === null) {
+      this.toast.info('Current model does not require an API key');
+      this.requestRender?.();
+      return;
+    }
+    this.apiKeyEntryMode = true;
+    this.syncApiKeySetupUi();
+    const envVar = this.requiredApiKey.envVar;
+    this.toast.info(`Enter ${envVar} and press Enter`);
+    this.focusManager?.focus(this.composer);
+    this.requestRender?.();
+  }
+
+  private submitApiKey(rawValue: string): void {
+    const requiredApiKey = this.requiredApiKey;
+    if (requiredApiKey === null) {
+      this.toast.error('No API key target configured');
+      return;
+    }
+    const apiKey = rawValue.trim();
+    if (apiKey.length === 0) {
+      this.toast.error(`Paste ${requiredApiKey.envVar} before submitting`);
+      return;
+    }
+    if (this.saveRequiredApiKey === null || this.configureRequiredApiKey === null) {
+      this.toast.error('API key setup is unavailable in this runtime');
+      return;
+    }
+    try {
+      this.saveRequiredApiKey({
+        envVar: requiredApiKey.envVar,
+        value: apiKey,
+      });
+      this.configureRequiredApiKey(apiKey);
+      this.apiKeyEntryMode = false;
+      this.syncApiKeySetupUi();
+      this.toast.info(`${requiredApiKey.displayName} saved`);
+      this.requestRender?.();
+    } catch (error: unknown) {
+      this.toast.error(`Failed to save key: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   private syncModeUi(): void {
@@ -183,6 +274,11 @@ export class NimApp extends Widget {
   }
 
   actionToggleMode(): void {
+    if (this.apiKeySetupRequired() || this.apiKeyEntryMode) {
+      this.toast.info('Complete API key setup first');
+      this.requestRender?.();
+      return;
+    }
     this.mode = this.mode === 'build' ? 'plan' : 'build';
     this.syncModeUi();
     this.toast.info(`Mode: ${modeTitle(this.mode)}`);
@@ -190,6 +286,10 @@ export class NimApp extends Widget {
   }
 
   onComposerSubmitted(message: ComposerSubmitted): void {
+    if (this.apiKeySetupRequired() || this.apiKeyEntryMode) {
+      this.submitApiKey(message.value);
+      return;
+    }
     if (this.uiState === 'landing') {
       this.transitionToChat();
     }
@@ -325,6 +425,7 @@ export class NimApp extends Widget {
       this.palette.visible = false;
     }
 
+    let suppressActionToast = false;
     switch (event.action.id) {
       case 'new-session': {
         this.session = null;
@@ -333,16 +434,22 @@ export class NimApp extends Widget {
         this.sidebar.filesChanged = [];
         this.syncSidebarMetrics();
         this.transitionToLanding();
+        this.syncApiKeySetupUi();
+        break;
+      }
+      case 'set-api-key': {
+        this.startApiKeyEntryMode();
+        suppressActionToast = true;
         break;
       }
       case 'mode-build': {
         this.mode = 'build';
-        this.syncModeUi();
+        this.syncApiKeySetupUi();
         break;
       }
       case 'mode-plan': {
         this.mode = 'plan';
-        this.syncModeUi();
+        this.syncApiKeySetupUi();
         break;
       }
       case 'toggle-sidebar': {
@@ -356,7 +463,9 @@ export class NimApp extends Widget {
         break;
     }
 
-    this.toast.info(event.action.title);
+    if (!suppressActionToast) {
+      this.toast.info(event.action.title);
+    }
     this.focusManager?.focus(this.composer);
     this.requestRender?.();
   }

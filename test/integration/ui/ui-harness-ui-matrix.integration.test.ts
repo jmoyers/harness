@@ -56,9 +56,7 @@ void test(
         await driver.waitForTextGone('Command Menu', WAIT_MS);
 
         await driver.locator('🦎 nim').click(WAIT_MS);
-        await driver.waitForText('nim startup error', WAIT_MS);
         await driver.waitForText('nim - nim', WAIT_MS);
-        await driver.waitForText('exited', WAIT_MS);
       } finally {
         try {
           if (driver !== null) {

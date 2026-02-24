@@ -22,9 +22,8 @@ void test(
 
       await driver.locator('🏠 home').waitFor(12_000);
       await driver.locator('🦎 nim').click(12_000);
-      await driver.waitForText('nim startup error', 12_000);
-      await driver.waitForText('nim - nim', 12_000);
-      await driver.waitForText('exited', 12_000);
+      await driver.waitForText('Anthropic API Key required', 12_000);
+      await driver.waitForText('Press Enter to save key', 12_000);
 
       await driver.keyboard.openCommandMenu(12_000);
       await driver.waitForText('Command Menu', 12_000);

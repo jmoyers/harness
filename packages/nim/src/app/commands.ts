@@ -3,6 +3,7 @@ import type { CommandAction } from '../../../harness-ui/src/widgets/command-pale
 export const NIM_COMMANDS: CommandAction[] = [
   { id: 'new-session', title: 'New session', keywords: ['fresh', 'conversation'] },
   { id: 'session-list', title: 'Session list', keywords: ['history', 'threads'] },
+  { id: 'set-api-key', title: 'Set Anthropic API Key', keywords: ['api', 'key', 'anthropic'] },
   { id: 'mode-build', title: 'Switch to Build mode', keywords: ['agent', 'build'] },
   { id: 'mode-plan', title: 'Switch to Plan mode', keywords: ['agent', 'plan'] },
   { id: 'model', title: 'Switch model', keywords: ['provider', 'model'] },

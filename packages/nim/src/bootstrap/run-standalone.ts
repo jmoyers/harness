@@ -1,5 +1,5 @@
 import { createApp } from '../../../harness-ui/src/app/app.ts';
-import { loadHarnessSecrets } from '../../../../src/config/secrets-core.ts';
+import { loadHarnessSecrets, upsertHarnessSecret } from '../../../../src/config/secrets-core.ts';
 import { NimApp } from '../app/nim-app.ts';
 import {
   createRuntimeFromEnv,
@@ -49,6 +49,19 @@ export function runNimStandalone(options: RunNimStandaloneOptions = {}): number 
       model: runtimeHandle.model,
       tenantId: runtimeHandle.tenantId,
       userId: runtimeHandle.userId,
+      requiredApiKey: runtimeHandle.requiredApiKey,
+      hasRequiredApiKey: () => runtimeHandle?.hasRequiredApiKey() ?? true,
+      configureRequiredApiKey: (apiKey) => {
+        runtimeHandle?.configureRequiredApiKey(apiKey);
+      },
+      saveRequiredApiKey: (input) => {
+        upsertHarnessSecret({
+          cwd: options.runtimeInput?.cwd ?? process.cwd(),
+          key: input.envVar,
+          value: input.value,
+        });
+        process.env[input.envVar] = input.value;
+      },
     });
     nim.setFocusManager(app.focusManager);
     nim.setRequestRender(() => app.render());
