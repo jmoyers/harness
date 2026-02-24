@@ -39,7 +39,7 @@ void test('render trace analysis treats supported query payload variants as safe
 void test('render trace analysis treats mouse and focus private-mode toggles as safe', () => {
   const issues = findRenderTraceControlIssues(
     Buffer.from(
-      '\u001b[?1000h\u001b[?1002h\u001b[?1003h\u001b[?1004h\u001b[?1006h\u001b[?1000l\u001b[?1002l\u001b[?1003l\u001b[?1004l\u001b[?1006l',
+      '\u001b[?2026h\u001b[?1000h\u001b[?1002h\u001b[?1003h\u001b[?1004h\u001b[?1006h\u001b[?1000l\u001b[?1002l\u001b[?1003l\u001b[?1004l\u001b[?1006l\u001b[?2026l',
       'utf8',
     ),
   );

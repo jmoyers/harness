@@ -68,6 +68,7 @@ export interface RuntimeEnvelopeHandlerOptions<
   ) => Record<string, unknown> | null;
   readonly enqueueEvent: (event: TNormalizedEvent) => void;
   readonly activeConversationId: () => string | null;
+  readonly shouldDeferActiveRenderForOutput?: (conversation: TConversation) => boolean;
   readonly markSessionExited: (input: {
     sessionId: string;
     exit: PtyExit;
@@ -126,7 +127,10 @@ export function handleRuntimeEnvelope<
     );
     options.enqueueEvent(normalized);
     conversation.lastEventAt = normalized.ts;
-    if (options.activeConversationId() === envelope.sessionId) {
+    const isActiveConversation = options.activeConversationId() === envelope.sessionId;
+    const shouldDeferActiveRender =
+      isActiveConversation && (options.shouldDeferActiveRenderForOutput?.(conversation) ?? false);
+    if (isActiveConversation && !shouldDeferActiveRender) {
       options.markDirty();
     }
     const outputHandledDurationMs = Number(options.perfNowNs() - outputHandledStartedAtNs) / 1e6;

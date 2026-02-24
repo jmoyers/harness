@@ -72,9 +72,9 @@ void test('terminal compatibility matrix summary is explicit and stable', () => 
   }
 
   assert.deepEqual(mutableCounts, {
-    implemented: 17,
+    implemented: 18,
     passthrough: 2,
-    unsupported: 6,
+    unsupported: 5,
   });
 
   const levelCounts = new Map<string, number>();
@@ -108,6 +108,7 @@ void test('terminal compatibility matrix locks key feature states', () => {
   assert.equal(byId.get('dec-mouse-focus-tracking')?.status, 'implemented');
   assert.equal(byId.get('csi-device-status-replies')?.status, 'implemented');
   assert.equal(byId.get('modifyotherkeys-negotiation')?.status, 'implemented');
+  assert.equal(byId.get('sync-output-mode')?.status, 'implemented');
   assert.equal(byId.get('differential-terminal-checkpoints')?.status, 'unsupported');
   assert.equal(byId.get('osc-title-cwd-hyperlink')?.status, 'unsupported');
   assert.equal(byId.get('keyboard-encoding-ingress')?.status, 'implemented');

@@ -122,6 +122,104 @@ void test('runtime envelope handler handles pty.output, records cursor regressio
   ]);
 });
 
+void test('runtime envelope handler defers active renders while synchronized output mode is enabled', () => {
+  const calls: string[] = [];
+  const conversation: ConversationRecord = {
+    directoryId: 'dir-sync',
+    agentType: 'codex',
+    adapterState: {},
+    scope: { tenantId: 'tenant' },
+    lastEventAt: 'old-ts',
+  };
+  const options: RuntimeEnvelopeHandlerOptions<ConversationRecord, { ts: string }> = {
+    perfNowNs: (() => {
+      let tick = 0n;
+      return () => {
+        tick += 5_000_000n;
+        return tick;
+      };
+    })(),
+    isRemoved: () => false,
+    ensureConversation: () => conversation,
+    ingestOutputChunk: (input) => {
+      calls.push(`ingest:${input.sessionId}:${input.cursor}:${input.chunk.length}`);
+      return {
+        conversation,
+        cursorRegressed: false,
+        previousCursor: 1,
+      };
+    },
+    noteGitActivity: (directoryId) => {
+      calls.push(`noteGit:${directoryId ?? 'null'}`);
+    },
+    recordOutputChunk: (input) => {
+      calls.push(
+        `recordOutputChunk:${input.sessionId}:${input.chunkLength}:${input.active ? '1' : '0'}`,
+      );
+    },
+    startupOutputChunk: (sessionId, chunkLength) => {
+      calls.push(`startupOutput:${sessionId}:${chunkLength}`);
+    },
+    startupPaintOutputChunk: (sessionId) => {
+      calls.push(`startupPaintOutput:${sessionId}`);
+    },
+    recordPerfEvent: (name) => {
+      calls.push(`perf:${name}`);
+    },
+    mapTerminalOutputToNormalizedEvent: () => ({ ts: 'sync-ts' }),
+    mapSessionEventToNormalizedEvent: () => null,
+    observedAtFromSessionEvent: () => 'observed',
+    mergeAdapterStateFromSessionEvent: () => null,
+    enqueueEvent: (event) => {
+      calls.push(`enqueue:${event.ts}`);
+    },
+    activeConversationId: () => 'session-sync',
+    shouldDeferActiveRenderForOutput: () => true,
+    markSessionExited: () => {
+      calls.push('markExited');
+    },
+    deletePtySize: () => {
+      calls.push('deletePtySize');
+    },
+    setExit: () => {
+      calls.push('setExit');
+    },
+    markDirty: () => {
+      calls.push('markDirty');
+    },
+    nowIso: () => '2026-02-18T00:00:00.000Z',
+    recordOutputHandled: (durationMs) => {
+      calls.push(`recordOutputHandled:${durationMs > 0 ? '1' : '0'}`);
+    },
+    conversationById: () => conversation,
+    applyObservedEvent: () => {
+      calls.push('applyObserved');
+    },
+    idFactory: () => 'event-id',
+  };
+
+  handleRuntimeEnvelope(
+    options,
+    asEnvelope({
+      kind: 'pty.output',
+      sessionId: 'session-sync',
+      cursor: 2,
+      chunkBase64: Buffer.from('sync').toString('base64'),
+    }),
+  );
+
+  assert.equal(conversation.lastEventAt, 'sync-ts');
+  assert.deepEqual(calls, [
+    'ingest:session-sync:2:4',
+    'noteGit:dir-sync',
+    'recordOutputChunk:session-sync:4:1',
+    'startupOutput:session-sync:4',
+    'startupPaintOutput:session-sync',
+    'enqueue:sync-ts',
+    'recordOutputHandled:1',
+  ]);
+});
+
 void test('runtime envelope handler handles pty.event session-exit and pty.exit branches', () => {
   const calls: string[] = [];
   const conversation: ConversationRecord = {

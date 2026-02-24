@@ -723,6 +723,23 @@ void test('snapshot oracle tracks bracketed paste mode through DEC private mode 
   assert.equal(frame.modes.bracketedPaste, false);
 });
 
+void test('snapshot oracle tracks synchronized output mode through DEC private mode and reset', () => {
+  const oracle = new TerminalSnapshotOracle(8, 2);
+  assert.equal(oracle.isSynchronizedOutputModeEnabled(), false);
+
+  oracle.ingest('\u001b[?2026h');
+  assert.equal(oracle.isSynchronizedOutputModeEnabled(), true);
+
+  oracle.ingest('\u001b[?2026l');
+  assert.equal(oracle.isSynchronizedOutputModeEnabled(), false);
+
+  oracle.ingest('\u001b[?2026h');
+  assert.equal(oracle.isSynchronizedOutputModeEnabled(), true);
+
+  oracle.ingest('\u001bc');
+  assert.equal(oracle.isSynchronizedOutputModeEnabled(), false);
+});
+
 void test('snapshot oracle applies OSC palette updates to indexed SGR colors', () => {
   const oracle = new TerminalSnapshotOracle(8, 2);
 

@@ -4676,6 +4676,8 @@ class CodexLiveMuxRuntimeApplication {
         eventPersistence.enqueue(event);
       },
       activeConversationId: () => conversationManager.activeConversationId,
+      shouldDeferActiveRenderForOutput: (conversation) =>
+        conversation.oracle.isSynchronizedOutputModeEnabled(),
       markSessionExited: (input) => {
         const conversation = conversationManager.get(input.sessionId);
         const statusBefore =

@@ -315,10 +315,13 @@ export const TERMINAL_COMPAT_MATRIX: readonly TerminalCompatEntry[] = [
     levelId: 'l6-modern-extensions',
     feature: 'Synchronized output mode',
     sequences: ['CSI ? 2026 h/l'],
-    status: 'unsupported',
+    status: 'implemented',
     priority: 'p2-optional',
-    ownerTests: [],
-    notes: 'Optional performance/stability enhancement for bursty render workloads.',
+    ownerTests: [
+      'test/terminal-snapshot-oracle.test.ts',
+      'test/unit/services/runtime/services-runtime-envelope-handler.test.ts',
+    ],
+    notes: 'Tracks mode state and defers active-thread renders while synchronized output is enabled.',
   },
   {
     id: 'graphics-protocols',

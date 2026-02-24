@@ -1212,6 +1212,7 @@ export class TerminalSnapshotOracle {
   private cursorVisible = true;
   private cursorStyle: TerminalCursorStyle = cloneCursorStyle(DEFAULT_CURSOR_STYLE);
   private bracketedPasteMode = false;
+  private synchronizedOutputMode = false;
   private decMouseX10Mode = false;
   private decMouseButtonEventMode = false;
   private decMouseAnyEventMode = false;
@@ -1323,6 +1324,10 @@ export class TerminalSnapshotOracle {
 
   isSgrMouseEncodingEnabled(): boolean {
     return this.decMouseSgrEncodingMode;
+  }
+
+  isSynchronizedOutputModeEnabled(): boolean {
+    return this.synchronizedOutputMode;
   }
 
   bufferTail(tailLines?: number): TerminalBufferTail {
@@ -1807,6 +1812,10 @@ export class TerminalSnapshotOracle {
         this.bracketedPasteMode = enabled;
         continue;
       }
+      if (value === 2026) {
+        this.synchronizedOutputMode = enabled;
+        continue;
+      }
       if (value === 1000) {
         this.decMouseX10Mode = enabled;
         continue;
@@ -1932,6 +1941,7 @@ export class TerminalSnapshotOracle {
     this.cursorVisible = true;
     this.cursorStyle = cloneCursorStyle(DEFAULT_CURSOR_STYLE);
     this.bracketedPasteMode = false;
+    this.synchronizedOutputMode = false;
     this.decMouseX10Mode = false;
     this.decMouseButtonEventMode = false;
     this.decMouseAnyEventMode = false;
