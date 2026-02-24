@@ -1264,6 +1264,64 @@ void test('stream server starts critique sessions directly when launch args are 
   }
 });
 
+void test('stream server launches nim sessions through harness nim process profile', async () => {
+  const created: FakeLiveSession[] = [];
+  const server = await startControlPlaneStreamServer({
+    startSession: (input) => {
+      const session = new FakeLiveSession(input);
+      created.push(session);
+      return session;
+    },
+  });
+  const address = server.address();
+  const client = await connectControlPlaneStreamClient({
+    host: address.address,
+    port: address.port,
+  });
+  try {
+    await client.sendCommand({
+      type: 'directory.upsert',
+      directoryId: 'directory-nim',
+      tenantId: 'tenant-nim',
+      userId: 'user-nim',
+      workspaceId: 'workspace-nim',
+      path: '/tmp/nim',
+    });
+    await client.sendCommand({
+      type: 'conversation.create',
+      conversationId: 'conversation-nim',
+      directoryId: 'directory-nim',
+      title: 'nim workspace',
+      agentType: 'nim',
+      adapterState: {},
+    });
+    await client.sendCommand({
+      type: 'pty.start',
+      sessionId: 'conversation-nim',
+      args: [],
+      initialCols: 100,
+      initialRows: 40,
+      tenantId: 'tenant-nim',
+      userId: 'user-nim',
+      workspaceId: 'workspace-nim',
+      worktreeId: 'worktree-nim',
+    });
+    assert.equal(created.length, 1);
+    assert.equal(created[0]?.input.command, process.execPath);
+    assert.equal(created[0]?.input.baseArgs?.[0]?.endsWith('/scripts/harness.ts') ?? false, true);
+    assert.equal(created[0]?.input.baseArgs?.[1], 'nim');
+
+    const status = await client.sendCommand({
+      type: 'session.status',
+      sessionId: 'conversation-nim',
+    });
+    assert.equal(String(status['launchCommand']).includes('scripts/harness.ts nim'), true);
+  } finally {
+    client.close();
+    await server.close();
+  }
+});
+
 void test('stream server supports start/attach/io/events/cleanup over one protocol path', async () => {
   const created: FakeLiveSession[] = [];
   const startSession = (input: StartControlPlaneSessionInput): FakeLiveSession => {

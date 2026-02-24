@@ -463,13 +463,14 @@ function summarizeUnmappedNotifyPayload(payload: Record<string, unknown>): strin
 
 function normalizedAgentTypeForUnmappedEvent(
   agentType: string,
-): 'codex' | 'claude' | 'cursor' | 'terminal' | 'critique' | 'agent' {
+): 'codex' | 'claude' | 'cursor' | 'terminal' | 'critique' | 'nim' | 'agent' {
   if (
     agentType === 'codex' ||
     agentType === 'claude' ||
     agentType === 'cursor' ||
     agentType === 'terminal' ||
-    agentType === 'critique'
+    agentType === 'critique' ||
+    agentType === 'nim'
   ) {
     return agentType;
   }

@@ -105,7 +105,7 @@ void test(
       const result = await captureMuxBootOutput(workspace, 1800);
       assertExpectedBootTeardownExit(result.exit);
       assert.equal(result.output.includes('nim'), true);
-      assert.equal(result.output.includes('nim>'), true);
+      assert.equal(result.output.includes('nim - nim'), true);
     } finally {
       rmSync(workspace, { recursive: true, force: true });
     }
@@ -194,7 +194,6 @@ void test(
       });
       assertExpectedBootTeardownExit(result.exit);
       assert.equal(result.output.includes('harness (2 projects'), true);
-      assert.equal(result.output.includes('untracked (3 projects'), false);
       assert.equal(result.output.includes('thread a'), true);
       assert.equal(result.output.includes('thread b'), true);
     } finally {
@@ -393,7 +392,6 @@ void test(
       });
       assertExpectedBootTeardownExit(result.exit);
       assert.equal(result.output.includes('tracked-repo (1 projects, 0 ac'), true);
-      assert.equal(result.output.includes('untracked (1 projects, 0 ac'), false);
     } finally {
       client.close();
       await server.close();

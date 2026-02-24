@@ -75,9 +75,10 @@ function buildSnapshot<
   };
 }
 
-void test('runtime render pipeline composes underlying render services and delegates render calls', () => {
+void test('runtime render pipeline delegates render path without clearing dirty state', () => {
   const workspace = createWorkspace();
   let clearDirtyCalls = 0;
+  let flushCalls = 0;
   const layout = computeDualPaneLayout(120, 40, {
     leftCols: 36,
   });
@@ -105,11 +106,14 @@ void test('runtime render pipeline composes underlying render services and deleg
       buildModalOverlay: () => null,
       applyModalOverlay: () => {},
       renderSelectionOverlay: () => '',
-      flush: () => ({
-        changedRowCount: 0,
-        wroteOutput: false,
-        shouldShowCursor: false,
-      }),
+      flush: () => {
+        flushCalls += 1;
+        return {
+          changedRowCount: 0,
+          wroteOutput: false,
+          shouldShowCursor: false,
+        };
+      },
       onFlushOutput: () => {},
       recordRenderSample: () => {},
     },
@@ -127,20 +131,6 @@ void test('runtime render pipeline composes underlying render services and deleg
           scrollTop: 0,
         }),
       },
-      nimPane: {
-        render: () => ({
-          rows: [],
-        }),
-      },
-      getNimViewModel: () => ({
-        sessionId: null,
-        status: 'idle',
-        uiMode: 'debug',
-        composerText: '',
-        queuedCount: 0,
-        transcriptLines: [],
-        assistantDraftText: '',
-      }),
       refreshProjectPaneSnapshot: () => null,
       emptyTaskPaneView: () => workspace.latestTaskPaneView,
     },
@@ -193,7 +183,8 @@ void test('runtime render pipeline composes underlying render services and deleg
     selectionDrag: null,
   });
 
-  assert.equal(clearDirtyCalls, 1);
+  assert.equal(clearDirtyCalls, 0);
+  assert.equal(flushCalls, 1);
 });
 
 void test('runtime render pipeline renders right pane and flushes when render state is available', () => {
@@ -261,20 +252,6 @@ void test('runtime render pipeline renders right pane and flushes when render st
           scrollTop: 0,
         }),
       },
-      nimPane: {
-        render: () => ({
-          rows: ['nim'],
-        }),
-      },
-      getNimViewModel: () => ({
-        sessionId: null,
-        status: 'idle',
-        uiMode: 'debug',
-        composerText: '',
-        queuedCount: 0,
-        transcriptLines: [],
-        assistantDraftText: '',
-      }),
       refreshProjectPaneSnapshot: () => null,
       emptyTaskPaneView: () => workspace.latestTaskPaneView,
     },

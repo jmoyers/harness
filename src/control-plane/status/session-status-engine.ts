@@ -10,7 +10,7 @@ import { CritiqueStatusReducer } from './reducers/critique-status-reducer.ts';
 import { CursorStatusReducer } from './reducers/cursor-status-reducer.ts';
 import { TerminalStatusReducer } from './reducers/terminal-status-reducer.ts';
 
-type SupportedAgentType = 'codex' | 'claude' | 'cursor' | 'terminal' | 'critique';
+type SupportedAgentType = 'codex' | 'claude' | 'cursor' | 'terminal' | 'critique' | 'nim';
 
 const reducers: Record<SupportedAgentType, AgentStatusReducer> = {
   codex: new CodexStatusReducer(),
@@ -18,6 +18,7 @@ const reducers: Record<SupportedAgentType, AgentStatusReducer> = {
   cursor: new CursorStatusReducer(),
   terminal: new TerminalStatusReducer(),
   critique: new CritiqueStatusReducer(),
+  nim: new CodexStatusReducer(),
 };
 
 void AGENT_STATUS_REDUCER_RUNTIME_TOKEN;
@@ -29,7 +30,8 @@ function normalizeAgentType(value: string): SupportedAgentType {
     normalized === 'claude' ||
     normalized === 'cursor' ||
     normalized === 'terminal' ||
-    normalized === 'critique'
+    normalized === 'critique' ||
+    normalized === 'nim'
   ) {
     return normalized;
   }

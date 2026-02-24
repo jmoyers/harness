@@ -196,7 +196,6 @@ import { ProcessUsageRefreshService } from '../../services/process-usage-refresh
 import { createRecordingService } from '../../services/recording.ts';
 import { SessionProjectionInstrumentation } from '../../services/session-projection-instrumentation.ts';
 import { StartupOrchestrator } from '../../services/startup-orchestrator.ts';
-import { RuntimeNimCliSession } from '../../services/runtime-nim-cli-session.ts';
 import { attachRuntimeProcessWiring } from '../../services/runtime-process-wiring.ts';
 import { createRuntimeControlPlaneOps } from '../../services/runtime-control-plane-ops.ts';
 import { createRuntimeControlActions } from '../../services/runtime-control-actions.ts';
@@ -250,9 +249,7 @@ import { InputRouter } from '../../../packages/harness-ui/src/interaction/input.
 import { ConversationPane } from '../../ui/panes/conversation.ts';
 import { DebugFooterNotice } from '../../ui/debug-footer-notice.ts';
 import { HomePane } from '../../ui/panes/home.ts';
-import { NimPane } from '../../ui/panes/nim.ts';
 import { ProjectPane } from '../../ui/panes/project.ts';
-import { type NimModelRef } from '../../../packages/nim-core/src/index.ts';
 import { LeftRailPane } from '../../ui/panes/left-rail.ts';
 import { ModalManager } from '../../../packages/harness-ui/src/modal-manager.ts';
 import type { UiModalOverlay } from '../../../packages/harness-ui/src/kit.ts';
@@ -382,6 +379,7 @@ const THEME_ACTION_ID_PREFIX = 'theme.set.';
 const API_KEY_ACTION_ID_PREFIX = 'api-key.set.';
 const RELEASE_NOTES_PREVIEW_LINE_COUNT = 6;
 const RELEASE_NOTES_MAX_RELEASES = 3;
+const WORKSPACE_NIM_SESSION_PREFIX = 'nim-workspace-';
 const COMMAND_MENU_ALLOWED_API_KEYS: readonly AllowedCommandMenuApiKey[] = [
   {
     actionIdSuffix: 'anthropic',
@@ -430,6 +428,12 @@ function asStringOrNull(value: unknown): string | null {
     return value;
   }
   return null;
+}
+
+function workspaceScopedNimSessionId(workspaceId: string): string {
+  const normalized = workspaceId.trim().toLowerCase().replace(/[^a-z0-9_-]+/gu, '-');
+  const suffix = normalized.length > 0 ? normalized : 'default';
+  return `${WORKSPACE_NIM_SESSION_PREFIX}${suffix}`;
 }
 
 function isOverlayLayerHit(
@@ -1869,10 +1873,6 @@ class CodexLiveMuxRuntimeApplication {
         workspace.selectLeftNavConversation(sessionId);
       },
       enterStartupPane: () => {
-        if (configuredMuxUi.startupPane === 'nim') {
-          workspace.enterNimPane();
-          return;
-        }
         workspace.enterHomePane();
       },
     });
@@ -1945,7 +1945,6 @@ class CodexLiveMuxRuntimeApplication {
     const screen = new Screen(new MuxScreenWriter());
     const conversationPane = new ConversationPane();
     const homePane = new HomePane();
-    const nimPane = new NimPane();
     const projectPane = new ProjectPane();
     const leftRailPane = new LeftRailPane();
     let stop = false;
@@ -2235,38 +2234,6 @@ class CodexLiveMuxRuntimeApplication {
     const markDirty = (): void => {
       runtimeRenderLifecycle.markDirty();
     };
-    const configuredNimModelRaw = process.env.HARNESS_NIM_MODEL?.trim();
-    const configuredNimModel =
-      typeof configuredNimModelRaw === 'string' &&
-      configuredNimModelRaw.length > 0 &&
-      /^[^/]+\/[^/]+$/u.test(configuredNimModelRaw)
-        ? (configuredNimModelRaw as NimModelRef)
-        : null;
-    const anthropicApiKeyRaw = process.env.ANTHROPIC_API_KEY;
-    const anthropicApiKey =
-      typeof anthropicApiKeyRaw === 'string' && anthropicApiKeyRaw.trim().length > 0
-        ? anthropicApiKeyRaw.trim()
-        : null;
-    const runtimeNimModel: NimModelRef =
-      configuredNimModel ??
-      (anthropicApiKey === null ? 'mock/echo-v1' : 'anthropic/claude-3-5-haiku-latest');
-    const runtimeNimProviderId = runtimeNimModel.split('/')[0] ?? 'mock';
-    const runtimeNimUseMock = runtimeNimProviderId !== 'anthropic' || anthropicApiKey === null;
-    const runtimeNimBaseUrlRaw = process.env.HARNESS_NIM_ANTHROPIC_BASE_URL;
-    const runtimeNimBaseUrl =
-      typeof runtimeNimBaseUrlRaw === 'string' && runtimeNimBaseUrlRaw.trim().length > 0
-        ? runtimeNimBaseUrlRaw.trim()
-        : undefined;
-    const runtimeNimSession = new RuntimeNimCliSession({
-      invocationDirectory: options.invocationDirectory,
-      tenantId: options.scope.tenantId,
-      userId: options.scope.userId,
-      markDirty,
-      sessionName: muxSessionName,
-      model: runtimeNimModel,
-      useMock: runtimeNimUseMock,
-      ...(runtimeNimBaseUrl === undefined ? {} : { baseUrl: runtimeNimBaseUrl }),
-    });
     const controlPlaneOps = createRuntimeControlPlaneOps({
       onFatal: (error: unknown) => {
         handleRuntimeFatal('control-plane-pump', error);
@@ -2664,7 +2631,6 @@ class CodexLiveMuxRuntimeApplication {
       getLayout: () => layout,
       setLayout: (nextLayout) => {
         layout = nextLayout;
-        runtimeNimSession.resize(nextLayout.rightCols, nextLayout.paneRows);
       },
       getLeftPaneColsOverride: () => leftPaneColsOverride,
       setLeftPaneColsOverride: (nextLeftPaneColsOverride) => {
@@ -3022,8 +2988,79 @@ class CodexLiveMuxRuntimeApplication {
       screen.resetFrameCache();
       markDirty();
     };
+    let workspaceNimSessionId: string | null = null;
+    const resolveExistingWorkspaceNimSessionId = (): string | null => {
+      if (workspaceNimSessionId !== null && conversationManager.has(workspaceNimSessionId)) {
+        return workspaceNimSessionId;
+      }
+      const existing =
+        conversationManager
+          .orderedIds()
+          .find((sessionId) => {
+            const conversation = conversationManager.get(sessionId);
+            if (conversation === undefined) {
+              return false;
+            }
+            return conversation.agentType.trim().toLowerCase() === 'nim';
+          }) ?? null;
+      if (existing !== null) {
+        workspaceNimSessionId = existing;
+      }
+      return existing;
+    };
+    const resolveWorkspaceNimDirectoryId = (): string | null => {
+      const actionDirectoryId = resolveDirectoryForAction();
+      if (actionDirectoryId !== null) {
+        return actionDirectoryId;
+      }
+      const activeDirectoryId = resolveActiveDirectoryId();
+      if (activeDirectoryId !== null) {
+        return activeDirectoryId;
+      }
+      return directoryManager.firstDirectoryId();
+    };
+    const ensureWorkspaceNimSessionId = async (): Promise<string> => {
+      const existingSessionId = resolveExistingWorkspaceNimSessionId();
+      if (existingSessionId !== null) {
+        return existingSessionId;
+      }
+      const directoryId = resolveWorkspaceNimDirectoryId();
+      if (directoryId === null) {
+        throw new Error('nim requires at least one workspace directory');
+      }
+      const sessionId = workspaceScopedNimSessionId(options.scope.workspaceId);
+      try {
+        await controlPlaneService.createConversation({
+          conversationId: sessionId,
+          directoryId,
+          title: 'nim',
+          agentType: 'nim',
+          adapterState: {},
+        });
+      } catch (error: unknown) {
+        const message = formatErrorMessage(error).toLowerCase();
+        if (!message.includes('already exists')) {
+          throw error;
+        }
+      }
+      ensureConversation(sessionId, {
+        directoryId,
+        title: 'nim',
+        agentType: 'nim',
+        adapterState: {},
+      });
+      workspaceNimSessionId = sessionId;
+      return sessionId;
+    };
+    const openWorkspaceNimPane = (): void => {
+      queueControlPlaneOp(async () => {
+        const nimSessionId = await ensureWorkspaceNimSessionId();
+        await conversationLifecycle.activateConversation(nimSessionId);
+        enterPane(() => workspace.enterNimPane());
+      }, 'open-workspace-nim');
+    };
     const enterHomePane = (): void => enterPane(() => workspace.enterHomePane());
-    const enterNimPane = (): void => enterPane(() => workspace.enterNimPane());
+    const enterNimPane = (): void => openWorkspaceNimPane();
     const enterTasksPane = (): void => enterPane(() => workspace.enterTasksPane());
 
     const taskPlanningHydrationService = createTaskPlanningHydrationService<
@@ -4524,8 +4561,6 @@ class CodexLiveMuxRuntimeApplication {
         showTasks: showTasksEntry,
         conversationPane,
         homePane,
-        nimPane,
-        getNimViewModel: () => runtimeNimSession.snapshot(),
         projectPane,
         refreshProjectPaneSnapshot: (directoryId) => {
           refreshProjectPaneSnapshot(directoryId);
@@ -5051,10 +5086,31 @@ class CodexLiveMuxRuntimeApplication {
       },
       markDirty,
       handlePassthroughTextInMainPaneMode: ({ mainPaneMode, text }) => {
-        if (mainPaneMode === 'nim') runtimeNimSession.handleInputChunk(text);
+        if (mainPaneMode !== 'nim' || text.length === 0) {
+          return;
+        }
+        const activeConversation = conversationManager.getActiveConversation();
+        if (
+          activeConversation === null ||
+          activeConversation.agentType.trim().toLowerCase() !== 'nim'
+        ) {
+          return;
+        }
+        streamClient.sendInput(activeConversation.sessionId, Buffer.from(text, 'utf8'));
+        noteGitActivity(activeConversation.directoryId);
       },
       handleEscapeInMainPaneMode: (mainPaneMode) => {
-        if (mainPaneMode === 'nim') runtimeNimSession.handleEscape();
+        if (mainPaneMode !== 'nim') {
+          return;
+        }
+        const activeConversation = conversationManager.getActiveConversation();
+        if (
+          activeConversation === null ||
+          activeConversation.agentType.trim().toLowerCase() !== 'nim'
+        ) {
+          return;
+        }
+        streamClient.sendInput(activeConversation.sessionId, Buffer.from([0x1b]));
       },
     });
     const onResize = (): void => {
@@ -5068,9 +5124,10 @@ class CodexLiveMuxRuntimeApplication {
       handleRuntimeFatal,
     });
 
-    await runtimeNimSession.start();
-    runtimeNimSession.resize(layout.rightCols, layout.paneRows);
     await startupOrchestrator.hydrateStartupState(startupObservedCursor);
+    if (configuredMuxUi.startupPane === 'nim') {
+      openWorkspaceNimPane();
+    }
 
     inputModeManager.enable();
     applyLayout(size, true);
@@ -5160,7 +5217,6 @@ class CodexLiveMuxRuntimeApplication {
       statusTimelineRecorder.close();
       renderTraceRecorder.close();
       sessionDiagnosticsStore.close();
-      await runtimeNimSession.dispose();
       await finalizeRuntimeShutdown(runtimeShutdownOptions);
     }
 

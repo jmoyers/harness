@@ -80,20 +80,6 @@ void test('runtime right-pane renderer resets task view and renders conversation
         throw new Error('projectPane.render should not run for frame render');
       },
     },
-    nimPane: {
-      render: () => {
-        throw new Error('nimPane.render should not run for frame render');
-      },
-    },
-    getNimViewModel: () => ({
-      sessionId: null,
-      status: 'idle',
-      uiMode: 'debug',
-      composerText: '',
-      queuedCount: 0,
-      transcriptLines: [],
-      assistantDraftText: '',
-    }),
     refreshProjectPaneSnapshot: () => null,
     emptyTaskPaneView,
   };
@@ -151,20 +137,6 @@ void test('runtime right-pane renderer delegates home-pane render and updates wo
         throw new Error('projectPane.render should not run for home render');
       },
     },
-    nimPane: {
-      render: () => {
-        throw new Error('nimPane.render should not run for home render');
-      },
-    },
-    getNimViewModel: () => ({
-      sessionId: null,
-      status: 'idle',
-      uiMode: 'debug',
-      composerText: '',
-      queuedCount: 0,
-      transcriptLines: [],
-      assistantDraftText: '',
-    }),
     refreshProjectPaneSnapshot: () => null,
     emptyTaskPaneView,
   };
@@ -226,20 +198,6 @@ void test('runtime right-pane renderer enables task-planning view only when task
         throw new Error('projectPane.render should not run for home render');
       },
     },
-    nimPane: {
-      render: () => {
-        throw new Error('nimPane.render should not run for home render');
-      },
-    },
-    getNimViewModel: () => ({
-      sessionId: null,
-      status: 'idle',
-      uiMode: 'debug',
-      composerText: '',
-      queuedCount: 0,
-      transcriptLines: [],
-      assistantDraftText: '',
-    }),
     refreshProjectPaneSnapshot: () => null,
     emptyTaskPaneView,
   };
@@ -294,20 +252,6 @@ void test('runtime right-pane renderer keeps task-planning hidden when tasks are
         throw new Error('projectPane.render should not run for home render');
       },
     },
-    nimPane: {
-      render: () => {
-        throw new Error('nimPane.render should not run for home render');
-      },
-    },
-    getNimViewModel: () => ({
-      sessionId: null,
-      status: 'idle',
-      uiMode: 'debug',
-      composerText: '',
-      queuedCount: 0,
-      transcriptLines: [],
-      assistantDraftText: '',
-    }),
     refreshProjectPaneSnapshot: () => null,
     emptyTaskPaneView,
   };
@@ -365,20 +309,6 @@ void test('runtime right-pane renderer refreshes project snapshot once and reuse
         };
       },
     },
-    nimPane: {
-      render: () => {
-        throw new Error('nimPane.render should not run for project render');
-      },
-    },
-    getNimViewModel: () => ({
-      sessionId: null,
-      status: 'idle',
-      uiMode: 'debug',
-      composerText: '',
-      queuedCount: 0,
-      transcriptLines: [],
-      assistantDraftText: '',
-    }),
     refreshProjectPaneSnapshot: (directoryId) => {
       refreshCalls.push(directoryId);
       return snapshot;
@@ -444,20 +374,6 @@ void test('runtime right-pane renderer falls back to blank rows when no pane bra
         scrollTop: 0,
       }),
     },
-    nimPane: {
-      render: () => ({
-        rows: ['unexpected'],
-      }),
-    },
-    getNimViewModel: () => ({
-      sessionId: null,
-      status: 'idle',
-      uiMode: 'debug',
-      composerText: '',
-      queuedCount: 0,
-      transcriptLines: [],
-      assistantDraftText: '',
-    }),
     refreshProjectPaneSnapshot: () => null,
     emptyTaskPaneView,
   };
@@ -478,7 +394,7 @@ void test('runtime right-pane renderer falls back to blank rows when no pane bra
   assert.deepEqual(rows, ['   ', '   ']);
 });
 
-void test('runtime right-pane renderer delegates nim-pane render when nim pane is active', () => {
+void test('runtime right-pane renderer falls back to blank rows when nim pane is active without a frame', () => {
   const workspace = createWorkspace();
   const options: RuntimeRightPaneRenderOptions<RepoRecord, TaskRecord> = {
     workspace,
@@ -498,20 +414,6 @@ void test('runtime right-pane renderer delegates nim-pane render when nim pane i
         throw new Error('projectPane.render should not run for nim render');
       },
     },
-    nimPane: {
-      render: () => ({
-        rows: ['nim-row'],
-      }),
-    },
-    getNimViewModel: () => ({
-      sessionId: 'session-nim',
-      status: 'responding',
-      uiMode: 'debug',
-      composerText: 'draft',
-      queuedCount: 1,
-      transcriptLines: ['nim> hi'],
-      assistantDraftText: 'working',
-    }),
     refreshProjectPaneSnapshot: () => null,
     emptyTaskPaneView,
   };
@@ -529,5 +431,5 @@ void test('runtime right-pane renderer delegates nim-pane render when nim pane i
     snapshot: emptyRightPaneSnapshot(),
   });
 
-  assert.deepEqual(rows, ['nim-row']);
+  assert.deepEqual(rows, Array.from({ length: 4 }, () => ' '.repeat(20)));
 });

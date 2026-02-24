@@ -65,7 +65,12 @@ const DEFAULT_RUNTIME_STATUS_MODEL_JSON = JSON.stringify({
 
 function statusModelEnabledForAgentType(agentType: string): boolean {
   const normalized = agentType.trim().toLowerCase();
-  return normalized === 'codex' || normalized === 'claude' || normalized === 'cursor';
+  return (
+    normalized === 'codex' ||
+    normalized === 'claude' ||
+    normalized === 'cursor' ||
+    normalized === 'nim'
+  );
 }
 
 function initialRuntimeStatusModel(

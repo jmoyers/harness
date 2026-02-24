@@ -108,11 +108,11 @@ void test(
     });
 
     try {
-      await waitForSnapshotLineContaining(oracle, 'nim tui ready', 20_000);
-      session.write('/exit\n');
+      await waitForSnapshotLineContaining(oracle, 'harness coordination agent', 20_000);
+      session.write('\u0003');
       const exit = await exitPromise;
       assert.equal(exit.signal, null);
-      assert.equal(exit.code, 0);
+      assert.equal(exit.code === 0 || exit.code === 130, true);
 
       const allRuntimeFiles = listFilesRecursively(join(xdgConfigHome, 'harness', 'workspaces'));
       const hasScopedEventStore = allRuntimeFiles.some((path) =>

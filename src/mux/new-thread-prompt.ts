@@ -1,4 +1,4 @@
-type ThreadAgentType = 'codex' | 'claude' | 'cursor' | 'terminal' | 'critique';
+type ThreadAgentType = 'codex' | 'claude' | 'cursor' | 'terminal' | 'critique' | 'nim';
 
 const EMPTY_NEW_THREAD_PROMPT_INPUT = new Uint8Array();
 
@@ -20,7 +20,13 @@ export function createNewThreadPromptState(directoryId: string): NewThreadPrompt
 }
 
 export function normalizeThreadAgentType(value: string): ThreadAgentType {
-  if (value === 'terminal' || value === 'claude' || value === 'cursor' || value === 'critique') {
+  if (
+    value === 'terminal' ||
+    value === 'claude' ||
+    value === 'cursor' ||
+    value === 'critique' ||
+    value === 'nim'
+  ) {
     return value;
   }
   return 'codex';

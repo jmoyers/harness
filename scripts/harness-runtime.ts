@@ -1,5 +1,5 @@
 import { runHarnessAnimate } from './harness-animate.ts';
-import { runNimTuiSmoke } from './nim-tui-smoke.ts';
+import { runNimCli as runStandaloneNimCli } from '../packages/nim/src/index.ts';
 import {
   createDefaultHarnessRuntimeApplication,
   type HarnessRuntimeApplication,
@@ -78,5 +78,7 @@ export async function runNimCli(
   args: readonly string[],
   sessionName: string | null,
 ): Promise<number> {
-  return await runNimTuiSmoke(args, { sessionName });
+  const argsWithSession =
+    sessionName === null ? [...args] : ['--session-id', sessionName, ...args];
+  return await runStandaloneNimCli(argsWithSession);
 }

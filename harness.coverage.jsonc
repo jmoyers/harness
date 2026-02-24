@@ -5,7 +5,6 @@
     "src/clients/tui/left-rail-interactions.ts",
     "src/clients/tui/main-pane-interactions.ts",
     "src/services/runtime-task-pane-shortcuts.ts",
-    "src/services/runtime-nim-session.ts",
     "src/services/runtime-control-actions.ts",
     "src/services/runtime-conversation-activation.ts",
     "src/services/runtime-conversation-title-edit.ts",

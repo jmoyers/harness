@@ -177,6 +177,9 @@ export function launchCommandForAgent(agentType: string): string {
   if (normalized === 'terminal') {
     return resolveTerminalCommandForEnvironment(process.env, process.platform);
   }
+  if (normalized === 'nim') {
+    return 'harness';
+  }
   return 'codex';
 }
 

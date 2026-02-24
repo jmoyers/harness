@@ -1,4 +1,4 @@
-export type ThreadAgentType = 'codex' | 'claude' | 'cursor' | 'terminal' | 'critique';
+export type ThreadAgentType = 'codex' | 'claude' | 'cursor' | 'terminal' | 'critique' | 'nim';
 
 type CommandMenuScope = 'all' | 'thread-start' | 'theme-select' | 'shortcuts';
 

@@ -561,6 +561,9 @@ const DEFAULT_AGENT_INSTALL_COMMANDS: Readonly<Record<AgentToolType, string | nu
 const DEFAULT_CURSOR_HOOK_RELAY_SCRIPT_PATH = fileURLToPath(
   new URL('../../scripts/cursor-hook-relay.ts', import.meta.url),
 );
+const DEFAULT_HARNESS_NIM_SCRIPT_PATH = fileURLToPath(
+  new URL('../../scripts/harness.ts', import.meta.url),
+);
 const THREAD_TITLE_AGENT_TYPES = new Set(['codex', 'claude', 'cursor']);
 const LIFECYCLE_TELEMETRY_EVENT_NAMES = new Set([
   'codex.user_prompt',
@@ -1997,6 +2000,12 @@ export class ControlPlaneStreamServer {
         baseArgs: [],
       };
     }
+    if (agentType === 'nim') {
+      return {
+        command: process.execPath,
+        baseArgs: [DEFAULT_HARNESS_NIM_SCRIPT_PATH, 'nim'],
+      };
+    }
     if (agentType !== 'terminal') {
       return {};
     }
@@ -2109,7 +2118,10 @@ export class ControlPlaneStreamServer {
       ...(claudeHookLaunchConfig?.args ?? []),
       ...baseSessionArgs,
     ];
-    const launchCommand = formatLaunchCommand(launchCommandName, launchArgs);
+    const launchCommand = formatLaunchCommand(launchCommandName, [
+      ...(launchProfile.baseArgs ?? []),
+      ...launchArgs,
+    ]);
     const startInput: StartControlPlaneSessionInput = {
       args: launchArgs,
       initialCols: command.initialCols,

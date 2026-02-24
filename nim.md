@@ -2,11 +2,11 @@
 
 Date: 2026-02-21  
 Branch: `jm/nim-next`  
-Status: planning document for execution; does not override `design.md`, `behavior.md`, or `agents.md`.
+Status: archived planning document; current behavior is defined in `behavior.md` and architecture in `design.md`.
 
 ## 1. Intent
 
-Ship a pinned nim experience inside the main Harness mux UI that feels like Codex in use, while remaining first-party and architecture-compliant:
+Ship a workspace-scoped nim experience that runs as a standalone process, opened and streamed from the main Harness mux UI:
 
 - use Codex behavior and structure as reference only,
 - do not import or reuse Codex libraries,
@@ -57,8 +57,8 @@ flowchart LR
 
 ### 4.1 Ownership Boundaries
 
+- `packages/nim`: standalone nim app package and CLI bootstrap.
 - `packages/nim-core`: session/run orchestration, provider routing, canonical nim event stream.
-- `src/services/runtime-nim-*`: mux app-layer lifecycle, subscriptions, action dispatch, tool bridge wiring.
 - `src/mux/live-mux/*`: selection, navigation, and pane composition.
 - `packages/harness-ui/src/*`: reusable rendering/input primitives used by mux and nim view.
 
@@ -87,12 +87,12 @@ flowchart LR
 - compact status/tool timeline rows.
 - Reuse existing theme pipeline and add nim token surfaces in `src/ui/mux-theme*.ts` where needed.
 
-### 5.3 Runtime Services for nim in Mux
+### 5.3 Runtime Process Integration in Mux
 
-- Add `src/services/runtime-nim-session.ts` for start/resume/switch-model lifecycle.
-- Add `src/services/runtime-nim-stream-subscriptions.ts` for event/UI stream attachment and teardown.
-- Add `src/services/runtime-nim-actions.ts` for send/steer/queue/abort.
-- Add `src/services/runtime-nim-state.ts` for in-memory projection consumed by the nim pane.
+- Maintain exactly one workspace-scoped nim process conversation.
+- Spawn/attach/stream nim over the same control-plane PTY path used by thread sessions.
+- Route nim pane input/escape/resize through conversation stream I/O.
+- Project nim process status through the shared session status model.
 
 ### 5.4 Control Plane Tool Bridge
 
@@ -105,8 +105,8 @@ flowchart LR
 
 ### 5.5 CLI and Entry Points
 
-- Keep `scripts/nim-tui-smoke.ts` as a smoke harness.
-- Route production UX through `harness` mux runtime, not a parallel standalone nim app.
+- Route `harness nim` to `packages/nim/src/cli.ts`.
+- Keep production mux UX on control-plane process streaming with nim as a standalone process profile.
 
 ## 6. Roadmap
 
@@ -192,7 +192,6 @@ Performance baseline notes (2026-02-22):
 - `test/nim-core-runtime.test.ts`
 - `test/nim-runtime-provider-driver.test.ts`
 - `test/nim-functional-use-cases.test.ts`
-- `test/services-runtime-nim-*.test.ts` (new)
 
 - Tool bridge and control-plane parity:
 - `test/control-plane-api-parity.test.ts`
@@ -200,8 +199,10 @@ Performance baseline notes (2026-02-22):
 - `test/services-runtime-nim-tool-bridge.test.ts` (new)
 
 - End-to-end behavior:
-- `test/codex-live-mux-startup.integration.test.ts` (extend with nim pane path)
-- `test/nim-tui-smoke.test.ts`
+- `test/integration/codex/codex-live-mux-startup-hydration.integration.test.ts`
+- `test/integration/nim/nim-cli-session-scope.integration.test.ts`
+- `test/integration/ui/ui-harness-ui-e2e.integration.test.ts`
+- `test/integration/ui/ui-harness-ui-matrix.integration.test.ts`
 - `scripts/integration-nim-haiku.ts` in CI gate for live validation.
 
 ## 8. Delivery Slices (Proposed PR Order)

@@ -279,6 +279,31 @@ void test('control-plane store upserts directories and persists conversations/ru
   }
 });
 
+void test('control-plane store initializes runtime status model for nim conversations', () => {
+  const storePath = tempStorePath();
+  const store = new SqliteControlPlaneStore(storePath);
+  try {
+    store.upsertDirectory({
+      directoryId: 'dir-nim',
+      tenantId: 'tenant-nim',
+      userId: 'user-nim',
+      workspaceId: 'workspace-nim',
+      path: '/tmp/workspace-nim',
+    });
+    const conversation = store.createConversation({
+      conversationId: 'conversation-nim',
+      directoryId: 'dir-nim',
+      title: 'nim workspace',
+      agentType: 'nim',
+    });
+    assert.equal(conversation.runtimeStatusModel === null, false);
+    assert.equal(conversation.runtimeStatusModel?.phase, 'starting');
+    assert.equal(conversation.runtimeStatusModel?.runtimeStatus, 'running');
+  } finally {
+    store.close();
+  }
+});
+
 void test('control-plane store restores archived directory and validates errors', () => {
   const store = new SqliteControlPlaneStore(':memory:');
   try {

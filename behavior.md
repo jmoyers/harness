@@ -155,40 +155,36 @@ Test anchors:
 Behavior fragments:
 
 - Left rail includes a persistent top-level `nim` entry that routes to a dedicated nim pane.
-- nim pane renders a themed header band, transcript viewport, and pinned bottom composer in the existing main-pane layout.
-- In mux, nim is hosted as a standalone PTY subprocess (`harness nim`) and is started/stopped with runtime lifecycle.
-- nim runtime artifacts are session-scoped when mux runs under `--session` (`.harness/sessions/<name>/nim/*`).
-- nim subprocess state remains active across pane switches during a live mux session.
-- Keyboard semantics in nim pane are fixed:
-- `Enter`: submit when idle, steer when a run is active.
-- `Tab`: queue a follow-up message.
-- `Esc`: request abort for active run and stay silent when already idle.
-- nim supports `debug` and `user` output modes.
-- `debug` shows explicit lifecycle/tool activity timeline rows.
-- `user` suppresses debug timeline noise while preserving user/assistant transcript flow.
-- `/mode` accepts `debug|user` and keeps `seamless` as a compatibility alias mapped to `user`.
-- Provider-backed runs that fail are retried once with a local fallback driver, and failure reasons are surfaced in transcript `[error]` rows.
+- nim in mux is modeled as a single workspace-scoped conversation process (`nim-workspace-<workspaceId>`) for now.
+- First entry into nim resolves or creates that conversation in the control plane and activates it through the same start/attach stream path used by regular threads.
+- nim launch profile uses the harness runtime entrypoint (`node scripts/harness.ts nim`) via control-plane PTY lifecycle.
+- nim pane rendering in mux is conversation-frame based (same stream snapshot model as threads); if no frame is available yet, the pane renders blank rows.
+- Main-pane input routing in nim mode forwards text directly to the active nim session stream input, and raw `Esc` is passed through for runtime handling.
+- nim process status is projected into the same status model pipeline used for other agent sessions and is persisted/restored with conversation runtime state.
 
 Owners:
 
-- `src/services/runtime-nim-cli-session.ts`
-- `scripts/harness-commands.ts`
-- `scripts/harness-runtime.ts`
-- `scripts/nim-tui-smoke.ts`
-- `src/services/runtime-right-pane-render.ts`
-- `src/ui/panes/nim.ts`
+- `src/mux/new-thread-prompt.ts`
+- `src/mux/live-mux/conversation-state.ts`
 - `src/mux/runtime-app/codex-live-mux-runtime.ts`
-- `src/mux/live-mux/left-nav.ts`
+- `src/control-plane/stream-server.ts`
+- `src/control-plane/status/session-status-engine.ts`
+- `src/store/control-plane-store.ts`
+- `src/services/runtime-render-state.ts`
+- `src/services/runtime-right-pane-render.ts`
+- `packages/nim/src/*`
 
 Test anchors:
 
-- `test/unit/services/runtime/services-runtime-nim-cli-session.test.ts`
-- `test/unit/nim/nim-tui-smoke.test.ts`
-- `test/ui-panes-nim.test.ts`
-- `test/services-runtime-right-pane-render.test.ts`
-- `test/integration/nim/nim-cli-session-scope.integration.test.ts`
-- `test/integration/ui/ui-harness-ui-v2-e2e.integration.test.ts`
-- `test/mux-live-mux-uncovered-small.test.ts`
+- `test/unit/mux/mux-new-thread-prompt.test.ts`
+- `test/unit/mux/live-mux/mux-live-mux-conversation-state.test.ts`
+- `test/unit/control-plane/control-plane-status-engine.test.ts`
+- `test/unit/control-plane/control-plane-store.test.ts`
+- `test/unit/control-plane/control-plane-stream-server.test.ts`
+- `test/unit/services/runtime/services-runtime-render-state.test.ts`
+- `test/unit/services/runtime/services-runtime-right-pane-render.test.ts`
+- `test/integration/ui/ui-harness-ui-e2e.integration.test.ts`
+- `test/integration/ui/ui-harness-ui-matrix.integration.test.ts`
 - `test/integration/codex/codex-live-mux-startup-hydration.integration.test.ts`
 
 ## Task Pane and Editing
@@ -272,7 +268,7 @@ Owners:
 Test anchors:
 
 - `test/contracts/ui/ui-look-and-feel.contract.test.ts`
-- `test/integration/ui/ui-harness-ui-v2-matrix.integration.test.ts`
+- `test/integration/ui/ui-harness-ui-matrix.integration.test.ts`
 
 ## Control Plane Command Surface
 

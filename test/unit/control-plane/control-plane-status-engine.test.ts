@@ -98,6 +98,25 @@ void test('session status engine projects codex/claude/cursor telemetry into sta
   );
   assert.equal(cursorWorking.phase, 'working');
   assert.equal(cursorWorking.detailText, 'active');
+
+  const nimWorking = expectStatusModel(
+    engine.project({
+      agentType: 'nim',
+      runtimeStatus: 'running',
+      attentionReason: null,
+      telemetry: {
+        source: 'otlp-log',
+        eventName: 'codex.user_prompt',
+        severity: null,
+        summary: 'nim prompt submitted',
+        observedAt: OBSERVED_AT,
+      },
+      observedAt: OBSERVED_AT,
+      previous: null,
+    }),
+  );
+  assert.equal(nimWorking.phase, 'working');
+  assert.equal(nimWorking.detailText, 'active');
 });
 
 void test('session status engine returns null for non-agent types', () => {

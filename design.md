@@ -73,6 +73,7 @@ The runtime is organized by responsibility:
 - `src/domain/*`: mutable business state and deterministic state transitions.
 - `src/services/*`: orchestration and IO-facing workflows.
 - `packages/harness-ui/*`: reusable terminal UI primitives and interaction building blocks.
+- `packages/nim/*`: standalone nim app package built on `harness-ui`, launched as a separate process from harness mux/runtime.
 - `src/mux/runtime-app/*`: mux runtime composition root and application assembly.
 - `scripts/*`: bootstrap wrappers only; no business logic.
 

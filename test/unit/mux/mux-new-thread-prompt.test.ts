@@ -18,6 +18,7 @@ void test('new thread prompt defaults and normalization are stable', () => {
   assert.equal(normalizeThreadAgentType('cursor'), 'cursor');
   assert.equal(normalizeThreadAgentType('terminal'), 'terminal');
   assert.equal(normalizeThreadAgentType('critique'), 'critique');
+  assert.equal(normalizeThreadAgentType('nim'), 'nim');
   assert.equal(normalizeThreadAgentType('other'), 'codex');
   assert.equal(nextThreadAgentType('codex'), 'claude');
   assert.equal(nextThreadAgentType('claude'), 'cursor');

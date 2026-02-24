@@ -123,6 +123,7 @@ void test('conversation-state launchCommand, debug footer, and compaction helper
   assert.equal(launchCommandForAgent('claude'), 'claude');
   assert.equal(launchCommandForAgent('cursor'), 'cursor-agent');
   assert.equal(launchCommandForAgent('terminal').length > 0, true);
+  assert.equal(launchCommandForAgent('nim'), 'harness');
   assert.equal(launchCommandForAgent('unknown'), 'codex');
 
   const formatted = formatCommandForDebugBar('bunx', [

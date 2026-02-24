@@ -7,6 +7,7 @@ Programmable, agent-agnostic, threaded, ergonomic, and fast.
 ## What matters most
 
 - Parallel threads across `codex`, `claude`, `cursor`, `terminal`, and `critique`.
+- Workspace-scoped `nim` runs as its own process and is opened/streamed from the left rail like other live sessions.
 - One command palette (`ctrl+p`) to jump threads, run actions, and control workflow quickly.
 - Toggle the bottom debug bar with `cmd+p` when you need runtime launch/auth context.
 - Codex, Claude Code, and Cursor together in one workspace.

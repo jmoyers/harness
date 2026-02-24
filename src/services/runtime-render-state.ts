@@ -43,22 +43,23 @@ export function prepareRuntimeRenderState<TConversation, TFrame>(
     options.directories.hasDirectory(workspace.activeDirectoryId);
   const homePaneActive = workspace.mainPaneMode === 'home';
   const nimPaneActive = workspace.mainPaneMode === 'nim';
+  const conversationPaneVisible = workspace.mainPaneMode === 'conversation' || nimPaneActive;
   if (
     !projectPaneActive &&
     !homePaneActive &&
-    !nimPaneActive &&
+    !conversationPaneVisible &&
     options.conversations.activeConversationId === null
   ) {
     return null;
   }
 
   const activeConversation = options.conversations.getActiveConversation();
-  if (!projectPaneActive && !homePaneActive && !nimPaneActive && activeConversation === null) {
+  if (!projectPaneActive && !homePaneActive && !conversationPaneVisible && activeConversation === null) {
     return null;
   }
 
   const rightFrame =
-    !projectPaneActive && !homePaneActive && !nimPaneActive && activeConversation !== null
+    !projectPaneActive && !homePaneActive && conversationPaneVisible && activeConversation !== null
       ? options.snapshotFrame(activeConversation)
       : null;
   const renderSelection =
