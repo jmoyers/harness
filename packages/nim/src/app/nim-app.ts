@@ -15,13 +15,13 @@ import type { NimRuntime, NimModelRef, SessionHandle } from '../../../nim-core/s
 import { CONTEXT_WINDOW_TOKENS, DEFAULT_RUNTIME_IDS } from '../contracts/config.ts';
 import type { AgentMode, ChatMsg, UiState } from '../contracts/types.ts';
 import { collectFileChanges, approxTokenCount, modeTitle } from '../state/helpers.ts';
-import { NIM_COMMANDS } from './commands.ts';
+import { nimCommands } from './commands.ts';
 import { FooterView } from '../ui/views/footer-view.ts';
 import { LandingView } from '../ui/views/landing-view.ts';
 import { PromptShell } from '../ui/views/prompt-shell.ts';
 import { SidebarView } from '../ui/views/sidebar-view.ts';
 import { ConversationView } from '../ui/views/conversation-view.ts';
-import { NIM_COLORS, TH } from '../ui/theme.ts';
+import { nimColors, TH } from '../ui/theme.ts';
 
 interface RequiredApiKeyConfig {
   readonly envVar: string;
@@ -105,7 +105,7 @@ export class NimApp extends Widget {
     this.divider = PaneDivider({
       id: 'main-divider',
       orientation: 'vertical',
-      fg: NIM_COLORS.borderSubtle,
+      fg: nimColors.borderSubtle,
       draggable: false,
     });
     this.divider.visible = false;
@@ -118,9 +118,9 @@ export class NimApp extends Widget {
       id: 'composer',
       placeholder: 'Ask anything...',
       modeIndicator: '[Build]',
-      fg: NIM_COLORS.text,
-      bg: NIM_COLORS.element,
-      placeholderFg: NIM_COLORS.muted,
+      fg: nimColors.text,
+      bg: nimColors.element,
+      placeholderFg: nimColors.muted,
       height: 3,
     });
 
@@ -342,7 +342,14 @@ export class NimApp extends Widget {
         mode: 'seamless',
       });
 
-      const assistantMessage: ChatMsg = { role: 'nim', text: '', tools: [], ts: Date.now() };
+      const assistantMessage: ChatMsg = {
+        role: 'nim',
+        text: '',
+        tools: [],
+        ts: Date.now(),
+        pending: true,
+        state: 'thinking',
+      };
       this.conv.messages = [...this.conv.messages, assistantMessage];
       const index = this.conv.messages.length - 1;
 
@@ -353,38 +360,52 @@ export class NimApp extends Widget {
           current.text += event.text;
         } else if (event.type === 'assistant.text.message') {
           current.text = event.text;
+        } else if (event.type === 'assistant.state') {
+          current.state = event.state;
+          if (event.state === 'idle') {
+            current.pending = false;
+            current.duration = Date.now() - startTime;
+            this.conv.messages = this.conv.messages.map((item, messageIndex) =>
+              messageIndex === index ? current : item,
+            );
+            this.syncSidebarMetrics();
+            this.conv.scrollToBottom();
+            this.streaming = false;
+            this.promptShell.busy = false;
+            this.requestRender?.();
+            break;
+          }
         } else if (event.type === 'tool.activity') {
+          const status =
+            event.phase === 'start' ? 'pending' : event.phase === 'end' ? 'done' : 'error';
+          const toolIndex = current.tools.findIndex((tool) => tool.id === event.toolCallId);
           if (event.phase === 'start') {
-            current.tools = [
-              ...current.tools,
-              { name: event.toolName, args: '', status: 'pending' },
-            ];
-          } else if (event.phase === 'end') {
-            current.tools = current.tools.map((tool) =>
-              tool.name === event.toolName && tool.status === 'pending'
-                ? { ...tool, status: 'done' as const }
-                : tool,
-            );
+            if (toolIndex >= 0) {
+              current.tools = current.tools.map((tool, indexInTools) =>
+                indexInTools === toolIndex
+                  ? { ...tool, name: event.toolName, status: 'pending' as const }
+                  : tool,
+              );
+            } else {
+              current.tools = [
+                ...current.tools,
+                { id: event.toolCallId, name: event.toolName, args: '', status: 'pending' },
+              ];
+            }
           } else {
-            current.tools = current.tools.map((tool) =>
-              tool.name === event.toolName && tool.status === 'pending'
-                ? { ...tool, status: 'error' as const }
-                : tool,
-            );
+            if (toolIndex >= 0) {
+              current.tools = current.tools.map((tool, indexInTools) =>
+                indexInTools === toolIndex ? { ...tool, status } : tool,
+              );
+            } else {
+              current.tools = [
+                ...current.tools,
+                { id: event.toolCallId, name: event.toolName, args: '', status },
+              ];
+            }
           }
         } else if (event.type === 'system.notice') {
           current.text += `${current.text.length > 0 ? '\n' : ''}[notice] ${event.text}`;
-        } else if (event.type === 'assistant.state' && event.state === 'idle') {
-          current.duration = Date.now() - startTime;
-          this.conv.messages = this.conv.messages.map((item, messageIndex) =>
-            messageIndex === index ? current : item,
-          );
-          this.syncSidebarMetrics();
-          this.conv.scrollToBottom();
-          this.streaming = false;
-          this.promptShell.busy = false;
-          this.requestRender?.();
-          break;
         }
 
         this.conv.messages = this.conv.messages.map((item, messageIndex) =>
@@ -402,11 +423,24 @@ export class NimApp extends Widget {
           text: `Error: ${error instanceof Error ? error.message : String(error)}`,
           tools: [],
           ts: Date.now(),
+          pending: false,
+          state: 'idle',
+          duration: Date.now() - startTime,
         },
       ];
       this.syncSidebarMetrics();
       this.conv.scrollToBottom();
     } finally {
+      this.conv.messages = this.conv.messages.map((message) =>
+        message.role === 'nim' && message.pending
+          ? {
+              ...message,
+              pending: false,
+              state: 'idle',
+              ...(message.duration === undefined ? { duration: Date.now() - startTime } : {}),
+            }
+          : message,
+      );
       this.streaming = false;
       this.promptShell.busy = false;
       this.requestRender?.();
@@ -417,7 +451,7 @@ export class NimApp extends Widget {
     if (this.palette === null) {
       this.palette = CommandPalette({
         id: 'palette',
-        actions: NIM_COMMANDS,
+        actions: nimCommands,
         width: 56,
         height: 14,
       });

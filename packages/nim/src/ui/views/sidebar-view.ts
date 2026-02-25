@@ -2,7 +2,7 @@ import { Widget } from '../../../../harness-ui/src/widget/widget.ts';
 import { reactive } from '../../../../harness-ui/src/widget/reactive.ts';
 import type { ClippedCellBuffer } from '../../../../harness-ui/src/core/cell-buffer.ts';
 import type { FileChange, McpStatus } from '../../contracts/types.ts';
-import { NIM_VERSION } from '../../contracts/config.ts';
+import { nimVersion } from '../../contracts/config.ts';
 import { padRight, progressBar } from '../../state/helpers.ts';
 import { TH } from '../theme.ts';
 
@@ -113,7 +113,7 @@ export class SidebarView extends Widget {
       }
     }
 
-    const versionLine = `OpenCode-inspired ${NIM_VERSION}`;
+    const versionLine = `OpenCode-inspired ${nimVersion}`;
     buf.drawText(
       Math.max(1, buf.cols - versionLine.length - 1),
       Math.max(0, buf.rows - 1),

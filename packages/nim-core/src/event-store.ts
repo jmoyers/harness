@@ -123,7 +123,7 @@ class DatabaseSync {
   }
 }
 
-const NIM_EVENT_STORE_SCHEMA_VERSION = 1;
+const nimEventStoreSchemaVersion = 1;
 
 function asRecord(value: unknown): Record<string, unknown> {
   if (typeof value !== 'object' || value === null) {
@@ -248,13 +248,13 @@ export class NimSqliteEventStore implements NimEventStore {
     this.db.exec('BEGIN IMMEDIATE TRANSACTION');
     try {
       const currentVersion = this.readSchemaVersion();
-      if (currentVersion > NIM_EVENT_STORE_SCHEMA_VERSION) {
+      if (currentVersion > nimEventStoreSchemaVersion) {
         throw new Error(
-          `nim event store schema version ${String(currentVersion)} is newer than supported version ${String(NIM_EVENT_STORE_SCHEMA_VERSION)}`,
+          `nim event store schema version ${String(currentVersion)} is newer than supported version ${String(nimEventStoreSchemaVersion)}`,
         );
       }
       this.applySchemaV1();
-      this.writeSchemaVersion(NIM_EVENT_STORE_SCHEMA_VERSION);
+      this.writeSchemaVersion(nimEventStoreSchemaVersion);
       this.db.exec('COMMIT');
     } catch (error) {
       this.db.exec('ROLLBACK');

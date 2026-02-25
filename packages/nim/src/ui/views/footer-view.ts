@@ -1,6 +1,6 @@
 import { Widget } from '../../../../harness-ui/src/widget/widget.ts';
 import type { ClippedCellBuffer } from '../../../../harness-ui/src/core/cell-buffer.ts';
-import { NIM_VERSION } from '../../contracts/config.ts';
+import { nimVersion } from '../../contracts/config.ts';
 import { TH } from '../theme.ts';
 
 export class FooterView extends Widget {
@@ -15,7 +15,7 @@ export class FooterView extends Widget {
     const dir = process.cwd().replace(process.env.HOME ?? '', '~');
     buf.drawText(1, 0, dir, TH.footerText);
 
-    const status = `nim ${NIM_VERSION}`;
+    const status = `nim ${nimVersion}`;
     buf.drawText(Math.max(1, buf.cols - status.length - 1), 0, status, TH.footerText);
 
     const hints: ReadonlyArray<readonly [string, string]> = [

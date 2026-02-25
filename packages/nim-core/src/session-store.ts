@@ -162,7 +162,7 @@ class DatabaseSync {
   }
 }
 
-const NIM_SESSION_STORE_SCHEMA_VERSION = 2;
+const nimSessionStoreSchemaVersion = 2;
 
 function asRecord(value: unknown): Record<string, unknown> {
   if (typeof value !== 'object' || value === null) {
@@ -429,9 +429,9 @@ export class NimSqliteSessionStore implements NimSessionStore {
     this.db.exec('BEGIN IMMEDIATE TRANSACTION');
     try {
       const currentVersion = this.readSchemaVersion();
-      if (currentVersion > NIM_SESSION_STORE_SCHEMA_VERSION) {
+      if (currentVersion > nimSessionStoreSchemaVersion) {
         throw new Error(
-          `nim session store schema version ${String(currentVersion)} is newer than supported version ${String(NIM_SESSION_STORE_SCHEMA_VERSION)}`,
+          `nim session store schema version ${String(currentVersion)} is newer than supported version ${String(nimSessionStoreSchemaVersion)}`,
         );
       }
       if (currentVersion < 1) {
@@ -440,7 +440,7 @@ export class NimSqliteSessionStore implements NimSessionStore {
       if (currentVersion < 2) {
         this.applySchemaV2();
       }
-      this.writeSchemaVersion(NIM_SESSION_STORE_SCHEMA_VERSION);
+      this.writeSchemaVersion(nimSessionStoreSchemaVersion);
       this.db.exec('COMMIT');
     } catch (error) {
       this.db.exec('ROLLBACK');

@@ -1,6 +1,6 @@
 import type { CommandAction } from '../../../harness-ui/src/widgets/command-palette.ts';
 
-export const NIM_COMMANDS: CommandAction[] = [
+export const nimCommands: CommandAction[] = [
   { id: 'new-session', title: 'New session', keywords: ['fresh', 'conversation'] },
   { id: 'session-list', title: 'Session list', keywords: ['history', 'threads'] },
   { id: 'set-api-key', title: 'Set Anthropic API Key', keywords: ['api', 'key', 'anthropic'] },

@@ -3,6 +3,7 @@ export type AgentMode = 'build' | 'plan';
 export type UiState = 'landing' | 'chat';
 
 export interface ToolCall {
+  id: string;
   name: string;
   args: string;
   status: 'pending' | 'done' | 'error';
@@ -15,6 +16,8 @@ export interface ChatMsg {
   tools: ToolCall[];
   ts: number;
   duration?: number;
+  pending?: boolean;
+  state?: 'thinking' | 'tool-calling' | 'responding' | 'idle';
 }
 
 export interface FileChange {

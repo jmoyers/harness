@@ -196,6 +196,58 @@ export {
   type CommandPaletteProps,
   type CommandAction,
 } from './widgets/command-palette.ts';
+export {
+  TurnActivityStrip,
+  TurnActivityStripWidget,
+  spinnerFrameAt,
+  formatTurnActivityLine,
+  type TurnActivityState,
+  type TurnActivitySummary,
+  type TurnActivityFormatInput,
+  type TurnActivityStripProps,
+} from './widgets/turn-activity-strip.ts';
+export {
+  DataTableCompact,
+  DataTableCompactWidget,
+  buildDataTableCompactLines,
+  type DataTableCompactLine,
+  type DataTableCompactLineKind,
+  type BuildDataTableCompactLinesInput,
+  type DataTableCompactProps,
+} from './widgets/data-table-compact.ts';
+export {
+  MarkdownTranscript,
+  MarkdownTranscriptWidget,
+  buildMarkdownTranscriptLines,
+  type MarkdownTranscriptLine,
+  type MarkdownTranscriptLineKind,
+  type BuildMarkdownTranscriptLinesInput,
+  type MarkdownTranscriptColors,
+  type MarkdownTranscriptProps,
+} from './widgets/markdown-transcript.ts';
+export {
+  ToolCallTimeline,
+  ToolCallTimelineWidget,
+  summarizeToolCalls,
+  toolStatusIcon,
+  buildToolCallTimelineLines,
+  type ToolCallTimelineStatus,
+  type ToolCallTimelineItem,
+  type ToolCallTimelineSummary,
+  type ToolCallTimelineLine,
+  type ToolCallTimelineLineKind,
+  type BuildToolCallTimelineLinesInput,
+  type ToolCallTimelineProps,
+} from './widgets/tool-call-timeline.ts';
+export {
+  MessageCard,
+  MessageCardWidget,
+  messageCardRoleLabel,
+  formatMessageCardMetaLine,
+  type MessageCardRole,
+  type MessageCardMetaInput,
+  type MessageCardProps,
+} from './widgets/message-card.ts';
 
 // VTE
 export { Vte, replayTerminalSteps } from './vte/vte.ts';

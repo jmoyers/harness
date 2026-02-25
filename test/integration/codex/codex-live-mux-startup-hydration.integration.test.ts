@@ -43,7 +43,7 @@ import {
   writeLeftMouseClick,
 } from '../../helpers/codex-live-mux-startup-test-helpers.ts';
 
-const NIM_LANDING_MARKERS = ['[Build]', '[Setup]'] as const;
+const nimLandingMarkers = ['[Build]', '[Setup]'] as const;
 
 async function waitForAnyNimLandingSnapshotText(
   oracle: TerminalSnapshotOracle,
@@ -52,16 +52,14 @@ async function waitForAnyNimLandingSnapshotText(
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
     const frame = oracle.snapshotWithoutHash();
-    for (const marker of NIM_LANDING_MARKERS) {
+    for (const marker of nimLandingMarkers) {
       if (frame.lines.some((line) => line.includes(marker))) {
         return;
       }
     }
     await delay(40);
   }
-  throw new Error(
-    `timed out waiting for any nim landing marker: ${NIM_LANDING_MARKERS.join(', ')}`,
-  );
+  throw new Error(`timed out waiting for any nim landing marker: ${nimLandingMarkers.join(', ')}`);
 }
 
 void test(

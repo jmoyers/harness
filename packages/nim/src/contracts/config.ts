@@ -1,4 +1,4 @@
-export const NIM_VERSION = '0.1.0';
+export const nimVersion = '0.1.0';
 
 export const CONTEXT_WINDOW_TOKENS = 200_000;
 

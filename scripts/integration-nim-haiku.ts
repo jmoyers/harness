@@ -197,7 +197,7 @@ async function runNimRuntimeHaikuObservabilityCheck(input: {
       sessionId: session.sessionId,
       input: [
         'Call the `ping` tool exactly once with {"value":"nim-haiku"}.',
-        'After the tool returns, respond exactly with NIM_HAIKU_OK.',
+        'After the tool returns, respond exactly with nim_haiku_ok.',
         'Do not output any extra text.',
       ].join(' '),
       idempotencyKey: `nim-haiku-runtime:${input.modelId}`,
@@ -238,7 +238,7 @@ async function runNimRuntimeHaikuObservabilityCheck(input: {
       })
       .map((event) => event.text)
       .join('');
-    assert.match(assistantText, /NIM_HAIKU_OK/u);
+    assert.match(assistantText, /nim_haiku_ok/u);
     assert.equal(
       uiEvents.some((event) => event.type === 'tool.activity' && event.phase === 'start'),
       true,
@@ -259,8 +259,8 @@ async function runNimRuntimeHaikuObservabilityCheck(input: {
         return event.type === 'assistant.output.message';
       },
     );
-    assert.match(runOutput, /NIM_HAIKU_OK/u);
-    assert.match(String(runMessage?.data?.['text'] ?? ''), /NIM_HAIKU_OK/u);
+    assert.match(runOutput, /nim_haiku_ok/u);
+    assert.match(String(runMessage?.data?.['text'] ?? ''), /nim_haiku_ok/u);
     assert.equal(
       runEvents.some((event) => event.type === 'provider.thinking.started'),
       true,
@@ -317,7 +317,7 @@ async function main(): Promise<void> {
         model,
         prompt: [
           'Call the `ping` tool exactly once with {"value":"nim-haiku"}.',
-          'After the tool returns, respond exactly with NIM_HAIKU_OK.',
+          'After the tool returns, respond exactly with nim_haiku_ok.',
           'Do not output any extra text.',
         ].join(' '),
         temperature: 0,
@@ -372,7 +372,7 @@ async function main(): Promise<void> {
       assert.equal(sawTextDelta, true);
       assert.equal(toolCalls.length >= 1, true);
       assert.equal(toolResults.length >= 1, true);
-      assert.match(text, /NIM_HAIKU_OK/u);
+      assert.match(text, /nim_haiku_ok/u);
 
       const runtimeObservability = await runNimRuntimeHaikuObservabilityCheck({
         apiKey,

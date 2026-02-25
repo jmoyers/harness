@@ -379,7 +379,7 @@ const THEME_ACTION_ID_PREFIX = 'theme.set.';
 const API_KEY_ACTION_ID_PREFIX = 'api-key.set.';
 const RELEASE_NOTES_PREVIEW_LINE_COUNT = 6;
 const RELEASE_NOTES_MAX_RELEASES = 3;
-const WORKSPACE_NIM_SESSION_PREFIX = 'nim-workspace-';
+const workspaceNimSessionPrefix = 'nim-workspace-';
 const COMMAND_MENU_ALLOWED_API_KEYS: readonly AllowedCommandMenuApiKey[] = [
   {
     actionIdSuffix: 'anthropic',
@@ -436,7 +436,7 @@ function workspaceScopedNimSessionId(workspaceId: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9_-]+/gu, '-');
   const suffix = normalized.length > 0 ? normalized : 'default';
-  return `${WORKSPACE_NIM_SESSION_PREFIX}${suffix}`;
+  return `${workspaceNimSessionPrefix}${suffix}`;
 }
 
 function isOverlayLayerHit(

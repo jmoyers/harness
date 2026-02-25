@@ -197,3 +197,61 @@ test('nim app streams assistant response deltas into a single visible message', 
   assert.equal(messages[0]?.text, 'hello');
   assert.equal(messages[1]?.text, 'Hello');
 });
+
+test('nim app tracks repeated tool names by toolCallId instead of name collisions', async () => {
+  const streamedUiEvents: readonly NimUiEvent[] = [
+    { type: 'assistant.state', state: 'responding' },
+    { type: 'tool.activity', phase: 'start', toolCallId: 'call-a', toolName: 'directory.list' },
+    { type: 'tool.activity', phase: 'start', toolCallId: 'call-b', toolName: 'directory.list' },
+    { type: 'tool.activity', phase: 'error', toolCallId: 'call-a', toolName: 'directory.list' },
+    { type: 'tool.activity', phase: 'end', toolCallId: 'call-b', toolName: 'directory.list' },
+    { type: 'assistant.state', state: 'idle' },
+  ];
+  const runtime = createRuntimeStub();
+  runtime.sendTurn = async (_input: SendTurnInput): Promise<TurnHandle> => {
+    return {
+      runId: 'run-tools',
+      sessionId: 'session-1',
+      idempotencyKey: 'turn-1',
+      done: Promise.resolve({
+        runId: 'run-tools',
+        terminalState: 'completed',
+      }),
+    };
+  };
+  runtime.streamUi = (_input: StreamUiInput): AsyncIterable<NimUiEvent> => {
+    return {
+      async *[Symbol.asyncIterator]() {
+        for (const event of streamedUiEvents) {
+          yield event;
+        }
+      },
+    };
+  };
+
+  const app = new NimApp({
+    runtime,
+    model: 'anthropic/claude-sonnet-4-20250514' as NimModelRef,
+    tenantId: 'tenant-1',
+    userId: 'user-1',
+  });
+
+  app.onComposerSubmitted(new ComposerSubmitted('show me directories'));
+
+  const conversation = app.queryOne('#conv') as {
+    messages?: Array<{ tools: Array<{ id: string; status: string }> }>;
+  } | null;
+  await waitFor(() => {
+    const messages = conversation?.messages;
+    if (messages === undefined || messages.length < 2) {
+      return false;
+    }
+    return messages[1]?.tools.length === 2;
+  });
+
+  const assistantTools = conversation?.messages?.[1]?.tools ?? [];
+  assert.equal(assistantTools.length, 2);
+  const toolById = new Map(assistantTools.map((tool) => [tool.id, tool.status]));
+  assert.equal(toolById.get('call-a'), 'error');
+  assert.equal(toolById.get('call-b'), 'done');
+});

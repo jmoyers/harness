@@ -113,9 +113,9 @@ import { LifecycleHooksRuntime } from './lifecycle-hooks.ts';
 import { readGitDirectorySnapshot } from '../mux/live-mux/git-snapshot.ts';
 import type { LiveSessionLike, StartSessionRuntimeInput } from './stream-session-runtime-types.ts';
 import {
-  NIM_CONTROL_PLANE_AUTH_TOKEN_ENV,
-  NIM_CONTROL_PLANE_HOST_ENV,
-  NIM_CONTROL_PLANE_PORT_ENV,
+  nimControlPlaneAuthTokenEnv,
+  nimControlPlaneHostEnv,
+  nimControlPlanePortEnv,
 } from '../contracts/nim-control-plane.ts';
 
 export interface StartControlPlaneSessionInput {
@@ -566,7 +566,7 @@ const DEFAULT_AGENT_INSTALL_COMMANDS: Readonly<Record<AgentToolType, string | nu
 const DEFAULT_CURSOR_HOOK_RELAY_SCRIPT_PATH = fileURLToPath(
   new URL('../../scripts/cursor-hook-relay.ts', import.meta.url),
 );
-const DEFAULT_HARNESS_NIM_SCRIPT_PATH = fileURLToPath(
+const defaultHarnessNimScriptPath = fileURLToPath(
   new URL('../../scripts/harness.ts', import.meta.url),
 );
 const THREAD_TITLE_AGENT_TYPES = new Set(['codex', 'claude', 'cursor']);
@@ -1551,8 +1551,12 @@ export class ControlPlaneStreamServer {
     this.stopStorageLifecyclePolicyReloadPolling();
     await this.waitForGitHubPollingToSettle();
 
-    for (const sessionId of [...this.sessions.keys()]) {
-      this.destroySession(sessionId, true);
+    while (this.sessions.size > 0) {
+      const nextSession = this.sessions.keys().next();
+      if (nextSession.done) {
+        break;
+      }
+      this.destroySession(nextSession.value, true);
     }
 
     for (const connection of this.connections.values()) {
@@ -2040,7 +2044,7 @@ export class ControlPlaneStreamServer {
     if (agentType === 'nim') {
       return {
         command: process.execPath,
-        baseArgs: [DEFAULT_HARNESS_NIM_SCRIPT_PATH, 'nim'],
+        baseArgs: [defaultHarnessNimScriptPath, 'nim'],
       };
     }
     if (agentType !== 'terminal') {
@@ -2218,12 +2222,12 @@ export class ControlPlaneStreamServer {
     if (agentType === 'nim') {
       const address = this.address();
       const mergedEnv = copyProcessEnv(command.env);
-      mergedEnv[NIM_CONTROL_PLANE_HOST_ENV] = address.address;
-      mergedEnv[NIM_CONTROL_PLANE_PORT_ENV] = String(address.port);
+      mergedEnv[nimControlPlaneHostEnv] = address.address;
+      mergedEnv[nimControlPlanePortEnv] = String(address.port);
       if (this.authToken === null) {
-        delete mergedEnv[NIM_CONTROL_PLANE_AUTH_TOKEN_ENV];
+        delete mergedEnv[nimControlPlaneAuthTokenEnv];
       } else {
-        mergedEnv[NIM_CONTROL_PLANE_AUTH_TOKEN_ENV] = this.authToken;
+        mergedEnv[nimControlPlaneAuthTokenEnv] = this.authToken;
       }
       startInput.env = mergedEnv;
     }

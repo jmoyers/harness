@@ -3,7 +3,7 @@ import type { NimToolDefinition, NimToolPolicy } from '../../packages/nim-core/s
 
 type RuntimeNimThreadRuntimeStatus = 'running' | 'needs-input' | 'completed' | 'exited';
 
-const RUNTIME_NIM_TOOLS: readonly NimToolDefinition[] = [
+const runtimeNimTools: readonly NimToolDefinition[] = [
   {
     name: 'directory.list',
     description: 'List directories known to the current workspace.',
@@ -94,9 +94,9 @@ const RUNTIME_NIM_TOOLS: readonly NimToolDefinition[] = [
   },
 ];
 
-const RUNTIME_NIM_POLICY: NimToolPolicy = {
+const runtimeNimPolicy: NimToolPolicy = {
   hash: 'nim-control-plane-tools-v3',
-  allow: RUNTIME_NIM_TOOLS.map((tool) => tool.name),
+  allow: runtimeNimTools.map((tool) => tool.name),
   deny: [],
 };
 
@@ -185,8 +185,8 @@ export class RuntimeNimToolBridge {
   }
 
   registerWithRuntime(runtime: RuntimeNimToolRuntime): void {
-    runtime.registerTools(RUNTIME_NIM_TOOLS);
-    runtime.setToolPolicy(RUNTIME_NIM_POLICY);
+    runtime.registerTools(runtimeNimTools);
+    runtime.setToolPolicy(runtimeNimPolicy);
   }
 
   async invoke(input: RuntimeNimToolBridgeInvokeInput): Promise<unknown> {

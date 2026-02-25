@@ -28,7 +28,7 @@ const SCENARIOS: readonly MatrixScenario[] = [
 const WAIT_MS = 12_000;
 
 const MOCK_ENV = { ANTHROPIC_API_KEY: undefined } as const;
-const NIM_LANDING_MARKERS = ['[Build]', '[Setup]'] as const;
+const nimLandingMarkers = ['[Build]', '[Setup]'] as const;
 
 async function waitForAnyNimLandingText(
   driver: HarnessUiE2EDriver,
@@ -37,16 +37,14 @@ async function waitForAnyNimLandingText(
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
     const lines = driver.snapshotLines();
-    for (const marker of NIM_LANDING_MARKERS) {
+    for (const marker of nimLandingMarkers) {
       if (lines.some((line) => line.includes(marker))) {
         return;
       }
     }
     await new Promise((resolve) => setTimeout(resolve, 40));
   }
-  throw new Error(
-    `timed out waiting for any nim landing marker: ${NIM_LANDING_MARKERS.join(', ')}`,
-  );
+  throw new Error(`timed out waiting for any nim landing marker: ${nimLandingMarkers.join(', ')}`);
 }
 
 async function openNimPane(driver: HarnessUiE2EDriver, timeoutMs: number): Promise<void> {

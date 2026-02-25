@@ -159,6 +159,7 @@ Behavior fragments:
 - First entry into nim resolves or creates that conversation in the control plane and activates it through the same start/attach stream path used by regular threads.
 - nim launch profile uses the harness runtime entrypoint (`node scripts/harness.ts nim`) via control-plane PTY lifecycle.
 - nim pane rendering in mux is conversation-frame based (same stream snapshot model as threads). Missing-key onboarding is rendered by the standalone `packages/nim` UI itself inside that stream.
+- standalone nim transcript rendering now supports block markdown primitives (headings, blockquotes, lists, code fences, horizontal rules), markdown tables rendered as box-drawn terminal grids, per-tool activity rows, and explicit per-turn in-progress indicators while assistant output is still streaming.
 - When `ANTHROPIC_API_KEY` is missing, nim boots into an onboarding empty state (`Anthropic API Key required`) and routes composer submit to secure key setup instead of agent turns.
 - Key setup is available from onboarding and command palette (`Set Anthropic API Key`), persists through `~/.harness/secrets.env`, confirms save, and transitions back to regular nim landing/chat flow without restarting mux.
 - Main-pane input routing in nim mode forwards text directly to the active nim session stream input for normal runtime behavior, and raw `Esc` is passed through for runtime handling.

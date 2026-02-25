@@ -9,9 +9,9 @@ import {
 } from '../../../nim-core/src/index.ts';
 import { resolveHarnessRuntimePath } from '../../../../src/config/harness-paths.ts';
 import {
-  NIM_CONTROL_PLANE_AUTH_TOKEN_ENV,
-  NIM_CONTROL_PLANE_HOST_ENV,
-  NIM_CONTROL_PLANE_PORT_ENV,
+  nimControlPlaneAuthTokenEnv,
+  nimControlPlaneHostEnv,
+  nimControlPlanePortEnv,
 } from '../../../../src/contracts/nim-control-plane.ts';
 import { createRuntimeNimControlPlaneApi } from '../../../../src/services/runtime-nim-control-plane-api.ts';
 import { RuntimeNimToolBridge } from '../../../../src/services/runtime-nim-tool-bridge.ts';
@@ -160,17 +160,17 @@ function resolveControlPlaneConfig(
   port: number;
   authToken?: string;
 } | null {
-  const host = input.controlPlaneHost ?? readEnvString(env, NIM_CONTROL_PLANE_HOST_ENV);
+  const host = input.controlPlaneHost ?? readEnvString(env, nimControlPlaneHostEnv);
   const port =
     parsePositivePort(input.controlPlanePort) ??
-    parsePositivePortFromString(readEnvString(env, NIM_CONTROL_PLANE_PORT_ENV));
+    parsePositivePortFromString(readEnvString(env, nimControlPlanePortEnv));
   if (host === null || port === null) {
     return null;
   }
   const authToken =
     input.controlPlaneAuthToken === null
       ? null
-      : (input.controlPlaneAuthToken ?? readEnvString(env, NIM_CONTROL_PLANE_AUTH_TOKEN_ENV));
+      : (input.controlPlaneAuthToken ?? readEnvString(env, nimControlPlaneAuthTokenEnv));
   return {
     host,
     port,
