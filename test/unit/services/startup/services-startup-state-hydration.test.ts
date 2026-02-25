@@ -81,6 +81,9 @@ void test('startup state hydration service hydrates startup state and enters sta
     hydrateTaskPlanningState: async () => {
       calls.push('hydrateTaskPlanningState');
     },
+    seedSyncedWorkspaceState: () => {
+      calls.push('seedSyncedWorkspaceState');
+    },
     subscribeTaskPlanningEvents: async (afterCursor) => {
       calls.push(`subscribeTaskPlanningEvents:${afterCursor ?? 'null'}`);
     },
@@ -120,6 +123,7 @@ void test('startup state hydration service hydrates startup state and enters sta
     'setGitSnapshot:dir-2',
     'setGitAssociation:dir-2:null',
     'syncRepositoryAssociations',
+    'seedSyncedWorkspaceState',
     'subscribeTaskPlanningEvents:42',
     'ensureActiveConversationId',
     'enterStartupPane',

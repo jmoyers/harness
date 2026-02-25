@@ -207,6 +207,7 @@ import {
   applyRuntimeObservedEventProjection,
   type RuntimeObservedEventProjectionPipelineOptions,
 } from '../../services/runtime-observed-event-projection-pipeline.ts';
+import { seedRuntimeHarnessSyncedStore } from '../../services/runtime-harness-synced-store-seed.ts';
 import { createRuntimeRenderPipeline } from '../../services/runtime-render-pipeline.ts';
 import { createRuntimeRepositoryActions } from '../../services/runtime-repository-actions.ts';
 import { createRuntimeGitState } from '../../services/runtime-git-state.ts';
@@ -1262,6 +1263,7 @@ class CodexLiveMuxRuntimeApplication {
       TaskComposerBuffer,
       NodeJS.Timeout
     >();
+    const harnessSyncedStore = createHarnessSyncedStore();
     const statusTimelineRecorder = new StatusTimelineRecorder({
       statePath: resolveStatusTimelineStatePath(options.invocationDirectory, muxSessionName),
     });
@@ -1865,6 +1867,15 @@ class CodexLiveMuxRuntimeApplication {
         repositoryManager.setDirectoryRepositoryAssociation(directoryId, repositoryId);
       },
       hydrateTaskPlanningState,
+      seedSyncedWorkspaceState: () => {
+        seedRuntimeHarnessSyncedStore({
+          store: harnessSyncedStore,
+          directories: directoryRecords,
+          conversations: conversationRecords,
+          repositories,
+          tasks: taskManager.readonlyTasks(),
+        });
+      },
       subscribeTaskPlanningEvents: async (afterCursor) => {
         await conversationLifecycle.subscribeTaskPlanningEvents(afterCursor);
       },
@@ -3106,8 +3117,6 @@ class CodexLiveMuxRuntimeApplication {
       syncTaskPaneSelection,
       markDirty,
     });
-
-    const harnessSyncedStore = createHarnessSyncedStore();
 
     const workspaceSyncedProjection = new WorkspaceSyncedProjection<
       ControlPlaneDirectoryRecord,

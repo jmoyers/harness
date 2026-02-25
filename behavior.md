@@ -168,7 +168,8 @@ Behavior fragments:
 - nim provider turn context is session-scoped and reconstructed from persisted event history (user turn input + assistant message output), so restart/resume retains the same conversation context while remaining isolated per session.
 - nim provider stream contract is fail-closed: successful provider completions must include streamed assistant text deltas and a terminal `provider.turn.finished` signal; violations emit turn-failure notices into the nim UI stream.
 - nim launches with workspace/session scope args and control-plane connection env injected by the stream server, then resolves tool calls through `runtime-nim-tool-bridge -> runtime-nim-control-plane-api -> control-plane stream commands`.
-- nim control-plane tool surface includes workspace inspection (`directory.list`, `repository.list`, `task.list`, `session.list`) plus thread lifecycle/runtime control (`thread.list`, `thread.create`, `thread.update`, `thread.archive`, `thread.delete`, `thread.status`, `thread.snapshot`, `thread.respond`, `thread.interrupt`, `thread.claim`, `thread.release`, `thread.start`, `thread.attach`, `thread.detach`, `thread.events.subscribe`, `thread.events.unsubscribe`, `thread.close`, `thread.remove`).
+- nim control-plane tool surface includes workspace inspection (`directory.list`, `repository.list`, `task.list`, `session.list`) plus thread lifecycle/runtime control (`thread.list`, `thread.create`, `thread.update`, `thread.archive`, `thread.status`, `thread.snapshot`, `thread.respond`, `thread.interrupt`, `thread.claim`, `thread.release`, `thread.start`, `thread.attach`, `thread.detach`, `thread.events.subscribe`, `thread.events.unsubscribe`, `thread.close`, `thread.remove`).
+- mux startup hydration seeds the workspace observed/zustand synced state from hydrated directory/thread/repository/task records before subscribing to observed stream deltas so archive/update broadcasts project correctly for pre-existing records.
 
 Owners:
 

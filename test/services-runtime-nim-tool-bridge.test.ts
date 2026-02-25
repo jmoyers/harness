@@ -33,10 +33,6 @@ function createBridge(): RuntimeNimToolBridge {
       threadId,
       archived: true,
     }),
-    deleteThread: async (threadId) => ({
-      threadId,
-      deleted: true,
-    }),
     threadStatus: async (threadId) => ({
       sessionId: threadId,
       status: 'running',
@@ -114,7 +110,6 @@ void test('runtime nim tool bridge registers control-plane tools and policy', ()
     'thread.create',
     'thread.update',
     'thread.archive',
-    'thread.delete',
     'thread.status',
     'thread.snapshot',
     'thread.respond',
@@ -130,7 +125,7 @@ void test('runtime nim tool bridge registers control-plane tools and policy', ()
     'thread.remove',
     'session.list',
   ]);
-  assert.equal(policyHash, 'nim-control-plane-tools-v3');
+  assert.equal(policyHash, 'nim-control-plane-tools-v4');
 });
 
 void test('runtime nim tool bridge invokes thread control and inspection tools', async () => {
@@ -238,18 +233,6 @@ void test('runtime nim tool bridge invokes thread control and inspection tools',
     {
       threadId: 'thread-1',
       archived: true,
-    },
-  );
-  assert.deepEqual(
-    await bridge.invoke({
-      toolName: 'thread.delete',
-      argumentsValue: {
-        threadId: 'thread-1',
-      },
-    }),
-    {
-      threadId: 'thread-1',
-      deleted: true,
     },
   );
   assert.deepEqual(

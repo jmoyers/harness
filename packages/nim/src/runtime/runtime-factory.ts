@@ -217,7 +217,6 @@ export function createRuntimeFromEnv(input: CreateRuntimeFromEnvInput = {}): Nim
           createThread: async (toolInput) => await controlPlaneApi.createThread(toolInput),
           updateThread: async (toolInput) => await controlPlaneApi.updateThread(toolInput),
           archiveThread: async (threadId) => await controlPlaneApi.archiveThread(threadId),
-          deleteThread: async (threadId) => await controlPlaneApi.deleteThread(threadId),
           threadStatus: async (threadId) => await controlPlaneApi.threadStatus(threadId),
           threadSnapshot: async (toolInput) => await controlPlaneApi.threadSnapshot(toolInput),
           threadRespond: async (toolInput) => await controlPlaneApi.threadRespond(toolInput),

@@ -30,6 +30,7 @@ export interface StartupStateHydrationServiceOptions<
     repositoryId: string | null,
   ) => void;
   readonly hydrateTaskPlanningState: () => Promise<void>;
+  readonly seedSyncedWorkspaceState?: () => void;
   readonly subscribeTaskPlanningEvents: (afterCursor: number | null) => Promise<void>;
   readonly ensureActiveConversationId: () => void;
   readonly activeConversationId: () => string | null;
@@ -86,6 +87,7 @@ export function createStartupStateHydrationService<
     await hydrateRepositoryList();
     await options.hydrateTaskPlanningState();
     await hydrateDirectoryGitStatus();
+    options.seedSyncedWorkspaceState?.();
     await options.subscribeTaskPlanningEvents(afterCursor);
     options.ensureActiveConversationId();
     options.enterStartupPane();

@@ -33,10 +33,6 @@ const runtimeNimTools: readonly NimToolDefinition[] = [
     description: 'Archive a thread.',
   },
   {
-    name: 'thread.delete',
-    description: 'Delete a thread record.',
-  },
-  {
     name: 'thread.status',
     description: 'Get runtime status for a thread.',
   },
@@ -95,7 +91,7 @@ const runtimeNimTools: readonly NimToolDefinition[] = [
 ];
 
 const runtimeNimPolicy: NimToolPolicy = {
-  hash: 'nim-control-plane-tools-v3',
+  hash: 'nim-control-plane-tools-v4',
   allow: runtimeNimTools.map((tool) => tool.name),
   deny: [],
 };
@@ -118,7 +114,6 @@ export interface RuntimeNimToolBridgeOptions {
   }) => Promise<unknown>;
   readonly updateThread: (input: { threadId: string; title: string }) => Promise<unknown>;
   readonly archiveThread: (threadId: string) => Promise<unknown>;
-  readonly deleteThread: (threadId: string) => Promise<unknown>;
   readonly threadStatus: (threadId: string) => Promise<unknown>;
   readonly threadSnapshot: (input: { threadId: string; tailLines?: number }) => Promise<unknown>;
   readonly threadRespond: (input: { threadId: string; text: string }) => Promise<{
@@ -244,10 +239,6 @@ export class RuntimeNimToolBridge {
     if (input.toolName === 'thread.archive') {
       const threadId = resolveThreadId(input, 'thread.archive');
       return await this.options.archiveThread(threadId);
-    }
-    if (input.toolName === 'thread.delete') {
-      const threadId = resolveThreadId(input, 'thread.delete');
-      return await this.options.deleteThread(threadId);
     }
     if (input.toolName === 'thread.status') {
       const threadId = resolveThreadId(input, 'thread.status');
