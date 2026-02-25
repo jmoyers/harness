@@ -37,6 +37,7 @@ import type {
 import type { NimEventEnvelope } from './events.ts';
 import {
   NimProviderRouter,
+  type NimConversationMessage,
   type NimProviderDriver,
   type NimProviderTurnEvent,
 } from './provider-router.ts';
@@ -769,6 +770,9 @@ export class InMemoryNimRuntime implements NimRuntime {
         type: 'turn.started',
         source: 'system',
         state: 'responding',
+        data: {
+          input: run.input,
+        },
       });
       this.emitRunContextSnapshotEvents(session, run);
 
@@ -937,9 +941,11 @@ export class InMemoryNimRuntime implements NimRuntime {
     let sawProviderTurnFinished = false;
     let sawAssistantOutputDelta = false;
     let terminalState: 'completed' | 'aborted' | 'failed' = 'completed';
+    const messages = this.buildConversationMessages(session);
     for await (const providerEvent of driver.runTurn({
       modelRef: session.model,
       providerModelId,
+      messages,
       input: run.input,
       tools: exposedTools,
       abortSignal: run.abortController.signal,
@@ -1001,6 +1007,43 @@ export class InMemoryNimRuntime implements NimRuntime {
       return 'failed';
     }
     return run.aborted ? 'aborted' : terminalState;
+  }
+
+  private buildConversationMessages(session: SessionState): readonly NimConversationMessage[] {
+    const events = this.eventStore.list({
+      tenantId: session.tenantId,
+      sessionId: session.sessionId,
+    });
+    const messages: NimConversationMessage[] = [];
+
+    for (const event of events) {
+      if (event.type === 'turn.started') {
+        const input = event.data?.['input'];
+        if (typeof input === 'string' && input.length > 0) {
+          messages.push({
+            role: 'user',
+            text: input,
+            runId: event.run_id,
+            eventSeq: event.event_seq,
+          });
+        }
+        continue;
+      }
+
+      if (event.type === 'assistant.output.message') {
+        const text = event.data?.['text'];
+        if (typeof text === 'string' && text.length > 0) {
+          messages.push({
+            role: 'assistant',
+            text,
+            runId: event.run_id,
+            eventSeq: event.event_seq,
+          });
+        }
+      }
+    }
+
+    return messages;
   }
 
   private emitRunContextSnapshotEvents(session: SessionState, run: RunState): void {

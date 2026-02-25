@@ -3,6 +3,7 @@ import type {
   AnthropicModelFactory,
   CreateAnthropicOptions,
   FinishReason,
+  ModelMessage,
   StreamTextPart,
   StreamTextResult,
   ToolSet,
@@ -63,7 +64,7 @@ function withAnthropicToolNameSuffix(base: string, suffix: string): string {
 }
 
 function createAnthropicToolNameAliases(
-  tools: readonly NimProviderTurnInput['tools'],
+  tools: NimProviderTurnInput['tools'],
 ): AnthropicToolNameAliases {
   const originalToAnthropic = new Map<string, string>();
   const anthropicToOriginal = new Map<string, string>();
@@ -120,6 +121,24 @@ function toToolSet(
   return tools;
 }
 
+function toModelMessages(input: NimProviderTurnInput): ModelMessage[] {
+  const messages: ModelMessage[] = [];
+  for (const message of input.messages) {
+    if (message.role === 'assistant') {
+      messages.push({
+        role: 'assistant',
+        content: message.text,
+      });
+      continue;
+    }
+    messages.push({
+      role: 'user',
+      content: message.text,
+    });
+  }
+  return messages;
+}
+
 function toMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
@@ -164,9 +183,10 @@ export function createAnthropicNimProviderDriver(
         return toolNameAliases.anthropicToOriginal.get(toolName) ?? toolName;
       };
       const toolSet = toToolSet(input, toolNameAliases, options.executeTool);
+      const messages = toModelMessages(input);
       const result: StreamTextResult<ToolSet> = streamTextFn({
         model,
-        prompt: input.input,
+        ...(messages.length > 0 ? { messages } : { prompt: input.input }),
         system: options.systemPrompt ?? DEFAULT_NIM_SYSTEM_PROMPT,
         ...(Object.keys(toolSet).length > 0 ? { tools: toolSet } : {}),
         temperature: 0,

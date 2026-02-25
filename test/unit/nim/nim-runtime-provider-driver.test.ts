@@ -157,6 +157,58 @@ test('nim runtime consumes provider-driver stream and projects canonical events'
   }
 });
 
+test('nim runtime passes session-scoped conversation context to provider turns', async () => {
+  const runtime = new InMemoryNimRuntime();
+  runtime.registerProvider({
+    id: 'anthropic',
+    displayName: 'Anthropic',
+    models: ['anthropic/claude-3-haiku-20240307'],
+  });
+
+  const observedMessages: string[][] = [];
+  runtime.registerProviderDriver({
+    providerId: 'anthropic',
+    async *runTurn(input) {
+      observedMessages.push(input.messages.map((message) => `${message.role}:${message.text}`));
+      yield {
+        type: 'assistant.output.delta',
+        text: `driver:${input.input}`,
+      };
+      yield { type: 'assistant.output.completed' };
+      yield {
+        type: 'provider.turn.finished',
+        finishReason: 'stop',
+      };
+    },
+  });
+
+  const session = await runtime.startSession({
+    tenantId: 'tenant-a',
+    userId: 'user-a',
+    model: 'anthropic/claude-3-haiku-20240307',
+  });
+
+  const first = await runtime.sendTurn({
+    sessionId: session.sessionId,
+    input: 'first',
+    idempotencyKey: 'idem-context-1',
+  });
+  const firstResult = await first.done;
+  assert.equal(firstResult.terminalState, 'completed');
+
+  const second = await runtime.sendTurn({
+    sessionId: session.sessionId,
+    input: 'second',
+    idempotencyKey: 'idem-context-2',
+  });
+  const secondResult = await second.done;
+  assert.equal(secondResult.terminalState, 'completed');
+
+  assert.equal(observedMessages.length, 2);
+  assert.deepEqual(observedMessages[0], ['user:first']);
+  assert.deepEqual(observedMessages[1], ['user:first', 'assistant:driver:first', 'user:second']);
+});
+
 test('nim runtime marks run failed when provider driver reports error', async () => {
   const runtime = new InMemoryNimRuntime();
   runtime.registerProvider({

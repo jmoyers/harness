@@ -7,6 +7,7 @@ import type {
   HarnessAnthropicModel,
   LanguageModelResponseMetadata,
   LanguageModelUsage,
+  ModelMessage,
   StreamTextPart,
   StreamTextResult,
   ToolSet,
@@ -113,6 +114,7 @@ test('anthropic nim provider driver maps stream parts to canonical provider even
     modelRef: 'anthropic/claude-3-haiku-20240307',
     providerModelId: 'claude-3-haiku-20240307',
     input: 'hello',
+    messages: [{ role: 'user', text: 'hello', runId: 'run-1', eventSeq: 1 }],
     tools: [
       {
         name: 'ping',
@@ -164,6 +166,7 @@ test('anthropic nim provider driver emits provider.turn.error and error finish r
     modelRef: 'anthropic/claude-3-haiku-20240307',
     providerModelId: 'claude-3-haiku-20240307',
     input: 'hello',
+    messages: [{ role: 'user', text: 'hello', runId: 'run-1', eventSeq: 1 }],
     tools: [],
   })) {
     events.push(event.type);
@@ -186,6 +189,7 @@ test('anthropic nim provider driver fails closed when provider stream omits fini
     modelRef: 'anthropic/claude-3-haiku-20240307',
     providerModelId: 'claude-3-haiku-20240307',
     input: 'hello',
+    messages: [{ role: 'user', text: 'hello', runId: 'run-1', eventSeq: 1 }],
     tools: [],
   })) {
     events.push(event.type);
@@ -224,6 +228,7 @@ test('anthropic nim provider driver requires assistant output delta for successf
     modelRef: 'anthropic/claude-3-haiku-20240307',
     providerModelId: 'claude-3-haiku-20240307',
     input: 'hello',
+    messages: [{ role: 'user', text: 'hello', runId: 'run-1', eventSeq: 1 }],
     tools: [],
   })) {
     events.push(event.type);
@@ -257,6 +262,7 @@ test('anthropic nim provider driver synthesizes thinking lifecycle when provider
     modelRef: 'anthropic/claude-3-haiku-20240307',
     providerModelId: 'claude-3-haiku-20240307',
     input: 'hello',
+    messages: [{ role: 'user', text: 'hello', runId: 'run-1', eventSeq: 1 }],
     tools: [],
   })) {
     events.push(event.type);
@@ -318,6 +324,7 @@ test('anthropic nim provider driver supports custom tool execution bridge', asyn
     modelRef: 'anthropic/claude-3-haiku-20240307',
     providerModelId: 'claude-3-haiku-20240307',
     input: 'hello',
+    messages: [{ role: 'user', text: 'hello', runId: 'run-1', eventSeq: 1 }],
     tools: [
       {
         name: 'bridge.tool',
@@ -366,6 +373,7 @@ test('anthropic nim provider driver sanitizes and deduplicates Anthropic tool na
     modelRef: 'anthropic/claude-3-haiku-20240307',
     providerModelId: 'claude-3-haiku-20240307',
     input: 'hello',
+    messages: [{ role: 'user', text: 'hello', runId: 'run-1', eventSeq: 1 }],
     tools: [
       {
         name: 'bridge.tool',
@@ -425,6 +433,7 @@ test(
       modelRef: 'anthropic/claude-3-haiku-20240307',
       providerModelId: 'claude-3-haiku-20240307',
       input: 'hello',
+      messages: [{ role: 'user', text: 'hello', runId: 'run-1', eventSeq: 1 }],
       tools: [],
     })) {
       // consume stream
@@ -467,6 +476,7 @@ test('anthropic nim provider driver supports overriding system prompt and tool r
     modelRef: 'anthropic/claude-3-haiku-20240307',
     providerModelId: 'claude-3-haiku-20240307',
     input: 'hello',
+    messages: [{ role: 'user', text: 'hello', runId: 'run-1', eventSeq: 1 }],
     tools: [],
   })) {
     // consume stream
@@ -474,4 +484,52 @@ test('anthropic nim provider driver supports overriding system prompt and tool r
 
   assert.equal(observedSystemPrompt, 'custom nim prompt');
   assert.equal(observedMaxToolRoundtrips, 333);
+});
+
+test('anthropic nim provider driver forwards conversation messages as model messages', async () => {
+  let observedPrompt: string | undefined;
+  let observedMessages: ModelMessage[] = [];
+  const parts: StreamTextPart<ToolSet>[] = [
+    { type: 'text-delta', id: 'txt-1', text: 'ok' },
+    {
+      type: 'finish',
+      finishReason: 'stop',
+      totalUsage: {
+        inputTokens: 1,
+        outputTokens: 1,
+        totalTokens: 2,
+      },
+    },
+  ];
+
+  const driver = createAnthropicNimProviderDriver({
+    apiKey: 'test-key',
+    createAnthropicFn: () => anthropicFactory(),
+    streamTextFn: (input) => {
+      observedPrompt = input.prompt;
+      observedMessages = [...(input.messages ?? [])];
+      return mockStreamResult(parts, 'stop');
+    },
+  });
+
+  for await (const _event of driver.runTurn({
+    modelRef: 'anthropic/claude-3-haiku-20240307',
+    providerModelId: 'claude-3-haiku-20240307',
+    input: 'latest user input',
+    messages: [
+      { role: 'user', text: 'first', runId: 'run-1', eventSeq: 1 },
+      { role: 'assistant', text: 'reply', runId: 'run-1', eventSeq: 2 },
+      { role: 'user', text: 'latest user input', runId: 'run-2', eventSeq: 3 },
+    ],
+    tools: [],
+  })) {
+    // consume stream
+  }
+
+  assert.equal(observedPrompt, undefined);
+  assert.deepEqual(observedMessages, [
+    { role: 'user', content: 'first' },
+    { role: 'assistant', content: 'reply' },
+    { role: 'user', content: 'latest user input' },
+  ]);
 });

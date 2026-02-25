@@ -635,6 +635,89 @@ test('nim runtime resumes persisted session and idempotency across restart', asy
   }
 });
 
+test('nim runtime retains provider conversation context across sqlite-backed restart', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nim-runtime-context-restart-'));
+  const eventDbPath = join(dir, 'events.sqlite');
+  const sessionDbPath = join(dir, 'sessions.sqlite');
+
+  const initialEventStore = new NimSqliteEventStore(eventDbPath);
+  const initialSessionStore = new NimSqliteSessionStore(sessionDbPath);
+  const initialRuntime = createRuntime({
+    eventStore: initialEventStore,
+    sessionStore: initialSessionStore,
+  });
+  initialRuntime.registerProviderDriver({
+    providerId: 'anthropic',
+    async *runTurn(input) {
+      yield {
+        type: 'assistant.output.delta',
+        text: `driver:${input.input}`,
+      };
+      yield { type: 'assistant.output.completed' };
+      yield {
+        type: 'provider.turn.finished',
+        finishReason: 'stop',
+      };
+    },
+  });
+
+  const session = await createSession(initialRuntime);
+  const first = await initialRuntime.sendTurn({
+    sessionId: session.sessionId,
+    input: 'first',
+    idempotencyKey: 'idem-context-restart-1',
+  });
+  const firstResult = await first.done;
+  assert.equal(firstResult.terminalState, 'completed');
+  initialEventStore.close();
+  initialSessionStore.close();
+
+  const resumedEventStore = new NimSqliteEventStore(eventDbPath);
+  const resumedSessionStore = new NimSqliteSessionStore(sessionDbPath);
+  const resumedRuntime = createRuntime({
+    eventStore: resumedEventStore,
+    sessionStore: resumedSessionStore,
+  });
+  const observedMessages: string[][] = [];
+  resumedRuntime.registerProviderDriver({
+    providerId: 'anthropic',
+    async *runTurn(input) {
+      observedMessages.push(input.messages.map((message) => `${message.role}:${message.text}`));
+      yield {
+        type: 'assistant.output.delta',
+        text: `driver:${input.input}`,
+      };
+      yield { type: 'assistant.output.completed' };
+      yield {
+        type: 'provider.turn.finished',
+        finishReason: 'stop',
+      };
+    },
+  });
+
+  try {
+    const resumed = await resumedRuntime.resumeSession({
+      tenantId: 'tenant-a',
+      userId: 'user-a',
+      sessionId: session.sessionId,
+    });
+    assert.equal(resumed.sessionId, session.sessionId);
+
+    const second = await resumedRuntime.sendTurn({
+      sessionId: session.sessionId,
+      input: 'second',
+      idempotencyKey: 'idem-context-restart-2',
+    });
+    const secondResult = await second.done;
+    assert.equal(secondResult.terminalState, 'completed');
+
+    assert.deepEqual(observedMessages, [['user:first', 'assistant:driver:first', 'user:second']]);
+  } finally {
+    resumedEventStore.close();
+    resumedSessionStore.close();
+  }
+});
+
 test('nim runtime fails closed on non-terminal persisted idempotency runs after restart', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'nim-runtime-idempotency-fail-closed-'));
   const eventDbPath = join(dir, 'events.sqlite');

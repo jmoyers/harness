@@ -5,9 +5,18 @@ export type ParsedNimModelRef = {
   readonly providerModelId: string;
 };
 
+export type NimConversationMessage = {
+  readonly role: 'user' | 'assistant';
+  readonly text: string;
+  readonly runId: string;
+  readonly eventSeq: number;
+};
+
 export type NimProviderTurnInput = {
   readonly modelRef: NimModelRef;
   readonly providerModelId: string;
+  readonly messages: readonly NimConversationMessage[];
+  // Latest user turn input; duplicated as the tail user message in `messages`.
   readonly input: string;
   readonly tools: readonly NimToolDefinition[];
   readonly abortSignal?: AbortSignal;
