@@ -37,7 +37,7 @@ export class PromptShell extends Widget {
       return;
     }
 
-    const hints = ['ctrl+t variants', 'tab agents', 'ctrl+p commands'];
+    const hints = ['shift+enter newline', 'ctrl+c quit'];
     let x = Math.max(2, buf.cols - (hints.join('  ').length + 2));
     for (const hint of hints) {
       const [key, label] = hint.split(' ');

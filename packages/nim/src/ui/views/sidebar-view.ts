@@ -81,7 +81,7 @@ export class SidebarView extends Widget {
       }
     }
 
-    const versionLine = `OpenCode-inspired ${nimVersion}`;
+    const versionLine = `nim ${nimVersion}`;
     buf.drawText(
       Math.max(1, buf.cols - versionLine.length - 1),
       Math.max(0, buf.rows - 1),

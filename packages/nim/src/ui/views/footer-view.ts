@@ -18,11 +18,9 @@ export class FooterView extends Widget {
     const status = `nim ${nimVersion}`;
     buf.drawText(Math.max(1, buf.cols - status.length - 1), 0, status, TH.footerText);
 
-    const hints: ReadonlyArray<readonly [string, string]> = [
-      ['ctrl+c', 'quit'],
-      ['ctrl+p', 'palette'],
-    ];
-    let x = Math.max(1, Math.floor((buf.cols - 24) / 2));
+    const hints: ReadonlyArray<readonly [string, string]> = [['ctrl+c', 'quit']];
+    const hintsWidth = hints.reduce((sum, [key, label]) => sum + key.length + label.length + 3, 0);
+    let x = Math.max(1, Math.floor((buf.cols - hintsWidth) / 2));
     for (const [key, label] of hints) {
       buf.drawText(x, 0, key, TH.footerKey);
       x += key.length + 1;

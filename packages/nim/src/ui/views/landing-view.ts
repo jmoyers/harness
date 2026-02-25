@@ -61,18 +61,7 @@ export class LandingView extends Widget {
     const composerLayout = this.renderComposer(buf, promptY);
 
     const hintY = promptY + composerLayout.composerHeight;
-    const hints = ['ctrl+t variants', 'tab agents', 'ctrl+p commands'];
-    let cursorX = Math.max(
-      composerLayout.boxX + 2,
-      composerLayout.boxX + composerLayout.boxWidth - hints.join('  ').length - 2,
-    );
-    for (const hint of hints) {
-      const [key, label] = hint.split(' ');
-      buf.drawText(cursorX, hintY, key!, TH.muted);
-      cursorX += key!.length + 1;
-      buf.drawText(cursorX, hintY, label!, TH.tipText);
-      cursorX += label!.length + 2;
-    }
+    drawCentered(buf, hintY, 'Shift+Enter inserts a new line', TH.tipText);
 
     const tipIndex = Math.floor(Date.now() / 30000) % LANDING_TIPS.length;
     const tip = LANDING_TIPS[tipIndex]!;
@@ -105,10 +94,9 @@ export class LandingView extends Widget {
         });
     drawCentered(buf, headerY + 7 + body.length, cta, TH.panelAccent);
     drawCentered(buf, headerY + 8 + body.length, 'Press Enter to save key', TH.tipText);
-    drawCentered(buf, headerY + 9 + body.length, 'Ctrl+P -> Set Anthropic API Key', TH.muted);
     drawCentered(
       buf,
-      headerY + 11 + body.length,
+      headerY + 10 + body.length,
       `Saved in ~/.harness/secrets.env as ${this.apiKeyEnvVar}`,
       TH.muted,
     );

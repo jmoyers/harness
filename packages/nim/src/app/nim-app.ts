@@ -10,7 +10,6 @@ import type {
   CommandPaletteDismissed,
 } from '../../../harness-ui/src/widgets/command-palette.ts';
 import type { ClippedCellBuffer } from '../../../harness-ui/src/core/cell-buffer.ts';
-import type { Binding } from '../../../harness-ui/src/widget/keybinding.ts';
 import type { NimRuntime, NimModelRef, SessionHandle } from '../../../nim-core/src/contracts.ts';
 import { CONTEXT_WINDOW_TOKENS, DEFAULT_RUNTIME_IDS } from '../contracts/config.ts';
 import type { AgentMode, ChatMsg, UiState } from '../contracts/types.ts';
@@ -43,10 +42,7 @@ export interface NimAppRuntime {
 }
 
 export class NimApp extends Widget {
-  static BINDINGS: Binding[] = [
-    { key: 'ctrl+p', action: 'open-palette', description: 'Command palette' },
-    { key: 'tab', action: 'toggle-mode', description: 'Toggle Build/Plan mode' },
-  ];
+  static BINDINGS = [];
 
   private readonly runtime: NimRuntime;
   private readonly runtimeModel: NimModelRef;
