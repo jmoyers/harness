@@ -2140,6 +2140,10 @@ export class ControlPlaneStreamServer {
     const resolvedUserId = persistedConversation?.userId ?? command.userId ?? DEFAULT_USER_ID;
     const resolvedWorkspaceId =
       persistedConversation?.workspaceId ?? command.workspaceId ?? DEFAULT_WORKSPACE_ID;
+    const persistedDirectory =
+      persistedConversation?.directoryId === undefined || persistedConversation.directoryId === null
+        ? null
+        : this.stateStore.getDirectory(persistedConversation.directoryId);
     const baseSessionArgs =
       agentType === 'critique' && command.args.length === 0
         ? [...this.critique.launch.defaultArgs]
@@ -2223,8 +2227,9 @@ export class ControlPlaneStreamServer {
       }
       startInput.env = mergedEnv;
     }
-    if (command.cwd !== undefined) {
-      startInput.cwd = command.cwd;
+    const startCwd = command.cwd ?? persistedDirectory?.path;
+    if (startCwd !== undefined) {
+      startInput.cwd = startCwd;
     }
     if (command.terminalForegroundHex !== undefined) {
       startInput.terminalForegroundHex = command.terminalForegroundHex;

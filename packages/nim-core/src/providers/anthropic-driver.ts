@@ -22,6 +22,8 @@ export type AnthropicNimProviderDriverOptions = CreateAnthropicOptions & {
   readonly providerId?: string;
   readonly streamTextFn?: StreamTextFn;
   readonly createAnthropicFn?: CreateAnthropicFn;
+  readonly systemPrompt?: string;
+  readonly maxToolRoundtrips?: number;
   readonly executeTool?: (input: {
     readonly toolName: string;
     readonly toolInput: unknown;
@@ -129,6 +131,16 @@ function extractToolName(value: TypedToolResult<ToolSet> | TypedToolError<ToolSe
   return typeof value.toolName === 'string' ? value.toolName : String(value.toolName);
 }
 
+const DEFAULT_NIM_SYSTEM_PROMPT = [
+  'You are Nim, the Harness coordination agent.',
+  'Harness is a local control-plane for coordinating coding agents across projects and repositories.',
+  'Use available tools to inspect directories, repositories, tasks, threads, and sessions instead of guessing.',
+  'When starting or restarting a thread runtime, prefer the project directory as cwd so the agent runs in the intended repository root.',
+  'Keep responses concise, operational, and explicit about ids/status/results and next action.',
+].join('\n');
+
+const DEFAULT_MAX_TOOL_ROUNDTRIPS = 1000;
+
 export function createAnthropicNimProviderDriver(
   options: AnthropicNimProviderDriverOptions,
 ): NimProviderDriver {
@@ -155,9 +167,11 @@ export function createAnthropicNimProviderDriver(
       const result: StreamTextResult<ToolSet> = streamTextFn({
         model,
         prompt: input.input,
+        system: options.systemPrompt ?? DEFAULT_NIM_SYSTEM_PROMPT,
         ...(Object.keys(toolSet).length > 0 ? { tools: toolSet } : {}),
         temperature: 0,
         maxOutputTokens: 512,
+        maxToolRoundtrips: options.maxToolRoundtrips ?? DEFAULT_MAX_TOOL_ROUNDTRIPS,
         ...(input.abortSignal !== undefined ? { abortSignal: input.abortSignal } : {}),
       });
 

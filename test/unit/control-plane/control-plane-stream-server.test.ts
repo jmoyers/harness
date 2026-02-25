@@ -1318,6 +1318,7 @@ void test('stream server launches nim sessions through harness nim process profi
     assert.deepEqual(created[0]?.input.args.includes('workspace-nim'), true);
     assert.equal(created[0]?.input.env?.HARNESS_NIM_CONTROL_PLANE_HOST, address.address);
     assert.equal(created[0]?.input.env?.HARNESS_NIM_CONTROL_PLANE_PORT, String(address.port));
+    assert.equal(created[0]?.input.cwd, '/tmp/nim');
 
     const status = await client.sendCommand({
       type: 'session.status',
