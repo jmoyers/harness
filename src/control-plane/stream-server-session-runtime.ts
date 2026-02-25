@@ -33,6 +33,9 @@ interface RuntimeSession {
   userId: string;
   workspaceId: string;
   agentType: string;
+  requestedAgentType?: string;
+  effectiveAgentType?: string;
+  launchMismatchReason?: string | null;
   adapterState: Record<string, unknown>;
   eventSubscriberConnectionIds: Set<string>;
   status: StreamSessionRuntimeStatus;
@@ -191,6 +194,12 @@ export function persistConversationRuntime(ctx: StreamRuntimeContext, state: Run
 }
 
 export function publishStatusObservedEvent(ctx: StreamRuntimeContext, state: RuntimeSession): void {
+  const requestedAgentType = state.requestedAgentType ?? state.agentType;
+  const effectiveAgentType = state.effectiveAgentType ?? state.agentType;
+  const launchMismatchReason =
+    state.launchMismatchReason === undefined ? null : state.launchMismatchReason;
+  const exposeLaunchParity =
+    requestedAgentType !== effectiveAgentType || launchMismatchReason !== null;
   ctx.publishObservedEvent(ctx.sessionScope(state), {
     type: 'session-status',
     sessionId: state.id,
@@ -201,6 +210,7 @@ export function publishStatusObservedEvent(ctx: StreamRuntimeContext, state: Run
     ts: new Date().toISOString(),
     directoryId: state.directoryId,
     conversationId: state.id,
+    ...(exposeLaunchParity ? { requestedAgentType, effectiveAgentType, launchMismatchReason } : {}),
     telemetry: state.latestTelemetry,
     controller: ctx.toPublicSessionController(
       (state as RuntimeSession & { controller?: StreamSessionController | null }).controller ??

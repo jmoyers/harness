@@ -73,6 +73,16 @@ type QueueItem = {
 
 type AbortReason = 'manual' | 'timeout' | 'policy' | 'signal';
 type ToolBlockReason = 'policy-deny' | 'policy-allow-miss' | 'tool-unavailable';
+type TurnTerminalReason =
+  | 'completed'
+  | 'aborted'
+  | 'context-overflow'
+  | 'provider-error'
+  | 'provider-contract-violation'
+  | 'dangling-tool-call'
+  | 'max-tool-roundtrips'
+  | 'runtime-error'
+  | 'failed';
 
 type RunState = {
   readonly runId: string;
@@ -95,6 +105,12 @@ type RunState = {
   steers: string[];
   assistantOutputBuffer: string;
   assistantOutputDeltaCount: number;
+  toolCallsStarted: number;
+  toolCallsCompleted: number;
+  toolCallsFailed: number;
+  openToolCallIds: Set<string>;
+  terminalReason?: TurnTerminalReason;
+  providerFinishReason?: string;
   resolveDone: (result: TurnResult) => void;
   done: Promise<TurnResult>;
 };
@@ -433,6 +449,10 @@ export class InMemoryNimRuntime implements NimRuntime {
       steers: [],
       assistantOutputBuffer: '',
       assistantOutputDeltaCount: 0,
+      toolCallsStarted: 0,
+      toolCallsCompleted: 0,
+      toolCallsFailed: 0,
+      openToolCallIds: new Set<string>(),
       resolveDone: turnDeferred.resolve,
       done: turnDeferred.promise,
     };
@@ -818,6 +838,8 @@ export class InMemoryNimRuntime implements NimRuntime {
               );
       }
 
+      run.terminalReason ??= this.defaultTerminalReasonForState(terminalState);
+
       this.appendRunEvent(session, run, {
         type: 'assistant.state.changed',
         source: 'system',
@@ -826,6 +848,7 @@ export class InMemoryNimRuntime implements NimRuntime {
       await this.finalizeRun(session, run, terminalState);
     } catch (error) {
       if (run.active) {
+        run.terminalReason = 'runtime-error';
         this.appendRunEvent(session, run, {
           type: 'turn.failed',
           source: 'system',
@@ -870,6 +893,7 @@ export class InMemoryNimRuntime implements NimRuntime {
         blockedToolReason === undefined && exposedTools.some((tool) => tool.name === toolName);
 
       if (canInvokeTool) {
+        this.markToolCallStarted(run, toolCallId);
         this.appendRunEvent(session, run, {
           type: 'assistant.state.changed',
           source: 'system',
@@ -900,6 +924,7 @@ export class InMemoryNimRuntime implements NimRuntime {
             toolName,
           },
         });
+        this.markToolCallCompleted(run, toolCallId);
         this.appendRunEvent(session, run, {
           type: 'tool.result.emitted',
           source: 'tool',
@@ -955,6 +980,7 @@ export class InMemoryNimRuntime implements NimRuntime {
       }
 
       if (sawProviderTurnFinished) {
+        run.terminalReason = 'provider-contract-violation';
         this.appendRunEvent(session, run, {
           type: 'turn.failed',
           source: 'system',
@@ -972,18 +998,35 @@ export class InMemoryNimRuntime implements NimRuntime {
       }
       if (providerEvent.type === 'provider.turn.finished') {
         sawProviderTurnFinished = true;
+        run.providerFinishReason = providerEvent.finishReason;
         if (
           providerEvent.finishReason !== 'error' &&
           providerEvent.finishReason !== 'tool-calls' &&
           !sawAssistantOutputDelta
         ) {
+          run.terminalReason = 'provider-contract-violation';
           this.appendRunEvent(session, run, {
             type: 'turn.failed',
             source: 'system',
             state: 'idle',
             data: {
               message:
-                'provider stream contract violation: missing assistant output delta before completion',
+              'provider stream contract violation: missing assistant output delta before completion',
+            },
+          });
+          return 'failed';
+        }
+        if (run.openToolCallIds.size > 0) {
+          run.terminalReason = 'dangling-tool-call';
+          const pendingToolCallIds = [...run.openToolCallIds.values()];
+          this.appendRunEvent(session, run, {
+            type: 'turn.failed',
+            source: 'system',
+            state: 'idle',
+            data: {
+              message:
+                'provider stream contract violation: unresolved tool calls at provider.turn.finished',
+              pendingToolCallIds,
             },
           });
           return 'failed';
@@ -996,6 +1039,7 @@ export class InMemoryNimRuntime implements NimRuntime {
       }
     }
     if (!run.aborted && !sawProviderTurnFinished) {
+      run.terminalReason = 'provider-contract-violation';
       this.appendRunEvent(session, run, {
         type: 'turn.failed',
         source: 'system',
@@ -1182,6 +1226,7 @@ export class InMemoryNimRuntime implements NimRuntime {
           reason: 'overflow-retries-exhausted',
         },
       });
+      run.terminalReason = 'context-overflow';
       this.appendRunEvent(session, run, {
         type: 'turn.failed',
         source: 'system',
@@ -1242,6 +1287,7 @@ export class InMemoryNimRuntime implements NimRuntime {
     }
 
     if (event.type === 'tool.call.started') {
+      this.markToolCallStarted(run, event.toolCallId);
       this.appendRunEvent(session, run, {
         type: 'assistant.state.changed',
         source: 'system',
@@ -1283,6 +1329,7 @@ export class InMemoryNimRuntime implements NimRuntime {
           toolName: event.toolName,
         },
       });
+      this.markToolCallCompleted(run, event.toolCallId);
       this.appendRunEvent(session, run, {
         type: 'assistant.state.changed',
         source: 'system',
@@ -1302,6 +1349,7 @@ export class InMemoryNimRuntime implements NimRuntime {
           error: event.error,
         },
       });
+      this.markToolCallFailed(run, event.toolCallId);
       this.appendRunEvent(session, run, {
         type: 'assistant.state.changed',
         source: 'system',
@@ -1340,6 +1388,7 @@ export class InMemoryNimRuntime implements NimRuntime {
     }
 
     if (event.type === 'provider.turn.error') {
+      run.terminalReason = this.classifyProviderErrorReason(event.message);
       this.appendRunEvent(session, run, {
         type: 'turn.failed',
         source: 'system',
@@ -1351,19 +1400,71 @@ export class InMemoryNimRuntime implements NimRuntime {
       return 'failed';
     }
 
-    if (event.type === 'provider.turn.finished' && event.finishReason === 'error') {
+    if (event.type === 'provider.turn.finished') {
       this.appendRunEvent(session, run, {
-        type: 'turn.failed',
-        source: 'system',
-        state: 'idle',
+        type: 'provider.turn.finished',
+        source: 'provider',
+        state: 'responding',
         data: {
-          message: 'provider finished with error',
+          finishReason: event.finishReason,
         },
       });
-      return 'failed';
+      if (event.finishReason === 'error') {
+        run.terminalReason = 'provider-error';
+        this.appendRunEvent(session, run, {
+          type: 'turn.failed',
+          source: 'system',
+          state: 'idle',
+          data: {
+            message: 'provider finished with error',
+          },
+        });
+        return 'failed';
+      }
     }
 
     return 'completed';
+  }
+
+  private markToolCallStarted(run: RunState, toolCallId: string): void {
+    if (run.openToolCallIds.has(toolCallId)) {
+      return;
+    }
+    run.openToolCallIds.add(toolCallId);
+    run.toolCallsStarted += 1;
+  }
+
+  private markToolCallCompleted(run: RunState, toolCallId: string): void {
+    if (!run.openToolCallIds.delete(toolCallId)) {
+      return;
+    }
+    run.toolCallsCompleted += 1;
+  }
+
+  private markToolCallFailed(run: RunState, toolCallId: string): void {
+    if (!run.openToolCallIds.delete(toolCallId)) {
+      return;
+    }
+    run.toolCallsFailed += 1;
+  }
+
+  private classifyProviderErrorReason(message: string): TurnTerminalReason {
+    if (/maxtoolroundtrips/u.test(message.toLowerCase())) {
+      return 'max-tool-roundtrips';
+    }
+    return 'provider-error';
+  }
+
+  private defaultTerminalReasonForState(
+    state: 'completed' | 'aborted' | 'failed',
+  ): TurnTerminalReason {
+    if (state === 'completed') {
+      return 'completed';
+    }
+    if (state === 'aborted') {
+      return 'aborted';
+    }
+    return 'failed';
   }
 
   private async finalizeRun(
@@ -1400,18 +1501,41 @@ export class InMemoryNimRuntime implements NimRuntime {
       });
     }
 
+    const terminalReason = run.terminalReason ?? this.defaultTerminalReasonForState(state);
+    const pendingToolCallIds = [...run.openToolCallIds.values()];
+
     this.appendRunEvent(session, run, {
       type: 'turn.completed',
       source: 'system',
       state: 'idle',
       data: {
         terminalState: state,
+        terminalReason,
+        ...(run.providerFinishReason === undefined
+          ? {}
+          : { providerFinishReason: run.providerFinishReason }),
+        openToolCallsStarted: run.toolCallsStarted,
+        openToolCallsCompleted: run.toolCallsCompleted,
+        openToolCallsFailed: run.toolCallsFailed,
+        openToolCallsPending: pendingToolCallIds.length,
+        ...(pendingToolCallIds.length === 0 ? {} : { pendingToolCallIds }),
       },
     });
 
     run.resolveDone({
       runId: run.runId,
       terminalState: state,
+      terminalReason,
+      ...(run.providerFinishReason === undefined
+        ? {}
+        : { providerFinishReason: run.providerFinishReason }),
+      toolCalls: {
+        started: run.toolCallsStarted,
+        completed: run.toolCallsCompleted,
+        failed: run.toolCallsFailed,
+        pending: pendingToolCallIds.length,
+        ...(pendingToolCallIds.length === 0 ? {} : { pendingIds: pendingToolCallIds }),
+      },
     });
 
     if (session.queuedTurns.length > 0) {

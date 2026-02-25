@@ -18,6 +18,7 @@ export type NimProvider = {
 export type NimToolDefinition = {
   readonly name: string;
   readonly description: string;
+  readonly inputSchema?: Readonly<Record<string, unknown>>;
 };
 
 export type SessionHandle = {
@@ -33,6 +34,15 @@ export type SessionHandle = {
 export type TurnResult = {
   readonly runId: string;
   readonly terminalState: 'completed' | 'failed' | 'aborted';
+  readonly terminalReason?: string;
+  readonly providerFinishReason?: string;
+  readonly toolCalls?: {
+    readonly started: number;
+    readonly completed: number;
+    readonly failed: number;
+    readonly pending: number;
+    readonly pendingIds?: readonly string[];
+  };
 };
 
 export type TurnHandle = {

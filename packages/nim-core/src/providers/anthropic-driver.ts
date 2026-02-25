@@ -98,10 +98,12 @@ function toToolSet(
     const anthropicToolName = aliases.originalToAnthropic.get(tool.name) ?? tool.name;
     tools[anthropicToolName] = {
       description: tool.description,
-      inputSchema: {
-        type: 'object',
-        additionalProperties: true,
-      },
+      inputSchema:
+        tool.inputSchema ??
+        ({
+          type: 'object',
+          additionalProperties: true,
+        } as const),
       execute:
         executeTool === undefined
           ? (toolInput: unknown) => {

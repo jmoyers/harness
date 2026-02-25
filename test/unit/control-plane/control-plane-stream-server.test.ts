@@ -1331,6 +1331,89 @@ void test('stream server launches nim sessions through harness nim process profi
   }
 });
 
+void test(
+  'stream server normalizes shell thread launches to terminal and exposes launch mismatch metadata',
+  async () => {
+    const created: FakeLiveSession[] = [];
+    const server = await startControlPlaneStreamServer({
+      startSession: (input) => {
+        const session = new FakeLiveSession(input);
+        created.push(session);
+        return session;
+      },
+    });
+    const address = server.address();
+    const client = await connectControlPlaneStreamClient({
+      host: address.address,
+      port: address.port,
+    });
+    const observed = collectEnvelopes(client);
+    try {
+      await client.sendCommand({
+        type: 'stream.subscribe',
+        conversationId: 'conversation-shell',
+        includeOutput: false,
+        afterCursor: 0,
+      });
+      await client.sendCommand({
+        type: 'directory.upsert',
+        directoryId: 'directory-shell',
+        tenantId: 'tenant-shell',
+        userId: 'user-shell',
+        workspaceId: 'workspace-shell',
+        path: '/tmp/shell',
+      });
+      await client.sendCommand({
+        type: 'conversation.create',
+        conversationId: 'conversation-shell',
+        directoryId: 'directory-shell',
+        title: 'shell workspace',
+        agentType: 'shell',
+        adapterState: {},
+      });
+      await client.sendCommand({
+        type: 'pty.start',
+        sessionId: 'conversation-shell',
+        args: [],
+        initialCols: 100,
+        initialRows: 40,
+        tenantId: 'tenant-shell',
+        userId: 'user-shell',
+        workspaceId: 'workspace-shell',
+        worktreeId: 'worktree-shell',
+      });
+
+      assert.equal(created.length, 1);
+      assert.notEqual(created[0]?.input.command, undefined);
+      assert.notEqual(created[0]?.input.command, 'codex');
+
+      const status = await client.sendCommand({
+        type: 'session.status',
+        sessionId: 'conversation-shell',
+      });
+      assert.equal(status['requestedAgentType'], 'shell');
+      assert.equal(status['effectiveAgentType'], 'terminal');
+      assert.equal(status['launchMismatchReason'], 'alias:shell->terminal');
+      assert.equal(typeof status['launchCommand'], 'string');
+
+      await delay(20);
+      assert.equal(
+        observed.some(
+          (envelope) =>
+            envelope.kind === 'stream.event' &&
+            envelope.event.type === 'session-key-event' &&
+            envelope.event.sessionId === 'conversation-shell' &&
+            envelope.event.keyEvent.eventName === 'thread.launch.mismatch',
+        ),
+        true,
+      );
+    } finally {
+      client.close();
+      await server.close();
+    }
+  },
+);
+
 void test('stream server supports start/attach/io/events/cleanup over one protocol path', async () => {
   const created: FakeLiveSession[] = [];
   const startSession = (input: StartControlPlaneSessionInput): FakeLiveSession => {

@@ -342,3 +342,116 @@ test('nim runtime fails when provider completes without streamed assistant outpu
     true,
   );
 });
+
+test('nim runtime fails closed when provider finishes with unresolved tool calls', async () => {
+  const runtime = new InMemoryNimRuntime();
+  runtime.registerProvider({
+    id: 'anthropic',
+    displayName: 'Anthropic',
+    models: ['anthropic/claude-3-haiku-20240307'],
+  });
+
+  runtime.registerProviderDriver({
+    providerId: 'anthropic',
+    async *runTurn() {
+      yield { type: 'provider.thinking.started' };
+      yield { type: 'provider.thinking.completed' };
+      yield {
+        type: 'tool.call.started',
+        toolCallId: 'tool-open',
+        toolName: 'thread.create',
+      };
+      yield {
+        type: 'tool.call.arguments.delta',
+        toolCallId: 'tool-open',
+        delta: '{"projectId":"dir-1"',
+      };
+      yield {
+        type: 'provider.turn.finished',
+        finishReason: 'tool-calls',
+      };
+    },
+  });
+
+  const session = await runtime.startSession({
+    tenantId: 'tenant-a',
+    userId: 'user-a',
+    model: 'anthropic/claude-3-haiku-20240307',
+  });
+
+  const turn = await runtime.sendTurn({
+    sessionId: session.sessionId,
+    input: 'start threads',
+    idempotencyKey: 'idem-provider-dangling-tool',
+  });
+  const result = await turn.done;
+  assert.equal(result.terminalState, 'failed');
+  assert.equal(result.terminalReason, 'dangling-tool-call');
+  assert.equal(result.providerFinishReason, 'tool-calls');
+  assert.deepEqual(result.toolCalls, {
+    started: 1,
+    completed: 0,
+    failed: 0,
+    pending: 1,
+    pendingIds: ['tool-open'],
+  });
+
+  const replay = await runtime.replayEvents({
+    tenantId: 'tenant-a',
+    sessionId: session.sessionId,
+    runId: turn.runId,
+  });
+
+  const failed = replay.events.find((event) => event.type === 'turn.failed');
+  assert.equal(
+    String(failed?.data?.['message'] ?? '').includes('unresolved tool calls'),
+    true,
+  );
+  assert.deepEqual(failed?.data?.['pendingToolCallIds'], ['tool-open']);
+
+  const completed = replay.events.find((event) => event.type === 'turn.completed');
+  assert.equal(completed?.data?.['terminalState'], 'failed');
+  assert.equal(completed?.data?.['terminalReason'], 'dangling-tool-call');
+  assert.equal(completed?.data?.['providerFinishReason'], 'tool-calls');
+  assert.equal(completed?.data?.['openToolCallsStarted'], 1);
+  assert.equal(completed?.data?.['openToolCallsPending'], 1);
+});
+
+test('nim runtime classifies max tool roundtrip failures with explicit terminal reason', async () => {
+  const runtime = new InMemoryNimRuntime();
+  runtime.registerProvider({
+    id: 'anthropic',
+    displayName: 'Anthropic',
+    models: ['anthropic/claude-3-haiku-20240307'],
+  });
+
+  runtime.registerProviderDriver({
+    providerId: 'anthropic',
+    async *runTurn() {
+      yield {
+        type: 'provider.turn.error',
+        message: 'maxToolRoundtrips (10) exceeded',
+      };
+      yield {
+        type: 'provider.turn.finished',
+        finishReason: 'error',
+      };
+    },
+  });
+
+  const session = await runtime.startSession({
+    tenantId: 'tenant-a',
+    userId: 'user-a',
+    model: 'anthropic/claude-3-haiku-20240307',
+  });
+
+  const turn = await runtime.sendTurn({
+    sessionId: session.sessionId,
+    input: 'retry tool',
+    idempotencyKey: 'idem-provider-max-roundtrips',
+  });
+
+  const result = await turn.done;
+  assert.equal(result.terminalState, 'failed');
+  assert.equal(result.terminalReason, 'max-tool-roundtrips');
+});

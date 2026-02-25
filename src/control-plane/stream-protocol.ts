@@ -717,6 +717,9 @@ export type StreamObservedEvent =
       ts: string;
       directoryId: string | null;
       conversationId: string | null;
+      requestedAgentType?: string;
+      effectiveAgentType?: string;
+      launchMismatchReason?: string | null;
       telemetry: StreamTelemetrySummary | null;
       controller: StreamSessionController | null;
     }
@@ -1620,6 +1623,19 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
     const ts = readString(record['ts']);
     const directoryId = readString(record['directoryId']);
     const conversationId = readString(record['conversationId']);
+    const requestedAgentTypeRaw = record['requestedAgentType'];
+    const requestedAgentType =
+      requestedAgentTypeRaw === undefined ? undefined : readString(requestedAgentTypeRaw);
+    const effectiveAgentTypeRaw = record['effectiveAgentType'];
+    const effectiveAgentType =
+      effectiveAgentTypeRaw === undefined ? undefined : readString(effectiveAgentTypeRaw);
+    const launchMismatchReasonRaw = record['launchMismatchReason'];
+    const launchMismatchReason =
+      launchMismatchReasonRaw === undefined
+        ? undefined
+        : launchMismatchReasonRaw === null
+          ? null
+          : readString(launchMismatchReasonRaw);
     const telemetry = parseTelemetrySummary(record['telemetry']);
     const controller = parseSessionController(record['controller']);
     if (
@@ -1631,6 +1647,11 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
       (record['attentionReason'] !== null && attentionReason === null) ||
       (record['directoryId'] !== null && directoryId === null) ||
       (record['conversationId'] !== null && conversationId === null) ||
+      (requestedAgentTypeRaw !== undefined && requestedAgentType === null) ||
+      (effectiveAgentTypeRaw !== undefined && effectiveAgentType === null) ||
+      (launchMismatchReasonRaw !== undefined &&
+        launchMismatchReasonRaw !== null &&
+        launchMismatchReason === null) ||
       (record['telemetry'] !== undefined && telemetry === undefined) ||
       (record['controller'] !== undefined && controller === undefined)
     ) {
@@ -1654,6 +1675,9 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
       ts,
       directoryId: record['directoryId'] === null ? null : directoryId,
       conversationId: record['conversationId'] === null ? null : conversationId,
+      ...(requestedAgentType === undefined ? {} : { requestedAgentType }),
+      ...(effectiveAgentType === undefined ? {} : { effectiveAgentType }),
+      ...(launchMismatchReason === undefined ? {} : { launchMismatchReason }),
       telemetry: telemetry ?? null,
       controller: controller ?? null,
     };

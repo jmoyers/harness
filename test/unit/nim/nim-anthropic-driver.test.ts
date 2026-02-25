@@ -401,6 +401,70 @@ test('anthropic nim provider driver sanitizes and deduplicates Anthropic tool na
   assert.equal(observedToolNames.includes('bridge/tool'), false);
 });
 
+test('anthropic nim provider driver forwards tool input schemas to provider tool definitions', async () => {
+  let observedSchema: unknown = undefined;
+  const parts: StreamTextPart<ToolSet>[] = [
+    { type: 'text-delta', id: 'txt-1', text: 'ok' },
+    {
+      type: 'finish',
+      finishReason: 'stop',
+      totalUsage: {
+        inputTokens: 1,
+        outputTokens: 1,
+        totalTokens: 2,
+      },
+    },
+  ];
+
+  const driver = createAnthropicNimProviderDriver({
+    apiKey: 'test-key',
+    createAnthropicFn: () => anthropicFactory(),
+    streamTextFn: (input) => {
+      const tools = input.tools as ToolSet | undefined;
+      const definition = tools?.['thread_respond'];
+      observedSchema =
+        definition !== undefined && typeof definition === 'object' && definition !== null
+          ? (definition as { inputSchema?: unknown }).inputSchema
+          : undefined;
+      return mockStreamResult(parts, 'stop');
+    },
+  });
+
+  for await (const _event of driver.runTurn({
+    modelRef: 'anthropic/claude-3-haiku-20240307',
+    providerModelId: 'claude-3-haiku-20240307',
+    input: 'hello',
+    messages: [{ role: 'user', text: 'hello', runId: 'run-1', eventSeq: 1 }],
+    tools: [
+      {
+        name: 'thread.respond',
+        description: 'respond',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            threadId: { type: 'string' },
+            text: { type: 'string' },
+          },
+          required: ['threadId', 'text'],
+          additionalProperties: false,
+        },
+      },
+    ],
+  })) {
+    // consume stream
+  }
+
+  assert.deepEqual(observedSchema, {
+    type: 'object',
+    properties: {
+      threadId: { type: 'string' },
+      text: { type: 'string' },
+    },
+    required: ['threadId', 'text'],
+    additionalProperties: false,
+  });
+});
+
 test(
   'anthropic nim provider driver applies default harness system prompt and tool roundtrip budget',
   async () => {

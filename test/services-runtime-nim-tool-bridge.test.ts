@@ -86,6 +86,7 @@ function createBridge(): RuntimeNimToolBridge {
 
 void test('runtime nim tool bridge registers control-plane tools and policy', () => {
   const registeredTools: string[] = [];
+  let threadRespondSchema: Record<string, unknown> | null = null;
   let policyHash = '';
   const bridge = createBridge();
 
@@ -93,6 +94,9 @@ void test('runtime nim tool bridge registers control-plane tools and policy', ()
     registerTools: (tools) => {
       for (const tool of tools) {
         registeredTools.push(tool.name);
+        if (tool.name === 'thread.respond') {
+          threadRespondSchema = (tool.inputSchema ?? null) as Record<string, unknown> | null;
+        }
       }
     },
     setToolPolicy: (policy) => {
@@ -125,7 +129,13 @@ void test('runtime nim tool bridge registers control-plane tools and policy', ()
     'thread.remove',
     'session.list',
   ]);
-  assert.equal(policyHash, 'nim-control-plane-tools-v4');
+  assert.equal(policyHash, 'nim-control-plane-tools-v5');
+  assert.equal(threadRespondSchema !== null, true);
+  const threadRespondProperties = threadRespondSchema?.['properties'] as
+    | Record<string, unknown>
+    | undefined;
+  assert.equal(typeof threadRespondProperties?.['threadId'], 'object');
+  assert.equal(typeof threadRespondProperties?.['text'], 'object');
 });
 
 void test('runtime nim tool bridge invokes thread control and inspection tools', async () => {
@@ -265,6 +275,19 @@ void test('runtime nim tool bridge invokes thread control and inspection tools',
         sessionId: 'thread-1',
         tailLines: 20,
       },
+    },
+  );
+  assert.deepEqual(
+    await bridge.invoke({
+      toolName: 'thread.respond',
+      argumentsValue: {
+        threadId: 'thread-1',
+        message: 'hello via alias',
+      },
+    }),
+    {
+      responded: true,
+      sentBytes: 24,
     },
   );
   assert.deepEqual(
@@ -433,7 +456,7 @@ void test('runtime nim tool bridge rejects invalid task.list limits and unknown 
         },
       }),
     {
-      message: 'missing thread.respond text',
+      message: 'missing thread.respond text (expected {"threadId":"<id>","text":"<message>"})',
     },
   );
 
@@ -447,6 +470,21 @@ void test('runtime nim tool bridge rejects invalid task.list limits and unknown 
       }),
     {
       message: 'missing thread.create projectId',
+    },
+  );
+
+  await assert.rejects(
+    async () =>
+      await bridge.invoke({
+        toolName: 'thread.create',
+        argumentsValue: {
+          projectId: 'project-1',
+          title: 'missing type',
+        },
+      }),
+    {
+      message:
+        'missing thread.create agentType (expected one of codex|claude|cursor|terminal|shell|critique|nim)',
     },
   );
 

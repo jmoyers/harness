@@ -3,95 +3,255 @@ import type { NimToolDefinition, NimToolPolicy } from '../../packages/nim-core/s
 
 type RuntimeNimThreadRuntimeStatus = 'running' | 'needs-input' | 'completed' | 'exited';
 
+const TOOL_INPUT_SCHEMA_EMPTY = {
+  type: 'object',
+  properties: {},
+  additionalProperties: false,
+} as const;
+
+const TOOL_INPUT_SCHEMA_THREAD_ID = {
+  type: 'object',
+  properties: {
+    threadId: { type: 'string' },
+    sessionId: { type: 'string' },
+  },
+  required: [],
+  additionalProperties: false,
+} as const;
+
+const TOOL_INPUT_SCHEMA_THREAD_RESPOND = {
+  type: 'object',
+  properties: {
+    threadId: { type: 'string' },
+    sessionId: { type: 'string' },
+    text: { type: 'string' },
+    message: { type: 'string' },
+  },
+  required: [],
+  additionalProperties: false,
+} as const;
+
+const TOOL_INPUT_SCHEMA_THREAD_CREATE = {
+  type: 'object',
+  properties: {
+    threadId: { type: 'string' },
+    projectId: { type: 'string' },
+    directoryId: { type: 'string' },
+    title: { type: 'string' },
+    agentType: { type: 'string' },
+    adapterState: { type: 'object' },
+  },
+  required: ['projectId', 'title', 'agentType'],
+  additionalProperties: false,
+} as const;
+
+const TOOL_INPUT_SCHEMA_THREAD_LIST = {
+  type: 'object',
+  properties: {
+    projectId: { type: 'string' },
+    directoryId: { type: 'string' },
+    includeArchived: { type: 'boolean' },
+    limit: { type: 'integer' },
+    agentType: { type: 'string' },
+    runtimeStatus: { type: 'string' },
+    status: { type: 'string' },
+  },
+  additionalProperties: false,
+} as const;
+
+const TOOL_INPUT_SCHEMA_TASK_LIST = {
+  type: 'object',
+  properties: {
+    limit: { type: 'integer' },
+  },
+  additionalProperties: false,
+} as const;
+
+const TOOL_INPUT_SCHEMA_THREAD_UPDATE = {
+  type: 'object',
+  properties: {
+    threadId: { type: 'string' },
+    sessionId: { type: 'string' },
+    title: { type: 'string' },
+  },
+  required: ['title'],
+  additionalProperties: false,
+} as const;
+
+const TOOL_INPUT_SCHEMA_THREAD_SNAPSHOT = {
+  type: 'object',
+  properties: {
+    threadId: { type: 'string' },
+    sessionId: { type: 'string' },
+    tailLines: { type: 'integer' },
+  },
+  required: [],
+  additionalProperties: false,
+} as const;
+
+const TOOL_INPUT_SCHEMA_THREAD_CLAIM = {
+  type: 'object',
+  properties: {
+    threadId: { type: 'string' },
+    sessionId: { type: 'string' },
+    controllerId: { type: 'string' },
+    controllerType: { type: 'string', enum: ['human', 'agent', 'automation'] },
+    controllerLabel: { type: 'string' },
+    reason: { type: 'string' },
+    takeover: { type: 'boolean' },
+  },
+  required: [],
+  additionalProperties: false,
+} as const;
+
+const TOOL_INPUT_SCHEMA_THREAD_RELEASE = {
+  type: 'object',
+  properties: {
+    threadId: { type: 'string' },
+    sessionId: { type: 'string' },
+    reason: { type: 'string' },
+  },
+  required: [],
+  additionalProperties: false,
+} as const;
+
+const TOOL_INPUT_SCHEMA_THREAD_START = {
+  type: 'object',
+  properties: {
+    threadId: { type: 'string' },
+    sessionId: { type: 'string' },
+    args: { type: 'array', items: { type: 'string' } },
+    env: { type: 'object' },
+    cwd: { type: 'string' },
+    initialCols: { type: 'integer' },
+    initialRows: { type: 'integer' },
+    worktreeId: { type: 'string' },
+  },
+  required: [],
+  additionalProperties: false,
+} as const;
+
+const TOOL_INPUT_SCHEMA_THREAD_ATTACH = {
+  type: 'object',
+  properties: {
+    threadId: { type: 'string' },
+    sessionId: { type: 'string' },
+    sinceCursor: { type: 'integer' },
+  },
+  required: [],
+  additionalProperties: false,
+} as const;
+
 const runtimeNimTools: readonly NimToolDefinition[] = [
   {
     name: 'directory.list',
     description: 'List directories known to the current workspace.',
+    inputSchema: TOOL_INPUT_SCHEMA_EMPTY,
   },
   {
     name: 'repository.list',
     description: 'List repositories known to the current workspace.',
+    inputSchema: TOOL_INPUT_SCHEMA_EMPTY,
   },
   {
     name: 'task.list',
     description: 'List tasks known to the current workspace.',
+    inputSchema: TOOL_INPUT_SCHEMA_TASK_LIST,
   },
   {
     name: 'thread.list',
     description: 'List threads in the current workspace.',
+    inputSchema: TOOL_INPUT_SCHEMA_THREAD_LIST,
   },
   {
     name: 'thread.create',
     description: 'Create a new thread in a project.',
+    inputSchema: TOOL_INPUT_SCHEMA_THREAD_CREATE,
   },
   {
     name: 'thread.update',
     description: 'Update thread metadata such as title.',
+    inputSchema: TOOL_INPUT_SCHEMA_THREAD_UPDATE,
   },
   {
     name: 'thread.archive',
     description: 'Archive a thread.',
+    inputSchema: TOOL_INPUT_SCHEMA_THREAD_ID,
   },
   {
     name: 'thread.status',
     description: 'Get runtime status for a thread.',
+    inputSchema: TOOL_INPUT_SCHEMA_THREAD_ID,
   },
   {
     name: 'thread.snapshot',
     description: 'Get a thread terminal snapshot and optional tail buffer.',
+    inputSchema: TOOL_INPUT_SCHEMA_THREAD_SNAPSHOT,
   },
   {
     name: 'thread.respond',
     description: 'Send input to a thread session.',
+    inputSchema: TOOL_INPUT_SCHEMA_THREAD_RESPOND,
   },
   {
     name: 'thread.interrupt',
     description: 'Interrupt an active thread session.',
+    inputSchema: TOOL_INPUT_SCHEMA_THREAD_ID,
   },
   {
     name: 'thread.claim',
     description: 'Claim control of a thread session.',
+    inputSchema: TOOL_INPUT_SCHEMA_THREAD_CLAIM,
   },
   {
     name: 'thread.release',
     description: 'Release control of a thread session.',
+    inputSchema: TOOL_INPUT_SCHEMA_THREAD_RELEASE,
   },
   {
     name: 'thread.start',
     description: 'Start or restart a thread runtime session.',
+    inputSchema: TOOL_INPUT_SCHEMA_THREAD_START,
   },
   {
     name: 'thread.attach',
     description: 'Attach to a thread runtime stream.',
+    inputSchema: TOOL_INPUT_SCHEMA_THREAD_ATTACH,
   },
   {
     name: 'thread.detach',
     description: 'Detach from a thread runtime stream.',
+    inputSchema: TOOL_INPUT_SCHEMA_THREAD_ID,
   },
   {
     name: 'thread.events.subscribe',
     description: 'Subscribe to thread session events.',
+    inputSchema: TOOL_INPUT_SCHEMA_THREAD_ID,
   },
   {
     name: 'thread.events.unsubscribe',
     description: 'Unsubscribe from thread session events.',
+    inputSchema: TOOL_INPUT_SCHEMA_THREAD_ID,
   },
   {
     name: 'thread.close',
     description: 'Close a thread runtime session.',
+    inputSchema: TOOL_INPUT_SCHEMA_THREAD_ID,
   },
   {
     name: 'thread.remove',
     description: 'Remove a thread runtime session from control-plane state.',
+    inputSchema: TOOL_INPUT_SCHEMA_THREAD_ID,
   },
   {
     name: 'session.list',
     description: 'List active and historical sessions in the current workspace.',
+    inputSchema: TOOL_INPUT_SCHEMA_EMPTY,
   },
 ];
 
 const runtimeNimPolicy: NimToolPolicy = {
-  hash: 'nim-control-plane-tools-v4',
+  hash: 'nim-control-plane-tools-v5',
   allow: runtimeNimTools.map((tool) => tool.name),
   deny: [],
 };
@@ -556,7 +716,7 @@ function parseThreadCreateArguments(input: RuntimeNimToolBridgeInvokeInput): {
   const projectId =
     readOptionalString(record, 'projectId') ?? readOptionalString(record, 'directoryId');
   const title = readOptionalString(record, 'title');
-  const agentType = readOptionalString(record, 'agentType') ?? 'codex';
+  const agentType = readOptionalString(record, 'agentType');
   const threadId = readThreadIdFromRecord(record) ?? undefined;
   if (projectId === undefined || projectId.trim().length === 0) {
     throw new Error('missing thread.create projectId');
@@ -564,8 +724,10 @@ function parseThreadCreateArguments(input: RuntimeNimToolBridgeInvokeInput): {
   if (title === undefined || title.trim().length === 0) {
     throw new Error('missing thread.create title');
   }
-  if (agentType.trim().length === 0) {
-    throw new Error('missing thread.create agentType');
+  if (agentType === undefined || agentType.trim().length === 0) {
+    throw new Error(
+      'missing thread.create agentType (expected one of codex|claude|cursor|terminal|shell|critique|nim)',
+    );
   }
   const adapterStateRaw = record['adapterState'];
   let adapterState: Record<string, unknown> | undefined;
@@ -580,7 +742,7 @@ function parseThreadCreateArguments(input: RuntimeNimToolBridgeInvokeInput): {
     ...(threadId === undefined ? {} : { threadId }),
     projectId,
     title,
-    agentType,
+    agentType: agentType.trim(),
     ...(adapterState === undefined ? {} : { adapterState }),
   };
 }
@@ -656,7 +818,16 @@ function parseThreadRespondArguments(input: RuntimeNimToolBridgeInvokeInput): {
     throw new Error('missing thread.respond threadId');
   }
   if (text === undefined || text.trim().length === 0) {
-    throw new Error('missing thread.respond text');
+    const messageAlias = readOptionalString(record, 'message');
+    if (messageAlias !== undefined && messageAlias.trim().length > 0) {
+      return {
+        threadId,
+        text: messageAlias,
+      };
+    }
+    throw new Error(
+      'missing thread.respond text (expected {"threadId":"<id>","text":"<message>"})',
+    );
   }
   return {
     threadId,

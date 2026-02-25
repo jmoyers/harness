@@ -393,6 +393,9 @@ interface SessionState {
   id: string;
   directoryId: string | null;
   agentType: string;
+  requestedAgentType: string;
+  effectiveAgentType: string;
+  launchMismatchReason: string | null;
   adapterState: Record<string, unknown>;
   tenantId: string;
   userId: string;
@@ -575,6 +578,20 @@ const LIFECYCLE_TELEMETRY_EVENT_NAMES = new Set([
   'codex.turn.e2e_duration_ms',
   'codex.conversation_starts',
 ]);
+const SUPPORTED_SESSION_AGENT_TYPES = new Set([
+  'codex',
+  'claude',
+  'cursor',
+  'terminal',
+  'critique',
+  'nim',
+]);
+
+interface ResolvedLaunchAgentType {
+  readonly requestedAgentType: string;
+  readonly effectiveAgentType: string;
+  readonly mismatchReason: string | null;
+}
 
 function isThreadTitleAgentType(agentType: string): boolean {
   return THREAD_TITLE_AGENT_TYPES.has(agentType.trim().toLowerCase());
@@ -796,6 +813,29 @@ function normalizeAgentToolType(value: string): AgentToolType | null {
     return normalized;
   }
   return null;
+}
+
+function resolveLaunchAgentType(agentType: string): ResolvedLaunchAgentType {
+  const requestedAgentType = agentType.trim().toLowerCase();
+  if (requestedAgentType === 'shell') {
+    return {
+      requestedAgentType,
+      effectiveAgentType: 'terminal',
+      mismatchReason: 'alias:shell->terminal',
+    };
+  }
+  if (SUPPORTED_SESSION_AGENT_TYPES.has(requestedAgentType)) {
+    return {
+      requestedAgentType,
+      effectiveAgentType: requestedAgentType,
+      mismatchReason: null,
+    };
+  }
+  return {
+    requestedAgentType,
+    effectiveAgentType: 'codex',
+    mismatchReason: `unsupported:${requestedAgentType.length === 0 ? '<empty>' : requestedAgentType}`,
+  };
 }
 
 function normalizeAgentInstallConfig(
@@ -2138,7 +2178,9 @@ export class ControlPlaneStreamServer {
     }
 
     const persistedConversation = this.stateStore.getConversation(command.sessionId);
-    const agentType = persistedConversation?.agentType ?? 'codex';
+    const requestedAgentType = persistedConversation?.agentType ?? 'codex';
+    const launchAgentType = resolveLaunchAgentType(requestedAgentType);
+    const agentType = launchAgentType.effectiveAgentType;
     const resolvedTenantId =
       persistedConversation?.tenantId ?? command.tenantId ?? DEFAULT_TENANT_ID;
     const resolvedUserId = persistedConversation?.userId ?? command.userId ?? DEFAULT_USER_ID;
@@ -2277,6 +2319,9 @@ export class ControlPlaneStreamServer {
       id: command.sessionId,
       directoryId: persistedConversation?.directoryId ?? null,
       agentType,
+      requestedAgentType: launchAgentType.requestedAgentType,
+      effectiveAgentType: launchAgentType.effectiveAgentType,
+      launchMismatchReason: launchAgentType.mismatchReason,
       adapterState: normalizeAdapterState(persistedConversation?.adapterState ?? {}),
       tenantId: resolvedTenantId,
       userId: resolvedUserId,
@@ -2305,6 +2350,7 @@ export class ControlPlaneStreamServer {
     if (state !== undefined) {
       this.persistConversationRuntime(state);
       this.publishStatusObservedEvent(state);
+      this.publishLaunchParityObservedEvent(state, launchCommand);
     }
   }
 
@@ -4132,6 +4178,29 @@ export class ControlPlaneStreamServer {
     );
   }
 
+  private publishLaunchParityObservedEvent(state: SessionState, launchCommand: string): void {
+    if (state.requestedAgentType === state.effectiveAgentType) {
+      return;
+    }
+    this.publishSessionKeyObservedEvent(state, {
+      source: 'history',
+      eventName: 'thread.launch.mismatch',
+      severity: 'warning',
+      summary: `requested=${state.requestedAgentType} effective=${state.effectiveAgentType}`,
+      observedAt: new Date().toISOString(),
+      statusHint: null,
+    });
+    recordPerfEvent('control-plane.session.launch.mismatch', {
+      sessionId: state.id,
+      requestedAgentType: state.requestedAgentType,
+      effectiveAgentType: state.effectiveAgentType,
+      ...(state.launchMismatchReason === null
+        ? {}
+        : { launchMismatchReason: state.launchMismatchReason }),
+      launchCommand,
+    });
+  }
+
   private publishSessionControlObservedEvent(
     state: SessionState,
     action: 'claimed' | 'released' | 'taken-over',
@@ -4630,6 +4699,8 @@ export class ControlPlaneStreamServer {
   }
 
   private sessionSummaryRecord(state: SessionState): Record<string, unknown> {
+    const exposeLaunchParity =
+      state.requestedAgentType !== state.effectiveAgentType || state.launchMismatchReason !== null;
     return {
       sessionId: state.id,
       directoryId: state.directoryId,
@@ -4650,6 +4721,13 @@ export class ControlPlaneStreamServer {
       exitedAt: state.exitedAt,
       live: state.session !== null,
       launchCommand: this.launchCommandBySessionId.get(state.id) ?? null,
+      ...(exposeLaunchParity
+        ? {
+            requestedAgentType: state.requestedAgentType,
+            effectiveAgentType: state.effectiveAgentType,
+            launchMismatchReason: state.launchMismatchReason,
+          }
+        : {}),
       telemetry: state.latestTelemetry,
       controller: toPublicSessionController(state.controller),
       diagnostics: this.sessionDiagnosticsRecord(state),

@@ -104,6 +104,16 @@ void test('parseSessionSummaryRecord accepts valid summary and nullable fields',
     telemetry: null,
   });
   assert.equal(withoutTelemetry?.telemetry, null);
+
+  const launchMismatch = parseSessionSummaryRecord({
+    ...validSummary,
+    requestedAgentType: 'shell',
+    effectiveAgentType: 'terminal',
+    launchMismatchReason: 'alias:shell->terminal',
+  });
+  assert.equal(launchMismatch?.requestedAgentType, 'shell');
+  assert.equal(launchMismatch?.effectiveAgentType, 'terminal');
+  assert.equal(launchMismatch?.launchMismatchReason, 'alias:shell->terminal');
 });
 
 void test('parseSessionSummaryRecord rejects malformed summaries', () => {
@@ -252,6 +262,27 @@ void test('parseSessionSummaryRecord rejects malformed summaries', () => {
         controllerType: 'agent',
         controllerLabel: 'agent one',
       },
+    }),
+    null,
+  );
+  assert.equal(
+    parseSessionSummaryRecord({
+      ...validSummary,
+      requestedAgentType: 123,
+    }),
+    null,
+  );
+  assert.equal(
+    parseSessionSummaryRecord({
+      ...validSummary,
+      effectiveAgentType: 123,
+    }),
+    null,
+  );
+  assert.equal(
+    parseSessionSummaryRecord({
+      ...validSummary,
+      launchMismatchReason: 123,
     }),
     null,
   );

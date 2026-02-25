@@ -167,8 +167,11 @@ Behavior fragments:
 - nim process status is projected into the same status model pipeline used for other agent sessions and is persisted/restored with conversation runtime state.
 - nim provider turn context is session-scoped and reconstructed from persisted event history (user turn input + assistant message output), so restart/resume retains the same conversation context while remaining isolated per session.
 - nim provider stream contract is fail-closed: successful provider completions must include streamed assistant text deltas and a terminal `provider.turn.finished` signal; violations emit turn-failure notices into the nim UI stream.
+- nim run completion now emits explicit terminal metadata (`terminalReason`, provider `finishReason`, tool-call started/completed/failed/pending counters) and fails closed when provider streams finish with unresolved tool calls.
 - nim launches with workspace/session scope args and control-plane connection env injected by the stream server, then resolves tool calls through `runtime-nim-tool-bridge -> runtime-nim-control-plane-api -> control-plane stream commands`.
 - nim control-plane tool surface includes workspace inspection (`directory.list`, `repository.list`, `task.list`, `session.list`) plus thread lifecycle/runtime control (`thread.list`, `thread.create`, `thread.update`, `thread.archive`, `thread.status`, `thread.snapshot`, `thread.respond`, `thread.interrupt`, `thread.claim`, `thread.release`, `thread.start`, `thread.attach`, `thread.detach`, `thread.events.subscribe`, `thread.events.unsubscribe`, `thread.close`, `thread.remove`).
+- nim tool contracts are schema-backed at registration time; `thread.respond` accepts canonical `text` and a backward-compatible `message` alias.
+- session/thread launch status exposes launch parity when needed (`requestedAgentType`, `effectiveAgentType`, `launchMismatchReason`) and emits `session-key-event` `thread.launch.mismatch` when requested and effective agent launch types diverge (for example, `shell -> terminal`).
 - mux startup hydration seeds the workspace observed/zustand synced state from hydrated directory/thread/repository/task records before subscribing to observed stream deltas so archive/update broadcasts project correctly for pre-existing records.
 
 Owners:

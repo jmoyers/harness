@@ -29,6 +29,9 @@ interface StreamSessionSummary {
   readonly exitedAt: string | null;
   readonly live: boolean;
   readonly launchCommand: string | null;
+  readonly requestedAgentType?: string;
+  readonly effectiveAgentType?: string;
+  readonly launchMismatchReason?: string | null;
   readonly telemetry: StreamTelemetrySummary | null;
   readonly controller: StreamSessionController | null;
 }
@@ -225,6 +228,9 @@ export function parseSessionSummaryRecord(value: unknown): StreamSessionSummary 
   const exitedAt = readNullableString(record['exitedAt']);
   const live = readBoolean(record['live']);
   const launchCommand = readNullableString(record['launchCommand']);
+  const requestedAgentType = readNullableString(record['requestedAgentType']);
+  const effectiveAgentType = readNullableString(record['effectiveAgentType']);
+  const launchMismatchReason = readNullableString(record['launchMismatchReason']);
   const telemetry = readTelemetrySummary(record['telemetry']);
   const controller = readSessionController(record['controller']);
   if (attentionReason === undefined) {
@@ -263,6 +269,15 @@ export function parseSessionSummaryRecord(value: unknown): StreamSessionSummary 
   if (launchCommand === undefined) {
     return null;
   }
+  if (record['requestedAgentType'] !== undefined && requestedAgentType === undefined) {
+    return null;
+  }
+  if (record['effectiveAgentType'] !== undefined && effectiveAgentType === undefined) {
+    return null;
+  }
+  if (record['launchMismatchReason'] !== undefined && launchMismatchReason === undefined) {
+    return null;
+  }
   if (telemetry === undefined) {
     return null;
   }
@@ -289,6 +304,13 @@ export function parseSessionSummaryRecord(value: unknown): StreamSessionSummary 
     exitedAt,
     live,
     launchCommand,
+    ...(requestedAgentType === undefined || requestedAgentType === null
+      ? {}
+      : { requestedAgentType }),
+    ...(effectiveAgentType === undefined || effectiveAgentType === null
+      ? {}
+      : { effectiveAgentType }),
+    ...(launchMismatchReason === undefined ? {} : { launchMismatchReason }),
     telemetry: telemetry ?? null,
     controller: controller ?? null,
   };
