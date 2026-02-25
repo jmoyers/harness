@@ -1,7 +1,7 @@
 import { Widget } from '../../../../harness-ui/src/widget/widget.ts';
 import { reactive } from '../../../../harness-ui/src/widget/reactive.ts';
 import type { ClippedCellBuffer } from '../../../../harness-ui/src/core/cell-buffer.ts';
-import type { FileChange, McpStatus } from '../../contracts/types.ts';
+import type { FileChange } from '../../contracts/types.ts';
 import { nimVersion } from '../../contracts/config.ts';
 import { padRight, progressBar } from '../../state/helpers.ts';
 import { TH } from '../theme.ts';
@@ -12,11 +12,6 @@ export class SidebarView extends Widget {
   tokens = reactive(0);
   contextPercent = reactive(0);
   cost = reactive(0);
-  mcp = reactive<McpStatus[]>([
-    { name: 'filesystem', state: 'connected', detail: 'Connected' },
-    { name: 'github', state: 'idle', detail: 'Idle' },
-  ]);
-  lspLine = reactive('LSPs will activate as files are read');
   filesChanged = reactive<FileChange[]>([]);
 
   constructor() {
@@ -64,33 +59,6 @@ export class SidebarView extends Widget {
     }
     if (y < buf.rows) {
       buf.drawText(1, y, `$${this.cost.toFixed(2)} spent`, TH.sideMuted);
-      y += 2;
-    }
-
-    y = this.drawSectionTitle(buf, y, 'MCP');
-    for (const entry of this.mcp) {
-      if (y >= buf.rows) {
-        break;
-      }
-      const dot =
-        entry.state === 'connected'
-          ? TH.sideDotOn
-          : entry.state === 'error'
-            ? TH.sideDotError
-            : TH.sideDotOff;
-      buf.drawText(1, y, '•', dot);
-      buf.drawText(3, y, entry.name, TH.sideValue);
-      y += 1;
-      if (y < buf.rows) {
-        buf.drawText(3, y, entry.detail, TH.sideMuted);
-        y += 1;
-      }
-    }
-
-    y += 1;
-    y = this.drawSectionTitle(buf, y, 'LSP');
-    if (y < buf.rows) {
-      buf.drawText(1, y, this.lspLine, TH.sideMuted);
       y += 2;
     }
 

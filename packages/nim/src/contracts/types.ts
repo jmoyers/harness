@@ -25,9 +25,3 @@ export interface FileChange {
   additions: number;
   deletions: number;
 }
-
-export interface McpStatus {
-  name: string;
-  state: 'connected' | 'error' | 'idle';
-  detail: string;
-}
