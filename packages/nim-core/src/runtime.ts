@@ -1011,7 +1011,7 @@ export class InMemoryNimRuntime implements NimRuntime {
             state: 'idle',
             data: {
               message:
-              'provider stream contract violation: missing assistant output delta before completion',
+                'provider stream contract violation: missing assistant output delta before completion',
             },
           });
           return 'failed';
@@ -1898,9 +1898,46 @@ export class InMemoryNimRuntime implements NimRuntime {
         terminalState === 'aborted' ||
         terminalState === 'failed'
       ) {
+        const terminalReason =
+          typeof completion.data['terminalReason'] === 'string'
+            ? completion.data['terminalReason']
+            : undefined;
+        const providerFinishReason =
+          typeof completion.data['providerFinishReason'] === 'string'
+            ? completion.data['providerFinishReason']
+            : undefined;
+        const toolCallsStarted = completion.data['openToolCallsStarted'];
+        const toolCallsCompleted = completion.data['openToolCallsCompleted'];
+        const toolCallsFailed = completion.data['openToolCallsFailed'];
+        const toolCallsPending = completion.data['openToolCallsPending'];
+        const pendingToolCallIds = completion.data['pendingToolCallIds'];
+        const hasToolCallCounts =
+          typeof toolCallsStarted === 'number' &&
+          typeof toolCallsCompleted === 'number' &&
+          typeof toolCallsFailed === 'number' &&
+          typeof toolCallsPending === 'number';
         return {
           runId,
           terminalState,
+          ...(terminalReason === undefined ? {} : { terminalReason }),
+          ...(providerFinishReason === undefined ? {} : { providerFinishReason }),
+          ...(hasToolCallCounts
+            ? {
+                toolCalls: {
+                  started: toolCallsStarted,
+                  completed: toolCallsCompleted,
+                  failed: toolCallsFailed,
+                  pending: toolCallsPending,
+                  ...(Array.isArray(pendingToolCallIds)
+                    ? {
+                        pendingIds: pendingToolCallIds.filter(
+                          (toolCallId): toolCallId is string => typeof toolCallId === 'string',
+                        ),
+                      }
+                    : {}),
+                },
+              }
+            : {}),
         };
       }
     }

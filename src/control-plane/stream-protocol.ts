@@ -1665,6 +1665,15 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
     ) {
       return null;
     }
+    const requestedAgentTypeValue =
+      requestedAgentTypeRaw === undefined ? undefined : requestedAgentType;
+    const effectiveAgentTypeValue =
+      effectiveAgentTypeRaw === undefined ? undefined : effectiveAgentType;
+    const launchMismatchReasonValue =
+      launchMismatchReasonRaw === undefined ? undefined : launchMismatchReason;
+    if (requestedAgentTypeValue === null || effectiveAgentTypeValue === null) {
+      return null;
+    }
     return {
       type,
       sessionId,
@@ -1675,9 +1684,15 @@ function parseStreamObservedEvent(value: unknown): StreamObservedEvent | null {
       ts,
       directoryId: record['directoryId'] === null ? null : directoryId,
       conversationId: record['conversationId'] === null ? null : conversationId,
-      ...(requestedAgentType === undefined ? {} : { requestedAgentType }),
-      ...(effectiveAgentType === undefined ? {} : { effectiveAgentType }),
-      ...(launchMismatchReason === undefined ? {} : { launchMismatchReason }),
+      ...(requestedAgentTypeValue === undefined
+        ? {}
+        : { requestedAgentType: requestedAgentTypeValue }),
+      ...(effectiveAgentTypeValue === undefined
+        ? {}
+        : { effectiveAgentType: effectiveAgentTypeValue }),
+      ...(launchMismatchReasonValue === undefined
+        ? {}
+        : { launchMismatchReason: launchMismatchReasonValue }),
       telemetry: telemetry ?? null,
       controller: controller ?? null,
     };

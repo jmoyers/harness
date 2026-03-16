@@ -401,6 +401,81 @@ test('anthropic nim provider driver sanitizes and deduplicates Anthropic tool na
   assert.equal(observedToolNames.includes('bridge/tool'), false);
 });
 
+test('anthropic nim provider driver uses expanded default max output tokens', async () => {
+  let observedMaxOutputTokens: number | undefined;
+  const parts: StreamTextPart<ToolSet>[] = [
+    { type: 'text-delta', id: 'txt-1', text: 'ok' },
+    {
+      type: 'finish',
+      finishReason: 'stop',
+      totalUsage: {
+        inputTokens: 1,
+        outputTokens: 1,
+        totalTokens: 2,
+      },
+    },
+  ];
+
+  const driver = createAnthropicNimProviderDriver({
+    apiKey: 'test-key',
+    createAnthropicFn: () => anthropicFactory(),
+    streamTextFn: (input) => {
+      observedMaxOutputTokens = input.maxOutputTokens;
+      return mockStreamResult(parts, 'stop');
+    },
+  });
+
+  for await (const _event of driver.runTurn({
+    modelRef: 'anthropic/claude-3-haiku-20240307',
+    providerModelId: 'claude-3-haiku-20240307',
+    input: 'hello',
+    messages: [{ role: 'user', text: 'hello', runId: 'run-1', eventSeq: 1 }],
+    tools: [],
+  })) {
+    // consume stream
+  }
+
+  assert.equal(observedMaxOutputTokens, 2048);
+});
+
+test('anthropic nim provider driver forwards explicit max output tokens override', async () => {
+  let observedMaxOutputTokens: number | undefined;
+  const parts: StreamTextPart<ToolSet>[] = [
+    { type: 'text-delta', id: 'txt-1', text: 'ok' },
+    {
+      type: 'finish',
+      finishReason: 'stop',
+      totalUsage: {
+        inputTokens: 1,
+        outputTokens: 1,
+        totalTokens: 2,
+      },
+    },
+  ];
+
+  const driver = createAnthropicNimProviderDriver({
+    apiKey: 'test-key',
+    maxOutputTokens: 1337,
+    createAnthropicFn: () => anthropicFactory(),
+    streamTextFn: (input) => {
+      observedMaxOutputTokens = input.maxOutputTokens;
+      return mockStreamResult(parts, 'stop');
+    },
+  });
+
+  for await (const _event of driver.runTurn({
+    modelRef: 'anthropic/claude-3-haiku-20240307',
+    providerModelId: 'claude-3-haiku-20240307',
+    input: 'hello',
+    messages: [{ role: 'user', text: 'hello', runId: 'run-1', eventSeq: 1 }],
+    tools: [],
+  })) {
+    // consume stream
+  }
+
+  assert.equal(observedMaxOutputTokens, 1337);
+});
+
 test('anthropic nim provider driver forwards tool input schemas to provider tool definitions', async () => {
   let observedSchema: unknown = undefined;
   const parts: StreamTextPart<ToolSet>[] = [
@@ -465,48 +540,45 @@ test('anthropic nim provider driver forwards tool input schemas to provider tool
   });
 });
 
-test(
-  'anthropic nim provider driver applies default harness system prompt and tool roundtrip budget',
-  async () => {
-    let observedSystemPrompt = '';
-    let observedMaxToolRoundtrips = 0;
-    const parts: StreamTextPart<ToolSet>[] = [
-      { type: 'text-delta', id: 'txt-1', text: 'ok' },
-      {
-        type: 'finish',
-        finishReason: 'stop',
-        totalUsage: {
-          inputTokens: 1,
-          outputTokens: 1,
-          totalTokens: 2,
-        },
+test('anthropic nim provider driver applies default harness system prompt and tool roundtrip budget', async () => {
+  let observedSystemPrompt = '';
+  let observedMaxToolRoundtrips = 0;
+  const parts: StreamTextPart<ToolSet>[] = [
+    { type: 'text-delta', id: 'txt-1', text: 'ok' },
+    {
+      type: 'finish',
+      finishReason: 'stop',
+      totalUsage: {
+        inputTokens: 1,
+        outputTokens: 1,
+        totalTokens: 2,
       },
-    ];
+    },
+  ];
 
-    const driver = createAnthropicNimProviderDriver({
-      apiKey: 'test-key',
-      createAnthropicFn: () => anthropicFactory(),
-      streamTextFn: (input) => {
-        observedSystemPrompt = input.system ?? '';
-        observedMaxToolRoundtrips = input.maxToolRoundtrips ?? 0;
-        return mockStreamResult(parts, 'stop');
-      },
-    });
+  const driver = createAnthropicNimProviderDriver({
+    apiKey: 'test-key',
+    createAnthropicFn: () => anthropicFactory(),
+    streamTextFn: (input) => {
+      observedSystemPrompt = input.system ?? '';
+      observedMaxToolRoundtrips = input.maxToolRoundtrips ?? 0;
+      return mockStreamResult(parts, 'stop');
+    },
+  });
 
-    for await (const _event of driver.runTurn({
-      modelRef: 'anthropic/claude-3-haiku-20240307',
-      providerModelId: 'claude-3-haiku-20240307',
-      input: 'hello',
-      messages: [{ role: 'user', text: 'hello', runId: 'run-1', eventSeq: 1 }],
-      tools: [],
-    })) {
-      // consume stream
-    }
+  for await (const _event of driver.runTurn({
+    modelRef: 'anthropic/claude-3-haiku-20240307',
+    providerModelId: 'claude-3-haiku-20240307',
+    input: 'hello',
+    messages: [{ role: 'user', text: 'hello', runId: 'run-1', eventSeq: 1 }],
+    tools: [],
+  })) {
+    // consume stream
+  }
 
-    assert.match(observedSystemPrompt, /Harness coordination agent/u);
-    assert.equal(observedMaxToolRoundtrips, 1000);
-  },
-);
+  assert.match(observedSystemPrompt, /Harness coordination agent/u);
+  assert.equal(observedMaxToolRoundtrips, 1000);
+});
 
 test('anthropic nim provider driver supports overriding system prompt and tool roundtrip budget', async () => {
   let observedSystemPrompt = '';

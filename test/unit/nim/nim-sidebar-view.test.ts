@@ -41,11 +41,26 @@ test('nim sidebar omits placeholder MCP/LSP sections', () => {
   view.sessionStartedAt = '2026-02-25T12:00:00.000Z';
   const rows = renderView(view, 46, 28);
 
-  assert.equal(rows.some((row) => row.includes('Context')), true);
-  assert.equal(rows.some((row) => row.includes('Files Changed')), true);
-  assert.equal(rows.some((row) => row.includes('No files changed yet')), true);
-  assert.equal(rows.some((row) => row.includes('MCP')), false);
-  assert.equal(rows.some((row) => row.includes('LSP')), false);
+  assert.equal(
+    rows.some((row) => row.includes('Context')),
+    true,
+  );
+  assert.equal(
+    rows.some((row) => row.includes('Files Changed')),
+    true,
+  );
+  assert.equal(
+    rows.some((row) => row.includes('No files changed yet')),
+    true,
+  );
+  assert.equal(
+    rows.some((row) => row.includes('MCP')),
+    false,
+  );
+  assert.equal(
+    rows.some((row) => row.includes('LSP')),
+    false,
+  );
 });
 
 test('nim sidebar renders tracked file changes', () => {
@@ -53,7 +68,16 @@ test('nim sidebar renders tracked file changes', () => {
   view.filesChanged = [{ file: 'src/app.ts', additions: 12, deletions: 3 }];
   const rows = renderView(view, 46, 28);
 
-  assert.equal(rows.some((row) => row.includes('src/app.ts')), true);
-  assert.equal(rows.some((row) => row.includes('+12  -3')), true);
-  assert.equal(rows.some((row) => row.includes('No files changed yet')), false);
+  assert.equal(
+    rows.some((row) => row.includes('src/app.ts')),
+    true,
+  );
+  assert.equal(
+    rows.some((row) => row.includes('+12  -3')),
+    true,
+  );
+  assert.equal(
+    rows.some((row) => row.includes('No files changed yet')),
+    false,
+  );
 });

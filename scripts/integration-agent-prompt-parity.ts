@@ -44,6 +44,23 @@ function readNonEmptyString(value: string | undefined): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function isSessionSettledForNextTurn(statusSummary: Record<string, unknown>): boolean {
+  const runtimeStatus = readNonEmptyString(
+    typeof statusSummary['status'] === 'string' ? statusSummary['status'] : undefined,
+  );
+  if (runtimeStatus === 'exited') {
+    return true;
+  }
+  if (runtimeStatus !== 'completed') {
+    return false;
+  }
+  const liveValue = statusSummary['live'];
+  if (typeof liveValue !== 'boolean') {
+    return true;
+  }
+  return liveValue === false;
+}
+
 function parseSupportedAgents(raw: string | null): readonly SupportedAgentType[] {
   if (raw === null) {
     return ['codex', 'claude', 'cursor'];
@@ -351,8 +368,7 @@ async function main(): Promise<void> {
         type: 'session.status',
         sessionId,
       });
-      const runtimeStatus = readNonEmptyString(String(status['status'] ?? ''));
-      return runtimeStatus === 'completed' || runtimeStatus === 'exited';
+      return isSessionSettledForNextTurn(status);
     });
   }
 
@@ -510,4 +526,10 @@ async function main(): Promise<void> {
   }
 }
 
-await main();
+if (import.meta.main) {
+  await main();
+}
+
+export const __integrationAgentPromptParityInternals = {
+  isSessionSettledForNextTurn,
+};

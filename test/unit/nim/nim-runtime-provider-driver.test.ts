@@ -403,10 +403,7 @@ test('nim runtime fails closed when provider finishes with unresolved tool calls
   });
 
   const failed = replay.events.find((event) => event.type === 'turn.failed');
-  assert.equal(
-    String(failed?.data?.['message'] ?? '').includes('unresolved tool calls'),
-    true,
-  );
+  assert.equal(String(failed?.data?.['message'] ?? '').includes('unresolved tool calls'), true);
   assert.deepEqual(failed?.data?.['pendingToolCallIds'], ['tool-open']);
 
   const completed = replay.events.find((event) => event.type === 'turn.completed');

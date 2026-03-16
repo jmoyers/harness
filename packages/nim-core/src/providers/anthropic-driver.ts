@@ -3,6 +3,7 @@ import type {
   AnthropicModelFactory,
   CreateAnthropicOptions,
   FinishReason,
+  JsonSchema,
   ModelMessage,
   StreamTextPart,
   StreamTextResult,
@@ -24,6 +25,7 @@ export type AnthropicNimProviderDriverOptions = CreateAnthropicOptions & {
   readonly streamTextFn?: StreamTextFn;
   readonly createAnthropicFn?: CreateAnthropicFn;
   readonly systemPrompt?: string;
+  readonly maxOutputTokens?: number;
   readonly maxToolRoundtrips?: number;
   readonly executeTool?: (input: {
     readonly toolName: string;
@@ -99,7 +101,7 @@ function toToolSet(
     tools[anthropicToolName] = {
       description: tool.description,
       inputSchema:
-        tool.inputSchema ??
+        (tool.inputSchema as JsonSchema | undefined) ??
         ({
           type: 'object',
           additionalProperties: true,
@@ -161,6 +163,7 @@ const DEFAULT_NIM_SYSTEM_PROMPT = [
 ].join('\n');
 
 const DEFAULT_MAX_TOOL_ROUNDTRIPS = 1000;
+const DEFAULT_MAX_OUTPUT_TOKENS = 2048;
 
 export function createAnthropicNimProviderDriver(
   options: AnthropicNimProviderDriverOptions,
@@ -192,7 +195,7 @@ export function createAnthropicNimProviderDriver(
         system: options.systemPrompt ?? DEFAULT_NIM_SYSTEM_PROMPT,
         ...(Object.keys(toolSet).length > 0 ? { tools: toolSet } : {}),
         temperature: 0,
-        maxOutputTokens: 512,
+        maxOutputTokens: options.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
         maxToolRoundtrips: options.maxToolRoundtrips ?? DEFAULT_MAX_TOOL_ROUNDTRIPS,
         ...(input.abortSignal !== undefined ? { abortSignal: input.abortSignal } : {}),
       });
